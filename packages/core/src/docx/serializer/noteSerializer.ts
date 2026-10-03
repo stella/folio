@@ -20,7 +20,9 @@
  * byte-exact.
  */
 
-import type { BlockContent, Endnote, Footnote } from "../../types/document";
+import type { BlockContent, Document, Endnote, Footnote } from "../../types/document";
+import { noteUsesCustomMark } from "@stll/docx-core/ops";
+import { hasNoteReferenceMark } from "../noteReferenceMark";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBookmarkMarker } from "./markupRangeAttributes";
@@ -123,14 +125,22 @@ function serializeRequiredNoteSeparators(elementName: "footnote" | "endnote"): s
   );
 }
 
-function insertNoteReferenceMark(xml: string, elementName: "footnote" | "endnote"): string {
-  // The authored mark now reaches the model as a preserved run child, so a
-  // note that already carries one must not be given a second. A preserved
-  // child keeps the source's spelling (`x:footnoteRef`, or unprefixed under a
-  // default namespace), so the check cannot assume `w:`.
-  if (new RegExp(`<(?:[\\w.-]+:)?${elementName}Ref[\\s/>]`, "u").test(xml)) {
-    return xml;
-  }
+type InsertNoteReferenceMarkOptions = {
+  xml: string;
+  elementName: "footnote" | "endnote";
+  note: Footnote | Endnote;
+  customMark: boolean;
+};
+
+function insertNoteReferenceMark({
+  xml,
+  elementName,
+  note,
+  customMark,
+}: InsertNoteReferenceMarkOptions): string {
+  if (customMark) return xml;
+  // Both session modes create the same typed marker, including in deletion wrappers.
+  if (hasNoteReferenceMark(elementName, note.content)) return xml;
   const paragraphOpen = /<w:p(?=[\s>])[^>]*>/u.exec(xml);
   if (!paragraphOpen) {
     const referenceParagraph =
@@ -152,12 +162,22 @@ function insertNoteReferenceMark(xml: string, elementName: "footnote" | "endnote
   return `${xml.slice(0, insertAt)}${referenceRun}${xml.slice(insertAt)}`;
 }
 
-function serializeNewNotePart(
-  elementName: "footnote" | "endnote",
-  notes: readonly (Footnote | Endnote)[],
-): string {
+type NewNotePartOptions = {
+  elementName: "footnote" | "endnote";
+  notes: readonly (Footnote | Endnote)[];
+  document?: Document;
+};
+
+function serializeNewNotePart({ elementName, notes, document }: NewNotePartOptions): string {
   const serializedNotes = notes
-    .map((note) => insertNoteReferenceMark(serializeNote(elementName, note), elementName))
+    .map((note) =>
+      insertNoteReferenceMark({
+        xml: serializeNote(elementName, note),
+        elementName,
+        note,
+        customMark: document ? noteUsesCustomMark(document, note) : false,
+      }),
+    )
     .join("");
   return serializeNotePart(
     elementName,
@@ -190,12 +210,26 @@ export function serializeEndnotes(endnotes: readonly Endnote[]): string {
 
 /** Serialize a brand-new footnote part, including Word's required separators
  * and the automatic reference mark at the start of every normal note. */
-export function serializeNewFootnotesPart(footnotes: readonly Footnote[]): string {
-  return serializeNewNotePart("footnote", footnotes);
+export function serializeNewFootnotesPart(
+  footnotes: readonly Footnote[],
+  document?: Document,
+): string {
+  return serializeNewNotePart({
+    elementName: "footnote",
+    notes: footnotes,
+    ...(document ? { document } : {}),
+  });
 }
 
 /** Serialize a brand-new endnote part, including Word's required separators
  * and the automatic reference mark at the start of every normal note. */
-export function serializeNewEndnotesPart(endnotes: readonly Endnote[]): string {
-  return serializeNewNotePart("endnote", endnotes);
+export function serializeNewEndnotesPart(
+  endnotes: readonly Endnote[],
+  document?: Document,
+): string {
+  return serializeNewNotePart({
+    elementName: "endnote",
+    notes: endnotes,
+    ...(document ? { document } : {}),
+  });
 }

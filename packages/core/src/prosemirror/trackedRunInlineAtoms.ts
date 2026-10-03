@@ -27,6 +27,7 @@ export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   image: "carry",
   math: "carry",
   moveRangeBoundary: "carry",
+  noteMarker: "carry",
   pageBreakRun: "page-break-carrier",
   preservedXml: "carry",
   // An empty comment range remains paragraph-level; move ranges use the

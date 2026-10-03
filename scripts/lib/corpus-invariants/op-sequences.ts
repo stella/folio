@@ -11,6 +11,8 @@ import {
   REVISION_DECISIONS,
   type DocumentOp,
   type AppliedDocumentOp,
+  type NoteStory,
+  sectionPropertiesAt,
 } from "../../../packages/docx-core/src/ops/documentOps";
 import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
 import { repackDocx } from "@stll/folio-core/docx/rezip";
@@ -18,6 +20,7 @@ import { unzipDocx } from "@stll/folio-core/docx/unzip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { serializeDocument } from "@stll/folio-core/docx/serializer/documentSerializer";
 import { storyParagraphs, blockListAt } from "../../../packages/docx-core/src/ops/blocks";
+import { leafSpans } from "../../../packages/docx-core/src/ops/leaves";
 import { paragraphLength } from "../../../packages/docx-core/src/ops/offsets";
 import {
   packageIdentityKeys,
@@ -116,11 +119,22 @@ export const OP_SEQUENCE_FAMILIES = [
   DOCUMENT_OP_TYPES.INSERT_ROW,
   DOCUMENT_OP_TYPES.DELETE_ROW,
   DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+  DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+  DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
+  DOCUMENT_OP_TYPES.ADD_NOTE,
+  DOCUMENT_OP_TYPES.REMOVE_NOTE,
+  DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
 ] as const;
 export const OP_SEQUENCE_LENGTH = OP_SEQUENCE_FAMILIES.length;
 
 /** Every schema member needs a generator decision when the operations API grows. */
 export const OP_GENERATOR_ROLES = {
+  [DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER]: "generated",
+  [DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER]: "generated",
+  [DOCUMENT_OP_TYPES.ADD_NOTE]: "generated",
+  [DOCUMENT_OP_TYPES.REMOVE_NOTE]: "generated",
+  [DOCUMENT_OP_TYPES.SET_SECTION_PROPS]: "generated",
+  [DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS]: "inverse",
   [DOCUMENT_OP_TYPES.INSERT_TEXT]: "generated",
   [DOCUMENT_OP_TYPES.INSERT_CONTENT]: "generated",
   [DOCUMENT_OP_TYPES.DELETE_RANGE]: "generated",
@@ -190,7 +204,108 @@ const candidate = ({
     content: [{ type: "run", content: [{ type: "text", text: "‸" }] }],
   } as const satisfies Paragraph;
   const end = { ...at, offset: Math.min(length, at.offset + 1 + choose(3)) };
+  const sectionCount =
+    document.package.document.content.filter(
+      (block) => block.type === "paragraph" && block.sectionProperties !== undefined,
+    ).length + 1;
   switch (family) {
+    case "createHeaderFooter": {
+      const sectionIndex = choose(sectionCount);
+      const properties = sectionPropertiesAt(document, sectionIndex);
+      if (!properties) return undefined;
+      const kind = choose(2) === 0 ? "header" : "footer";
+      const references =
+        kind === "header" ? properties.headerReferences : properties.footerReferences;
+      const availableVariants = (["default", "first", "even"] as const).filter(
+        (variant) => !references?.some(({ type }) => type === variant),
+      );
+      const referenceType = availableVariants.at(choose(availableVariants.length));
+      if (!referenceType) return undefined;
+      let identity = 1;
+      const used = (rId: string) =>
+        document.package.headers?.has(rId) ||
+        document.package.footers?.has(rId) ||
+        document.package.relationships?.has(rId);
+      while (used(`rIdCorpus${identity}`)) identity += 1;
+      return {
+        type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+        sectionIndex,
+        story: { kind, rId: `rIdCorpus${identity}` },
+        referenceType,
+        content: [freshParagraph],
+      };
+    }
+    case "removeHeaderFooter": {
+      const candidates = Array.from({ length: sectionCount }, (_, sectionIndex) => {
+        const properties = sectionPropertiesAt(document, sectionIndex);
+        const headers =
+          properties?.headerReferences
+            ?.filter(({ rId }) => document.package.headers?.has(rId))
+            .map(
+              ({ type, rId }) =>
+                ({ sectionIndex, story: { kind: "header", rId }, referenceType: type }) as const,
+            ) ?? [];
+        const footers =
+          properties?.footerReferences
+            ?.filter(({ rId }) => document.package.footers?.has(rId))
+            .map(
+              ({ type, rId }) =>
+                ({ sectionIndex, story: { kind: "footer", rId }, referenceType: type }) as const,
+            ) ?? [];
+        return [...headers, ...footers];
+      }).flat();
+      const selected = candidates.at(choose(candidates.length));
+      return selected ? { type: DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER, ...selected } : undefined;
+    }
+    case "addNote": {
+      const kind = choose(2) === 0 ? "footnote" : "endnote";
+      const collection =
+        kind === "footnote" ? document.package.footnotes : document.package.endnotes;
+      let id = 1;
+      while (collection?.some((note) => note.id === id)) id += 1;
+      return {
+        type: DOCUMENT_OP_TYPES.ADD_NOTE,
+        at,
+        note: { type: kind, id, content: [freshParagraph] },
+      };
+    }
+    case "removeNote": {
+      const references = paragraphs.flatMap(({ paragraph: referenceParagraph }) =>
+        leafSpans(referenceParagraph.content).flatMap(({ node, before }) => {
+          if (node.type !== "footnoteRef" && node.type !== "endnoteRef") return [];
+          if (!referenceParagraph.paraId) return [];
+          const kind = node.type === "footnoteRef" ? "footnote" : "endnote";
+          const notes =
+            kind === "footnote" ? document.package.footnotes : document.package.endnotes;
+          if (!notes?.some(({ id }) => id === node.id)) return [];
+          return [
+            {
+              at: {
+                story: OP_STORIES.MAIN,
+                blockId: referenceParagraph.paraId,
+                offset: before.offset,
+              },
+              story: { kind, id: node.id } satisfies NoteStory,
+            },
+          ];
+        }),
+      );
+      const selected = references.at(choose(references.length));
+      return selected ? { type: DOCUMENT_OP_TYPES.REMOVE_NOTE, ...selected } : undefined;
+    }
+    case "setSectionProps": {
+      const sectionIndex = choose(sectionCount);
+      const properties = sectionPropertiesAt(document, sectionIndex);
+      if (!properties) return undefined;
+      return {
+        type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+        sectionIndex,
+        patch: {
+          marginTop: properties.marginTop === 720 ? 1440 : 720,
+          evenAndOddHeaders: ([true, false, null] as const).at(choose(3)) ?? null,
+        },
+      };
+    }
     case "insertText":
       return {
         type: DOCUMENT_OP_TYPES.INSERT_TEXT,

@@ -1,3 +1,4 @@
+import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 /**
  * ProseMirror to Document Conversion
  *
@@ -28,6 +29,7 @@ import {
 } from "../../internal/paragraphFormattingSerialization";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
+import { normalizeFoldedListNumbers } from "../../docx/foldedListNumberFields";
 import { isInlineSdtContent, isSimpleFieldContent } from "../../docx/inlineWrapperContent";
 import {
   BLOCK_TREE_DESCENT,
@@ -1821,6 +1823,9 @@ function convertPMParagraph(
   if (listRendering) {
     paragraph.listRendering = listRendering;
   }
+  // A folded list-number field is hidden only while this paragraph's marker
+  // shows it; every other one goes back on the line before it is written.
+  normalizeFoldedListNumbers(paragraph);
   if (attrs.renderedPageBreakBefore) {
     paragraph.renderedPageBreakBefore = true;
   }
@@ -3215,6 +3220,9 @@ function extractParagraphContent(
           marks: node.marks,
         }),
       );
+    } else if (node.type.name === "noteMarker") {
+      flushCurrentInline();
+      appendDirectRun(node, createNoteMarkerRun({ node, marks: node.marks, formattingContext }));
     } else if (node.type.name === "symbol") {
       flushCurrentInline();
       content.push(createSymbolRun(node, node.marks, formattingContext));
@@ -3351,6 +3359,8 @@ function createTrackedChangeRun({
     restoreRunRecord(run, marks);
   } else if (node.type.name === "symbol") {
     run = createSymbolRun(node, marks, formattingContext);
+  } else if (node.type.name === "noteMarker") {
+    run = createNoteMarkerRun({ node, marks, formattingContext });
   } else if (node.type.name === "preservedXml") {
     run = createPreservedXmlRun(node, marks, formattingContext);
   } else if (node.type.name === "hardBreak") {
@@ -3589,6 +3599,11 @@ function addNodeToHyperlink({
     return;
   }
 
+  if (node.type.name === "noteMarker") {
+    hyperlink.children.push(createNoteMarkerRun({ node, marks: nonLinkMarks, formattingContext }));
+    return;
+  }
+
   if (node.type.name === "symbol") {
     hyperlink.children.push(
       createSymbolRun(node, nonLinkMarks, {
@@ -3784,8 +3799,30 @@ const isInlineLevelPreservedXml = (node: PMNode): boolean =>
 
 /** The paragraph-level capture an inline-level atom writes back. */
 const createPreservedInline = (node: PMNode): PreservedInline => {
-  const { xml, text } = expectPreservedXmlAttrs(node);
-  return { type: "preservedInline", xml, text };
+  const { xml, text, foldedListNumber } = expectPreservedXmlAttrs(node);
+  return foldedListNumber
+    ? { type: "preservedInline", xml, text, foldedListNumber }
+    : { type: "preservedInline", xml, text };
+};
+
+type CreateNoteMarkerRunOptions = {
+  node: PMNode;
+  marks: readonly Mark[];
+  formattingContext?: MarksToTextFormattingOptions | undefined;
+};
+
+/** Rebuild the authored automatic mark and its run properties from the atom. */
+const createNoteMarkerRun = ({
+  node,
+  marks,
+  formattingContext,
+}: CreateNoteMarkerRunOptions): Run => {
+  const { kind } = expectNoteMarkerAttrs(node);
+  const run: Run = { type: "run", content: [{ type: "noteMarker", kind }] };
+  const formatting = getAtomRunFormattingFromMarks(marks, formattingContext);
+  if (formatting) run.formatting = formatting;
+  restoreRunRecord(run, marks);
+  return run;
 };
 
 /**

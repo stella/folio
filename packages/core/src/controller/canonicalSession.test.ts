@@ -1,6 +1,12 @@
 import { describe, expect, test, setDefaultTimeout, spyOn } from "bun:test";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 
+import {
+  createParagraphChangeTrackerPlugin,
+  hasUntrackedChanges,
+  clearTrackedChanges,
+  paragraphChangeTrackerKey,
+} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { schema } from "../prosemirror/schema";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import {
@@ -15,8 +21,9 @@ import * as documentOps from "@stll/docx-core/ops";
 import * as conversion from "../prosemirror/conversion/toProseDoc";
 import { panic } from "better-result";
 import fc from "fast-check";
-import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
 import { assertExactModel } from "../../../../test/exactModel";
+import { visitParagraphRuns } from "../docx/paragraphTraversal";
+import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { FIRST_ID, fixture, seedArbitrary } from "../../typecheck/ops/reviewGenerators.typecheck";
 
@@ -29,9 +36,10 @@ import {
   getParagraphPropertySourceToken,
   paragraphPropertySourceBelongsToDocument,
 } from "../docx/paragraphPropertySource";
-import type { Document, Run, StyleDefinitions } from "../types/document";
+import type { Document, Paragraph, Run, StyleDefinitions } from "../types/document";
 import {
   CANONICAL_PROJECTION_META,
+  CanonicalSessionError,
   createCanonicalSession,
   deletionRange,
   isCanonicalProjectionTransaction,
@@ -75,6 +83,57 @@ const accept = (state: EditorState, commit: CanonicalCommit) => {
 };
 
 describe("canonical session", () => {
+  test("keeps typing groups separate from structural edits and suggesting mode", () => {
+    const session = createCanonicalSession(seed("AB")).unwrap();
+    let state = stateFor(session);
+    const initial = session.document;
+    for (const [time, text] of [
+      [1000, "X"],
+      [1001, "Y"],
+    ] as const) {
+      state = accept(
+        state,
+        session
+          .prepareReplace(state, {
+            from: state.selection.head,
+            to: state.selection.head,
+            text,
+            semantic: "typing",
+            time,
+          })
+          .unwrap(),
+      );
+    }
+    const typed = session.document;
+    state = accept(state, session.prepareSplit(state).unwrap());
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toEqual(typed);
+    session.setMode({ type: "suggesting", author: "Reviewer" });
+    for (const [time, text] of [
+      [1002, "Z"],
+      [1003, "W"],
+    ] as const) {
+      session.setMode({ type: "suggesting", author: "Reviewer" });
+      state = accept(
+        state,
+        session
+          .prepareReplace(state, {
+            from: state.selection.head,
+            to: state.selection.head,
+            text,
+            semantic: "typing",
+            time,
+          })
+          .unwrap(),
+      );
+    }
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toEqual(typed);
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toEqual(initial);
+    expect(state.doc.eq(session.projection.doc)).toBe(true);
+  });
+
   test("compound intents reuse their applied batch and restore exact history", () => {
     const session = createCanonicalSession(seed("plain")).unwrap();
     let state = stateFor(session);
@@ -96,9 +155,9 @@ describe("canonical session", () => {
     state = accept(state, commit);
     const edited = session.document;
     state = accept(state, session.prepareUndo(state).unwrap());
-    assertExactModel(session.document, original);
+    expect(session.document).toStrictEqual(original);
     state = accept(state, session.prepareRedo(state).unwrap());
-    assertExactModel(session.document, edited);
+    expect(session.document).toStrictEqual(edited);
     expect(state.selection.head).toBe(3);
   });
 
@@ -164,6 +223,406 @@ describe("canonical session", () => {
     expect(session.document).toStrictEqual(original);
     expect(session.canUndo).toBe(false);
   });
+  test("separator note types, rather than producer-specific ids, govern activation", () => {
+    for (const kind of ["footnote", "endnote"] as const) {
+      for (const id of [0, 1, 7]) {
+        for (const noteType of ["separator", "continuationSeparator", "normal"] as const) {
+          const document = seed("Body");
+          const content: Paragraph[] = [
+            {
+              type: "paragraph",
+              paraId: "34567890",
+              content: [
+                {
+                  type: "run",
+                  content: [
+                    {
+                      type: "preservedXml",
+                      xml: `<w:${noteType === "continuationSeparator" ? "continuationSeparator" : "separator"} xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
+                      text: "",
+                    },
+                  ],
+                },
+              ],
+            },
+          ];
+          if (kind === "footnote")
+            document.package.footnotes = [{ type: "footnote", id, noteType, content }];
+          else document.package.endnotes = [{ type: "endnote", id, noteType, content }];
+          expect(createCanonicalSession(document).isOk()).toBe(noteType !== "normal");
+        }
+      }
+    }
+  });
+
+  test("secondary typing projects only its changed story and never serves stale cached content", () => {
+    const document = seed("Body");
+    document.package.headers = new Map([
+      [
+        "rIdHeader1",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [
+            {
+              type: "paragraph",
+              paraId: "34567890",
+              content: [{ type: "run", content: [{ type: "text", text: "Header" }] }],
+            },
+          ],
+        },
+      ],
+    ]);
+    const session = createCanonicalSession(document).unwrap();
+    const header = { kind: "header", rId: "rIdHeader1" } as const;
+    const bodySpy = spyOn(conversion, "toProseDoc");
+    const storySpy = spyOn(conversion, "headerFooterToProseDoc");
+    try {
+      const initialProjection = session.projectStory(header).unwrap();
+      expect(session.projectStory(header).unwrap()).toBe(initialProjection);
+      expect(storySpy).toHaveBeenCalledTimes(1);
+      const initialState = EditorState.create({ schema, doc: initialProjection.doc });
+      const body = session.projection;
+      const edit = session
+        .prepareReplace(initialState, { from: 1, to: 1, text: "X", story: header })
+        .unwrap();
+      const state = accept(initialState, edit);
+      expect(edit.bodyProjection).toBe(body);
+      expect(session.projection).toBe(body);
+      expect(bodySpy).not.toHaveBeenCalled();
+      expect(storySpy).toHaveBeenCalledTimes(2);
+      expect(session.projectStory(header).unwrap()).toBe(edit.projection);
+      expect(session.projectStory(header).unwrap().doc.textContent).toBe("XHeader");
+      expect(
+        session
+          .prepareReplace(initialState, { from: 1, to: 1, text: "stale", story: header })
+          .isErr(),
+      ).toBe(true);
+      expect(storySpy).toHaveBeenCalledTimes(2);
+      const mainState = stateFor(session);
+      accept(mainState, session.prepareReplace(mainState, { from: 1, to: 1, text: "Y" }).unwrap());
+      expect(session.projectStory(header).unwrap()).toBe(edit.projection);
+      expect(storySpy).toHaveBeenCalledTimes(2);
+      accept(state, session.prepareUndo(state, header).unwrap());
+      expect(session.projectStory(header).unwrap().doc.textContent).toBe("XHeader");
+      const current = EditorState.create({
+        schema,
+        doc: session.projectStory(header).unwrap().doc,
+      });
+      accept(current, session.prepareUndo(current, header).unwrap());
+      expect(session.projectStory(header).unwrap().doc.textContent).toBe("Header");
+    } finally {
+      bodySpy.mockRestore();
+      storySpy.mockRestore();
+    }
+  });
+
+  test("undo can remove the story containing the active editor", () => {
+    const session = createCanonicalSession(seed("Body")).unwrap();
+    const initial = structuredClone(session.document);
+    const footer = { kind: "footer", rId: "rIdFooterFirst" } as const;
+    const bodyState = stateFor(session);
+    accept(
+      bodyState,
+      session
+        .prepareOperations(bodyState, [
+          {
+            type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+            sectionIndex: 0,
+            story: footer,
+            referenceType: "first",
+            content: [{ type: "paragraph", paraId: "34567890", content: [] }],
+          },
+        ])
+        .unwrap(),
+    );
+    const footerState = EditorState.create({
+      schema,
+      doc: session.projectStory(footer).unwrap().doc,
+    });
+    const removed = session.prepareUndo(footerState, footer).unwrap();
+    accept(footerState, removed);
+    expect(session.document).toStrictEqual(initial);
+    expect(session.projectStory(footer).isErr()).toBe(true);
+    const restored = session.prepareRedo(stateFor(session)).unwrap();
+    accept(stateFor(session), restored);
+    expect(session.projectStory(footer).isOk()).toBe(true);
+  });
+  test("package-only canonical commits require full save until the saved tracker clears", () => {
+    const session = createCanonicalSession(seed("Body")).unwrap();
+    let state = EditorState.create({
+      schema,
+      doc: session.projection.doc,
+      plugins: [createParagraphChangeTrackerPlugin()],
+    });
+    const text = session.prepareReplace(state, { from: 1, to: 1, text: "Text" }).unwrap();
+    state = accept(state, text);
+    expect(hasUntrackedChanges(state)).toBe(false);
+    const properties = session
+      .prepareOperations(state, [
+        { type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS, sectionIndex: 0, patch: { titlePg: true } },
+      ])
+      .unwrap();
+    expect(properties.transaction.docChanged).toBe(false);
+    state = accept(state, properties);
+    expect(hasUntrackedChanges(state)).toBe(true);
+    state = state.apply(clearTrackedChanges(state));
+    expect(hasUntrackedChanges(state)).toBe(false);
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(hasUntrackedChanges(state)).toBe(true);
+  });
+  test.each([
+    [OP_STORIES.MAIN, false],
+    [{ kind: "header", rId: "rIdHeader1" }, true],
+  ] as const)("block insertion in %s tracks the operation's story", (story, packageChange) => {
+    const source = seed("Body");
+    source.package.headers = new Map([
+      [
+        "rIdHeader1",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [{ type: "paragraph", paraId: "34567890", content: [] }],
+        },
+      ],
+    ]);
+    const session = createCanonicalSession(source).unwrap();
+    const original = structuredClone(session.document);
+    const state = stateFor(session);
+    const commit = session
+      .prepareOperations(state, [
+        {
+          type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+          story,
+          at: { type: "after", blockId: story === OP_STORIES.MAIN ? "12345678" : "34567890" },
+          blocks: [{ type: "paragraph", paraId: "45678901", content: [] }],
+        },
+      ])
+      .unwrap();
+    expect(commit.transaction.getMeta(paragraphChangeTrackerKey)).toBe(
+      packageChange ? "package-change" : undefined,
+    );
+    const inserted = accept(state, commit);
+    accept(inserted, session.prepareUndo(inserted).unwrap());
+    expect(session.document).toStrictEqual(original);
+  });
+  test("story typing groups and pending composition share the body journal boundary", () => {
+    const session = createCanonicalSession(seed("Body")).unwrap();
+    let bodyState = stateFor(session);
+    const header = { kind: "header", rId: "rIdHeader1" } as const;
+    bodyState = accept(
+      bodyState,
+      session
+        .prepareOperations(bodyState, [
+          {
+            type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+            sectionIndex: 0,
+            story: header,
+            referenceType: "default",
+            content: [{ type: "paragraph", paraId: "34567890", content: [] }],
+          },
+        ])
+        .unwrap(),
+    );
+    const created = session.document;
+    let state = EditorState.create({ schema, doc: session.projectStory(header).unwrap().doc });
+
+    for (const [time, text] of [
+      [1000, "X"],
+      [1001, "Y"],
+    ] as const) {
+      state = accept(
+        state,
+        session
+          .prepareReplace(state, {
+            from: state.selection.head,
+            to: state.selection.head,
+            story: header,
+
+            text,
+            semantic: "typing",
+            time,
+          })
+          .unwrap(),
+      );
+    }
+    const typed = session.document;
+    session.beginComposition().unwrap();
+    expect(() => session.document).toThrow(CanonicalSessionError);
+    expect(
+      session.prepareReplace(state, { from: 1, to: 1, text: "Z", story: header }).isErr(),
+    ).toBe(true);
+    expect(session.prepareUndo(state, header).isErr()).toBe(true);
+    session.endComposition();
+    state = accept(state, session.prepareUndo(state, header).unwrap());
+    expect(session.document).toEqual(created);
+    state = accept(state, session.prepareRedo(state, header).unwrap());
+    expect(session.document).toEqual(typed);
+    expect(state.doc.textContent).toBe("XY");
+  });
+
+  test("story creation and edits share exact canonical undo and redo", () => {
+    const session = createCanonicalSession(seed("Body")).unwrap();
+    const initial = structuredClone(session.document);
+    let state = stateFor(session);
+    const header = { kind: "header", rId: "rIdHeader1" } as const;
+    state = accept(
+      state,
+      session
+        .prepareOperations(state, [
+          {
+            type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+            sectionIndex: 0,
+            story: header,
+            referenceType: "default",
+            content: [
+              {
+                type: "paragraph",
+                paraId: "34567890",
+                content: [{ type: "run", content: [{ type: "text", text: "Header" }] }],
+              },
+            ],
+          },
+        ])
+        .unwrap(),
+    );
+    const headerProjection = session.projectStory(header).unwrap();
+    let headerState = EditorState.create({ schema, doc: headerProjection.doc });
+    headerState = accept(
+      headerState,
+      session
+        .prepareReplace(headerState, { from: 1, to: 7, text: "Edited", story: header })
+        .unwrap(),
+    );
+    expect(headerState.doc.textContent).toBe("Edited");
+    expect(session.projection.doc.textContent).toBe("Body");
+    state = stateFor(session);
+    state = accept(
+      state,
+      session
+        .prepareOperations(state, [
+          {
+            type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+            sectionIndex: 0,
+            story: { kind: "footer", rId: "rIdFooter1" },
+            referenceType: "first",
+            content: [{ type: "paragraph", paraId: "45678901", content: [] }],
+          },
+        ])
+        .unwrap(),
+    );
+    expect(session.document.package.document.finalSectionProperties?.titlePg).toBe(true);
+    state = accept(
+      state,
+      session
+        .prepareOperations(state, [
+          {
+            type: DOCUMENT_OP_TYPES.ADD_NOTE,
+            at: { story: OP_STORIES.MAIN, blockId: "12345678", offset: 4 },
+            note: {
+              type: "footnote",
+              id: 12,
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "56789012",
+                  content: [{ type: "run", content: [{ type: "text", text: "Note" }] }],
+                },
+              ],
+            },
+          },
+        ])
+        .unwrap(),
+    );
+    const noteStory = { kind: "footnote", id: 12 } as const;
+    const noteProjection = session.projectStory(noteStory).unwrap();
+    let noteState = EditorState.create({ schema, doc: noteProjection.doc });
+    const noteStart = noteProjection
+      .positionAt({ story: noteStory, blockId: "56789012", offset: 0 })
+      .unwrap();
+    const noteEnd = noteProjection
+      .positionAt({ story: noteStory, blockId: "56789012", offset: 4 })
+      .unwrap();
+    noteState = accept(
+      noteState,
+      session
+        .prepareReplace(noteState, {
+          from: noteStart,
+          to: noteEnd,
+          text: "Edited note",
+          story: noteStory,
+        })
+        .unwrap(),
+    );
+    expect(noteState.doc.textContent).toBe("Edited note");
+    const final = structuredClone(session.document);
+    state = stateFor(session);
+    for (let count = 0; count < 5; count++)
+      state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toStrictEqual(initial);
+    for (let count = 0; count < 5; count++)
+      state = accept(state, session.prepareRedo(state).unwrap());
+    expect(session.document).toStrictEqual(final);
+    expect(session.projection.doc.eq(state.doc)).toBe(true);
+  });
+  test.each(["footnote", "endnote"] as const)(
+    "%s marker gaps map exactly and insertion after a marker preserves it through history",
+    (kind) => {
+      const source = seed("Body");
+      const content = [
+        {
+          type: "paragraph",
+          paraId: "34567890",
+          content: [
+            { type: "run", content: [{ type: "noteMarker", kind }] },
+            { type: "run", content: [{ type: "text", text: "😀Note" }] },
+          ],
+        },
+      ] satisfies Paragraph[];
+      if (kind === "footnote") source.package.footnotes = [{ type: kind, id: 12, content }];
+      else source.package.endnotes = [{ type: kind, id: 12, content }];
+      const session = createCanonicalSession(source).unwrap();
+      const initial = structuredClone(session.document);
+      const story = { kind, id: 12 };
+      const projection = session.projectStory(story).unwrap();
+      for (const position of [1, 2, 4, 5, 6, 7, 8]) {
+        const address = projection.addressAt(position).unwrap();
+        expect(projection.positionAt(address).unwrap()).toBe(position);
+      }
+      expect(projection.addressAt(3).isErr()).toBe(true);
+      const afterMarker = projection.positionAt({ story, blockId: "34567890", offset: 0 }).unwrap();
+      expect(afterMarker).toBe(2);
+      const deletingState = (position: number) =>
+        EditorState.create({
+          schema,
+          doc: projection.doc,
+          selection: TextSelection.create(projection.doc, position),
+        });
+      expect(deletionRange(deletingState(2), "forward").unwrap()).toEqual({ from: 2, to: 4 });
+      expect(deletionRange(deletingState(4), "backward").unwrap()).toEqual({ from: 2, to: 4 });
+      expect(deletionRange(deletingState(2), "backward").isErr()).toBe(true);
+      expect(deletionRange(deletingState(1), "forward").isErr()).toBe(true);
+      let state = EditorState.create({
+        schema,
+        doc: projection.doc,
+        selection: TextSelection.create(projection.doc, afterMarker),
+      });
+      state = accept(
+        state,
+        session.prepareReplace(state, { from: 2, to: 2, text: "x", story }).unwrap(),
+      );
+      expect(state.selection.from).toBe(3);
+      expect(state.doc.firstChild?.firstChild?.type.name).toBe("noteMarker");
+      expect(state.doc.textContent).toBe("x😀Note");
+      const edited = structuredClone(session.document);
+      state = accept(state, session.prepareUndo(state, story).unwrap());
+      expect(session.document).toStrictEqual(initial);
+      state = accept(state, session.prepareRedo(state, story).unwrap());
+      expect(session.document).toStrictEqual(edited);
+      expect(state.selection.from).toBe(3);
+    },
+  );
+
   test("canonical input sequences keep the projection, inverse history and refusal atomic", async () => {
     await assertProperty(
       fc.asyncProperty(
@@ -532,61 +991,205 @@ describe("canonical session", () => {
     expect(state.selection.head).toBe(1);
   });
 
-  test("stored mark changes preserve authored properties and explicitly clear removed marks", () => {
-    const document = seed("plain");
-    const paragraph = document.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") panic("The formatting fixture needs a paragraph.");
-    const run = paragraph.content.at(0);
-    if (run?.type !== "run") panic("The formatting fixture needs a run.");
-    run.formatting = {
-      styleId: "SourceStyle",
-      bold: true,
-      boldCs: false,
-      noProof: true,
-      fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
-      language: { val: "fr-FR", bidi: "ar-SA" },
-    };
-    for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Author" }] as const) {
-      const session = createCanonicalSession(document).unwrap();
-      session.setMode(mode);
-      let state = stateFor(session);
-      const original = session.document;
-      const italic = schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
-      const bold = schema.marks.bold ?? panic("Bold mark is unavailable.");
-      const characterStyle =
-        schema.marks.characterStyle ?? panic("Character style mark is unavailable.");
-      state = state.apply(
-        state.tr
-          .addStoredMark(italic)
-          .removeStoredMark(bold)
-          .addStoredMark(characterStyle.create({ styleId: "DestinationStyle" })),
-      );
-      state = accept(state, session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap());
-      const authored = session.document.package.document.content.at(0);
-      if (authored?.type !== "paragraph") panic("Stored-mark input lost its paragraph.");
-      const authoredRuns = authored.content.flatMap((item) =>
-        item.type === "insertion" ? item.content : [item],
-      );
-      const inserted = authoredRuns.find(
-        (item) =>
-          item.type === "run" &&
-          item.content.some((leaf) => leaf.type === "text" && leaf.text === "X"),
-      );
-      if (inserted?.type !== "run") panic("Stored-mark input lost its authored run.");
-      expect(inserted.formatting).toStrictEqual({
-        styleId: "DestinationStyle",
+  test("stored mark changes preserve authored properties and explicitly clear removed marks", async () => {
+    const assertStoredMarkTransition = ({
+      sourceStyle,
+      destinationStyle,
+    }: {
+      sourceStyle: string | undefined;
+      destinationStyle: string | undefined;
+    }) => {
+      const document = seed("plain");
+      const paragraph = document.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") panic("The formatting fixture needs a paragraph.");
+      const run = paragraph.content.at(0);
+      if (run?.type !== "run") panic("The formatting fixture needs a run.");
+      run.formatting = {
+        ...(sourceStyle === undefined ? {} : { styleId: sourceStyle }),
+        bold: true,
         boldCs: false,
         noProof: true,
-        italic: true,
         fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
         language: { val: "fr-FR", bidi: "ar-SA" },
-      });
-      const edited = session.document;
-      state = accept(state, session.prepareUndo(state).unwrap());
-      expect(session.document).toStrictEqual(original);
-      state = accept(state, session.prepareRedo(state).unwrap());
-      expect(session.document).toStrictEqual(edited);
-    }
+      };
+      for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Author" }] as const) {
+        const session = createCanonicalSession(document).unwrap();
+        session.setMode(mode);
+        let state = stateFor(session);
+        const original = session.document;
+        const italic = schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
+        const bold = schema.marks.bold ?? panic("Bold mark is unavailable.");
+        const characterStyle =
+          schema.marks.characterStyle ?? panic("Character style mark is unavailable.");
+        const transaction = state.tr.addStoredMark(italic).removeStoredMark(bold);
+        if (destinationStyle === undefined) transaction.removeStoredMark(characterStyle);
+        else transaction.addStoredMark(characterStyle.create({ styleId: destinationStyle }));
+        state = state.apply(transaction);
+        state = accept(
+          state,
+          session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap(),
+        );
+        const authored = session.document.package.document.content.at(0);
+        if (authored?.type !== "paragraph") panic("Stored-mark input lost its paragraph.");
+        const authoredRuns = authored.content.flatMap((item) =>
+          item.type === "insertion" ? item.content : [item],
+        );
+        const inserted = authoredRuns.find(
+          (item) =>
+            item.type === "run" &&
+            item.content.some((leaf) => leaf.type === "text" && leaf.text === "X"),
+        );
+        if (inserted?.type !== "run") panic("Stored-mark input lost its authored run.");
+        assertExactModel(inserted.formatting, {
+          ...(destinationStyle === undefined ? {} : { styleId: destinationStyle }),
+          boldCs: false,
+          noProof: true,
+          italic: true,
+          fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
+          language: { val: "fr-FR", bidi: "ar-SA" },
+        });
+        const edited = session.document;
+        state = accept(state, session.prepareUndo(state).unwrap());
+        assertExactModel(session.document, original);
+        state = accept(state, session.prepareRedo(state).unwrap());
+        assertExactModel(session.document, edited);
+      }
+    };
+    assertStoredMarkTransition({
+      sourceStyle: "SourceStyle",
+      destinationStyle: "DestinationStyle",
+    });
+    await assertProperty(
+      fc.property(
+        fc.constantFrom(undefined, "SourceStyle", "DestinationStyle"),
+        fc.array(
+          fc.record({
+            destinationStyle: fc.constantFrom(undefined, "SourceStyle", "DestinationStyle"),
+            target: fc.constantFrom("offset", "surrogate"),
+            offset: fc.nat(500),
+          }),
+          { minLength: 8, maxLength: 12 },
+        ),
+        (sourceStyle, trace) => {
+          const document = seed("p😀lain");
+          const paragraph = document.package.document.content.at(0);
+          if (paragraph?.type !== "paragraph") panic("Style trace needs a paragraph.");
+          const run = paragraph.content.at(0);
+          if (run?.type !== "run") panic("Style trace needs a run.");
+          run.formatting = {
+            ...(sourceStyle === undefined ? {} : { styleId: sourceStyle }),
+            bold: true,
+            boldCs: false,
+            noProof: true,
+            fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
+            language: { val: "fr-FR", bidi: "ar-SA" },
+          };
+          for (const mode of [
+            { type: "editing" },
+            { type: "suggesting", author: "Author" },
+          ] as const) {
+            const session = createCanonicalSession(document).unwrap();
+            session.setMode(mode);
+            let state = stateFor(session);
+            const snapshots = [session.document];
+            let expectedRefusals = 0;
+            const refusals = { refused: 0, noChange: 0 };
+            for (const [index, input] of trace.entries()) {
+              const pmParagraph = state.doc.firstChild;
+              if (pmParagraph === null) panic("Style trace lost its projection paragraph.");
+              const text = pmParagraph.textContent;
+              const offset =
+                input.target === "surrogate"
+                  ? text.indexOf("😀") + 1
+                  : input.offset % (text.length + 1);
+              const legalGaps = new Set([0]);
+              let physicalOffset = 0;
+              for (const character of text) {
+                physicalOffset += character.length;
+                legalGaps.add(physicalOffset);
+              }
+              const position = 1 + offset;
+              state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position)));
+              const italic = schema.marks.italic ?? panic("Italic mark is unavailable.");
+              const bold = schema.marks.bold ?? panic("Bold mark is unavailable.");
+              const characterStyle =
+                schema.marks.characterStyle ?? panic("Character style mark is unavailable.");
+              const transaction = state.tr.addStoredMark(italic.create()).removeStoredMark(bold);
+              if (input.destinationStyle === undefined)
+                transaction.removeStoredMark(characterStyle);
+              else
+                transaction.addStoredMark(
+                  characterStyle.create({ styleId: input.destinationStyle }),
+                );
+              state = state.apply(transaction);
+              const before = session.document;
+              const projection = session.projection;
+              const version = session.version;
+              const token = `X${index}X`;
+              const prepared = session.prepareReplace(state, {
+                from: position,
+                to: position,
+                text: token,
+              });
+              if (!legalGaps.has(offset)) {
+                expectedRefusals += 1;
+                if (prepared.isOk()) panic("A style trace accepted an interior surrogate cut.");
+                refusals[prepared.error.reason] += 1;
+                expect(prepared.error.reason).toBe("refused");
+                assertExactModel(session.document, before);
+                expect(session.projection).toBe(projection);
+                expect(session.version).toBe(version);
+                expect(session.canUndo).toBe(snapshots.length > 1);
+              } else {
+                if (prepared.isErr()) refusals[prepared.error.reason] += 1;
+                state = accept(state, prepared.unwrap());
+                const authored = session.document.package.document.content.at(0);
+                if (authored?.type !== "paragraph")
+                  panic("Style trace lost its authored paragraph.");
+                const insertedRuns: Run[] = [];
+                visitParagraphRuns(authored, (candidate) => {
+                  if (
+                    candidate.content.some(
+                      (leaf) => leaf.type === "text" && leaf.text.includes(token),
+                    )
+                  )
+                    insertedRuns.push(candidate);
+                });
+                expect(insertedRuns).toHaveLength(1);
+                const inserted = insertedRuns.at(0);
+                if (inserted === undefined) panic("Style trace lost its inserted text.");
+                assertExactModel(inserted.formatting, {
+                  ...(input.destinationStyle === undefined
+                    ? {}
+                    : { styleId: input.destinationStyle }),
+                  boldCs: false,
+                  noProof: true,
+                  italic: true,
+                  fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
+                  language: { val: "fr-FR", bidi: "ar-SA" },
+                });
+                const after = session.document;
+                state = accept(state, session.prepareUndo(state).unwrap());
+                assertExactModel(session.document, before);
+                state = accept(state, session.prepareRedo(state).unwrap());
+                assertExactModel(session.document, after);
+                snapshots.push(after);
+              }
+            }
+            assertExactModel(refusals, { refused: expectedRefusals, noChange: 0 });
+            for (let index = snapshots.length - 2; index >= 0; index -= 1) {
+              state = accept(state, session.prepareUndo(state).unwrap());
+              assertExactModel(session.document, snapshots.at(index));
+            }
+            for (const expected of snapshots.slice(1)) {
+              state = accept(state, session.prepareRedo(state).unwrap());
+              assertExactModel(session.document, expected);
+            }
+          }
+        },
+      ),
+      { numRuns: 30 },
+    );
   });
 
   test("rejection leaves canonical model, projection, version and journal unchanged", () => {

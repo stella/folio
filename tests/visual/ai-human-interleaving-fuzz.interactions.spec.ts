@@ -208,6 +208,19 @@ for (const seed of config.seeds) {
       {
         seed,
         ...(replayPath === undefined ? {} : { path: replayPath }),
+        // #1342: seeds 11 and 29 shrank to this overlapping insertion trace.
+        examples: [
+          [
+            {
+              shape: "plain-markdown",
+              actions: [
+                { kind: "suggest", text: "alpha" },
+                { kind: "typing", text: "alpha" },
+                { kind: "suggest", text: "alpha" },
+              ],
+            },
+          ],
+        ],
         numRuns: config.runs,
         endOnFailure: false,
         interruptAfterTimeLimit: 540_000,

@@ -3,8 +3,9 @@ import { deepStrictEqual, notDeepStrictEqual } from "node:assert/strict";
 import fc from "fast-check";
 
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { Document, Paragraph } from "../../model/document";
+import type { Document, Paragraph, ParagraphMarkChange } from "../../model/document";
 import { applyDocumentOp, applyDocumentOpEnvelope, applyDocumentOps } from "../apply";
+import { allocateEditorIntentIds, compileEditorIntent, type EditorIntent } from "../editorIntent";
 import { paragraphLogicalText } from "../offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
@@ -489,4 +490,136 @@ test("stale property preconditions distinguish absent fields from owned undefine
       }
     }
   }
+});
+
+test("generated paragraph mark cut-depth presence survives captured journals and exact histories", () => {
+  assertProperty(
+    fc.property(fc.integer({ min: 1, max: 2147483647 }), (depth) => {
+      const marks = [
+        { kind: "ins", info: { id: 20, author: "Source" } },
+        { kind: "ins", info: { id: 20, author: "Source" }, resolutionJoin: undefined },
+        { kind: "ins", info: { id: 20, author: "Source" }, resolutionJoin: 0 },
+        { kind: "ins", info: { id: 20, author: "Source" }, resolutionJoin: depth },
+      ] satisfies ParagraphMarkChange[];
+      for (const mark of marks) {
+        const paragraph = {
+          type: "paragraph",
+          paraId: "00000001",
+          pPrMark: mark,
+          content: [{ type: "run", content: [{ type: "text", text: "before" }] }],
+        } satisfies Paragraph;
+        const document = { package: { document: { content: [paragraph] } } } satisfies Document;
+        const before = structuredClone(document);
+        const changed = structuredClone(paragraph);
+        changed.content = [{ type: "run", content: [{ type: "text", text: "after" }] }];
+        const op = {
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story: OP_STORIES.MAIN,
+          expected: [paragraph],
+          blocks: [changed],
+        } satisfies DocumentOp;
+        const restored = restoreDocumentOp(jsonTransport(toOpEnvelope(op)).op).unwrap();
+        deepStrictEqual(restored, op);
+        if (Object.hasOwn(mark, "resolutionJoin") && mark.resolutionJoin === undefined)
+          notDeepStrictEqual(jsonTransport(op), op);
+        const applied = applyDocumentOpEnvelope(document, jsonTransport(toOpEnvelope(op))).unwrap();
+        deepStrictEqual(applied.document, applyDocumentOp(document, op).unwrap().document);
+        const undo = applyDocumentOps(applied.document, applied.inverse).unwrap();
+        const transportedUndo = applyDocumentOps(
+          applied.document,
+          jsonTransport(applied.inverse),
+        ).unwrap();
+        deepStrictEqual(undo.document, before);
+        deepStrictEqual(transportedUndo.document, before);
+        const redo = applyDocumentOps(undo.document, jsonTransport(undo.inverse)).unwrap();
+        deepStrictEqual(redo.document, applied.document);
+        deepStrictEqual(document, before);
+      }
+    }),
+    { numRuns: 100 },
+  );
+});
+
+test("generated split marks transport source cut depths without losing independent authored bidi siblings", () => {
+  assertProperty(
+    fc.property(fc.integer({ min: 0, max: 3 }), (offset) => {
+      const document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                paraId: "00000001",
+                content: [
+                  {
+                    type: "hyperlink",
+                    href: "https://example.com/source",
+                    children: [
+                      {
+                        type: "inlineWrapper",
+                        kind: "bidi",
+                        control: "embedding",
+                        content: [
+                          {
+                            type: "preservedInline",
+                            xml: "<w:proofErr w:type='spellStart'/>",
+                            text: "",
+                          },
+                        ],
+                      },
+                      {
+                        type: "inlineWrapper",
+                        kind: "bidi",
+                        control: "embedding",
+                        content: [{ type: "run", content: [{ type: "text", text: "abc" }] }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      } satisfies Document;
+      const before = structuredClone(document);
+      const intent = {
+        type: "splitParagraph",
+        at: { story: OP_STORIES.MAIN, blockId: "00000001", offset },
+        newBlockId: "00000002",
+      } as const satisfies EditorIntent;
+      const allocation = allocateEditorIntentIds(document, intent);
+      const compiled = compileEditorIntent(document, {
+        intent,
+        mode: {
+          type: "suggesting",
+          revision: { id: allocation.revisionId, author: "Editor" },
+          newIds: allocation.newIds,
+        },
+      }).unwrap();
+      const wireOps = compiled.ops.map((op) => jsonTransport(toOpEnvelope(op)).op);
+      for (const [index, op] of wireOps.entries()) {
+        const originalOp = compiled.ops.at(index);
+        if (originalOp === undefined)
+          throw new TypeError("Transport preserves every generated operation.");
+        deepStrictEqual(restoreDocumentOp(op).unwrap(), restoreDocumentOp(originalOp).unwrap());
+      }
+      const memory = applyDocumentOps(document, compiled.ops).unwrap();
+      const leading = memory.document.package.document.content.at(0);
+      if (leading?.type !== "paragraph" || leading.pPrMark === undefined)
+        throw new TypeError("Applying the source split must emit a paragraph mark.");
+      expect(Object.hasOwn(leading.pPrMark, "resolutionJoin")).toBe(true);
+      expect(Number.isInteger(leading.pPrMark.resolutionJoin)).toBe(true);
+      const transported = applyDocumentOps(document, wireOps).unwrap();
+      deepStrictEqual(transported.document, memory.document);
+      const undo = applyDocumentOps(
+        transported.document,
+        jsonTransport(transported.inverse),
+      ).unwrap();
+      deepStrictEqual(undo.document, before);
+      const redo = applyDocumentOps(undo.document, jsonTransport(undo.inverse)).unwrap();
+      deepStrictEqual(redo.document, transported.document);
+      deepStrictEqual(document, before);
+    }),
+    { numRuns: 25 },
+  );
 });

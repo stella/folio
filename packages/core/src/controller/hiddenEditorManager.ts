@@ -1,3 +1,4 @@
+import { OP_STORIES } from "@stll/docx-core/ops";
 /**
  * Hidden-editor view lifecycle manager
  *
@@ -68,7 +69,10 @@ import {
   type CanonicalSessionMode,
   type CanonicalCommit,
 } from "./canonicalSession";
-import { createParagraphChangeTrackerPlugin } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import {
+  createParagraphChangeTrackerPlugin,
+  markPackageChange,
+} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 
 export class CanonicalSessionRefusalError extends TaggedError("CanonicalSessionRefusalError")<{
   message: string;
@@ -583,7 +587,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     deps.onTransaction({
       transactions: staged.transactions,
       newState: staged.state,
-      docChanged: commit.transaction.docChanged,
+      docChanged: true,
     });
     deps.onSelectionChange(staged.state);
     return true;
@@ -898,6 +902,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
 
         if (editorSession.type === "refused") return;
         if (editorSession.type === "canonical" && transaction.docChanged) {
+          if (input.acceptComposition(view, transaction)) return;
           if (!input.commitNativeProposal(view, transaction)) {
             input.refuseNativeMutation(view);
           }
@@ -1222,6 +1227,51 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     syncHiddenEditorAccessibility(view, deps.getReadOnly());
   };
 
+  const publishStoryCommit = (storyView: EditorView, commit: CanonicalCommit): boolean => {
+    if (!view || editorSession.type !== "canonical") return false;
+    if (deps.getEditingMode?.() === "suggesting") {
+      refuse("Suggesting is unavailable in the experimental canonical session.");
+      return false;
+    }
+    const session = editorSession.session;
+    const bodyTransaction = view.state.tr;
+    if (!bodyTransaction.doc.eq(commit.bodyProjection.doc))
+      bodyTransaction.replaceWith(
+        0,
+        bodyTransaction.doc.content.size,
+        commit.bodyProjection.doc.content,
+      );
+    markPackageChange(bodyTransaction);
+    bodyTransaction.setMeta("addToHistory", false);
+    const bodyStaged = Result.try(() => view?.state.applyTransaction(bodyTransaction));
+    if (
+      bodyStaged.isErr() ||
+      !bodyStaged.value ||
+      !bodyStaged.value.transactions.includes(bodyTransaction) ||
+      !bodyStaged.value.state.doc.eq(commit.bodyProjection.doc) ||
+      bodyStaged.value.transactions.some(
+        (transaction) => transaction !== bodyTransaction && transaction.docChanged,
+      )
+    ) {
+      refuse("A plugin refused or changed the canonical body projection.");
+      return false;
+    }
+    const staged = publishCanonicalProjection({ state: storyView.state, commit, session });
+    if (staged.isErr()) {
+      refuse(staged.error.message);
+      return false;
+    }
+    storyView.updateState(staged.value.state);
+    view.updateState(bodyStaged.value.state);
+    deps.onTransaction({
+      transactions: staged.value.transactions,
+      newState: view.state,
+      docChanged: true,
+    });
+    deps.onSelectionChange(view.state);
+    return true;
+  };
+
   const api = createHiddenEditorApi({
     getView: () => view,
     getDocumentContext: () => (editorSession.type === "refused" ? null : deps.getDocumentContext()),
@@ -1255,6 +1305,77 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
             canRedo: () => editorSession.type === "canonical" && editorSession.session.canRedo,
           }
         : null,
+    canonicalOperations: {
+      updateCanonicalInputLifecycle: (action) => {
+        if (editorSession.type !== "canonical") return false;
+        switch (action) {
+          case "beginComposition":
+            return canonicalInputLifecycle.beginComposition();
+          case "endComposition":
+            canonicalInputLifecycle.endComposition();
+            return true;
+          case "breakUndoGroup":
+            canonicalInputLifecycle.breakUndoGroup();
+            return true;
+        }
+      },
+      getCanonicalStorySelection: (story) => {
+        if (editorSession.type !== "canonical") return null;
+        const session = editorSession.session;
+        const selection = session.selection;
+        if (!selection) return null;
+        const projection = session.projectStory(story);
+        if (projection.isErr()) return null;
+        const anchor = projection.value.positionAt(selection.anchor);
+        const head = projection.value.positionAt(selection.head);
+        return anchor.isOk() && head.isOk() ? { anchor: anchor.value, head: head.value } : null;
+      },
+      applyCanonicalStoryHistory: ({ view: storyView, story, direction }) => {
+        if (story === OP_STORIES.MAIN && storyView === view) return history(direction);
+        if (!view || editorSession.type !== "canonical" || deps.getReadOnly()) return false;
+        const session = editorSession.session;
+        if (direction === "undo" ? !session.canUndo : !session.canRedo) return false;
+        const prepared =
+          direction === "undo"
+            ? session.prepareUndo(storyView.state, story)
+            : session.prepareRedo(storyView.state, story);
+        if (prepared.isErr()) {
+          refuse(prepared.error.message);
+          return false;
+        }
+        return publishStoryCommit(storyView, prepared.value);
+      },
+      applyCanonicalOperations: (ops) => {
+        ensureView();
+        if (!view || editorSession.type !== "canonical" || deps.getReadOnly()) return false;
+        const prepared = editorSession.session.prepareOperations(view.state, ops);
+        if (prepared.isErr()) {
+          refuse(prepared.error.message);
+          return false;
+        }
+        return publishCommit(prepared.value);
+      },
+      getCanonicalStoryProjection: (story) => {
+        if (deps.getExperimentalSession?.() === "canonical") ensureView();
+        if (editorSession.type !== "canonical" || editorSession.session.isComposing) return null;
+        const result = editorSession.session.projectStory(story);
+        if (result.isErr()) {
+          refuse(result.error.message);
+          return null;
+        }
+        return result.value.doc;
+      },
+      replaceCanonicalStoryText: ({ view: storyView, story, intent }) => {
+        if (!view || editorSession.type !== "canonical" || deps.getReadOnly()) return false;
+        const session = editorSession.session;
+        const prepared = session.prepareReplace(storyView.state, { ...intent, story });
+        if (prepared.isErr()) {
+          refuse(prepared.error.message);
+          return false;
+        }
+        return publishStoryCommit(storyView, prepared.value);
+      },
+    },
     isDestroying: () => isDestroying,
     ensureView,
     isViewRequested,

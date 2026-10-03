@@ -44,6 +44,10 @@ const numberedFixture = async ({
   foldedListNum = false,
 }: FixtureOptions = {}): Promise<Document> => {
   const model = fromMarkdown("1. Alpha\n2. Beta\n\nTail.");
+  // Operations address authored package ids; normalization does not allocate them.
+  for (const [index, block] of model.package.document.content.entries()) {
+    if (block.type === "paragraph") block.paraId = (index + 1).toString(16).padStart(8, "0");
+  }
   const [alpha, beta] = model.package.document.content;
   if (alpha?.type !== "paragraph" || beta?.type !== "paragraph") {
     throw new Error("fixture must start with two paragraphs");

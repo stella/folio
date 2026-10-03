@@ -38,6 +38,8 @@ import {
 } from "./leaves";
 import { paragraphLength } from "./offsets";
 import { identitySlots, withInlineIdentity } from "./slots";
+import { canonicalDeferredGroups } from "./identity";
+import { joinParagraphSeam } from "./inline";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
@@ -146,10 +148,14 @@ type Emptied = { has: (node: InlineNode) => boolean };
 const NOTHING_EMPTIED: Emptied = { has: () => false };
 
 type Resolution = {
-  ids: ReadonlySet<number>;
+  ids: Set<number>;
   decision: RevisionDecision;
   /** The containers this resolution has emptied so far. */
   emptied: WeakSet<InlineNode>;
+  /** Actual payload edges accepted after source identities were restored. */
+  acceptedClosed: Record<"first" | "last", WeakSet<InlineNode>>;
+  /** Unconsumed source-cut edges on the actual rebuilt container. */
+  cutEdges: WeakMap<InlineNode, CutEdges>;
 };
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
@@ -295,10 +301,16 @@ const hasSlots = (node: InlineNode, expected: RetainedIdentity["target"]): boole
 };
 
 /** Only recorded slot references change; arbitrary numbers in the model never do. */
-const restoreRetainedIdentities = (
-  nodes: readonly InlineNode[],
-  transfers: readonly RetainedIdentity[],
-): InlineNode[] => {
+type RestoreRetainedIdentitiesOptions = {
+  nodes: readonly InlineNode[];
+  transfers: readonly RetainedIdentity[];
+  resolution: Resolution;
+};
+const restoreRetainedIdentities = ({
+  nodes,
+  transfers,
+  resolution,
+}: RestoreRetainedIdentitiesOptions): InlineNode[] => {
   const references = new Map<string, RetainedIdentity["source"][number]>();
   let out = [...nodes];
   for (const transfer of transfers) {
@@ -332,19 +344,41 @@ const restoreRetainedIdentities = (
       if (restored === undefined || restored.space !== target.space)
         panic("Validated identity transfers retain slot order and space.");
       references.set(slotKey(target), restored);
+      // Selection follows the actual retained record through a source-ID
+      // transfer, rather than resolving an unrelated later use of its old ID.
+      if (target.space === IDENTITY_SPACES.REVISION && resolution.ids.has(target.id))
+        resolution.ids.add(restored.id);
     }
   }
   // A later pending deletion may remove the fragment whose identity just
   // returned. Rebase its explicit slot references, preserving that lineage.
   const rebase = (node: InlineNode): InlineNode => {
     let next = node;
-    if (isTrackedWrapper(node) && node.resolutionJoins?.retainedAfter !== undefined) {
-      const retainedAfter = node.resolutionJoins.retainedAfter.map((entry) => ({
-        depth: entry.depth,
-        source: entry.source.map((slot) => references.get(slotKey(slot)) ?? slot),
-        target: entry.target.map((slot) => references.get(slotKey(slot)) ?? slot),
-      }));
-      next = { ...node, resolutionJoins: { ...node.resolutionJoins, retainedAfter } };
+    if (isTrackedWrapper(node) && node.resolutionJoins !== undefined) {
+      const joins = Object.assign({}, node.resolutionJoins);
+      if (joins.retainedAfter !== undefined) {
+        joins.retainedAfter = joins.retainedAfter.map((entry) => ({
+          depth: entry.depth,
+          source: entry.source.map((slot) => references.get(slotKey(slot)) ?? slot),
+          target: entry.target.map((slot) => references.get(slotKey(slot)) ?? slot),
+        }));
+      }
+      if (joins.deferredRemove !== undefined) {
+        joins.deferredRemove = canonicalDeferredGroups(
+          joins.deferredRemove.map((group) => ({
+            depth: group.depth,
+            blockers: [
+              ...new Set(
+                group.blockers.map((id) => {
+                  const restored = references.get(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
+                  return restored?.space === IDENTITY_SPACES.REVISION ? restored.id : id;
+                }),
+              ),
+            ],
+          })),
+        );
+      }
+      next = Object.assign({}, node, { resolutionJoins: joins });
     }
     const children = childNodes(next);
     return children === undefined ? next : rebuildNode(next, children.map(rebase));
@@ -364,6 +398,32 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
     )
   )
     return false;
+  if (joins.deferredRemove !== undefined) {
+    const groups = joins.deferredRemove;
+    if (!Array.isArray(groups) || groups.length === 0 || !isAddedRevision(node)) return false;
+    const groupKeys = new Set<string>();
+    for (const deferred of groups) {
+      if (
+        typeof deferred !== "object" ||
+        deferred === null ||
+        !Number.isInteger(deferred.depth) ||
+        deferred.depth < 0 ||
+        deferred.depth > MAX_REVISION_ID ||
+        !Array.isArray(deferred.blockers) ||
+        deferred.blockers.length === 0 ||
+        !deferred.blockers.every(
+          (id: unknown) =>
+            typeof id === "number" && Number.isInteger(id) && id >= 0 && id <= MAX_REVISION_ID,
+        ) ||
+        new Set(deferred.blockers).size !== deferred.blockers.length ||
+        !deferred.blockers.includes(node.info.id)
+      )
+        return false;
+      const key = `${deferred.depth}:${deferred.blockers.join(",")}`;
+      if (groupKeys.has(key)) return false;
+      groupKeys.add(key);
+    }
+  }
   if (joins.retainedAfter === undefined) return true;
   if (!Array.isArray(joins.retainedAfter)) return false;
   type AtDepthOptions = {
@@ -421,7 +481,48 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
   return joins.retainedAfter.every(validEntry);
 };
 
-type ResolvedList = { nodes: InlineNode[]; changed: boolean };
+/** Update an explicit pending seam before removing any of its blocking revisions. */
+const prepareDeferredRemovals = (
+  nodes: readonly InlineNode[],
+  resolution: Resolution,
+): readonly InlineNode[] => {
+  let changed = false;
+  const out: InlineNode[] = [];
+  for (const node of nodes) {
+    let next = node;
+    if (isTrackedWrapper(node) && node.resolutionJoins?.deferredRemove !== undefined) {
+      const groups = node.resolutionJoins.deferredRemove;
+      if (groups.some((group) => group.blockers.some((id) => resolution.ids.has(id)))) {
+        const joins = Object.assign({}, node.resolutionJoins);
+        const remainingGroups: NonNullable<typeof joins.deferredRemove>[number][] = [];
+        for (const group of groups) {
+          if (!group.blockers.some((id) => resolution.ids.has(id))) {
+            remainingGroups.push(group);
+            continue;
+          }
+          if (resolution.decision === REVISION_DECISIONS.ACCEPT) continue;
+          const remaining = group.blockers.filter((id) => !resolution.ids.has(id));
+          if (remaining.length === 0) joins.remove = Math.max(joins.remove, group.depth);
+          else remainingGroups.push({ depth: group.depth, blockers: remaining });
+        }
+        delete joins.deferredRemove;
+        if (remainingGroups.length > 0)
+          joins.deferredRemove = canonicalDeferredGroups(remainingGroups);
+        next = Object.assign({}, node, { resolutionJoins: joins });
+      }
+    }
+    const children = childNodes(next);
+    const prepared =
+      children === undefined ? children : prepareDeferredRemovals(children, resolution);
+    if (children !== undefined && prepared !== children) next = rebuildNode(next, prepared ?? []);
+    changed ||= next !== node;
+    out.push(next);
+  }
+  return changed ? out : nodes;
+};
+
+type CutEdges = { first?: number; last?: number };
+type ResolvedList = { nodes: InlineNode[]; changed: boolean; edges?: CutEdges };
 
 /**
  * A list with its tracked changes resolved. Where a change was resolved,
@@ -431,9 +532,14 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
   const out: InlineNode[] = [];
   const seams: number[] = [];
   const exactSeams = new Map<number, number>();
+  const sourceEdges = new Map<number, number>();
   const pending = [...nodes];
   const recordExactSeam = (index: number, depth: number): void => {
     if (depth > 0) exactSeams.set(index, Math.max(exactSeams.get(index) ?? 0, depth));
+  };
+  const recordSourceSeam = (index: number, depth: number): void => {
+    recordExactSeam(index, depth);
+    if (depth > 0) sourceEdges.set(index, Math.max(sourceEdges.get(index) ?? 0, depth));
   };
   /** Seams beside an emptied container, where only its fold happens. */
   const folds: number[] = [];
@@ -447,22 +553,42 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
           // Restore before resolving later wrappers, so their own source
           // references follow the fragment whose identity returned.
           const prefixLength = out.length;
-          const restored = restoreRetainedIdentities(
-            out.concat(pending.slice(index + 1)),
+          const restored = restoreRetainedIdentities({
+            nodes: out.concat(pending.slice(index + 1)),
             transfers,
-          );
-          out.splice(0, out.length, ...restored.slice(0, prefixLength));
-          pending.splice(index + 1, pending.length - index - 1, ...restored.slice(prefixLength));
+            resolution,
+          });
+          // Restoring source IDs can make a previously unselected blocker
+          // selected; recompute deferred facts against those actual identities.
+          const prepared = prepareDeferredRemovals(restored, resolution);
+          out.splice(0, out.length, ...prepared.slice(0, prefixLength));
+          pending.splice(index + 1, pending.length - index - 1, ...prepared.slice(prefixLength));
         }
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else recordExactSeam(out.length, node.resolutionJoins.remove);
         continue;
       }
       if (node.resolutionJoins === undefined) seams.push(out.length);
-      else recordExactSeam(out.length, node.resolutionJoins.before);
-      out.push(...resolveList(node.content, resolution).nodes);
+      else recordSourceSeam(out.length, node.resolutionJoins.before);
+      const resolved = resolveList(node.content, resolution);
+      const content = resolved.nodes;
+      if (resolved.edges?.first !== undefined) recordSourceSeam(out.length, resolved.edges.first);
+      if (
+        isAddedRevision(node) &&
+        resolution.decision === REVISION_DECISIONS.ACCEPT &&
+        node.resolutionJoins !== undefined
+      ) {
+        const first = content.at(0);
+        const last = content.at(-1);
+        if (node.resolutionJoins.after === 0 && first !== undefined)
+          resolution.acceptedClosed.first.add(first);
+        if (node.resolutionJoins.before === 0 && last !== undefined)
+          resolution.acceptedClosed.last.add(last);
+      }
+      out.push(...content);
+      if (resolved.edges?.last !== undefined) recordSourceSeam(out.length, resolved.edges.last);
       if (node.resolutionJoins === undefined) seams.push(out.length);
-      else recordExactSeam(out.length, node.resolutionJoins.after);
+      else recordSourceSeam(out.length, node.resolutionJoins.after);
       continue;
     }
     if (node.type === "run") {
@@ -541,11 +667,46 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
     if (inner.nodes.length === 0) resolution.emptied.add(rebuilt);
     if (ends.first) folds.push(out.length);
     if (ends.last) folds.push(out.length + 1);
+    if (inner.edges !== undefined) {
+      const edges: CutEdges = {};
+      if (inner.edges.first !== undefined) edges.first = inner.edges.first + 1;
+      if (inner.edges.last !== undefined) edges.last = inner.edges.last + 1;
+      resolution.cutEdges.set(rebuilt, edges);
+    }
     out.push(rebuilt);
+  }
+  // An inner cut can meet the edge of a container while its other fragment
+  // remains beyond a pending insertion. Preserve that exact seam on its
+  // actual blocker; accepting the payload cancels it, rejecting restores it.
+  for (const [index, node] of out.entries()) {
+    if (!isAddedRevision(node) || node.resolutionJoins === undefined) continue;
+    if (node.resolutionJoins.remove === 0) continue;
+    const left = out.at(index - 1);
+    const right = out.at(index + 1);
+    const depths = [
+      index > 0 && left !== undefined ? resolution.cutEdges.get(left)?.last : undefined,
+      right === undefined ? undefined : resolution.cutEdges.get(right)?.first,
+    ];
+    const groups = [...(node.resolutionJoins.deferredRemove ?? [])];
+    for (const depth of depths) {
+      if (depth !== undefined) groups.push({ depth, blockers: [node.info.id] });
+    }
+    if (groups.length === (node.resolutionJoins.deferredRemove?.length ?? 0)) continue;
+    out[index] = Object.assign({}, node, {
+      resolutionJoins: Object.assign({}, node.resolutionJoins, {
+        deferredRemove: canonicalDeferredGroups(groups),
+      }),
+    });
+    changed = true;
   }
   if (!changed) {
     return { nodes: out, changed };
   }
+  const edges: CutEdges = {};
+  const firstDepth = sourceEdges.get(0);
+  const lastDepth = sourceEdges.get(out.length);
+  if (firstDepth !== undefined) edges.first = firstDepth;
+  if (lastDepth !== undefined) edges.last = lastDepth;
   const merges = new Set(seams);
   for (const seam of [...new Set([...seams, ...exactSeams.keys(), ...folds])].toSorted(
     (left, right) => right - left,
@@ -553,7 +714,16 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
     const left = out[seam - 1];
     const right = out[seam];
     if (left === undefined || right === undefined) continue;
-    const exactDepth = exactSeams.get(seam);
+    let exactDepth = exactSeams.get(seam);
+    if (exactDepth !== undefined) {
+      // Extend only an already recorded outer cut with an unconsumed inner
+      // source cut. Equal authored containers alone never establish a seam.
+      exactDepth = Math.max(
+        exactDepth,
+        resolution.cutEdges.get(left)?.last ?? 0,
+        resolution.cutEdges.get(right)?.first ?? 0,
+      );
+    }
     // Later independent edits may make a recorded seam non-alike. Join
     // only the recorded depth and matching fields, preserving those edits.
     let met: InlineNode[];
@@ -562,13 +732,33 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
     } else if (exactDepth === undefined) {
       met = foldAtSeam(left, right, resolution.emptied);
     } else {
+      // Earlier inline resolution can empty an original cut fragment. Its
+      // surviving identity folds back before measuring the remaining depth.
+      const folded = foldAtSeam(left, right, resolution.emptied);
       met =
-        mergeLists([left], [right], exactDepth, { mode: "asFarAsAlike" }) ??
-        panic("An as-far-as-alike merge always returns its records.");
+        folded.length === 1
+          ? folded
+          : (mergeLists([left], [right], exactDepth, { mode: "asFarAsAlike" }) ??
+            panic("An as-far-as-alike merge always returns its records."));
+    }
+    if (met.length === 1) {
+      const merged = met.at(0) ?? panic("A single merged record exists.");
+      const outerEdges: CutEdges = {};
+      const first = resolution.cutEdges.get(left)?.first;
+      const last = resolution.cutEdges.get(right)?.last;
+      if (first !== undefined) outerEdges.first = first;
+      if (last !== undefined) outerEdges.last = last;
+      resolution.cutEdges.set(merged, outerEdges);
     }
     out.splice(seam - 1, 2, ...met);
   }
-  return { nodes: out, changed };
+  const first = out.at(0);
+  const last = out.at(-1);
+  const nestedFirst = first === undefined ? undefined : resolution.cutEdges.get(first)?.first;
+  const nestedLast = last === undefined ? undefined : resolution.cutEdges.get(last)?.last;
+  if (nestedFirst !== undefined) edges.first = Math.max(edges.first ?? 0, nestedFirst);
+  if (nestedLast !== undefined) edges.last = Math.max(edges.last ?? 0, nestedLast);
+  return { nodes: out, changed, edges };
 };
 
 /** A paragraph's review fields once its property changes and mark are resolved; `undefined` when unchanged. */
@@ -630,7 +820,13 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
   return out;
 };
 
-type JoinPlan = { op: ResolveRevisionOp; story: OpStory; paraId: string; added: boolean };
+type JoinPlan = {
+  op: ResolveRevisionOp;
+  story: OpStory;
+  paraId: string;
+  added: boolean;
+  depth: number | undefined;
+};
 
 /**
  * Whether the record a paragraph's content starts with, and the one it ends
@@ -676,13 +872,99 @@ const emptiedEndsOf = (nodes: readonly InlineNode[], emptied: Emptied): EmptiedE
  */
 type EmptiedEndsById = Map<string, EmptiedEnds>;
 
+type DeferredSplitSeamOptions = {
+  left: readonly InlineNode[];
+  right: readonly InlineNode[];
+  depth: number;
+};
+/** Preserve the recorded source seam when later pending insertions stand at it. */
+const deferSplitSeam = ({
+  left,
+  right,
+  depth,
+}: DeferredSplitSeamOptions): {
+  left: readonly InlineNode[];
+  right: readonly InlineNode[];
+} => {
+  if (depth === 0) return { left, right };
+  const last = left.at(-1);
+  const first = right.at(0);
+  const lastChildren = last === undefined ? undefined : childNodes(last);
+  const firstChildren = first === undefined ? undefined : childNodes(first);
+  if (
+    last !== undefined &&
+    first !== undefined &&
+    lastChildren !== undefined &&
+    firstChildren !== undefined &&
+    sameOwnFields(last, first)
+  ) {
+    const inner = deferSplitSeam({ left: lastChildren, right: firstChildren, depth: depth - 1 });
+    return {
+      left: [...left.slice(0, -1), rebuildNode(last, inner.left)],
+      right: [rebuildNode(first, inner.right), ...right.slice(1)],
+    };
+  }
+  const blocking = (node: InlineNode | undefined): boolean =>
+    node !== undefined &&
+    isAddedRevision(node) &&
+    isTrackedWrapper(node) &&
+    node.resolutionJoins !== undefined;
+  let leftEnd = left.length - 1;
+  let rightStart = 0;
+  while (leftEnd >= 0 && blocking(left.at(leftEnd))) leftEnd -= 1;
+  while (rightStart < right.length && blocking(right.at(rightStart))) rightStart += 1;
+  // Pending revisions can themselves be the two source fragments. Keep
+  // those outside the blocker group; only insertions between them defer it.
+  let sourcePair = false;
+  for (let leftIndex = left.length - 1; leftIndex > leftEnd && !sourcePair; leftIndex -= 1) {
+    const leftSource = left.at(leftIndex);
+    if (leftSource === undefined) panic("A scanned source fragment exists.");
+    for (let rightIndex = 0; rightIndex < rightStart; rightIndex += 1) {
+      const rightSource = right.at(rightIndex);
+      if (rightSource === undefined) panic("A scanned source fragment exists.");
+      if (!sameOwnFields(leftSource, rightSource)) continue;
+      leftEnd = leftIndex;
+      rightStart = rightIndex;
+      sourcePair = true;
+      break;
+    }
+  }
+  if (leftEnd !== left.length - 1 || rightStart !== 0) {
+    const blockers = [...left.slice(leftEnd + 1), ...right.slice(0, rightStart)].flatMap((node) =>
+      isTrackedWrapper(node) ? [node.info.id] : [],
+    );
+    const deferred = (node: InlineNode): InlineNode => {
+      if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
+        panic("Only a provenance-bearing pending insertion blocks this split seam.");
+      const groups = [...(node.resolutionJoins.deferredRemove ?? [])];
+      if (
+        !groups.some(
+          (group) =>
+            group.depth === depth &&
+            group.blockers.length === blockers.length &&
+            group.blockers.every((id, index) => id === blockers.at(index)),
+        )
+      )
+        groups.push({ depth, blockers });
+      return Object.assign({}, node, {
+        resolutionJoins: Object.assign({}, node.resolutionJoins, { deferredRemove: groups }),
+      });
+    };
+    return {
+      left: left.map((node, index) => (index > leftEnd ? deferred(node) : node)),
+      right: right.map((node, index) => (index < rightStart ? deferred(node) : node)),
+    };
+  }
+  return { left, right };
+};
+
 /**
  * The operations that remove a paragraph's resolved mark, against the document
  * as it stands. `ends` is updated for the paragraph a join leaves.
  */
 const joinOps = (
   document: Document,
-  { op, story, paraId, added }: JoinPlan,
+  { op, story, paraId, added, depth }: JoinPlan,
   ends: EmptiedEndsById,
 ): Result<DocumentOp[], DocumentOpRefusal> => {
   const body = storyBody(document, story);
@@ -727,7 +1009,27 @@ const joinOps = (
       const record = edgeRecord(content, edge);
       if (isEmptied && record !== undefined) emptied.add(record);
     }
-    const merged = mergedAtSeam(paragraph.content, next.content, emptied);
+    let merged: InlineNode[];
+    if (depth === undefined) {
+      merged = added
+        ? mergedAtSeam(paragraph.content, next.content, emptied)
+        : joinParagraphSeam(paragraph.content, next.content);
+    } else {
+      const seam = deferSplitSeam({ left: paragraph.content, right: next.content, depth });
+      const left = seam.left.at(-1);
+      const right = seam.right.at(0);
+      if (depth > 0 && left !== undefined && right !== undefined) {
+        const folded = foldAtSeam(left, right, emptied);
+        const met =
+          folded.length === 1
+            ? folded
+            : (mergeLists([left], [right], depth, { mode: "asFarAsAlike" }) ??
+              panic("An as-far-as-alike merge always returns its records."));
+        merged = [...seam.left.slice(0, -1), ...met, ...seam.right.slice(1)];
+      } else {
+        merged = [...seam.left, ...seam.right];
+      }
+    }
     // A record left as it was keeps its identity through the merge; an emptied
     // one folded into its neighbour is rebuilt, and is no longer empty.
     ends.set(nextId, emptiedEndsOf(merged, emptied));
@@ -784,6 +1086,41 @@ const joinOps = (
 const storyIdentityKeys = (document: Document, story: OpStory): Set<string> =>
   new Set(identityKeysIn(storyBody(document, story).content));
 
+type AcceptedClosedBoundaryOptions = {
+  nodes: readonly InlineNode[];
+  edge: "first" | "last";
+  resolution: Resolution;
+};
+/** A closed accepted payload ends the original cut at its containing depth. */
+const acceptedClosedBoundary = ({
+  nodes,
+  edge,
+  resolution,
+}: AcceptedClosedBoundaryOptions): number | undefined => {
+  if (resolution.decision !== REVISION_DECISIONS.ACCEPT) return undefined;
+  let current = nodes;
+  let depth = 0;
+  while (current.length > 0) {
+    const node = edge === "first" ? current.at(0) : current.at(-1);
+    if (node === undefined) return undefined;
+    if (resolution.acceptedClosed[edge].has(node)) return depth;
+    if (
+      isTrackedWrapper(node) &&
+      isAddedRevision(node) &&
+      resolution.ids.has(node.info.id) &&
+      node.resolutionJoins !== undefined
+    ) {
+      const fitting = edge === "first" ? node.resolutionJoins.after : node.resolutionJoins.before;
+      if (fitting === 0) return depth;
+    }
+    const children = childNodes(node);
+    if (children === undefined) return undefined;
+    current = children;
+    depth += 1;
+  }
+  return undefined;
+};
+
 /**
  * Resolve tracked changes by revision id, applied as the primitive
  * operations it expands to. An id no record in the story carries is
@@ -816,7 +1153,13 @@ export const resolveRevision = (
       touched: { modified: [], inserted: [], removed: [] },
     });
   }
-  const resolution: Resolution = { ids, decision: op.decision, emptied: new WeakSet() };
+  const resolution: Resolution = {
+    ids,
+    decision: op.decision,
+    emptied: new WeakSet(),
+    acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
+    cutEdges: new WeakMap(),
+  };
   const paragraphs = storyParagraphs(storyBody(document, op.story));
   const reachable = new Set([
     ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
@@ -833,9 +1176,35 @@ export const resolveRevision = (
     );
   }
 
+  const blockerIds = new Set<number>();
+  const collectBlockers = (nodes: readonly InlineNode[]): void => {
+    for (const node of nodes) {
+      if (isTrackedWrapper(node) && isAddedRevision(node) && node.resolutionJoins !== undefined)
+        blockerIds.add(node.info.id);
+      collectBlockers(childNodes(node) ?? []);
+    }
+  };
+  for (const { paragraph } of paragraphs) collectBlockers(paragraph.content);
   const validProvenance = (nodes: readonly InlineNode[]): boolean =>
-    nodes.every((node) => validRetainedIdentities(node) && validProvenance(childNodes(node) ?? []));
-  if (paragraphs.some(({ paragraph }) => !validProvenance(paragraph.content))) {
+    nodes.every(
+      (node) =>
+        validRetainedIdentities(node) &&
+        (!isTrackedWrapper(node) ||
+          node.resolutionJoins?.deferredRemove === undefined ||
+          node.resolutionJoins.deferredRemove.every((group) =>
+            group.blockers.every((id) => blockerIds.has(id)),
+          )) &&
+        validProvenance(childNodes(node) ?? []),
+    );
+  if (
+    paragraphs.some(({ paragraph }) => {
+      const depth = paragraph.pPrMark?.resolutionJoin;
+      return (
+        !validProvenance(paragraph.content) ||
+        (depth !== undefined && (!Number.isInteger(depth) || depth < 0 || depth > MAX_REVISION_ID))
+      );
+    })
+  ) {
     return Result.err(
       refusal(
         op,
@@ -848,10 +1217,13 @@ export const resolveRevision = (
   const inline: DocumentOp[] = [];
   const joins: JoinPlan[] = [];
   const emptiedEnds: EmptiedEndsById = new Map();
+  const resolvedContents = new Map<string, readonly InlineNode[]>();
   for (const { paragraph } of paragraphs) {
     const paraId = paragraph.paraId ?? "";
-    const resolved = resolveList(paragraph.content, resolution);
-    if (resolved.changed) {
+    const prepared = prepareDeferredRemovals(paragraph.content, resolution);
+    const resolved = resolveList(prepared, resolution);
+    resolvedContents.set(idKey(paraId), resolved.nodes);
+    if (resolved.changed || prepared !== paragraph.content) {
       emptiedEnds.set(idKey(paraId), emptiedEndsOf(resolved.nodes, resolution.emptied));
       inline.push({
         type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
@@ -861,14 +1233,55 @@ export const resolveRevision = (
         content: asParagraphContent(resolved.nodes),
       });
     }
+  }
+  const retiredCutDepths = new Map<string, number>();
+  const body = storyBody(document, op.story);
+  for (const location of paragraphs) {
+    const paragraph = location.paragraph;
+    const mark = paragraph.pPrMark;
+    if (mark === undefined || !markWasAdded(mark.kind) || mark.resolutionJoin === undefined)
+      continue;
+    const trailing = acceptedClosedBoundary({
+      nodes:
+        resolvedContents.get(idKey(paragraph.paraId ?? "")) ??
+        panic("Every source paragraph has a resolved content result."),
+      edge: "last",
+      resolution,
+    });
+    const next = blockListAt(body.content, location.list).at(location.index + 1);
+    const leading =
+      next?.type === "paragraph"
+        ? acceptedClosedBoundary({
+            nodes:
+              resolvedContents.get(idKey(next.paraId ?? "")) ??
+              panic("Every following paragraph has a resolved content result."),
+            edge: "first",
+            resolution,
+          })
+        : undefined;
+    let depth = mark.resolutionJoin;
+    if (trailing !== undefined) depth = Math.min(depth, trailing);
+    if (leading !== undefined) depth = Math.min(depth, leading);
+    if (depth !== mark.resolutionJoin) retiredCutDepths.set(idKey(paragraph.paraId ?? ""), depth);
+  }
+  for (const { paragraph } of paragraphs) {
+    const paraId = paragraph.paraId ?? "";
     const mark = paragraph.pPrMark;
     const markResolved = mark !== undefined && ids.has(mark.info.id);
     const added = mark !== undefined && markWasAdded(mark.kind);
     const keepsBreak = markResolved && added === (op.decision === REVISION_DECISIONS.ACCEPT);
     if (markResolved && !keepsBreak) {
-      joins.push({ op, story: op.story, paraId, added });
+      joins.push({ op, story: op.story, paraId, added, depth: mark.resolutionJoin });
     }
-    const review = resolveParagraphReview(paragraph, resolution, keepsBreak);
+    let review = resolveParagraphReview(paragraph, resolution, keepsBreak);
+    const retiredDepth = retiredCutDepths.get(idKey(paraId));
+    if (retiredDepth !== undefined) {
+      const remainingMark = review === undefined ? paragraph.pPrMark : review.pPrMark;
+      if (remainingMark !== undefined) {
+        review ??= reviewFieldsOf(paragraph);
+        review.pPrMark = Object.assign({}, remainingMark, { resolutionJoin: retiredDepth });
+      }
+    }
     if (review !== undefined) {
       inline.push({
         type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,

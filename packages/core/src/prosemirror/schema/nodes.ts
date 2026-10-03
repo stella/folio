@@ -8,6 +8,7 @@
 
 import type { FloatingTableProperties, TableLook } from "../../types";
 import type {
+  FoldedListNumber,
   OutlineLevel,
   ParagraphAlignment,
   ParagraphFormatting,
@@ -111,6 +112,9 @@ export const PRESERVED_XML_LEVELS = { run: "run", inline: "inline" } as const;
 
 export type PreservedXmlLevel = (typeof PRESERVED_XML_LEVELS)[keyof typeof PRESERVED_XML_LEVELS];
 
+/** The automatic number mark authored inside a note story, with no reader text. */
+export type NoteMarkerAttrs = { kind: "footnote" | "endnote" };
+
 /** A run or inline child folio does not model, carried through the editor untouched. */
 export type PreservedXmlAttrs = {
   /** Replayable markup, as `captureVerbatimXml` wrote it. */
@@ -118,6 +122,8 @@ export type PreservedXmlAttrs = {
   /** The visible text the markup puts on the line, empty when it shows none. */
   text: string;
   level: PreservedXmlLevel;
+  /** `PreservedInline.foldedListNumber`, for a capture the list marker stands in for. */
+  foldedListNumber?: FoldedListNumber;
 };
 
 /** A block child folio does not model, carried through the editor untouched. */

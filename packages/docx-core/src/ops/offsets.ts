@@ -85,6 +85,7 @@ export const runContentWidth = (content: RunContent): number => {
     case "text":
       return content.text.length;
     // A cache of where a previous layout broke the page: not content.
+    case "noteMarker":
     case "renderedPageBreak":
       return 0;
     default:

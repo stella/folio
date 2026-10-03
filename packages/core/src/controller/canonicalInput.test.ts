@@ -144,6 +144,78 @@ describe("canonical input boundary", () => {
     ).toBeNull();
   });
 
+  test("generated Enter modifier traces refuse native composition lag without editing callbacks", () => {
+    assertProperty(
+      fc.property(
+        fc.array(
+          fc.record({
+            shiftKey: fc.boolean(),
+            ctrlKey: fc.boolean(),
+            metaKey: fc.boolean(),
+            altKey: fc.boolean(),
+          }),
+          { minLength: 8, maxLength: 16 },
+        ),
+        (modifiers) => {
+          const { view } = createRig();
+          // PM's public native composition state can precede our compositionstart lifecycle.
+          Object.defineProperty(view, "composing", { value: true, configurable: true });
+          const before = view.state;
+          const structures: string[] = [];
+          const commands: string[] = [];
+          const inputs: CanonicalReplacement[] = [];
+          const transitions: string[] = [];
+          const history: string[] = [];
+          const refusalCounts = new Map<string, number>();
+          let prevented = 0;
+          const boundary = createCanonicalInputBoundary({
+            replace: (input) => inputs.push(input),
+            structure: (intent) => structures.push(intent),
+            command: (name) => commands.push(name),
+            beginComposition: () => {
+              transitions.push("begin");
+              return true;
+            },
+            endComposition: () => transitions.push("end"),
+            refuse: (reason) => refusalCounts.set(reason, (refusalCounts.get(reason) ?? 0) + 1),
+            undo: () => {
+              history.push("undo");
+              return true;
+            },
+            redo: () => {
+              history.push("redo");
+              return true;
+            },
+          });
+          for (const [index, modifier] of modifiers.entries()) {
+            const event = new KeyboardEvent("keydown", {
+              key: "Enter",
+              ...modifier,
+              cancelable: true,
+            });
+            expect(view.composing).toBe(true);
+            expect(boundary.isComposing).toBe(false);
+            expect(boundary.handleKeyDown(view, event)).toBe(true);
+            expect(event.defaultPrevented).toBe(true);
+            prevented += Number(event.defaultPrevented);
+            expect(view.state).toBe(before);
+            expect(structures).toEqual([]);
+            expect(commands).toEqual([]);
+            expect(inputs).toEqual([]);
+            expect(transitions).toEqual([]);
+            expect(history).toEqual([]);
+            expect([...refusalCounts]).toEqual([
+              ["Paragraph structure edits are unavailable during composition.", index + 1],
+            ]);
+          }
+          expect(prevented).toBe(modifiers.length);
+          expect(boundary.isComposing).toBe(false);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
   test.each(["keydown", "mousedown", "blur", "paste", "cut", "drop", "compositionstart"] as const)(
     "%s expires the preceding gesture's native proposal",
     (gesture) => {
@@ -201,7 +273,7 @@ describe("canonical input boundary", () => {
     expect(groupBoundaries).toHaveLength(3);
   });
 
-  test("typing gestures preserve runs; navigation and clipboard gestures close them", () => {
+  test("typing gestures preserve runs; navigation and refused clipboard gestures close them", () => {
     const { boundary, view, groupBoundaries } = createRig();
     for (const key of ["a", "b", "Backspace", "Delete"]) {
       boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key }));
@@ -212,7 +284,7 @@ describe("canonical input boundary", () => {
     }
     expect(groupBoundaries).toHaveLength(3);
     boundary.handleDOMEvents.paste(view, new Event("paste", { cancelable: true }));
-    boundary.handleDOMEvents.cut(view, new ClipboardEvent("cut", { cancelable: true }));
+    boundary.handleDOMEvents.cut(view, new Event("cut", { cancelable: true }));
     boundary.handleDOMEvents.drop(view, new Event("drop", { cancelable: true }));
     expect(groupBoundaries).toHaveLength(6);
   });

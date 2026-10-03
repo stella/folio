@@ -480,8 +480,8 @@ describe("canonical clipboard", () => {
                 const mark = node.marks.find((entry) => entry.type.name === "footnoteRef");
                 expect(mark?.attrs["id"]).toBe(String(noteId));
                 expect(mark?.attrs["noteType"]).toBe(kind);
-                expect(node.text).toBe("\uFFFC");
-                expect(node.nodeSize).toBe(1);
+                expect(node.text).toBe(String(noteId));
+                expect(node.nodeSize).toBe(String(noteId).length);
                 sourceFrom = position;
                 sourceTo = position + node.nodeSize;
               }
@@ -491,7 +491,8 @@ describe("canonical clipboard", () => {
             const gaps: number[] = [];
             state.doc.forEach((paragraph, offset) => {
               for (let gap = 0; gap <= paragraph.content.size; gap += 1)
-                gaps.push(offset + 1 + gap);
+                if (session.projection.addressAt(offset + 1 + gap).isOk())
+                  gaps.push(offset + 1 + gap);
             });
             const target = gaps.at(targetSeed % gaps.length);
             if (target === undefined) throw new TypeError("Owned reference target disappeared.");

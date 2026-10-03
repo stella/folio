@@ -7,8 +7,15 @@
 import { Result } from 'better-result';
 import { TaggedErrorClass } from 'better-result';
 
+// @public (undocumented)
+export type AddNoteOp = {
+    type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
+    at: TextPosition;
+    note: Footnote | Endnote;
+};
+
 // @public
-export const allocateEditorIntentIds: (document: Document_2, intent?: EditorIntent) => {
+export const allocateEditorIntentIds: (document: Document_2, intent: EditorIntentAllocation) => {
     revisionId: number;
     newBlockId: string;
     newIds: {
@@ -84,6 +91,7 @@ export const compileEditorIntent: (document: Document_2, input: CompileEditorInt
 export type CompileEditorIntentOptions = {
     intent: EditorIntent;
     mode: EditorIntentMode;
+    firstBlockId?: number;
 };
 
 // @public
@@ -91,22 +99,6 @@ export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 
 // @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
-
-// @public (undocumented)
-export type CompiledEditorIntent = {
-    ops: DocumentOp[];
-    selection: TextPosition;
-};
-
-// @public
-export const compileEditorIntent: (document: Document_2, input: CompileEditorIntentOptions) => Result<CompiledEditorIntent, DocumentOpRefusal>;
-
-// @public (undocumented)
-export type CompileEditorIntentOptions = {
-    intent: EditorIntent;
-    mode: EditorIntentMode;
-    firstBlockId?: number;
-};
 
 // @public
 export const createClient: (document: Document_2) => {
@@ -130,6 +122,25 @@ export type CreateNumberingInstanceOp = {
     restore?: NumberingPartState;
 };
 
+// @public (undocumented)
+export const createEditorIntentIdAllocator: () => (document: Document_2, intent: EditorIntentAllocation) => {
+    revisionId: number;
+    newBlockId: string;
+    newIds: {
+        revision: number[];
+        control: number[];
+    };
+};
+
+// @public
+export type CreateHeaderFooterOp = {
+    type: typeof DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER;
+    sectionIndex: number;
+    story: HeaderFooterStory;
+    referenceType: HeaderFooterType;
+    content: BlockContent[];
+};
+
 // @public
 export const createSequencer: (document: Document_2) => {
     submit: (batch: DocumentBatch) => BatchSubmission;
@@ -137,9 +148,6 @@ export const createSequencer: (document: Document_2) => {
     readonly headRev: number;
     readonly broadcasts: readonly SequencedBatch[];
 };
-
-// @public
-export const defaultInsertionGap: (items: readonly InlineNode[], offset: number) => Gap;
 
 // @public
 export type DeleteBlocksOp = {
@@ -225,6 +233,12 @@ export const DOCUMENT_OP_SCHEMA_VERSION = 8;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
+    readonly CREATE_HEADER_FOOTER: "createHeaderFooter";
+    readonly REMOVE_HEADER_FOOTER: "removeHeaderFooter";
+    readonly ADD_NOTE: "addNote";
+    readonly REMOVE_NOTE: "removeNote";
+    readonly SET_SECTION_PROPS: "setSectionProps";
+    readonly RESTORE_STORY_PARTS: "restoreStoryParts";
     readonly DELETE_BLOCKS: "deleteBlocks";
     readonly INSERT_BLOCKS: "insertBlocks";
     readonly INSERT_TEXT: "insertText";
@@ -263,7 +277,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = (DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
+export type DocumentOp = (CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -291,6 +305,9 @@ export class DocumentOpsContractError extends DocumentOpsContractError_base<{
 
 // @public
 export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP_TYPES];
+
+// @public (undocumented)
+export const documentStories: (document: Document_2) => OpStory[];
 
 // @public
 export type EditorIntent = {
@@ -383,8 +400,20 @@ export const EMPTY_PROPERTY_SETS: Readonly<{
 // @public
 export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
 
+// @public (undocumented)
+export const findStoryBody: (document: Document_2, story: OpStory) => DocumentBody | undefined;
+
+// @public
+export function formattingEquals(a: ComparedTextFormatting | undefined, b: ComparedTextFormatting | undefined): boolean;
+
 // @public
 export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?: Formatting[Key] | null | undefined; };
+
+// @public
+export type HeaderFooterStory = {
+    kind: "header" | "footer";
+    rId: string;
+};
 
 // @public
 export const INHERIT_RUN_PROPS = "inherit";
@@ -453,6 +482,9 @@ export type InsertTextOp = {
 };
 
 // @public
+export function isTextOnlyRun(run: Run): boolean;
+
+// @public
 export type JoinBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;
     story: OpStory;
@@ -479,6 +511,9 @@ export type JoinInlineOp = {
 export const MAX_BATCH_WIRE_BYTES: number;
 
 // @public
+export function mergeRunContent(content1: RunContent[], content2: RunContent[]): RunContent[];
+
+// @public
 export type NewIds = {
     revision?: readonly number[];
     control?: readonly number[];
@@ -486,6 +521,15 @@ export type NewIds = {
 
 // @public
 export const normalizeForOps: (document: Document_2) => Document_2;
+
+// @public (undocumented)
+export type NoteStory = {
+    kind: "footnote" | "endnote";
+    id: number;
+};
+
+// @public (undocumented)
+export const noteUsesCustomMark: (document: Document_2, note: Footnote | Endnote) => boolean;
 
 // @public
 export type NumberingPartState = {
@@ -505,8 +549,8 @@ export const OP_STORIES: Readonly<{
     readonly MAIN: "main";
 }>;
 
-// @public
-export type OpStory = (typeof OP_STORIES)[keyof typeof OP_STORIES];
+// @public (undocumented)
+export type OpStory = typeof OP_STORIES.MAIN | HeaderFooterStory | NoteStory;
 
 // @public
 export const packageParagraphIds: (pkg: DocxPackage) => string[];
@@ -595,6 +639,21 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
     readonly APPEND: "append";
 }>;
 
+// @public (undocumented)
+export type RemoveHeaderFooterOp = {
+    type: typeof DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER;
+    sectionIndex: number;
+    story: HeaderFooterStory;
+    referenceType: HeaderFooterType;
+};
+
+// @public (undocumented)
+export type RemoveNoteOp = {
+    type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
+    at: TextPosition;
+    story: NoteStory;
+};
+
 // @public
 export type ReplaceBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.REPLACE_BLOCKS;
@@ -623,6 +682,13 @@ export type ResolveRevisionOp = {
 };
 
 // @public
+export type RestoreStoryPartsOp = {
+    type: typeof DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS;
+    expected: StoryParts;
+    parts: StoryParts;
+};
+
+// @public
 export const REVISION_DECISIONS: Readonly<{
     readonly ACCEPT: "accept";
     readonly REJECT: "reject";
@@ -644,6 +710,12 @@ export type RevisionStamp = {
 
 // @public
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
+
+// @public
+export function runsMergeable(a: MergeDecidedRun, b: MergeDecidedRun): boolean;
+
+// @public (undocumented)
+export const sameStory: (left: OpStory, right: OpStory) => boolean;
 
 // @public
 export const SECTION_BOUNDARY_POLICIES: Readonly<{
@@ -695,6 +767,9 @@ export type SectionViewState = {
     type: "sections";
     value: readonly SectionViewEntry[];
 };
+
+// @public (undocumented)
+export const sectionPropertiesAt: (document: Document_2, sectionIndex: number) => SectionProperties | undefined;
 
 // @public (undocumented)
 export type SequencedBatch = DocumentBatch & {
@@ -764,6 +839,13 @@ export type SetSectionEndpointOp = {
     sectionMetadata?: SectionViewState;
 };
 
+// @public (undocumented)
+export type SetSectionPropsOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_SECTION_PROPS;
+    sectionIndex: number;
+    patch: FormattingPatch<SectionProperties>;
+};
+
 // @public
 export type SetTableRowsOp = {
     type: typeof DOCUMENT_OP_TYPES.SET_TABLE_ROWS;
@@ -807,6 +889,9 @@ export type SplitInlineOp = {
 // @public
 export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content" | "sectionProperties" | "pPrMark">;
 
+// @public (undocumented)
+export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
+
 // @public
 export type TextPosition = {
     story: OpStory;
@@ -836,9 +921,6 @@ export const validateOpsDocument: (document: Document_2) => Result<Document_2, D
 
 // @public
 export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, BatchRejection>;
-
-// @public
-export const zeroWidthLeavesAt: (items: readonly InlineNode[], offset: number) => InlineNode[];
 
 // (No @packageDocumentation comment for this package)
 

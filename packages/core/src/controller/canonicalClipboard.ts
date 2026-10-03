@@ -346,7 +346,9 @@ export const prepareCanonicalPaste = ({
   const importExternalLink = (href: string | undefined, previousId: string | undefined) => {
     const source =
       previousId === undefined ? undefined : sourceDocument?.package.relationships?.get(previousId);
-    const target = href ?? (source?.targetMode === "External" ? source.target : undefined);
+    let target = href;
+    if (target === undefined || target.length === 0)
+      target = source?.targetMode === "External" ? source.target : undefined;
     if (target === undefined || target.length === 0)
       return refuse("The clipboard hyperlink has no resolved target.");
     while (relationships.has(`rId${relationshipIndex}`)) relationshipIndex += 1;

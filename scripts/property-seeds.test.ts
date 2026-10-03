@@ -6,10 +6,11 @@
 
 import { afterEach, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import fc from "fast-check";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { commitSeed, hash32 } from "../test/commit-seed";
+import { parseFailureRecord } from "./fuzz-failure-issues";
 import {
   assertPinnedProperty,
   assertProperty,
@@ -88,6 +89,56 @@ describe("per-commit seeds", () => {
 });
 
 describe("failure reporting", () => {
+  test("explicit nightly fuzz files execute and report their own replay source", () => {
+    const directory = mkdtempSync(path.join(REPO_ROOT, "test/.property-replay-"));
+    const fixture = path.join(directory, "fixture.fuzz.ts");
+    writeFileSync(
+      fixture,
+      `import { test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty } from "../property-testing";
+test("nightly replay fixture", () => {
+  assertProperty(fc.property(fc.constant(false), (value) => value), { seed: 33, numRuns: 1 });
+});
+`,
+    );
+    try {
+      const result = Bun.spawnSync([process.execPath, "test", fixture], {
+        cwd: REPO_ROOT,
+        env: {
+          ...process.env,
+          CI: "true",
+          PROPERTY_TEST_SEED: "33",
+          PROPERTY_TEST_NUM_RUNS_FACTOR: "1",
+          PROPERTY_TEST_PATH: "",
+          FOLIO_PROPERTY_FAILURES_DIR: path.join(directory, "records"),
+        },
+      });
+      const output =
+        new TextDecoder().decode(result.stderr) + new TextDecoder().decode(result.stdout);
+      expect(result.exitCode).toBe(1);
+      const relative = path.relative(REPO_ROOT, fixture);
+      expect(output).toContain(`bun test ./${relative}`);
+      expect(output).toContain(`"file":"${relative}"`);
+      expect(output).toContain(`${relative}::nightly replay fixture`);
+      expect(output).not.toContain("did not match any test files");
+      const files = readdirSync(path.join(directory, "records"));
+      expect(files).toHaveLength(1);
+      const file = files.at(0);
+      if (!file) throw new Error("Missing failure record");
+      const persisted = parseFailureRecord(
+        JSON.parse(readFileSync(path.join(directory, "records", file), "utf8")),
+      );
+      expect(persisted?.marker.seed).toBe(33);
+      expect(persisted?.marker.test).toBe(`${relative}::nightly replay fixture`);
+      expect(persisted?.flow).toEqual([false]);
+      expect(persisted?.replays.at(0)).toContain(`bun test ./${relative}`);
+      expect(persisted?.error).not.toBe("undefined");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("a failure names the seed, the path and a replay line for this test", () => {
     withEnv({});
     let message = "";
@@ -102,7 +153,7 @@ describe("failure reporting", () => {
     expect(message).toContain("seed: 1234");
     const replay = message.split("\n").find((line) => line.startsWith("Replay: "));
     expect(replay).toMatch(
-      /^Replay: PROPERTY_TEST_SEED=1234 PROPERTY_TEST_PATH='[\d:]+' bun test scripts\/property-seeds\.test\.ts -t 'a failure names the seed, the path and a replay line for this test'$/,
+      /^Replay: PROPERTY_TEST_SEED=1234 PROPERTY_TEST_PATH='[\d:]+' bun test \.\/scripts\/property-seeds\.test\.ts -t 'a failure names the seed, the path and a replay line for this test'$/,
     );
     expect(message).toContain(
       `under "scripts/property-seeds.test.ts::a failure names the seed, the path and a replay line for this test" in ${PROPERTY_SEEDS_FILE}`,

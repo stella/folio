@@ -5,7 +5,9 @@
  * JSON is pinned: one envelope per operation kind and per inverse, produced
  * from a fixed document. A change to an operation's fields, or to a model
  * record an operation embeds, shows up here as a diff of the fixture; it
- * needs a new schema version and a migration, not an updated fixture.
+ * needs a new schema version and a migration, not an updated released fixture.
+ * The fixture for an unreleased schema records that cutover's final contract;
+ * schema 7 includes cut provenance and owned-field presence in one cutover.
  *
  * `bun packages/docx-core/src/ops/__tests__/wireFixtures.ts` generates the current fixture.
  */

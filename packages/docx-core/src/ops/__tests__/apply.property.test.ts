@@ -6,8 +6,8 @@
  *    back a document structurally equal to the input, every unmodelled and
  *    captured field included, and so does the inverse after a JSON
  *    round-trip: it holds data, not references. Applying the inverse's own
- *    inverse redoes the operation. No inverse but a replacement's is a
- *    whole-paragraph replacement.
+ *    inverse redoes the operation. Structural inverses restore authored run
+ *    boundaries when the parser's seam merge would lose them.
  * 2. **Sequences.** For a random sequence of operations, the inverses applied
  *    in reverse order restore the input exactly; a batch of the same
  *    operations gives the same document, and its inverse restores the input.
@@ -22,6 +22,7 @@
  *    properties exactly as its definition says.
  */
 
+import { assertExactModel } from "../../../../../test/exactModel";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
@@ -31,7 +32,6 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
-import { assertExactModel } from "../../../../../test/exactModel";
 import { projectReview } from "../../../../../test/reviewProjection";
 import type {
   BlockContent,
@@ -42,9 +42,9 @@ import type {
   TextFormatting,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
-import { sameBlockList, storyParagraphs } from "../blocks";
+import { sameBlockList, storyBody, storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
-import { paragraphIdsIn } from "../ids";
+import { paragraphIdsIn, identityKeysIn, packageIdentityKeys, IDENTITY_SPACES } from "../ids";
 import { sameRunFormatting } from "../inline";
 import { compareGaps, isCommentAnchor, leafSpans, zeroWidthLeavesAt } from "../leaves";
 import { packageResourcesOf } from "../packageResources";
@@ -55,7 +55,6 @@ import {
   physicalPositionAtEditorOffset,
   type EditorIntent,
 } from "../editorIntent";
-import { identityKeysIn, packageIdentityKeys, IDENTITY_SPACES } from "../ids";
 import {
   childrenOf,
   isInlineContainer,
@@ -86,6 +85,25 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
+const expectCompactIntentIds = (document: Document, ops: readonly DocumentOp[]): void => {
+  let current = document;
+  for (const op of ops) {
+    const applied = applyDocumentOp(current, op).unwrap();
+    if ("newIds" in op && op.newIds !== undefined) {
+      const changed = new Set([...applied.touched.modified, ...applied.touched.inserted]);
+      const records = storyParagraphs(storyBody(applied.document, OP_STORIES.MAIN))
+        .filter(({ paragraph }) => changed.has(paragraph.paraId ?? ""))
+        .map(({ paragraph }) => paragraph);
+      const identities = new Set(identityKeysIn(records));
+      for (const id of op.newIds.revision ?? [])
+        expect(identities.has(`${IDENTITY_SPACES.REVISION}:${id}`)).toBe(true);
+      for (const id of op.newIds.control ?? [])
+        expect(identities.has(`${IDENTITY_SPACES.CONTROL}:${id}`)).toBe(true);
+    }
+    current = applied.document;
+  }
+};
+
 const NUM_RUNS = 10_000;
 
 type Tally = Map<DocumentOpType | "refused", number>;
@@ -112,9 +130,24 @@ const expectEveryKindApplied = (tally: Tally, runs: number): void => {
  * What each operation's inverse is made of: the table in `apply.ts`. Every
  * inverse is one operation, except a run patch's, which restores one stretch
  * of prior values per operation, and a split's or join's, which may give the
- * paragraph keeping its id its own review fields back.
+ * paragraph keeping its id its own review fields back and restore authored
+ * content that the plain-run seam merge would otherwise coalesce.
  */
 const INVERSE_KINDS = {
+  createHeaderFooter: ["restoreStoryParts"],
+  removeHeaderFooter: ["restoreStoryParts"],
+  addNote: ["restoreStoryParts"],
+  removeNote: ["restoreStoryParts"],
+  setSectionProps: ["restoreStoryParts"],
+  restoreStoryParts: ["restoreStoryParts"],
+  deleteBlocks: ["insertBlocks", "replaceBlocks", "replaceInline", "setParagraphReview"],
+  insertBlocks: ["replaceBlocks"],
+  insertTable: ["setContainerBlocks"],
+  deleteTable: ["setContainerBlocks", "replaceInline", "setParagraphReview"],
+  setContainerBlocks: ["setContainerBlocks"],
+  insertRow: ["setTableRows"],
+  deleteRow: ["setTableRows", "replaceInline", "setParagraphReview"],
+  setTableRows: ["setTableRows"],
   insertText: ["deleteRange"],
   insertContent: ["deleteRange"],
   deleteRange: ["insertContent"],
@@ -122,8 +155,8 @@ const INVERSE_KINDS = {
   joinInline: ["splitInline"],
   setRunProps: ["setRunProps"],
   setParagraphProps: ["setParagraphProps"],
-  splitBlock: ["joinBlocks", "setParagraphReview"],
-  joinBlocks: ["splitBlock", "setParagraphReview"],
+  splitBlock: ["joinBlocks", "replaceInline", "setParagraphReview"],
+  joinBlocks: ["splitBlock", "replaceInline", "setParagraphReview"],
   replaceBlocks: ["replaceBlocks"],
   setParagraphReview: ["setParagraphReview"],
   replaceInline: ["replaceInline"],
@@ -209,6 +242,13 @@ const namedIds = (op: DocumentOp): Set<string> => {
       return new Set();
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
       return new Set(op.endpoint.type === "paragraph" ? [op.endpoint.blockId] : []);
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+      return new Set();
     default: {
       const unreachable: never = op;
       return unreachable;
@@ -700,7 +740,6 @@ describe("document operations", () => {
             const head = gaps.at(input.head % gaps.length) ?? 0;
             const blockId = source.paraId ?? "";
             const position = (offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
-            const ids = allocateEditorIntentIds(tracked);
             let intent: EditorIntent;
             let suggested: EditorIntent;
             if (input.kind === "split") {
@@ -708,7 +747,7 @@ describe("document operations", () => {
                 type: "splitParagraph",
                 at: position(Math.min(anchor, head)),
                 to: position(Math.max(anchor, head)),
-                newBlockId: ids.newBlockId,
+                newBlockId: "00000003",
               };
               suggested = {
                 ...intent,
@@ -784,6 +823,11 @@ describe("document operations", () => {
                 to: physicalPositionAtEditorOffset(tracked, position(to)),
               };
             }
+            const ids = allocateEditorIntentIds(tracked, suggested);
+            if (intent.type === "splitParagraph" && suggested.type === "splitParagraph") {
+              intent = { ...intent, newBlockId: ids.newBlockId };
+              suggested = { ...suggested, newBlockId: ids.newBlockId };
+            }
             const editPlan = compileEditorIntent(direct, { intent, mode: { type: "editing" } });
             const trackedPlan = compileEditorIntent(tracked, {
               intent: suggested,
@@ -795,6 +839,8 @@ describe("document operations", () => {
             });
             if (editPlan.isErr()) throw editPlan.error;
             if (trackedPlan.isErr()) throw trackedPlan.error;
+            expectCompactIntentIds(direct, editPlan.value.ops);
+            expectCompactIntentIds(tracked, trackedPlan.value.ops);
             const edited = applyDocumentOps(direct, editPlan.value.ops);
             const suggestedEdit = applyDocumentOps(tracked, trackedPlan.value.ops);
             if (edited.isErr()) throw edited.error;
@@ -2113,13 +2159,26 @@ describe("document operations", () => {
         for (const inverse of applied.value.inverse) {
           expect(allowed).toContain(inverse.type);
         }
-        if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
-          // A split or join gives the paragraph that keeps its id its own properties back too.
-          expect(applied.value.inverse.length).toBeLessThanOrEqual(
-            op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK || op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
-              ? 2
-              : 1,
+        if (
+          op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ||
+          op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
+        ) {
+          // One structural inverse, at most one review restoration, and at most
+          // one content restoration per original paragraph; no duplicate targets.
+          const restoring = applied.value.inverse.filter(
+            (inverse) => inverse.type === DOCUMENT_OP_TYPES.REPLACE_INLINE,
           );
+          const review = applied.value.inverse.filter(
+            (inverse) => inverse.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+          );
+          expect(new Set(restoring.map(({ blockId }) => blockId)).size).toBe(restoring.length);
+          expect(restoring.length).toBeLessThanOrEqual(
+            op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ? 1 : 2,
+          );
+          expect(review.length).toBeLessThanOrEqual(1);
+          expect(applied.value.inverse.length - restoring.length - review.length).toBe(1);
+        } else if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
+          expect(applied.value.inverse.length).toBeLessThanOrEqual(1);
         }
         expectRestores(applied.value, original);
       }),
@@ -2187,8 +2246,8 @@ describe("document operations", () => {
         const first = paragraphs.at(0);
         const paragraph = first?.paragraph;
         if (paragraph?.paraId === undefined) return;
-        const allocation = allocateEditorIntentIds(document);
         const at = { story: OP_STORIES.MAIN, blockId: paragraph.paraId, offset: 0 };
+        const initialAllocation = allocateEditorIntentIds(document, { type: "splitParagraph", at });
         const length = paragraphLogicalText(paragraph).length;
         const intents: EditorIntent[] = [
           { type: "formatParagraph", at, patch: { alignment: "center", keepNext: true } },
@@ -2200,18 +2259,18 @@ describe("document operations", () => {
           },
           { type: "insertAtom", from: at, to: at, atom: { type: "tab" } },
           { type: "replaceText", from: at, to: { ...at, offset: length }, text: "edited" },
-          { type: "splitParagraph", at, newBlockId: allocation.newBlockId },
+          { type: "splitParagraph", at, newBlockId: initialAllocation.newBlockId },
           {
             type: "setList",
             items: [{ at, ilvl: 0 }],
             target: {
               type: "new",
               num: {
-                numId: 1000 + allocation.revisionId,
-                abstractNumId: 2000 + allocation.revisionId,
+                numId: 1000 + initialAllocation.revisionId,
+                abstractNumId: 2000 + initialAllocation.revisionId,
               },
               abstractNum: {
-                abstractNumId: 2000 + allocation.revisionId,
+                abstractNumId: 2000 + initialAllocation.revisionId,
                 levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
               },
             },
@@ -2254,6 +2313,7 @@ describe("document operations", () => {
           });
         }
         for (const intent of intents) {
+          const allocation = allocateEditorIntentIds(document, intent);
           const direct = compileEditorIntent(document, {
             intent,
             mode: { type: "editing", newIds: allocation.newIds },
@@ -2306,7 +2366,7 @@ describe("document operations", () => {
               const baselinePackage = Object.fromEntries(
                 Object.entries(document.package).filter(([key]) => key !== "numbering"),
               );
-              expect(rejectedPackage).toStrictEqual(baselinePackage);
+              assertExactModel(rejectedPackage, baselinePackage);
               expect(rejected.value.document.package.numbering?.nums).toContainEqual(
                 intent.target.num,
               );
@@ -2316,10 +2376,10 @@ describe("document operations", () => {
                 );
               }
             } else {
-              expect(rejected.value.document).toStrictEqual(document);
+              assertExactModel(rejected.value.document, document);
             }
           }
-          expect(acceptedDocument).toStrictEqual(directEdit.value.document);
+          assertExactModel(acceptedDocument, directEdit.value.document);
           const directUndo = applyDocumentOps(directEdit.value.document, directEdit.value.inverse);
           const trackedUndo = applyDocumentOps(
             trackedEdit.value.document,
@@ -2327,8 +2387,17 @@ describe("document operations", () => {
           );
           if (directUndo.isErr()) throw directUndo.error;
           if (trackedUndo.isErr()) throw trackedUndo.error;
-          expect(directUndo.value.document).toStrictEqual(document);
-          expect(trackedUndo.value.document).toStrictEqual(document);
+          assertExactModel(directUndo.value.document, document);
+          assertExactModel(trackedUndo.value.document, document);
+          const directRedo = applyDocumentOps(directUndo.value.document, directUndo.value.inverse);
+          const trackedRedo = applyDocumentOps(
+            trackedUndo.value.document,
+            trackedUndo.value.inverse,
+          );
+          if (directRedo.isErr()) throw directRedo.error;
+          if (trackedRedo.isErr()) throw trackedRedo.error;
+          assertExactModel(directRedo.value.document, directEdit.value.document);
+          assertExactModel(trackedRedo.value.document, trackedEdit.value.document);
           tallies.set(intent.type, (tallies.get(intent.type) ?? 0) + 1);
           if (intent.type === "formatRun" && intent.from.blockId !== intent.to.blockId) {
             appliedMultiParagraphFormatting += 1;
@@ -2589,6 +2658,12 @@ describe("document operations", () => {
             );
             break;
           }
+          case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+          case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+          case DOCUMENT_OP_TYPES.ADD_NOTE:
+          case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+          case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+          case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
           case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
           case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
           case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:

@@ -1,8 +1,8 @@
 name: Merge group fuzz replay
 
 # When a merge group fails on a fuzz failure (a consumer-scenario flow or a
-# property), replay the same seeds on the commit the group was built on. A
-# failure the base reproduces was already there: it gets its issue, and the
+# property), replay the same seeds on a pinned main commit. A
+# failure main reproduces was already there: it gets its issue, and the
 # pull request is labelled so it can go back into the queue. Runs after CI
 # rather than inside it, so the queue removing the group's branch does not
 # cancel it.
@@ -15,7 +15,7 @@ permissions: {}
 
 jobs:
   replay:
-    name: Replay on the group's base
+    name: Replay on main
     if: >-
       github.event.workflow_run.event == 'merge_group'
       && github.event.workflow_run.conclusion == 'failure'
@@ -47,29 +47,29 @@ jobs:
             echo "No fuzz failure in the merge group's logs; nothing to replay."
           fi
 
-      # The group commit's first parent is what the queue built it on: main,
-      # or the group ahead of it.
-      - name: Find the base and the pull request
+      # A group's first parent can contain another unmerged pull request.
+      # Only the pinned main commit establishes a defect on main.
+      - name: Pin main and find the pull request
         id: base
         if: steps.logs.outputs.found == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          GROUP_SHA: ${{ github.event.workflow_run.head_sha }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          sha=$(gh api "repos/$REPO/commits/$GROUP_SHA" --jq '.parents[0].sha')
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::no base commit"; exit 1; }
+          sha=$(gh api "repos/$REPO/commits/main" --jq '.sha')
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::no main commit"; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           if [[ "$BRANCH" =~ /pr-([0-9]+)- ]]; then
             echo "pr=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
           fi
 
       # The replay tooling comes from the default branch; the code it replays
-      # comes from the base.
+      # comes from the pinned main commit.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         if: steps.logs.outputs.found == 'true'
         with:
+          ref: ${{ steps.base.outputs.sha }}
           path: tools
           persist-credentials: false
 
@@ -90,21 +90,22 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install the base
+      - name: Install main
         if: steps.logs.outputs.found == 'true'
         working-directory: base
         run: bun install --frozen-lockfile
 
-      - name: Replay the failing seeds on the base
+      - name: Replay the failing seeds on main
         if: steps.logs.outputs.found == 'true'
         run: >-
           bun tools/scripts/fuzz-ejection.ts replay --queue-logs queue-logs
-          --group-sha "${GROUP_SHA}" --base base --out base-logs
+          --group-sha "${GROUP_SHA}" --base-sha "${BASE_SHA}" --base base --out base-logs
         env:
           GROUP_SHA: ${{ github.event.workflow_run.head_sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
 
       - name: Keep the logs
-        if: steps.logs.outputs.found == 'true'
+        if: always() && steps.logs.outputs.found == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-ejection-logs

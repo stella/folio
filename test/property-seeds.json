@@ -1,4 +1,12 @@
 {
+  "packages/core/src/controller/canonicalUndoGrouping.test.ts::generated intent sequences restore every group exactly without projection adjacency": [
+    {
+      "seed": -755367587,
+      "path": "272:0:1:1:1:2:1:1:2:1:1:1:2:1:1:1:1:0:8:8:0:0:0:0:0:0:0:0:1:1:1:1:1:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0:0:0:0:1:1:1:1:1:2:1:2:1:1:1:1:1:1:1:2:1:1:1:2:1:1:1:1:0:1",
+      "note": "Semantic grouping traces must handle caret gestures and refused deletions in empty paragraphs",
+      "date": "2026-10-01"
+    }
+  ],
   "packages/core/src/__tests__/documentOpsDifferential.property.test.ts::PM and Document ops agree after every generated text and formatting step": [
     {
       "seed": -974191014,
@@ -353,6 +361,18 @@
       "path": "49:5:5:8:8:9:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:15:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:20:20:20:21:15:6:17:22:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38",
       "date": "2026-10-02",
       "note": "Preserve exact identity provenance through tracked resolution and editor serialization."
+    },
+    {
+      "seed": 418052982,
+      "path": "122:2:1:7:7:12:14:14:14:14:20:23:25:26:29:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:32:31:31:31:31:32:41:38:31:31:39:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:49:59:46:46:46:76:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:48:48:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47",
+      "date": "2026-10-02",
+      "note": "Retain exact structural identity allocation and revision-resolution boundaries observed in parent and inherited child CI."
+    },
+    {
+      "seed": -1513138991,
+      "path": "997:5:7:7:7:7:11:10:13:13:13:13:14:13:13:13:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:22:27:30:27:21:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:29:29:29:29:29:4:18:20:19:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:22:22:21:24:24:26:2:29:32:31:26:26:26:26:26:26:26:27:27:27:27:27:27:27:27:27:27:28:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28",
+      "date": "2026-10-02",
+      "note": "Retain inherited resolution provenance validity and independent authored wrapper boundaries observed in shared CI."
     }
   ],
   "packages/core/src/prosemirror/commands/comments.bulk.test.ts::matches the legacy small-document semantics across generated nested revisions": [
@@ -538,6 +558,11 @@
       "path": "2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:2:3:0:0:0:0:0:1:0:0:4:1:1:2",
       "note": "Review equivalence canonicalizes adjacent equivalent runs while exact undo retains authored structure.",
       "date": "2026-10-02"
+    },
+    {
+      "seed": 11,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
     }
   ],
   "packages/core/src/utils/mergeDocumentContent.test.ts::repeated merges keep numbering unique and bounded across loaded id ranges": [
@@ -727,6 +752,12 @@
       "path": "9:0:0:0:0:0:0:0:0:0:2:2:1:1:1:1:2:2:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12",
       "date": "2026-10-02",
       "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": 684444476,
+      "path": "3419:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:34:34:34:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39",
+      "note": "A split between alike authored runs needs content restoration after its inverse seam merge",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::a sequence's inverses in reverse, and a batch's, restore the document exactly": [
@@ -809,6 +840,40 @@
       "path": "6:0:0:0:0:0:0:0:0:5:3:3:3:3:3:3:3:3:3:3:3:4:4:4:4:4:4:5:4:4:3:8:3:3:4:3:5:6:3:3:3:4:7:7:7:7:7:7:7:7:7",
       "date": "2026-10-02",
       "note": "Preserve exact imported review identities and structural editing equivalence through generated direct and tracked resolution."
+    },
+    {
+      "seed": -889883140,
+      "path": "63:0:0:0:0:0:0:3:3:4:5:4:4:5:5:5:5:5:5:5:5:5:5:7:6:6:7:7:7:8:7:7:8:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:11:11:11:11:11:11:11:12:12:12:12:12:12:12:12:10:10:10:10:10:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Retain exact structural identity allocation and revision-resolution boundaries observed in parent and inherited child CI."
+    },
+    {
+      "seed": -728782211,
+      "path": "8:3:2:2:4:1:2:3:4:3:5:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
+      "date": "2026-10-02",
+      "note": "Retain exact structural identity allocation and revision-resolution boundaries observed in parent and inherited child CI."
+    },
+    {
+      "seed": 1756038609,
+      "path": "41:0:0:0:0:0:0:6:5:4:6:6:6:6:6:6:6:6:6:6:6:10:10:10:10:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Retain inherited resolution provenance validity and independent authored wrapper boundaries observed in shared CI."
+    },
+    {
+      "seed": 87430792,
+      "path": "49:0:0:0:0:0:0:0:4:2:4:4:4:5:5:5:5:5:5:5:6:5:5:5:5:5:7:5:7:6:5:6:6:5:5:5:5:10:10:10:10:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Retain inherited exact structural editor-intent behavior observed in clipboard child CI."
+    },
+    {
+      "seed": -1800721526,
+      "note": "Retain structural direct/accepted mode agreement through compound edits.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 698052997,
+      "note": "Retain structural direct/accepted mode agreement through compound edits.",
+      "date": "2026-10-03"
     },
     {
       "seed": 369550806,
@@ -945,6 +1010,20 @@
       "note": "Preserve exact authored run boundaries and pending deletion identity provenance across structural editing and journal replay."
     }
   ],
+  "packages/core/src/docx/reviewResolutionProvenance.test.ts::generated seam metadata survives ${wordNamespace} with arbitrary bound prefixes": [
+    {
+      "seed": 900663131,
+      "path": "0:0:0:1:0",
+      "date": "2026-10-02",
+      "note": "Retain source-generated moveFrom paragraph-mark metadata inside hidden wrappers across namespace-bound private codec transport."
+    },
+    {
+      "seed": 2054899610,
+      "path": "0:0:0:0:0:0:0:0:1:0:0",
+      "date": "2026-10-02",
+      "note": "Retain source-generated moveFrom paragraph-mark metadata inside hidden wrappers across namespace-bound private codec transport."
+    }
+  ],
   "packages/core/src/prosemirror/conversion/modelFixedPoint.property.test.ts::generated numbering definitions keep their metadata and markers": [
     {
       "seed": 870802920,
@@ -961,12 +1040,73 @@
       "date": "2026-10-02"
     }
   ],
-  "packages/core/src/controller/canonicalUndoGrouping.test.ts::generated intent sequences restore every group exactly without projection adjacency": [
+  "packages/core/src/docx/joinSeamSaveFixedPoint.property.test.ts::equivalent nested formatting spellings merge and undo restores their exact records": [
     {
-      "seed": -755367587,
-      "path": "272:0:1:1:1:2:1:1:2:1:1:1:2:1:1:1:1:0:8:8:0:0:0:0:0:0:0:0:1:1:1:1:1:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0:0:0:0:1:1:1:1:1:2:1:2:1:1:1:1:1:1:1:2:1:1:1:2:1:1:1:1:0:1",
-      "note": "Semantic grouping traces must handle caret gestures and refused deletions in empty paragraphs",
+      "seed": -348453513,
+      "path": "0:0:0:0",
+      "note": "Build run-format fixtures through operations to retain consistent body section projections",
+      "date": "2026-10-03"
+    }
+  ],
+  "test/canonical-session.fuzz.ts::canonical property flows preserve projection, exact history and saved content": [
+    {
+      "seed": -347416988,
+      "note": "Canonical generated fixtures require paragraph identities before serialization",
       "date": "2026-10-01"
+    },
+    {
+      "seed": -965049575,
+      "note": "Canonical generated fixtures require paragraph identities before serialization",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/core/src/controller/canonicalSession.test.ts::canonical input sequences keep the projection, inverse history and refusal atomic": [
+    {
+      "seed": -1996873487,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Canonical edits must not change projection provenance in untouched paragraphs; reported by the authored-run merge group",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1446885207,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/rangePlanning.property.test.ts::cross-paragraph deletion and replacement plans satisfy generated review laws": [
+    {
+      "seed": 1580815063,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated paragraph cut depths preserve authored wrappers and deferred split seams": [
+    {
+      "seed": 802608016,
+      "note": "Exercise pending source insertions split before later intervening insertions across wrapper depths.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/core/src/docx/__tests__/roundtrip.property.test.ts::round-trip preserves document structure": [
+    {
+      "seed": 1018009646,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/core/src/docx/__tests__/roundtrip.property.test.ts::multiple mark combinations survive round-trip": [
+    {
+      "seed": -714680487,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
+    }
+  ],
+  "scripts/container-survival.property.test.ts::w:${container}": [
+    {
+      "seed": 1012818371,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated clipboard fragments preserve history and accepted tracked content": [
@@ -1031,6 +1171,18 @@
       "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
       "date": "2026-10-02",
       "note": "Retain exact clipboard source ownership, selection and journal behavior observed in leaf CI."
+    },
+    {
+      "seed": -967150161,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:1:1:0:0:0:0:0:0:0",
+      "note": "Empty modeled link targets must resolve from the foreign relationship, never the destination.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1153678734,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:0:0",
+      "note": "Retain namespace-aware image links and canonical gaps at multi-unit note labels.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated clipboard replacements preserve retained tail lineage and authored seams": [
@@ -1039,6 +1191,36 @@
       "path": "0:0:1:1:1:2",
       "date": "2026-10-02",
       "note": "Retain exact clipboard source ownership, selection and journal behavior observed in leaf CI."
+    }
+  ],
+  "packages/core/src/controller/canonicalClipboard.test.ts::generated multi-digit note moves preserve owned stories and exact arbitrary-target histories": [
+    {
+      "seed": 1371888650,
+      "path": "0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Retain clipboard projection and exact history coverage during story integration.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1284349434,
+      "path": "0:0:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:1:2:2:2:2:2:0:0:0:1:0:0:2:0:1:0:2:1:1:1:1:4:0:1:0:0:1:0:6:1:15:1:1",
+      "note": "Retain namespace-aware image links and canonical gaps at multi-unit note labels.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/core/src/controller/canonicalClipboard.test.ts::generated Strict and Transitional image link caches rebind ids while preserving authored metadata": [
+    {
+      "seed": 1115663567,
+      "path": "0:0",
+      "note": "Retain clipboard projection and exact history coverage during story integration.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/core/src/controller/canonicalClipboard.test.ts::generated marked slices obey all open edges, replacement directions and exact history": [
+    {
+      "seed": 1823472337,
+      "path": "0:0:0:0:0",
+      "note": "Retain clipboard projection and exact history coverage during story integration.",
+      "date": "2026-10-03"
     }
   ]
 }

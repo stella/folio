@@ -18,8 +18,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { panic } from "better-result";
 
-import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { RESERVED_NOTE_REFERENCE_IDS } from "../packages/docx-core/src/model/content";
 import type { SurvivalBaseline } from "./container-survival-census";
 import { allSubjects, valueKey } from "./container-survival-census";
@@ -154,6 +155,30 @@ const onSpine = (subject: Subject): boolean => {
 
 const spineSubjects = allSubjects(space).filter(onSpine);
 
+// These schema pairs lost their typed run children in the story projection change.
+const NOTE_MARKER_REGRESSIONS = [
+  `{${WML_NAMESPACE}}r|{${WML_NAMESPACE}}CT_R/{${WML_NAMESPACE}}footnoteRef`,
+  `{${WML_NAMESPACE}}r|{${WML_NAMESPACE}}CT_R/{${WML_NAMESPACE}}endnoteRef`,
+] as const;
+
+test.each([...NOTE_MARKER_REGRESSIONS])(
+  "automatic note marker survives every law: %s",
+  async (key) => {
+    const subject =
+      spineSubjects.find((candidate) => subjectKey(candidate) === key) ??
+      panic(`Missing pinned survival subject ${key}`);
+    const outcome = await runSurvivalLaws(space, subject);
+    expect(outcome.unrepresentable).toBeNull();
+    expect(outcome.mechanism).toBeNull();
+    expect(outcome.laws).toEqual({
+      "L1-parse": true,
+      "L2-serialize": true,
+      "L3-editor": true,
+      "L4-schema": true,
+    });
+  },
+);
+
 const describeDisagreement = (
   key: string,
   recorded: string | undefined,
@@ -261,7 +286,7 @@ describe("a slot that survives its representative value survives the rest of its
     test(`w:${container}`, async () => {
       for (const subject of subjects) {
         const { values } = valuesForType(space.index, subject.slot.typeQName);
-        await fc.assert(
+        await assertProperty(
           fc.asyncProperty(fc.constantFrom(...values), async (value) => {
             const candidate: Subject = { kind: "attribute", slot: subject.slot, value };
             const outcome = await runSurvivalLaws(space, candidate);
@@ -277,7 +302,7 @@ describe("a slot that survives its representative value survives the rest of its
             const slot = valueKey(candidate).replaceAll(`{${WML_NAMESPACE}}`, "w:");
             expect({ slot, measured }).toEqual({ slot, measured: recorded });
           }),
-          propertyConfig({ numRuns: Math.min(values.length, 8) }),
+          { numRuns: Math.min(values.length, 8) },
         );
       }
     }, 120_000);
