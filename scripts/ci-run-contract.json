@@ -25,6 +25,10 @@
       "if": null
     },
     {
+      "run": "bun run test:source-guards",
+      "if": null
+    },
+    {
       "run": "bun run lint",
       "if": null
     },

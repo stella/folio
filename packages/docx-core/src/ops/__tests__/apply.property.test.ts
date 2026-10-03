@@ -2243,6 +2243,94 @@ describe("document operations", () => {
     expectEveryKindApplied(tally, NUM_RUNS);
   });
 
+  test("editor joins select properties from visible content and preserve trailing mark formatting", () => {
+    assertProperty(
+      fc.property(
+        fc.constantFrom("visible", "deleted", "empty"),
+        fc.constantFrom(undefined, {}, { alignment: "center" as const }),
+        fc.constantFrom(undefined, {}, { keepNext: true }),
+        fc.constantFrom(undefined, {}, { bold: false }),
+        (contentKind, leadingProperties, trailingProperties, markProperties) => {
+          const run = { type: "run", content: [{ type: "text", text: "a" }] } satisfies Run;
+          const content = (() => {
+            if (contentKind === "empty") return [];
+            if (contentKind === "deleted")
+              return [
+                { type: "deletion", info: { id: 1, author: "Source" }, content: [run] },
+              ] satisfies Paragraph["content"];
+            return [run];
+          })();
+          const leading = {
+            type: "paragraph",
+            paraId: "00000001",
+            content,
+            ...(leadingProperties === undefined ? {} : { formatting: leadingProperties }),
+          } satisfies Paragraph;
+          const trailingFormatting =
+            markProperties === undefined
+              ? trailingProperties
+              : { ...trailingProperties, runProperties: markProperties };
+          const trailing = {
+            type: "paragraph",
+            paraId: "00000002",
+            content: [{ type: "run", content: [{ type: "text", text: "b" }] }],
+            ...(trailingFormatting === undefined ? {} : { formatting: trailingFormatting }),
+          } satisfies Paragraph;
+          const document = {
+            package: { document: { content: [leading, trailing] } },
+          } satisfies Document;
+          const intent = {
+            type: "joinParagraphs",
+            story: OP_STORIES.MAIN,
+            blockId: leading.paraId,
+            nextBlockId: trailing.paraId,
+          } as const satisfies EditorIntent;
+          const sourceProperties =
+            contentKind === "visible" ? leadingProperties : trailingProperties;
+          // Mark-only formatting still owns an empty paragraph-property set.
+          const expectedFormatting = (() => {
+            if (contentKind !== "visible") return trailingFormatting;
+            if (sourceProperties === undefined && markProperties === undefined) return undefined;
+            return {
+              ...sourceProperties,
+              ...(markProperties === undefined ? {} : { runProperties: markProperties }),
+            };
+          })();
+          const allocation = allocateEditorIntentIds(document, intent);
+          for (const mode of [
+            { type: "editing", newIds: allocation.newIds },
+            {
+              type: "suggesting",
+              revision: { id: allocation.revisionId, author: "Property" },
+              newIds: allocation.newIds,
+            },
+          ] as const) {
+            const plan = compileEditorIntent(document, { intent, mode }).unwrap();
+            const edit = applyDocumentOps(document, plan.ops).unwrap();
+            const accepted =
+              mode.type === "editing"
+                ? edit.document
+                : applyDocumentOp(edit.document, {
+                    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                    story: OP_STORIES.MAIN,
+                    revisionIds: edit.revisions,
+                    decision: REVISION_DECISIONS.ACCEPT,
+                  }).unwrap().document;
+            const survivor = storyParagraphs(accepted.package.document).at(0)?.paragraph;
+            expect(survivor?.paraId).toBe(trailing.paraId);
+            assertExactModel(survivor?.formatting, expectedFormatting);
+            expect(Object.hasOwn(survivor ?? {}, "formatting")).toBe(
+              expectedFormatting !== undefined,
+            );
+            const inverse = applyDocumentOps(edit.document, edit.inverse).unwrap();
+            assertExactModel(inverse.document, document);
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
   test("generated editor intents agree in direct and accepted tracked mode across structural shapes", () => {
     const tallies = new Map<EditorIntent["type"], number>();
     const refusals = new Map<DocumentOpRefusalReason, number>();

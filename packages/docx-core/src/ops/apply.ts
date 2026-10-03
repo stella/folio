@@ -213,7 +213,7 @@ const refusal = (
   op: DocumentOp,
   reason: DocumentOpRefusalReason,
   message: string,
-): DocumentOpRefusal => new DocumentOpRefusal({ message, reason, opType: op.type });
+): DocumentOpRefusal => new DocumentOpRefusal({ message, reason, opType: op?.type });
 
 const refuse = (op: DocumentOp, reason: DocumentOpRefusalReason, message: string): Applied =>
   Result.err(refusal(op, reason, message));

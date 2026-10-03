@@ -10,6 +10,7 @@ import { paragraphLogicalText } from "../offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
+  DOCUMENT_OP_SCHEMA_VERSION,
   OP_STORIES,
   toOpEnvelope,
   type DocumentOp,
@@ -92,6 +93,32 @@ const replacement = (): DocumentOp => {
   ownUndefined(op, "sectionView");
   return op;
 };
+
+test("non-object wire operations refuse atomically for current and unsupported schemas", () => {
+  const document = { package: { document: { content: [sourceParagraph()] } } } satisfies Document;
+  const before = structuredClone(document);
+  for (const op of [null, undefined, true, 1, "insertText", []]) {
+    // JSON decoding is deliberately unchecked here to exercise the runtime boundary.
+    const decoded = JSON.parse(JSON.stringify({ op }));
+    const restored = restoreDocumentOp(decoded.op);
+    expect(restored.isErr()).toBe(true);
+    if (restored.isOk()) throw new TypeError("Non-object operation unexpectedly restored.");
+    expect(restored.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+    expect(restored.error.opType).toBeUndefined();
+    for (const schema of [DOCUMENT_OP_SCHEMA_VERSION, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+      const applied = applyDocumentOpEnvelope(document, { schema, op: decoded.op });
+      expect(applied.isErr()).toBe(true);
+      if (applied.isOk()) throw new TypeError("Non-object operation unexpectedly applied.");
+      expect(applied.error.reason).toBe(
+        schema === DOCUMENT_OP_SCHEMA_VERSION
+          ? DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH
+          : DOCUMENT_OP_REFUSAL_REASONS.UNSUPPORTED_SCHEMA,
+      );
+      expect(applied.error.opType).toBeUndefined();
+      deepStrictEqual(document, before);
+    }
+  }
+});
 
 test("capture and envelope transport retain recursively owned undefined fields that raw JSON loses", () => {
   const op = replacement();

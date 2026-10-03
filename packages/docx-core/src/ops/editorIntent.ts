@@ -606,6 +606,54 @@ const identifyClipboardParagraphs = ({
   return Result.ok(copy);
 };
 
+type JoinParagraphPropertyAlignmentOptions = {
+  document: Document;
+  current: Document;
+  intent: Extract<EditorIntent, { type: "joinParagraphs" }>;
+  revision?: RevisionStamp;
+};
+
+/** Direct and tracked joins choose paragraph properties from the same editing-view group. */
+const joinParagraphPropertyAlignment = ({
+  document,
+  current,
+  intent,
+  revision,
+}: JoinParagraphPropertyAlignmentOptions) => {
+  const groups = editorParagraphGroups(document, intent.story);
+  const firstGroup = groups.find(({ paragraphs }) =>
+    paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(intent.blockId)),
+  );
+  const followingGroup = groups.find(({ paragraphs }) =>
+    paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(intent.nextBlockId)),
+  );
+  if (!firstGroup || !followingGroup)
+    panic("A valid canonical join must belong to paragraph groups.");
+  const source =
+    firstGroup.text.length === 0 ? followingGroup.paragraphs.at(-1) : firstGroup.paragraphs.at(-1);
+  const survivor = paragraphAt(current, {
+    story: intent.story,
+    blockId: followingGroup.blockId,
+    offset: 0,
+  });
+  if (!survivor) panic("A valid canonical join must retain its following group survivor.");
+  const desired = paragraphPropertiesOf(source?.formatting);
+  const existing = paragraphPropertiesOf(survivor.formatting);
+  if (structurallyEqual(existing, desired)) return undefined;
+  return {
+    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+    story: intent.story,
+    blockId: followingGroup.blockId,
+    patch: Object.fromEntries([
+      ...Object.keys(existing ?? {}).map((key) => [key, null]),
+      ...Object.entries(desired ?? {}),
+    ]),
+    whenEmpty:
+      source?.formatting === undefined ? EMPTY_PROPERTY_SETS.OMIT : EMPTY_PROPERTY_SETS.KEEP,
+    ...(revision === undefined ? {} : { revision }),
+  } as const;
+};
+
 /** Join only plain runs meeting at an edited seam, within the same container. */
 const textSeamDepth = (paragraph: Paragraph, offset: number): number => {
   const spans = leafSpans(paragraph.content);
@@ -1667,13 +1715,6 @@ export const compileEditorIntent = (
         ...(ownInsertedMark ? {} : tracked),
       } as const;
       if (mode.type === "suggesting") {
-        const groups = editorParagraphGroups(document, intent.story);
-        const firstGroup = groups.find(({ paragraphs }) =>
-          paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(intent.blockId)),
-        );
-        const followingGroup = groups.find(({ paragraphs }) =>
-          paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(intent.nextBlockId)),
-        );
         const plan = createTrackedPlan({ document, revision: mode.revision, newIds: mode.newIds });
         const joined = plan.append(join);
         if (joined.isErr()) return Result.err(joined.error);
@@ -1704,35 +1745,14 @@ export const compileEditorIntent = (
           });
           if (restored.isErr()) return Result.err(restored.error);
         }
-        if (!firstGroup || !followingGroup)
-          panic("A valid canonical join must belong to paragraph groups.");
-        const source =
-          firstGroup.text.length === 0
-            ? followingGroup.paragraphs.at(-1)
-            : firstGroup.paragraphs.at(-1);
-        const desired = paragraphPropertiesOf(source?.formatting);
-        const survivor = paragraphAt(plan.document(), {
-          story: intent.story,
-          blockId: followingGroup.blockId,
-          offset: 0,
+        const alignment = joinParagraphPropertyAlignment({
+          document,
+          current: plan.document(),
+          intent,
+          revision: mode.revision,
         });
-        if (!survivor) panic("A valid canonical join must retain its following group survivor.");
-        const current = paragraphPropertiesOf(survivor.formatting);
-        if (!structurallyEqual(current, desired)) {
-          const patched = plan.append({
-            type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-            story: intent.story,
-            blockId: followingGroup.blockId,
-            patch: Object.fromEntries([
-              ...Object.keys(current ?? {}).map((key) => [key, null]),
-              ...Object.entries(desired ?? {}),
-            ]),
-            whenEmpty:
-              source?.formatting === undefined
-                ? EMPTY_PROPERTY_SETS.OMIT
-                : EMPTY_PROPERTY_SETS.KEEP,
-            revision: mode.revision,
-          });
+        if (alignment !== undefined) {
+          const patched = plan.append(alignment);
           if (patched.isErr()) return Result.err(patched.error);
         }
         ops = plan.ops;
@@ -1773,6 +1793,15 @@ export const compileEditorIntent = (
       }
       compact.push(trimmed);
       current = applied.value.document;
+    }
+    if (intent.type === "joinParagraphs") {
+      const alignment = joinParagraphPropertyAlignment({ document, current, intent });
+      if (alignment !== undefined) {
+        const aligned = applyDocumentOp(current, alignment);
+        if (aligned.isErr()) return Result.err(aligned.error);
+        compact.push(alignment);
+        current = aligned.value.document;
+      }
     }
     const insertedWidth = intent.type === "replaceText" ? intent.text.length : 0;
     if (insertedWidth > 0) {

@@ -13,6 +13,7 @@ import {
   sectionsInStep,
 } from "./blocks";
 import { structurallyEqual } from "./equality";
+import { idKey } from "./ids";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   DOCUMENT_OP_TYPES,
@@ -336,7 +337,10 @@ const applySectionEndpoint = (document: Document, op: SetSectionEndpointOp) => {
   const target =
     endpoint.type === "paragraph"
       ? body.content.find(
-          (block) => block.type === "paragraph" && block.paraId === endpoint.blockId,
+          (block) =>
+            block.type === "paragraph" &&
+            block.paraId !== undefined &&
+            idKey(block.paraId) === idKey(endpoint.blockId),
         )
       : undefined;
   const endpointParagraph = target?.type === "paragraph" ? target : undefined;
@@ -359,7 +363,12 @@ const applySectionEndpoint = (document: Document, op: SetSectionEndpointOp) => {
     endpoint.type === "final"
       ? body.content
       : body.content.map((block) => {
-          if (block.type !== "paragraph" || block.paraId !== endpoint.blockId) return block;
+          if (
+            block.type !== "paragraph" ||
+            block.paraId === undefined ||
+            idKey(block.paraId) !== idKey(endpoint.blockId)
+          )
+            return block;
           const paragraph = Object.assign({}, block);
           restoreSectionProperties({
             record: paragraph,
