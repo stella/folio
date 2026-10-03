@@ -755,5 +755,10 @@
       "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
       "date": "2026-10-01"
     }
+  ],
+  "packages/core/src/controller/canonicalTerminalFormatting.property.test.ts::canonical tracked terminal deletion preserves the preceding formatting request": [
+    {
+      "seed": 18568319
+    }
   ]
 }
