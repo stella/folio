@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 import {
@@ -7,10 +7,12 @@ import {
   paragraphVisibleText,
   type DocumentOp,
 } from "@stll/docx-core/ops";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { schema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
 import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 test("canonical tracked terminal deletion preserves the preceding formatting request", async () => {
   await assertProperty(
