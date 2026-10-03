@@ -5,6 +5,18 @@
       "path": "0:0:0:0:0:0:0",
       "note": "Review fixtures must serialize their own section model rather than repack an unrelated source buffer",
       "date": "2026-09-30"
+    },
+    {
+      "seed": 2035322458,
+      "note": "Retain recognized paragraph capture identity through generated operations, editor save and reopen.",
+      "date": "2026-10-03",
+      "path": "0:0:0:0:0"
+    },
+    {
+      "seed": 783668033,
+      "note": "Retain recognized paragraph capture identity through generated operations, editor save and reopen.",
+      "date": "2026-10-03",
+      "path": "1:0:0:0:0:1"
     }
   ],
   "L8: deletion inside another insertion keeps both wrapper ids": [

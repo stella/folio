@@ -361,6 +361,28 @@ export const copyDocumentParagraphPropertySourceContract = (
 export const getParagraphPropertySourceToken = (paragraph: Paragraph): string | undefined =>
   paragraphPropertySourceTokens.get(paragraph);
 
+type ParagraphSourceIdentity =
+  | { type: "durable"; token: string }
+  | { type: "capture-only" }
+  | { type: "authored" }
+  | { type: "invalid" };
+
+/** Byte captures can follow derivations; only explicit copies carry durable tokens. */
+export const inspectParagraphSourceIdentity = (
+  paragraph: Paragraph,
+  document: Document,
+): ParagraphSourceIdentity => {
+  const binding = getDocumentParagraphPropertySourceBinding(document);
+  if (!binding) return { type: "invalid" };
+  const capture = captureForParagraph(paragraph);
+  if (Object.hasOwn(paragraph, paragraphPropertyCapture) && !capture) return { type: "invalid" };
+  if (capture && !binding.sourceOwners.has(capture.owner)) return { type: "invalid" };
+  const token = getParagraphPropertySourceToken(paragraph);
+  if (token !== undefined) return { type: "durable", token };
+  if (binding.sourceOwners.has(paragraph)) return { type: "invalid" };
+  return capture ? { type: "capture-only" } : { type: "authored" };
+};
+
 type ParagraphCloneOverrides = Omit<Partial<Paragraph>, "type">;
 
 /** Clone a paragraph while deliberately retaining its parsed `w:pPr` owner. */

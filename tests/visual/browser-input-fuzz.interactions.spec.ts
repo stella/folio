@@ -40,10 +40,7 @@ declare global {
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const INPUT_TRACE = browserInputTraceArbitrary();
-const PAINTED_POSITION_MODULE = `/@fs${
-  new URL("../../packages/core/src/layout-bridge/dom/clickToPositionDom.ts", import.meta.url)
-    .pathname
-}`;
+const PAINTED_TARGET_MODULE = `/@fs${new URL("./browserPaintedTargets.ts", import.meta.url).pathname}`;
 
 type Block = {
   kind: string;
@@ -106,42 +103,18 @@ const load = async (page: Page, bytes: ArrayBuffer, baseline: Block[], suggestin
 };
 
 const selectTableTarget = async (page: Page) => {
-  const cells = await page.evaluate(() => {
-    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
-    if (!view) throw new Error("browser editor unavailable");
-    const positions: { pos: number; paragraphPos: number }[] = [];
-    view.state.doc.descendants((node, pos) => {
-      if (positions.length >= 2) return false;
-      if (node.type.name !== "tableCell") return true;
-      let paragraphPos: number | null = null;
-      node.descendants((child, offset) => {
-        if (paragraphPos !== null) return false;
-        if (child.isTextblock) paragraphPos = pos + 1 + offset;
-        return !child.isTextblock;
-      });
-      if (paragraphPos !== null) positions.push({ pos, paragraphPos });
-      return false;
-    });
-    return positions;
-  });
-  const [anchor, head] = cells;
-  if (!anchor || !head) return false;
-
-  // The PM view is off-screen. Pointer actions must use the painted body cells,
-  // whose paragraph positions also let us wait for layout after preceding edits.
-  const paintedCell = (paragraphPos: number) =>
-    page
-      .locator(`.layout-page-content .layout-table-cell[data-pm-start="${paragraphPos}"]`)
-      .first();
-  const anchorCell = paintedCell(anchor.paragraphPos);
-  const headCell = paintedCell(head.paragraphPos);
-  await anchorCell.scrollIntoViewIfNeeded();
-  await headCell.scrollIntoViewIfNeeded();
-  const [from, to] = await Promise.all([anchorCell.boundingBox(), headCell.boundingBox()]);
-  if (!from || !to) throw new Error("table drag targets are not painted");
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  const target = await page.evaluate(async (moduleUrl) => {
+    const { resolvePaintedTableTarget }: typeof import("./browserPaintedTargets") = await import(
+      moduleUrl
+    );
+    const ref = globalThis.__folioPlayground?.getEditorRef();
+    if (!ref) throw new Error("browser editor unavailable");
+    return resolvePaintedTableTarget(ref);
+  }, PAINTED_TARGET_MODULE);
+  if (target.type === "absent") return false;
+  await page.mouse.move(target.from.x, target.from.y);
   await page.mouse.down();
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 4 });
+  await page.mouse.move(target.to.x, target.to.y, { steps: 4 });
   await page.mouse.up();
 
   // A missed drag must fail at the input boundary, before paste/delete can edit
@@ -163,94 +136,29 @@ const selectTableTarget = async (page: Page) => {
       return null;
     return { anchor: selectedAnchor.pos, head: selectedHead.pos };
   });
-  expect(selected).toEqual({ anchor: anchor.pos, head: head.pos });
+  expect(selected).toEqual({ anchor: target.anchor, head: target.head });
   return true;
 };
 
 const selectTarget = async (page: Page, target: BrowserDragTarget) => {
   if (target === "table") return selectTableTarget(page);
-  const positions = await page.evaluate((wanted) => {
-    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
-    if (!view) throw new Error("browser editor unavailable");
-    const targets: { pos: number; size: number; type: "paragraph" | "inline" }[] = [];
-    const targetName = {
-      list: "paragraph",
-      note: "footnoteRef",
-      field: "field",
-      inlineObject: "image",
-    }[wanted];
-    view.state.doc.descendants((node, pos) => {
-      const matches =
-        node.type.name === targetName &&
-        (wanted !== "list" || (node.attrs["numPr"] !== null && node.attrs["numPr"] !== undefined));
-      if (targets.length >= 2) return false;
-      if (
-        matches ||
-        (wanted === "note" && node.marks.some((mark) => mark.type.name === targetName))
-      ) {
-        targets.push({
-          pos,
-          size: node.nodeSize,
-          type: node.type.name === "paragraph" ? "paragraph" : "inline",
-        });
-      }
-      return true;
-    });
-    const first = targets.at(0);
-    if (!first) return null;
-    const last = targets.at(1) ?? first;
-    // Paragraph node boundaries are not caret positions. Start inside the
-    // paragraph, or in text before an atom so image mousedown can drag text.
-    const rawFrom = first.type === "paragraph" ? first.pos + 1 : first.pos - 1;
-    const rawTo =
-      last.type === "paragraph" ? last.pos + Math.min(2, last.size - 1) : last.pos + last.size + 2;
-    const from = Math.max(view.state.doc.resolve(first.pos).start(), rawFrom);
-    const to = Math.min(
-      view.state.doc.content.size - 1,
-      last.type === "paragraph" ? last.pos + last.size - 1 : view.state.doc.resolve(last.pos).end(),
-      rawTo,
-    );
-    return {
-      from,
-      to,
-      targetFrom: first.pos,
-      targetTo: first.pos + first.size,
-      targetType: first.type,
-    };
-  }, target);
-  if (!positions) return false;
+  const painted = await page.evaluate(
+    async ({ moduleUrl, wanted }) => {
+      const { resolvePaintedDragTarget }: typeof import("./browserPaintedTargets") = await import(
+        moduleUrl
+      );
+      const ref = globalThis.__folioPlayground?.getEditorRef();
+      if (!ref) throw new Error("browser editor unavailable");
+      return resolvePaintedDragTarget(ref, wanted);
+    },
+    { moduleUrl: PAINTED_TARGET_MODULE, wanted: target },
+  );
+  if (painted.type === "absent") return false;
+  const { positions } = painted;
   expect(positions.to).toBeGreaterThan(positions.from);
-
-  // Every pointer target uses the painted body. The hidden PM view has its
-  // own off-screen geometry, which cannot drive the visible editor's hit test.
-  const args = { moduleUrl: PAINTED_POSITION_MODULE, positions };
-  const readPaintedCoords = async ({ moduleUrl, positions: planned }: typeof args) => {
-    const {
-      getCaretPositionFromDom,
-      clickToPositionDom,
-    }: typeof import("../../packages/core/src/layout-bridge/dom/clickToPositionDom") = await import(
-      moduleUrl
-    );
-    const coordinate = (position: number) => {
-      const caret = getCaretPositionFromDom(document.body, position, new DOMRect());
-      if (!caret) return null;
-      const y = caret.y + caret.height / 2;
-      for (const offset of [0, 0.25, -0.25, 0.5, -0.5]) {
-        const x = caret.x + offset;
-        if (clickToPositionDom(document.body, x, y) === position) return { x, y };
-      }
-      return null;
-    };
-    const from = coordinate(planned.from);
-    const to = coordinate(planned.to);
-    return from && to ? { from, to } : null;
-  };
-  await page.waitForFunction(readPaintedCoords, args);
-  const coords = await page.evaluate(readPaintedCoords, args);
-  if (!coords) throw new Error("drag targets are not painted at their document positions");
-  await page.mouse.move(coords.from.x, coords.from.y);
+  await page.mouse.move(painted.from.x, painted.from.y);
   await page.mouse.down();
-  await page.mouse.move(coords.to.x, coords.to.y, { steps: 4 });
+  await page.mouse.move(painted.to.x, painted.to.y, { steps: 4 });
   await page.mouse.up();
   const selected = await page.evaluate(() => {
     const selection = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
@@ -419,6 +327,35 @@ const runMode = async (
   await expect.poll(() => page.locator(".layout-page-content").allTextContents()).toEqual(painted);
   return { buffer, blocks: project(reopened), changes: reopened.getChanges() };
 };
+
+const paintedTargetReplays = [
+  {
+    shape: "tables",
+    actions: [
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+      { kind: "selectionDrag", target: "table" },
+    ],
+  },
+  {
+    shape: "notes",
+    actions: [
+      { kind: "delete" },
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+      { kind: "selectionDrag", target: "note" },
+    ],
+  },
+] satisfies readonly BrowserInputTrace[];
+
+for (const [index, trace] of paintedTargetReplays.entries()) {
+  test(`painted target replay ${index}`, async ({ page }) => {
+    const source = await shapeArrayBuffer(trace.shape);
+    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+    for (const suggesting of [false, true]) {
+      await load(page, source, baseline, suggesting);
+      for (const action of trace.actions) await drive(page, action);
+    }
+  });
+}
 
 const isBrowserShape = (shape: string): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
   Object.hasOwn(BROWSER_SHAPE_TARGETS, shape);

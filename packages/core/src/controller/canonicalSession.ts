@@ -1046,7 +1046,7 @@ class CanonicalSession {
     for (const op of ops) {
       if (op.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK) continue;
       const source = stagedSources.get(op.at.blockId);
-      if (source) stagedSources.set(op.newBlockId, source);
+      if (source && !stagedSources.has(op.newBlockId)) stagedSources.set(op.newBlockId, source);
     }
     for (const block of applied.value.document.package.document.content) {
       if (block.type !== "paragraph" || block.paraId === undefined) continue;

@@ -14,6 +14,7 @@ import {
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
+  inspectParagraphSourceIdentity,
   paragraphPropertySourceBelongsToDocument,
   restoreTableCellsWithParagraphPropertySources,
   transportTableCellsWithParagraphPropertySources,
@@ -81,9 +82,15 @@ describe("paragraph-property source identity", () => {
     expect(getParagraphPropertySource(derived)).toBe(getParagraphPropertySource(paragraph));
     expect(paragraphPropertySourceBelongsToDocument(derived, document)).toBe(true);
     expect(getParagraphPropertySourceToken(derived)).toBeUndefined();
+    expect(inspectParagraphSourceIdentity(paragraph, document)).toEqual({
+      type: "durable",
+      token: getParagraphPropertySourceToken(paragraph),
+    });
+    expect(inspectParagraphSourceIdentity(derived, document)).toEqual({ type: "capture-only" });
     expect(getParagraphPropertySource(structuredClone(derived))).toBeUndefined();
     const unbound = cloneParagraphWithoutPropertySource(derived, {});
     expect(getParagraphPropertySource(unbound)).toBeUndefined();
+    expect(inspectParagraphSourceIdentity(unbound, document)).toEqual({ type: "authored" });
     const capturedWire = JSON.stringify(derived);
     const unboundWire = JSON.stringify(unbound);
     expect(capturedWire).toBe(unboundWire);
@@ -98,6 +105,7 @@ describe("paragraph-property source identity", () => {
     if (!captureKey) throw new TypeError("Expected the private capture handle");
     Object.defineProperty(forged, captureKey, { value: {} });
     expect(getParagraphPropertySource(forged)).toBeUndefined();
+    expect(inspectParagraphSourceIdentity(forged, document)).toEqual({ type: "invalid" });
     expect(paragraphPropertySourceBelongsToDocument(forged, document)).toBe(false);
   });
 
