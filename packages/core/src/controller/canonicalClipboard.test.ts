@@ -868,24 +868,23 @@ describe("canonical clipboard", () => {
                   ),
                 ).toBe(true);
               } else {
-                expect(
-                  paragraphs.some((paragraph) =>
-                    paragraph.content.some(
-                      (content) =>
-                        content.type === "run" &&
-                        content.content.some(
-                          (leaf) =>
-                            leaf.type === "drawing" &&
-                            leaf.rawXmlMode === undefined &&
-                            leaf.image.hlinkHref === "https://foreign.example.test" &&
-                            leaf.image.hlinkClickSource?.xml.includes(
-                              'tooltip="Clipboard tooltip"',
-                            ) === true &&
-                            leaf.image.hlinkClickSource.xml.includes('history="0"'),
-                        ),
-                    ),
+                const drawings = paragraphs.flatMap((paragraph) =>
+                  paragraph.content.flatMap((content) =>
+                    content.type === "run"
+                      ? content.content.filter((leaf) => leaf.type === "drawing")
+                      : [],
                   ),
-                ).toBe(true);
+                );
+                expect(drawings).toHaveLength(1);
+                const drawing = drawings.at(0);
+                if (drawing === undefined)
+                  throw new TypeError("Reopened clipboard drawing disappeared.");
+                expect(drawing.rawXmlMode).toBeUndefined();
+                expect(drawing.image.hlinkHref).toBe("https://foreign.example.test");
+                expect(drawing.image.hlinkClickSource?.xml).toContain(
+                  'tooltip="Clipboard tooltip"',
+                );
+                expect(drawing.image.hlinkClickSource?.xml).toContain('history="0"');
               }
               state = publishCanonicalProjection({
                 session,

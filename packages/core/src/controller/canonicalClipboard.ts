@@ -1,5 +1,5 @@
 import { Result } from "better-result";
-import type { Slice } from "prosemirror-model";
+import { Fragment, Slice } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { DOCUMENT_OP_TYPES, packageResourcesOf, type DocumentOp } from "@stll/docx-core/ops";
 import {
@@ -268,14 +268,20 @@ export const prepareCanonicalPaste = ({
     return refuse("Clipboard tables and nested block containers require canonical table editing.");
   const paragraphType = state.schema.nodes["paragraph"];
   if (paragraphType === undefined) return refuse("Clipboard input requires a paragraph schema.");
-  let unsupported = false;
+  let inline = true;
+  let paragraphsOnly = true;
   slice.content.forEach((node) => {
-    if (node.type.name !== "paragraph") unsupported = true;
+    inline &&= node.isInline;
+    paragraphsOnly &&= node.type === paragraphType;
   });
-  if (unsupported)
+  if (!inline && !paragraphsOnly)
     return refuse("Clipboard tables and embedded blocks require canonical table editing.");
+  // A same-parent document slice omits its paragraph; it still represents open inline edges.
+  const importedSlice = inline
+    ? new Slice(Fragment.from(paragraphType.create(null, slice.content)), 1, 1)
+    : slice;
   const converted = Result.try({
-    try: () => proseDocToBlocks(state.schema.topNodeType.create(null, slice.content)),
+    try: () => proseDocToBlocks(state.schema.topNodeType.create(null, importedSlice.content)),
     catch: (cause) =>
       new CanonicalSessionError({
         reason: "refused",
@@ -313,7 +319,10 @@ export const prepareCanonicalPaste = ({
   }
   const sourceNumbering =
     sourceDocument?.package.numbering ??
-    completeNumberingForDoc(undefined, state.schema.topNodeType.create(null, slice.content));
+    completeNumberingForDoc(
+      undefined,
+      state.schema.topNodeType.create(null, importedSlice.content),
+    );
   const importedNumbering = importNumbering({
     destination: session.document.package.numbering,
     source: sourceNumbering,
@@ -570,8 +579,8 @@ export const prepareCanonicalPaste = ({
     from: from.value,
     to: to.value,
     paragraphs,
-    openStart: slice.openStart === 0 ? 0 : 1,
-    openEnd: slice.openEnd === 0 ? 0 : 1,
+    openStart: importedSlice.openStart === 0 ? 0 : 1,
+    openEnd: importedSlice.openEnd === 0 ? 0 : 1,
   } as const;
   if (moveTarget === undefined)
     return session.prepareIntents(state, {
