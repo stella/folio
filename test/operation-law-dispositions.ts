@@ -26,13 +26,13 @@ export const OPERATION_LAW_DISPOSITIONS = {
   joinInline: "holds",
   setRunProps: "holds",
   setParagraphProps: [
-    { knownIssue: "T4", fingerprint: "6c02321e06af52d7" },
-    { knownIssue: "T4", fingerprint: "a388b726d477ad9a" },
+    { knownIssue: "T4", fingerprint: "7bda296807167052" },
+    { knownIssue: "T4", fingerprint: "95820d436833c3fd" },
   ],
   splitBlock: "holds",
   joinBlocks: [
-    { knownIssue: "T4", fingerprint: "98308b3cf21ddb17" },
-    { knownIssue: "T4", fingerprint: "2393e2c83e1b0a85" },
+    { knownIssue: "T4", fingerprint: "20c2d3fdbf109520" },
+    { knownIssue: "T4", fingerprint: "af2bdcaabf37424e" },
   ],
   replaceBlocks: "holds",
   setParagraphReview: "holds",

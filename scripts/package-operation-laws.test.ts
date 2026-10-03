@@ -2,49 +2,45 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { TaggedError } from "better-result";
-import {
-  assertKnownProperty,
-  assertProperty,
-  propertyTestTimeout,
-} from "../../../../../test/property-testing";
+import { assertKnownProperty, assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
   OPERATION_LAW_DISPOSITIONS,
   type OperationLawDisposition,
-} from "../../../../../test/operation-law-dispositions";
+} from "../test/operation-law-dispositions";
 import {
   inverseSequenceFailures,
   serializedInverseStepFailures,
-} from "../../../../../scripts/lib/corpus-invariants/op-inverse";
+} from "./lib/corpus-invariants/op-inverse";
 import {
   localityStepFailures,
   serializedLocalityStepFailures,
-} from "../../../../../scripts/lib/corpus-invariants/op-locality";
+} from "./lib/corpus-invariants/op-locality";
 import {
   exactOpModel,
   sameOpModel,
   serializeOpDocument,
   serializedOpParts,
-} from "../../../../../scripts/lib/corpus-invariants/op-sequences";
+} from "./lib/corpus-invariants/op-sequences";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { normalizeForOps } from "../contract";
-import { applyDocumentOps } from "../apply";
-import { DOCUMENT_OP_TYPES } from "../types";
-import { failureMarker } from "../../../../../test/consumer-scenarios/support/failure-fingerprints";
-import { opSeedArbitrary } from "./documentArbitraries";
+import { normalizeForOps } from "../packages/docx-core/src/ops/contract";
+import { applyDocumentOps } from "../packages/docx-core/src/ops/apply";
+import { DOCUMENT_OP_TYPES } from "../packages/docx-core/src/ops/types";
+import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
+import { opSeedArbitrary } from "../packages/docx-core/src/ops/__tests__/documentArbitraries";
 import {
   generatedCaseFor,
   GENERATED_PACKAGE_OP_KINDS,
   GENERATED_PACKAGE_STORIES,
   packageDocumentArbitrary,
-} from "./packageOperationArbitraries";
+} from "../packages/docx-core/src/ops/__tests__/packageOperationArbitraries";
 
 class OperationPackageLawError extends TaggedError("OperationPackageLawError")<{
   message: string;
 }> {}
 
 const LAW_TITLE = "every operation preserves package inverse and declared scope laws";
-const LAW_KEY = `packages/docx-core/src/ops/__tests__/packageLaws.property.test.ts::${LAW_TITLE}`;
+const LAW_KEY = `scripts/package-operation-laws.test.ts::${LAW_TITLE}`;
 
 const knownFailures = (disposition: OperationLawDisposition, kind: string) => {
   if (disposition === "holds") return [];

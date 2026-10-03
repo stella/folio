@@ -641,7 +641,7 @@
       "date": "2026-10-02"
     }
   ],
-  "packages/docx-core/src/ops/__tests__/packageLaws.property.test.ts::every operation preserves package inverse and declared scope laws": [
+  "scripts/package-operation-laws.test.ts::every operation preserves package inverse and declared scope laws": [
     {
       "seed": 327444275,
       "path": "9:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
@@ -649,7 +649,7 @@
       "date": "2026-10-03",
       "expectedFailure": {
         "family": "T4",
-        "fingerprint": "98308b3cf21ddb17"
+        "fingerprint": "20c2d3fdbf109520"
       }
     },
     {
@@ -659,7 +659,7 @@
       "date": "2026-10-03",
       "expectedFailure": {
         "family": "T4",
-        "fingerprint": "2393e2c83e1b0a85"
+        "fingerprint": "af2bdcaabf37424e"
       }
     },
     {
@@ -669,7 +669,7 @@
       "date": "2026-10-03",
       "expectedFailure": {
         "family": "T4",
-        "fingerprint": "6c02321e06af52d7"
+        "fingerprint": "7bda296807167052"
       }
     },
     {
@@ -679,7 +679,7 @@
       "date": "2026-10-03",
       "expectedFailure": {
         "family": "T4",
-        "fingerprint": "a388b726d477ad9a"
+        "fingerprint": "95820d436833c3fd"
       }
     }
   ]
