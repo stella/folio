@@ -11,16 +11,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import {
-  assertProperty,
-  propertyConfig,
-  propertyTestTimeout,
-} from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
@@ -157,10 +154,34 @@ const FIXTURE_FILES = [
 
 const SYNTHETIC_BASE = await buildSyntheticBase();
 
-const BASE_DOCUMENTS: readonly { name: string; buffer: ArrayBuffer }[] = [
-  ...FIXTURE_FILES.map((name) => ({ name, buffer: readFixture(name) })),
-  { name: "synthetic", buffer: SYNTHETIC_BASE },
-];
+/** Shrink paths depend on the fixture's arbitrary; exact scripts belong to that fixture. */
+type FixtureScripts<Files extends readonly string[]> = {
+  readonly [Index in keyof Files]: EditScript;
+};
+const FINAL_PARAGRAPH_MARK_REGRESSIONS = [
+  [{ type: "moveParagraph", blockIndex: 0, beforeBlockIndex: 2 }],
+  [{ type: "insertParagraphAfter", blockIndex: 10, text: "AaA aAA aAA" }],
+  [{ type: "insertParagraphAfter", blockIndex: 0, text: "Aaa Aaa aaA" }],
+] as const satisfies FixtureScripts<typeof FIXTURE_FILES>;
+
+const BASE_DOCUMENTS = [
+  ...FIXTURE_FILES.map((name, index) => {
+    const finalParagraphMarkRegression = FINAL_PARAGRAPH_MARK_REGRESSIONS.at(index);
+    if (!finalParagraphMarkRegression) panic("A comparison fixture is missing its pinned script");
+    return { name, buffer: readFixture(name), finalParagraphMarkRegression };
+  }),
+  {
+    name: "synthetic",
+    buffer: SYNTHETIC_BASE,
+    finalParagraphMarkRegression: [
+      { type: "insertParagraphAfter", blockIndex: 0, text: "Aaa Aaa aaA" },
+    ],
+  },
+] as const satisfies readonly {
+  name: string;
+  buffer: ArrayBuffer;
+  finalParagraphMarkRegression: EditScript;
+}[];
 
 const OPTIONS = { author: "compare", timestamp: "2024-03-01T00:00:00.000Z" } as const;
 
@@ -169,9 +190,10 @@ const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
 
 /** Parsed once at module scope: `describe` bodies run synchronously. */
 const BASE_CASES = await Promise.all(
-  BASE_DOCUMENTS.map(async ({ name, buffer }) => ({
+  BASE_DOCUMENTS.map(async ({ name, buffer, finalParagraphMarkRegression }) => ({
     name,
     buffer,
+    finalParagraphMarkRegression,
     blocks: await blocksOf(buffer),
   })),
 );
@@ -606,7 +628,7 @@ type BudgetOverrunOptions = {
  * the script as a literal that pastes straight into a pinned example, and
  * every change with the block ids it named: the pair that failed to pair is
  * the one appearing as an unrelated deletion and insertion instead of a
- * single entry. The seed that replays it is on the replay line propertyConfig
+ * single entry. The seed that replays it is on the replay line assertProperty
  * appends to the failure.
  */
 const budgetOverrunReport = ({
@@ -653,7 +675,7 @@ describe("compareDocx", () => {
     test(
       `accepting every change yields the target and rejecting yields the base (${name})`,
       async () => {
-        await fc.assert(
+        await assertProperty(
           fc.asyncProperty(roundTripScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
             if (scripted.isErr()) {
@@ -670,7 +692,7 @@ describe("compareDocx", () => {
             expect(accepted).toEqual(targetProjection);
             expect(rejected).toEqual(baseProjection);
           }),
-          propertyConfig({ numRuns: 12 }),
+          { numRuns: 12 },
         );
       },
       propertyTestTimeout(120_000),
@@ -679,7 +701,7 @@ describe("compareDocx", () => {
     test(
       `two runs produce byte-identical buffers and equal change lists (${name})`,
       async () => {
-        await fc.assert(
+        await assertProperty(
           fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
             if (scripted.isErr()) {
@@ -694,7 +716,7 @@ describe("compareDocx", () => {
             expect(Buffer.from(first.buffer).equals(Buffer.from(second.buffer))).toBe(true);
             expect(first.changes).toEqual(second.changes);
           }),
-          propertyConfig({ numRuns: 8 }),
+          { numRuns: 8 },
         );
       },
       propertyTestTimeout(120_000),
@@ -703,7 +725,7 @@ describe("compareDocx", () => {
     test(
       `every revision id in the package is claimed once (${name})`,
       async () => {
-        await fc.assert(
+        await assertProperty(
           fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
             if (scripted.isErr()) {
@@ -713,7 +735,7 @@ describe("compareDocx", () => {
             const ids = await revisionIdsInPackage(buffer);
             expect(new Set(ids).size).toBe(ids.length);
           }),
-          propertyConfig({ numRuns: 10 }),
+          { numRuns: 10 },
         );
       },
       propertyTestTimeout(120_000),
@@ -722,7 +744,7 @@ describe("compareDocx", () => {
     test(
       `every paragraph id in the package fits the 31-bit range (${name})`,
       async () => {
-        await fc.assert(
+        await assertProperty(
           fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
             if (scripted.isErr()) {
@@ -732,7 +754,7 @@ describe("compareDocx", () => {
             const ids = await paragraphIdsInPackage(buffer);
             expect(ids.every((id) => Number.parseInt(id, 16) < 0x8000_0000)).toBe(true);
           }),
-          propertyConfig({ numRuns: 10 }),
+          { numRuns: 10 },
         );
       },
       propertyTestTimeout(120_000),
@@ -777,7 +799,7 @@ describe("compareDocx", () => {
       test(
         `a formatting-only script produces only format changes (${name})`,
         async () => {
-          await fc.assert(
+          await assertProperty(
             fc.asyncProperty(
               fc.array(formatOnly, { minLength: 1, maxLength: 3 }).map(distinctByBlock),
               async (script) => {
@@ -794,7 +816,7 @@ describe("compareDocx", () => {
                 );
               },
             ),
-            propertyConfig({ numRuns: 10 }),
+            { numRuns: 10 },
           );
         },
         propertyTestTimeout(120_000),
@@ -1081,7 +1103,7 @@ describe("compareDocx", () => {
     "deleting row %i keeps fully rewritten surviving rows at cell level",
     async (deletedRow) => {
       const base = readFixture("upstream-with-tables.docx");
-      await fc.assert(
+      await assertProperty(
         fc.asyncProperty(rowRewriteArb, async (rewrittenText) => {
           const survivingRows = [0, 1, 2].filter((rowIndex) => rowIndex !== deletedRow);
           const script: EditScript = [
@@ -1115,7 +1137,7 @@ describe("compareDocx", () => {
           ]);
           expect(changes).toHaveLength(scripted.value.applied.length);
         }),
-        propertyConfig({ numRuns: 4 }),
+        { numRuns: 4 },
       );
     },
     propertyTestTimeout(120_000),
@@ -1125,7 +1147,7 @@ describe("compareDocx", () => {
     "inserting row at position %i keeps fully rewritten existing rows at cell level",
     async (insertedRow) => {
       const base = readFixture("upstream-with-tables.docx");
-      await fc.assert(
+      await assertProperty(
         fc.asyncProperty(rowRewriteArb, async (rewrittenText) => {
           const script: EditScript = [
             ...Array.from({ length: 9 }, (_unused, blockOffset) => ({
@@ -1156,13 +1178,18 @@ describe("compareDocx", () => {
           expect(kinds.filter((kind) => kind !== "replace")).toEqual(["table-row-insert"]);
           expect(changes).toHaveLength(scripted.value.applied.length);
         }),
-        propertyConfig({ numRuns: 4 }),
+        { numRuns: 4 },
       );
     },
     propertyTestTimeout(120_000),
   );
 
-  for (const { name, buffer: base, blocks: baseBlocks } of BASE_CASES) {
+  for (const {
+    name,
+    buffer: base,
+    blocks: baseBlocks,
+    finalParagraphMarkRegression,
+  } of BASE_CASES) {
     test(
       `no container's final paragraph mark carries any revision (${name})`,
       async () => {
@@ -1175,7 +1202,7 @@ describe("compareDocx", () => {
         // standing that neither accepting nor rejecting everything can clear.
         // Read back from the bytes the comparison produced, so it covers what
         // was written and not only what was planned.
-        await fc.assert(
+        await assertProperty(
           fc.asyncProperty(roundTripScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
             if (scripted.isErr()) {
@@ -1185,7 +1212,7 @@ describe("compareDocx", () => {
             const written = await FolioDocxReviewer.fromBuffer(buffer);
             expect(revisedFinalParagraphMarks(written.toDocument())).toEqual([]);
           }),
-          propertyConfig({ numRuns: 12 }),
+          { numRuns: 12, examples: [[finalParagraphMarkRegression]] },
         );
       },
       propertyTestTimeout(120_000),
@@ -1220,8 +1247,8 @@ describe("compareDocx", () => {
           expect(kindsOf(changes).every((kind) => kind === "move")).toBe(true);
         },
       );
-      await fc.assert(moveProperty, propertyConfig({ numRuns: 15, seed: 1658375732 }));
-      await fc.assert(moveProperty, propertyConfig({ numRuns: 15 }));
+      await assertProperty(moveProperty, { numRuns: 15, seed: 1658375732 });
+      await assertProperty(moveProperty, { numRuns: 15 });
     },
     propertyTestTimeout(120_000),
   );
@@ -1234,7 +1261,7 @@ describe("compareDocx", () => {
         expect(await authorsOfChanges(revisedBase)).toEqual([PRIOR_AUTHOR]);
         const acceptedBase = await projectView(revisedBase, "final");
 
-        await fc.assert(
+        await assertProperty(
           fc.asyncProperty(editScriptArb(await blocksOf(revisedBase)), async (script) => {
             const scripted = await applyEditScript(revisedBase, script);
             if (scripted.isErr()) {
@@ -1253,7 +1280,7 @@ describe("compareDocx", () => {
             // rejecting it cannot land on a document neither side wrote.
             expect(await authorsOfChanges(buffer)).not.toContain(PRIOR_AUTHOR);
           }),
-          propertyConfig({ numRuns: 10 }),
+          { numRuns: 10 },
         );
       },
       propertyTestTimeout(120_000),
@@ -1276,7 +1303,7 @@ describe("compareDocx", () => {
         // still has nothing it could not represent. A scripted edit is built
         // from the operation vocabulary, so anything unverified here is a
         // defect in the engine rather than a document it cannot express.
-        await fc.assert(
+        await assertProperty(
           fc.asyncProperty(roundTripScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
             if (scripted.isErr()) {
@@ -1291,7 +1318,7 @@ describe("compareDocx", () => {
             }
             expect(result.value.verification).toEqual({ status: "verified" });
           }),
-          propertyConfig({ numRuns: 10 }),
+          { numRuns: 10 },
         );
       },
       propertyTestTimeout(120_000),

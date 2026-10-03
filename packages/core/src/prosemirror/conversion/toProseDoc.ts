@@ -79,7 +79,6 @@ import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   createProseParagraphWithPropertySource,
   proseParagraphAttrsWithoutPropertySource,
-  getDocumentParagraphPropertySourceContract,
   recreateProseNodeWithParagraphPropertySource,
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
@@ -150,6 +149,13 @@ import {
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
 import { createMarkInterner } from "./markInterner";
+import { getSourceReplayToken } from "@stll/docx-core/ops";
+import { rememberPreservedBlockProjection } from "./preservedBlockSource";
+import {
+  currentSourceProjection,
+  documentProjectionInput,
+  rememberSourceProjection,
+} from "./sourceProjection";
 import { withAlternateContent } from "../alternateContentAttrs";
 import { replayableShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { hasSinkChildren } from "./preservedSinkCarriers";
@@ -457,7 +463,18 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
  * @param options - Conversion options including style definitions
  */
 export function toProseDoc(document: Document, options?: ToProseDocOptions): PMNode {
-  const paragraphs = document.package.document.content;
+  // Immutable editor trees can be shared. Explicit resolvers and warning sinks
+  // still run the conversion; mutable model input is checked exactly on reuse.
+  if (
+    options?.styles === undefined &&
+    options?.theme === undefined &&
+    options?.warn === undefined
+  ) {
+    const cached = currentSourceProjection(document);
+    if (cached) return cached;
+  }
+  const input = documentProjectionInput(document);
+  const paragraphs = input.content;
   const nodes: PMNode[] = [];
 
   // Default to the document's own styles (symmetric with `theme` below) so a
@@ -465,12 +482,13 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   // The save-side `w:rStyle` reconciliation relies on this: without it, an
   // unexpanded run would look like the user stripped the style's formatting
   // (eigenpal/docx-editor#833).
-  const styleResolver = createStyleEngine(options?.styles ?? document.package.styles);
-  const theme = options?.theme ?? document.package.theme ?? null;
+  const styleResolver = createStyleEngine(options?.styles ?? input.styles);
+  const theme = options?.theme ?? input.theme;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
   const conversionContext = {
+    ...(getSourceReplayToken(document) === undefined ? {} : { rememberPreservedBlockProjection }),
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
@@ -504,7 +522,9 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
           out.push(convertBlockCustomXml(block, convertBodyBlocks));
           break;
         case "preservedBlock":
-          out.push(convertPreservedBlock(block));
+          out.push(
+            convertPreservedBlock(block, conversionContext.rememberPreservedBlockProjection),
+          );
           break;
         case "bookmarkStart":
         case "bookmarkEnd":
@@ -533,20 +553,14 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     nodes.push(schema.node("paragraph", {}, []));
   }
 
-  const finalSectionStart =
-    document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
-  const adjustLineHeightInTable = document.package.settings?.adjustLineHeightInTable === true;
-  const doNotUseIndentAsNumberingTabStop =
-    document.package.settings?.doNotUseIndentAsNumberingTabStop === true;
   const pmDoc = stampNumberedRefFieldBaselines(
     schema.node(
       "doc",
       {
-        [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]:
-          getDocumentParagraphPropertySourceContract(document) ?? null,
-        _finalSectionStart: finalSectionStart,
-        _adjustLineHeightInTable: adjustLineHeightInTable,
-        _doNotUseIndentAsNumberingTabStop: doNotUseIndentAsNumberingTabStop,
+        [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: input.contract,
+        _finalSectionStart: input.finalSectionStart,
+        _adjustLineHeightInTable: input.adjustLineHeightInTable,
+        _doNotUseIndentAsNumberingTabStop: input.doNotUseIndentAsNumberingTabStop,
       },
       nodes,
     ),
@@ -555,6 +569,9 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     pmDoc,
     "Document conversion produced an invalid ProseMirror document",
   );
+  if (options?.styles === undefined && options?.theme === undefined) {
+    rememberSourceProjection(document, pmDoc);
+  }
   return pmDoc;
 }
 
@@ -564,11 +581,16 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
  * The node's place in the document is the whole of its position, so it needs
  * no index and nothing has to keep one honest as the blocks around it change.
  */
-function convertPreservedBlock(block: PreservedBlock): PMNode {
-  return schema.node("preservedBlock", {
+function convertPreservedBlock(
+  block: PreservedBlock,
+  rememberSource?: typeof rememberPreservedBlockProjection,
+): PMNode {
+  const node = schema.node("preservedBlock", {
     xml: block.xml,
     readerText: block.readerText ?? null,
   });
+  rememberSource?.(node, block);
+  return node;
 }
 
 /**
@@ -1688,6 +1710,7 @@ function resolveTextFormatting(
  * preserve their layout when opened from DOCX files.
  */
 type TableConversionContext = {
+  rememberPreservedBlockProjection?: typeof rememberPreservedBlockProjection;
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
@@ -2398,7 +2421,7 @@ function convertTableCell({
           nodes.push(convertBlockCustomXml(block, convertCellBlocks));
           break;
         case "preservedBlock":
-          nodes.push(convertPreservedBlock(block));
+          nodes.push(convertPreservedBlock(block, context.rememberPreservedBlockProjection));
           break;
         case "bookmarkStart":
         case "bookmarkEnd":

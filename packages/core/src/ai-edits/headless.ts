@@ -1,3 +1,5 @@
+import { getSourceReplayToken, inheritSourceReplayToken } from "@stll/docx-core/ops";
+import { prepareSourceReplayExport } from "../docx/documentSource";
 import JSZip from "jszip";
 import { rebindDrawingImageRelationship } from "../docx/drawingRelationships";
 import {
@@ -1410,6 +1412,7 @@ export class FolioDocxReviewer {
     options: FolioDocxReviewerOptions = {},
   ): Promise<FolioDocxReviewer> {
     const baseDocument = await parseDocx(buffer, {
+      sourceReplay: "tracked",
       detectVariables: false,
       preloadFonts: false,
       password: options.password,
@@ -2776,8 +2779,10 @@ export class FolioDocxReviewer {
 
   /** The current document model with edits merged back in. */
   toDocument(): Document {
-    const document = this.documentFromStateSnapshot(this.captureReviewerState());
+    const source = this.documentFromStateSnapshot(this.captureReviewerState());
+    const document = prepareSourceReplayExport(source);
     applyReplyThreadMarkers(document);
+    inheritSourceReplayToken(document, source);
     return document;
   }
 
@@ -2811,6 +2816,7 @@ export class FolioDocxReviewer {
             ...this.baseDocument,
             package: { ...this.baseDocument.package, styles: snapshot.importedStyles },
           };
+    inheritSourceReplayToken(sourceDocument, this.baseDocument);
     const document = updateDocumentContent(sourceDocument, snapshot.mainState.doc);
     if (snapshot.finalSectionPropertiesOverride !== undefined) {
       document.package.document.finalSectionProperties = snapshot.finalSectionPropertiesOverride;
@@ -2978,8 +2984,13 @@ export class FolioDocxReviewer {
       return { type: "repackRefused", reason };
     }
     const repackDocument = { ...save.document, originalBuffer: this.originalBuffer };
+    inheritSourceReplayToken(repackDocument, save.document);
+    const sourceReplay = getSourceReplayToken(repackDocument);
     const repack = () =>
-      repackDocx(repackDocument, { changedNoteParaIds: save.changedNoteParaIds });
+      repackDocx(repackDocument, {
+        changedNoteParaIds: save.changedNoteParaIds,
+        ...(sourceReplay === undefined ? {} : { sourceReplay }),
+      });
     const repackReferences = () =>
       save.sectionReferenceRemovals.length > 0
         ? withSectionReferenceResolution({

@@ -7,7 +7,8 @@
  * changes) share another, and content-control ids a third.
  *
  * A census walks each story's own content exactly once. `DocumentBody.sections`
- * is a derived view of the body's blocks, not a story, so it is left out: the
+ * is a derived view of the body's blocks, and `source` is replay metadata;
+ * neither is a story, so both are left out: the
  * same paragraph must not count twice. The walk is otherwise structural, so a
  * story the model gains is covered without a list to keep in step.
  */
@@ -47,7 +48,7 @@ const walk = (value: unknown, visit: Visit, heldBy?: string): void => {
 /** The package's stories, each once: the body without its derived section view. */
 const storiesOf = (pkg: DocxPackage): unknown => ({
   ...pkg,
-  document: { ...pkg.document, sections: undefined },
+  document: { ...pkg.document, sections: undefined, source: undefined },
 });
 
 const fieldOf = (entries: readonly [string, unknown][], name: string): unknown =>

@@ -19,7 +19,7 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
@@ -148,6 +148,7 @@ const buildPackage = async (spec: PackageSpec): Promise<ArrayBuffer> => {
  * what the serializer writes when it has only the model to write it from.
  */
 const CAPTURE_SLOTS = new Set([
+  "source",
   "sourceXml",
   "gridSourceXml",
   "verbatimXml",
@@ -269,7 +270,7 @@ describe("relationship references under a forced serialization (property)", () =
   test(
     "resolve after the round trip to exactly what they resolved to before",
     async () => {
-      await fc.assert(
+      await assertProperty(
         fc.asyncProperty(packageArbitrary, async (spec) => {
           const source = await parseDocx(await buildPackage(spec), { preloadFonts: false });
           const saved = await repackDocx(withoutCaptures(source), { updateModifiedDate: false });
@@ -302,7 +303,7 @@ describe("relationship references under a forced serialization (property)", () =
           expectReported("picture", "w:drawing");
           expectReported("hyperlink", "w:hyperlink");
         }),
-        propertyConfig({ numRuns: 40 }),
+        { numRuns: 40 },
       );
     },
     propertyTestTimeout(60_000),

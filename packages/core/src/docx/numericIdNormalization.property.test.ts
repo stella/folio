@@ -15,6 +15,7 @@ import type { Document } from "../types/document";
 import { createDocx, createEmptyDocx, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 import { parseXmlWithFastXmlParser, type XmlElement } from "./xmlParser";
+import { getXmlSourceRange } from "./streamingXmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -61,35 +62,51 @@ test("in-range packages reuse their source map without a reservation or rewrite 
   );
 });
 
-test("the retained repair tree equals an independent parse of the normalized XML", () => {
-  fc.assert(
-    fc.property(
-      invalidId,
-      fc.constantFrom(...WORD_NAMESPACES),
-      fc.boolean(),
-      (id, namespace, encoded) => {
-        const spelling = encoded
-          ? [...id].map((character) => `&#${character.charCodeAt(0)};`).join("")
-          : id;
-        const xml = `<x:document xmlns:x="${namespace}"><x:body><x:p><x:bookmarkStart x:id="1"/><x:commentRangeStart x:id='${spelling}'/><x:r><x:rPr><x:color x:val="123456"/></x:rPr><x:t>A&amp;B</x:t></x:r><x:commentRangeEnd x:id="${id}"/></x:p></x:body></x:document>`;
-        let tree: XmlElement | undefined;
-        const parts = new Map([["word/document.xml", xml]]);
-        const normalized = normalizeImportedNumericIds(parts, {
-          onParsedDocument: (parsed) => {
-            tree = parsed;
-          },
-        });
-        const rewritten = normalized.get("word/document.xml");
-        expect(rewritten).toBeDefined();
-        expect(tree).toBeDefined();
-        if (rewritten === undefined) return;
-        expect(tree).toEqual(parseXmlWithFastXmlParser(rewritten));
-        expect(parts.get("word/document.xml")).toBe(xml);
-      },
-    ),
-    propertyConfig({ numRuns: 100 }),
-  );
-});
+test.each(["tracked", "untracked"] as const)(
+  "the %s retained repair tree equals an independent parse of the normalized XML",
+  (sourceReplay) => {
+    fc.assert(
+      fc.property(
+        invalidId,
+        fc.constantFrom(...WORD_NAMESPACES),
+        fc.boolean(),
+        (id, namespace, encoded) => {
+          const spelling = encoded
+            ? [...id].map((character) => `&#${character.charCodeAt(0)};`).join("")
+            : id;
+          const xml = `<x:document xmlns:x="${namespace}"><x:body><x:p><x:bookmarkStart x:id="1"/><x:commentRangeStart x:id='${spelling}'/><x:r><x:rPr><x:color x:val="123456"/></x:rPr><x:t>A&amp;B</x:t></x:r><x:commentRangeEnd x:id="${id}"/></x:p></x:body></x:document>`;
+          let tree: XmlElement | undefined;
+          const parts = new Map([["word/document.xml", xml]]);
+          const normalized = normalizeImportedNumericIds(parts, {
+            sourceReplay,
+            onParsedDocument: (parsed) => {
+              tree = parsed;
+            },
+          });
+          const rewritten = normalized.get("word/document.xml");
+          expect(rewritten).toBeDefined();
+          expect(tree).toBeDefined();
+          if (rewritten === undefined) return;
+          expect(tree).toEqual(parseXmlWithFastXmlParser(rewritten));
+          const paragraph = tree?.elements?.at(0)?.elements?.at(0)?.elements?.at(0);
+          const range = paragraph === undefined ? undefined : getXmlSourceRange(paragraph);
+          const expectedParagraph = rewritten.match(/<x:p>[\s\S]*?<\/x:p>/u)?.[0];
+          if (sourceReplay === "untracked") {
+            expect(range).toBeUndefined();
+            expect(parts.get("word/document.xml")).toBe(xml);
+            return;
+          }
+          expect(range).toBeDefined();
+          expect(expectedParagraph).toBeDefined();
+          if (range === undefined || expectedParagraph === undefined) return;
+          expect(rewritten.slice(range.start, range.end)).toBe(expectedParagraph);
+          expect(parts.get("word/document.xml")).toBe(xml);
+        },
+      ),
+      propertyConfig({ numRuns: 100 }),
+    );
+  },
+);
 
 test("imported numeric identities stay paired, avoid occupied ids, and reach a fixed point across spaces", () => {
   fc.assert(

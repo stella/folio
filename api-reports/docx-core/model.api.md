@@ -242,8 +242,9 @@ export type DocumentBackgroundDrawing = {
     rawXml: string;
 };
 
-// @public
+// @public (undocumented)
 export type DocumentBody = {
+    source?: DocumentBodySource;
     background?: DocumentBackground;
     content: BlockContent[];
     sections?: Section[];

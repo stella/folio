@@ -1,3 +1,4 @@
+import { getSourceReplayToken, inheritSourceReplayToken } from "@stll/docx-core/ops";
 import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 /**
  * ProseMirror to Document Conversion
@@ -69,6 +70,10 @@ import {
   visitTableCellParagraphPropertySourceBindings,
 } from "../../docx/paragraphPropertySource";
 import { canonicalJson } from "../../utils/canonicalJson";
+import { reuseProjectedBlocks } from "./reuseProjectedBlocks";
+import { currentSourceProjection } from "./sourceProjection";
+import { inheritPreservedBlockProjection } from "./preservedBlockSource";
+import type { PreservedBlock } from "../../types/document";
 import { EDITED_PREVIEW_FINGERPRINT, imageRawXmlFingerprint } from "../../docx/imageRawXml";
 import { refingerprintShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { unchangedAlternateContentXml } from "../alternateContentAttrs";
@@ -99,6 +104,7 @@ import type {
   BookmarkStart,
   Document,
   DocumentBody,
+  StyleDefinitions,
   Paragraph,
   ParagraphPropertyChange,
   PreservedInline,
@@ -624,32 +630,35 @@ const restoreLinkedParagraphPropertySources = (
  * Whether a record the editor did not change may come back from the base
  * document by reference.
  *
- * `"none"` rebuilds every record out of ProseMirror, which is what folio does
- * today. `"matched"` is the merge against a matched base record; it is declared
- * here because the measurement that tells the two apart has to exist before the
- * merge does, and it panics until it is implemented. An accepted-but-inert
- * value would let a caller believe it had asked for a merge and get a rebuild.
+ * `"none"` measures the conversion by rebuilding every record. `"matched"`
+ * retains the authoritative paragraph when its source identity and complete
+ * editor projection are unchanged.
  */
 export type ProjectionReuse = "none" | "matched";
 
 /** How the conversion treats records the editor did not change. */
 export type FromProseDocOptions = {
-  /** Defaults to `"none"`, the only value implemented. */
+  /** Defaults to `"matched"`; unmatched and edited records are rebuilt. */
   reuse?: ProjectionReuse;
 };
+
+// ProseMirror nodes are immutable. Reuse a successful provenance check only
+// on a tracked immutable source projection; edited trees and replaced roots
+// are checked in full. Untracked models never take the cached path.
+const validatedSourceProjections = new WeakMap<Document, PMNode>();
 
 /** Convert a ProseMirror document to the document model. */
 export function fromProseDoc(
   pmDoc: PMNode,
   baseDocument?: Document,
-  { reuse = "none" }: FromProseDocOptions = {},
+  { reuse = "matched" }: FromProseDocOptions = {},
 ): Document {
   switch (reuse) {
     case "none": {
       break;
     }
     case "matched": {
-      panic('fromProseDoc: reuse "matched" is not implemented');
+      break;
     }
     default: {
       const unhandled: never = reuse;
@@ -677,16 +686,50 @@ export function fromProseDoc(
       "The ProseMirror document does not match its paragraph-property source document.",
     );
   }
+  const sourceProjection =
+    reuse === "matched" && baseContract && proseContract && baseDocument
+      ? currentSourceProjection(baseDocument)
+      : undefined;
+  const previouslyValidated =
+    baseDocument !== undefined &&
+    sourceProjection === pmDoc &&
+    validatedSourceProjections.get(baseDocument) === pmDoc &&
+    preservesUneditedSource(pmDoc, baseDocument.package.styles);
   const tokenSources =
-    baseContract && proseContract && baseDocument
+    baseContract && proseContract && baseDocument && !previouslyValidated
       ? validateParagraphPropertySourceTokens(pmDoc, baseDocument, baseContract)
       : null;
-
-  const blocks = extractBlocks(
-    pmDoc,
-    "resolve",
-    baseDocument?.package.styles ? createStyleEngine(baseDocument.package.styles) : null,
-  );
+  if (baseDocument && tokenSources && sourceProjection === pmDoc) {
+    validatedSourceProjections.set(baseDocument, pmDoc);
+  }
+  // An unchanged editor tree is a copy-on-write view of its source. Check the
+  // tracked immutable provenance before retaining it; normalization work keeps
+  // its existing extraction path. This avoids rebuilding every untouched run.
+  if (
+    reuse === "matched" &&
+    (tokenSources || previouslyValidated) &&
+    baseDocument &&
+    sourceProjection === pmDoc &&
+    preservesUneditedSource(pmDoc, baseDocument.package.styles)
+  ) {
+    const retained: Document = {
+      ...baseDocument,
+      package: {
+        ...baseDocument.package,
+        document: {
+          ...baseDocument.package.document,
+          content: baseDocument.package.document.content.slice(),
+        },
+      },
+    };
+    copyDocumentParagraphPropertySourceContract(retained, baseDocument);
+    inheritSourceReplayToken(retained, baseDocument);
+    return retained;
+  }
+  const styleResolver = baseDocument?.package.styles
+    ? createStyleEngine(baseDocument.package.styles)
+    : null;
+  let blocks = extractBlocks(pmDoc, "resolve", styleResolver);
   joinCommentRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
@@ -701,8 +744,21 @@ export function fromProseDoc(
     );
   }
 
+  if (reuse === "matched" && baseDocument && getSourceReplayToken(baseDocument)) {
+    blocks = reuseProjectedBlocks({
+      blocks,
+      projected: materializeNumberedRefValues(stripSuggestedProvenance(pmDoc, styleResolver)),
+      base: baseDocument,
+      sourceProjection,
+      stripSuggested: (projection) => stripSuggestedProvenance(projection, styleResolver),
+    });
+  }
+
   // Preserve section properties (margins, headers, footers) from base document
   const documentBody: DocumentBody = { content: blocks };
+  if (baseDocument?.package.document.source) {
+    documentBody.source = baseDocument.package.document.source;
+  }
   if (baseDocument?.package.document.background) {
     documentBody.background = baseDocument.package.document.background;
   }
@@ -731,6 +787,7 @@ export function fromProseDoc(
       },
     };
     copyDocumentParagraphPropertySourceContract(updatedDocument, baseDocument);
+    if (reuse === "matched") inheritSourceReplayToken(updatedDocument, baseDocument);
     return updatedDocument;
   }
 
@@ -1071,15 +1128,42 @@ function materializeNumberedRefValues(doc: PMNode): PMNode {
   return visit(doc);
 }
 
+const uneditedSourceEligibility = new WeakMap<PMNode, boolean>();
+
+const preservesUneditedSource = (
+  projection: PMNode,
+  styles: StyleDefinitions | undefined,
+): boolean => {
+  const cached = uneditedSourceEligibility.get(projection);
+  if (cached !== undefined) return cached;
+  const styleResolver = styles ? createStyleEngine(styles) : null;
+  const preserved =
+    stripSuggestedProvenance(projection, styleResolver) === projection &&
+    resolveNumberedRefFields(projection).size === 0;
+  uneditedSourceEligibility.set(projection, preserved);
+  return preserved;
+};
+
+const convertPMPreservedBlock = (node: PMNode): PreservedBlock => {
+  const { xml, readerText } = expectPreservedBlockAttrs(node);
+  const block = {
+    type: "preservedBlock",
+    xml,
+    ...(readerText === undefined ? {} : { readerText }),
+  } satisfies PreservedBlock;
+  inheritPreservedBlockProjection(block, node);
+  return block;
+};
+
 function extractBlocks(
   inputDoc: PMNode,
   refResolution: RefResolutionMode = "resolve",
   styleResolver: StyleEngine | null = null,
 ): BlockContent[] {
   // CLASS GUARD: every serialization path (export, copy, header/footer
-  // conversion, previews) funnels through `extractBlocks`. Stripping suggested
-  // provenance here — with no opt-out — makes it structurally impossible for an
-  // AI-proposed edit to reach OOXML output before a human accepts it.
+  // conversion, previews) uses this stripping boundary. Unedited source reuse
+  // also requires this function to leave the projection unchanged. Neither path
+  // may retain an AI-proposed edit before a human accepts it.
   const strippedDoc = stripSuggestedProvenance(inputDoc, styleResolver);
   const pmDoc =
     refResolution === "resolve" ? materializeNumberedRefValues(strippedDoc) : strippedDoc;
@@ -1148,12 +1232,7 @@ function extractBlocks(
       blocks.push(convertPMBlockCustomXml(node, styleResolver));
       previousStandaloneTextBox = null;
     } else if (node.type.name === "preservedBlock") {
-      const { xml, readerText } = expectPreservedBlockAttrs(node);
-      blocks.push({
-        type: "preservedBlock",
-        xml,
-        ...(readerText === undefined ? {} : { readerText }),
-      });
+      blocks.push(convertPMPreservedBlock(node));
       previousStandaloneTextBox = null;
     } else if (node.type.name === "blockBookmarkBoundary") {
       blocks.push(blockBookmarkMarker(node));
@@ -5393,7 +5472,7 @@ function convertPMTableCell(
         styleResolver,
       });
     } else if (contentNode.type.name === "preservedBlock") {
-      content.push({ type: "preservedBlock", xml: expectPreservedBlockAttrs(contentNode).xml });
+      content.push(convertPMPreservedBlock(contentNode));
       previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "blockBookmarkBoundary") {
       content.push(blockBookmarkMarker(contentNode));

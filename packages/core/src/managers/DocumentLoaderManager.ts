@@ -128,6 +128,7 @@ export class DocumentLoaderManager {
           input = prepared.value;
         }
         doc = await parseDocx(input, {
+          sourceReplay: "tracked",
           detectVariables: false,
           preloadFonts: false,
           password: options.password,

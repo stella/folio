@@ -39,8 +39,13 @@ test("selective saves share imported numeric identities across original and cano
       const source = await zip.generateAsync({ type: "arraybuffer" });
       const document = await parseDocx(source, { preloadFonts: false });
       const canonicalZip = await JSZip.loadAsync(document.originalBuffer);
+      const canonicalDocumentXml = await canonicalZip.file("word/document.xml")?.async("text");
       const canonicalOpaqueXml = await canonicalZip.file("word/opaque.xml")?.async("text");
       const canonicalNoteXml = await canonicalZip.file("word/footnotes.xml")?.async("text");
+      const canonicalUntouchedParagraph = canonicalDocumentXml?.match(
+        /<w:p w14:paraId="10000002">[\s\S]*?<\/w:p>/u,
+      )?.[0];
+      expect(canonicalUntouchedParagraph).toBeDefined();
       expect(canonicalOpaqueXml).toBeDefined();
       expect(canonicalNoteXml).toBeDefined();
       expect(canonicalOpaqueXml).not.toContain(`w:id="${id}"`);
@@ -64,6 +69,10 @@ test("selective saves share imported numeric identities across original and cano
           if (saved === null) panic("Selective save declined a normalized synthetic source");
           // oxlint-disable-next-line no-await-in-loop -- inspect the result of this baseline's save
           const savedZip = await JSZip.loadAsync(saved);
+          // oxlint-disable-next-line no-await-in-loop -- confirm source replay keeps the later untouched paragraph intact
+          expect(await savedZip.file("word/document.xml")?.async("text")).toContain(
+            canonicalUntouchedParagraph,
+          );
           for (const [path, file] of Object.entries(savedZip.files)) {
             if (file.dir || !path.startsWith("word/") || !path.endsWith(".xml")) continue;
             // oxlint-disable-next-line no-await-in-loop -- the emitted package oracle checks each OOXML part
@@ -76,6 +85,8 @@ test("selective saves share imported numeric identities across original and cano
           expect(await savedZip.file("word/footnotes.xml")?.async("text")).toBe(canonicalNoteXml);
           // oxlint-disable-next-line no-await-in-loop -- compare each saved model against its edit mode
           const reopened = await parseDocx(saved, { preloadFonts: false });
+          // This direct-mutation path uses model serialization. Namespace
+          // metadata belongs to the generated root, not the edited paragraph.
           expect(reopened.package.document.content).toEqual(document.package.document.content);
           expect(reopened.package.footnotes).toEqual(document.package.footnotes);
         }

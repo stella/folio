@@ -207,6 +207,7 @@ describe("all-story operation laws", () => {
         fc.constantFrom("default", "first", "even"),
         fc.constantFrom("footnote", "endnote"),
         fc.integer({ min: 1, max: 100 }),
+        fc.option(fc.record({ xml: fc.string() }), { nil: undefined }),
         fc.option(
           fc.record({
             defaultTabStop: fc.integer({ min: 1, max: 2880 }),
@@ -215,10 +216,13 @@ describe("all-story operation laws", () => {
           }),
           { nil: undefined },
         ),
-        (kind, referenceType, noteKind, id, settings) => {
+        (kind, referenceType, noteKind, id, source, settings) => {
           const document: Document = {
             package: {
-              document: { content: [paragraph("00000001", "body")] },
+              document: {
+                content: [paragraph("00000001", "body")],
+                ...(source === undefined ? {} : { source }),
+              },
               ...(settings === undefined ? {} : { settings }),
             },
           };
@@ -460,6 +464,45 @@ describe("all-story operation laws", () => {
     expect(contractViolation(normalizeForOps(document))).toBeUndefined();
     delete first.paraId;
     expect(contractViolation(document)?.reason).toBe("missingBlockId");
+  });
+
+  test("body source deltas preserve absence, replacement and staleness through JSON inverses", () => {
+    fc.assert(
+      fc.property(
+        fc.option(fc.record({ xml: fc.string() }), { nil: undefined }),
+        fc.option(fc.record({ xml: fc.string() }), { nil: undefined }),
+        (source, replacement) => {
+          const seed = seedDocument("body");
+          const document = {
+            ...seed,
+            package: {
+              ...seed.package,
+              document: {
+                ...seed.package.document,
+                ...(source === undefined ? {} : { source }),
+              },
+            },
+          } satisfies Document;
+          const changed = expectExact(document, {
+            type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+            expected: { body: { source: source ?? null } },
+            parts: { body: { source: replacement ?? null } },
+          });
+          expect(changed.document.package.document.source).toEqual(replacement);
+          expect(Object.hasOwn(changed.document.package.document, "source")).toBe(
+            replacement !== undefined,
+          );
+          const stale = applyDocumentOp(changed.document, {
+            type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+            expected: { body: { source: { xml: `${replacement?.xml ?? ""}changed` } } },
+            parts: { body: { source: null } },
+          });
+          expect(stale.isErr()).toBe(true);
+          expect(changed.document.package.document.source).toEqual(replacement);
+        },
+      ),
+      propertyConfig({ numRuns: 50 }),
+    );
   });
 
   test("lifecycle inverse refuses changed section or story contents without losing intervening edits", () => {

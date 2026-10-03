@@ -229,6 +229,14 @@ export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragrap
 };
 
 export const copyParagraphPropertySource = (target: Paragraph, source: Paragraph): void => {
+  const previousToken = paragraphPropertySourceTokens.get(target);
+  if (
+    Object.isFrozen(target) &&
+    previousToken !== undefined &&
+    previousToken !== paragraphPropertySourceTokens.get(source)
+  ) {
+    panic("Cannot replace the provenance of an immutable source paragraph");
+  }
   copyParagraphPropertyCapture(target, source);
   const transferId = paragraphPropertySourceTransferIds.get(source);
   if (transferId) {
@@ -360,6 +368,11 @@ const paragraphsIn = (document: Document): Paragraph[] => {
     },
     (paragraph) => paragraphs.push(paragraph),
   );
+  for (const comment of document.package.document.comments ?? []) {
+    visitDocxParagraphs({ documentBody: { content: comment.content } }, (paragraph) =>
+      paragraphs.push(paragraph),
+    );
+  }
   return paragraphs;
 };
 

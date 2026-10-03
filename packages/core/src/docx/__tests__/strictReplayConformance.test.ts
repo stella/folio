@@ -1,7 +1,7 @@
 /**
  * A save never replays Strict markup under the Transitional root it rebuilds.
  *
- * folio writes one conformance class, so a rebuilt part must carry neither a
+ * A rebuilt Transitional part must carry neither a
  * Strict namespace nor a value spelled the way Strict spells it — a length with
  * its unit attached, or a percentage with its sign — in a slot whose
  * Transitional type is a number. Defects already present in a fixture's own
@@ -138,7 +138,10 @@ describe("Strict content replayed into a Transitional part", () => {
   );
 
   test("a Strict table, drawing and text box are re-spelled Transitional", async () => {
-    const saved = serializeDocument(await parseDocx(await strictPackage()));
+    const document = await parseDocx(await strictPackage());
+    // Exercise rebuilding explicitly; untouched source parts retain their profile.
+    document.package.document.source = undefined;
+    const saved = serializeDocument(document);
 
     expect(saved).not.toContain(STRICT_URI_PREFIX);
     // 155.85pt is 3117 twips; 311.70pt is 6234.

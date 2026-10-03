@@ -24,6 +24,7 @@ import type {
   MediaFile,
 } from "../types/document";
 import { parseBlockContent } from "./blockContentParser";
+import { captureDocumentSource } from "./documentSource";
 import type { NumberingMap } from "./numberingParser";
 import type { ParseContext } from "./parseContext";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
@@ -328,6 +329,7 @@ export function parseDocumentBody(
 ): DocumentBody {
   if (!xml) return { content: [] };
   return parseDocumentBodyTree({
+    xml,
     doc: parseXml(xml),
     styles,
     theme,
@@ -340,6 +342,8 @@ export function parseDocumentBody(
 }
 
 type ParsedDocumentBodyOptions = {
+  sourceReplay?: "tracked" | "untracked";
+  xml: string;
   doc: XmlElement;
   styles: StyleMap | null;
   theme: Theme | null;
@@ -352,6 +356,8 @@ type ParsedDocumentBodyOptions = {
 
 /** Consume the same tree the import identity pass repaired. */
 export const parseDocumentBodyTree = ({
+  sourceReplay = "untracked",
+  xml,
   doc,
   styles,
   theme,
@@ -386,7 +392,16 @@ export const parseDocumentBodyTree = ({
   // Parse all block content (paragraphs, tables). The root `xmlns:*`
   // declarations travel with it so a captured VML `w:pict` replay stays
   // self-contained under non-canonical namespace prefixes.
+  const sourceGroups =
+    sourceReplay === "tracked" ? new Map<XmlElement, BlockContent[]>() : undefined;
   result.content = parseBlockContent(bodyEl, styles, theme, numbering, rels, media, {
+    ...(sourceGroups
+      ? {
+          sourceParent: bodyEl,
+          onSourceBlocks: (element: XmlElement, blocks: BlockContent[]) =>
+            sourceGroups.set(element, blocks),
+        }
+      : {}),
     rootXmlns: collectXmlnsDeclarations(documentEl),
     context,
     previews,
@@ -398,6 +413,7 @@ export const parseDocumentBodyTree = ({
     result.finalSectionProperties = parseSectionProperties(finalSectPr, context);
   }
 
+  if (sourceGroups) captureDocumentSource(result, { xml, root: doc, groups: sourceGroups });
   canonicalizeLeadingBodySectionProperties(bodyEl, result);
 
   // Build sections from content

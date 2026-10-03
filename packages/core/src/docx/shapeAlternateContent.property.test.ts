@@ -25,7 +25,7 @@ import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
 import type { Document, Paragraph, ShapeContent } from "../types/document";
 import { parseDocx } from "./parser";
-import { createEmptyDocx, repackDocx } from "./rezip";
+import { createEmptyDocx, getSourceReplayToken, repackDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -100,10 +100,13 @@ const documentXml = (runContent: string): string =>
   `<w:p w14:paraId="${HOST_PARA_ID}"><w:r><w:t>Host</w:t></w:r><w:r>${runContent}</w:r></w:p>` +
   '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>';
 
-const open = async (xml: string): Promise<Document> => {
+const open = async (xml: string, sourceReplay?: "tracked"): Promise<Document> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   zip.file("word/document.xml", xml);
-  return parseDocx(await zip.generateAsync({ type: "arraybuffer" }), { preloadFonts: false });
+  return parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+    preloadFonts: false,
+    sourceReplay,
+  });
 };
 
 const savedDocumentPart = async (document: Document): Promise<string> => {
@@ -273,7 +276,25 @@ describe("a shape read from mc:AlternateContent", () => {
       undefined,
       undefined,
     ]);
+    // Untracked saves rebuild each shape once; source metadata alone does
+    // not authorize replay of a branch that represents several shapes.
     const saved = await savedDocumentPart(parsed);
+    expect(saved).not.toContain("mc:AlternateContent");
     expect(textOf(saved)).toBe("Hostfirstsecond");
+
+    // Explicit tracking preserves the entire owning block once, including
+    // the Fallback, rather than replaying the branch for each shape.
+    const tracked = await open(documentXml(choice), "tracked");
+    const unchanged = throughEditor(tracked);
+    const trackedSaved = await repackDocx(unchanged, {
+      updateModifiedDate: false,
+      sourceReplay: getSourceReplayToken(unchanged),
+    });
+    const trackedXml = await (
+      await JSZip.loadAsync(trackedSaved)
+    )
+      .file("word/document.xml")
+      ?.async("text");
+    expect(trackedXml).toBe(documentXml(choice));
   });
 });

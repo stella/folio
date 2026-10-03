@@ -37,6 +37,7 @@ import {
 import type { EditorView } from "prosemirror-view";
 import { closeHistory, undo as historyUndo } from "prosemirror-history";
 import { useTranslations } from "use-intl";
+import { getSourceReplayToken, inheritSourceReplayToken } from "@stll/folio-core/docx/rezip";
 
 import {
   applyFolioDocumentOperations,
@@ -1485,7 +1486,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     let doc = cloneDocumentWithParagraphPropertySources(history.state);
     const pmDoc = pagedEditorRef.current?.getDocument();
     if (pmDoc) {
-      doc.package.document.content = pmDoc.package.document.content;
+      // The live model owns the main story and its section/background references.
+      doc.package.document = { ...pmDoc.package.document };
       if (pmDoc.package.numbering) {
         doc.package.numbering = pmDoc.package.numbering;
       } else {
@@ -1552,6 +1554,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       commentsRef.current,
       referencedCommentIds,
     );
+    if (pmDoc) inheritSourceReplayToken(doc, pmDoc);
     return doc;
   }, [history.state, commentsRef, experimentalSession]);
 
@@ -3035,12 +3038,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         let buffer: ArrayBuffer | null = useSelectiveForSave ? selectiveBuffer : null;
         let fullBuffer: ArrayBuffer | null = null;
         const repackSourceDoc = baselineBuffer ? { ...doc, originalBuffer: baselineBuffer } : doc;
+        inheritSourceReplayToken(repackSourceDoc, doc);
+        const sourceReplay = getSourceReplayToken(repackSourceDoc);
         // A section the editor removed on purpose (its ending paragraph
         // deleted, or that deletion accepted) is one the repack must be told
         // about, or it refuses the smaller package.
         const repackFull = async (): Promise<ArrayBuffer> => {
           const repackDocx = await loadRepackDocx();
-          const repack = () => repackDocx(repackSourceDoc);
+          const repack = () =>
+            repackDocx(repackSourceDoc, sourceReplay === undefined ? {} : { sourceReplay });
           if (experimentalSession === "canonical") {
             return repackWithCanonicalStoryRemovals({ document: repackSourceDoc, repack });
           }

@@ -14,13 +14,16 @@
  * round-trip comparison alone would not: that every generated attribute comes
  * back, and that the part folio wrote gains no schema violation on the marker.
  *
- * The saved paragraph is edited before the save so the verbatim capture cannot
- * replay it. Replay is the path that hid this defect from every other test.
+ * Model and unmatched editor saves edit the marker's paragraph to exercise
+ * serialization. Tracked editor saves edit its neighbor to exercise retained
+ * source identity alongside a real editor transaction.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { EditorState } from "prosemirror-state";
+import { getSourceReplayToken } from "../packages/docx-core/src/ops/documentOps";
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
@@ -28,7 +31,7 @@ import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseD
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import type { Paragraph } from "@stll/folio-core/types/document";
 
-import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 import {
@@ -169,6 +172,7 @@ const buildDocx = async (subject: MarkerCase): Promise<ArrayBuffer> => {
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body>` +
       `<w:p><w:r><w:t>before</w:t></w:r>${markerGroup(subject)}<w:r><w:t>after</w:t></w:r></w:p>` +
+      `<w:p><w:r><w:t>neighbor</w:t></w:r></w:p>` +
       `<w:sectPr/></w:body></w:document>`,
   );
   if (commented) {
@@ -217,11 +221,8 @@ const savedAttributes = (xml: string, marker: MarkerName): Record<string, string
 };
 
 /**
- * Edit the paragraph so nothing about it can be replayed from captured bytes.
- *
- * folio replays a paragraph's captured markup whenever the model still agrees
- * with it, and replay preserves every attribute for free. The defect only
- * exists on the serializer path, so the property has to take it.
+ * Model saves use mutable untracked documents. Editing the marker's paragraph
+ * exercises its model serializer directly, without retained source replay.
  */
 const editFirstParagraph = (paragraph: Paragraph): void => {
   paragraph.content.push({ type: "run", content: [{ type: "text", text: "edited" }] });
@@ -229,17 +230,58 @@ const editFirstParagraph = (paragraph: Paragraph): void => {
 
 type SaveResult = { documentXml: string; violations: SchemaViolation[] };
 
-type SaveOptions = { subject: MarkerCase; viaEditor: boolean };
+type SaveOptions = {
+  subject: MarkerCase;
+  path: "model" | "editor-matched" | "editor-extracted";
+};
 
-const saveEdited = async ({ subject, viaEditor }: SaveOptions): Promise<SaveResult> => {
-  const parsed = await parseDocx(await buildDocx(subject), { preloadFonts: false });
-  const document = viaEditor ? fromProseDoc(toProseDoc(parsed), parsed) : parsed;
-  const first = document.package.document.content.at(0);
+const saveEdited = async ({ subject, path }: SaveOptions): Promise<SaveResult> => {
+  const parsed = await parseDocx(await buildDocx(subject), {
+    preloadFonts: false,
+    sourceReplay: path === "editor-matched" ? "tracked" : "untracked",
+  });
+  const first = parsed.package.document.content.at(0);
   if (first?.type !== "paragraph") {
     throw new Error("the fixture did not parse as a paragraph");
   }
-  editFirstParagraph(first);
-  const saved = await repackDocx(document, { updateModifiedDate: false });
+  let document = parsed;
+  switch (path) {
+    case "model":
+      editFirstParagraph(first);
+      break;
+    case "editor-matched":
+    case "editor-extracted": {
+      const state = EditorState.create({ doc: toProseDoc(parsed) });
+      const firstSize = state.doc.child(0).nodeSize;
+      const position = path === "editor-matched" ? firstSize + 1 : firstSize - 1;
+      const edited = state.tr.insertText("edited", position).doc;
+      document = fromProseDoc(edited, parsed, {
+        reuse: path === "editor-matched" ? "matched" : "none",
+      });
+      const converted = document.package.document.content.at(0);
+      if (path === "editor-matched") {
+        expect(converted).toBe(first);
+        expect(document.package.document.content.at(1)).not.toBe(
+          parsed.package.document.content.at(1),
+        );
+        expect(getSourceReplayToken(document)).toBe(getSourceReplayToken(parsed));
+        expect(getSourceReplayToken(document)).toBeDefined();
+      } else {
+        expect(converted).not.toBe(first);
+        expect(getSourceReplayToken(document)).toBeUndefined();
+      }
+      break;
+    }
+    default: {
+      const unreachable: never = path;
+      return unreachable;
+    }
+  }
+  const sourceReplay = getSourceReplayToken(document);
+  const saved = await repackDocx(document, {
+    updateModifiedDate: false,
+    ...(sourceReplay === undefined ? {} : { sourceReplay }),
+  });
   const zip = await JSZip.loadAsync(saved);
   const documentXml = (await zip.file("word/document.xml")?.async("text")) ?? "";
   return {
@@ -277,9 +319,9 @@ const EDITOR_PROJECTION = {
 describe("range markers keep every attribute a real save re-serializes", () => {
   for (const marker of MARKER_NAMES) {
     test(`w:${marker}`, async () => {
-      await fc.assert(
+      await assertProperty(
         fc.asyncProperty(markerCase(marker), async (subject) => {
-          const { documentXml, violations } = await saveEdited({ subject, viaEditor: false });
+          const { documentXml, violations } = await saveEdited({ subject, path: "model" });
 
           const written = savedAttributes(documentXml, marker);
           expect(written).toBeDefined();
@@ -290,7 +332,7 @@ describe("range markers keep every attribute a real save re-serializes", () => {
           expect(violations).toEqual([]);
         }),
         // Each run writes and re-reads a package, so the budget is per-marker.
-        propertyConfig({ numRuns: 20 }),
+        { numRuns: 20 },
       );
     });
   }
@@ -300,9 +342,15 @@ describe("what the editor projection carries, it carries whole", () => {
   for (const marker of MARKER_NAMES) {
     test(`w:${marker}`, async () => {
       const projection = EDITOR_PROJECTION[marker];
-      await fc.assert(
+      await assertProperty(
         fc.asyncProperty(markerCase(marker), async (subject) => {
-          const { documentXml, violations } = await saveEdited({ subject, viaEditor: true });
+          const retained = await saveEdited({ subject, path: "editor-matched" });
+          expect(savedAttributes(retained.documentXml, marker)).toEqual(subject.attributes);
+          expect(retained.violations).toEqual([]);
+          const { documentXml, violations } = await saveEdited({
+            subject,
+            path: "editor-extracted",
+          });
           const written = savedAttributes(documentXml, marker);
           expect(violations).toEqual([]);
           switch (projection) {
@@ -318,7 +366,7 @@ describe("what the editor projection carries, it carries whole", () => {
             }
           }
         }),
-        propertyConfig({ numRuns: 20 }),
+        { numRuns: 20 },
       );
     });
   }

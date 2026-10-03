@@ -97,8 +97,18 @@ const packageFor = async (xml: string): Promise<ArrayBuffer> => {
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
   (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("text")) ?? "";
 
+// These writer laws must rebuild model records, rather than replay their XML.
 const save = (document: Document): Promise<ArrayBuffer> =>
-  repackDocx(document, { updateModifiedDate: false });
+  repackDocx(
+    {
+      ...document,
+      package: {
+        ...document.package,
+        document: { ...document.package.document, source: undefined },
+      },
+    },
+    { updateModifiedDate: false },
+  );
 
 const open = (xml: string): Promise<Document> =>
   packageFor(xml).then((buffer) => parseDocx(buffer, { preloadFonts: false }));

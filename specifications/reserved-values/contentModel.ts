@@ -1312,6 +1312,7 @@ export const SECTION_RESERVED = {
 export type ExhaustiveSectionReserved = ExhaustiveFields<Section, keyof typeof SECTION_RESERVED>;
 
 export const DOCUMENT_BODY_RESERVED = {
+  source: NO_RESERVED_VALUE,
   background: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
   sections: NO_RESERVED_VALUE,

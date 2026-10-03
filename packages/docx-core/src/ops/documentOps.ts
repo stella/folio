@@ -10,6 +10,12 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
 
 export { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "./apply";
 export { DocumentOpsContractError, normalizeForOps, validateOpsDocument } from "./contract";
+export {
+  getSourceReplayToken,
+  inheritSourceReplayToken,
+  registerSourceReplayDocument,
+  type SourceReplayToken,
+} from "./sourceProvenance";
 export { OBJECT_REPLACEMENT_CHARACTER, paragraphLength, paragraphLogicalText } from "./offsets";
 export { planTrackedReplace, type PlanTrackedReplaceOptions } from "./rangeReplacement";
 export {

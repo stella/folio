@@ -88,6 +88,8 @@ import {
 } from "./previewBudget";
 import { parseNumbering } from "./numberingParser";
 import { parseFontTable } from "./fontTableParser";
+import { trackDocumentSource, discardDocumentSource } from "./documentSource";
+import { parseStreamingXmlWithSourceRanges } from "./streamingXmlParser";
 import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
 import type { NumberingMap } from "./numberingParser";
 import { countDanglingRelationshipReferences } from "./danglingRelationshipReferences";
@@ -162,6 +164,8 @@ export type MediaResolver = (file: MediaFile) => Promise<string | null | undefin
  * Parsing options
  */
 export type ParseOptions = {
+  /** Tracked immutable models retain source replay; ordinary mutable models rebuild. */
+  sourceReplay?: "tracked" | "untracked";
   /** Progress callback for tracking parsing stages */
   onProgress?: ProgressCallback;
   /** Whether to preload fonts (default: true) */
@@ -412,7 +416,9 @@ export async function parseDocxWithPreviewBudget(
     const raw = await timeStageAsync("unzip", () =>
       unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
-    const repairedDocumentTree = await normalizeRawDocxNumericIds(raw);
+    const repairedDocumentTree = await normalizeRawDocxNumericIds(raw, {
+      sourceReplay: options.sourceReplay ?? "untracked",
+    });
     const paragraphPropertySourceDigest = sha256Hex(raw.originalBuffer);
     if (raw.wasEncrypted) {
       parseContext.warn({ code: PARSE_WARNING_CODES.packageDecrypted });
@@ -488,8 +494,16 @@ export async function parseDocxWithPreviewBudget(
 
     timeStage("documentBody", () => {
       if (raw.documentXml) {
+        const sourceTree =
+          options.sourceReplay === "tracked" && repairedDocumentTree === undefined
+            ? parseStreamingXmlWithSourceRanges(raw.documentXml)
+            : undefined;
         documentBody = parseDocumentBodyTree({
-          doc: repairedDocumentTree ?? parseXml(raw.documentXml),
+          sourceReplay: options.sourceReplay ?? "untracked",
+          xml: raw.documentXml,
+          doc:
+            repairedDocumentTree ??
+            (sourceTree?.status === "parsed" ? sourceTree.value : parseXml(raw.documentXml)),
           styles,
           theme,
           numbering,
@@ -883,6 +897,17 @@ export async function parseDocxWithPreviewBudget(
     }
 
     onProgress("Complete", 100);
+    if (options.sourceReplay === "tracked") {
+      const repairedModel =
+        commentReferenceNormalization.removedDanglingReferences > 0 ||
+        commentReferenceNormalization.reanchoredUnbalancedRanges > 0 ||
+        headerFooterReferenceNormalization.removedDanglingHeaderReferences > 0 ||
+        headerFooterReferenceNormalization.removedDanglingFooterReferences > 0 ||
+        numberingReferenceNormalization.unnumberedDanglingReferences > 0 ||
+        trackedMoveRangeNormalization.removedUnbalancedMoveRangeMarkers > 0;
+      if (repairedModel) discardDocumentSource(document.package.document);
+      trackDocumentSource(document);
+    }
     return document;
   } catch (error) {
     if (error instanceof DocxEncryptionError) {

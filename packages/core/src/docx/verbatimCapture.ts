@@ -16,7 +16,8 @@
  * and a fragment that carries no Strict namespace passes through byte for byte.
  */
 
-import { TaggedError } from "better-result";
+import { panic, TaggedError } from "better-result";
+import { DOCX_CONFORMANCE_CLASSES, type DocxConformanceClass } from "@stll/docx-core/model";
 
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { getDocxXmlSafetyIssue } from "./xmlSafety";
@@ -38,6 +39,8 @@ import {
   elementToXml,
   getChildElements,
   getLocalName,
+  getAttributeByNamespaceUri,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   getNamespacePrefix,
   NAMESPACES,
   OOXML_NAMESPACE_SCOPE,
@@ -518,6 +521,10 @@ const parsedReplayEnvelope = (
   if (!wrapper || wrapper.type !== "element") {
     return null;
   }
+  return singleDocumentElement(wrapper);
+};
+
+const singleDocumentElement = (wrapper: XmlElement): XmlElement | null => {
   let root: XmlElement | null = null;
   for (const child of wrapper.elements ?? []) {
     if (child.type === "text") {
@@ -544,6 +551,10 @@ const withinXmlResourceLimits = (xml: string): boolean => {
 };
 
 const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
+
+/** Reject tolerant multi-root parsing before retaining a source-part reference. */
+export const getSingleParsedXmlDocumentElement = (parsed: XmlElement): XmlElement | null =>
+  singleDocumentElement(parsed);
 
 /** Validate a complete XML part immediately before package output. */
 export const isSafeCapturedXmlDocument = (xml: string): boolean => {
@@ -697,4 +708,63 @@ export const createCapturedXmlSanitizer = (
     cachedCharacters += characters;
     return sanitized;
   };
+};
+
+const STRICT_BY_TRANSITIONAL = new Map(
+  [...TRANSITIONAL_NAMESPACE_BY_STRICT_URI].map(([strict, transitional]) => [transitional, strict]),
+);
+
+const strictPercentage = (value: string, unit: keyof typeof NUMBERS_PER_PERCENT): string =>
+  /^-?\d+(?:\.\d+)?$/u.test(value) ? `${Number(value) / NUMBERS_PER_PERCENT[unit]}%` : value;
+
+/** Translate generated markup by namespace/slot, never by a user-text replacement. */
+const strictElement = (element: XmlElement): void => {
+  const localName = getLocalName(element.name);
+  for (const [name, value] of Object.entries(element.attributes ?? {})) {
+    if (typeof value !== "string") continue;
+    if (name === "xmlns" || name.startsWith("xmlns:")) {
+      element.attributes![name] = STRICT_BY_TRANSITIONAL.get(value) ?? value;
+      continue;
+    }
+    // Graphic payload URIs name the vocabulary of their children.
+    if (localName === "graphicData" && name === "uri") {
+      element.attributes![name] = STRICT_BY_TRANSITIONAL.get(value) ?? value;
+      continue;
+    }
+    const encoding = transitionalSlotEncoding(element.namespaceUri, localName, getLocalName(name));
+    if (
+      encoding?.percent &&
+      (!encoding.measure ||
+        getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "type") === "pct")
+    ) {
+      element.attributes![name] = strictPercentage(value, encoding.percent);
+    }
+  }
+  const encoding = transitionalSlotEncoding(element.namespaceUri, localName);
+  for (const child of element.elements ?? []) {
+    if (child.type === "element") strictElement(child);
+    else if (child.type === "text" && typeof child.text === "string" && encoding?.percent) {
+      child.text = strictPercentage(child.text, encoding.percent);
+    }
+  }
+};
+
+/** Serialize a generated, scope-bound block in the source part's profile. */
+const cloneSourceProfileTree = (element: XmlElement): XmlElement =>
+  cloneElement(element, {
+    ...(element.attributes === undefined ? {} : { attributes: { ...element.attributes } }),
+    ...(element.elements === undefined
+      ? {}
+      : { elements: element.elements.map(cloneSourceProfileTree) }),
+  });
+
+export const captureSourceProfileXml = (
+  element: XmlElement,
+  conformance: DocxConformanceClass | undefined,
+): string => {
+  const owned = cloneSourceProfileTree(element);
+  if (conformance === DOCX_CONFORMANCE_CLASSES.STRICT) strictElement(owned);
+  const xml = elementToXml(owned);
+  if (!isSafeCapturedXmlDocument(xml)) panic("Generated source-profile markup is unsafe.");
+  return xml;
 };

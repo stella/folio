@@ -69,6 +69,7 @@ import {
 } from "./blocks";
 import { meetsContract, validateOpsDocument } from "./contract";
 import { combineEdits, type DocumentEdit } from "./edits";
+import { inheritSourceReplayToken } from "./sourceProvenance";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
 import {
@@ -2194,6 +2195,7 @@ export const applyDocumentOp = (
     return Result.err(applied.error);
   }
   meetsContract(applied.value.document);
+  inheritSourceReplayToken(applied.value.document, document);
   return Result.ok({
     ...applied.value,
     revisions: stamp === undefined ? [] : recordedRevisions(document, applied.value, stamp),

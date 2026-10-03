@@ -3,8 +3,10 @@ import { describe, expect, test } from "bun:test";
 import type { Document, Paragraph, Run } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { normalizeForOps, validateOpsDocument } from "../contract";
+import { getSourceReplayToken, registerSourceReplayDocument } from "../sourceProvenance";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, INHERIT_RUN_PROPS, OP_STORIES } from "../types";
+import { packageIdentityKeys, packageParagraphIds } from "../ids";
 
 const run = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
 
@@ -40,6 +42,17 @@ const parsedShape = (...content: Paragraph[]): Document => ({
 });
 
 describe("the id census", () => {
+  test("replay captures never contribute live paragraph or revision identities", () => {
+    const live = paragraph("00000001", "live");
+    const document = parsedShape(live);
+    document.package.document.source = {
+      xml: '<w:document><w:body><w:p w14:paraId="00000002"><w:pPr><w:pPrChange w:id="41"/></w:pPr></w:p></w:body></w:document>',
+    };
+    expect(packageParagraphIds(document.package)).toEqual([live.paraId]);
+    expect(packageIdentityKeys(document.package)).toEqual([]);
+    expect(reasonOf(document, typing("00000001"))).toBeUndefined();
+  });
+
   test("counts a paragraph the section view also holds once", () => {
     const document = parsedShape(paragraph("00000001", "a"), paragraph("00000002", "b"));
     const [first] = document.package.document.content;
@@ -189,6 +202,26 @@ describe("the seed contract", () => {
       ]);
       expect(normalizeForOps(normalized)).toEqual(normalized);
       expect(validateOpsDocument(normalized).isOk()).toBe(true);
+    },
+  );
+
+  test.each(["tracked", "untracked"] as const)(
+    "normalization preserves only registered %s provenance and unchanged block identity",
+    (mode) => {
+      const untouched = paragraph("00000001", "keep");
+      const changed = paragraph("00000002", "edit");
+      changed.content.push({ type: "run", content: [] });
+      const document = parsedShape(untouched, changed);
+      if (mode === "tracked") registerSourceReplayDocument(document);
+      const token = getSourceReplayToken(document);
+      const normalized = normalizeForOps(document);
+      expect(getSourceReplayToken(normalized)).toBe(token);
+      expect(getSourceReplayToken(normalized) !== undefined).toBe(mode === "tracked");
+      expect(normalized.package.document.content.at(0)).toBe(untouched);
+      expect(normalized.package.document.content.at(1)).not.toBe(changed);
+      expect(changed.content).toHaveLength(2);
+      expect(getSourceReplayToken(normalizeForOps(normalized))).toBe(token);
+      expect(getSourceReplayToken(structuredClone(normalized))).toBeUndefined();
     },
   );
 

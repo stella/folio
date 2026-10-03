@@ -38,6 +38,7 @@ import {
   rebuildNode,
 } from "./leaves";
 import { DOCUMENT_OP_REFUSAL_REASONS, type DocumentOpRefusalReason } from "./refusal";
+import { inheritSourceReplayToken } from "./sourceProvenance";
 
 /** A document that does not meet the seed contract. */
 export class DocumentOpsContractError extends TaggedError("DocumentOpsContractError")<{
@@ -166,7 +167,7 @@ const withoutEmpty = (nodes: readonly InlineNode[]): readonly InlineNode[] => {
   return changed ? out : nodes;
 };
 
-const normalizeBlocks = (blocks: readonly BlockContent[]): BlockContent[] => {
+const normalizeBlocks = (blocks: BlockContent[]): BlockContent[] => {
   const out: BlockContent[] = [];
   for (const block of blocks) {
     switch (block.type) {
@@ -181,17 +182,25 @@ const normalizeBlocks = (blocks: readonly BlockContent[]): BlockContent[] => {
         const rows: TableRow[] = [];
         for (const row of block.rows) {
           const cells: TableCell[] = [];
-          for (const cell of row.cells)
-            cells.push({ ...cell, content: normalizeBlocks(cell.content) });
-          rows.push({ ...row, cells });
+          for (const cell of row.cells) {
+            const content = normalizeBlocks(cell.content);
+            cells.push(content === cell.content ? cell : { ...cell, content });
+          }
+          rows.push(
+            cells.every((cell, index) => cell === row.cells.at(index)) ? row : { ...row, cells },
+          );
         }
-        out.push({ ...block, rows });
+        out.push(
+          rows.every((row, index) => row === block.rows.at(index)) ? block : { ...block, rows },
+        );
         break;
       }
       case "blockSdt":
-      case "blockCustomXml":
-        out.push({ ...block, content: normalizeBlocks(block.content) });
+      case "blockCustomXml": {
+        const content = normalizeBlocks(block.content);
+        out.push(content === block.content ? block : { ...block, content });
         break;
+      }
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
@@ -203,7 +212,9 @@ const normalizeBlocks = (blocks: readonly BlockContent[]): BlockContent[] => {
       }
     }
   }
-  return out;
+  return out.every((block, index) => block === blocks.at(index)) && out.length === blocks.length
+    ? blocks
+    : out;
 };
 
 /**
@@ -237,5 +248,6 @@ export const normalizeForOps = (document: Document): Document => {
       body: withBodyContent(body, normalizeBlocks(body.content)),
     });
   }
+  inheritSourceReplayToken(current, document);
   return current;
 };

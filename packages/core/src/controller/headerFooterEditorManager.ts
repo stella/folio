@@ -12,6 +12,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
 import { EditorView, type DirectEditorProps } from "prosemirror-view";
+import { inheritSourceReplayToken } from "@stll/docx-core/ops";
 
 import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
@@ -438,10 +439,12 @@ export const createHeaderFooterEditorManager = (
       if (footersChanged && footers) {
         packageWithSnapshots.footers = footers;
       }
-      return {
+      const snapshot = {
         ...document,
         package: packageWithSnapshots,
       };
+      inheritSourceReplayToken(snapshot, document);
+      return snapshot;
     },
     sync,
   };

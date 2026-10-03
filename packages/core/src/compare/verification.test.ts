@@ -10,6 +10,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { FolioAIBlock, FolioAIBlockTableLocation } from "../ai-edits/types";
+import type { DocumentBody } from "../types/document";
 import { getCompareSkipDisposition } from "./compare";
 import { classifyProjectionMismatch, revisedFinalParagraphMarks } from "./verification";
 
@@ -113,6 +114,73 @@ describe("revisedFinalParagraphMarks", () => {
         document: { content: [table([[paragraph("cell")]]), paragraph("last")] },
       }),
     ).toEqual([]);
+  });
+
+  test.each(["ins", "del", "moveFrom", "moveTo"])(
+    "only owned story content determines whether a %s mark is final",
+    (kind) => {
+      const first = paragraph("first", { kind });
+      const last = paragraph("last");
+      const document = {
+        content: [first, last],
+        source: { xml: "<w:document><w:body><w:p/></w:body></w:document>" },
+        sections: [{ content: [first] }, { content: [last] }],
+      };
+      expect(revisedFinalParagraphMarks({ package: { document } })).toEqual([]);
+      // A live terminal mark must remain visible even when retained source
+      // and derived sections disagree with the current story's sequence.
+      document.content.pop();
+      expect(revisedFinalParagraphMarks({ package: { document } })).toEqual([
+        { container: "package.package.document.content", paragraphIndex: 0, kind },
+      ]);
+    },
+  );
+
+  test("text boxes inside hyperlinks own their own terminal marks", () => {
+    const document = {
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "hyperlink",
+              children: [
+                {
+                  type: "run",
+                  content: [
+                    {
+                      type: "shape",
+                      shape: {
+                        type: "shape",
+                        shapeType: "textBox",
+                        size: { width: 914400, height: 914400 },
+                        textBody: {
+                          content: [
+                            {
+                              type: "paragraph",
+                              content: [],
+                              pPrMark: { kind: "ins", info: revision },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    } as const satisfies DocumentBody;
+    expect(revisedFinalParagraphMarks({ document })).toEqual([
+      {
+        container:
+          "package.document.content[0].content[0].children[0].content[0].shape.textBody.content",
+        paragraphIndex: 0,
+        kind: "ins",
+      },
+    ]);
   });
 });
 

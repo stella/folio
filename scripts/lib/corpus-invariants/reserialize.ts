@@ -48,6 +48,7 @@ import {
  * itself the content.
  */
 const CAPTURE_POLICIES = {
+  source: "strip",
   sourceXml: "strip",
   gridSourceXml: "strip",
   verbatimXml: "strip",

@@ -1,5 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { escapeXmlText } from "@stll/docx-core";
 import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -8,6 +9,8 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 
 import {
   parseStreamingXml,
+  parseStreamingXmlWithSourceRanges,
+  getXmlSourceRange,
   rewriteStreamingXmlDecimalAttributes,
   scanStreamingXmlNumericIdAttributes,
 } from "./streamingXmlParser";
@@ -106,6 +109,51 @@ const XML_CASES = [
 ] as const;
 
 describe("parseStreamingXml", () => {
+  test("ordinary readers omit ranges; tracked readers retain only shallow source slices", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom("w", "x"),
+        fc.string({ unit: fc.constantFrom("A", "B", "&", "<", ">", "é", "日"), maxLength: 24 }),
+        (prefix, text) => {
+          const escaped = escapeXmlText(text);
+          const paragraph = `<${prefix}:p><${prefix}:r><${prefix}:t>${escaped}</${prefix}:t></${prefix}:r></${prefix}:p>`;
+          const body = `<${prefix}:body>${paragraph}<${prefix}:p/></${prefix}:body>`;
+          const xml = `<${prefix}:document xmlns:${prefix}="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${body}</${prefix}:document>`;
+          const ordinary = parseStreamingXml(xml);
+          const tracked = parseStreamingXmlWithSourceRanges(xml);
+          expect(ordinary.status).toBe("parsed");
+          expect(tracked.status).toBe("parsed");
+          if (ordinary.status !== "parsed" || tracked.status !== "parsed") return;
+          expect(tracked.value).toEqual(ordinary.value);
+          const visit = (element: XmlElement): void => {
+            expect(getXmlSourceRange(element)).toBeUndefined();
+            for (const child of element.elements ?? []) visit(child);
+          };
+          visit(ordinary.value);
+          const root = tracked.value.elements?.at(0);
+          const bodyElement = root?.elements?.at(0);
+          const paragraphElement = bodyElement?.elements?.at(0);
+          const emptyParagraph = bodyElement?.elements?.at(1);
+          for (const [element, expected] of [
+            [root, xml],
+            [bodyElement, body],
+            [paragraphElement, paragraph],
+            [emptyParagraph, `<${prefix}:p/>`],
+          ] as const) {
+            expect(element).toBeDefined();
+            if (!element) continue;
+            const range = getXmlSourceRange(element);
+            expect(range).toBeDefined();
+            if (range) expect(xml.slice(range.start, range.end)).toBe(expected);
+          }
+          const run = paragraphElement?.elements?.at(0);
+          expect(run).toBeDefined();
+          if (run) expect(getXmlSourceRange(run)).toBeUndefined();
+        },
+      ),
+      propertyConfig(),
+    );
+  });
   test("identity scans preserve namespace and source spans without retaining content", () => {
     fc.assert(
       fc.property(

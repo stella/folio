@@ -35,6 +35,7 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 
 import type { BlockContent, Document, Paragraph, Run } from "../types/document";
 import { parseDocx } from "./parser";
+import { cloneDocumentWithParagraphPropertySources } from "./documentClone";
 import { repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 import { findParagraphOffsets } from "./selectiveXmlPatch";
@@ -115,7 +116,12 @@ const normalize = (value: unknown, key?: string): unknown => {
   return value;
 };
 
-const normalizedPackage = (doc: Document): unknown => normalize(doc.package);
+// Source XML and its offsets describe an encoding, not additional model content.
+const normalizedPackage = (doc: Document): unknown =>
+  normalize({
+    ...doc.package,
+    document: { ...doc.package.document, source: undefined },
+  });
 
 // ============================================================================
 // BODY-TEXT PROJECTION — visible text per top-level paragraph, in order
@@ -385,9 +391,13 @@ describe("invariant 3: selective save is never silently wrong", () => {
     "selective returns null or a document that applies exactly the edit",
     async () => {
       const buffer = readFixture(EDIT_FIXTURE);
+      // Each edit starts with an isolated clone of the same parsed input;
+      // every non-null saved result still goes through the real parser.
+      const template = await parse(buffer);
+      const originalModel = normalizedPackage(template);
       await fc.assert(
         fc.asyncProperty(arbEditSpec, async (spec) => {
-          const doc = await parse(buffer);
+          const doc = cloneDocumentWithParagraphPropertySources(template);
           const paraId = applyEdit(doc, spec);
           if (!paraId) {
             return;
@@ -406,6 +416,7 @@ describe("invariant 3: selective save is never silently wrong", () => {
         }),
         propertyConfig({ numRuns: 15, seed: SEED }),
       );
+      expect(normalizedPackage(template)).toEqual(originalModel);
     },
     propertyTestTimeout(30_000),
   );
@@ -420,6 +431,8 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
     "a single-paragraph edit leaves untouched parts and unedited paragraphs byte-identical",
     async () => {
       const buffer = readFixture(EDIT_FIXTURE);
+      const template = await parse(buffer);
+      const originalModel = normalizedPackage(template);
       const originalZip = await JSZip.loadAsync(buffer);
       const originalXml = await documentXml(buffer);
 
@@ -435,16 +448,17 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
           bytes: new Uint8Array(await originalZip.file(part)!.async("arraybuffer")),
         })),
       );
-      const sampledSlices = [...new Set(paragraphIds(originalXml))]
-        .flatMap((id) => {
-          const offsets = findParagraphOffsets(originalXml, id);
-          return offsets ? [{ id, slice: originalXml.slice(offsets.start, offsets.end) }] : [];
-        })
-        .slice(0, 40);
+      const sampledSlices: { id: string; slice: string }[] = [];
+      for (const id of new Set(paragraphIds(originalXml))) {
+        const offsets = findParagraphOffsets(originalXml, id);
+        if (!offsets) continue;
+        sampledSlices.push({ id, slice: originalXml.slice(offsets.start, offsets.end) });
+        if (sampledSlices.length === 40) break;
+      }
 
       await fc.assert(
         fc.asyncProperty(arbEditSpec, async (spec) => {
-          const doc = await parse(buffer);
+          const doc = cloneDocumentWithParagraphPropertySources(template);
           const paraId = applyEdit(doc, spec);
           if (!paraId) {
             return;
@@ -496,6 +510,7 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
         }),
         propertyConfig({ numRuns: 12, seed: SEED }),
       );
+      expect(normalizedPackage(template)).toEqual(originalModel);
     },
     propertyTestTimeout(60_000),
   );

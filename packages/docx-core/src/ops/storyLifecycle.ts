@@ -43,6 +43,7 @@ const refuse = (op: DocumentOp, message: string) =>
 const bodyValues = (body: DocumentBody) =>
   ({
     content: body.content,
+    source: body.source ?? null,
     background: body.background ?? null,
     finalSectionProperties: body.finalSectionProperties ?? null,
     comments: body.comments ?? null,
@@ -57,6 +58,7 @@ export const captureStoryParts = (document: Document, owned: StoryParts): StoryP
   if (owned.body !== undefined) {
     const fields: NonNullable<StoryParts["body"]> = {};
     if (owned.body.content !== undefined) fields.content = values.content;
+    if (owned.body.source !== undefined) fields.source = values.source;
     if (owned.body.background !== undefined) fields.background = values.background;
     if (owned.body.finalSectionProperties !== undefined)
       fields.finalSectionProperties = values.finalSectionProperties;
@@ -88,6 +90,7 @@ const changedParts = (before: Document, after: Document): StoryParts => {
   const newBody = after.package.document;
   const body: NonNullable<StoryParts["body"]> = {};
   if (oldBody.content !== newBody.content) body.content = oldBody.content;
+  if (oldBody.source !== newBody.source) body.source = oldBody.source ?? null;
   if (oldBody.background !== newBody.background) body.background = oldBody.background ?? null;
   if (oldBody.finalSectionProperties !== newBody.finalSectionProperties)
     body.finalSectionProperties = oldBody.finalSectionProperties ?? null;
@@ -127,6 +130,10 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
   if (parts.body !== undefined) {
     body = { ...body };
     const fields = parts.body;
+    if (fields.source !== undefined) {
+      if (fields.source === null) delete body.source;
+      else body.source = fields.source;
+    }
     if (fields.content !== undefined) {
       const existingBlocks = body.content;
       body = withBodyContent(

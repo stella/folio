@@ -22,6 +22,7 @@ import type { CorpusFailure, CorpusInvariant } from "../corpus-signature";
 export const EXTENDED_CORPUS_INVARIANTS = {
   reserialize: "reserialize",
   editorRoundTrip: "editor-round-trip",
+  documentRoundTrip: "document-round-trip",
   editorProjection: "editor-projection",
   editLocality: "edit-locality",
   opInverse: "op-inverse",
@@ -48,6 +49,7 @@ export const CORPUS_INVARIANT_FAMILIES = {
   core: "core",
   reserialize: "reserialize",
   editorRoundTrip: "editor-round-trip",
+  documentRoundTrip: "document-round-trip",
   editorProjection: "editor-projection",
   editLocality: "edit-locality",
   opInverse: "op-inverse",
@@ -92,6 +94,7 @@ export const CORPUS_FAMILY_GATING = {
   [CORPUS_INVARIANT_FAMILIES.core]: "gating",
   [CORPUS_INVARIANT_FAMILIES.reserialize]: "gating",
   [CORPUS_INVARIANT_FAMILIES.editorRoundTrip]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.documentRoundTrip]: "gating",
   [CORPUS_INVARIANT_FAMILIES.editorProjection]: "report-only",
   [CORPUS_INVARIANT_FAMILIES.editLocality]: "gating",
   [CORPUS_INVARIANT_FAMILIES.opInverse]: "zero",
@@ -115,6 +118,7 @@ export const isZeroFamily = (family: CorpusInvariantFamily): boolean =>
 export const EXTENDED_INVARIANT_FAMILY = {
   [EXTENDED_CORPUS_INVARIANTS.reserialize]: CORPUS_INVARIANT_FAMILIES.reserialize,
   [EXTENDED_CORPUS_INVARIANTS.editorRoundTrip]: CORPUS_INVARIANT_FAMILIES.editorRoundTrip,
+  [EXTENDED_CORPUS_INVARIANTS.documentRoundTrip]: CORPUS_INVARIANT_FAMILIES.documentRoundTrip,
   [EXTENDED_CORPUS_INVARIANTS.editorProjection]: CORPUS_INVARIANT_FAMILIES.editorProjection,
   [EXTENDED_CORPUS_INVARIANTS.editLocality]: CORPUS_INVARIANT_FAMILIES.editLocality,
   [EXTENDED_CORPUS_INVARIANTS.opInverse]: CORPUS_INVARIANT_FAMILIES.opInverse,

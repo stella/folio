@@ -1,3 +1,15 @@
+import { prepareSourceReplayExport } from "./documentSource";
+import {
+  cloneDocumentWithParagraphPropertySources,
+  cloneParagraphWithPropertySource,
+} from "./paragraphPropertySource";
+import {
+  getSourceReplayToken,
+  inheritSourceReplayToken,
+  type SourceReplayToken,
+} from "@stll/docx-core/ops";
+
+export { getSourceReplayToken, inheritSourceReplayToken } from "@stll/docx-core/ops";
 import { removeResolvedHeaderFooterParts } from "./removeHeaderFooterParts";
 import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
@@ -964,6 +976,8 @@ async function processNewHyperlinks(
  * Options for repacking DOCX
  */
 export type RepackOptions = {
+  /** Replay only from an explicitly tracked immutable editor or operations result. */
+  sourceReplay?: SourceReplayToken;
   /** Compression level (0-9, default: 6) */
   compressionLevel?: number;
   /** Whether to update modification date in docProps/core.xml */
@@ -1134,6 +1148,8 @@ const cloneDocxZip = (source: JSZip): JSZip => {
 };
 
 type FinishRepackOptions = {
+  sourceReplay?: SourceReplayToken;
+  sourceDocument?: Document;
   document: Document;
   originalZip: JSZip;
   outputZip: JSZip;
@@ -1158,7 +1174,9 @@ const normalizeExportDrawingIds = ({ package: docxPackage }: Document): void => 
 };
 
 const finishRepack = async ({
-  document,
+  sourceReplay,
+  sourceDocument,
+  document: inputDocument,
   originalZip,
   outputZip,
   originalDocument,
@@ -1170,6 +1188,11 @@ const finishRepack = async ({
   sectionEndpointRemoval,
   sectionReferenceRemovals,
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
+  const document = withoutOrphanCommentRanges(
+    sourceReplay !== undefined && getSourceReplayToken(inputDocument) === sourceReplay
+      ? prepareSourceReplayExport(inputDocument)
+      : cloneDocumentWithParagraphPropertySources(inputDocument),
+  );
   await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
   await materializeEmbeddedMedia({ document, zip: outputZip, compressionLevel });
 
@@ -1181,11 +1204,15 @@ const finishRepack = async ({
   assertValidFolioDocumentModel(document, "Cannot repack invalid DOCX document model");
 
   applyReplyThreadMarkers(document);
+  await rebindWatermarkRelIds(document, outputZip, compressionLevel);
+  if (sourceDocument !== undefined) inheritSourceReplayToken(document, sourceDocument);
 
-  const documentXml = serializeDocument(
-    document,
-    originalDocument === undefined ? undefined : readRootNamespaceBindings(originalDocument.xml),
-  );
+  const documentXml = serializeDocument(document, {
+    ...(originalDocument === undefined
+      ? {}
+      : { sourceBindings: readRootNamespaceBindings(originalDocument.xml) }),
+    ...(sourceReplay === undefined ? {} : { sourceReplay }),
+  });
   if (originalDocument?.xml) {
     assertDocumentPackageFidelity({
       originalDocumentFacts: originalDocument.sectionFacts(),
@@ -1208,8 +1235,6 @@ const finishRepack = async ({
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
   });
-
-  await rebindWatermarkRelIds(document, outputZip, compressionLevel);
 
   await serializeHeadersFootersToZip(document, outputZip, compressionLevel);
 
@@ -1278,9 +1303,9 @@ async function repackDocxWithSectionEndpointRemoval({
     updateModifiedDate = true,
     modifiedBy,
     changedNoteParaIds,
+    sourceReplay,
   } = options;
-  const exportDocument = withoutOrphanCommentRanges(doc);
-
+  const tracked = sourceReplay !== undefined && getSourceReplayToken(doc) === sourceReplay;
   // Load the original ZIP
   const originalZip = await JSZip.loadAsync(doc.originalBuffer);
   const [originalDocumentXml, originalCorePropertiesXml] = await Promise.all([
@@ -1292,7 +1317,8 @@ async function repackDocxWithSectionEndpointRemoval({
   const newZip = cloneDocxZip(originalZip);
 
   return finishRepack({
-    document: exportDocument,
+    ...(tracked ? { sourceReplay, sourceDocument: doc } : {}),
+    document: doc,
     originalZip,
     outputZip: newZip,
     originalDocument: originalDocumentPart(doc.originalBuffer, originalDocumentXml),
@@ -1336,7 +1362,7 @@ export async function repackDocxFromRaw(
     modifiedBy,
     changedNoteParaIds,
   } = options;
-  const exportDocument = withoutOrphanCommentRanges(doc);
+  const exportDocument = withoutOrphanCommentRanges(cloneDocumentWithParagraphPropertySources(doc));
 
   // Create a new ZIP with all original files
   const newZip = new JSZip();
@@ -1383,7 +1409,9 @@ export async function repackDocxFromRaw(
 
   const documentXml = serializeDocument(
     exportDocument,
-    rawContent.documentXml ? readRootNamespaceBindings(rawContent.documentXml) : undefined,
+    rawContent.documentXml
+      ? { sourceBindings: readRootNamespaceBindings(rawContent.documentXml) }
+      : {},
   );
   if (rawContent.documentXml) {
     assertDocumentPackageFidelity({
@@ -2032,14 +2060,6 @@ async function materializeNewHeaderFooterParts(
     considerNumericRId(id);
   }
 
-  const remapRefs = (refs: { rId: string }[] | undefined, oldRId: string, newRId: string): void => {
-    for (const ref of refs ?? []) {
-      if (ref.rId === oldRId) {
-        ref.rId = newRId;
-      }
-    }
-  };
-
   const materialize = (
     map: Map<string, HeaderFooter> | undefined,
     relType: string,
@@ -2066,22 +2086,27 @@ async function materializeNewHeaderFooterParts(
           map.delete(rId);
           map.set(effectiveRId, headerFooter);
         }
-        for (const block of doc.package.document.content) {
-          if (block.type === "paragraph") {
-            remapRefs(
-              isHeader
-                ? block.sectionProperties?.headerReferences
-                : block.sectionProperties?.footerReferences,
-              rId,
-              effectiveRId,
-            );
-          }
-        }
-        const finalProps = doc.package.document.finalSectionProperties;
-        remapRefs(
-          isHeader ? finalProps?.headerReferences : finalProps?.footerReferences,
-          rId,
-          effectiveRId,
+        const reboundId = effectiveRId;
+        const remapProperties = (properties: SectionProperties | undefined) => {
+          if (properties === undefined) return properties;
+          const references = isHeader ? properties.headerReferences : properties.footerReferences;
+          if (!references?.some(({ rId: referenceId }) => referenceId === rId)) return properties;
+          const rebound = references.map((reference) =>
+            reference.rId === rId ? Object.assign({}, reference, { rId: reboundId }) : reference,
+          );
+          return isHeader
+            ? { ...properties, headerReferences: rebound }
+            : { ...properties, footerReferences: rebound };
+        };
+        doc.package.document.content = doc.package.document.content.map((block) => {
+          if (block.type !== "paragraph") return block;
+          const properties = remapProperties(block.sectionProperties);
+          return properties === block.sectionProperties
+            ? block
+            : cloneParagraphWithPropertySource(block, { sectionProperties: properties });
+        });
+        doc.package.document.finalSectionProperties = remapProperties(
+          doc.package.document.finalSectionProperties,
         );
       }
       const num = prefix === "header" ? ++maxHeaderNum : ++maxFooterNum;
@@ -3226,7 +3251,7 @@ export async function createDocx(
   if (doc.originalBuffer) {
     const source = await loadParsedZipSource(doc, doc.originalBuffer);
     return finishRepack({
-      document: withoutOrphanCommentRanges(doc),
+      document: doc,
       originalZip: source.zip,
       outputZip: cloneDocxZip(source.zip),
       originalDocument: source.document,
@@ -3238,7 +3263,7 @@ export async function createDocx(
 
   const zip = await createDocumentSeedZip(doc, properties);
   return finishRepack({
-    document: withoutOrphanCommentRanges(doc),
+    document: doc,
     originalZip: zip,
     outputZip: zip,
     originalDocument: undefined,

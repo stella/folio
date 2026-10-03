@@ -89,7 +89,8 @@ describe("createMarkInterner", () => {
     };
 
     const first = fontSizeMarks(toProseDoc(document));
-    const second = fontSizeMarks(toProseDoc(document));
+    // An explicit resolver requests a new conversion rather than a cache hit.
+    const second = fontSizeMarks(toProseDoc(document, { styles: { styles: [] } }));
 
     expect(first[0]).toBe(first[1]);
     expect(second[0]).toBe(second[1]);

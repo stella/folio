@@ -14,6 +14,7 @@ import { panic } from "better-result";
 
 import { REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
 import {
+  parseStreamingXmlWithSourceRanges,
   scanStreamingXmlNumericIdAttributes,
   parseStreamingXmlWithIdentityVisitor,
 } from "./streamingXmlParser";
@@ -102,7 +103,10 @@ type ImportedIdentitySpan = {
   attributeName: string;
 };
 
-type NumericIdNormalizationOptions = { onParsedDocument?: (document: XmlElement) => void };
+type NumericIdNormalizationOptions = {
+  onParsedDocument?: (document: XmlElement) => void;
+  sourceReplay?: "tracked" | "untracked";
+};
 
 /**
  * Repair out-of-range imported integers before any model or opaque XML is captured.
@@ -131,7 +135,11 @@ export const normalizeImportedNumericIds = (
   const scan = ({ path, xml, visitor }: ScanOptions): void => {
     const scanned =
       path.toLowerCase() === "word/document.xml" && options.onParsedDocument !== undefined
-        ? parseStreamingXmlWithIdentityVisitor(xml, visitor)
+        ? parseStreamingXmlWithIdentityVisitor({
+            xml,
+            visitOpenTag: visitor,
+            sourceReplay: options.sourceReplay ?? "untracked",
+          })
         : scanStreamingXmlNumericIdAttributes(xml, visitor);
     if (scanned.status === "unsupported") {
       throw new XmlResourceLimitError({
@@ -221,18 +229,36 @@ export const normalizeImportedNumericIds = (
       cursor = span.end;
     }
     chunks.push(xml.slice(cursor));
-    normalized.set(path, chunks.join(""));
+    const rewritten = chunks.join("");
+    normalized.set(path, rewritten);
+    if (
+      options.sourceReplay === "tracked" &&
+      path.toLowerCase() === "word/document.xml" &&
+      parsedDocument !== undefined
+    ) {
+      // Attribute repair can change offsets used by the retained tree's source ranges.
+      const reparsed = parseStreamingXmlWithSourceRanges(rewritten);
+      if (reparsed.status === "unsupported")
+        panic("Normalized document XML became unsupported after numeric identity repair");
+      parsedDocument = reparsed.value;
+    }
   }
   if (parsedDocument !== undefined) options.onParsedDocument?.(parsedDocument);
   return normalized;
 };
 
+type NormalizeRawDocxNumericIdsOptions = {
+  sourceReplay?: "tracked" | "untracked";
+};
+
 /** Parser boundary: all captures and selective-save bytes see the same identities. */
 export const normalizeRawDocxNumericIds = async (
   raw: RawDocxContent,
+  { sourceReplay = "untracked" }: NormalizeRawDocxNumericIdsOptions = {},
 ): Promise<XmlElement | undefined> => {
   let documentTree: XmlElement | undefined;
   const normalized = normalizeImportedNumericIds(raw.allXml, {
+    sourceReplay,
     onParsedDocument: (tree) => {
       documentTree = tree;
     },

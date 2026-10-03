@@ -2787,7 +2787,14 @@ export type DocumentBackground = {
 /**
  * Document body (w:body)
  */
+type DocumentBodySource = {
+  /** Original part reference; replay authority is private and identity-bound. */
+  readonly xml: string;
+};
+
 export type DocumentBody = {
+  /** Original source part reference; clones carry no replay authority. */
+  source?: DocumentBodySource;
   /** Optional `w:document/w:background`, serialized before the body. */
   background?: DocumentBackground;
   /** All content (paragraphs, tables) */
