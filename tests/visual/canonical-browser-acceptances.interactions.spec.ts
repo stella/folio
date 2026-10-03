@@ -34,6 +34,8 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
       const eligibility = createCanonicalSession(
         await parseDocx(source, { preloadFonts: false, detectVariables: false }),
       );
+      // Temporary source limits include tables (#1474) and images; these traces
+      // exercise the canonical path automatically as source support expands.
       if (eligibility.isErr()) {
         expect(eligibility.error.name).toBe("CanonicalSessionError");
         expect(eligibility.error.message).toBe(

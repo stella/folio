@@ -14,6 +14,8 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
     });
     const original = cloneDocumentWithParagraphPropertySources(document);
     const result = createCanonicalSession(document);
+    // Temporary table (#1474) and image source limits follow canonical support;
+    // the same traces become accepted without a permanent refusal guard.
     if (result.isErr()) {
       expect(result.error.name).toBe("CanonicalSessionError");
       expect(result.error.message).toBe(
