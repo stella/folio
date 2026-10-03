@@ -753,7 +753,7 @@ export const compileEditorIntent = (
       );
       const applied = applyDocumentOp(current, op);
       if (applied.isErr()) return Result.err(applied.error);
-      const trimmed = trimAppliedNewIds({ op, applied: applied.value, story });
+      const trimmed = trimAppliedNewIds({ before: current, op, applied: applied.value, story });
       if ("newIds" in trimmed) {
         for (const id of trimmed.newIds?.revision ?? []) takenRevision.add(id);
         for (const id of trimmed.newIds?.control ?? []) takenControl.add(id);

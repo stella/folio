@@ -124,13 +124,19 @@ export const filterNewIds = (
 };
 
 type TrimAppliedNewIdsOptions = {
+  before: Document;
   op: DocumentOp;
   applied: AppliedDocumentOp;
   story: OpStory;
 };
 
 /** Keep only supplied ids that the successful operation put in changed paragraphs. */
-export const trimAppliedNewIds = ({ op, applied, story }: TrimAppliedNewIdsOptions): DocumentOp => {
+export const trimAppliedNewIds = ({
+  before,
+  op,
+  applied,
+  story,
+}: TrimAppliedNewIdsOptions): DocumentOp => {
   if (!("newIds" in op) || op.newIds === undefined) return op;
   const touched = new Set([...applied.touched.modified, ...applied.touched.inserted].map(idKey));
   const paragraphs = storyParagraphs(storyBody(applied.document, story))
@@ -138,9 +144,14 @@ export const trimAppliedNewIds = ({ op, applied, story }: TrimAppliedNewIdsOptio
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
   const identities = new Set(identityKeysIn(paragraphs));
   const revisions = new Set(applied.revisions);
-  return filterNewIds(op, (space, id) =>
-    space === IDENTITY_SPACES.REVISION ? revisions.has(id) : identities.has(`${space}:${id}`),
-  );
+  const known = new Set(packageIdentityKeys(before.package));
+  return filterNewIds(op, (space, id) => {
+    const key = `${space}:${id}`;
+    return (
+      !known.has(key) &&
+      (identities.has(key) || (space === IDENTITY_SPACES.REVISION && revisions.has(id)))
+    );
+  });
 };
 
 /** The largest id count {@link revisionIdDemand} searches before giving up. */
@@ -348,6 +359,7 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
     const applied = applyDocumentOp(current, op);
     if (applied.isErr()) return Result.err(applied.error);
     stampUsed ||= input.revision !== undefined && applied.value.revisions.length > 0;
+    const before = current;
     current = applied.value.document;
     const story = (() => {
       switch (input.type) {
@@ -365,7 +377,7 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
         }
       }
     })();
-    ops.push(trimAppliedNewIds({ op, applied: applied.value, story }));
+    ops.push(trimAppliedNewIds({ before, op, applied: applied.value, story }));
     return Result.ok(undefined);
   };
   return { append, document: () => current, ops };

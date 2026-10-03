@@ -1,7 +1,7 @@
 /** Forward effects are checked against logical slots and content, independently of inverse snapshots. */
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type {
   BlockContent,
   Document,
@@ -187,306 +187,325 @@ const insertionOracle = (table: Table, column: number, firstId: number) => {
 };
 
 describe("independent table forward oracles", () => {
-  test("column edits preserve every surviving slot, including vertical owners, spans, omissions and nested contents", () => {
-    // Width-only assertions admit dropping whole cells. The oracle checks every surviving physical payload.
-    assertProperty(
-      fc.property(geometry, fc.nat(), (shape, seed) => {
-        const document = fixture(shape);
-        const table = tableOf(document);
-        const width = table.columnWidths?.length ?? 0;
-        const column = seed % width;
-        const expected = independentSlots(table);
-        for (const row of expected) row.splice(column, 1);
-        const deletion = applied(document, {
-          ...address(targetOf(table)),
-          type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
-          column,
-        });
-        expect(payloads(independentSlots(tableOf(deletion.document)))).toStrictEqual(
-          payloads(expected),
-        );
-        expect(tableOf(deletion.document).columnWidths).toEqual(
-          Array.from({ length: width - 1 }, () => 900),
-        );
-        const insertion = insertionOracle(table, column, 0x3000);
-        const inserted = applied(document, {
-          ...address(targetOf(table)),
-          type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
-          column,
-          width: 1200,
-          newBlockIds: insertion.newBlockIds,
-        });
-        expect(payloads(independentSlots(tableOf(inserted.document)))).toStrictEqual(
-          insertion.expected,
-        );
-        expect(tableOf(inserted.document).columnWidths).toEqual([
-          ...Array.from({ length: column }, () => 900),
-          1200,
-          ...Array.from({ length: width - column }, () => 900),
-        ]);
-      }),
-      { numRuns: NUM_RUNS },
-    );
-  });
+  test(
+    "column edits preserve every surviving slot, including vertical owners, spans, omissions and nested contents",
+    () => {
+      // Width-only assertions admit dropping whole cells. The oracle checks every surviving physical payload.
+      assertProperty(
+        fc.property(geometry, fc.nat(), (shape, seed) => {
+          const document = fixture(shape);
+          const table = tableOf(document);
+          const width = table.columnWidths?.length ?? 0;
+          const column = seed % width;
+          const expected = independentSlots(table);
+          for (const row of expected) row.splice(column, 1);
+          const deletion = applied(document, {
+            ...address(targetOf(table)),
+            type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+            column,
+          });
+          expect(payloads(independentSlots(tableOf(deletion.document)))).toStrictEqual(
+            payloads(expected),
+          );
+          expect(tableOf(deletion.document).columnWidths).toEqual(
+            Array.from({ length: width - 1 }, () => 900),
+          );
+          const insertion = insertionOracle(table, column, 0x3000);
+          const inserted = applied(document, {
+            ...address(targetOf(table)),
+            type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+            column,
+            width: 1200,
+            newBlockIds: insertion.newBlockIds,
+          });
+          expect(payloads(independentSlots(tableOf(inserted.document)))).toStrictEqual(
+            insertion.expected,
+          );
+          expect(tableOf(inserted.document).columnWidths).toEqual([
+            ...Array.from({ length: column }, () => 900),
+            1200,
+            ...Array.from({ length: width - column }, () => 900),
+          ]);
+        }),
+        { numRuns: NUM_RUNS },
+      );
+    },
+    propertyTestTimeout(),
+  );
 
-  test("multi-step changes match an independent slot oracle after every forward step", () => {
-    // Final rollback permits paired errors. Intermediate payload checks prevent an insertion/deletion pair masking lost data.
-    assertProperty(
-      fc.property(
-        geometry,
-        fc.array(fc.integer({ min: 0, max: 5 }), { minLength: 3, maxLength: 10 }),
-        (shape, steps) => {
-          let document = fixture(shape);
-          const original = structuredClone(document);
-          const inverses: (readonly DocumentOp[])[] = [];
-          for (const [step, kind] of steps.entries()) {
-            const table = tableOf(document);
-            const target = address(targetOf(table));
-            const width = independentSlots(table).at(0)?.length ?? 0;
-            let expected = payloads(independentSlots(table));
-            let op: DocumentOp;
-            switch (kind) {
-              case 0: {
-                const column = step % (width + 1);
-                const insertion = insertionOracle(table, column, 0x4000 + step * 16);
-                expected = insertion.expected;
-                op = {
-                  ...target,
-                  type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
-                  column,
-                  width: 700,
-                  newBlockIds: insertion.newBlockIds,
-                };
-                break;
-              }
-              case 1:
-                op = {
-                  ...target,
-                  type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
-                  columnWidths: Array.from({ length: width }, () => 800 + step),
-                };
-                break;
-              case 2:
-                op = {
-                  ...target,
-                  type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
-                  patch: { verticalAlign: "bottom", fitText: true },
-                };
-                break;
-              case 3:
-                op = {
-                  ...target,
-                  type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
-                  patch: { hidden: true, cantSplit: true },
-                };
-                break;
-              case 4:
-                op = {
-                  ...target,
-                  type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
-                  patch: { styleId: `forward-${step}`, layout: "autofit" },
-                };
-                break;
-              default: {
-                const column = width - 1;
-                const rowCanDelete = table.rows.every(
-                  (row) =>
-                    (row.formatting?.gridAfter ?? 0) > 0 ||
-                    row.cells.length > 1 ||
-                    (row.cells.at(-1)?.formatting?.gridSpan ?? 1) > 1,
-                );
-                if (rowCanDelete && width > 2) {
-                  for (const row of expected) row.splice(column, 1);
-                  op = { ...target, type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column };
-                } else
+  test(
+    "multi-step changes match an independent slot oracle after every forward step",
+    () => {
+      // Final rollback permits paired errors. Intermediate payload checks prevent an insertion/deletion pair masking lost data.
+      assertProperty(
+        fc.property(
+          geometry,
+          fc.array(fc.integer({ min: 0, max: 5 }), { minLength: 3, maxLength: 10 }),
+          (shape, steps) => {
+            let document = fixture(shape);
+            const original = structuredClone(document);
+            const inverses: (readonly DocumentOp[])[] = [];
+            for (const [step, kind] of steps.entries()) {
+              const table = tableOf(document);
+              const target = address(targetOf(table));
+              const width = independentSlots(table).at(0)?.length ?? 0;
+              let expected = payloads(independentSlots(table));
+              let op: DocumentOp;
+              switch (kind) {
+                case 0: {
+                  const column = step % (width + 1);
+                  const insertion = insertionOracle(table, column, 0x4000 + step * 16);
+                  expected = insertion.expected;
+                  op = {
+                    ...target,
+                    type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+                    column,
+                    width: 700,
+                    newBlockIds: insertion.newBlockIds,
+                  };
+                  break;
+                }
+                case 1:
                   op = {
                     ...target,
                     type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
-                    columnWidths: Array.from({ length: width }, () => 1300 + step),
+                    columnWidths: Array.from({ length: width }, () => 800 + step),
                   };
+                  break;
+                case 2:
+                  op = {
+                    ...target,
+                    type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+                    patch: { verticalAlign: "bottom", fitText: true },
+                  };
+                  break;
+                case 3:
+                  op = {
+                    ...target,
+                    type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+                    patch: { hidden: true, cantSplit: true },
+                  };
+                  break;
+                case 4:
+                  op = {
+                    ...target,
+                    type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+                    patch: { styleId: `forward-${step}`, layout: "autofit" },
+                  };
+                  break;
+                default: {
+                  const column = width - 1;
+                  const rowCanDelete = table.rows.every(
+                    (row) =>
+                      (row.formatting?.gridAfter ?? 0) > 0 ||
+                      row.cells.length > 1 ||
+                      (row.cells.at(-1)?.formatting?.gridSpan ?? 1) > 1,
+                  );
+                  if (rowCanDelete && width > 2) {
+                    for (const row of expected) row.splice(column, 1);
+                    op = { ...target, type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column };
+                  } else
+                    op = {
+                      ...target,
+                      type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+                      columnWidths: Array.from({ length: width }, () => 1300 + step),
+                    };
+                }
               }
+              const result = applied(document, op);
+              expect(payloads(independentSlots(tableOf(result.document)))).toStrictEqual(expected);
+              const after = tableOf(result.document);
+              switch (op.type) {
+                case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
+                  expect(after.columnWidths).toStrictEqual(op.columnWidths);
+                  break;
+                case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
+                  expect(after.rows.at(0)?.cells.at(0)?.formatting?.fitText).toBe(true);
+                  break;
+                case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
+                  expect(after.rows.at(0)?.formatting?.hidden).toBe(true);
+                  break;
+                case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+                  expect(after.formatting?.styleId).toBe(`forward-${step}`);
+                  break;
+              }
+              inverses.push(result.inverse);
+              document = result.document;
             }
-            const result = applied(document, op);
-            expect(payloads(independentSlots(tableOf(result.document)))).toStrictEqual(expected);
-            const after = tableOf(result.document);
-            switch (op.type) {
-              case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
-                expect(after.columnWidths).toStrictEqual(op.columnWidths);
-                break;
-              case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
-                expect(after.rows.at(0)?.cells.at(0)?.formatting?.fitText).toBe(true);
-                break;
-              case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
-                expect(after.rows.at(0)?.formatting?.hidden).toBe(true);
-                break;
-              case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
-                expect(after.formatting?.styleId).toBe(`forward-${step}`);
-                break;
-            }
-            inverses.push(result.inverse);
-            document = result.document;
+            const undone = applyDocumentOps(document, inverses.reverse().flat());
+            if (undone.isErr()) throw undone.error;
+            expect(undone.value.document).toStrictEqual(original);
+          },
+        ),
+        { numRuns: NUM_RUNS },
+      );
+    },
+    propertyTestTimeout(),
+  );
+
+  test(
+    "mixed-chain merges preserve nested content; horizontal splits preserve owners and refuse vertical groups",
+    () => {
+      // A merge that drops continuation/nested content passes snapshot restoration. Pin every moved block and new empty slot.
+      assertProperty(
+        fc.property(geometry, (shape) => {
+          const document = fixture({ ...shape, vertical: true });
+          const table = tableOf(document);
+          const left = Number(shape.before);
+          const content = table.rows.flatMap((row) => row.cells.flatMap((value) => value.content));
+          const merged = applied(document, {
+            ...address(targetOf(table)),
+            type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+            top: 0,
+            bottom: shape.rows,
+            left,
+            right: left + 3,
+            newBlockIds: Array.from({ length: shape.rows - 1 }, (_, index) => id(0x5000 + index)),
+          });
+          const mergedTable = tableOf(merged.document);
+          const mergeExpected = table.rows.map((_, rowIndex) => {
+            const blocks =
+              rowIndex === 0
+                ? content
+                : [{ type: "paragraph", paraId: id(0x5000 + rowIndex - 1), content: [] }];
+            return [
+              ...Array.from({ length: left }, () => null),
+              blocks,
+              blocks,
+              blocks,
+              ...Array.from({ length: Number(shape.after) }, () => null),
+            ];
+          });
+          expect(payloads(independentSlots(mergedTable))).toStrictEqual(mergeExpected);
+          for (const [rowIndex, row] of mergedTable.rows.entries()) {
+            expect(row.cells.length).toBe(1);
+            expect(row.cells.at(0)?.formatting?.gridSpan).toBe(3);
+            expect(row.cells.at(0)?.formatting?.vMerge).toBe(
+              rowIndex === 0 ? "restart" : "continue",
+            );
           }
-          const undone = applyDocumentOps(document, inverses.reverse().flat());
-          if (undone.isErr()) throw undone.error;
-          expect(undone.value.document).toStrictEqual(original);
-        },
-      ),
-      { numRuns: NUM_RUNS },
-    );
-  });
-
-  test("mixed-chain merges preserve nested content; horizontal splits preserve owners and refuse vertical groups", () => {
-    // A merge that drops continuation/nested content passes snapshot restoration. Pin every moved block and new empty slot.
-    assertProperty(
-      fc.property(geometry, (shape) => {
-        const document = fixture({ ...shape, vertical: true });
-        const table = tableOf(document);
-        const left = Number(shape.before);
-        const content = table.rows.flatMap((row) => row.cells.flatMap((value) => value.content));
-        const merged = applied(document, {
-          ...address(targetOf(table)),
-          type: DOCUMENT_OP_TYPES.MERGE_CELLS,
-          top: 0,
-          bottom: shape.rows,
-          left,
-          right: left + 3,
-          newBlockIds: Array.from({ length: shape.rows - 1 }, (_, index) => id(0x5000 + index)),
-        });
-        const mergedTable = tableOf(merged.document);
-        const mergeExpected = table.rows.map((_, rowIndex) => {
-          const blocks =
-            rowIndex === 0
-              ? content
-              : [{ type: "paragraph", paraId: id(0x5000 + rowIndex - 1), content: [] }];
-          return [
-            ...Array.from({ length: left }, () => null),
-            blocks,
-            blocks,
-            blocks,
-            ...Array.from({ length: Number(shape.after) }, () => null),
-          ];
-        });
-        expect(payloads(independentSlots(mergedTable))).toStrictEqual(mergeExpected);
-        for (const [rowIndex, row] of mergedTable.rows.entries()) {
-          expect(row.cells.length).toBe(1);
-          expect(row.cells.at(0)?.formatting?.gridSpan).toBe(3);
-          expect(row.cells.at(0)?.formatting?.vMerge).toBe(rowIndex === 0 ? "restart" : "continue");
-        }
-        for (const row of mergedTable.rows) {
-          const first = row.cells.at(0)?.content.at(0);
-          if (first?.type !== "paragraph" || !first.paraId)
-            throw new Error("Merged owner paragraph missing.");
-          refused(
-            merged.document,
-            { ...address(first.paraId), type: DOCUMENT_OP_TYPES.SPLIT_CELL, newBlockIds: [] },
-            DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-          );
-        }
-        const horizontalDocument = fixture({ ...shape, vertical: false });
-        const horizontalTable = tableOf(horizontalDocument);
-        const horizontalMerge = applied(horizontalDocument, {
-          ...address(targetOf(horizontalTable)),
-          type: DOCUMENT_OP_TYPES.MERGE_CELLS,
-          top: 0,
-          bottom: 1,
-          left,
-          right: left + 3,
-          newBlockIds: [],
-        });
-        const horizontalMerged = tableOf(horizontalMerge.document);
-        const split = applied(horizontalMerge.document, {
-          ...address(targetOf(horizontalMerged)),
-          type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-          newBlockIds: [id(0x6000), id(0x6001)],
-        });
-        const splitExpected = payloads(independentSlots(horizontalMerged));
-        splitExpected.splice(0, 1, [
-          ...Array.from({ length: left }, () => null),
-          horizontalMerged.rows.at(0)?.cells.at(0)?.content ?? [],
-          [{ type: "paragraph", paraId: id(0x6000), content: [] }],
-          [{ type: "paragraph", paraId: id(0x6001), content: [] }],
-          ...Array.from({ length: Number(shape.after) }, () => null),
-        ]);
-        const after = tableOf(split.document);
-        expect(payloads(independentSlots(after))).toStrictEqual(splitExpected);
-        for (const value of after.rows.at(0)?.cells ?? []) {
-          expect(value.formatting?.gridSpan ?? 1).toBe(1);
-          expect(value.formatting?.vMerge).toBeUndefined();
-        }
-        const restored = applied(split.document, {
-          ...address(targetOf(after)),
-          type: DOCUMENT_OP_TYPES.SET_TABLE,
-          expected: after,
-          table,
-        });
-        expect(restored.document).toStrictEqual(document);
-      }),
-      { numRuns: NUM_RUNS },
-    );
-  });
-
-  test("nonrectangular merge selections and row-emptying deletion refuse their exact reasons", () => {
-    // A fixture with no omissions cannot detect clipped-grid merges; asymmetric rows and active omissions close that gap.
-    assertProperty(
-      fc.property(geometry, (shape) => {
-        const document = fixture({
-          ...shape,
-          before: true,
-          after: true,
-          span: true,
-          vertical: true,
-        });
-        const table = tableOf(document);
-        const ops = [
-          {
-            ...address(targetOf(table)),
-            type: DOCUMENT_OP_TYPES.MERGE_CELLS,
-            top: 0,
-            bottom: shape.rows,
-            left: 0,
-            right: 4,
-            newBlockIds: [],
-          },
-          {
-            ...address(targetOf(table)),
-            type: DOCUMENT_OP_TYPES.MERGE_CELLS,
-            top: 0,
-            bottom: shape.rows,
-            left: 2,
-            right: 4,
-            newBlockIds: [],
-          },
-          {
-            ...address(targetOf(table)),
+          for (const row of mergedTable.rows) {
+            const first = row.cells.at(0)?.content.at(0);
+            if (first?.type !== "paragraph" || !first.paraId)
+              throw new Error("Merged owner paragraph missing.");
+            refused(
+              merged.document,
+              { ...address(first.paraId), type: DOCUMENT_OP_TYPES.SPLIT_CELL, newBlockIds: [] },
+              DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            );
+          }
+          const horizontalDocument = fixture({ ...shape, vertical: false });
+          const horizontalTable = tableOf(horizontalDocument);
+          const horizontalMerge = applied(horizontalDocument, {
+            ...address(targetOf(horizontalTable)),
             type: DOCUMENT_OP_TYPES.MERGE_CELLS,
             top: 0,
             bottom: 1,
-            left: 1,
-            right: 4,
+            left,
+            right: left + 3,
             newBlockIds: [],
-          },
-        ] as const satisfies readonly DocumentOp[];
-        for (const op of ops) refused(document, op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
-        const sparse: Table = {
-          type: "table",
-          columnWidths: [900, 900, 900],
-          rows: [
+          });
+          const horizontalMerged = tableOf(horizontalMerge.document);
+          const split = applied(horizontalMerge.document, {
+            ...address(targetOf(horizontalMerged)),
+            type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+            newBlockIds: [id(0x6000), id(0x6001)],
+          });
+          const splitExpected = payloads(independentSlots(horizontalMerged));
+          splitExpected.splice(0, 1, [
+            ...Array.from({ length: left }, () => null),
+            horizontalMerged.rows.at(0)?.cells.at(0)?.content ?? [],
+            [{ type: "paragraph", paraId: id(0x6000), content: [] }],
+            [{ type: "paragraph", paraId: id(0x6001), content: [] }],
+            ...Array.from({ length: Number(shape.after) }, () => null),
+          ]);
+          const after = tableOf(split.document);
+          expect(payloads(independentSlots(after))).toStrictEqual(splitExpected);
+          for (const value of after.rows.at(0)?.cells ?? []) {
+            expect(value.formatting?.gridSpan ?? 1).toBe(1);
+            expect(value.formatting?.vMerge).toBeUndefined();
+          }
+          const restored = applied(split.document, {
+            ...address(targetOf(after)),
+            type: DOCUMENT_OP_TYPES.SET_TABLE,
+            expected: after,
+            table,
+          });
+          expect(restored.document).toStrictEqual(document);
+        }),
+        { numRuns: NUM_RUNS },
+      );
+    },
+    propertyTestTimeout(),
+  );
+
+  test(
+    "nonrectangular merge selections and row-emptying deletion refuse their exact reasons",
+    () => {
+      // A fixture with no omissions cannot detect clipped-grid merges; asymmetric rows and active omissions close that gap.
+      assertProperty(
+        fc.property(geometry, (shape) => {
+          const document = fixture({
+            ...shape,
+            before: true,
+            after: true,
+            span: true,
+            vertical: true,
+          });
+          const table = tableOf(document);
+          const ops = [
             {
-              type: "tableRow",
-              formatting: { gridBefore: 1, gridAfter: 1 },
-              cells: [cell(0x100)],
+              ...address(targetOf(table)),
+              type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+              top: 0,
+              bottom: shape.rows,
+              left: 0,
+              right: 4,
+              newBlockIds: [],
             },
-          ],
-        };
-        refused(
-          documentOf(sparse),
-          { ...address(id(0x100)), type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 1 },
-          DOCUMENT_OP_REFUSAL_REASONS.TABLE_ROW_EMPTY,
-        );
-      }),
-      { numRuns: NUM_RUNS },
-    );
-  });
+            {
+              ...address(targetOf(table)),
+              type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+              top: 0,
+              bottom: shape.rows,
+              left: 2,
+              right: 4,
+              newBlockIds: [],
+            },
+            {
+              ...address(targetOf(table)),
+              type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+              top: 0,
+              bottom: 1,
+              left: 1,
+              right: 4,
+              newBlockIds: [],
+            },
+          ] as const satisfies readonly DocumentOp[];
+          for (const op of ops)
+            refused(document, op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+          const sparse: Table = {
+            type: "table",
+            columnWidths: [900, 900, 900],
+            rows: [
+              {
+                type: "tableRow",
+                formatting: { gridBefore: 1, gridAfter: 1 },
+                cells: [cell(0x100)],
+              },
+            ],
+          };
+          refused(
+            documentOf(sparse),
+            { ...address(id(0x100)), type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 1 },
+            DOCUMENT_OP_REFUSAL_REASONS.TABLE_ROW_EMPTY,
+          );
+        }),
+        { numRuns: NUM_RUNS },
+      );
+    },
+    propertyTestTimeout(),
+  );
 
   test("indexed markup and existing reviews have consistent refusals across topology edits", () => {
     // Different op-specific guards can assign different reasons to the same cause; exercise every affected family.
