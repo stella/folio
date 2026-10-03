@@ -9,6 +9,8 @@
  *   matching what Word writes.
  */
 
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { describe, expect, test } from "bun:test";
 
 import type { HeaderFooter } from "../../types/document";
@@ -303,3 +305,36 @@ describe("serializeHeaderFooter — watermark replay", () => {
     expect(out.match(/<v:shape/gu)?.length).toBe(1);
   });
 });
+
+test(
+  "structural story edits emit one captured watermark",
+  () => {
+    assertProperty(
+      fc.property(
+        fc.integer({ min: 0, max: 4 }),
+        fc.constantFrom("insert", "delete", "format"),
+        (before, edit) => {
+          const empty = "<w:p><w:pPr><w:keepNext/></w:pPr></w:p>";
+          const host =
+            '<w:p><w:r><w:pict><v:shape id="PowerPlusWaterMarkObject1" type="#_x0000_t136"><v:textpath string="DRAFT"/></v:shape></w:pict></w:r></w:p>';
+          const header = parseHeader(`<w:hdr ${NS}>${empty.repeat(before)}${host}${empty}</w:hdr>`);
+          const index = header.watermarkBlockIndex;
+          if (index === undefined) throw new TypeError("Missing watermark host");
+          if (edit === "insert")
+            header.content.splice(index, 0, { type: "paragraph", content: [] });
+          else if (edit === "delete") header.content.splice(index, 1);
+          else {
+            const paragraph = header.content.at(index);
+            if (paragraph?.type !== "paragraph") throw new TypeError("Expected host paragraph");
+            paragraph.formatting = { alignment: "center" };
+          }
+          const xml = serializeHeaderFooter(header);
+          expect([...xml.matchAll(/<v:shape\b/gu)]).toHaveLength(1);
+          expect(parseHeader(xml).watermark).toEqual(header.watermark);
+        },
+      ),
+      { numRuns: 30 },
+    );
+  },
+  propertyTestTimeout(10_000),
+);

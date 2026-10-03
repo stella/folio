@@ -184,7 +184,7 @@ export type DocumentPreset = {
 };
 
 // @public
-export type DocumentPropertiesOptions = {
+export type DocumentPropertiesOptions = SaveDiagnosticOptions & {
     creator?: string;
     application?: string;
 };
