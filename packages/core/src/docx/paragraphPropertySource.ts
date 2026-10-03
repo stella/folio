@@ -29,7 +29,38 @@ type ParagraphPropertySource = Readonly<{
   [paragraphPropertySourceEmissionFingerprint]: string;
 }>;
 
-const paragraphPropertySources = new WeakMap<Paragraph, ParagraphPropertySource>();
+const paragraphPropertyCapture = Symbol("paragraphPropertyCapture");
+type ParagraphPropertyCapture = Readonly<{
+  source: ParagraphPropertySource;
+  owner: Paragraph;
+}>;
+const paragraphPropertyCaptures = new WeakMap<object, ParagraphPropertyCapture>();
+type ParagraphSourceRecordKind = "durable" | "capture-only";
+const paragraphSourceRecordKinds = new WeakMap<Paragraph, ParagraphSourceRecordKind>();
+
+// Opaque handles follow immutable model operations without giving copies a
+// durable paragraph identity. JSON and structuredClone omit this private symbol.
+const captureForParagraph = (paragraph: Paragraph): ParagraphPropertyCapture | undefined => {
+  const handle: unknown = Object.getOwnPropertyDescriptor(
+    paragraph,
+    paragraphPropertyCapture,
+  )?.value;
+  if (!Object.hasOwn(paragraph, paragraphPropertyCapture))
+    return paragraphPropertyCaptures.get(paragraph);
+  return typeof handle === "object" && handle !== null
+    ? paragraphPropertyCaptures.get(handle)
+    : undefined;
+};
+
+const attachParagraphCapture = (paragraph: Paragraph, capture: ParagraphPropertyCapture): void => {
+  const handle = Object.freeze({});
+  paragraphPropertyCaptures.set(handle, capture);
+  Object.defineProperty(paragraph, paragraphPropertyCapture, {
+    value: handle,
+    enumerable: true,
+    configurable: true,
+  });
+};
 
 const paragraphFormattingEmissionFingerprint = (
   emission: ModeledParagraphFormattingEmission,
@@ -47,7 +78,6 @@ const ownedParagraphPropertySource = (
   } satisfies ParagraphPropertySource);
 };
 
-const paragraphPropertySourceOwners = new WeakMap<Paragraph, Paragraph>();
 const proseParagraphSourceOwners = new WeakMap<PMNode, Paragraph>();
 const paragraphPropertySourceCandidates = new WeakMap<Paragraph, Paragraph>();
 const paragraphPropertySourceTransferIds = new WeakMap<Paragraph, string>();
@@ -204,13 +234,15 @@ export const visitDocumentStoryParagraphs = (
 };
 
 export const assignParagraphPropertySource = (paragraph: Paragraph, xml: string): void => {
-  paragraphPropertySources.set(paragraph, ownedParagraphPropertySource(paragraph, xml));
-  paragraphPropertySourceOwners.set(paragraph, paragraph);
+  attachParagraphCapture(paragraph, {
+    source: ownedParagraphPropertySource(paragraph, xml),
+    owner: paragraph,
+  });
 };
 
 export const getParagraphPropertySource = (
   paragraph: Paragraph,
-): ParagraphPropertySource | undefined => paragraphPropertySources.get(paragraph);
+): ParagraphPropertySource | undefined => captureForParagraph(paragraph)?.source;
 
 export const paragraphPropertySourceMatchesEmission = (
   source: ParagraphPropertySource,
@@ -221,12 +253,21 @@ export const paragraphPropertySourceMatchesEmission = (
 
 /** Copy the captured `w:pPr` without claiming the source paragraph's durable identity. */
 export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragraph): void => {
-  const propertySource = paragraphPropertySources.get(source);
-  if (propertySource) {
-    const copiedSource = Object.freeze({ ...propertySource });
-    paragraphPropertySources.set(target, copiedSource);
-    paragraphPropertySourceOwners.set(target, paragraphPropertySourceOwners.get(source) ?? source);
-  }
+  const capture = captureForParagraph(source);
+  if (capture) attachParagraphCapture(target, capture);
+  const kind =
+    paragraphPropertySourceTokens.has(source) ||
+    paragraphSourceRecordKinds.get(source) === "durable"
+      ? "durable"
+      : "capture-only";
+  if (!paragraphSourceRecordKinds.has(target)) paragraphSourceRecordKinds.set(target, kind);
+};
+
+const copyParagraphCaptureForTransport = (target: Paragraph, source: Paragraph): void => {
+  // Transport graphs contain string keys only; keep this in-memory capture
+  // off the wire while the explicit token carries its durable identity.
+  const capture = captureForParagraph(source);
+  if (capture) paragraphPropertyCaptures.set(target, capture);
 };
 
 export const copyParagraphPropertySource = (target: Paragraph, source: Paragraph): void => {
@@ -258,6 +299,7 @@ export const assignDocumentParagraphPropertySourceContract = (
   visitDocumentStoryParagraphs(document.package.document.content, (paragraph) => {
     const token = tokenForOrdinal(contract, ordinal);
     paragraphPropertySourceTokens.set(paragraph, token);
+    paragraphSourceRecordKinds.set(paragraph, "durable");
     sources.set(token, paragraph);
     ordinal += 1;
   });
@@ -303,7 +345,7 @@ export const paragraphPropertySourceBelongsToDocument = (
   paragraph: Paragraph,
   document: Document,
 ): boolean => {
-  const owner = paragraphPropertySourceOwners.get(paragraph);
+  const owner = captureForParagraph(paragraph)?.owner;
   const binding = getDocumentParagraphPropertySourceBinding(document);
   return owner !== undefined && binding !== undefined && binding.sourceOwners.has(owner);
 };
@@ -331,6 +373,35 @@ export const copyDocumentParagraphPropertySourceContract = (
 export const getParagraphPropertySourceToken = (paragraph: Paragraph): string | undefined =>
   paragraphPropertySourceTokens.get(paragraph);
 
+type ParagraphSourceIdentity =
+  | { type: "durable"; token: string }
+  | { type: "capture-only" }
+  | { type: "authored" }
+  | { type: "missing-token" }
+  | { type: "invalid" };
+
+/** Byte captures can follow derivations; only explicit copies carry durable tokens. */
+export const inspectParagraphSourceIdentity = (
+  paragraph: Paragraph,
+  document: Document,
+): ParagraphSourceIdentity => {
+  const binding = getDocumentParagraphPropertySourceBinding(document);
+  if (!binding) return { type: "invalid" };
+  const capture = captureForParagraph(paragraph);
+  if (Object.hasOwn(paragraph, paragraphPropertyCapture) && !capture) return { type: "invalid" };
+  const token = getParagraphPropertySourceToken(paragraph);
+  if (token !== undefined) {
+    if (capture && !binding.sourceOwners.has(capture.owner)) return { type: "invalid" };
+    return { type: "durable", token };
+  }
+  const kind = paragraphSourceRecordKinds.get(paragraph);
+  if (kind === "durable" || binding.sourceOwners.has(paragraph)) return { type: "missing-token" };
+  if (!capture) return { type: "authored" };
+  if (kind === "capture-only" || binding.sourceOwners.has(capture.owner))
+    return { type: "capture-only" };
+  return { type: "invalid" };
+};
+
 type ParagraphCloneOverrides = Omit<Partial<Paragraph>, "type">;
 
 /** Clone a paragraph while deliberately retaining its parsed `w:pPr` owner. */
@@ -347,7 +418,11 @@ export const cloneParagraphWithPropertySource = (
 export const cloneParagraphWithoutPropertySource = (
   paragraph: Paragraph,
   overrides: ParagraphCloneOverrides,
-): Paragraph => ({ ...paragraph, ...overrides });
+): Paragraph => {
+  const cloned = { ...paragraph, ...overrides };
+  Reflect.deleteProperty(cloned, paragraphPropertyCapture);
+  return cloned;
+};
 
 const paragraphsIn = (document: Document): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
@@ -1063,7 +1138,7 @@ export const transportTableCellsWithParagraphPropertySources = (
     if (!target) {
       panic("The cloned table cells lost a paragraph owner.");
     }
-    copyParagraphPropertyCapture(target, source);
+    copyParagraphCaptureForTransport(target, source);
     const inspection = inspectTableCellParagraphPropertySourceBinding(source);
     setTableCellParagraphPropertySourceBinding(
       target,
@@ -1095,8 +1170,10 @@ export const restoreTableCellsWithParagraphPropertySources = (
     }
     switch (sourceEntry.binding.type) {
       case "authored":
+        paragraphSourceRecordKinds.set(target, "capture-only");
         break;
       case "source":
+        paragraphSourceRecordKinds.set(target, "durable");
         paragraphPropertySourceTokens.set(target, sourceEntry.binding.token);
         break;
       default: {
@@ -1136,7 +1213,7 @@ export const cloneTableCellsWithParagraphPropertyCaptures = (
     if (!target) {
       panic("The cloned table cells lost a paragraph owner.");
     }
-    copyParagraphPropertyCapture(target, sourceEntry.paragraph);
+    copyParagraphCaptureForTransport(target, sourceEntry.paragraph);
     setTableCellParagraphPropertySourceBinding(target, { type: "authored" });
   }
   return cloned;
@@ -1146,12 +1223,8 @@ export const linkProseParagraphPropertySource = (
   proseParagraph: PMNode,
   sourceParagraph: Paragraph,
 ): void => {
-  if (paragraphPropertySources.has(sourceParagraph)) {
-    proseParagraphSourceOwners.set(
-      proseParagraph,
-      paragraphPropertySourceOwners.get(sourceParagraph) ?? sourceParagraph,
-    );
-  }
+  const capture = captureForParagraph(sourceParagraph);
+  if (capture) proseParagraphSourceOwners.set(proseParagraph, capture.owner);
 };
 
 type CreateProseParagraphOptions = {
@@ -1375,6 +1448,9 @@ export const linkParagraphPropertySourceCandidate = (target: Paragraph, source: 
   const token = source.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
   if (typeof token === "string") {
     paragraphPropertySourceTokens.set(target, token);
+    paragraphSourceRecordKinds.set(target, "durable");
+  } else {
+    paragraphSourceRecordKinds.set(target, "capture-only");
   }
   const sourceOwner = proseParagraphSourceOwners.get(source);
   if (sourceOwner) {

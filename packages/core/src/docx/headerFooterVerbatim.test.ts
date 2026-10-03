@@ -35,7 +35,7 @@ test("changing the story kind cannot replay the previous root", () => {
 test("source baselines survive spreads but never trust replaced fingerprints", () => {
   const header = parseHeader(HEADER);
   const baseline = getHeaderFooterSourceBaseline(header);
-  expect(baseline).toEqual({ type: "captured", content: header.content });
+  expect(baseline).toEqual({ type: "captured", content: structuredClone(header.content) });
   const derived = { ...header };
   expect(getHeaderFooterSourceBaseline(derived)).toEqual(baseline);
   for (const fingerprint of [
@@ -53,7 +53,7 @@ test("source baselines survive spreads but never trust replaced fingerprints", (
   if (paragraph?.type !== "paragraph") throw new Error("Missing paragraph");
   paragraph.content.push({ type: "run", content: [{ type: "text", text: "edit" }] });
   expect(getHeaderFooterSourceBaseline(header)).toEqual(baseline);
-  expect(baseline).not.toEqual({ type: "captured", content: header.content });
+  expect(baseline).not.toEqual({ type: "captured", content: structuredClone(header.content) });
 });
 
 test("missing capture provenance serializes in full without a diagnostic", () => {

@@ -36,7 +36,7 @@ import {
   GENERATED_PACKAGE_OP_KINDS,
   GENERATED_PACKAGE_STORIES,
   packageDocumentArbitrary,
-} from "../packages/docx-core/src/ops/__tests__/packageOperationArbitraries";
+} from "../test/generators/packageOperationArbitraries";
 
 class OperationPackageLawError extends TaggedError("OperationPackageLawError")<{
   message: string;
