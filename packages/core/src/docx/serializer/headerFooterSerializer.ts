@@ -98,7 +98,7 @@ function serializeBlock(block: BlockContent): string {
  * @returns Complete XML string for header*.xml or footer*.xml
  */
 type HeaderFooterSerializeOptions = SourcePart &
-  SaveDiagnosticOptions & { originalBuffer?: ArrayBuffer };
+  SaveDiagnosticOptions & { originalBuffer?: ArrayBuffer | undefined };
 
 export function serializeHeaderFooter(
   hf: HeaderFooter,
