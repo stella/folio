@@ -17,6 +17,7 @@
     "fuzz-issue-classes.test.ts",
     "nightly-failure-issues.ts",
     "nightly-failure-issues.test.ts",
-    "nightly-conformance-report.test.ts"
+    "nightly-conformance-report.test.ts",
+    "../tests/visual/canonicalBrowserInputDriver.ts"
   ]
 }

@@ -755,5 +755,12 @@
       "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
       "date": "2026-10-01"
     }
+  ],
+  "scripts/browser-ime-driver.property.test.ts::generated IME lifecycles deliver every update and exactly their declared completion": [
+    {
+      "seed": 11,
+      "note": "Replay the browser IME action seed against the shared lifecycle driver",
+      "date": "2026-10-03"
+    }
   ]
 }
