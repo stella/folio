@@ -1,5 +1,5 @@
 import { TextSelection } from "prosemirror-state";
-import { CellSelection } from "prosemirror-tables";
+import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
 import type { BrowserDragTarget } from "../visual/browserInputTrace";
 import type { Document } from "@stll/folio-core";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
@@ -114,9 +114,9 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     const first = targets.at(0);
     const last = targets.at(1) ?? first;
     if (!first || !last) return null;
-    let selection;
-    if (target === "table") selection = CellSelection.create(view.state.doc, first.pos, last.pos);
-    else {
+    if (target === "table") {
+      if (!applyCellSelection(view, first.pos, last.pos)) return null;
+    } else {
       const from = Math.max(
         view.state.doc.resolve(first.pos).start(),
         first.type === "paragraph" ? first.pos + 1 : first.pos - 1,
@@ -130,11 +130,11 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
           ? last.pos + Math.min(2, last.size - 1)
           : last.pos + last.size + 2,
       );
-      selection = TextSelection.create(view.state.doc, from, to);
+      const selection = TextSelection.create(view.state.doc, from, to);
+      view.dispatch(view.state.tr.setSelection(selection));
     }
-    view.dispatch(view.state.tr.setSelection(selection));
     view.focus();
-    return selection.toJSON();
+    return view.state.selection.toJSON();
   },
   setMode: (mode: "editing" | "suggesting") =>
     getRef()
