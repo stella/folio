@@ -101,5 +101,5 @@ export type DocumentOpRefusalReason =
 export class DocumentOpRefusal extends TaggedError("DocumentOpRefusal")<{
   message: string;
   reason: DocumentOpRefusalReason;
-  opType: DocumentOpType;
+  opType: DocumentOpType | undefined;
 }> {}

@@ -16,6 +16,8 @@ export const OPEN_ISSUES = {} as const;
  * repro in the scenario that pins it.
  */
 export const FINDINGS = {
+  TERMINAL_DELETE_BATCH_FORMATTING:
+    "accepting a tracked batch with preceding paragraph formatting and terminal deletion loses the requested formatting",
   INSERT_AFTER_PENDING_MERGE:
     "insertAfterBlock on a block whose tracked merge with the next is pending lists the new paragraph between them, but accepting joins the new paragraph onto the merged block and leaves the block the merge named apart",
   MARKDOWN_DROPS_TEXT_BOX:
@@ -52,10 +54,11 @@ export const KNOWN_FAILING_FLOWS: readonly {
   generation?: "targeted" | "legacy";
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
-}[] = [];
+}[] = [{ seed: 18568319, steps: 16, finding: "TERMINAL_DELETE_BATCH_FORMATTING" }];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
+  TERMINAL_DELETE_BATCH_FORMATTING: /directAlignment is undefined, expected "center"/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
 };
