@@ -17,7 +17,7 @@ Shrunk 0 time(s)
 Encountered failures were:
 - [[{"kind":"deleteBlock","block":3},{"kind":"insertAfterBlock","block":3},{"kind":"splitBlock","block":0,"before":1},{"kind":"setBlockParagraphProperties","block":3}],"tracked-changes"]
 
-Pinned regression seed -440111207 from test/property-seeds.json failed again (#1128: formatting a last paragraph the batch deletes and inserts after).
+Pinned regression seed -440111207 from test/property-seeds/packages%2Fcore%2Fsrc%2Fai-edits%2FbatchOverlap.test.ts.json failed again (#1128: formatting a last paragraph the batch deletes and inserts after).
 Replay: cd packages/core && PROPERTY_TEST_SEED=-440111207 PROPERTY_TEST_PATH='136:9:8:8' bun test src/ai-edits/batchOverlap.test.ts -t 'refuses each conflict and applies the rest as one at a time would'
       at <anonymous> (/home/runner/work/folio/folio/test/property-testing.ts:362:15)
       at asyncReportRunDetails (/home/runner/.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/lib/fast-check.js:2495:70)

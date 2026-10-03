@@ -1,0 +1,44 @@
+{
+  "over generated paragraphs and edits": [
+    {
+      "seed": 11,
+      "note": "seed sweep before #1117; which of the two properties failed was not recorded, so both replay it",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": -479275576,
+      "note": "#1160: direct replacement seed covering live block fields",
+      "date": "2026-09-28"
+    }
+  ],
+  "over generated paragraphs and edits, accepted and rejected": [
+    {
+      "seed": 873192623,
+      "path": "248:3:5:5:3:3:3:3:0:3",
+      "note": "#1117: a rewritten word running into a kept field redlined unchanged text (path at factor 10)",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": -449189980,
+      "path": "350:1:1:1:1:1:11:10:10:10:11:1:1:1:1:1:1:1:1:5:6:6:4:5:5",
+      "note": "#1117: nightly run 36297187033, ` and` inserted before a kept `3.6` field",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": 11,
+      "note": "seed sweep before #1117; which of the two properties failed was not recorded, so both replay it",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": 47,
+      "path": "7:3:2:2:1:1:1:1:1:1:1:2:2:2:3:3:3",
+      "note": "#1117: seed sweep",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": -1368426772,
+      "note": "the oracle joined prose across a retained note reference and predicted a false refusal",
+      "date": "2026-09-28"
+    }
+  ]
+}
