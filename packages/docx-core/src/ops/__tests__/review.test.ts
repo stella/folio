@@ -1153,12 +1153,16 @@ test("tracked paragraph patches and joins keep one pending property review and i
         patch: { alignment: nextAlignment },
         revision: stamp(1),
       });
+      expect(patch.revisions).toEqual([]);
       if (
         previous?.type === "paragraph" &&
         previous.formatting?.alignment !== nextAlignment &&
         previous.propertyChanges?.at(0)?.info.author === "Other"
       ) {
-        expect(patch.revisions).toEqual([7]);
+        const patched = blocks(patch.document).at(1);
+        expect(patched?.type === "paragraph" && patched.propertyChanges).toEqual([
+          { ...pending, info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" } },
+        ]);
       }
       document = patch.document;
     }
@@ -1170,6 +1174,7 @@ test("tracked paragraph patches and joins keep one pending property review and i
       revision: stamp(1),
       newIds: { revision: [2] },
     });
+    expect(joined.revisions).not.toContain(7);
     const survivor = blocks(joined.document).at(1);
     expect(survivor?.type === "paragraph" && survivor.propertyChanges).toEqual([
       { ...pending, info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" } },
