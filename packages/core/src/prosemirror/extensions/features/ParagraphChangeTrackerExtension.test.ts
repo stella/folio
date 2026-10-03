@@ -14,7 +14,9 @@ import {
   clearTrackedChanges,
   ignoreTrackedChanges,
   markChangedParagraphRanges,
+  markPackageChange,
   ParagraphChangeTrackerExtension,
+  getChangeTrackerState,
 } from "./ParagraphChangeTrackerExtension";
 
 import { ParaIdAllocatorExtension } from "./ParaIdAllocatorExtension";
@@ -94,6 +96,35 @@ function setSelection(state: EditorState, pos: number): EditorState {
 // ============================================================================
 
 describe("ParagraphChangeTrackerExtension", () => {
+  describe("package changes", () => {
+    test("recomputes structural state when a package change also changes the document", () => {
+      let state = createState([
+        { text: "First", paraId: "P1" },
+        { text: "Second", paraId: "P2" },
+      ]);
+      const replacement = createDoc({ text: "Replacement", paraId: "P3" });
+      const tr = state.tr.replaceWith(0, state.doc.content.size, replacement.content);
+      state = state.apply(markPackageChange(tr));
+
+      expect(getChangeTrackerState(state)).toMatchObject({ paragraphCount: 1 });
+      expect(hasStructuralChanges(state)).toBe(true);
+      expect(hasUntrackedChanges(state)).toBe(true);
+      expect(getChangedParagraphIds(state).has("P3")).toBe(true);
+    });
+
+    test("keeps structure unchanged for a package-only transaction", () => {
+      const state = createState([{ text: "First", paraId: "P1" }]);
+      const next = state.apply(markPackageChange(state.tr));
+
+      expect(getChangeTrackerState(next)).toMatchObject({
+        paragraphCount: 1,
+        structuralChange: false,
+        hasUntrackedChanges: true,
+      });
+      expect(getChangedParagraphIds(next).size).toBe(0);
+    });
+  });
+
   describe("mark-only edits", () => {
     test("does not crash when a mark step is followed by a shrinking replace step", () => {
       let state = createState([

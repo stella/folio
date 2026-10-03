@@ -35,11 +35,12 @@ export default defineConfig({
     {
       name: "interactions",
       testMatch: /(?:interactions|editing-flows)\.spec\.ts/u,
-      testIgnore: /(?:browser-input|ai-human-interleaving)-fuzz\.interactions\.spec\.ts/u,
+      testIgnore:
+        /(?:(?:canonical-)?browser-input|ai-human-interleaving)-fuzz\.interactions\.spec\.ts/u,
     },
     {
       name: "browser-fuzzer",
-      testMatch: /browser-input-fuzz\.interactions\.spec\.ts/u,
+      testMatch: /(?:canonical-)?browser-input-fuzz\.interactions\.spec\.ts/u,
     },
     {
       name: "interleaving-fuzzer",

@@ -1,3 +1,4 @@
+import { replaceStoryBody } from "./stories";
 /** Whole-table edits and their exact structural inverse. */
 import { Result, panic } from "better-result";
 
@@ -291,10 +292,11 @@ const commitBlocks = ({
     return cloned;
   });
   const content = updateBlockList(body.content, anchor.list, () => replacement);
-  const next = {
-    ...document,
-    package: { ...document.package, document: withBodyContent(body, content) },
-  };
+  const next = replaceStoryBody({
+    document,
+    story: op.story,
+    body: withBodyContent(body, content),
+  });
   const nextBody = storyBody(next, op.story);
   const previousParagraphs = new Map(
     storyParagraphs(body).map(({ paragraph }) => [idKey(paragraph.paraId ?? ""), paragraph]),

@@ -10,6 +10,7 @@ export type RunFormattingInlineAtomDisposition =
   | "break-run"
   | "field-run"
   | "not-a-run"
+  | "note-marker-run"
   | "page-break-carrier"
   | "preserved-xml-run"
   | "structured-field"
@@ -33,6 +34,7 @@ export const RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   image: "not-a-run",
   math: "not-a-run",
   moveRangeBoundary: "not-a-run",
+  noteMarker: "note-marker-run",
   pageBreakRun: "page-break-carrier",
   preservedXml: "preserved-xml-run",
   rangeAnchor: "not-a-run",
@@ -70,6 +72,7 @@ const CONTROL_CHARACTER_BY_DISPOSITION = Object.freeze({
   "break-run": "\n",
   "field-run": null,
   "not-a-run": null,
+  "note-marker-run": null,
   "page-break-carrier": null,
   "preserved-xml-run": null,
   "structured-field": null,
@@ -296,6 +299,7 @@ export const runFormattingCarrierReviewText = (carrier: RunFormattingCarrier): s
     case "text-run":
       return carrier.node.text ?? "";
     case "page-break-carrier":
+    case "note-marker-run":
       return "";
     case "symbol-run": {
       const { char } = expectSymbolAttrs(carrier.node);

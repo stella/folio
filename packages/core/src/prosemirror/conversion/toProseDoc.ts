@@ -609,6 +609,10 @@ function preservedInlineNode(content: PreservedInline): PMNode {
     xml: content.xml,
     text: content.text,
     level: PRESERVED_XML_LEVELS.inline,
+    // What a folded list-number capture stands for goes along as it is, so
+    // that the conversion back can put it on the line where the fold's rule
+    // no longer hides it.
+    ...(content.foldedListNumber ? { foldedListNumber: content.foldedListNumber } : {}),
   });
 }
 
@@ -3302,6 +3306,7 @@ function reportRunContentBesidePageBreak(
       case "drawing":
       case "endnoteRef":
       case "footnoteRef":
+      case "noteMarker":
       // An opaque atom rebuilds from its own attributes, exactly as a symbol
       // does, so the page-break owner can re-cut the run around it. Refusing
       // would cost the whole document the editor, which is the worse loss.
@@ -3753,6 +3758,11 @@ function convertRunContent(
   authoredFormatting?: TextFormatting,
 ): PMNode[] {
   switch (content.type) {
+    case "noteMarker":
+      // PM gives the invisible atom a structural position; native story offsets
+      // still count the automatic mark as zero logical characters.
+      return [schema.node("noteMarker", { kind: content.kind }).mark(marks)];
+
     case "text":
       if (content.text) {
         return [schema.text(content.text, marks)];

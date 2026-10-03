@@ -43,6 +43,7 @@ export const paragraphChangeTrackerKey = new PluginKey<InternalParagraphChangeTr
 const CLEAR_META = "clear";
 const IGNORE_META = "ignore";
 const STRUCTURAL_META = "structural";
+const PACKAGE_CHANGE_META = "package-change";
 const CHANGED_PARAGRAPH_RANGES_META = "folioChangedParagraphRanges";
 const SECTION_ENDPOINT_REMOVAL_META = "folioSectionEndpointRemoval";
 const SECTION_EDIT_META = "folioSectionEdit";
@@ -480,6 +481,10 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
           };
         }
 
+        if (meta === PACKAGE_CHANGE_META && !tr.docChanged) {
+          return { ...prevState, hasUntrackedSourceChanges: true, hasUntrackedChanges: true };
+        }
+
         // If no doc changes, keep previous state
         if (!tr.docChanged) {
           return isSectionEditMeta(sectionEditMeta) &&
@@ -639,6 +644,10 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
           }
         }
 
+        if (meta === PACKAGE_CHANGE_META) {
+          newState.hasUntrackedSourceChanges = true;
+          newState.hasUntrackedChanges = true;
+        }
         return newState;
       },
     },
@@ -902,6 +911,10 @@ export function clearTrackedChanges(state: EditorState): Transaction {
 export function ignoreTrackedChanges(tr: Transaction): Transaction {
   return tr.setMeta(paragraphChangeTrackerKey, IGNORE_META);
 }
+
+/** A committed package-story/property edit requires the full package serializer. */
+export const markPackageChange = (tr: Transaction): Transaction =>
+  tr.setMeta(paragraphChangeTrackerKey, PACKAGE_CHANGE_META);
 
 export function markStructuralChange(tr: Transaction): Transaction {
   return tr.setMeta(paragraphChangeTrackerKey, STRUCTURAL_META);

@@ -56,6 +56,11 @@
       "import": "./dist/styles.js",
       "require": "./dist/styles.cjs"
     },
+    "./messages/*": {
+      "types": "./dist/i18n/messages/*.d.ts",
+      "import": "./dist/messages/*.js",
+      "require": "./dist/messages/*.cjs"
+    },
     "./messages": {
       "types": "./dist/i18n/messages.d.ts",
       "import": "./dist/messages.js",

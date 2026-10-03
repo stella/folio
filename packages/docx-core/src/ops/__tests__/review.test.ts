@@ -597,6 +597,27 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     );
   });
 
+  test("tracked joins refuse every positive inline merge depth without changing the document", () => {
+    const document = documentOf(
+      paragraph("00000001", [run("a")]),
+      paragraph("00000002", [run("b")]),
+    );
+    const original = structuredClone(document);
+    for (const depth of [1, 2, 3, 100, Number.MAX_SAFE_INTEGER]) {
+      expect(
+        refusalOf(document, {
+          type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+          story: OP_STORIES.MAIN,
+          blockId: "00000001",
+          nextBlockId: "00000002",
+          depth,
+          revision: stamp(1),
+        }),
+      ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+      expect(document).toStrictEqual(original);
+    }
+  });
+
   test("accepting a join of an empty paragraph leaves the next one as it was", () => {
     const empty = paragraph("00000001", [{ type: "bookmarkStart", id: 1, name: "_Ref" }], {
       formatting: { styleId: "Heading1" },
@@ -1091,7 +1112,7 @@ describe("section-aware tracked editor joins", () => {
       newIds: { revision: [2, 3] },
     });
     expect(blocks(tracked.document).at(0)?.sectionProperties).toEqual({ pageWidth: 10000 });
-    expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.ACCEPT))).toEqual(
+    expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.ACCEPT))).toStrictEqual(
       blocks(direct.document),
     );
     expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.REJECT))).toEqual(
