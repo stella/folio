@@ -1674,6 +1674,7 @@ test("generated replacement breaks restore deletion cut depths across paragraphs
         });
         const revisionIds = Array.from({ length: 32 }, (_, index) => 1001 + index);
         const planned = planTrackedReplace(original, {
+          sourceContainerPolicy: "join",
           from: position({ offset: 1 + (cutPick % (width - 1)) }),
           to: position({ blockId: "00000002", offset: 0 }),
           revision: { id: 1000, author: "Reviewer" },

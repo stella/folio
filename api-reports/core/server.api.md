@@ -1005,6 +1005,7 @@ export type FolioDocumentOperationIssue = {
     code: FolioAIEditSkippedOperation["reason"];
     retryable: boolean;
     recovery: FolioDocumentOperationRecovery;
+    canonicalRefusal?: FolioAIEditSkippedOperation["canonicalRefusal"];
     message?: string;
 };
 
