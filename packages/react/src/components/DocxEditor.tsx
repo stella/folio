@@ -3076,7 +3076,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             pagedEditorRef.current?.getEditor() === editor &&
             editor.getView() === view &&
             view.state.doc === editorState?.doc &&
-            editor.captureCanonicalSave()?.version === snapshot.version
+            editor.isCanonicalSaveCurrent(snapshot.version)
           ) {
             view.dispatch(clearTrackedChanges(view.state));
           }

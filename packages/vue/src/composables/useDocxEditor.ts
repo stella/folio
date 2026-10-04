@@ -1416,8 +1416,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     if (
       editorView.value === savedView &&
       savedView?.state.doc === savedState?.doc &&
-      (result.version === undefined ||
-        manager.api.captureCanonicalSave()?.version === result.version)
+      (result.version === undefined || manager.api.isCanonicalSaveCurrent(result.version))
     ) {
       docModel.value = result.document;
       syncSecondaryStoryEditors();
