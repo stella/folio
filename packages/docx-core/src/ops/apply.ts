@@ -1,3 +1,4 @@
+import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { cloneModel } from "./modelClone";
 import { noteContentWithAutomaticMark } from "./noteMarks";
 import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
@@ -118,7 +119,6 @@ import {
   asParagraphContent,
   leafSpans,
   childNodes,
-  defaultInsertionGap,
   type Gap,
   type InlineNode,
   isEmptyRecord,
@@ -128,7 +128,7 @@ import {
   textsIn,
   zeroWidthLeavesAt,
 } from "./leaves";
-import { paragraphLength, paragraphLogicalText } from "./offsets";
+import { paragraphLength } from "./offsets";
 import { tableEditBoundaryRefusal } from "./tableEditBoundary";
 import { priorValues } from "./patch";
 import {
@@ -300,9 +300,6 @@ const reviewRestoring = (
 /** Characters `insertText` does not carry: each is an inline atom of its own. */
 const NON_TEXT_CHARACTER_PATTERN = /[\t\n\r]/u;
 
-const isHighSurrogate = (code: number): boolean => code >= 0xd8_00 && code <= 0xdb_ff;
-const isLowSurrogate = (code: number): boolean => code >= 0xdc_00 && code <= 0xdf_ff;
-
 /** The paragraph carrying an id, compared as hex; the contract makes it unique. */
 const findParagraph = (
   op: DocumentOp,
@@ -325,48 +322,6 @@ const locate = (
   blockId: string,
 ): Result<ParagraphLocation, DocumentOpRefusal> =>
   findParagraph(op, storyParagraphs(storyBody(document, story)), blockId);
-
-/** What a position that states no `zeroWidthBefore` assumes. */
-type ZeroWidthDefault = "afterAll" | "beforeAll" | "insertion";
-
-/** The gap a position names, or why it names none in this paragraph. */
-const resolveGap = (
-  paragraph: Paragraph,
-  position: TextPosition,
-  fallback: ZeroWidthDefault,
-): Gap | DocumentOpRefusalReason => {
-  const text = paragraphLogicalText(paragraph);
-  const { offset, zeroWidthBefore } = position;
-  if (!Number.isInteger(offset) || offset < 0 || offset > text.length) {
-    return DOCUMENT_OP_REFUSAL_REASONS.INVALID_OFFSET;
-  }
-  if (
-    offset > 0 &&
-    offset < text.length &&
-    isHighSurrogate(text.charCodeAt(offset - 1)) &&
-    isLowSurrogate(text.charCodeAt(offset))
-  ) {
-    return DOCUMENT_OP_REFUSAL_REASONS.SPLITS_SURROGATE_PAIR;
-  }
-  const available = zeroWidthLeavesAt(paragraph.content, offset).length;
-  if (zeroWidthBefore !== undefined) {
-    return Number.isInteger(zeroWidthBefore) && zeroWidthBefore >= 0 && zeroWidthBefore <= available
-      ? { offset, zeroWidthBefore }
-      : DOCUMENT_OP_REFUSAL_REASONS.INVALID_OFFSET;
-  }
-  switch (fallback) {
-    case "afterAll":
-      return { offset, zeroWidthBefore: available };
-    case "beforeAll":
-      return { offset, zeroWidthBefore: 0 };
-    case "insertion":
-      return defaultInsertionGap(paragraph.content, offset);
-    default: {
-      const unreachable: never = fallback;
-      return unreachable;
-    }
-  }
-};
 
 const isGap = (value: Gap | DocumentOpRefusalReason): value is Gap => typeof value === "object";
 
@@ -403,8 +358,8 @@ const locateRange = (
     return Result.err(located.error);
   }
   const { paragraph } = located.value;
-  const start = resolveGap(paragraph, from, "afterAll");
-  const end = resolveGap(paragraph, to, "beforeAll");
+  const start = resolveGap({ paragraph, position: from, fallback: "afterAll" });
+  const end = resolveGap({ paragraph, position: to, fallback: "beforeAll" });
   const invalid = (reason: DocumentOpRefusalReason) =>
     Result.err(
       refusal(op, reason, `[${from.offset}, ${to.offset}) is not a range of ${from.blockId}.`),
@@ -432,7 +387,7 @@ const locatePosition = (
   if (located.isErr()) {
     return Result.err(located.error);
   }
-  const gap = resolveGap(located.value.paragraph, at, fallback);
+  const gap = resolveGap({ paragraph: located.value.paragraph, position: at, fallback });
   if (!isGap(gap)) {
     return Result.err(refusal(op, gap, `${at.offset} is not a position in ${at.blockId}.`));
   }

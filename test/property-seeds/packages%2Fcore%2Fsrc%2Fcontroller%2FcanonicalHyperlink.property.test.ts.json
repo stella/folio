@@ -1,0 +1,40 @@
+{
+  "generated hyperlink command histories preserve targets, bookmarks, probes and exact inverse": [
+    {
+      "seed": -2108589352,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Tracked hyperlinks with resolutionJoins cannot be serialized. Refuse suggested hyperlink mutations atomically instead of publishing an unsavable model or discarding inverse provenance.",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": 1182066695,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:1",
+      "note": "Reopening an anchor computes href from anchor; compare its effective target while exact authored inverse checks remain strict.",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": 547012217,
+      "path": "1:1:1:1:1:1:1:1:1:1:1:1:2:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:3:2:2:2",
+      "note": "Sanitized unsafe targets are unresolved hyperlinks; store no href rather than a serializer-discarded empty href.",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": 1102184308,
+      "path": "0:1:1:1:1:1:1:1:1:1:1:1:1:1:1",
+      "note": "Bookmark source eligibility expanded but address projection lacked bookmark zero-width gaps; bind projection to every supported marker shape.",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": -1133252633,
+      "path": "11:1:1:1:1:1:1:1:1:1:12:1:19:19",
+      "note": "Generated valid editing insertion must succeed even when replacement reaches a bookmark boundary; reject vacuous all-refused histories.",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": -1534596614,
+      "path": "6:4:3:3:6:6:6:6:6:8:20:12:21:22:21:21:21:21:21:21:20:19:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:19:18:18:18:18:18:18:18:18:18:18:19:19:19:19:19:19:19:19:19:19:19:19",
+      "note": "Setting a hyperlink must keep bookmark markers as structural siblings; wrapping orphan root markers changes their projection eligibility and creates an invalid boundary pair.",
+      "date": "2026-10-04"
+    }
+  ]
+}

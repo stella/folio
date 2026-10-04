@@ -38,6 +38,7 @@ import {
   toProseDoc,
   headerFooterToProseDoc,
   footnoteToProseDoc,
+  collectPairedBookmarkIds,
 } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, StyleDefinitions } from "../types/document";
 
@@ -283,7 +284,17 @@ const supportsTextContent = (content: Paragraph["content"]): boolean =>
         );
       case "insertion":
       case "deletion":
-        return supportsTextContent(item.content);
+        return (
+          !(
+            item.resolutionJoins !== undefined &&
+            item.content.some((child) => child.type === "hyperlink")
+          ) && supportsTextContent(item.content)
+        );
+      case "hyperlink":
+        return supportsTextContent(item.children);
+      case "bookmarkStart":
+      case "bookmarkEnd":
+        return true;
       default:
         return false;
     }
@@ -345,6 +356,7 @@ const project = ({
       }),
   });
   if (converted.isErr()) return converted;
+  const pairedBookmarkIds = collectPairedBookmarkIds(body.content);
   const paragraphs: ParagraphAddress[] = [];
   let failure: CanonicalSessionError | undefined;
   converted.value.forEach((node, offset, index) => {
@@ -361,10 +373,27 @@ const project = ({
     let renderedText = "";
     let renderedSize = 0;
     const boundaries: number[][] = [[0]];
-    const appendContent = (content: Paragraph["content"]): void => {
+    const appendContent = (
+      content: Paragraph["content"],
+      bookmarkMode: "paired" | "all" = "paired",
+    ): void => {
       for (const run of content) {
+        if (run.type === "bookmarkStart" || run.type === "bookmarkEnd") {
+          if (bookmarkMode === "all" || pairedBookmarkIds.has(run.id)) renderedSize += 1;
+          const gaps = boundaries.at(-1) ?? panic("Missing canonical bookmark gap");
+          gaps.push(renderedSize);
+          continue;
+        }
+        if (run.type === "hyperlink") {
+          if (run.children.length === 0) {
+            const gaps = boundaries.at(-1) ?? panic("Missing canonical empty hyperlink gap");
+            gaps.push(renderedSize);
+          }
+          appendContent(run.children, "all");
+          continue;
+        }
         if (run.type === "insertion" || run.type === "deletion") {
-          appendContent(run.content);
+          appendContent(run.content, "all");
           continue;
         }
         if (run.type !== "run") panic("Canonical projection encountered unsupported content");
@@ -418,6 +447,9 @@ const project = ({
 
 const intentStory = (intent: EditorIntent): OpStory => {
   switch (intent.type) {
+    case "setHyperlink":
+    case "removeHyperlink":
+    case "insertHyperlink":
     case "replaceText":
     case "formatRun":
     case "insertAtom":
@@ -722,6 +754,9 @@ class CanonicalSession {
       case "setList":
       case "formatParagraph":
         return false;
+      case "setHyperlink":
+      case "removeHyperlink":
+      case "insertHyperlink":
       case "replaceText":
       case "insertAtom":
       case "formatRun":
@@ -948,6 +983,20 @@ class CanonicalSession {
     const ops: DocumentOp[] = [];
     const edits: AppliedDocumentOp[] = [];
     for (const intent of intents) {
+      if (
+        this.mode.type === "suggesting" &&
+        (intent.type === "setHyperlink" ||
+          intent.type === "removeHyperlink" ||
+          intent.type === "insertHyperlink")
+      ) {
+        return Result.err(
+          new CanonicalSessionError({
+            gap: CANONICAL_GAP.trackedHyperlinkResolution,
+            reason: "refused",
+            message: "Hyperlink suggestions require serializable wrapper review provenance.",
+          }),
+        );
+      }
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
@@ -959,6 +1008,8 @@ class CanonicalSession {
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
       if (
+        intent.type !== "setHyperlink" &&
+        intent.type !== "removeHyperlink" &&
         intent.type !== "formatRun" &&
         intent.type !== "formatParagraph" &&
         intent.type !== "setList"

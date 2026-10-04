@@ -2,6 +2,9 @@
  * Hyperlink Mark Extension
  */
 
+import { withCanonicalCommand } from "../../canonicalCommands";
+import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
+import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
 import { panic } from "better-result";
 import type { Command, EditorState } from "prosemirror-state";
 
@@ -182,94 +185,118 @@ export const HyperlinkExtension = createMarkExtension({
     const documentHyperlinkType = (state: EditorState) =>
       state.schema.marks["hyperlink"] ?? panic("Missing mark type: hyperlink");
 
-    const setHyperlink =
-      (href: string, tooltip?: string): Command =>
-      (state, dispatch) => {
-        const hlType = documentHyperlinkType(state);
-        const { from, to, empty } = state.selection;
+    const setHyperlink = (href: string, tooltip?: string): Command =>
+      withCanonicalCommand(
+        (state, dispatch) => {
+          const hlType = documentHyperlinkType(state);
+          const { from, to, empty } = state.selection;
 
-        if (empty) {
-          return false;
-        }
-
-        if (dispatch) {
-          const mark = hlType.create({
-            href: normalizeHyperlinkInput(href),
-            tooltip: tooltip || null,
-          });
-          let tr = state.tr.addMark(from, to, mark);
-          // Remove any explicit text color so the default hyperlink blue (#0563c1)
-          // shows through, matching MS Word behavior
-          const textColorType = state.schema.marks["textColor"];
-          if (textColorType) {
-            tr = tr.removeMark(from, to, textColorType);
+          if (empty) {
+            return false;
           }
-          dispatch(tr.scrollIntoView());
-        }
 
-        return true;
-      };
-
-    const removeHyperlink: Command = (state, dispatch) => {
-      const hlType = documentHyperlinkType(state);
-      const { from, to, empty } = state.selection;
-
-      if (empty) {
-        const $pos = state.selection.$from;
-        const marks = $pos.marks();
-        const linkMark = marks.find((m) => m.type === hlType);
-
-        if (!linkMark) {
-          return false;
-        }
-
-        let start = $pos.pos;
-        let end = $pos.pos;
-
-        const parent = $pos.parent;
-        // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-        parent.forEach((node, offset) => {
-          if (node.isText) {
-            const nodeStart = $pos.start() + offset;
-            const nodeEnd = nodeStart + node.nodeSize;
-
-            if (nodeStart <= $pos.pos && $pos.pos <= nodeEnd) {
-              const hasLink = node.marks.some((m) => m.type === hlType);
-              if (hasLink) {
-                start = Math.min(start, nodeStart);
-                end = Math.max(end, nodeEnd);
-              }
+          if (dispatch) {
+            const mark = hlType.create({
+              href: normalizeHyperlinkInput(href),
+              tooltip: tooltip || null,
+            });
+            let tr = state.tr.addMark(from, to, mark);
+            // Remove any explicit text color so the default hyperlink blue (#0563c1)
+            // shows through, matching MS Word behavior
+            const textColorType = state.schema.marks["textColor"];
+            if (textColorType) {
+              tr = tr.removeMark(from, to, textColorType);
             }
+            dispatch(tr.scrollIntoView());
           }
-        });
 
-        if (dispatch) {
-          dispatch(removeHyperlinkInRange(state, state.tr, start, end).scrollIntoView());
+          return true;
+        },
+        (state) =>
+          state.selection.empty
+            ? []
+            : [
+                {
+                  type: "setHyperlink",
+                  from: state.selection.from,
+                  to: state.selection.to,
+                  href: normalizeHyperlinkInput(href),
+                  tooltip: tooltip || undefined,
+                },
+              ],
+      );
+
+    const removalRange = (state: EditorState) => {
+      const { from, to, empty, $from } = state.selection;
+      if (!empty) return { from, to };
+      const hlType = documentHyperlinkType(state);
+      if (!$from.marks().some((mark) => mark.type === hlType)) return undefined;
+      let start = from;
+      let end = to;
+      $from.parent.forEach((node, offset) => {
+        const nodeStart = $from.start() + offset;
+        const nodeEnd = nodeStart + node.nodeSize;
+        if (
+          node.isText &&
+          nodeStart <= from &&
+          from <= nodeEnd &&
+          node.marks.some((mark) => mark.type === hlType)
+        ) {
+          start = Math.min(start, nodeStart);
+          end = Math.max(end, nodeEnd);
         }
-        return true;
-      }
-
-      if (dispatch) {
-        dispatch(removeHyperlinkInRange(state, state.tr, from, to).scrollIntoView());
-      }
-
-      return true;
+      });
+      return { from: start, to: end };
     };
-
-    const insertHyperlink =
-      (text: string, href: string, tooltip?: string): Command =>
+    const removeHyperlink = withCanonicalCommand(
       (state, dispatch) => {
-        const hlType = documentHyperlinkType(state);
-        if (dispatch) {
-          const mark = hlType.create({
-            href: normalizeHyperlinkInput(href),
-            tooltip: tooltip || null,
-          });
-          const textNode = state.schema.text(text, [mark]);
-          dispatch(state.tr.replaceSelectionWith(textNode, false).scrollIntoView());
-        }
+        const range = removalRange(state);
+        if (!range) return false;
+        if (dispatch)
+          dispatch(removeHyperlinkInRange(state, state.tr, range.from, range.to).scrollIntoView());
         return true;
-      };
+      },
+      (state) => {
+        const range = removalRange(state);
+        return range
+          ? [
+              {
+                type: "removeHyperlink",
+                ...range,
+                hyperlinkStyleId: getDocumentBuiltInStyles(state).styleIdForBuiltInName(
+                  BUILT_IN_STYLE_NAME.hyperlink,
+                ),
+              },
+            ]
+          : [];
+      },
+    );
+
+    const insertHyperlink = (text: string, href: string, tooltip?: string): Command =>
+      withCanonicalCommand(
+        (state, dispatch) => {
+          const hlType = documentHyperlinkType(state);
+          if (dispatch) {
+            const mark = hlType.create({
+              href: normalizeHyperlinkInput(href),
+              tooltip: tooltip || null,
+            });
+            const textNode = state.schema.text(text, [mark]);
+            dispatch(state.tr.replaceSelectionWith(textNode, false).scrollIntoView());
+          }
+          return true;
+        },
+        (state) => [
+          {
+            type: "insertHyperlink",
+            from: state.selection.from,
+            to: state.selection.to,
+            text,
+            href: normalizeHyperlinkInput(href),
+            tooltip: tooltip || undefined,
+          },
+        ],
+      );
 
     return {
       commands: {

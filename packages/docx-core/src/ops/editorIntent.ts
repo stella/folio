@@ -1,4 +1,5 @@
 /** One editor intent, compiled to direct or tracked document operations. */
+import { compileHyperlinkIntent, type HyperlinkEditorIntent } from "./hyperlinkIntent";
 import { INSERTION_SEAM_POLICIES } from "../model/content";
 import { Result, panic } from "better-result";
 import { applyDocumentOp, applyDocumentOps } from "./apply";
@@ -69,6 +70,7 @@ export type { TableIntentOperation } from "./types";
 
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
+  | HyperlinkEditorIntent
   | { type: "table"; operation: TableIntentOperation }
   | {
       type: "replaceText";
@@ -119,6 +121,9 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
         fromOffset: 0,
         toOffset: 0,
       };
+    case "setHyperlink":
+    case "removeHyperlink":
+    case "insertHyperlink":
     case "replaceText":
     case "insertAtom":
     case "formatRun":
@@ -530,6 +535,18 @@ export const compileEditorIntent = (
   let ops: DocumentOp[];
   let selection: TextPosition;
   switch (intent.type) {
+    case "setHyperlink":
+    case "removeHyperlink":
+    case "insertHyperlink":
+      return compileHyperlinkIntent(document, {
+        intent,
+        mode,
+        compileEmptyReplacement: (source, { from, to }) =>
+          compileEditorIntent(source, {
+            intent: { type: "replaceText", from, to, text: "" },
+            mode,
+          }),
+      });
     case "table": {
       const operation = intent.operation;
       const located = locateTableRow(document, operation);

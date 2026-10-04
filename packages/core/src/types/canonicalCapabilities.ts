@@ -3,6 +3,7 @@ export const CANONICAL_GAP = {
   authorityRouting: "authority-routing",
   commands: "command-descriptors",
   suggesting: "adapter-suggesting",
+  trackedHyperlinkResolution: "tracked-hyperlink-resolution",
   comments: "comment-model-edits",
   modelEdits: "direct-model-edits",
   sectionProperties: "section-properties",
@@ -49,6 +50,12 @@ export const CANONICAL_CAPABILITIES = {
     adapters: ["react", "vue"],
     summary:
       "Commands without canonical descriptors retain PM probing and hit the dispatch boundary.",
+  },
+  [CANONICAL_GAP.trackedHyperlinkResolution]: {
+    owner: "controller",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary: "Hyperlink suggestions require serializable wrapper review provenance.",
   },
   [CANONICAL_GAP.suggesting]: {
     owner: "adapters",

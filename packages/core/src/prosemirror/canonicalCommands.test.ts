@@ -67,6 +67,9 @@ describe("canonical command descriptors", () => {
       singletonManager.requireCommand("setTabs")([{ position: 720, alignment: "left" }]),
       singletonManager.requireCommand("addTabStop")(1440, "right", "dot"),
       singletonManager.requireCommand("removeTabStop")(720),
+      singletonManager.requireCommand("setHyperlink")("example.com", "Tip"),
+      singletonManager.requireCommand("removeHyperlink")(),
+      singletonManager.requireCommand("insertHyperlink")("Link", "#anchor"),
     ];
     const document = state.doc;
     const selection = state.selection;
