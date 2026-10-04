@@ -802,6 +802,7 @@ export type ListMarkerFormatting = Pick<TextFormatting, "fontFamily" | "fontSize
 export type ListRendering = {
     marker: string;
     markerTemplate?: string;
+    foldedMarkerSuffix?: string;
     level: number;
     numId: number;
     isBullet: boolean;

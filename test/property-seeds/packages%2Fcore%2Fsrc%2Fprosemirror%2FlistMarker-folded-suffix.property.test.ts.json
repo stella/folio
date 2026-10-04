@@ -1,0 +1,10 @@
+{
+  "folded LISTNUM display text stays literal while numbered and symbol-font bullet markers resolve": [
+    {
+      "seed": -610084661,
+      "path": "1:0",
+      "note": "Bullet definitions must replace stale cached glyphs; cleared folded displays retain their literal suffix",
+      "date": "2026-10-02"
+    }
+  ]
+}
