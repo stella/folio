@@ -1,0 +1,10 @@
+{
+  "generated canonical histories save the model and preserve every block outside cumulative touched ids": [
+    {
+      "seed": 20261004,
+      "path": "3:0:0",
+      "note": "Selective split/join histories must exercise the untouched-block byte oracle, including its shared paragraph XML helper.",
+      "date": "2026-10-05"
+    }
+  ]
+}

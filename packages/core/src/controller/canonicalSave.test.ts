@@ -15,6 +15,7 @@ import { createDocx } from "../docx/rezip";
 import { createSimpleDocument } from "../docx/serializer/documentSerializer";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import type { SaveDiagnostic } from "../docx/saveDiagnostics";
+import { canonicalSaveParagraphXml } from "../../../../test/canonicalSaveSequence";
 
 const IDS = ["11111111", "22222222", "33333333"] as const;
 const SOURCE_BLOCKS = IDS.map(
