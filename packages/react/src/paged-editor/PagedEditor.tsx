@@ -4542,7 +4542,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             e.preventDefault();
             e.stopPropagation();
             if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-              handleSessionRefusal("Footnote and endnote editing is unavailable in this session.");
+              handleSessionRefusal(
+                "Footnote and endnote editing is unavailable in this session.",
+                CANONICAL_GAP.secondaryStories,
+              );
               return;
             }
             noteEditorRef.current?.open(story);
