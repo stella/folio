@@ -1,4 +1,4 @@
-import type { CanonicalPublicOperationRefusal } from "./canonicalCapabilities";
+import type { CanonicalGap } from "../types/canonicalCapabilities";
 import type {
   FolioContentBlock,
   FolioContentInlineBooleanProperty,
@@ -756,7 +756,7 @@ export type FolioAIEditAppliedOperation = {
 export type FolioAIEditSkippedOperation = {
   id: string;
   reason: FolioAIEditSkipReason;
-  canonicalRefusal?: CanonicalPublicOperationRefusal;
+  canonicalRefusal?: { gap: CanonicalGap };
   /**
    * What exactly was wrong when the reason alone does not say: the values a
    * `payloadDoesNotFit` skip could not place, the earlier operation an

@@ -316,7 +316,10 @@
             </div>
 
             <InlineHeaderFooterEditor
-              v-if="hfEdit && props.experimentalSession !== 'canonical'"
+              v-if="
+                hfEdit &&
+                !usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting)
+              "
               :edit="hfEdit"
               :get-view="getActiveHeaderFooterView"
               @close="handleHfSave"
@@ -476,6 +479,13 @@
 
 <script setup lang="ts">
 import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+  type CanonicalGap,
+  canonicalRefusalMessage,
+} from "@stll/folio-core/types/canonicalCapabilities";
+
+import {
   computed,
   onBeforeUnmount,
   onMounted,
@@ -624,7 +634,7 @@ const isDark = useColorMode();
 provideDocxPortalClass(isDark);
 
 function notifyDocumentChange(doc: Document): void {
-  if (props.experimentalSession !== "canonical") {
+  if (!usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting)) {
     props.onChange?.(doc);
     emit("change", doc);
     emit("update:document", doc);
@@ -643,9 +653,13 @@ function reportEditorError(error: Error): void {
   emit("error", error);
 }
 
-function refuseCanonicalModelEdit(message: string): boolean {
-  if (props.experimentalSession !== "canonical") return false;
-  const error = new CanonicalSessionRefusalError({ message });
+function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
+  if (!usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting))
+    return false;
+  const error = new CanonicalSessionRefusalError({
+    gap,
+    message: canonicalRefusalMessage(gap, message),
+  });
   reportEditorError(error);
   return true;
 }
@@ -1129,7 +1143,10 @@ const commentLifecycle = useCommentLifecycle({
 });
 
 function refuseCanonicalCommentEdit(): boolean {
-  return refuseCanonicalModelEdit("Comment changes are unavailable in this session.");
+  return refuseCanonicalModelEdit(
+    CANONICAL_GAP.comments,
+    "Comment changes are unavailable in this session.",
+  );
 }
 
 function handleStartAddComment(): void {
@@ -1458,7 +1475,8 @@ const {
   reLayout,
   onChange: notifyDocumentChange,
   applySectionProperties: (properties) => {
-    if (props.experimentalSession !== "canonical") return "unhandled";
+    if (!usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting))
+      return "unhandled";
     editor.ensureView();
     const document = editor.getCanonicalDocument();
     if (
@@ -1469,7 +1487,11 @@ const {
     ) {
       reportEditorError(
         new CanonicalSessionRefusalError({
-          message: "Section property changes could not be applied.",
+          gap: CANONICAL_GAP.sectionProperties,
+          message: canonicalRefusalMessage(
+            CANONICAL_GAP.sectionProperties,
+            "Section property changes could not be applied.",
+          ),
         }),
       );
       return "refused";
@@ -1495,9 +1517,16 @@ const paragraphIndent = computed(() => {
 });
 
 function setEditorMode(mode: EditorMode): void {
-  if (props.experimentalSession === "canonical" && mode === "suggesting") {
+  if (
+    usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.suggesting) &&
+    mode === "suggesting"
+  ) {
     const error = new CanonicalSessionRefusalError({
-      message: "Canonical sessions do not support suggesting mode.",
+      gap: CANONICAL_GAP.suggesting,
+      message: canonicalRefusalMessage(
+        CANONICAL_GAP.suggesting,
+        "Canonical sessions do not support suggesting mode.",
+      ),
     });
     reportEditorError(error);
     return;
@@ -1558,7 +1587,13 @@ function handleMenuAction(action: string): void {
 }
 
 function handleWatermarkApply(watermark: Watermark | undefined): void {
-  if (refuseCanonicalModelEdit("Watermark changes are unavailable in this session.")) return;
+  if (
+    refuseCanonicalModelEdit(
+      CANONICAL_GAP.watermark,
+      "Watermark changes are unavailable in this session.",
+    )
+  )
+    return;
   if (readOnly.value) {
     return;
   }
@@ -1772,7 +1807,7 @@ const { exposed } = useDocxEditorRefApi({
     commentManagement.appendComments(nextComments);
   },
   getComments: () =>
-    props.experimentalSession === "canonical"
+    usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting)
       ? commentManagement.comments.value.map((comment) => structuredClone(comment))
       : commentManagement.comments.value,
   setComments: (nextComments) => {

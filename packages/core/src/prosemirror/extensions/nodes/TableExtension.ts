@@ -2830,12 +2830,14 @@ export const TablePluginExtension = createExtension({
 
     return {
       plugins: [
+        // canonical-gap: pm-table-geometry
         columnResizing({
           handleWidth: 5,
           cellMinWidth: 25,
           lastColumnResizable: true,
         }),
         tableCellPastePlugin,
+        // canonical-gap: pm-table-geometry
         tableEditing(),
         activeCellPlugin,
       ],

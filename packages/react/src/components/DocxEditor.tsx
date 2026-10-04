@@ -1,3 +1,9 @@
+import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+  type CanonicalGap,
+  canonicalRefusalMessage,
+} from "@stll/folio-core/types/canonicalCapabilities";
 /**
  * DocxEditor Component
  *
@@ -641,9 +647,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   });
 
   const toggleTrackChanges = useCallback(() => {
-    if (experimentalSession === "canonical" && !trackChangesOn) {
+    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.suggesting) && !trackChangesOn) {
       const error = new CanonicalSessionRefusalError({
-        message: "Canonical sessions do not support suggesting mode.",
+        gap: CANONICAL_GAP.suggesting,
+        message: canonicalRefusalMessage(
+          CANONICAL_GAP.suggesting,
+          "Canonical sessions do not support suggesting mode.",
+        ),
       });
       toast(error.message);
       onError?.(error);
@@ -741,13 +751,18 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const history = useDocumentHistory<Document | null>(initialDocument || null, {
     maxEntries: 100,
     groupingInterval: 500,
-    enableKeyboardShortcuts: historyShortcuts === "editor" && experimentalSession !== "canonical",
+    enableKeyboardShortcuts:
+      historyShortcuts === "editor" &&
+      !usesCanonicalSession(experimentalSession, CANONICAL_GAP.history),
   });
 
   const refuseCanonicalModelEdit = useCallback(
-    (message: string) => {
-      if (experimentalSession !== "canonical") return false;
-      const error = new CanonicalSessionRefusalError({ message });
+    (gap: CanonicalGap, message: string) => {
+      if (!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) return false;
+      const error = new CanonicalSessionRefusalError({
+        gap,
+        message: canonicalRefusalMessage(gap, message),
+      });
       toast(error.message);
       onError?.(error);
       return true;
@@ -1167,7 +1182,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     history,
     pushDocument,
     getCanonicalApi,
-    ...(experimentalSession === undefined ? {} : { experimentalSession }),
+    ...(!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+      ? {}
+      : { experimentalSession }),
     // Hook reads live HF PM state at close time (the in-place sync
     // that previously kept package.headers/footers current per
     // keystroke was removed to fix the undo-corruption bug; the
@@ -1232,7 +1249,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Helper to undo in the active editor
   const undoActiveEditor = useCallback(() => {
     if (
-      experimentalSession !== "canonical" &&
+      !usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) &&
       getActiveEditorStory().type === "headerFooter" &&
       hfEditorRef.current
     ) {
@@ -1246,7 +1263,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Helper to redo in the active editor
   const redoActiveEditor = useCallback(() => {
     if (
-      experimentalSession !== "canonical" &&
+      !usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) &&
       getActiveEditorStory().type === "headerFooter" &&
       hfEditorRef.current
     ) {
@@ -1317,7 +1334,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     documentBuffer: documentBuffer ?? null,
     initialDocument: initialDocument ?? null,
     password,
-    ...(experimentalSession === undefined ? {} : { experimentalSession }),
+    ...(!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+      ? {}
+      : { experimentalSession }),
     history,
     onError,
     onCompatibilityChange,
@@ -1439,7 +1458,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       };
       pushDocument(documentWithComments);
       onChange?.(
-        experimentalSession === "canonical"
+        usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
           ? cloneDocumentWithParagraphPropertySources(documentWithComments)
           : documentWithComments,
       );
@@ -1486,7 +1505,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
     const canonical = pagedEditorRef.current?.getEditor().getCanonicalDocument();
     if (canonical) return canonical;
-    if (experimentalSession === "canonical") return null;
+    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) return null;
 
     let doc = cloneDocumentWithParagraphPropertySources(history.state);
     const pmDoc = pagedEditorRef.current?.getDocument();
@@ -1563,8 +1582,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   const replaceComments = useCallback(
     (nextComments: Comment[]) => {
-      if (experimentalSession === "canonical") {
-        refuseCanonicalModelEdit("Comment changes are unavailable in this session.");
+      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.comments,
+          "Comment changes are unavailable in this session.",
+        );
         return;
       }
 
@@ -1983,7 +2005,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Handle footnote/endnote properties update
   const handleApplyFootnoteProperties = useCallback(
     (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => {
-      if (experimentalSession === "canonical") {
+      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
         const api = getCanonicalApi();
         api?.ensureView();
         const canonical = api?.getCanonicalDocument();
@@ -1993,7 +2015,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             createCanonicalSectionPropertiesOperation(canonical, { footnotePr, endnotePr }),
           ])
         )
-          refuseCanonicalModelEdit("Section property changes could not be applied.");
+          refuseCanonicalModelEdit(
+            CANONICAL_GAP.sectionProperties,
+            "Section property changes could not be applied.",
+          );
         return;
       }
       if (!history.state?.package) {
@@ -2917,7 +2942,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const handlePageSetupApply = useCallback(
     (props: Partial<SectionProperties>) => {
       if (readOnly) return;
-      if (experimentalSession === "canonical") {
+      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
         const api = getCanonicalApi();
         api?.ensureView();
         const canonical = api?.getCanonicalDocument();
@@ -2927,7 +2952,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             createCanonicalSectionPropertiesOperation(canonical, props),
           ])
         )
-          refuseCanonicalModelEdit("Section property changes could not be applied.");
+          refuseCanonicalModelEdit(
+            CANONICAL_GAP.sectionProperties,
+            "Section property changes could not be applied.",
+          );
         return;
       }
       if (!history.state || readOnly) {
@@ -3064,7 +3092,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const repackFull = async (): Promise<ArrayBuffer> => {
           const repackDocx = await loadRepackDocx();
           const repack = () => repackDocx(repackSourceDoc);
-          if (experimentalSession === "canonical") {
+          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
             return repackWithCanonicalStoryRemovals({ document: repackSourceDoc, repack });
           }
           return editorState
@@ -3457,7 +3485,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       // ff971a7b.
       undo: () => {
         if (
-          experimentalSession !== "canonical" &&
+          !usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) &&
           getActiveEditorStory().type === "headerFooter" &&
           hfEditorRef.current
         ) {
@@ -3469,7 +3497,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       },
       redo: () => {
         if (
-          experimentalSession !== "canonical" &&
+          !usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) &&
           getActiveEditorStory().type === "headerFooter" &&
           hfEditorRef.current
         ) {
@@ -3873,7 +3901,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [t],
   );
   const activeHistoryAvailability = (() => {
-    if (experimentalSession === "canonical") {
+    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
       return {
         canRedo: pagedEditorRef.current?.canRedo() ?? false,
         canUndo: pagedEditorRef.current?.canUndo() ?? false,
@@ -4247,7 +4275,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   );
   const handleCommentResolve = useCallback(
     (id: number) => {
-      if (refuseCanonicalModelEdit("Comment changes are unavailable in this session.")) return;
+      if (
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.comments,
+          "Comment changes are unavailable in this session.",
+        )
+      )
+        return;
       updateComments((previous) =>
         previous.map((comment) => (comment.id === id ? { ...comment, done: true } : comment)),
       );
@@ -4256,7 +4290,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   );
   const handleCommentDelete = useCallback(
     (id: number) => {
-      if (refuseCanonicalModelEdit("Comment changes are unavailable in this session.")) return;
+      if (
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.comments,
+          "Comment changes are unavailable in this session.",
+        )
+      )
+        return;
       updateComments((previous) =>
         previous.filter((comment) => comment.id !== id && comment.parentId !== id),
       );
@@ -4268,14 +4308,25 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   );
   const handleCommentReply = useCallback(
     (id: number, text: string) => {
-      if (refuseCanonicalModelEdit("Comment changes are unavailable in this session.")) return;
+      if (
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.comments,
+          "Comment changes are unavailable in this session.",
+        )
+      )
+        return;
       updateComments((previous) => [...previous, createComment(text, author, id)]);
     },
     [author, createComment, refuseCanonicalModelEdit, updateComments],
   );
   const handleAddComment = useCallback(
     (addText: string) => {
-      if (refuseCanonicalModelEdit("Comment changes are unavailable in this session.")) {
+      if (
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.comments,
+          "Comment changes are unavailable in this session.",
+        )
+      ) {
         return false;
       }
       const comment = createComment(addText, author);
@@ -4326,7 +4377,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   );
   const handleTrackedChangeReply = useCallback(
     (revisionId: number, text: string) => {
-      if (refuseCanonicalModelEdit("Comment changes are unavailable in this session.")) return;
+      if (
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.comments,
+          "Comment changes are unavailable in this session.",
+        )
+      )
+        return;
       updateComments((previous) => [...previous, createComment(text, author, revisionId)]);
     },
     [author, createComment, refuseCanonicalModelEdit, updateComments],
@@ -4996,7 +5053,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           showMarginGuides={showMarginGuides}
                           {...(marginGuideColor !== undefined ? { marginGuideColor } : {})}
                           readOnly={readOnly}
-                          {...(experimentalSession === undefined ? {} : { experimentalSession })}
+                          {...(!usesCanonicalSession(
+                            experimentalSession,
+                            CANONICAL_GAP.authorityRouting,
+                          )
+                            ? {}
+                            : { experimentalSession })}
                           onDocumentChange={handleDocumentChange}
                           extensionManager={extensionManager}
                           suggestionModeActive={editingMode === "suggesting"}

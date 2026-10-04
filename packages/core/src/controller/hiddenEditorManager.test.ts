@@ -1,3 +1,4 @@
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import fc from "fast-check";
@@ -755,7 +756,10 @@ test(
               getDocument: () => source,
               getDocumentContext: () => source,
               getExperimentalSession: () => "canonical",
-              onSessionRefusal: (reason) => reasons.push(reason),
+              onSessionRefusal: (reason, gap) => {
+                expect(Object.values(CANONICAL_GAP).includes(gap)).toBe(true);
+                reasons.push(reason);
+              },
             });
             const manager = createHiddenEditorManager(deps);
             try {

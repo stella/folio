@@ -39,11 +39,34 @@ import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import { splitsGraphemeCluster, splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import { type CanonicalCommit, type CanonicalSession } from "./canonicalSession";
 
-import {
-  CANONICAL_PUBLIC_OPERATION_CAPABILITIES,
-  CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
-  type CanonicalPublicOperationRefusal,
-} from "../ai-edits/canonicalCapabilities";
+import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
+
+type CanonicalPublicOperationRefusal = NonNullable<FolioAIEditSkippedOperation["canonicalRefusal"]>;
+
+/** A new public kind cannot bypass a canonical compiler/refusal decision. */
+export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS = {
+  replaceInBlock: "compile",
+  replaceRange: "compile",
+  replaceBlock: "compile",
+  splitBlock: "compile",
+  formatRange: "compile",
+  mergeBlockWithNext: "compile",
+  setBlockParagraphProperties: CANONICAL_GAP.publicUnsupportedInline,
+  insertAfterBlock: CANONICAL_GAP.publicUnsupportedInline,
+  insertBeforeBlock: CANONICAL_GAP.publicUnsupportedInline,
+  deleteBlock: CANONICAL_GAP.publicUnsupportedInline,
+  commentOnBlock: CANONICAL_GAP.publicComments,
+  commentOnRange: CANONICAL_GAP.publicComments,
+  insertTable: CANONICAL_GAP.publicTableProjection,
+  insertSignatureTable: CANONICAL_GAP.publicTableProjection,
+  deleteTable: CANONICAL_GAP.publicTableProjection,
+  insertTableRow: CANONICAL_GAP.publicTableProjection,
+  deleteTableRow: CANONICAL_GAP.publicTableProjection,
+  insertTableColumn: CANONICAL_GAP.publicTableProjection,
+  deleteTableColumn: CANONICAL_GAP.publicTableProjection,
+  mergeTableCells: CANONICAL_GAP.publicTableProjection,
+  splitTableCell: CANONICAL_GAP.publicTableProjection,
+} as const satisfies Record<FolioDocumentOperation["type"], "compile" | CanonicalGap>;
 
 export type CanonicalPublicOperationOptions = Omit<
   ApplyFolioDocumentOperationsOptions,
@@ -237,14 +260,14 @@ export class CanonicalPublicOperations {
       }
       if (batch.mode === "suggested") {
         refusals.set(operation.id, {
-          gap: CANONICAL_PUBLIC_OPERATION_CAPABILITIES.SUGGESTED_MODE,
+          gap: CANONICAL_GAP.publicSuggestedMode,
         });
         skip(operation.id, "unsupportedMode", "Canonical pending suggestions are unavailable.");
         continue;
       }
       if (options.tableTemplates !== undefined || options.undefinedStyles === "keep") {
         refusals.set(operation.id, {
-          gap: CANONICAL_PUBLIC_OPERATION_CAPABILITIES.UNSUPPORTED_INLINE,
+          gap: CANONICAL_GAP.publicUnsupportedInline,
         });
         skip(
           operation.id,
@@ -259,10 +282,7 @@ export class CanonicalPublicOperations {
         ("comment" in operation && operation.comment !== undefined)
       ) {
         refusals.set(operation.id, {
-          gap:
-            disposition === "compile"
-              ? CANONICAL_PUBLIC_OPERATION_CAPABILITIES.COMMENTS
-              : disposition,
+          gap: disposition === "compile" ? CANONICAL_GAP.publicComments : disposition,
         });
         skip(operation.id, "unsupportedBlock");
         continue;
@@ -271,7 +291,7 @@ export class CanonicalPublicOperations {
       if (compiled.isErr()) {
         if (compiled.error.reason === "unsupportedBlock")
           refusals.set(operation.id, {
-            gap: CANONICAL_PUBLIC_OPERATION_CAPABILITIES.UNSUPPORTED_INLINE,
+            gap: CANONICAL_GAP.publicUnsupportedInline,
           });
         skip(operation.id, compiled.error.reason, compiled.error.message);
         continue;
@@ -315,7 +335,7 @@ export class CanonicalPublicOperations {
       });
       if (compiled.isErr()) {
         refusals.set(operation.id, {
-          gap: CANONICAL_PUBLIC_OPERATION_CAPABILITIES.UNSUPPORTED_INLINE,
+          gap: CANONICAL_GAP.publicUnsupportedInline,
         });
         skip(operation.id, "unsupportedBlock", compiled.error.message);
         continue;
@@ -346,7 +366,7 @@ export class CanonicalPublicOperations {
     if (prepared.isErr()) {
       for (const { id } of appliedById.values()) {
         refusals.set(id, {
-          gap: CANONICAL_PUBLIC_OPERATION_CAPABILITIES.UNSUPPORTED_INLINE,
+          gap: CANONICAL_GAP.publicUnsupportedInline,
         });
         skip(
           id,

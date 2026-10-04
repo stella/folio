@@ -1,3 +1,4 @@
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { Result } from "better-result";
 
 import type { EditorState, Transaction } from "prosemirror-state";
@@ -147,6 +148,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
         try: () => view.state.applyTransaction(transaction),
         catch: (cause) =>
           new CanonicalSessionError({
+            gap: CANONICAL_GAP.dispatch,
             reason: "refused",
             message: `Composition projection failed: ${String(cause)}`,
           }),

@@ -7,7 +7,7 @@ import {
   createFolioAIEditSnapshot,
   createFolioAITextRangeHandle,
 } from "../ai-edits/snapshot";
-import { CANONICAL_PUBLIC_OPERATION_DISPOSITIONS } from "../ai-edits/canonicalCapabilities";
+import { CANONICAL_PUBLIC_OPERATION_DISPOSITIONS } from "./canonicalPublicOperations";
 import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";

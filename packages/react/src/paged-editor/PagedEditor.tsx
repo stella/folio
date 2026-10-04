@@ -1,3 +1,8 @@
+import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+  type CanonicalGap,
+} from "@stll/folio-core/types/canonicalCapabilities";
 /**
  * PagedEditor Component
  *
@@ -1420,7 +1425,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     );
 
     useEffect(() => {
-      if (readOnly || experimentalSession === "canonical") noteEditorRef.current?.close();
+      if (readOnly || usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
+        noteEditorRef.current?.close();
     }, [experimentalSession, readOnly]);
 
     const getCanonicalApi = useCallback(() => hiddenPMRef.current, []);
@@ -1465,8 +1471,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     onDocumentChangeRef.current = onDocumentChange;
     onTotalPagesChangeRef.current = onTotalPagesChange;
     onErrorRef.current = onError;
-    const handleSessionRefusal = useCallback((message: string) => {
-      onErrorRef.current?.(new CanonicalSessionRefusalError({ message }));
+    const handleSessionRefusal = useCallback((message: string, gap: CanonicalGap) => {
+      onErrorRef.current?.(new CanonicalSessionRefusalError({ gap, message }));
     }, []);
 
     // State
@@ -1708,7 +1714,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         queuedInputBeforeHiddenEditorRef.current = [];
         for (const input of queuedInput) {
           if (input.type === "text") {
-            if (experimentalSession === "canonical") {
+            if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
               view.dom.dispatchEvent(
                 new InputEvent("beforeinput", {
                   inputType: "insertText",
@@ -2111,18 +2117,18 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
       let newDoc = hiddenPMRef.current?.getDocument();
       const body = hiddenPMRef.current?.getState()?.doc;
-      if (newDoc && body && experimentalSession !== "canonical") {
+      if (newDoc && body && !usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) {
         newDoc = noteFollower.reconcile(newDoc, body);
       }
       if (newDoc) {
         onDocumentChangeRef.current?.(
-          experimentalSession === "canonical"
+          usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)
             ? cloneDocumentWithParagraphPropertySources(newDoc)
             : newDoc,
         );
         folioEmitterRef.current.emit(
           "docChange",
-          experimentalSession === "canonical"
+          usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
             ? cloneDocumentWithParagraphPropertySources(newDoc)
             : newDoc,
         );
@@ -3059,7 +3065,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             ensureHiddenEditorView({ sync: true });
           }
           scheduleLayout();
-          if (experimentalSession === "canonical") scheduleDocumentChangeNotification();
+          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
+            scheduleDocumentChangeNotification();
         }
         if (docChanged || selectionChanged) {
           const { from, to } = view.state.selection;
@@ -3106,13 +3113,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const handleNoteDocumentChange = useCallback(
       (updated: Document) => {
         onDocumentChangeRef.current?.(
-          experimentalSession === "canonical"
+          usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
             ? cloneDocumentWithParagraphPropertySources(updated)
             : updated,
         );
         folioEmitterRef.current.emit(
           "docChange",
-          experimentalSession === "canonical"
+          usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
             ? cloneDocumentWithParagraphPropertySources(updated)
             : updated,
         );
@@ -4534,7 +4541,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           if (story) {
             e.preventDefault();
             e.stopPropagation();
-            if (experimentalSession === "canonical") {
+            if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
               handleSessionRefusal("Footnote and endnote editing is unavailable in this session.");
               return;
             }
@@ -5697,7 +5704,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             flushDocumentChangeNotification();
           }
           const editorDocument = folioEditor.getDocument();
-          if (experimentalSession === "canonical") return editorDocument;
+          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
+            return editorDocument;
           const current = editorDocument ? noteFollower.withPending(editorDocument) : null;
           return current ? (noteEditorRef.current?.snapshotDocument(current) ?? current) : null;
         },
@@ -5708,14 +5716,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           return folioEditor.getView();
         },
         getActiveView() {
-          if (experimentalSession === "canonical") return folioEditor.getView();
+          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
+            return folioEditor.getView();
           return getActiveEditorStory().view;
         },
         closeNoteStory() {
           noteEditorRef.current?.close();
         },
         getHfView(rId: string) {
-          if (experimentalSession === "canonical") return null;
+          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
+            return null;
           return hfPMsRef.current?.getView(rId) ?? null;
         },
         ensureView(options?: { focus?: boolean }) {
@@ -5749,7 +5759,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         undo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          if (experimentalSession === "canonical") {
+          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
             return (
               hiddenPMRef.current?.applyCanonicalStoryHistory({
                 view: target.view,
@@ -5764,7 +5774,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         redo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          if (experimentalSession === "canonical") {
+          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
             return (
               hiddenPMRef.current?.applyCanonicalStoryHistory({
                 view: target.view,
@@ -5779,14 +5789,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         canUndo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return experimentalSession === "canonical" || target.type === "body"
+          return usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) ||
+            target.type === "body"
             ? (hiddenPMRef.current?.canUndo() ?? false)
             : historyUndo(target.view.state);
         },
         canRedo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return experimentalSession === "canonical" || target.type === "body"
+          return usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting) ||
+            target.type === "body"
             ? (hiddenPMRef.current?.canRedo() ?? false)
             : historyRedo(target.view.state);
         },
@@ -6012,7 +6024,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           onTransaction={handleHfPmTransaction}
           getCanonicalApi={getCanonicalApi}
           onSessionRefusal={handleSessionRefusal}
-          {...(experimentalSession === undefined ? {} : { experimentalSession })}
+          {...(!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+            ? {}
+            : { experimentalSession })}
           {...(styles !== undefined ? { styles } : {})}
           {...(_theme !== undefined ? { theme: _theme } : {})}
         />
@@ -6023,7 +6037,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           onActiveChange={handleActiveNoteStoryChange}
           getCanonicalApi={getCanonicalApi}
           onSessionRefusal={handleSessionRefusal}
-          {...(experimentalSession === undefined ? {} : { experimentalSession })}
+          {...(!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+            ? {}
+            : { experimentalSession })}
           onDocumentChange={handleNoteDocumentChange}
           onStoryChange={handleNoteStoryTransaction}
           plugins={noteStoryPlugins}
@@ -6038,7 +6054,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           ref={hiddenPMRef}
           document={document}
           documentIdentity={documentIdentity}
-          {...(experimentalSession === undefined ? {} : { experimentalSession })}
+          {...(!usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+            ? {}
+            : { experimentalSession })}
           onSessionRefusal={handleSessionRefusal}
           {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           suggestionModeActive={suggestionModeActive}

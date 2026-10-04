@@ -1,3 +1,4 @@
+import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
 /** Thin React binding for core's persistent header/footer editor manager. */
 
 import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from "react";
@@ -33,7 +34,7 @@ export type HiddenHeaderFooterPMsProps = {
   document: Document | null;
   experimentalSession?: "canonical";
   getCanonicalApi?: () => HiddenEditorApi | null;
-  onSessionRefusal?: (reason: string) => void;
+  onSessionRefusal?: (reason: string, gap: CanonicalGap) => void;
   styles?: StyleDefinitions | null;
   theme?: Theme | null;
   defaultTabStopTwips?: number | null;
@@ -96,7 +97,7 @@ export const HiddenHeaderFooterPMs = memo(
       getTheme: () => themeRef.current,
       getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
       getExperimentalSession: () => sessionRef.current,
-      onSessionRefusal: (reason) => refusalRef.current?.(reason),
+      onSessionRefusal: (reason, gap) => refusalRef.current?.(reason, gap),
       onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
         onTransactionRef.current?.(rId, kind, view, docChanged, selectionChanged);
       },

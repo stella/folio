@@ -1871,6 +1871,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
     },
 
     // Catch-all: mark any unhandled new content (e.g. paste) as insertion
+    // canonical-gap: pm-suggestion-plugin
     appendTransaction(transactions, _oldState, newState) {
       const pluginState = suggestionModeKey.getState(newState);
       if (!pluginState?.active) {

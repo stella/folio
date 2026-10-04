@@ -1,4 +1,3 @@
-import type { CanonicalPublicOperationRefusal } from "./ai-edits/canonicalCapabilities";
 import { TaggedError } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
@@ -1588,7 +1587,7 @@ export type FolioDocumentOperationIssue = {
   code: FolioAIEditSkippedOperation["reason"];
   retryable: boolean;
   recovery: FolioDocumentOperationRecovery;
-  canonicalRefusal?: CanonicalPublicOperationRefusal;
+  canonicalRefusal?: FolioAIEditSkippedOperation["canonicalRefusal"];
   /** The skip's detail, when it has one; see {@link FolioAIEditSkippedOperation.message}. */
   message?: string;
 };
@@ -2097,6 +2096,11 @@ export const applyFolioDocumentOperations = ({
     // checked first, and a refused result must never reach a live editor.
     const held: { transaction?: Transaction } = {};
     const commentIds: number[] = [];
+    // canonical-gap: publicOps.comments
+    // canonical-gap: publicOps.suggestedMode
+    // canonical-gap: publicOps.tableProjection
+    // canonical-gap: publicOps.unsupportedInline
+    // canonical-gap: pm-document-operations
     const outcome = applyFolioAIEditOperations({
       ...common,
       view: {
