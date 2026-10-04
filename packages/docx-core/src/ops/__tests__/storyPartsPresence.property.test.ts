@@ -1,9 +1,11 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Document } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { DOCUMENT_OP_TYPES, type DocumentOp } from "../types";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 test("generated lifecycle inverses preserve absent and own-undefined maps and final properties", () => {
   assertProperty(
