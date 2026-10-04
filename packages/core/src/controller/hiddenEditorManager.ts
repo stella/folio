@@ -798,7 +798,10 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
   };
   const input = createCanonicalInputBoundary({
     pastePlainText: (pmView) => {
-      if (deps.getReadOnly()) return;
+      if (deps.getReadOnly()) {
+        deps.onReadOnlyEditAttempt();
+        return;
+      }
       pasteWithoutFormatting(pmView.state, (transaction) => pmView.dispatch(transaction), pmView);
     },
     cut: (pmView, event) => {
