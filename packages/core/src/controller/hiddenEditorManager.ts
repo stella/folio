@@ -21,6 +21,7 @@ import {
   toggleUnderlineMark,
 } from "../prosemirror/extensions/marks/markUtils";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand";
 import { prepareCanonicalCommands, prepareCanonicalAutoformat } from "./canonicalStructure";
 import { panic, Result, TaggedError } from "better-result";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
@@ -507,6 +508,7 @@ export type HiddenEditorManager = {
 
 export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): HiddenEditorManager => {
   let view: EditorView | null = null;
+  let releaseCommandOwner: (() => void) | undefined;
   let editorSession: EditorSession = { type: "prosemirror" };
   let modeOverride: CanonicalSessionMode | null = null;
   const syncCanonicalMode = (): void => {
@@ -1124,6 +1126,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         }
         return publishCommit(prepared.value);
       });
+    releaseCommandOwner = registerEditorCommandOwner(view, executeCanonicalCommand);
     recordHiddenEditorPhase("mount", "editor-view", performance.now() - viewStartedAt);
     syncHiddenEditorAccessibility(view, deps.getReadOnly());
     isInitialized = true;
@@ -1153,6 +1156,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
 
       deps.onEditorViewDestroy();
 
+      releaseCommandOwner?.();
+      releaseCommandOwner = undefined;
       view.destroy();
       view = null;
       input.reset();

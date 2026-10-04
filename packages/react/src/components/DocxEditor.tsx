@@ -177,6 +177,11 @@ import {
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
+  executeEditorCommand,
+  executeFirstEditorCommand,
+} from "@stll/folio-core/prosemirror/executeEditorCommand";
+import { insertPageBreak } from "@stll/folio-core/prosemirror/commands/pageBreak";
+import {
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
@@ -2279,65 +2284,63 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
       }
 
-      const commandState = view.state;
-
       // Handle simple toggle actions
       if (action === "bold") {
-        toggleBold(commandState, view.dispatch);
+        executeEditorCommand(view, toggleBold);
         return;
       }
       if (action === "italic") {
-        toggleItalic(commandState, view.dispatch);
+        executeEditorCommand(view, toggleItalic);
         return;
       }
       if (action === "underline") {
-        toggleUnderline(commandState, view.dispatch);
+        executeEditorCommand(view, toggleUnderline);
         return;
       }
       if (action === "strikethrough") {
-        toggleStrike(commandState, view.dispatch);
+        executeEditorCommand(view, toggleStrike);
         return;
       }
       if (action === "superscript") {
-        toggleSuperscript(commandState, view.dispatch);
+        executeEditorCommand(view, toggleSuperscript);
         return;
       }
       if (action === "subscript") {
-        toggleSubscript(commandState, view.dispatch);
+        executeEditorCommand(view, toggleSubscript);
         return;
       }
       if (action === "bulletList") {
-        toggleBulletList(commandState, view.dispatch);
+        executeEditorCommand(view, toggleBulletList);
         return;
       }
       if (action === "numberedList") {
-        toggleNumberedList(commandState, view.dispatch);
+        executeEditorCommand(view, toggleNumberedList);
         return;
       }
       if (action === "indent") {
         // Try list indent first, then paragraph indent
-        if (!increaseListLevel(commandState, view.dispatch)) {
-          increaseIndent()(commandState, view.dispatch);
-        }
+        executeFirstEditorCommand(view, [increaseListLevel, increaseIndent()]);
         return;
       }
       if (action === "outdent") {
         // Try list outdent first, then paragraph outdent
-        if (!decreaseListLevel(commandState, view.dispatch)) {
-          decreaseIndent()(commandState, view.dispatch);
-        }
+        executeFirstEditorCommand(view, [decreaseListLevel, decreaseIndent()]);
         return;
       }
       if (action === "clearFormatting") {
-        clearFormatting(commandState, view.dispatch);
+        executeEditorCommand(view, clearFormatting);
         return;
       }
       if (action === "setRtl") {
-        setRtl(commandState, view.dispatch);
+        executeEditorCommand(view, setRtl);
         return;
       }
       if (action === "setLtr") {
-        setLtr(commandState, view.dispatch);
+        executeEditorCommand(view, setLtr);
+        return;
+      }
+      if (action === "insertPageBreak") {
+        executeEditorCommand(view, insertPageBreak);
         return;
       }
 
@@ -2345,48 +2348,51 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       if (typeof action === "object") {
         switch (action.type) {
           case "alignment":
-            setAlignment(action.value)(commandState, view.dispatch);
+            executeEditorCommand(view, setAlignment(action.value));
             break;
           case "toggleDirection":
-            toggleBidi(commandState, view.dispatch);
+            executeEditorCommand(view, toggleBidi);
             break;
           case "textColor": {
             // action.value can be a ColorValue object or a string like "#FF0000"
             const colorVal = action.value;
             if (typeof colorVal === "string") {
-              setTextColor({ rgb: colorVal.replace("#", "") })(commandState, view.dispatch);
+              executeEditorCommand(view, setTextColor({ rgb: colorVal.replace("#", "") }));
             } else if (colorVal.auto) {
               // "Automatic" — remove text color
-              clearTextColor(commandState, view.dispatch);
+              executeEditorCommand(view, clearTextColor);
             } else {
               // The mark attr carries a schema token only; a picker cannot
               // produce one outside `ST_ThemeColor`.
               const themeColor =
                 typeof colorVal.themeColor === "string" ? colorVal.themeColor : undefined;
-              setTextColor({
-                ...(colorVal.rgb === undefined ? {} : { rgb: colorVal.rgb }),
-                ...(themeColor ? { themeColor } : {}),
-                ...(colorVal.themeTint === undefined ? {} : { themeTint: colorVal.themeTint }),
-                ...(colorVal.themeShade === undefined ? {} : { themeShade: colorVal.themeShade }),
-              })(commandState, view.dispatch);
+              executeEditorCommand(
+                view,
+                setTextColor({
+                  ...(colorVal.rgb === undefined ? {} : { rgb: colorVal.rgb }),
+                  ...(themeColor ? { themeColor } : {}),
+                  ...(colorVal.themeTint === undefined ? {} : { themeTint: colorVal.themeTint }),
+                  ...(colorVal.themeShade === undefined ? {} : { themeShade: colorVal.themeShade }),
+                }),
+              );
             }
             break;
           }
           case "highlightColor": {
             // Convert hex to OOXML named highlight value (e.g., 'FFFF00' → 'yellow')
             const highlightName = action.value ? mapHexToHighlightName(action.value) : "";
-            setHighlight(highlightName || action.value)(commandState, view.dispatch);
+            executeEditorCommand(view, setHighlight(highlightName || action.value));
             break;
           }
           case "fontSize":
             // Convert points to half-points (OOXML uses half-points for font sizes)
-            setFontSize(pointsToHalfPoints(action.value))(commandState, view.dispatch);
+            executeEditorCommand(view, setFontSize(pointsToHalfPoints(action.value)));
             break;
           case "fontFamily":
-            setFontFamily(action.value)(commandState, view.dispatch);
+            executeEditorCommand(view, setFontFamily(action.value));
             break;
           case "lineSpacing":
-            setLineSpacing(action.value)(commandState, view.dispatch);
+            executeEditorCommand(view, setLineSpacing(action.value));
             break;
           case "applyStyle": {
             // Resolve style to get its formatting properties
@@ -2413,10 +2419,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
               styleAttrs.numbering = currentDoc?.package.numbering
                 ? getCachedNumberingMap(currentDoc.package.numbering)
                 : null;
-              applyStyle(action.value, styleAttrs)(commandState, view.dispatch);
+              executeEditorCommand(view, applyStyle(action.value, styleAttrs));
             } else {
               // No styles available, just set the styleId
-              applyStyle(action.value)(commandState, view.dispatch);
+              executeEditorCommand(view, applyStyle(action.value));
             }
             break;
           }
