@@ -1143,6 +1143,9 @@ export type FolioAIEditSeverity = "low" | "medium" | "high";
 export type FolioAIEditSkippedOperation = {
     id: string;
     reason: FolioAIEditSkipReason;
+    canonicalRefusal?: {
+        gap: CanonicalGap;
+    };
     message?: string;
 };
 
@@ -1578,6 +1581,7 @@ export type FolioDocumentOperationIssue = {
     code: FolioAIEditSkippedOperation["reason"];
     retryable: boolean;
     recovery: FolioDocumentOperationRecovery;
+    canonicalRefusal?: FolioAIEditSkippedOperation["canonicalRefusal"];
     message?: string;
 };
 
