@@ -651,6 +651,7 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
         return newState;
       },
     },
+    // canonical-gap: pm-paragraph-tracker
     appendTransaction: (transactions, oldState, newState) =>
       sectionEditTransaction(transactions, oldState, newState),
   });

@@ -120,6 +120,7 @@ const stateToDocument = (state: EditorState, originalDoc: Document | null): Docu
   }
 
   // fromProseDoc preserves the base document structure when provided
+  // canonical-gap: pm-save-projection
   return fromProseDoc(state.doc, originalDoc);
 };
 

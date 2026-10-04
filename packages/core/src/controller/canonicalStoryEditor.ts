@@ -1,3 +1,4 @@
+import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import type { OpStory } from "@stll/docx-core/ops";
 import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
@@ -11,7 +12,7 @@ type CanonicalStoryEditorOptions = {
   getApi: () => HiddenEditorApi | null;
   enabled: () => boolean;
   onSelectionChange: () => void;
-  onRefusal: ((reason: string) => void) | undefined;
+  onRefusal: ((reason: string, gap: CanonicalGap) => void) | undefined;
 };
 
 /** Secondary views compile classified native input into the shared Document journal. */
@@ -23,9 +24,11 @@ export const createCanonicalStoryEditor = ({
   onRefusal,
   onSelectionChange,
 }: CanonicalStoryEditorOptions) => {
-  const refuse = (message: string) => {
-    if (onRefusal) onRefusal(message);
-    else throw new CanonicalSessionError({ message, reason: "refused" });
+  const refuse = (reason: string) => {
+    const gap = CANONICAL_GAP.dispatch;
+    const message = reason;
+    if (onRefusal) onRefusal(message, gap);
+    else throw new CanonicalSessionError({ gap, message, reason: "refused" });
   };
   const history = (direction: "undo" | "redo") => {
     const view = getView();

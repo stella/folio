@@ -1,3 +1,4 @@
+import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/canonicalCapabilities";
 /**
  * Ref-API assembler for the Vue `DocxEditor` shell.
  *
@@ -285,7 +286,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   function undoActiveView(): boolean {
     const view = opts.getActiveView();
-    if (opts.getExperimentalSession?.() === "canonical") {
+    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories)) {
       const story = opts.getActiveCanonicalStory?.() ?? "main";
       return view && story !== "main"
         ? opts.editor.applyCanonicalStoryHistory({ view, story, direction: "undo" })
@@ -297,7 +298,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   function redoActiveView(): boolean {
     const view = opts.getActiveView();
-    if (opts.getExperimentalSession?.() === "canonical") {
+    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories)) {
       const story = opts.getActiveCanonicalStory?.() ?? "main";
       return view && story !== "main"
         ? opts.editor.applyCanonicalStoryHistory({ view, story, direction: "redo" })
@@ -308,14 +309,16 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   }
 
   function canUndoActiveView(): boolean {
-    if (opts.getExperimentalSession?.() === "canonical") return opts.editor.canUndo();
+    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories))
+      return opts.editor.canUndo();
     const view = opts.getActiveView();
     if (view === opts.editorView.value) return opts.editor.canUndo();
     return view ? historyUndo(view.state) : false;
   }
 
   function canRedoActiveView(): boolean {
-    if (opts.getExperimentalSession?.() === "canonical") return opts.editor.canRedo();
+    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories))
+      return opts.editor.canRedo();
     const view = opts.getActiveView();
     if (view === opts.editorView.value) return opts.editor.canRedo();
     return view ? historyRedo(view.state) : false;

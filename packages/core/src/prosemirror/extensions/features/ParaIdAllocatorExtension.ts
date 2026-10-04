@@ -484,6 +484,7 @@ const createParaIdAllocatorPlugin = (): Plugin<ParagraphPropertySourceSeed> =>
       init: (_config, state) => collectParagraphPropertySourceSeed(state.doc),
       apply: (_transaction, seed) => seed,
     },
+    // canonical-gap: pm-paragraph-identity
     appendTransaction(transactions, oldState, newState) {
       // Skip selection-only / mark-only transactions — they can't have
       // created or duplicated a paragraph.

@@ -1,3 +1,4 @@
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { Result } from "better-result";
 import type { EditorState } from "prosemirror-state";
 import { OP_STORIES, type EditorIntent, type TextPosition } from "@stll/docx-core/ops";
@@ -14,7 +15,9 @@ import {
 } from "./canonicalSession";
 
 const refuse = (message: string) =>
-  Result.err(new CanonicalSessionError({ message, reason: "refused" }));
+  Result.err(
+    new CanonicalSessionError({ gap: CANONICAL_GAP.commands, message, reason: "refused" }),
+  );
 
 const selectedParagraphs = (session: CanonicalSession, state: EditorState) => {
   const ids = new Set<string>();

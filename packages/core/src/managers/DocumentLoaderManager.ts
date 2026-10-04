@@ -1,3 +1,4 @@
+import { CANONICAL_GAP, usesCanonicalSession } from "../types/canonicalCapabilities";
 /**
  * DocumentLoaderManager
  *
@@ -122,7 +123,12 @@ export class DocumentLoaderManager {
       let doc: Document;
       try {
         let input = buffer;
-        if (this.callbacks.getExperimentalSession?.() === "canonical") {
+        if (
+          usesCanonicalSession(
+            this.callbacks.getExperimentalSession?.(),
+            CANONICAL_GAP.authorityRouting,
+          )
+        ) {
           const prepared = await prepareCanonicalDocxInput(buffer);
           if (prepared.isErr()) throw prepared.error;
           input = prepared.value;

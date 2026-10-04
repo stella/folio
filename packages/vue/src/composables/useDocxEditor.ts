@@ -1,3 +1,9 @@
+import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+  type CanonicalGap,
+  canonicalRefusalMessage,
+} from "@stll/folio-core/types/canonicalCapabilities";
 /**
  * useDocxEditor — Vue composable for the folio DOCX editor lifecycle.
  *
@@ -556,12 +562,16 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // (it is the selective-save baseline; see the featureFlags parity note), so
   // this flag — not the tracker — is what surfaces pending edits to the ref API.
   const isDirty = ref(false);
-  const isCanonicalSession = () => toValue(experimentalSession) === "canonical";
+  const isCanonicalSession = () =>
+    usesCanonicalSession(toValue(experimentalSession), CANONICAL_GAP.authorityRouting);
   const cloneForHost = (document: Document) =>
     isCanonicalSession() ? cloneDocumentWithParagraphPropertySources(document) : document;
-  const refuseCanonicalModelEdit = (message: string) => {
+  const refuseCanonicalModelEdit = (gap: CanonicalGap, message: string) => {
     if (!isCanonicalSession()) return false;
-    const error = new CanonicalSessionRefusalError({ message });
+    const error = new CanonicalSessionRefusalError({
+      gap,
+      message: canonicalRefusalMessage(gap, message),
+    });
     onError?.(error);
     return true;
   };
@@ -658,9 +668,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
     getExperimentalSession: () => toValue(experimentalSession),
-    onSessionRefusal: (message) => {
+    onSessionRefusal: (message, gap) => {
       parseError.value = message;
-      onError?.(new CanonicalSessionRefusalError({ message }));
+      onError?.(new CanonicalSessionRefusalError({ gap, message }));
     },
     getStyles: () => docModel.value?.package.styles ?? null,
     getTheme: () => docModel.value?.package.theme ?? null,
@@ -685,9 +695,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
     getExperimentalSession: () => toValue(experimentalSession),
-    onSessionRefusal: (message) => {
+    onSessionRefusal: (message, gap) => {
       parseError.value = message;
-      onError?.(new CanonicalSessionRefusalError({ message }));
+      onError?.(new CanonicalSessionRefusalError({ gap, message }));
     },
     getStyles: () => docModel.value?.package.styles ?? null,
     getTheme: () => docModel.value?.package.theme ?? null,
@@ -859,6 +869,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     try {
       const updated =
         manager.api.getCanonicalDocument() ??
+        // canonical-gap: pm-save-projection
         noteFollower.reconcile(fromProseDoc(view.state.doc, base), view.state.doc);
       docModel.value = updated;
       syncSecondaryStoryEditors();
@@ -898,8 +909,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getExperimentalSession: () => toValue(experimentalSession),
     getEditingMode: () => toValue(editorMode) ?? "editing",
     getSuggestionAuthor: () => toValue(author) ?? "User",
-    onSessionRefusal: (message) => {
-      onError?.(new CanonicalSessionRefusalError({ message }));
+    onSessionRefusal: (message, gap) => {
+      onError?.(new CanonicalSessionRefusalError({ gap, message }));
     },
     getDocumentIdentity: () => String(loadSequence),
     getDocumentContext: () => docModel.value,
@@ -1292,6 +1303,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // edit that landed mid-save and diff against the wrong baseline.
     const state = view.state;
     const canonical = manager.api.getCanonicalDocument();
+    // canonical-gap: pm-save-projection
     const updatedDoc = withoutUnreferencedNotes(canonical ?? fromProseDoc(state.doc, base));
 
     const { resolveSelectiveSaveFlags } = await import("@stll/folio-core/docx/selectiveSaveFlags");
@@ -1396,7 +1408,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   function getDocument(): Document | null {
     const canonical = manager.api.getCanonicalDocument();
     if (canonical) return canonical;
-    if (toValue(experimentalSession) === "canonical") return null;
+    if (usesCanonicalSession(toValue(experimentalSession), CANONICAL_GAP.authorityRouting))
+      return null;
     const document = docModel.value;
     if (!document) return null;
     return cloneForHost(
@@ -1406,7 +1419,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   function setDocument(doc: Document): void {
     if (
-      refuseCanonicalModelEdit("Direct document model changes are unavailable in this session.")
+      refuseCanonicalModelEdit(
+        CANONICAL_GAP.modelEdits,
+        "Direct document model changes are unavailable in this session.",
+      )
     ) {
       return;
     }

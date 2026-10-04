@@ -1405,6 +1405,7 @@ export class FolioDocxReviewer {
   }
 
   /** Parse a `.docx` buffer into a reviewer. */
+  // canonical-gap: publicOps.headlessSession
   static async fromBuffer(
     buffer: ArrayBuffer,
     options: FolioDocxReviewerOptions = {},
@@ -2781,6 +2782,7 @@ export class FolioDocxReviewer {
     return document;
   }
 
+  // canonical-gap: pm-ai-snapshots
   private captureReviewerState(): FolioReviewerStateSnapshot {
     const secondaryStoryStates: FolioSecondaryStoryState[] = [];
     for (const { handle, initialState, state } of this.secondaryStoryStates.values()) {
