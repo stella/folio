@@ -28,11 +28,16 @@ export const CANONICAL_GAP = {
 export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
 
 type CanonicalCapability = {
-  owner: "controller" | "adapters" | "prosemirror" | "document-operations" | "ai-edits";
   kind: "routing" | "refusal" | "mutation-source";
   adapters: readonly ("react" | "vue")[];
   summary: string;
-};
+} & (
+  | {
+      owner: "document-operations";
+      defaultSessionMutation: "pm-public-operations" | "pm-headless-reviewer" | "canonical";
+    }
+  | { owner: "controller" | "adapters" | "prosemirror" | "ai-edits" }
+);
 
 export const CANONICAL_CAPABILITIES = {
   [CANONICAL_GAP.authorityRouting]: {
@@ -134,12 +139,14 @@ export const CANONICAL_CAPABILITIES = {
   },
   [CANONICAL_GAP.documentOperations]: {
     owner: "document-operations",
+    defaultSessionMutation: "pm-public-operations",
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary: "Public document operations still execute against a held PM view.",
   },
   [CANONICAL_GAP.publicComments]: {
     owner: "document-operations",
+    defaultSessionMutation: "pm-public-operations",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
@@ -147,6 +154,7 @@ export const CANONICAL_CAPABILITIES = {
   },
   [CANONICAL_GAP.publicSuggestedMode]: {
     owner: "document-operations",
+    defaultSessionMutation: "pm-public-operations",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
@@ -154,6 +162,7 @@ export const CANONICAL_CAPABILITIES = {
   },
   [CANONICAL_GAP.publicTableProjection]: {
     owner: "document-operations",
+    defaultSessionMutation: "pm-public-operations",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
@@ -161,12 +170,14 @@ export const CANONICAL_CAPABILITIES = {
   },
   [CANONICAL_GAP.publicUnsupportedInline]: {
     owner: "document-operations",
+    defaultSessionMutation: "pm-public-operations",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary: "Unsupported public payloads refuse with a typed compiler capability gap.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",
+    defaultSessionMutation: "pm-headless-reviewer",
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:

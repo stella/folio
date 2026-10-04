@@ -5,12 +5,13 @@ import {
 } from "../../packages/core/src/types/canonicalCapabilities";
 
 /** Legacy PM execution still owns these sources when canonical sessions refuse them. */
-export const PUBLIC_OPERATION_SOURCE_GAPS = [
-  CANONICAL_GAP.publicComments,
-  CANONICAL_GAP.publicSuggestedMode,
-  CANONICAL_GAP.publicTableProjection,
-  CANONICAL_GAP.publicUnsupportedInline,
-] as const;
+export const PUBLIC_OPERATION_SOURCE_GAPS = Object.entries(CANONICAL_CAPABILITIES)
+  .filter(
+    ([, capability]) =>
+      capability.owner === "document-operations" &&
+      capability.defaultSessionMutation === "pm-public-operations",
+  )
+  .map(([gap]) => gap);
 
 export type CanonicalSource = { file: string; source: string };
 
