@@ -200,6 +200,18 @@ const withoutOwnedRecords = ({ document, original, op }: WithoutOwnedRecordsOpti
     for (const [key, resource] of Object.entries(op.resources))
       if (!sameOpModel(resource, Reflect.get(op.expected, key)))
         Reflect.deleteProperty(out.package, key);
+    // Keyed package maps own exactly the entries the operation carries, or the whole map
+    // when its presence changes.
+    const maps = { relationships: op.relationships, media: op.media } as const;
+    for (const [field, change] of Object.entries(maps)) {
+      if (change.expected !== change.next) {
+        Reflect.deleteProperty(out.package, field);
+        continue;
+      }
+      const entries: unknown = Reflect.get(out.package, field);
+      if (!(entries instanceof Map)) continue;
+      for (const { key } of change.entries) entries.delete(key);
+    }
     return out;
   }
   if (
