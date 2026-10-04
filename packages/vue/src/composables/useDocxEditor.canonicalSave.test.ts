@@ -23,7 +23,6 @@ import type { Comment } from "@stll/folio-core/types/content";
 const { isMacPlatform } = await import("@stll/folio-core/managers/editorShortcuts");
 import {
   createCanonicalHeaderFooterOperation,
-  createCanonicalSectionPropertiesOperation,
   DOCUMENT_OP_TYPES,
   removeCanonicalHeaderFooterOperations,
   withCanonicalParagraphIds,
@@ -512,19 +511,21 @@ test("Vue canonical stories share history and save headers, first-page footer, n
       reLayout: adapter.reLayout,
       onChange: () => panic("Canonical section writes must use the journal"),
       applySectionProperties: (properties) => {
-        const current = adapter.getDocument() ?? panic("Expected canonical document");
-        expect(
-          adapter.editor.applyCanonicalOperations([
-            createCanonicalSectionPropertiesOperation(current, properties),
-          ]),
-        ).toBe(true);
-        return "applied";
+        const result = adapter.editor.applyCanonicalSectionProperties(properties);
+        if (result === null) return "unhandled";
+        return result.status;
       },
     });
     controls.handlePageSetupApply({ marginLeft: 720, footnotePr: { numStart: 2 } });
     const canonical = adapter.getDocument() ?? panic("Expected canonical document");
     expect(canonical.package.document.finalSectionProperties?.marginLeft).toBe(720);
     expect(canonical.package.document.finalSectionProperties?.titlePg).toBe(true);
+    expect(adapter.editor.undo()).toBe(true);
+    expect(adapter.getDocument()?.package.document.finalSectionProperties?.marginLeft).not.toBe(
+      720,
+    );
+    expect(adapter.editor.redo()).toBe(true);
+    expect(adapter.getDocument()?.package.document.finalSectionProperties?.marginLeft).toBe(720);
     const saved = await adapter.save();
     if (!saved) panic("Expected canonical story save");
     const reopened = await parseDocx(await saved.arrayBuffer(), {

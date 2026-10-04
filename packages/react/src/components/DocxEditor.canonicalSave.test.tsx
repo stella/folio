@@ -158,6 +158,28 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
       expect(editor.current?.undo()).toBe(true);
     });
     expect(editor.current?.getDocument()).toEqual(canonical);
+    await act(async () => {
+      expect(editor.current?.redo()).toBe(true);
+    });
+    const sectionPropertiesCanonical =
+      editor.current?.getDocument() ?? panic("Expected canonical section properties");
+    expect(sectionPropertiesCanonical.package.document.finalSectionProperties).toMatchObject({
+      footnotePr: { numStart: 3 },
+      endnotePr: { numStart: 4 },
+    });
+    let sectionPropertiesSaved: ArrayBuffer | null | undefined;
+    await act(async () => {
+      sectionPropertiesSaved = await editor.current?.save();
+    });
+    if (!sectionPropertiesSaved) panic("Expected saved canonical section properties");
+    const reopenedSectionProperties = await parseDocx(sectionPropertiesSaved, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    expect(reviewDifferences(sectionPropertiesCanonical, reopenedSectionProperties)).toEqual({
+      messages: [],
+      omitted: 0,
+    });
   } finally {
     await act(async () => root.unmount());
     dialogs.mockRestore();

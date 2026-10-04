@@ -7,7 +7,7 @@
  * React component or a headless controller without depending on React.
  */
 
-import type { DocumentOp, OpStory } from "@stll/docx-core/ops";
+import type { DocumentOp, OpStory, FormattingPatch } from "@stll/docx-core/ops";
 import type { Node as PMNode } from "prosemirror-model";
 
 import { undo, redo } from "prosemirror-history";
@@ -18,7 +18,8 @@ import type { EditorView } from "prosemirror-view";
 
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import type { Document } from "../types/document";
+import type { Document, SectionProperties } from "../types/document";
+import type { CanonicalSectionPropertiesResult } from "../types/canonicalSections";
 import type {
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
@@ -66,6 +67,10 @@ export type HiddenEditorApi = {
   applyCanonicalStoryHistory: (options: CanonicalStoryHistoryOptions) => boolean;
   applyCanonicalOperations: (ops: readonly DocumentOp[]) => boolean;
   applyCanonicalComment: (request: CanonicalCommentRequest) => CanonicalCommentResult | null;
+  /** Apply a final-section patch; null is reserved for default sessions. */
+  applyCanonicalSectionProperties: (
+    patch: FormattingPatch<SectionProperties>,
+  ) => CanonicalSectionPropertiesResult | null;
   getCanonicalStorySelection: (story: OpStory) => { anchor: number; head: number } | null;
   getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
   replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
@@ -116,6 +121,7 @@ export type HiddenEditorApiDeps = {
     | "updateCanonicalInputLifecycle"
     | "applyCanonicalOperations"
     | "applyCanonicalComment"
+    | "applyCanonicalSectionProperties"
     | "getCanonicalStoryProjection"
     | "replaceCanonicalStoryText"
     | "applyCanonicalStoryHistory"
@@ -202,6 +208,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       deps.canonicalOperations?.applyCanonicalStoryHistory(options) ?? false,
     applyCanonicalComment: (request) =>
       deps.canonicalOperations?.applyCanonicalComment(request) ?? null,
+    applyCanonicalSectionProperties: (patch) =>
+      deps.canonicalOperations?.applyCanonicalSectionProperties(patch) ?? null,
     applyCanonicalOperations: (ops) =>
       deps.canonicalOperations?.applyCanonicalOperations(ops) ?? false,
     getCanonicalStorySelection: (story) =>
