@@ -22,7 +22,11 @@ import { keyboardEventFor, type EditorMode } from "../packages/core/src/__tests_
 import { HARNESS_AUTHOR } from "../packages/core/src/__tests__/editorHarness";
 import { singletonManager } from "../packages/core/src/prosemirror/schema";
 
-export type HarnessRefusal = { gap: CanonicalGap; message: string; expected: boolean };
+export type HarnessRefusal = {
+  gap: CanonicalGap;
+  message: string;
+  expectation: "missing-command-descriptor" | "unexpected";
+};
 
 /** A disposable driver over the production controller, with no PM mutation fallback. */
 export const createCanonicalEditorHarness = (source: Document, mode: EditorMode) => {
@@ -54,7 +58,11 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     onEditorViewDestroy: () => {},
     onRemoteSelectionsChange: () => {},
     onSessionRefusal: (message, gap) => {
-      refusals.push({ gap, message, expected: gap === expectedGap });
+      refusals.push({
+        gap,
+        message,
+        expectation: gap === expectedGap ? "missing-command-descriptor" : "unexpected",
+      });
     },
   });
   const dispose = () => {

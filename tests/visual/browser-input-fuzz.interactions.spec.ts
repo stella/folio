@@ -80,8 +80,16 @@ const editor = (page: Page) =>
     return true;
   });
 
-const load = async (page: Page, bytes: ArrayBuffer, baseline: Block[], suggesting: boolean) => {
-  await page.goto("/");
+type FuzzAuthority = "canonical" | "prosemirror";
+type LoadFuzzOptions = {
+  page: Page;
+  bytes: ArrayBuffer;
+  baseline: Block[];
+  suggesting: boolean;
+  authority: FuzzAuthority;
+};
+const load = async ({ page, bytes, baseline, suggesting, authority }: LoadFuzzOptions) => {
+  await page.goto(authority === "canonical" ? "/?session=canonical" : "/");
   await page.waitForSelector(".layout-page");
   await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView());
   await page.waitForFunction(
@@ -97,7 +105,19 @@ const load = async (page: Page, bytes: ArrayBuffer, baseline: Block[], suggestin
   );
   await expect.poll(() => liveBlocks(page)).toEqual(projectLive(baseline));
   await editor(page);
-  if (suggesting) await page.getByRole("button", { name: "Track Changes", exact: true }).click();
+  if (authority === "canonical") {
+    expect(
+      await page.evaluate((tracked) => {
+        const core = globalThis.__folioPlayground?.getEditorRef()?.getEditor();
+        if (!core?.getCanonicalDocument())
+          throw new TypeError("Canonical fuzz authority unavailable.");
+        return core.setCanonicalMode(
+          tracked ? { type: "suggesting", author: "Browser conformance" } : { type: "editing" },
+        );
+      }, suggesting),
+    ).toBe(true);
+  } else if (suggesting)
+    await page.getByRole("button", { name: "Track Changes", exact: true }).click();
   await page.evaluate(() =>
     globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.focus(),
   );
@@ -280,14 +300,23 @@ const reopenSaved = async (buffer: ArrayBuffer) => {
   return FolioDocxReviewer.fromBuffer(buffer);
 };
 
-const runMode = async (
-  page: Page,
-  source: ArrayBuffer,
-  baseline: Block[],
-  trace: BrowserInputTrace,
-  suggesting: boolean,
-) => {
-  await load(page, source, baseline, suggesting);
+type RunFuzzOptions = {
+  page: Page;
+  source: ArrayBuffer;
+  baseline: Block[];
+  trace: BrowserInputTrace;
+  suggesting: boolean;
+  authority: FuzzAuthority;
+};
+const runMode = async ({
+  page,
+  source,
+  baseline,
+  trace,
+  suggesting,
+  authority,
+}: RunFuzzOptions) => {
+  await load({ page, bytes: source, baseline, suggesting, authority });
   for (const action of trace.actions) await drive(page, action);
   await page.waitForTimeout(350);
   const live = await liveBlocks(page);
@@ -328,7 +357,7 @@ for (const [index, trace] of paintedTargetReplays.entries()) {
     const source = await shapeArrayBuffer(trace.shape);
     const baseline = project(await FolioDocxReviewer.fromBuffer(source));
     for (const suggesting of [false, true]) {
-      await load(page, source, baseline, suggesting);
+      await load({ page, bytes: source, baseline, suggesting, authority: "canonical" });
       for (const action of trace.actions) await drive(page, action);
     }
   });
@@ -369,8 +398,22 @@ for (const acceptance of browserAcceptances) {
     const { trace } = acceptance;
     const source = await shapeArrayBuffer(trace.shape);
     const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-    const edited = await runMode(page, source, baseline, trace, false);
-    const suggested = await runMode(page, source, baseline, trace, true);
+    const edited = await runMode({
+      page,
+      source,
+      baseline,
+      trace,
+      suggesting: false,
+      authority: "prosemirror",
+    });
+    const suggested = await runMode({
+      page,
+      source,
+      baseline,
+      trace,
+      suggesting: true,
+      authority: "prosemirror",
+    });
     const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
     accepting.acceptAll();
     const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
@@ -439,7 +482,7 @@ for (const shape of browserDragShapes) {
     }) => {
       const source = await shapeArrayBuffer(shape);
       const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-      await load(page, source, baseline, suggesting);
+      await load({ page, bytes: source, baseline, suggesting, authority: "canonical" });
       await paste(page, {
         kind: "pasteHtml",
         plain: "First bold\nSecond",
@@ -502,6 +545,34 @@ test("clipboard oracle accepts HTML serialization and detects text, attribute an
   );
 });
 
+type ResolveFuzzOptions = {
+  page: Page;
+  source: ArrayBuffer;
+  revisionIds: readonly number[];
+  decision: "accept" | "reject";
+};
+const resolveCanonicalSaved = async ({
+  page,
+  source,
+  revisionIds,
+  decision,
+}: ResolveFuzzOptions) => {
+  await page.evaluate(
+    async ({ bytes, ids, resolution }) => {
+      const ref = globalThis.__folioPlayground?.getEditorRef();
+      if (!ref) throw new TypeError("Canonical fuzz editor unavailable.");
+      await ref.loadDocumentBuffer(new Uint8Array(bytes));
+      const core = ref.getEditor();
+      if (!core?.getCanonicalDocument())
+        throw new TypeError("Canonical review authority unavailable.");
+      if (ids.length > 0 && !core.resolveCanonicalRevisions(ids, resolution))
+        throw new TypeError("Canonical fuzz review refused existing revisions.");
+    },
+    { bytes: [...new Uint8Array(source)], ids: revisionIds, resolution: decision },
+  );
+  return reopenSaved(await save(page));
+};
+
 for (const seed of config.seeds) {
   test(`seed ${seed}: browser input preserves readers, fresh render, and suggesting equivalence`, async ({
     page,
@@ -512,15 +583,35 @@ for (const seed of config.seeds) {
         checkFreshRender(trace);
         const source = await shapeArrayBuffer(trace.shape);
         const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-        const edited = await runMode(page, source, baseline, trace, false);
-        const suggested = await runMode(page, source, baseline, trace, true);
-        const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
-        accepting.acceptAll();
-        const accepted = await reopenSaved(await accepting.toBuffer());
+        const edited = await runMode({
+          page,
+          source,
+          baseline,
+          trace,
+          suggesting: false,
+          authority: "canonical",
+        });
+        const suggested = await runMode({
+          page,
+          source,
+          baseline,
+          trace,
+          suggesting: true,
+          authority: "canonical",
+        });
+        const accepted = await resolveCanonicalSaved({
+          page,
+          source: suggested.buffer,
+          revisionIds: suggested.changes.map(({ id }) => id),
+          decision: "accept",
+        });
         expect(project(accepted)).toEqual(edited.blocks);
-        const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
-        rejecting.rejectAll();
-        const rejected = await reopenSaved(await rejecting.toBuffer());
+        const rejected = await resolveCanonicalSaved({
+          page,
+          source: suggested.buffer,
+          revisionIds: suggested.changes.map(({ id }) => id),
+          decision: "reject",
+        });
         expect(project(rejected)).toEqual(baseline);
         if (JSON.stringify(edited.blocks) !== JSON.stringify(baseline)) {
           expect(suggested.changes.length).toBeGreaterThan(0);

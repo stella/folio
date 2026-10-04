@@ -339,7 +339,7 @@ const PASTED_TABLE = (schemaDoc: PMNode) => {
   );
 };
 
-const PASTED_LIST = (schemaDoc: PMNode) => {
+export const PASTED_LIST = (schemaDoc: PMNode) => {
   const { schema } = schemaDoc.type;
   const item = (text: string, level: number) =>
     schema.node(
@@ -746,12 +746,12 @@ const runCanonicalMode = (
     const after = driver.state;
     const base = driver.snapshot();
     const changed = !after.doc.eq(before.doc);
-    if (driver.refusals.some(({ expected }) => !expected))
+    if (driver.refusals.some(({ expectation }) => expectation === "unexpected"))
       historyViolations.push({
         kind: "silent-refusal",
         mode,
         detail: driver.refusals
-          .filter(({ expected }) => !expected)
+          .filter(({ expectation }) => expectation === "unexpected")
           .map(({ gap, message }) => `${gap}: ${message}`)
           .join("; "),
       });

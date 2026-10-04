@@ -1,7 +1,14 @@
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import { TextSelection, type EditorState, type Transaction } from "prosemirror-state";
+import {
+  AllSelection,
+  NodeSelection,
+  Selection,
+  TextSelection,
+  type EditorState,
+  type Transaction,
+} from "prosemirror-state";
 import {
   applyDocumentOps,
   combineEdits,
@@ -103,7 +110,11 @@ const operationChangesBodyProjection = (op: DocumentOp): boolean => {
   }
 };
 
-export type CanonicalSelection = { anchor: TextPosition; head: TextPosition };
+export type CanonicalSelection = {
+  type: "text" | "inlineNode" | "all";
+  anchor: TextPosition;
+  head: TextPosition;
+};
 export type CanonicalOrigin = "input" | "undo" | "redo";
 export type CanonicalSessionMode = { type: "editing" } | { type: "suggesting"; author: string };
 export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
@@ -195,14 +206,31 @@ class CanonicalProjection {
   }
 
   selectionAt(state: EditorState): Result<CanonicalSelection, CanonicalSessionError> {
-    if (!(state.selection instanceof TextSelection)) {
-      return refuse("Canonical input requires a text selection.");
-    }
-    const anchor = this.addressAt(state.selection.anchor);
+    const selection = state.selection;
+    let type: CanonicalSelection["type"];
+    let anchorPosition = selection.anchor;
+    let headPosition = selection.head;
+    if (selection instanceof TextSelection) type = "text";
+    else if (
+      selection instanceof NodeSelection &&
+      selection.node.isInline &&
+      selection.node.isAtom &&
+      selection.node.type.name !== "noteMarker"
+    )
+      type = "inlineNode";
+    else if (selection instanceof AllSelection) {
+      type = "all";
+      anchorPosition = Selection.atStart(state.doc).from;
+      headPosition = Selection.atEnd(state.doc).to;
+    } else
+      return refuse(
+        "Canonical input requires text, an inline atom, or the whole document selection.",
+      );
+    const anchor = this.addressAt(anchorPosition);
     if (anchor.isErr()) return anchor;
-    const head = this.addressAt(state.selection.head);
+    const head = this.addressAt(headPosition);
     if (head.isErr()) return head;
-    return Result.ok({ anchor: anchor.value, head: head.value });
+    return Result.ok({ type, anchor: anchor.value, head: head.value });
   }
 
   paragraph(blockId: string): ParagraphAddress | undefined {
@@ -456,7 +484,9 @@ const samePosition = (left: TextPosition, right: TextPosition): boolean =>
   (left.zeroWidthBefore ?? 0) === (right.zeroWidthBefore ?? 0);
 
 const sameSelection = (left: CanonicalSelection, right: CanonicalSelection): boolean =>
-  samePosition(left.anchor, right.anchor) && samePosition(left.head, right.head);
+  left.type === right.type &&
+  samePosition(left.anchor, right.anchor) &&
+  samePosition(left.head, right.head);
 
 type AppliedJournalEntry = {
   type: "applied";
@@ -848,9 +878,15 @@ class CanonicalSession {
       return refuse("Canonical input accepts a well-formed text replacement.");
     }
     if (from === to && text.length === 0) return noChange("The input makes no text change.");
-    const start = projection.inputAddressAt(from);
+    const replacesAll =
+      state.selection instanceof AllSelection &&
+      from === state.selection.from &&
+      to === state.selection.to;
+    const inputFrom = replacesAll ? Selection.atStart(state.doc).from : from;
+    const inputTo = replacesAll ? Selection.atEnd(state.doc).to : to;
+    const start = projection.inputAddressAt(inputFrom);
     if (start.isErr()) return start;
-    const end = projection.inputAddressAt(to);
+    const end = projection.inputAddressAt(inputTo);
     if (end.isErr()) return end;
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
@@ -874,7 +910,11 @@ class CanonicalSession {
     });
     if (compiled.isErr()) return refuse(compiled.error.message);
     const { ops, selection: caret } = compiled.value;
-    const postSelection = { anchor: caret, head: caret };
+    const postSelection = {
+      type: "text",
+      anchor: caret,
+      head: caret,
+    } as const satisfies CanonicalSelection;
     const preDocument = this.currentDocument;
     const isCaret = state.selection.empty;
     const run =
@@ -979,7 +1019,11 @@ class CanonicalSession {
         intent.type !== "formatParagraph" &&
         intent.type !== "setList"
       ) {
-        postSelection = { anchor: compiled.value.selection, head: compiled.value.selection };
+        postSelection = {
+          type: "text",
+          anchor: compiled.value.selection,
+          head: compiled.value.selection,
+        };
       }
     }
     const stagedApplied = {
@@ -1146,7 +1190,7 @@ class CanonicalSession {
     return this.prepareJournalledOps({
       state,
       ops,
-      postSelection: { anchor: caret, head: caret },
+      postSelection: { type: "text", anchor: caret, head: caret },
       stagedApplied: applied.value,
     });
   }
@@ -1352,9 +1396,34 @@ class CanonicalSession {
     if (sameStory(selection.anchor.story, story) && sameStory(selection.head.story, story)) {
       const anchor = projected.value.positionAt(selection.anchor);
       const head = projected.value.positionAt(selection.head);
-      if (anchor.isOk() && head.isOk())
-        transaction.setSelection(TextSelection.create(transaction.doc, anchor.value, head.value));
-      else
+      if (anchor.isOk() && head.isOk()) {
+        switch (selection.type) {
+          case "text":
+            transaction.setSelection(
+              TextSelection.create(transaction.doc, anchor.value, head.value),
+            );
+            break;
+          case "inlineNode": {
+            const node = transaction.doc.nodeAt(anchor.value);
+            if (
+              !node?.isInline ||
+              !node.isAtom ||
+              !NodeSelection.isSelectable(node) ||
+              anchor.value + node.nodeSize !== head.value
+            )
+              return refuse("Canonical history cannot restore the selected inline atom.");
+            transaction.setSelection(NodeSelection.create(transaction.doc, anchor.value));
+            break;
+          }
+          case "all":
+            transaction.setSelection(new AllSelection(transaction.doc));
+            break;
+          default: {
+            const unreachable: never = selection.type;
+            return unreachable;
+          }
+        }
+      } else
         transaction.setSelection(
           TextSelection.near(
             transaction.doc.resolve(Math.min(state.selection.anchor, transaction.doc.content.size)),
@@ -1495,8 +1564,22 @@ export const deletionRange = (
   direction: "backward" | "forward",
 ): Result<{ from: number; to: number }, CanonicalSessionError> => {
   const { selection } = state;
+  if (
+    selection instanceof NodeSelection &&
+    selection.node.isInline &&
+    selection.node.isAtom &&
+    selection.node.type.name !== "noteMarker"
+  )
+    return Result.ok({ from: selection.from, to: selection.to });
+  if (selection instanceof AllSelection)
+    return Result.ok({
+      from: Selection.atStart(state.doc).from,
+      to: Selection.atEnd(state.doc).to,
+    });
   if (!(selection instanceof TextSelection))
-    return refuse("Canonical deletion requires a text selection.");
+    return refuse(
+      "Canonical deletion requires text, an inline atom, or the whole document selection.",
+    );
   if (!selection.empty) return Result.ok({ from: selection.from, to: selection.to });
   const parent = selection.$from.parent;
   const offset = selection.$from.parentOffset;
