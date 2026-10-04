@@ -12,7 +12,7 @@
       "operations": [
         {
           "type": "deleteTableRow",
-          "blockId": "333153C8"
+          "blockId": "682BB056"
         }
       ]
     },
@@ -22,7 +22,7 @@
       "operations": [
         {
           "type": "insertTableColumn",
-          "blockId": "2E314BE9",
+          "blockId": "461701F4",
           "position": "after",
           "cellTexts": ["Column cell 1", "Column cell 2", "Column cell 3"]
         }

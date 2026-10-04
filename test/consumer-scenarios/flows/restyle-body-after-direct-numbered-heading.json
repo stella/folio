@@ -12,7 +12,7 @@
       "operations": [
         {
           "type": "setBlockParagraphProperties",
-          "blockId": "4207D525",
+          "blockId": "5E88C024",
           "properties": {
             "styleId": "Heading2"
           }
@@ -25,7 +25,7 @@
       "operations": [
         {
           "type": "setBlockParagraphProperties",
-          "blockId": "3B07CA20",
+          "blockId": "31617F9A",
           "properties": {
             "styleId": "Heading2"
           }

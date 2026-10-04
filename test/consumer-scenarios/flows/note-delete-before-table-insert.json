@@ -12,7 +12,7 @@
       "operations": [
         {
           "type": "deleteBlock",
-          "blockId": "2E35590A"
+          "blockId": "7B806329"
         }
       ]
     },
@@ -22,7 +22,7 @@
       "operations": [
         {
           "type": "insertTable",
-          "blockId": "0F49D7B9",
+          "blockId": "581FD868",
           "rows": [
             ["Term", "Value"],
             ["Period", "12 months"]

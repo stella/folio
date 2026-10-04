@@ -52,7 +52,7 @@
               "operations": [
                 {
                   "type": "mergeBlockWithNext",
-                  "blockId": "0A88C0B1",
+                  "blockId": "5E88C024",
                   "separator": " "
                 }
               ]
@@ -102,7 +102,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "2F355A9D"
+                  "blockId": "7735D914"
                 }
               ]
             }
@@ -140,7 +140,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "4207D525"
+                  "blockId": "5E88C024"
                 }
               ]
             },
@@ -158,7 +158,7 @@
               "operations": [
                 {
                   "type": "replaceBlock",
-                  "blockId": "4207D525",
+                  "blockId": "5E88C024",
                   "text": "Written delivery term party goods agreement agreement."
                 }
               ]
@@ -169,7 +169,7 @@
               "operations": [
                 {
                   "type": "splitBlock",
-                  "blockId": "4207D525",
+                  "blockId": "5E88C024",
                   "offset": 22
                 }
               ]
@@ -209,7 +209,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "1508FAF4"
+                  "blockId": "483CD5EB"
                 }
               ]
             },
@@ -219,7 +219,7 @@
               "operations": [
                 {
                   "type": "setBlockParagraphProperties",
-                  "blockId": "1608FC87",
+                  "blockId": "5E88C024",
                   "properties": {
                     "styleId": "Heading2"
                   }
@@ -271,12 +271,12 @@
               "operations": [
                 {
                   "type": "mergeBlockWithNext",
-                  "blockId": "048C530C",
+                  "blockId": "412DDC7F",
                   "separator": " "
                 },
                 {
                   "type": "deleteBlock",
-                  "blockId": "058C549F"
+                  "blockId": "3CEFFC83"
                 }
               ]
             }
@@ -324,7 +324,7 @@
               "operations": [
                 {
                   "type": "replaceInBlock",
-                  "blockId": "1D7C8229",
+                  "blockId": "412DDC7F",
                   "find": "Agreement",
                   "replace": "",
                   "precondition": {
@@ -342,7 +342,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "1F7C854F",
+                    "blockId": "31617F9A",
                     "startOffset": 0,
                     "endOffset": 11,
                     "selectedTextHash": "hmk415m"
@@ -397,13 +397,13 @@
               "operations": [
                 {
                   "type": "insertAfterBlock",
-                  "blockId": "59CE41D1",
+                  "blockId": "0406D732",
                   "text": "Party party term delivery written schedule.",
                   "styleId": "Heading2"
                 },
                 {
                   "type": "deleteBlock",
-                  "blockId": "5CCE468A"
+                  "blockId": "6FFB97E7"
                 }
               ]
             }
@@ -442,7 +442,7 @@
               "operations": [
                 {
                   "type": "mergeBlockWithNext",
-                  "blockId": "0A88C0B1",
+                  "blockId": "5E88C024",
                   "separator": " "
                 }
               ]
@@ -481,7 +481,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "4207D525"
+                  "blockId": "5E88C024"
                 }
               ]
             },
@@ -491,7 +491,7 @@
               "operations": [
                 {
                   "type": "setBlockParagraphProperties",
-                  "blockId": "3B07CA20",
+                  "blockId": "31617F9A",
                   "properties": {
                     "numbering": {
                       "numId": 7,
@@ -541,7 +541,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "078C57C5"
+                  "blockId": "5E88C024"
                 }
               ]
             },
@@ -551,7 +551,7 @@
               "operations": [
                 {
                   "type": "insertAfterBlock",
-                  "blockId": "068C5632",
+                  "blockId": "31617F9A",
                   "text": "Warranty delivery written term agreement clause delivery.",
                   "styleId": "Heading2"
                 }
@@ -600,7 +600,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "058C549F",
+                    "blockId": "3CEFFC83",
                     "startOffset": 37,
                     "endOffset": 42,
                     "selectedTextHash": "h4k7sdk"
@@ -614,7 +614,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "058C549F",
+                    "blockId": "3CEFFC83",
                     "startOffset": 37,
                     "endOffset": 42,
                     "selectedTextHash": "h4k7sdk"
@@ -631,15 +631,15 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "058C549F"
+                  "blockId": "3CEFFC83"
                 },
                 {
                   "type": "deleteBlock",
-                  "blockId": "078C57C5"
+                  "blockId": "5E88C024"
                 },
                 {
                   "type": "insertAfterBlock",
-                  "blockId": "048C530C",
+                  "blockId": "412DDC7F",
                   "text": "Party written payment party invoice term party.",
                   "numbering": {
                     "start": "new",
@@ -666,7 +666,7 @@
               "operations": [
                 {
                   "type": "insertTable",
-                  "blockId": "068C5632",
+                  "blockId": "31617F9A",
                   "rows": [
                     ["Term", "Value"],
                     ["Period", "12 months"]
@@ -674,7 +674,7 @@
                 },
                 {
                   "type": "insertTable",
-                  "blockId": "068C5632",
+                  "blockId": "31617F9A",
                   "rows": [
                     ["Term", "Value"],
                     ["Period", "12 months"]
@@ -682,7 +682,7 @@
                 },
                 {
                   "type": "insertAfterBlock",
-                  "blockId": "068C5632",
+                  "blockId": "31617F9A",
                   "text": "Supplier supplier party delivery buyer.",
                   "alignment": "right"
                 }
@@ -730,7 +730,7 @@
                 },
                 {
                   "type": "replaceBlock",
-                  "blockId": "068C5632",
+                  "blockId": "31617F9A",
                   "text": "Clause invoice written."
                 }
               ]
@@ -810,7 +810,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "1508FAF4"
+                  "blockId": "483CD5EB"
                 }
               ]
             },
@@ -820,7 +820,7 @@
               "operations": [
                 {
                   "type": "insertAfterBlock",
-                  "blockId": "1608FC87",
+                  "blockId": "5E88C024",
                   "text": "Delivery period schedule warranty schedule buyer invoice.",
                   "numbering": {
                     "start": "new",
@@ -863,7 +863,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "058C549F"
+                  "blockId": "3CEFFC83"
                 }
               ]
             },
@@ -873,7 +873,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "068C5632"
+                  "blockId": "31617F9A"
                 }
               ]
             },
@@ -883,11 +883,11 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "078C57C5"
+                  "blockId": "5E88C024"
                 },
                 {
                   "type": "deleteBlock",
-                  "blockId": "048C530C"
+                  "blockId": "412DDC7F"
                 }
               ]
             }
@@ -925,12 +925,12 @@
               "operations": [
                 {
                   "type": "mergeBlockWithNext",
-                  "blockId": "1D7C8229",
+                  "blockId": "412DDC7F",
                   "separator": " "
                 },
                 {
                   "type": "deleteBlock",
-                  "blockId": "207C86E2"
+                  "blockId": "3CEFFC83"
                 }
               ]
             }
@@ -968,7 +968,7 @@
               "operations": [
                 {
                   "type": "insertTable",
-                  "blockId": "048C530C",
+                  "blockId": "412DDC7F",
                   "rows": [
                     ["Term", "Value"],
                     ["Period", "12 months"]
@@ -1023,7 +1023,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "541D18C6",
+                    "blockId": "412DDC7F",
                     "startOffset": 6,
                     "endOffset": 14,
                     "selectedTextHash": "hnavq79"
@@ -1035,7 +1035,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "541D18C6",
+                    "blockId": "412DDC7F",
                     "startOffset": 0,
                     "endOffset": 5,
                     "selectedTextHash": "h3uv5ju"
@@ -1065,7 +1065,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "5FCE4B43",
+                    "blockId": "0C0A0460",
                     "startOffset": 0,
                     "endOffset": 3,
                     "selectedTextHash": "h376lws"
@@ -1092,11 +1092,11 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "5CCE468A"
+                  "blockId": "6FFB97E7"
                 },
                 {
                   "type": "replaceInBlock",
-                  "blockId": "4F1D10E7",
+                  "blockId": "5E88C024",
                   "find": "Price",
                   "replace": "the Customer",
                   "precondition": {
@@ -1105,7 +1105,7 @@
                 },
                 {
                   "type": "replaceInBlock",
-                  "blockId": "541D18C6",
+                  "blockId": "412DDC7F",
                   "find": "Schedule",
                   "replace": "",
                   "precondition": {
@@ -1120,12 +1120,12 @@
               "operations": [
                 {
                   "type": "insertTableColumn",
-                  "blockId": "4F1D10E7",
+                  "blockId": "5E88C024",
                   "position": "after"
                 },
                 {
                   "type": "insertTableRow",
-                  "blockId": "4E1D0F54",
+                  "blockId": "7B806329",
                   "position": "after",
                   "cellTexts": ["Row cell 1", "Row cell 2"]
                 }
@@ -1145,7 +1145,7 @@
               "operations": [
                 {
                   "type": "insertTableColumn",
-                  "blockId": "59CE41D1",
+                  "blockId": "0406D732",
                   "position": "after",
                   "cellTexts": ["Column cell 1", "Column cell 2", "Column cell 3"]
                 }
@@ -1157,7 +1157,7 @@
               "operations": [
                 {
                   "type": "insertAfterBlock",
-                  "blockId": "521D15A0",
+                  "blockId": "31617F9A",
                   "text": "Invoice goods schedule period."
                 },
                 {
@@ -1168,7 +1168,7 @@
                 },
                 {
                   "type": "replaceBlock",
-                  "blockId": "541D18C6",
+                  "blockId": "412DDC7F",
                   "text": "Clause buyer clause period buyer term period notice."
                 }
               ]
@@ -1213,16 +1213,16 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "3C07CBB3"
+                  "blockId": "3CEFFC83"
                 },
                 {
                   "type": "splitBlock",
-                  "blockId": "3C07CBB3",
+                  "blockId": "3CEFFC83",
                   "offset": 9
                 },
                 {
                   "type": "mergeBlockWithNext",
-                  "blockId": "3D07CD46",
+                  "blockId": "412DDC7F",
                   "separator": " "
                 }
               ]
@@ -1262,7 +1262,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "1308F7CE"
+                  "blockId": "31617F9A"
                 }
               ]
             },
@@ -1272,11 +1272,11 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "1608FC87"
+                  "blockId": "5E88C024"
                 },
                 {
                   "type": "mergeBlockWithNext",
-                  "blockId": "1408F961",
+                  "blockId": "3CEFFC83",
                   "separator": " "
                 }
               ]
@@ -1319,17 +1319,17 @@
               "operations": [
                 {
                   "type": "replaceBlock",
-                  "blockId": "5C1D255E",
+                  "blockId": "79D25458",
                   "text": "Payment notice term."
                 },
                 {
                   "type": "mergeBlockWithNext",
-                  "blockId": "541D18C6",
+                  "blockId": "412DDC7F",
                   "separator": " "
                 },
                 {
                   "type": "replaceBlock",
-                  "blockId": "541D18C6",
+                  "blockId": "412DDC7F",
                   "text": "Schedule agreement notice party delivery party buyer goods."
                 }
               ]
@@ -1369,7 +1369,7 @@
               "operations": [
                 {
                   "type": "commentOnBlock",
-                  "blockId": "1088CA23",
+                  "blockId": "3CEFFC83",
                   "quote": "apply",
                   "comment": {
                     "text": "Agreement period buyer supplier clause buyer invoice."
@@ -1377,7 +1377,7 @@
                 },
                 {
                   "type": "replaceInBlock",
-                  "blockId": "1088CA23",
+                  "blockId": "3CEFFC83",
                   "find": "apply",
                   "replace": "",
                   "precondition": {
@@ -1429,7 +1429,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "1508FAF4",
+                    "blockId": "483CD5EB",
                     "startOffset": 0,
                     "endOffset": 6,
                     "selectedTextHash": "hmiedpg"
@@ -1448,18 +1448,18 @@
               "operations": [
                 {
                   "type": "setBlockParagraphProperties",
-                  "blockId": "1508FAF4",
+                  "blockId": "483CD5EB",
                   "properties": {
                     "styleId": "Heading2"
                   }
                 },
                 {
                   "type": "deleteBlock",
-                  "blockId": "1108F4A8"
+                  "blockId": "412DDC7F"
                 },
                 {
                   "type": "mergeBlockWithNext",
-                  "blockId": "1408F961",
+                  "blockId": "3CEFFC83",
                   "separator": " "
                 }
               ]
@@ -1470,7 +1470,7 @@
               "operations": [
                 {
                   "type": "commentOnBlock",
-                  "blockId": "1508FAF4",
+                  "blockId": "483CD5EB",
                   "quote": "copies",
                   "comment": {
                     "text": "Buyer agreement goods delivery buyer written goods payment."
@@ -1478,11 +1478,11 @@
                 },
                 {
                   "type": "deleteBlock",
-                  "blockId": "1508FAF4"
+                  "blockId": "483CD5EB"
                 },
                 {
                   "type": "insertTable",
-                  "blockId": "1608FC87",
+                  "blockId": "5E88C024",
                   "rows": [
                     ["Term", "Value"],
                     ["Period", "12 months"]
@@ -1496,7 +1496,7 @@
               "operations": [
                 {
                   "type": "commentOnBlock",
-                  "blockId": "1508FAF4",
+                  "blockId": "483CD5EB",
                   "quote": "updated",
                   "comment": {
                     "text": "Party delivery schedule agreement warranty period written notice."
@@ -1504,12 +1504,12 @@
                 },
                 {
                   "type": "replaceBlock",
-                  "blockId": "1408F961",
+                  "blockId": "3CEFFC83",
                   "text": "Invoice term written party."
                 },
                 {
                   "type": "commentOnBlock",
-                  "blockId": "1508FAF4",
+                  "blockId": "483CD5EB",
                   "quote": "copies",
                   "comment": {
                     "text": "Goods agreement period delivery."
@@ -1555,7 +1555,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "078C57C5",
+                    "blockId": "5E88C024",
                     "startOffset": 0,
                     "endOffset": 2,
                     "selectedTextHash": "h6jou"
@@ -1566,7 +1566,7 @@
                 },
                 {
                   "type": "replaceInBlock",
-                  "blockId": "078C57C5",
+                  "blockId": "5E88C024",
                   "find": "🎉",
                   "replace": "",
                   "precondition": {
@@ -1609,11 +1609,11 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "1508FAF4"
+                  "blockId": "483CD5EB"
                 },
                 {
                   "type": "setBlockParagraphProperties",
-                  "blockId": "1508FAF4",
+                  "blockId": "483CD5EB",
                   "properties": {
                     "styleId": "Heading2"
                   }
@@ -1657,12 +1657,12 @@
               "operations": [
                 {
                   "type": "replaceBlock",
-                  "blockId": "1108F4A8",
+                  "blockId": "412DDC7F",
                   "text": "A rewritten clause."
                 },
                 {
                   "type": "insertAfterBlock",
-                  "blockId": "1108F4A8",
+                  "blockId": "412DDC7F",
                   "text": "An added clause."
                 }
               ]
@@ -1673,7 +1673,7 @@
               "operations": [
                 {
                   "type": "replaceInBlock",
-                  "blockId": "1108F4A8",
+                  "blockId": "412DDC7F",
                   "find": "rewritten",
                   "replace": "revised"
                 }
@@ -1689,7 +1689,7 @@
               "operations": [
                 {
                   "type": "insertTable",
-                  "blockId": "1308F7CE",
+                  "blockId": "31617F9A",
                   "rows": [
                     ["Term", "Value"],
                     ["Period", "12 months"]
@@ -1716,7 +1716,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "1108F4A8",
+                    "blockId": "412DDC7F",
                     "startOffset": 10,
                     "endOffset": 16,
                     "selectedTextHash": "hwx73rb"
@@ -1730,7 +1730,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "1108F4A8",
+                    "blockId": "412DDC7F",
                     "startOffset": 10,
                     "endOffset": 16,
                     "selectedTextHash": "hwx73rb"
@@ -1785,7 +1785,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "541D18C6",
+                    "blockId": "412DDC7F",
                     "startOffset": 6,
                     "endOffset": 14,
                     "selectedTextHash": "hnavq79"
@@ -1799,7 +1799,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "541D18C6",
+                    "blockId": "412DDC7F",
                     "startOffset": 6,
                     "endOffset": 14,
                     "selectedTextHash": "hnavq79"
@@ -1816,11 +1816,11 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "541D18C6"
+                  "blockId": "412DDC7F"
                 },
                 {
                   "type": "replaceInBlock",
-                  "blockId": "511D140D",
+                  "blockId": "3CEFFC83",
                   "find": "The",
                   "replace": "revised"
                 }
@@ -1867,7 +1867,7 @@
               "operations": [
                 {
                   "type": "commentOnBlock",
-                  "blockId": "1308F7CE",
+                  "blockId": "31617F9A",
                   "quote": "and",
                   "comment": {
                     "text": "Period payment clause goods schedule goods schedule."
@@ -1881,7 +1881,7 @@
               "operations": [
                 {
                   "type": "mergeBlockWithNext",
-                  "blockId": "1308F7CE",
+                  "blockId": "31617F9A",
                   "separator": " "
                 }
               ]
@@ -1896,7 +1896,7 @@
               "operations": [
                 {
                   "type": "splitBlock",
-                  "blockId": "1408F961",
+                  "blockId": "3CEFFC83",
                   "offset": 8
                 }
               ]
@@ -1907,7 +1907,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "1608FC87"
+                  "blockId": "5E88C024"
                 }
               ]
             }
@@ -1955,7 +1955,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "058C549F",
+                    "blockId": "3CEFFC83",
                     "startOffset": 37,
                     "endOffset": 42,
                     "selectedTextHash": "h4k7sdk"
@@ -1969,7 +1969,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "058C549F",
+                    "blockId": "3CEFFC83",
                     "startOffset": 37,
                     "endOffset": 42,
                     "selectedTextHash": "h4k7sdk"
@@ -2033,7 +2033,7 @@
               "operations": [
                 {
                   "type": "replaceBlock",
-                  "blockId": "1508FAF4",
+                  "blockId": "483CD5EB",
                   "text": "Period payment party."
                 }
               ]
@@ -2048,7 +2048,7 @@
               "operations": [
                 {
                   "type": "insertAfterBlock",
-                  "blockId": "1408F961",
+                  "blockId": "3CEFFC83",
                   "text": "Written written goods written written written."
                 },
                 {
@@ -2056,7 +2056,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "1508FAF4",
+                    "blockId": "483CD5EB",
                     "startOffset": 7,
                     "endOffset": 14,
                     "selectedTextHash": "h7umevi"
@@ -2111,7 +2111,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "068C5632",
+                    "blockId": "31617F9A",
                     "startOffset": 0,
                     "endOffset": 7,
                     "selectedTextHash": "hk7ezx1"
@@ -2122,7 +2122,7 @@
                 },
                 {
                   "type": "replaceInBlock",
-                  "blockId": "068C5632",
+                  "blockId": "31617F9A",
                   "find": "Launch",
                   "replace": "amended",
                   "precondition": {
@@ -2176,12 +2176,12 @@
               "operations": [
                 {
                   "type": "splitBlock",
-                  "blockId": "078C57C5",
+                  "blockId": "5E88C024",
                   "offset": 13
                 },
                 {
                   "type": "insertAfterBlock",
-                  "blockId": "078C57C5",
+                  "blockId": "5E88C024",
                   "text": "Invoice written invoice.",
                   "alignment": "right"
                 }
@@ -2207,7 +2207,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "058C549F",
+                    "blockId": "3CEFFC83",
                     "startOffset": 35,
                     "endOffset": 44,
                     "selectedTextHash": "hs1tsq3"
@@ -2221,7 +2221,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "058C549F",
+                    "blockId": "3CEFFC83",
                     "startOffset": 35,
                     "endOffset": 44,
                     "selectedTextHash": "hs1tsq3"
@@ -2273,12 +2273,12 @@
               "operations": [
                 {
                   "type": "replaceBlock",
-                  "blockId": "1408F961",
+                  "blockId": "3CEFFC83",
                   "text": "Delivery warranty schedule."
                 },
                 {
                   "type": "deleteBlock",
-                  "blockId": "1308F7CE"
+                  "blockId": "31617F9A"
                 }
               ]
             },
@@ -2288,7 +2288,7 @@
               "operations": [
                 {
                   "type": "commentOnBlock",
-                  "blockId": "1408F961",
+                  "blockId": "3CEFFC83",
                   "quote": "schedule",
                   "comment": {
                     "text": "Goods written party written warranty period buyer schedule."
@@ -2302,11 +2302,11 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "1408F961"
+                  "blockId": "3CEFFC83"
                 },
                 {
                   "type": "deleteBlock",
-                  "blockId": "1508FAF4"
+                  "blockId": "483CD5EB"
                 }
               ]
             }
@@ -2358,7 +2358,7 @@
                   "range": {
                     "type": "textRange",
                     "story": "main",
-                    "blockId": "1408F961",
+                    "blockId": "3CEFFC83",
                     "startOffset": 35,
                     "endOffset": 42,
                     "selectedTextHash": "h7ptyo8"
@@ -2379,12 +2379,12 @@
               "operations": [
                 {
                   "type": "replaceBlock",
-                  "blockId": "1408F961",
+                  "blockId": "3CEFFC83",
                   "text": "Goods agreement goods buyer supplier agreement payment goods."
                 },
                 {
                   "type": "splitBlock",
-                  "blockId": "1308F7CE",
+                  "blockId": "31617F9A",
                   "offset": 49
                 }
               ]
@@ -2437,7 +2437,7 @@
               "operations": [
                 {
                   "type": "deleteBlock",
-                  "blockId": "1308F7CE"
+                  "blockId": "31617F9A"
                 }
               ]
             },
@@ -2447,7 +2447,7 @@
               "operations": [
                 {
                   "type": "commentOnBlock",
-                  "blockId": "1608FC87",
+                  "blockId": "5E88C024",
                   "quote": "invoice",
                   "comment": {
                     "text": "Warranty delivery period invoice schedule agreement."
@@ -2494,14 +2494,14 @@
               "operations": [
                 {
                   "type": "setBlockParagraphProperties",
-                  "blockId": "1608FC87",
+                  "blockId": "5E88C024",
                   "properties": {
                     "styleId": "Heading2"
                   }
                 },
                 {
                   "type": "deleteBlock",
-                  "blockId": "1508FAF4"
+                  "blockId": "483CD5EB"
                 }
               ]
             }
@@ -2540,7 +2540,7 @@
               "operations": [
                 {
                   "type": "insertAfterBlock",
-                  "blockId": "0A88C0B1",
+                  "blockId": "5E88C024",
                   "text": "Agreement party supplier invoice term.",
                   "numbering": {
                     "start": "new",
@@ -2559,7 +2559,7 @@
               "operations": [
                 {
                   "type": "mergeBlockWithNext",
-                  "blockId": "1188CBB6",
+                  "blockId": "31617F9A",
                   "separator": " "
                 }
               ]
