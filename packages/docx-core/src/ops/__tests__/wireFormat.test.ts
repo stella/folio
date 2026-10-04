@@ -229,3 +229,21 @@ test("watermark wire fixtures exercise every declared field and watermark varian
   expect(fixtures.some((op) => op.coverage.length > 0)).toBe(true);
   expect(fixtures.some((op) => op.hosts.length > 0)).toBe(true);
 });
+
+test("lifecycle wire fixtures exercise each declared own-undefined target", () => {
+  const targets = { body: true, package: true, section: true } as const satisfies Record<
+    NonNullable<import("../types").StoryParts["undefinedFields"]>[number]["target"],
+    true
+  >;
+  const restorations = envelopes()
+    .map(({ op }) => op)
+    .filter((op) => op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS);
+  const exercised = new Set(
+    restorations.flatMap((op) =>
+      [...(op.expected.undefinedFields ?? []), ...(op.parts.undefinedFields ?? [])].map(
+        ({ target }) => target,
+      ),
+    ),
+  );
+  expect([...exercised].toSorted()).toEqual(Object.keys(targets).toSorted());
+});

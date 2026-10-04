@@ -61,6 +61,12 @@ describe("canonical command descriptors", () => {
       singletonManager.requireCommand("restartNumbering")(),
       singletonManager.requireCommand("continueNumbering")(),
       singletonManager.requireCommand("setNumberingValue")(7),
+      singletonManager.requireCommand("toggleBidi")(),
+      singletonManager.requireCommand("setRtl")(),
+      singletonManager.requireCommand("setLtr")(),
+      singletonManager.requireCommand("setTabs")([{ position: 720, alignment: "left" }]),
+      singletonManager.requireCommand("addTabStop")(1440, "right", "dot"),
+      singletonManager.requireCommand("removeTabStop")(720),
     ];
     const document = state.doc;
     const selection = state.selection;

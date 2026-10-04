@@ -494,7 +494,7 @@
             }
           }
         ],
-        "listPresence": "present",
+        "listPresence": "absent",
         "records": [],
         "anchors": [
           {
@@ -7615,6 +7615,82 @@
                 ]
               }
             ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 10,
+    "op": {
+      "type": "restoreStoryParts",
+      "expected": {
+        "body": {
+          "background": null,
+          "finalSectionProperties": null,
+          "comments": null
+        },
+        "sections": [
+          {
+            "index": 0,
+            "properties": {},
+            "headers": null,
+            "footers": null
+          }
+        ],
+        "headers": null,
+        "footers": null,
+        "footnotes": null,
+        "endnotes": null,
+        "settings": null,
+        "undefinedFields": [
+          {
+            "target": "body",
+            "keys": ["background", "finalSectionProperties", "comments"]
+          },
+          {
+            "target": "package",
+            "keys": ["headers", "footers", "footnotes", "endnotes", "settings"]
+          },
+          {
+            "target": "section",
+            "index": 0,
+            "keys": ["headers", "footers"]
+          }
+        ]
+      },
+      "parts": {
+        "body": {
+          "background": null,
+          "finalSectionProperties": null,
+          "comments": null
+        },
+        "sections": [
+          {
+            "index": 0,
+            "properties": {},
+            "headers": null,
+            "footers": null
+          }
+        ],
+        "headers": null,
+        "footers": null,
+        "footnotes": null,
+        "endnotes": null,
+        "settings": null,
+        "undefinedFields": [
+          {
+            "target": "body",
+            "keys": ["background", "finalSectionProperties", "comments"]
+          },
+          {
+            "target": "package",
+            "keys": ["headers", "footers", "footnotes", "endnotes", "settings"]
+          },
+          {
+            "target": "section",
+            "index": 0,
+            "keys": ["headers", "footers"]
           }
         ]
       }
