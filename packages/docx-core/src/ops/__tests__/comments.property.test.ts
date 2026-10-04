@@ -11,6 +11,7 @@ import { type Comment, type Document, type Paragraph } from "../../model/documen
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { allocateCommentAnchorIds, planTrackedDeletion } from "../plan";
 import { commentDocumentIssue, freshCommentId } from "../comments";
+import { paragraphLength } from "../offsets";
 import { contractViolation } from "../contract";
 import { documentStories, storyBody } from "../stories";
 import { storyParagraphs } from "../blocks";
@@ -259,7 +260,11 @@ test("generated text and revision histories retain live comment ownership and ex
         let revisionId = 1000;
         let paragraphId = 0x1000;
         for (const command of commands) {
-          const first = storyParagraphs(document.package.document).at(0)?.paragraph;
+          const available = storyParagraphs(document.package.document);
+          const first =
+            command === "delete" || command === "split"
+              ? available.find(({ paragraph: block }) => paragraphLength(block) > 0)?.paragraph
+              : available.at(0)?.paragraph;
           if (!first?.paraId) throw new Error("Missing first paragraph");
           const start = {
             story: OP_STORIES.MAIN,

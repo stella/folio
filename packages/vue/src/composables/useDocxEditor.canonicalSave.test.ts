@@ -323,7 +323,7 @@ test("Vue canonical comment projection follows controlled edits, undo, callbacks
     if (created?.status !== "applied" || created.commentId === undefined) {
       panic("Expected canonical comment creation");
     }
-    stateTick.value += 1;
+    await new Promise((resolve) => setTimeout(resolve, 275));
     await nextTick();
     expect(management.comments.value).toEqual(created.comments);
     expect(changes.at(-1)).toEqual(created.comments);
@@ -345,13 +345,12 @@ test("Vue canonical comment projection follows controlled edits, undo, callbacks
         : comment,
     );
     await nextTick();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 275));
     await nextTick();
     expect(adapter.getDocument()?.package.document.comments).toEqual(controlledComments.value);
 
     expect(adapter.editor.undo()).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    stateTick.value += 1;
+    await new Promise((resolve) => setTimeout(resolve, 275));
     await nextTick();
     const undone = adapter.getDocument()?.package.document.comments ?? [];
     expect(undone.at(0)?.done).toBeFalsy();

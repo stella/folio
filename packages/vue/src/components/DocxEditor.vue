@@ -316,9 +316,7 @@
             </div>
 
             <InlineHeaderFooterEditor
-              v-if="
-                hfEdit && !canonicalAuthoritySession
-              "
+              v-if="hfEdit && !canonicalAuthoritySession"
               :edit="hfEdit"
               :get-view="getActiveHeaderFooterView"
               @close="handleHfSave"

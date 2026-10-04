@@ -15,7 +15,10 @@ import type {
   SectionProperties,
   DocumentBody,
 } from "../../../packages/docx-core/src/model/document";
-import { DEFAULT_TAB_STOP_TWIPS } from "../../../packages/docx-core/src/model/document";
+import {
+  COMMENT_PART_RELATIONSHIPS,
+  DEFAULT_TAB_STOP_TWIPS,
+} from "../../../packages/docx-core/src/model/document";
 import { Result } from "better-result";
 import {
   documentStories,
@@ -28,6 +31,8 @@ import {
 } from "../../../packages/docx-core/src/ops/documentOps";
 import type { StoryParts } from "../../../packages/docx-core/src/ops/types";
 import { storyParagraphs } from "../../../packages/docx-core/src/ops/blocks";
+import { leafSpans, isCommentAnchor } from "../../../packages/docx-core/src/ops/leaves";
+import type { CommentOp } from "../../../packages/docx-core/src/ops/types";
 import { idKey } from "../../../packages/docx-core/src/ops/ids";
 import { failureFromAssertion } from "../corpus-signature";
 import {
@@ -138,7 +143,12 @@ const lifecycleOwnership = (op: DocumentOp) => {
   }
 };
 
-type WithoutOwnedRecordsOptions = { document: Document; original: Document; op: DocumentOp };
+type WithoutOwnedRecordsOptions = {
+  document: Document;
+  original: Document;
+  counterpart: Document;
+  op: DocumentOp;
+};
 
 /** Restoration owns precisely the present payload fields, including fields restoring absence. */
 const withoutRestoredRecords = (document: Document, parts: StoryParts): Document => {
@@ -194,7 +204,101 @@ const withoutRestoredRecords = (document: Document, parts: StoryParts): Document
   return out;
 };
 
-const withoutOwnedRecords = ({ document, original, op }: WithoutOwnedRecordsOptions): Document => {
+const isCommentOp = (op: DocumentOp): op is CommentOp => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+    case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+    case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+    case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+    case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
+      return true;
+    default:
+      return false;
+  }
+};
+const ownedCommentIds = (op: CommentOp, original: Document): Set<number> => {
+  if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) return new Set([op.comment.id]);
+  if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) return new Set(op.ids);
+  const ids = new Set([op.id]);
+  if (op.type !== DOCUMENT_OP_TYPES.DELETE_COMMENT) return ids;
+  let previous = 0;
+  while (previous !== ids.size) {
+    previous = ids.size;
+    for (const comment of original.package.document.comments ?? [])
+      if (comment.parentId !== undefined && ids.has(comment.parentId)) ids.add(comment.id);
+  }
+  return ids;
+};
+const commentStories = (op: CommentOp, original: Document): OpStory[] => {
+  if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
+    return [...op.expected.anchors, ...op.state.anchors].map(({ story }) => story);
+  if (
+    op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT ||
+    op.type === DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION
+  )
+    return [];
+  if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
+    switch (op.anchor.kind) {
+      case "point":
+        return [op.anchor.at.story];
+      case "range":
+        return [op.anchor.from.story];
+      case "revision":
+        return [op.anchor.story];
+      case "reply":
+        break;
+    }
+  }
+  const ids =
+    op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT && op.anchor.kind === "reply"
+      ? new Set([op.anchor.parentId])
+      : ownedCommentIds(op, original);
+  return documentStories(original).filter((story) =>
+    storyParagraphs(storyBody(original, story)).some(({ paragraph }) =>
+      leafSpans(paragraph.content).some(
+        ({ node }) => isCommentAnchor(node) && "id" in node && ids.has(node.id),
+      ),
+    ),
+  );
+};
+
+const withoutOwnedRecords = ({
+  document,
+  original,
+  counterpart,
+  op,
+}: WithoutOwnedRecordsOptions): Document => {
+  if (isCommentOp(op)) {
+    const out = structuredClone(document);
+    const ids = ownedCommentIds(op, original);
+    const comments = out.package.document.comments ?? [];
+    if (
+      op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT ||
+      op.type === DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION
+    ) {
+      for (const comment of comments) {
+        if (!ids.has(comment.id)) continue;
+        if (op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT) {
+          comment.content = [];
+          for (const key of Object.keys(op.patch ?? {})) Reflect.deleteProperty(comment, key);
+        } else delete comment.done;
+      }
+    } else {
+      out.package.document.comments = comments.filter(({ id }) => !ids.has(id));
+      if (out.package.document.comments.length === 0) delete out.package.document.comments;
+    }
+    if (out.package.relationships !== undefined) {
+      out.package.relationships = new Map(
+        [...out.package.relationships].filter(
+          ([, relation]) =>
+            counterpart.package.relationships?.has(relation.id) ||
+            !Object.values(COMMENT_PART_RELATIONSHIPS).some(({ type }) => type === relation.type),
+        ),
+      );
+      if (out.package.relationships.size === 0) delete out.package.relationships;
+    }
+    return out;
+  }
   if (
     op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE ||
     op.type === DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE
@@ -335,7 +439,9 @@ const addressedStory = (op: DocumentOp) => {
   return undefined;
 };
 
-const ownsStoryContent = (op: DocumentOp, story: OpStory): boolean => {
+type OwnsStoryContentOptions = { op: DocumentOp; story: OpStory; original: Document };
+const ownsStoryContent = ({ op, story, original }: OwnsStoryContentOptions): boolean => {
+  if (isCommentOp(op)) return commentStories(op, original).some((owned) => sameStory(owned, story));
   const addressed = addressedStory(op);
   if (addressed !== undefined && sameStory(addressed, story)) return true;
   const lifecycle = lifecycleOwnership(op);
@@ -371,7 +477,7 @@ export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): stri
   const touched = new Set([...modified, ...inserted, ...removed]);
   for (const document of [before, edit.document]) {
     for (const story of documentStories(document)) {
-      if (ownsStoryContent(op, story)) continue;
+      if (ownsStoryContent({ op, story, original: before })) continue;
       if (
         storyParagraphs(storyBody(document, story)).some(
           ({ paragraph }) => paragraph.paraId !== undefined && touched.has(idKey(paragraph.paraId)),
@@ -406,11 +512,21 @@ export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): stri
     if (!beforeParagraphs.has(id) && !inserted.has(id))
       failures.push(`${op.type} inserted an undeclared block`);
   }
-  const scopedBefore = withoutOwnedRecords({ document: before, original: before, op });
-  const scopedAfter = withoutOwnedRecords({ document: edit.document, original: before, op });
+  const scopedBefore = withoutOwnedRecords({
+    document: before,
+    original: before,
+    counterpart: edit.document,
+    op,
+  });
+  const scopedAfter = withoutOwnedRecords({
+    document: edit.document,
+    original: before,
+    counterpart: before,
+    op,
+  });
   // Section-field ownership does not grant ownership of the paragraph carrying it.
   const ownsMainContent =
-    addressedStory(op) === OP_STORIES.MAIN ||
+    ownsStoryContent({ op, story: OP_STORIES.MAIN, original: before }) ||
     (op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS && op.parts.body?.content !== undefined);
   const projectedTouched = new Set(touched);
   if (!ownsMainContent)
@@ -450,7 +566,23 @@ export const serializedLocalityFailures = ({
   const ownedRelationshipIds = new Set<string>();
   const ownedRelationshipTypes = new Set<string>();
   let lifecycle = false;
-  for (const { op } of sequence.steps) {
+  for (const { op, before } of sequence.steps) {
+    if (isCommentOp(op)) {
+      lifecycle = true;
+      ownedPaths.add("word/comments.xml");
+      ownedPaths.add("word/commentsExtended.xml");
+      for (const { type } of Object.values(COMMENT_PART_RELATIONSHIPS))
+        ownedRelationshipTypes.add(type);
+      for (const ownedStory of commentStories(op, before)) {
+        if (ownedStory === OP_STORIES.MAIN) ownedPaths.add(documentPart);
+        else if (ownedStory.kind === "header" || ownedStory.kind === "footer")
+          ownedRelationshipIds.add(ownedStory.rId);
+        else if (ownedStory.kind === "footnote")
+          ownedRelationshipTypes.add(RELATIONSHIP_TYPES.footnotes);
+        else if (ownedStory.kind === "endnote")
+          ownedRelationshipTypes.add(RELATIONSHIP_TYPES.endnotes);
+      }
+    }
     if (
       op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE ||
       op.type === DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE
@@ -511,6 +643,28 @@ export const serializedLocalityFailures = ({
     new TextDecoder().decode(parts.get(part) ?? new Uint8Array());
   const controlRelationships = parseRelationships(decode(control, relationshipsPath));
   const editedRelationships = parseRelationships(decode(edited, relationshipsPath));
+  if (sequence.steps.some(({ op }) => isCommentOp(op))) {
+    const attributes = (parts: Map<string, Uint8Array>) =>
+      new Map(
+        getChildElements(parseXmlDocument(decode(parts, relationshipsPath))).flatMap((element) => {
+          const id = getAttribute(element, null, "Id");
+          return id ? [[id, getAttributes(element)] as const] : [];
+        }),
+      );
+    const baselineAttributes = attributes(control);
+    const editedAttributes = attributes(edited);
+    for (const [id, relation] of controlRelationships) {
+      if (
+        !editedRelationships.has(id) ||
+        !Object.values(COMMENT_PART_RELATIONSHIPS).some(({ type }) => type === relation.type)
+      )
+        continue;
+      if (!sameOpModel(baselineAttributes.get(id), editedAttributes.get(id)))
+        failures.push(
+          `sequence changed an existing comment relationship payload: ${relationshipsPath}#${id}`,
+        );
+    }
+  }
   const ownsRelationship = (relationship: Relationship) =>
     ownedRelationshipIds.has(relationship.id) || ownedRelationshipTypes.has(relationship.type);
   for (const relationship of [...controlRelationships.values(), ...editedRelationships.values()]) {

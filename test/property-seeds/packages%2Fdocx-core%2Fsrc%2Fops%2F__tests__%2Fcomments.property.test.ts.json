@@ -18,6 +18,12 @@
       "seed": 20261006,
       "note": "Owned comment-reference atoms occupy physical offset units; inverse ownership checks remove only owned anchors before comparing preserved text.",
       "date": "2026-10-04"
+    },
+    {
+      "seed": 20261006,
+      "path": "78:6:9:13:11:11",
+      "note": "Mixed rejection and split histories can empty the first paragraph; choose a current nonempty target for deletion/split rather than generating a stale range.",
+      "date": "2026-10-04"
     }
   ],
   "generated interior source-shaped comment histories undo and redo the complete journal": [

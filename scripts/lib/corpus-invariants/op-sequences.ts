@@ -4,6 +4,8 @@ import { panic } from "better-result";
 import type { Document, Paragraph, Table } from "../../../packages/docx-core/src/model/document";
 import {
   applyDocumentOp,
+  allocateCommentAnchorIds,
+  freshCommentId,
   normalizeForOps,
   validateOpsDocument,
   DOCUMENT_OP_TYPES,
@@ -113,6 +115,11 @@ const randomFor = (seed: number) => {
 
 /** Every schema member needs a generator decision when the operations API grows. */
 export const OP_GENERATOR_ROLES = {
+  [DOCUMENT_OP_TYPES.CREATE_COMMENT]: "generated",
+  [DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT]: "generated",
+  [DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION]: "generated",
+  [DOCUMENT_OP_TYPES.DELETE_COMMENT]: "generated",
+  [DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE]: "inverse",
   [DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER]: "generated",
   [DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER]: "generated",
   [DOCUMENT_OP_TYPES.ADD_NOTE]: "generated",
@@ -299,6 +306,48 @@ const candidate = ({
       (block) => block.type === "paragraph" && block.sectionProperties !== undefined,
     ).length + 1;
   switch (family) {
+    case "createComment": {
+      const id = freshCommentId(document);
+      if (id.isErr()) return undefined;
+      const op = {
+        type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+        comment: { id: id.value, author: "Corpus", done: false, content: [freshParagraph] },
+        anchor: { kind: "point", at },
+      } as const satisfies DocumentOp;
+      const anchorIds = allocateCommentAnchorIds(document, op);
+      return anchorIds.isOk() ? { ...op, newIds: anchorIds.value } : undefined;
+    }
+    case "updateCommentContent": {
+      const comment = document.package.document.comments?.at(0);
+      return comment
+        ? {
+            type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+            id: comment.id,
+            content: [freshParagraph],
+          }
+        : undefined;
+    }
+    case "setCommentResolution": {
+      const comment = document.package.document.comments?.at(0);
+      return comment
+        ? {
+            type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
+            id: comment.id,
+            status: comment.done ? "open" : "resolved",
+          }
+        : undefined;
+    }
+    case "deleteComment": {
+      const comments = document.package.document.comments ?? [];
+      const comment = comments.at(0);
+      return comment
+        ? {
+            type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+            id: comment.id,
+            scope: comments.some(({ id }) => id === comment.parentId) ? "reply" : "thread",
+          }
+        : undefined;
+    }
     case "createHeaderFooter": {
       const sectionIndex = choose(sectionCount);
       const properties = sectionPropertiesAt(document, sectionIndex);

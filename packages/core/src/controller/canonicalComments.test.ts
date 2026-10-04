@@ -122,6 +122,14 @@ test("generated point/range comment histories preserve exact undo, projection an
           editor.history("undo");
           expect(editor.session.document).toEqual(committed);
           editor.history("redo");
+          const deleted = cloneDocumentWithParagraphPropertySources(editor.session.document);
+          const reopenedDeleted = await parseDocx(
+            await createDocx(cloneDocumentWithParagraphPropertySources(deleted)),
+          );
+          expect(describePackageDifferences(deleted, reopenedDeleted)).toEqual({
+            messages: [],
+            omitted: 0,
+          });
           steps += 1;
         }
         const final = editor.session.document;

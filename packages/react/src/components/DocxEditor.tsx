@@ -1069,11 +1069,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const canonicalCommentsSnapshotRef = useRef<string | null>(
     canonicalDocument ? JSON.stringify(canonicalDocument.package.document.comments ?? []) : null,
   );
-  if (canonicalCommentsSnapshotRef.current === null && canonicalDocument) {
-    canonicalCommentsSnapshotRef.current = JSON.stringify(
-      canonicalDocument.package.document.comments ?? [],
-    );
-  }
 
   const {
     comments: legacyComments,
@@ -1108,6 +1103,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onCommentsChange,
   });
   const comments = canonicalDocument?.package.document.comments ?? legacyComments;
+  const canonicalCommentsSerialized = canonicalDocument
+    ? JSON.stringify(canonicalDocument.package.document.comments ?? [])
+    : null;
   const commentDraftMode = usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
     ? "canonical"
     : "prosemirror";
@@ -1473,25 +1471,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
               },
             },
           };
-      const nextCanonicalComments = canonical
-        ? (newDocument.package.document.comments ?? [])
-        : null;
       pushDocument(documentWithComments);
       onChange?.(
         canonical
           ? cloneDocumentWithParagraphPropertySources(documentWithComments)
           : documentWithComments,
       );
-      if (canonical) {
-        const serialized = JSON.stringify(nextCanonicalComments);
-        const changed =
-          canonicalCommentsSnapshotRef.current !== null &&
-          canonicalCommentsSnapshotRef.current !== serialized;
-        canonicalCommentsSnapshotRef.current = serialized;
-        if (changed) {
-          onCommentsChange?.(nextCanonicalComments ?? []);
-        }
-      }
       // Update outline headings if sidebar is open (debounced — collectHeadings
       // descends the whole doc, expensive on large files).
       if (showOutlineRef.current) {
@@ -1668,6 +1653,19 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     legacyComments,
     canonicalDocument !== null,
   ]);
+
+  useEffect(() => {
+    if (!canonicalDocument) return;
+    const nextComments = canonicalDocument.package.document.comments ?? [];
+    const serialized = JSON.stringify(nextComments);
+    if (canonicalCommentsSnapshotRef.current === null) {
+      canonicalCommentsSnapshotRef.current = serialized;
+      return;
+    }
+    if (canonicalCommentsSnapshotRef.current === serialized) return;
+    canonicalCommentsSnapshotRef.current = serialized;
+    onCommentsChange?.(nextComments);
+  }, [canonicalCommentsSerialized, onCommentsChange]);
 
   const selectFindMatch = useCallback((match: FindMatch): boolean => {
     const editor = pagedEditorRef.current;

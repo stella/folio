@@ -460,6 +460,9 @@ const restore = (
     ([, relation]) => !isCommentRelationship(relation.type),
   );
   for (const { index, key, relationship } of op.state.relationships) {
+    const existing = op.expected.relationships.find((entry) => entry.key === key);
+    if (existing && !structurallyEqual(existing.relationship, relationship))
+      return fail(op, "A comment inverse cannot alter an existing relationship payload.");
     if (
       !isCommentRelationship(relationship.type) ||
       relationship.id !== key ||
@@ -811,7 +814,9 @@ export const applyCommentOp = (
   let current = document;
   for (const story of documentStories(document)) {
     for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
-      const content = withoutAnchors(paragraph.content, ids);
+      const seams = new Set(ownedSeams(paragraph.content, ids));
+      if (seams.size === 0) continue;
+      const content = normalizedWithoutAnchors({ content: paragraph.content, ids, seams });
       if (content === paragraph.content) continue;
       const changed = restoreAnchors({
         document: current,
@@ -827,6 +832,7 @@ export const applyCommentOp = (
     withComments(
       current,
       comments.filter(({ id }) => !ids.has(id)),
+      comments.every(({ id }) => ids.has(id)) ? "absent" : "present",
     ),
     op,
     ids,
