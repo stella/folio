@@ -254,6 +254,12 @@ const suffixView = (
   headingLevel?: number,
 ): BlockView => {
   const plain = matchNoteReferences(rendered, expected.text);
+  if (
+    expected.kind === "listItem" &&
+    expected.text.length === 0 &&
+    plain.trim() === expected.number
+  )
+    return view("", "listItem", undefined, expected.number);
   const suffix = expected.text.length > 0 && plain.endsWith(expected.text) ? expected.text : plain;
   const prefix = suffix === plain ? "" : plain.slice(0, plain.length - suffix.length);
   const marker = LIST_MARKER.exec(prefix)?.groups?.["marker"];
@@ -324,7 +330,7 @@ export const markdownViews = (
       const expected = nextExpected();
       let boundary: number | undefined;
       if (expected.kind === "listItem" && expectedViews.at(cursor)?.kind === "listItem") {
-        for (const marker of remaining.matchAll(/\n(?=\S+?[.)][ \t]+)/gu)) {
+        for (const marker of remaining.matchAll(/\n(?=\S+?[.)](?:[ \t]+|\n|$))/gu)) {
           const candidate = suffixView(remaining.slice(0, marker.index), expected, kind);
           if (candidate.kind === "listItem" && candidate.text === expected.text) {
             boundary = marker.index;
@@ -337,7 +343,18 @@ export const markdownViews = (
         expected,
         kind,
       );
-      views.push(number === undefined ? actual : view(actual.text, "listItem", undefined, number));
+      const emitted =
+        number === undefined ? actual : view(actual.text, "listItem", undefined, number);
+      if (
+        !isFolioAIContentBlock(expected) &&
+        expected.kind === "listItem" &&
+        (isFolioAIContentBlock(emitted) ||
+          emitted.kind !== "listItem" ||
+          emitted.number !== expected.number)
+      ) {
+        throw new Error("Markdown empty list marker differs from the source reader");
+      }
+      views.push(emitted);
       if (boundary === undefined) return;
       remaining = remaining.slice(boundary + 1);
       kind = "paragraph";
@@ -360,6 +377,14 @@ export const markdownViews = (
       }
       case "list": {
         for (const item of token.items) {
+          const marker = /^\s*(?<number>\d+[.)])(?:\s+|$)/u.exec(item.raw)?.groups?.["number"];
+          if (token.ordered && marker === undefined) {
+            throw new Error("Ordered Markdown list item has no rendered number");
+          }
+          const number = token.ordered ? marker : BULLET;
+          if (!item.tokens.some((child) => child.type === "text" || child.type === "paragraph")) {
+            appendParagraphs("", { kind: "listItem", ...(number === undefined ? {} : { number }) });
+          }
           for (const child of item.tokens) {
             if (child.type === "list") {
               walk(child);
@@ -369,11 +394,6 @@ export const markdownViews = (
               throw new Error(`Unsupported list item Markdown token: ${child.type}`);
             }
             const text = tokenText(child);
-            const marker = /^\s*(?<number>\d+[.)])\s+/u.exec(item.raw)?.groups?.["number"];
-            if (token.ordered && marker === undefined) {
-              throw new Error("Ordered Markdown list item has no rendered number");
-            }
-            const number = token.ordered ? marker : BULLET;
             appendParagraphs(text, {
               kind: "listItem",
               ...(number === undefined ? {} : { number }),
@@ -477,9 +497,8 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
       .readNumberingDefinitions()
       .map(({ numId, level, format }) => [`${numId}:${level}`, format] as const),
   );
-  const content = (reviewer.getContent() as ContentBlock[]).filter((block) =>
-    isFolioAIContentBlock(block as never),
-  );
+  const bodyContent = reviewer.getContent() as ContentBlock[];
+  const content = bodyContent.filter((block) => isFolioAIContentBlock(block as never));
   const bridge = createReviewerBridge(reviewer);
   const snapshot = (bridge.snapshot().blocks as ContentBlock[]).filter((block) =>
     isFolioAIContentBlock(block as never),
@@ -494,14 +513,12 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
   // Clean Markdown shows every change accepted, structure included (a
   // deleted paragraph mark joins two paragraphs); the readers above show the
   // markup. Markdown is compared with the same package, accepted.
-  let accepted = content;
+  let accepted = bodyContent;
   let acceptedReviewer = reviewer;
   if (reviewer.getChanges().length > 0) {
     acceptedReviewer = await openReviewer(bytes);
     acceptedReviewer.acceptAll();
-    accepted = (acceptedReviewer.getContent() as ContentBlock[]).filter((block) =>
-      isFolioAIContentBlock(block as never),
-    );
+    accepted = acceptedReviewer.getContent() as ContentBlock[];
   }
   // `docxToMarkdown` writes no text-box paragraph the block readers list
   // (MARKDOWN_DROPS_TEXT_BOX, pinned in known-issues.test.ts); the rest of
@@ -514,13 +531,23 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
     readDocument: rows.map((row) =>
       view(String(row["text"]).trim(), asKind(String(row["kind"])), undefined, undefined),
     ),
-    getContentAsMarkdown: accepted.map((block) =>
-      markdownComparable(contentView(block, numberingFormats), block.table !== undefined),
-    ),
+    getContentAsMarkdown: accepted
+      .filter((block) => isFolioAIContentBlock(block as never))
+      .map((block) =>
+        markdownComparable(contentView(block, numberingFormats), block.table !== undefined),
+      ),
     markdown: markdownViews(
       markdown,
-      accepted.map((block) => contentView(block, numberingFormats)),
-    ),
+      // Empty list markers are structure the exporter preserves. Account for
+      // them before applying the same content filter as the source readers.
+      accepted
+        .map((block) => contentView(block, numberingFormats))
+        .filter(
+          (block) =>
+            isFolioAIContentBlock(block) ||
+            (block.kind === "listItem" && block.number !== undefined),
+        ),
+    ).filter(isFolioAIContentBlock),
     rows,
     ids: content.map(({ id }) => id),
     labels: content.map(labelFields),

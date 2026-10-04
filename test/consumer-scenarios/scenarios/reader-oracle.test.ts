@@ -14,6 +14,7 @@ import {
   packDocument,
 } from "../support/documents.ts";
 import { contentView, markdownViews, readAll } from "../support/readers.ts";
+import { createRandom } from "../support/random.ts";
 
 type Document = ReturnType<typeof fromMarkdown>;
 type Numbering = NonNullable<Document["package"]["numbering"]>;
@@ -287,6 +288,106 @@ test("removing the prose between custom-numbered blocks keeps every saved reader
       `adjacent custom labels ${mode}`,
     );
   }
+});
+
+test("generated empty list structure is accounted for before filtering reader content", async () => {
+  const random = createRandom(436695225);
+  const exercised = new Set<string>();
+  for (const kind of ["nativeDecimal", "customDecimal", "bullet"] as const) {
+    for (let sample = 0; sample < 12; sample++) {
+      const count = 3 + random.int(4);
+      const document = fromMarkdown(
+        Array.from({ length: count }, (_, index) => `Clause ${index}`).join("\n\n"),
+      );
+      document.package.numbering = {
+        abstractNums: [
+          {
+            abstractNumId: 7,
+            multiLevelType: "singleLevel",
+            levels: [
+              {
+                ilvl: 0,
+                start: 1 + random.int(20),
+                numFmt: kind === "bullet" ? "bullet" : "decimal",
+                lvlText: { bullet: "•", customDecimal: "(%1)", nativeDecimal: "%1." }[kind],
+                suffix: "space",
+              },
+            ],
+          },
+        ],
+        nums: [{ numId: 7, abstractNumId: 7 }],
+      };
+      for (const [index, paragraph] of document.package.document.content.entries()) {
+        assert.equal(paragraph.type, "paragraph");
+        if (paragraph.type !== "paragraph") continue;
+        paragraph.formatting = { numPr: paragraphNumberingFromSlots({ numId: 7, ilvl: 0 }) };
+        // Every format exercises leading/trailing and adjacent empty markers,
+        // with generated mixtures between them and a nonempty comparison block.
+        if (index < 2 || index === count - 1 || (index !== 2 && random.chance(0.5))) {
+          paragraph.content =
+            sample % 2 === 0 ? [] : [{ type: "run", content: [{ type: "text", text: " " }] }];
+        }
+      }
+      await assertReadersAgree(
+        await packDocument(document),
+        `${kind} empty structure sample ${sample}`,
+      );
+      exercised.add(kind);
+    }
+  }
+  assert.deepEqual([...exercised].sort(), ["bullet", "customDecimal", "nativeDecimal"]);
+});
+
+test("empty list structure cannot hide a changed marker or an extra body block", () => {
+  for (const marker of ["1.", "(1)"]) {
+    const expected = [{ text: "", kind: "listItem" as const, number: marker }];
+    assert.throws(
+      () => markdownViews(marker === "1." ? "2." : "(2)", expected),
+      /empty list marker/u,
+    );
+    assert.throws(() => markdownViews(`${marker}\n\nExtra text`, expected), /more text blocks/u);
+  }
+});
+
+test("partial numbered deletions retain empty structure across saved review resolution", async () => {
+  let cases = 0;
+  for (const text of ["Numbered clause one", "Numbered clause two"]) {
+    let reviewer = await openReviewer(await directNumberedDocument());
+    const target = reviewer.getContent().find((block) => block.text === text);
+    assert.ok(target);
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        { id: "s-1", type: "deleteBlock", blockId: target.id },
+        {
+          id: "s-2",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Numbered",
+          replace: "revised",
+        },
+      ],
+    });
+    assert.equal(result.applied.length, 1);
+    reviewer = await openReviewer(new Uint8Array(await reviewer.toBuffer()), "Second Reviewer");
+    const deletion = reviewer.getChanges().find((change) => change.type === "deletion");
+    assert.ok(deletion);
+    assert.equal(reviewer.acceptChange(deletion), true);
+    const remaining = reviewer.getChanges().length;
+    assert.ok(remaining > 0);
+    assert.equal(reviewer.rejectAll(), remaining);
+    assert.equal(reviewer.getChanges().length, 0);
+    const empty = reviewer.getContent().find((block) => block.id === target.id);
+    assert.equal(empty?.text, "");
+    assert.equal(empty?.kind, "listItem");
+    await assertReadersAgree(
+      new Uint8Array(await reviewer.toBuffer()),
+      `partial deletion of ${text}`,
+    );
+    cases++;
+  }
+  assert.equal(cases, 2);
 });
 
 // The lexer treats exported footnote definitions as paragraph text; the body
