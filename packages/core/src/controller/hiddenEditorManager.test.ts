@@ -242,6 +242,133 @@ test("canonical manager refuses transaction bypasses and shares one input journa
   }
 });
 
+test("canonical keyboard formatting and breaks publish journalled intents", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "ab" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+  paragraph.paraId = "12345678";
+  const reasons: string[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    onSessionRefusal: (reason) => reasons.push(reason),
+  });
+  const manager = createHiddenEditorManager(deps);
+
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected canonical editor view");
+
+    const select = (from: number, to = from) => {
+      manager.api.setSelection(from, to);
+      expect(view.state.selection.from).toBe(from);
+      expect(view.state.selection.to).toBe(to);
+    };
+    const expectProjection = () => {
+      const projection = manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN);
+      if (!projection) panic("Expected canonical body projection");
+      expect(view.state.doc.eq(projection)).toBe(true);
+    };
+    const dispatchKey = (key: string, modifiers: { ctrlKey?: boolean; metaKey?: boolean }) => {
+      const event = new KeyboardEvent("keydown", {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...modifiers,
+      });
+      view.dom.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    };
+    const expectUndoRestores = (before: {
+      document: ReturnType<typeof manager.api.getCanonicalDocument>;
+      selection: ReturnType<typeof view.state.selection.toJSON>;
+    }) => {
+      expect(manager.api.undo()).toBe(true);
+      expect(manager.api.getCanonicalDocument()).toEqual(before.document);
+      expect(view.state.selection.toJSON()).toEqual(before.selection);
+      expectProjection();
+    };
+    const modifiers = [
+      { name: "Ctrl", ctrlKey: true },
+      { name: "Meta", metaKey: true },
+    ] as const;
+
+    for (const modifier of modifiers) {
+      for (const { key, property } of [
+        { key: "b", property: "bold" },
+        { key: "i", property: "italic" },
+        { key: "u", property: "underline" },
+      ] as const) {
+        select(1, 3);
+        const before = {
+          document: manager.api.getCanonicalDocument(),
+          selection: view.state.selection.toJSON(),
+        };
+        dispatchKey(key, modifier);
+
+        const formatted = manager.api.getCanonicalDocument();
+        const first = formatted?.package.document.content.at(0);
+        expect(
+          first?.type === "paragraph" &&
+            first.content.some(
+              (run) =>
+                run.type === "run" &&
+                (property === "underline"
+                  ? run.formatting?.underline?.style === "single"
+                  : run.formatting?.[property] === true),
+            ),
+        ).toBe(true);
+        expect(reasons).toEqual([]);
+        expectProjection();
+        expectUndoRestores(before);
+      }
+
+      for (const { key, shiftKey, breakType } of [
+        { key: "Enter", shiftKey: true, breakType: "textWrapping" },
+        { key: "Enter", shiftKey: false, breakType: "page" },
+      ] as const) {
+        select(2);
+        const before = {
+          document: manager.api.getCanonicalDocument(),
+          selection: view.state.selection.toJSON(),
+        };
+        const event = new KeyboardEvent("keydown", {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...(shiftKey ? {} : modifier),
+          shiftKey,
+        });
+        view.dom.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+
+        const inserted = manager.api.getCanonicalDocument()?.package.document.content.at(0);
+        expect(
+          inserted?.type === "paragraph" &&
+            inserted.content.some(
+              (run) =>
+                run.type === "run" &&
+                run.content.some((leaf) => leaf.type === "break" && leaf.breakType === breakType),
+            ),
+        ).toBe(true);
+        expect(reasons).toEqual([]);
+        expectProjection();
+        expectUndoRestores(before);
+      }
+    }
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
 test.each(["body", "story"] as const)(
   "%s composition defers every story synchronizer while public snapshots remain blocked",
   async (owner) => {

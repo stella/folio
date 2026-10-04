@@ -739,6 +739,7 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 // @public
 export type ToProseDocOptions = {
     styles?: import__stll_docx_core_model.StyleDefinitions;
+    numbering?: import__stll_docx_core_model.NumberingDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
     warn?: ParseContext["warn"];
 };
