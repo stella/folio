@@ -6,5 +6,13 @@
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
     }
+  ],
+  "numbered autoformat keeps its start at level zero through every nested level": [
+    {
+      "seed": -644126946,
+      "path": "0:0:0",
+      "note": "The projected numbering prefix covers levels zero through the paragraph level, while the definition retains all nine levels.",
+      "date": "2026-10-04"
+    }
   ]
 }
