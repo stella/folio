@@ -4,6 +4,7 @@ import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { TextSelection, type Command } from "prosemirror-state";
 import { panic } from "better-result";
+import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { resolveCanonicalReviewRange } from "./canonicalReview";
 import { createEmptyDocument } from "../utils/createDocument";
 import { EditorState } from "prosemirror-state";
@@ -235,6 +236,58 @@ test("canonical manager refuses transaction bypasses and shares one input journa
     expect(manager.api.canRedo()).toBe(true);
     expect(manager.api.redo()).toBe(true);
     expect(manager.api.getDocument()).toEqual(accepted);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("canonical public batches publish the saved document and share human undo", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Start" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected paragraph");
+  paragraph.paraId = "12345678";
+  const { deps, spies } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView() ?? panic("Missing canonical view");
+    const before = manager.api.getCanonicalDocument();
+    const result = manager.api.applyCanonicalDocumentOperations({
+      snapshot: createFolioAIEditSnapshot(view.state.doc),
+      batch: {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "public",
+            type: "replaceInBlock",
+            blockId: "12345678",
+            find: "Start",
+            replace: "End",
+          },
+        ],
+      },
+    });
+    expect(result?.applied).toEqual([{ id: "public" }]);
+    expect(view.state.doc.textContent).toBe("End");
+    expect(spies["onTransaction"].calls).toBe(1);
+    expect(manager.api.getDocument()).toEqual(manager.api.getCanonicalDocument());
+    expect(
+      manager.api.undoCanonicalDocumentOperations(result?.undoHandle ?? panic("Missing handle"))
+        ?.status,
+    ).toBe("undone");
+    expect(manager.api.getDocument()).toEqual(before);
+    expect(manager.api.canUndo()).toBe(false);
   } finally {
     manager.destroyView();
     host.remove();

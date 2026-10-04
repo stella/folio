@@ -1,3 +1,4 @@
+import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import { OP_STORIES } from "@stll/docx-core/ops";
 /**
  * Hidden-editor view lifecycle manager
@@ -1120,6 +1121,24 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     return true;
   };
 
+  let publicOperations: { session: CanonicalSession; executor: CanonicalPublicOperations } | null =
+    null;
+  const getPublicOperations = () => {
+    if (editorSession.type !== "canonical") return null;
+    const session = editorSession.session;
+    if (publicOperations?.session === session) return publicOperations.executor;
+    const executor = new CanonicalPublicOperations({
+      session,
+      getState: (story) =>
+        story === OP_STORIES.MAIN && !deps.getReadOnly() && !isDestroying
+          ? (view?.state ?? null)
+          : null,
+      publish: publishCommit,
+    });
+    publicOperations = { session, executor };
+    return executor;
+  };
+
   const api = createHiddenEditorApi({
     getView: () => view,
     getDocumentContext: () => (editorSession.type === "refused" ? null : deps.getDocumentContext()),
@@ -1154,6 +1173,11 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           }
         : null,
     canonicalOperations: {
+      applyCanonicalDocumentOperations: (options) => {
+        ensureView();
+        return getPublicOperations()?.apply(options) ?? null;
+      },
+      undoCanonicalDocumentOperations: (handle) => getPublicOperations()?.undo(handle) ?? null,
       updateCanonicalInputLifecycle: (action) => {
         if (editorSession.type !== "canonical") return false;
         switch (action) {
