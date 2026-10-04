@@ -92,11 +92,6 @@ describe("canonical cutover guard", () => {
   test("mutation primitives require their actual capability markers", () => {
     const fixtures = [
       {
-        gap: CANONICAL_GAP.save,
-        file: "packages/core/src/controller/fixture.ts",
-        code: "fromProseDoc(state.doc, original);",
-      },
-      {
         gap: CANONICAL_GAP.history,
         file: "packages/core/src/prosemirror/history.ts",
         code: 'import { history as pmHistory } from "prosemirror-history";\npmHistory();',
@@ -143,18 +138,21 @@ describe("canonical cutover guard", () => {
           failure.includes(`${gap} source needs its ledger marker`),
         ),
       ).toBe(true);
-    const publicGaps = [
-      CANONICAL_GAP.documentOperations,
-      CANONICAL_GAP.publicComments,
-      CANONICAL_GAP.publicSuggestedMode,
-      CANONICAL_GAP.publicTableProjection,
-      CANONICAL_GAP.publicUnsupportedInline,
-    ];
-    expect([...new Set([...fixtures.map(({ gap }) => gap), ...publicGaps])].sort()).toEqual(
-      Object.entries(CANONICAL_CAPABILITIES)
-        .filter(([, capability]) => capability.kind === "mutation-source")
-        .map(([id]) => id)
-        .sort(),
+    const mutationSources = Object.entries(CANONICAL_CAPABILITIES).filter(
+      ([, capability]) => capability.kind === "mutation-source",
+    );
+    const mutationFixtures = fixtures.filter(
+      ({ gap }) => CANONICAL_CAPABILITIES[gap].kind === "mutation-source",
+    );
+    const publicGaps = mutationSources
+      .filter(
+        ([id, capability]) =>
+          capability.owner === "document-operations" &&
+          !mutationFixtures.some(({ gap }) => gap === id),
+      )
+      .map(([id]) => id);
+    expect([...new Set([...mutationFixtures.map(({ gap }) => gap), ...publicGaps])].sort()).toEqual(
+      mutationSources.map(([id]) => id).sort(),
     );
     const markers = publicGaps.map((gap) => `// canonical-gap: ${gap}`).join("\n");
     for (const removed of publicGaps) {
@@ -175,6 +173,15 @@ describe("canonical cutover guard", () => {
         "packages/core/src/document-operations.ts",
       ),
     ).toEqual([]);
+  });
+
+  test("save conversions require the routing capability marker", () => {
+    const file = "packages/core/src/controller/fixture.ts";
+    const code = "fromProseDoc(state.doc, original);";
+    expect(failuresOf(code, file)).toContain(
+      `${file}:1: ${CANONICAL_GAP.save} source needs its ledger marker`,
+    );
+    expect(failuresOf(`// canonical-gap: ${CANONICAL_GAP.save}\n${code}`, file)).toEqual([]);
   });
 
   test("cannot keep a dead source alive with an orphan comment", () => {
