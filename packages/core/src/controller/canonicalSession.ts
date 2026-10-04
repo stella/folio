@@ -1,3 +1,4 @@
+import { mapTocSelection } from "./canonicalTocSelection";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
@@ -292,6 +293,20 @@ const supportsTextContent = (content: Paragraph["content"]): boolean =>
         );
       case "hyperlink":
         return supportsTextContent(item.children);
+      case "complexField":
+        return (
+          item.fieldType === "PAGEREF" &&
+          [...item.fieldCode, ...item.fieldResult].every(
+            (run) =>
+              (run.propertyChanges?.length ?? 0) === 0 &&
+              run.content.every(
+                (child) =>
+                  (child.type === "instrText" || child.type === "text") &&
+                  !hasIllegalXmlCharacters(child.text) &&
+                  !/[\t\r\n]/u.test(child.text),
+              ),
+          )
+        );
       case "bookmarkStart":
       case "bookmarkEnd":
         return true;
@@ -396,6 +411,16 @@ const project = ({
           appendContent(run.content, "all");
           continue;
         }
+        if (run.type === "complexField") {
+          const field = node.childAfter(renderedSize).node;
+          if (field?.type.name !== "field")
+            panic("Supported PAGEREF must project as one field atom.");
+          text += "\uFFFC";
+          renderedText += field.textContent;
+          renderedSize += 1;
+          boundaries.push([renderedSize]);
+          continue;
+        }
         if (run.type !== "run") panic("Canonical projection encountered unsupported content");
         for (const child of run.content) {
           if (child.type === "text") {
@@ -454,6 +479,7 @@ const intentStory = (intent: EditorIntent): OpStory => {
     case "formatRun":
     case "insertAtom":
       return intent.from.story;
+    case "generateTOC":
     case "splitParagraph":
     case "formatParagraph":
       return intent.at.story;
@@ -751,6 +777,7 @@ class CanonicalSession {
     switch (intent.type) {
       case "table":
         return true;
+      case "generateTOC":
       case "setList":
       case "formatParagraph":
         return false;
@@ -987,13 +1014,15 @@ class CanonicalSession {
         this.mode.type === "suggesting" &&
         (intent.type === "setHyperlink" ||
           intent.type === "removeHyperlink" ||
-          intent.type === "insertHyperlink")
+          intent.type === "insertHyperlink" ||
+          intent.type === "generateTOC")
       ) {
         return Result.err(
           new CanonicalSessionError({
             gap: CANONICAL_GAP.trackedHyperlinkResolution,
             reason: "refused",
-            message: "Hyperlink suggestions require serializable wrapper review provenance.",
+            message:
+              "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
           }),
         );
       }
@@ -1007,7 +1036,13 @@ class CanonicalSession {
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
-      if (
+      if (intent.type === "generateTOC") {
+        const mapping = { at: intent.at, after: compiled.value.selection, ops: compiled.value.ops };
+        postSelection = {
+          anchor: mapTocSelection(postSelection.anchor, mapping),
+          head: mapTocSelection(postSelection.head, mapping),
+        };
+      } else if (
         intent.type !== "setHyperlink" &&
         intent.type !== "removeHyperlink" &&
         intent.type !== "formatRun" &&

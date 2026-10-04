@@ -131,4 +131,4 @@ export {
   type TouchedBlocks,
 } from "./types";
 
-export { packageParagraphIds } from "./ids";
+export { idKey, packageParagraphIds } from "./ids";

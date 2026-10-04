@@ -4,6 +4,7 @@ import type { Command, EditorState } from "prosemirror-state";
 
 /** Command meaning before canonical positions are resolved by the session. */
 export type CanonicalCommandIntent =
+  | { type: "generateTOC"; at: number; title: string }
   | { type: "setHyperlink"; from: number; to: number; href: string; tooltip?: string }
   | { type: "removeHyperlink"; from: number; to: number; hyperlinkStyleId?: string }
   | {

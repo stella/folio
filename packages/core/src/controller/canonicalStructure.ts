@@ -1,8 +1,10 @@
+import { BUILT_IN_STYLE_NAME, createBuiltInStyleIndex } from "../docx/builtInStyles";
+import { collectHeadings } from "../utils/headingCollector";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { Result } from "better-result";
 import type { EditorState } from "prosemirror-state";
 import { OP_STORIES, type EditorIntent, type TextPosition } from "@stll/docx-core/ops";
-import { paragraphNumberingReference } from "@stll/docx-core/model";
+import { headingOutlineLevel, paragraphNumberingReference } from "@stll/docx-core/model";
 import type { Paragraph, ListLevel } from "../types/document";
 import { getCachedNumberingMap, numberingLevelUsesBulletMarker } from "../docx/numberingParser";
 import { listRequestsForMarker } from "../prosemirror/listAutoformatMarkers";
@@ -13,6 +15,9 @@ import {
   type CanonicalCommit,
   type CanonicalSession,
 } from "./canonicalSession";
+
+const DEFAULT_TOC_PAGE_WIDTH_TWIPS = 12240;
+const DEFAULT_TOC_MARGIN_TWIPS = 1440;
 
 const refuse = (message: string) =>
   Result.err(
@@ -108,6 +113,45 @@ export const prepareCanonicalCommands = (
   const paragraphs = selectedParagraphs(session, state);
   for (const command of commands) {
     switch (command.type) {
+      case "generateTOC": {
+        const at = session.projection.addressAt(command.at);
+        if (at.isErr()) return at;
+        const definitions = session.document.package.styles;
+        const styles = createBuiltInStyleIndex(definitions?.styles ?? [], definitions?.docDefaults);
+        const headings = [];
+        for (const heading of collectHeadings(session.projection.doc, styles)) {
+          const address = session.projection.addressAt(heading.pmPos + 1);
+          if (address.isErr()) return address;
+          const outline = headingOutlineLevel(heading.level);
+          if (outline?.kind !== "heading")
+            return refuse("A TOC heading has an invalid outline level.");
+          const styleId = styles.styleIdForTableOfContentsLevel(outline.level + 1);
+          headings.push({
+            blockId: address.value.blockId,
+            text: heading.text,
+            level: outline.level,
+            ...(styleId === undefined ? {} : { styleId }),
+          });
+        }
+        if (headings.length === 0) break;
+        const titleStyleId = styles.styleIdForBuiltInName(BUILT_IN_STYLE_NAME.tocHeading);
+        const section = session.document.package.document.content.find(
+          (item) => item.type === "paragraph" && (item.sectionProperties?.pageWidth ?? 0) > 0,
+        );
+        const properties = section?.type === "paragraph" ? section.sectionProperties : undefined;
+        intents.push({
+          type: "generateTOC",
+          at: at.value,
+          title: command.title,
+          headings,
+          tabPosition:
+            (properties?.pageWidth ?? DEFAULT_TOC_PAGE_WIDTH_TWIPS) -
+            (properties?.marginLeft ?? DEFAULT_TOC_MARGIN_TWIPS) -
+            (properties?.marginRight ?? DEFAULT_TOC_MARGIN_TWIPS),
+          ...(titleStyleId === undefined ? {} : { titleStyleId }),
+        });
+        break;
+      }
       case "setHyperlink":
       case "removeHyperlink":
       case "insertHyperlink": {

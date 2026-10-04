@@ -2,7 +2,6 @@
   "command-descriptors": [
     "packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#redo",
     "packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#undo",
-    "packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts#generateTOC",
     "packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts#insertSectionBreak",
     "packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts#removeSectionBreak",
     "packages/core/src/prosemirror/extensions/features/SelectionTrackerExtension.ts#extractSelectionContext",

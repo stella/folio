@@ -1,5 +1,6 @@
 /** One editor intent, compiled to direct or tracked document operations. */
 import { compileHyperlinkIntent, type HyperlinkEditorIntent } from "./hyperlinkIntent";
+import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import { INSERTION_SEAM_POLICIES } from "../model/content";
 import { Result, panic } from "better-result";
 import { applyDocumentOp, applyDocumentOps } from "./apply";
@@ -71,6 +72,7 @@ export type { TableIntentOperation } from "./types";
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
   | HyperlinkEditorIntent
+  | GenerateTOCIntent
   | { type: "table"; operation: TableIntentOperation }
   | {
       type: "replaceText";
@@ -141,6 +143,14 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
         toId: intent.at.blockId,
         fromOffset: undefined,
         toOffset: undefined,
+      };
+    case "generateTOC":
+      return {
+        story: intent.at.story,
+        fromId: intent.at.blockId,
+        toId: intent.at.blockId,
+        fromOffset: intent.at.offset,
+        toOffset: intent.at.offset,
       };
     case "setList": {
       const first = intent.items.at(0);
@@ -535,6 +545,13 @@ export const compileEditorIntent = (
   let ops: DocumentOp[];
   let selection: TextPosition;
   switch (intent.type) {
+    case "generateTOC": {
+      const compiled = compileGenerateTOCIntent(document, intent, mode);
+      if (compiled.isErr()) return compiled;
+      ops = compiled.value.ops;
+      selection = compiled.value.selection;
+      break;
+    }
     case "setHyperlink":
     case "removeHyperlink":
     case "insertHyperlink":
