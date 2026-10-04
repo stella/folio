@@ -161,16 +161,16 @@ class CanonicalProjection {
     if (address.isErr()) return address;
     const paragraph = this.paragraph(address.value.blockId);
     if (paragraph === undefined) panic("Input lost its paragraph.");
-    let offset = address.value.offset;
+    let destination = position;
     paragraph.node.forEach((node, start) => {
       if (
         node.marks.some((mark) => mark.type.name === "deletion") &&
-        offset > start &&
-        offset < start + node.nodeSize
+        position > paragraph.start + start &&
+        position < paragraph.start + start + node.nodeSize
       )
-        offset = start + node.nodeSize;
+        destination = paragraph.start + start + node.nodeSize;
     });
-    return Result.ok({ ...address.value, offset });
+    return destination === position ? address : this.addressAt(destination);
   }
 
   positionAt(address: TextPosition): Result<number, CanonicalSessionError> {

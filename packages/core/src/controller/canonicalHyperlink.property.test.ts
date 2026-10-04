@@ -238,3 +238,40 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
     { numRuns: 15 },
   );
 });
+
+test("tracked input addresses skip rendered deletions after bookmark atoms", () => {
+  assertProperty(
+    fc.property(fc.boolean(), fc.constantFrom("a", "😀ab"), (bookmarks, prefix) => {
+      const document = seed(bookmarks);
+      const paragraph =
+        document.package.document.content.at(0) ?? panic("Missing address fixture.");
+      if (paragraph.type !== "paragraph") panic("Missing paragraph.");
+      const start = bookmarks ? [{ type: "bookmarkStart", id: 7, name: "anchor" } as const] : [];
+      const end = bookmarks ? [{ type: "bookmarkEnd", id: 7 } as const] : [];
+      paragraph.content = [
+        ...start,
+        { type: "run", content: [{ type: "text", text: prefix }] },
+        {
+          type: "deletion",
+          info: { id: 1, author: "Reviewer" },
+          content: [{ type: "run", content: [{ type: "text", text: "deleted" }] }],
+        },
+        { type: "run", content: [{ type: "text", text: "tail" }] },
+        ...end,
+      ];
+      const session = createCanonicalSession(document).unwrap();
+      let exercised = 0;
+      session.projection.doc.descendants((node, position) => {
+        if (!node.isText || !node.marks.some((mark) => mark.type.name === "deletion")) return;
+        for (let offset = 1; offset < node.nodeSize; offset += 1) {
+          expect(session.projection.inputAddressAt(position + offset).unwrap()).toEqual(
+            session.projection.addressAt(position + node.nodeSize).unwrap(),
+          );
+          exercised += 1;
+        }
+      });
+      expect(exercised).toBeGreaterThan(0);
+    }),
+    { numRuns: 10 },
+  );
+});

@@ -36,5 +36,13 @@
       "note": "Setting a hyperlink must keep bookmark markers as structural siblings; wrapping orphan root markers changes their projection eligibility and creates an invalid boundary pair.",
       "date": "2026-10-04"
     }
+  ],
+  "tracked input addresses skip rendered deletions after bookmark atoms": [
+    {
+      "seed": -370671202,
+      "path": "0",
+      "note": "Deletion node spans use rendered positions; bookmark atoms make logical offsets differ. Derive the skipped destination through the canonical address map.",
+      "date": "2026-10-04"
+    }
   ]
 }
