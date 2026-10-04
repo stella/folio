@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { documentStories, OP_STORIES, storyBody } from "@stll/docx-core/ops";
+import type { Document } from "@stll/docx-core/model";
+import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { Fragment, Slice } from "prosemirror-model";
 import { AllSelection, NodeSelection } from "prosemirror-state";
 
@@ -18,10 +21,55 @@ import {
   resolveCanonicalHarnessDocument,
 } from "../../../../test/canonicalEditorHarness";
 
-test.each(["editing", "suggesting"] as const)(
-  "canonical table activation is an exact ledger precondition in %s",
-  async (mode) => {
-    const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("tables")));
+const tableActivationSource = async (
+  location: "main" | "header" | "footer" | "footnote" | "endnote",
+): Promise<Document> => {
+  const parsed = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("tables")));
+  if (location === OP_STORIES.MAIN) return parsed;
+  const content = parsed.package.document.content.filter((block) => block.type === "table");
+  if (content.length === 0) throw new TypeError("The production table fixture has no table.");
+  const source = createEmptyDocument({ initialText: "Valid main story" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph")
+    throw new TypeError("Table activation fixture lost its body.");
+  paragraph.paraId = "FFFFFFFF";
+  switch (location) {
+    case "header":
+      source.package.headers = new Map([
+        ["rIdTableHeader", { type: "header", hdrFtrType: "default", content }],
+      ]);
+      break;
+    case "footer":
+      source.package.footers = new Map([
+        ["rIdTableFooter", { type: "footer", hdrFtrType: "default", content }],
+      ]);
+      break;
+    case "footnote":
+      source.package.footnotes = [{ type: "footnote", id: 7, content }];
+      break;
+    case "endnote":
+      source.package.endnotes = [{ type: "endnote", id: 7, content }];
+      break;
+  }
+  return source;
+};
+
+const TABLE_ACTIVATION_CASES = (
+  ["main", "header", "footer", "footnote", "endnote"] as const
+).flatMap((location) => (["editing", "suggesting"] as const).map((mode) => ({ location, mode })));
+
+test.each(TABLE_ACTIVATION_CASES)(
+  "canonical $location table activation is an exact ledger precondition in $mode",
+  async ({ location, mode }) => {
+    const source = await tableActivationSource(location);
+    const tableStories = documentStories(source).filter((story) =>
+      storyBody(source, story).content.some((block) => block.type === "table"),
+    );
+    expect(tableStories).toHaveLength(1);
+    expect(tableStories.map((story) => (story === OP_STORIES.MAIN ? story : story.kind))).toEqual([
+      location,
+    ]);
+    const before = cloneDocumentWithParagraphPropertySources(source);
     const hosts = globalThis.document?.body.childElementCount ?? 0;
     const result = createCanonicalHarnessCase(source, mode);
     expect(result.type).toBe("activationRefused");
@@ -35,6 +83,7 @@ test.each(["editing", "suggesting"] as const)(
       expectation: "declared",
       row: "table-session-activation",
     });
+    assertExactModel(source, before);
     expect(document.body.childElementCount).toBe(hosts);
   },
 );

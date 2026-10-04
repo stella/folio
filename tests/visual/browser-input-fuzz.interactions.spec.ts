@@ -6,6 +6,7 @@ import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx"
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import {
   canonicalActivationRefusalRow,
+  canonicalBrowserRefusalRows,
   matchCanonicalRefusalRow,
   validateHarnessRefusalRows,
 } from "../../test/canonical-refusal-rows";
@@ -54,7 +55,11 @@ const missingCanonical = createMissingOpBurndown();
 test.afterAll(() => console.info(missingCanonical.markdown()));
 
 const drainCanonicalErrors = (page: Page) =>
-  page.evaluate(() => globalThis.__folioCanonicalFuzzErrors?.splice(0) ?? []);
+  page.evaluate(() => {
+    if (!globalThis.__folioCanonicalFuzzErrors)
+      throw new TypeError("Canonical refusal sink unavailable.");
+    return globalThis.__folioCanonicalFuzzErrors.splice(0);
+  });
 
 type Block = {
   kind: string;
@@ -361,6 +366,45 @@ const reopenSaved = async (buffer: ArrayBuffer) => {
   return FolioDocxReviewer.fromBuffer(buffer);
 };
 
+const canonicalSnapshot = async (page: Page) => {
+  await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
+  return page.evaluate(() => {
+    const ref = globalThis.__folioPlayground?.getEditorRef();
+    const core = ref?.getEditor();
+    const view = ref?.getEditorRef()?.getView();
+    const document = core?.getCanonicalDocument();
+    if (!document || !view || !core) throw new TypeError("Canonical action owner unavailable.");
+    return {
+      document,
+      projection: view.state.doc.toJSON(),
+      selection: view.state.selection.toJSON(),
+      undo: core.canUndo(),
+      redo: core.canRedo(),
+    };
+  });
+};
+
+type DriveFuzzOptions = { page: Page; action: BrowserInputAction; authority: FuzzAuthority };
+const driveWithAuthority = async ({ page, action, authority }: DriveFuzzOptions) => {
+  if (authority === "prosemirror") return drive(page, action);
+  const rows = canonicalBrowserRefusalRows(action);
+  validateHarnessRefusalRows(rows);
+  expect(await drainCanonicalErrors(page)).toEqual([]);
+  const before = await canonicalSnapshot(page);
+  await drive(page, action);
+  const after = await canonicalSnapshot(page);
+  const errors = await drainCanonicalErrors(page);
+  if (rows.length > 0) expect(errors.length).toBeGreaterThan(0);
+  for (const error of errors) {
+    if (error.status !== "refusal") throw new TypeError(error.message);
+    const row = matchCanonicalRefusalRow({ rows, refusal: error });
+    expect(row, `Unregistered canonical refusal: ${error.gap}: ${error.message}`).toBeDefined();
+    if (!row) throw new TypeError("Unregistered canonical refusal.");
+    missingCanonical.record(row.gap);
+  }
+  if (errors.length > 0) expect(after).toEqual(before);
+};
+
 type RunFuzzOptions = {
   page: Page;
   source: ArrayBuffer;
@@ -377,8 +421,10 @@ const runMode = async ({
   suggesting,
   authority,
 }: RunFuzzOptions) => {
-  await load({ page, bytes: source, baseline, suggesting, authority });
-  for (const action of trace.actions) await drive(page, action);
+  const loaded = await load({ page, bytes: source, baseline, suggesting, authority });
+  if (loaded.type === "activationRefused")
+    return { type: "activationRefused", row: loaded.row } as const;
+  for (const action of trace.actions) await driveWithAuthority({ page, action, authority });
   await page.waitForTimeout(350);
   const live = await liveBlocks(page);
   const painted = await page.locator(".layout-page-content").allTextContents();
@@ -386,13 +432,23 @@ const runMode = async ({
   const reopened = await reopenSaved(buffer);
   expect(projectLive(project(reopened))).toEqual(live);
   await page.evaluate(
-    async (saved) => {
+    async ({ saved, canonical }) => {
+      if (canonical) {
+        if (!(await globalThis.__folioCanonical?.load(saved)))
+          throw new TypeError("Canonical saved load unavailable.");
+        return;
+      }
       await globalThis.__folioPlayground?.getEditorRef()?.loadDocumentBuffer(new Uint8Array(saved));
     },
-    [...new Uint8Array(buffer)],
+    { saved: [...new Uint8Array(buffer)], canonical: authority === "canonical" },
   );
   await expect.poll(() => page.locator(".layout-page-content").allTextContents()).toEqual(painted);
-  return { buffer, blocks: project(reopened), changes: reopened.getChanges() };
+  return {
+    type: "ready",
+    buffer,
+    blocks: project(reopened),
+    changes: reopened.getChanges(),
+  } as const;
 };
 
 const paintedTargetReplays = [
@@ -418,8 +474,16 @@ for (const [index, trace] of paintedTargetReplays.entries()) {
     const source = await shapeArrayBuffer(trace.shape);
     const baseline = project(await FolioDocxReviewer.fromBuffer(source));
     for (const suggesting of [false, true]) {
-      await load({ page, bytes: source, baseline, suggesting, authority: "canonical" });
-      for (const action of trace.actions) await drive(page, action);
+      const loaded = await load({
+        page,
+        bytes: source,
+        baseline,
+        suggesting,
+        authority: "canonical",
+      });
+      if (loaded.type === "activationRefused") continue;
+      for (const action of trace.actions)
+        await driveWithAuthority({ page, action, authority: "canonical" });
     }
   });
 }
@@ -475,6 +539,8 @@ for (const acceptance of browserAcceptances) {
       suggesting: true,
       authority: "prosemirror",
     });
+    if (edited.type !== "ready" || suggested.type !== "ready")
+      throw new TypeError("Legacy replay unexpectedly refused activation.");
     const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
     accepting.acceptAll();
     const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
@@ -543,11 +609,22 @@ for (const shape of browserDragShapes) {
     }) => {
       const source = await shapeArrayBuffer(shape);
       const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-      await load({ page, bytes: source, baseline, suggesting, authority: "canonical" });
-      await paste(page, {
-        kind: "pasteHtml",
-        plain: "First bold\nSecond",
-        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      const loaded = await load({
+        page,
+        bytes: source,
+        baseline,
+        suggesting,
+        authority: "canonical",
+      });
+      if (loaded.type === "activationRefused") return;
+      await driveWithAuthority({
+        page,
+        authority: "canonical",
+        action: {
+          kind: "pasteHtml",
+          plain: "First bold\nSecond",
+          html: "<p>First <strong>bold</strong></p><p>Second</p>",
+        },
       });
       expect(await selectTarget(page, target)).toBe(true);
     });
@@ -662,6 +739,14 @@ for (const seed of config.seeds) {
           suggesting: true,
           authority: "canonical",
         });
+        if (edited.type === "activationRefused" || suggested.type === "activationRefused") {
+          expect(edited.type).toBe("activationRefused");
+          expect(suggested.type).toBe("activationRefused");
+          if (edited.type !== "activationRefused" || suggested.type !== "activationRefused")
+            throw new TypeError("Canonical activation differs between modes.");
+          expect(edited.row).toEqual(suggested.row);
+          return;
+        }
         const accepted = await resolveCanonicalSaved({
           page,
           source: suggested.buffer,
