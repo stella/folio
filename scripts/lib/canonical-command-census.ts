@@ -144,6 +144,13 @@ const unwrapExpression = (node: ts.Node): ts.Node => {
 const commandObjectRegistrations = (sourceFile: ts.SourceFile, file: string) => {
   const registrations: CommandRegistration[] = [];
   const visit = (node: ts.Node): void => {
+    if (
+      (ts.isShorthandPropertyAssignment(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isGetAccessorDeclaration(node)) &&
+      propertyName(node.name) === "commands"
+    )
+      throw new Error(`${file}: command registry shape cannot be censused`);
     if (ts.isPropertyAssignment(node) && propertyName(node.name) === "commands") {
       const object = unwrapExpression(node.initializer);
       if (!ts.isObjectLiteralExpression(object))
@@ -344,4 +351,20 @@ export const censusUndescribedCanonicalCommands = (
     .filter(({ file, initializer }) => !provesFactory(file, initializer))
     .map(({ file, name }) => `${file}#${name}`)
     .sort();
+};
+
+/** Compare registration occurrences, so a duplicate cannot increase the count under an old id. */
+export const checkCanonicalCommandBaseline = (
+  current: readonly string[],
+  baseline: readonly string[],
+) => {
+  const available = new Map<string, number>();
+  for (const command of baseline) available.set(command, (available.get(command) ?? 0) + 1);
+  const additions: string[] = [];
+  for (const command of current) {
+    const count = available.get(command) ?? 0;
+    if (count === 0) additions.push(command);
+    else available.set(command, count - 1);
+  }
+  return additions;
 };

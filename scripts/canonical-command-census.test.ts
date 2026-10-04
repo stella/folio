@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty } from "../test/property-testing";
-import { censusUndescribedCanonicalCommands } from "./lib/canonical-command-census";
+import {
+  censusUndescribedCanonicalCommands,
+  checkCanonicalCommandBaseline,
+} from "./lib/canonical-command-census";
 
 const owner = "packages/core/src/prosemirror/canonicalCommands.ts";
 const registry = "packages/core/src/prosemirror/extensions/core/Fixture.ts";
@@ -65,9 +68,13 @@ test("registry additions and descriptor removals can only enlarge the derived re
         const names = ids.map((id) => `command${id}`);
         const registryFor = (wrapped: boolean) =>
           `${imports} const extension = { commands: { ${names.map((name) => `${name}: () => ${wrapped ? "wrap(raw)" : "raw"}`).join(",")} } };`;
+        const remaining = census(registryFor(false));
         expect(census(registryFor(true))).toEqual([]);
-        expect(census(registryFor(false))).toEqual(
-          names.map((name) => `${registry}#${name}`).sort(),
+        expect(remaining).toEqual(names.map((name) => `${registry}#${name}`).sort());
+        expect(checkCanonicalCommandBaseline([], remaining)).toEqual([]);
+        expect(checkCanonicalCommandBaseline(remaining, [])).toEqual(remaining);
+        expect(checkCanonicalCommandBaseline(remaining.concat(remaining), remaining)).toEqual(
+          remaining,
         );
       },
     ),
@@ -76,6 +83,8 @@ test("registry additions and descriptor removals can only enlarge the derived re
 });
 
 test("registry shapes cannot hide uncensused registrations", () => {
+  expect(() => census("const extension = { commands }; ")).toThrow("census");
+  expect(() => census("const extension = { commands() { return other; } }; ")).toThrow("census");
   for (const commands of ["other", "{ ...other }", "{ [dynamic]: () => raw }"]) {
     expect(() => census(`const extension = { commands: ${commands} };`)).toThrow("census");
   }

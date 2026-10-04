@@ -1,6 +1,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { censusUndescribedCanonicalCommands } from "./lib/canonical-command-census";
+import {
+  censusUndescribedCanonicalCommands,
+  checkCanonicalCommandBaseline,
+} from "./lib/canonical-command-census";
 import {
   inspectCanonicalSources,
   checkCanonicalBaseline,
@@ -111,10 +114,8 @@ const parentCommands = new Map(
   [...result.remainingCommands.keys()].map((gap) => [gap, priorCommands]),
 );
 for (const [gap, commands] of result.remainingCommands) {
-  const parent = new Set(parentCommands.get(gap) ?? []);
-  for (const command of commands)
-    if (!parent.has(command))
-      failures.push(`${gap}: new command registration without a descriptor proof: ${command}`);
+  for (const command of checkCanonicalCommandBaseline(commands, parentCommands.get(gap) ?? []))
+    failures.push(`${gap}: new command registration without a descriptor proof: ${command}`);
 }
 if (
   !write &&
