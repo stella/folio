@@ -9,6 +9,9 @@ import type {} from "../parity/canonicalFuzzErrors";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const snapshot = async (page: Page) => {
+  // An ended IME composition commits after the native flush settles; the
+  // canonical document refuses snapshots until then (canSnapshot is false).
+  await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
   const current = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
   expect(current?.active).toBe(true);
   expect(current?.projectionMatchesCanonical).toBe(true);
