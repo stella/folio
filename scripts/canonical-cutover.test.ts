@@ -152,7 +152,9 @@ describe("canonical cutover guard", () => {
     ];
     expect([...new Set([...fixtures.map(({ gap }) => gap), ...publicGaps])].sort()).toEqual(
       Object.entries(CANONICAL_CAPABILITIES)
-        .filter(([, capability]) => capability.kind === "mutation-source")
+        .filter(
+          ([id, capability]) => capability.kind === "mutation-source" || id === CANONICAL_GAP.save,
+        )
         .map(([id]) => id)
         .sort(),
     );
@@ -204,7 +206,7 @@ describe("canonical cutover guard", () => {
 
   test("documentation derives its ids and sites from the same ledger", () => {
     const inspected = inspectCanonicalSources([source(selectors)]);
-    const docs = canonicalCutoverDocs(inspected.sites);
+    const docs = canonicalCutoverDocs(inspected);
     const ids = docs
       .split("\n")
       .filter(

@@ -6,7 +6,11 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import { paragraphLogicalText, type TextPosition } from "@stll/docx-core/ops";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Document } from "../types/document";
-import { schema } from "../prosemirror/schema";
+import { schema, singletonManager } from "../prosemirror/schema";
+import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import { expectParagraphAttrs } from "../prosemirror/attrs";
+import { directionToAuthoredBidi } from "../prosemirror/paragraphDirection";
+import { TAB_STOP_ALIGNMENT_VALUES, TAB_LEADER_VALUES } from "../types/documentEnumValues";
 import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
 import {
@@ -876,4 +880,183 @@ describe("canonical structural commands", () => {
       authored,
     );
   });
+});
+
+const tabStopArbitrary = fc.record({
+  position: fc.integer({ min: 0, max: 5000 }),
+  alignment: fc.constantFrom(...TAB_STOP_ALIGNMENT_VALUES),
+  leader: fc.constantFrom(...TAB_LEADER_VALUES),
+});
+const paragraphCommandArbitrary = fc.record({
+  position: fc.integer({ min: 0, max: 5000 }),
+  alignment: fc.constantFrom(...TAB_STOP_ALIGNMENT_VALUES),
+  leader: fc.constantFrom(...TAB_LEADER_VALUES),
+  tabs: fc.uniqueArray(tabStopArbitrary, { maxLength: 4, selector: (tab) => tab.position }),
+  reverse: fc.boolean(),
+  selection: fc.constantFrom("caret", "first", "all"),
+});
+type ParagraphCommandInput = ReturnType<typeof paragraphCommandArbitrary.generate>["value"];
+const paragraphCommandFactories = {
+  toggleBidi: () => singletonManager.requireCommand("toggleBidi")(),
+  setRtl: () => singletonManager.requireCommand("setRtl")(),
+  setLtr: () => singletonManager.requireCommand("setLtr")(),
+  setTabs: ({ tabs }: ParagraphCommandInput) => singletonManager.requireCommand("setTabs")(tabs),
+  addTabStop: ({ position, alignment, leader }: ParagraphCommandInput) =>
+    singletonManager.requireCommand("addTabStop")(position, alignment, leader),
+  removeTabStop: ({ position }: ParagraphCommandInput) =>
+    singletonManager.requireCommand("removeTabStop")(position),
+};
+
+test("generated direction and tab command histories preserve authored values and exact inverse", async () => {
+  await assertProperty(
+    fc.asyncProperty(
+      fc.tuple(fc.constantFrom(undefined, false, true), fc.constantFrom(undefined, false, true)),
+      fc.tuple(
+        fc.option(
+          fc.uniqueArray(tabStopArbitrary, { maxLength: 4, selector: (tab) => tab.position }),
+          { nil: undefined },
+        ),
+        fc.option(
+          fc.uniqueArray(tabStopArbitrary, { maxLength: 4, selector: (tab) => tab.position }),
+          { nil: undefined },
+        ),
+      ),
+      fc.boolean(),
+      fc.array(paragraphCommandArbitrary, { minLength: 6, maxLength: 12 }),
+      async (directions, tabSets, empty, inputs) => {
+        const document = seed();
+        for (const [index, paragraph] of document.package.document.content.entries()) {
+          if (paragraph.type !== "paragraph")
+            return panic("Paragraph command seed has a nonparagraph.");
+          const bidi = directions.at(index);
+          const tabs = tabSets.at(index);
+          paragraph.formatting = {
+            ...(bidi === undefined ? {} : { bidi }),
+            ...(tabs === undefined ? {} : { tabs }),
+          };
+          if (empty) paragraph.content = [];
+        }
+        for (const mode of [
+          { type: "editing" },
+          { type: "suggesting", author: "Reviewer" },
+        ] as const) {
+          const session = createCanonicalSession(document).unwrap();
+          session.setMode(mode);
+          let state = EditorState.create({ schema, doc: session.projection.doc });
+          const baseline = session.document;
+          const history: {
+            before: Document;
+            after: Document;
+            preSelection: ReturnType<typeof state.selection.toJSON>;
+            postSelection: ReturnType<typeof state.selection.toJSON>;
+          }[] = [];
+          const exercised = new Set<string>();
+          const commands = Object.entries(paragraphCommandFactories);
+          for (const [index, input] of inputs.entries()) {
+            const [name, factory] =
+              commands.at(index % commands.length) ?? panic("Missing paragraph command factory.");
+            exercised.add(name);
+            const first =
+              session.projection.paragraph("12345678") ?? panic("Missing first paragraph address.");
+            const last =
+              session.projection.paragraph("00000001") ?? panic("Missing last paragraph address.");
+            const from = first.start;
+            let to = from;
+            if (input.selection === "first") to = first.start + first.text.length;
+            if (input.selection === "all") to = last.start + last.text.length;
+            state = select(state, input.reverse ? to : from, input.reverse ? from : to);
+            const command = factory(input);
+            const before = session.document;
+            const version = session.version;
+            const preSelection = state.selection.toJSON();
+            const storedMarks = state.storedMarks;
+            command(state);
+            const intents =
+              getCanonicalCommandIntents(command, state) ?? panic(`Missing descriptor for ${name}`);
+            expect(getCanonicalCommandIntents(command, state)).toEqual(intents);
+            expect(session.document).toBe(before);
+            expect(session.version).toBe(version);
+            expect(state.selection.toJSON()).toEqual(preSelection);
+            expect(state.storedMarks).toBe(storedMarks);
+            const legacyBefore = state;
+            let legacy = legacyBefore;
+            expect(
+              command(legacyBefore, (transaction) => {
+                legacy = legacyBefore.apply(transaction);
+              }),
+            ).toBe(true);
+            // Compare the command's current attrs, not PM-to-model serialization:
+            // imported paragraphs retain original tabs in that legacy serializer.
+            const authored: {
+              bidi: boolean | undefined;
+              tabs: ReturnType<typeof expectParagraphAttrs>["tabs"] | undefined;
+            }[] = [];
+            legacy.doc.forEach((paragraph) => {
+              const attrs = expectParagraphAttrs(paragraph);
+              authored.push({
+                bidi: directionToAuthoredBidi(attrs.direction),
+                tabs: attrs.tabs ?? undefined,
+              });
+            });
+            session.breakUndoGroup();
+            const prepared = prepareCanonicalCommands(session, state, intents);
+            if (prepared.isErr()) {
+              expect(prepared.error.reason).toBe("noChange");
+              expect(session.document).toBe(before);
+              expect(session.version).toBe(version);
+              expect(state.selection.toJSON()).toEqual(preSelection);
+            } else {
+              state = accept(session, state, prepared.value);
+              history.push({
+                before,
+                after: session.document,
+                preSelection,
+                postSelection: state.selection.toJSON(),
+              });
+            }
+            const ordered = (formatting: (typeof authored)[number]) => ({
+              ...formatting,
+              tabs: formatting.tabs?.toSorted((a, b) => a.position - b.position),
+            });
+            expect(
+              paragraphs(session).map((paragraph) =>
+                ordered({ bidi: paragraph.formatting?.bidi, tabs: paragraph.formatting?.tabs }),
+              ),
+            ).toEqual(authored.map(ordered));
+            expect(state.selection.toJSON()).toEqual(legacy.selection.toJSON());
+          }
+          expect([...exercised].sort()).toEqual(Object.keys(paragraphCommandFactories).sort());
+          const saved = await parseDocx(await createDocx(session.document));
+          // OOXML omits empty tabs and the default leader; compare their semantic values.
+          // History below separately checks exact authored arrays and optional fields.
+          const emittedFormatting = (
+            paragraph: Document["package"]["document"]["content"][number],
+          ) => {
+            if (paragraph.type !== "paragraph") return panic("Reopen lost a paragraph.");
+            return {
+              bidi: paragraph.formatting?.bidi,
+              tabs: (paragraph.formatting?.tabs ?? [])
+                .toSorted((a, b) => a.position - b.position)
+                .map((tab) => Object.assign({}, tab, { leader: tab.leader ?? "none" })),
+            };
+          };
+          expect(saved.package.document.content.map(emittedFormatting)).toEqual(
+            paragraphs(session).map(emittedFormatting),
+          );
+          for (const entry of history.toReversed()) {
+            state = accept(session, state, session.prepareUndo(state).unwrap());
+            expect(session.document).toStrictEqual(entry.before);
+            expect(state.selection.toJSON()).toEqual(entry.preSelection);
+          }
+          expect(session.document).toStrictEqual(baseline);
+          for (const entry of history) {
+            state = accept(session, state, session.prepareRedo(state).unwrap());
+            expect(session.document).toStrictEqual(entry.after);
+            expect(state.selection.toJSON()).toEqual(entry.postSelection);
+          }
+        }
+      },
+    ),
+    { numRuns: 12 },
+  );
 });
