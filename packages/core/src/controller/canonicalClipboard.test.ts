@@ -96,81 +96,98 @@ describe("canonical clipboard", () => {
   test("copied comment and note ids cannot bind colliding destination story parts in either editing mode", () => {
     for (const kind of ["comment", "footnote", "endnote"] as const) {
       for (const suggesting of [false, true])
-        for (const reverse of [false, true]) {
-          const destination = seed();
-          const sourceDocument = seed();
-          const ownedContent = [
-            {
-              type: "paragraph",
-              paraId: "13572468",
-              content: [{ type: "run", content: [{ type: "text", text: "owned story" }] }],
-            },
-          ] satisfies Paragraph[];
-          const foreignContent = [
-            {
-              type: "paragraph",
-              paraId: "13572468",
-              content: [{ type: "run", content: [{ type: "text", text: "foreign story" }] }],
-            },
-          ] satisfies Paragraph[];
-          switch (kind) {
-            case "comment":
-              destination.package.document.comments = [
-                { id: 7, author: "Owned", content: ownedContent },
-              ];
-              sourceDocument.package.document.comments = [
-                { id: 7, author: "Foreign", content: foreignContent },
-              ];
-              break;
-            case "footnote":
-              destination.package.footnotes = [{ type: "footnote", id: 7, content: ownedContent }];
-              sourceDocument.package.footnotes = [
-                { type: "footnote", id: 7, content: foreignContent },
-              ];
-              break;
-            case "endnote":
-              destination.package.endnotes = [{ type: "endnote", id: 7, content: ownedContent }];
-              sourceDocument.package.endnotes = [
-                { type: "endnote", id: 7, content: foreignContent },
-              ];
-              break;
-            default:
-              kind satisfies never;
+        for (const reverse of [false, true])
+          for (const anchor of ["point", "range"] as const) {
+            const destination = seed();
+            const sourceDocument = seed();
+            const ownedContent = [
+              {
+                type: "paragraph",
+                paraId: "13572468",
+                content: [{ type: "run", content: [{ type: "text", text: "owned story" }] }],
+              },
+            ] satisfies Paragraph[];
+            const foreignContent = [
+              {
+                type: "paragraph",
+                paraId: "13572468",
+                content: [{ type: "run", content: [{ type: "text", text: "foreign story" }] }],
+              },
+            ] satisfies Paragraph[];
+            switch (kind) {
+              case "comment":
+                destination.package.document.comments = [
+                  { id: 7, author: "Owned", content: ownedContent },
+                ];
+                sourceDocument.package.document.comments = [
+                  { id: 7, author: "Foreign", content: foreignContent },
+                ];
+                for (const document of [destination, sourceDocument]) {
+                  const paragraph = document.package.document.content.at(-1);
+                  if (paragraph?.type !== "paragraph")
+                    throw new TypeError("Missing anchor paragraph.");
+                  if (anchor === "point")
+                    paragraph.content.push({ type: "commentReference", id: 7 });
+                  else {
+                    paragraph.content.unshift({ type: "commentRangeStart", id: 7 });
+                    paragraph.content.push({ type: "commentRangeEnd", id: 7 });
+                  }
+                }
+                break;
+              case "footnote":
+                destination.package.footnotes = [
+                  { type: "footnote", id: 7, content: ownedContent },
+                ];
+                sourceDocument.package.footnotes = [
+                  { type: "footnote", id: 7, content: foreignContent },
+                ];
+                break;
+              case "endnote":
+                destination.package.endnotes = [{ type: "endnote", id: 7, content: ownedContent }];
+                sourceDocument.package.endnotes = [
+                  { type: "endnote", id: 7, content: foreignContent },
+                ];
+                break;
+              default:
+                kind satisfies never;
+            }
+            const session = createCanonicalSession(destination).unwrap();
+            session.setMode(
+              suggesting ? { type: "suggesting", author: "Clipboard" } : { type: "editing" },
+            );
+            let state = EditorState.create({ schema, doc: session.projection.doc });
+            state = state.apply(
+              state.tr.setSelection(
+                TextSelection.create(state.doc, reverse ? 2 : 1, reverse ? 1 : 2),
+              ),
+            );
+            const copied =
+              kind === "comment"
+                ? schema.node("commentReference", { commentId: 7 })
+                : schema.text("7", [
+                    schema.marks["footnoteRef"].create({ id: "7", noteType: kind }),
+                  ]);
+            const slice = new Slice(Fragment.from(schema.node("paragraph", null, copied)), 1, 1);
+            const before = session.document;
+            const version = session.version;
+            const projection = session.projection;
+            const selection = state.selection.toJSON();
+            const sourceSnapshot = cloneDocumentWithParagraphPropertySources(sourceDocument);
+            assertExactModel(sourceDocument, sourceSnapshot);
+            const prepared = prepareCanonicalPaste({ session, state, slice, sourceDocument });
+            expect(prepared.isErr()).toBe(true);
+            if (prepared.isOk())
+              throw new TypeError("Foreign story reference unexpectedly pasted.");
+            expect(prepared.error.reason).toBe("refused");
+            expect(prepared.error.message).toContain("source story parts");
+            assertClipboardModel(session.document, before);
+            assertExactModel(sourceDocument, sourceSnapshot);
+            assertExactModel(state.selection.toJSON(), selection);
+            expect(session.projection).toBe(projection);
+            expect(session.version).toBe(version);
+            expect(session.canUndo).toBe(false);
+            expect(session.canRedo).toBe(false);
           }
-          const session = createCanonicalSession(destination).unwrap();
-          session.setMode(
-            suggesting ? { type: "suggesting", author: "Clipboard" } : { type: "editing" },
-          );
-          let state = EditorState.create({ schema, doc: session.projection.doc });
-          state = state.apply(
-            state.tr.setSelection(
-              TextSelection.create(state.doc, reverse ? 2 : 1, reverse ? 1 : 2),
-            ),
-          );
-          const copied =
-            kind === "comment"
-              ? schema.node("commentReference", { commentId: 7 })
-              : schema.text("7", [schema.marks["footnoteRef"].create({ id: "7", noteType: kind })]);
-          const slice = new Slice(Fragment.from(schema.node("paragraph", null, copied)), 1, 1);
-          const before = session.document;
-          const version = session.version;
-          const projection = session.projection;
-          const selection = state.selection.toJSON();
-          const sourceSnapshot = cloneDocumentWithParagraphPropertySources(sourceDocument);
-          assertExactModel(sourceDocument, sourceSnapshot);
-          const prepared = prepareCanonicalPaste({ session, state, slice, sourceDocument });
-          expect(prepared.isErr()).toBe(true);
-          if (prepared.isOk()) throw new TypeError("Foreign story reference unexpectedly pasted.");
-          expect(prepared.error.reason).toBe("refused");
-          expect(prepared.error.message).toContain("source story parts");
-          assertClipboardModel(session.document, before);
-          assertExactModel(sourceDocument, sourceSnapshot);
-          assertExactModel(state.selection.toJSON(), selection);
-          expect(session.projection).toBe(projection);
-          expect(session.version).toBe(version);
-          expect(session.canUndo).toBe(false);
-          expect(session.canRedo).toBe(false);
-        }
     }
   });
 
