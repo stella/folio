@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import fc from "fast-check";
+import { assertProperty } from "../../../../test/property-testing";
+import { TextSelection, type Command } from "prosemirror-state";
 import { panic } from "better-result";
 import { resolveCanonicalReviewRange } from "./canonicalReview";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -676,3 +679,81 @@ test.each(["editing", "suggesting"] as const)(
     }
   },
 );
+
+test("canonical undescribed commands preserve non-document effects and refuse raw mutations", () => {
+  GlobalRegistrator.register();
+  const counts = { selection: 0, probe: 0, mutation: 0 };
+  try {
+    assertProperty(
+      fc.property(
+        fc.record({ text: fc.string({ minLength: 1, maxLength: 16 }), position: fc.nat() }),
+        ({ text, position }) => {
+          const host = document.createElement("div");
+          document.body.append(host);
+          const source = createEmptyDocument({ initialText: text });
+          const paragraph = source.package.document.content.at(0);
+          if (paragraph?.type !== "paragraph") panic("Expected generated paragraph");
+          paragraph.paraId = "12345678";
+          const reasons: string[] = [];
+          const { deps } = makeDeps({
+            getHost: () => host,
+            getDocument: () => source,
+            getDocumentContext: () => source,
+            getExperimentalSession: () => "canonical",
+            onSessionRefusal: (reason) => reasons.push(reason),
+          });
+          const manager = createHiddenEditorManager(deps);
+          try {
+            manager.ensureView();
+            const view = manager.getView();
+            if (!view) panic("Expected generated canonical view");
+            const baseline = manager.api.getCanonicalDocument();
+            const target = 1 + (position % (text.length + 1));
+            for (const kind of ["selection", "probe", "mutation"] as const) {
+              let calls = 0;
+              const command: Command = (state, dispatch) => {
+                calls++;
+                switch (kind) {
+                  case "selection":
+                    dispatch?.(state.tr.setSelection(TextSelection.create(state.doc, target)));
+                    return true;
+                  case "probe":
+                    return false;
+                  case "mutation":
+                    dispatch?.(state.tr.insertText("unclassified", target));
+                    return true;
+                }
+              };
+              const beforeState = view.state;
+              const beforeRefusals = reasons.length;
+              expect(manager.api.executeCommand(command)).toBe(kind !== "probe");
+              expect(calls).toBe(1);
+              counts[kind]++;
+              expect(manager.api.getCanonicalDocument()).toEqual(baseline);
+              const projection = manager.api.getCanonicalStoryProjection("main");
+              if (!projection) panic("Expected generated canonical projection");
+              expect(view.state.doc.eq(projection)).toBe(true);
+              expect(manager.api.canUndo()).toBe(false);
+              expect(manager.api.canRedo()).toBe(false);
+              if (kind === "mutation") {
+                expect(view.state).toBe(beforeState);
+                expect(reasons.slice(beforeRefusals)).toEqual([
+                  "Unclassified native text is unavailable in this session.",
+                ]);
+              } else {
+                expect(reasons).toHaveLength(beforeRefusals);
+                expect(view.state.selection.from).toBe(target);
+              }
+            }
+          } finally {
+            manager.destroyView();
+            host.remove();
+          }
+        },
+      ),
+    );
+    for (const count of Object.values(counts)) expect(count).toBeGreaterThan(0);
+  } finally {
+    GlobalRegistrator.unregister();
+  }
+}, 30_000);

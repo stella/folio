@@ -172,20 +172,12 @@ export const prepareCanonicalCommands = (
       case "changeListLevel":
         for (const paragraph of paragraphs) {
           const numPr = paragraph.formatting?.numPr;
+          if (numPr?.kind !== "reference") continue;
           const at = {
             story: OP_STORIES.MAIN,
             blockId: paragraph.paraId ?? "",
             offset: 0,
           } as const;
-          if (numPr?.kind !== "reference") {
-            const indent = Math.max(
-              0,
-              (paragraph.formatting?.indentLeft ?? 0) +
-                (command.direction === "increase" ? 720 : -720),
-            );
-            intents.push({ type: "formatParagraph", at, patch: { indentLeft: indent } });
-            continue;
-          }
           const level = (numPr.ilvl ?? 0) + (command.direction === "increase" ? 1 : -1);
           if (level > 8) return refuse("The list is already at its deepest level.");
           intents.push({
