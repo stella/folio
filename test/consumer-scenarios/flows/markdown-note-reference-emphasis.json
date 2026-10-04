@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "tracked-changes",
+  "seed": 1492412614,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2116671984,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "7B806329",
+          "quote": "[^e1]",
+          "comment": {
+            "text": "Payment supplier supplier invoice buyer delivery supplier."
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 3436708276,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "7B806329",
+            "startOffset": 21,
+            "endOffset": 26,
+            "selectedTextHash": "h42780j"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "formatRange",
+    "insertAfterBlock",
+    "replaceBlock",
+    "commentOnBlock",
+    "insertTableRow"
+  ],
+  "origin": "shrunk from insert+unpin+splice of 70dcb105100cf38f",
+  "title": "Commented and formatted endnote references retain complete Markdown markers"
+}
