@@ -17,6 +17,12 @@
       "path": "0",
       "note": "Capture composition replay on the four-input package arbitrary; the same replay checks capture-handle ablation changes source bytes while public records stay equal.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 371586926,
+      "path": "10:0:0:0:0:0:0:2:2:7",
+      "note": "Replay the generated container precondition that refused as stale after composing the accepted operation sequence.",
+      "date": "2026-10-04"
     }
   ]
 }

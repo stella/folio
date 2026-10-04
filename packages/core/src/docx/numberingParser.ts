@@ -873,6 +873,11 @@ export function isBulletLevel(level: ListLevel): boolean {
   return level.numFmt === "bullet" || level.numFmt === "none";
 }
 
+/** Whether a numbering definition uses a bullet marker rather than a numeric or hidden one. */
+export const numberingLevelUsesBulletMarker = (
+  level: Pick<ListLevel, "numFmt"> | null | undefined,
+): boolean => level?.numFmt === "bullet";
+
 /** Whether a numbering level reserves horizontal space for a visible marker. */
 export const numberingLevelHasMarkerSlot = (level: Pick<ListLevel, "numFmt">): boolean =>
   level.numFmt !== "none";

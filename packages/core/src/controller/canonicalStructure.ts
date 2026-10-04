@@ -3,7 +3,7 @@ import type { EditorState } from "prosemirror-state";
 import { OP_STORIES, type EditorIntent, type TextPosition } from "@stll/docx-core/ops";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 import type { Paragraph, ListLevel } from "../types/document";
-import { getCachedNumberingMap } from "../docx/numberingParser";
+import { getCachedNumberingMap, numberingLevelUsesBulletMarker } from "../docx/numberingParser";
 import { listRequestsForMarker } from "../prosemirror/listAutoformatMarkers";
 import type { ListRequest } from "../prosemirror/listNumbering";
 import type { CanonicalCommandIntent } from "../prosemirror/canonicalCommands";
@@ -47,7 +47,8 @@ const numberingIntent = (
     )
       return false;
     const level = map?.getLevel(item.formatting.numPr.numId, item.formatting.numPr.ilvl ?? 0);
-    if (level == null || (level.numFmt === "bullet") !== (request.kind === "bullet")) return false;
+    if (level == null || numberingLevelUsesBulletMarker(level) !== (request.kind === "bullet"))
+      return false;
     return (
       request.format === undefined ||
       (level.numFmt === request.format.numFmt && level.lvlText === request.format.lvlText)
@@ -104,6 +105,19 @@ export const prepareCanonicalCommands = (
   const paragraphs = selectedParagraphs(session, state);
   for (const command of commands) {
     switch (command.type) {
+      case "insertBreak": {
+        const from = session.projection.addressAt(command.from);
+        if (from.isErr()) return from;
+        const to = session.projection.addressAt(command.to);
+        if (to.isErr()) return to;
+        intents.push({
+          type: "insertAtom",
+          from: from.value,
+          to: to.value,
+          atom: { type: "break", breakType: command.breakType },
+        });
+        break;
+      }
       case "formatRun": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
@@ -127,7 +141,7 @@ export const prepareCanonicalCommands = (
             const numPr = formatting?.numPr;
             return (
               numPr?.kind === "reference" &&
-              (map?.getLevel(numPr.numId, numPr.ilvl ?? 0)?.numFmt === "bullet") ===
+              numberingLevelUsesBulletMarker(map?.getLevel(numPr.numId, numPr.ilvl ?? 0)) ===
                 (command.kind === "bullet")
             );
           });
@@ -207,7 +221,7 @@ export const prepareCanonicalCommands = (
         let target: Extract<EditorIntent, { type: "setList" }>["target"];
         if (command.type === "continueNumbering") {
           const map = getCachedNumberingMap(definitions);
-          const bullet = map.getLevel(numPr.numId, numPr.ilvl ?? 0)?.numFmt === "bullet";
+          const bullet = numberingLevelUsesBulletMarker(map.getLevel(numPr.numId, numPr.ilvl ?? 0));
           const earlier = body
             .slice(0, index)
             .findLast(
@@ -215,10 +229,9 @@ export const prepareCanonicalCommands = (
                 item.type === "paragraph" &&
                 item.formatting?.numPr?.kind === "reference" &&
                 item.formatting.numPr.numId !== numPr.numId &&
-                (map.getLevel(item.formatting.numPr.numId, item.formatting.numPr.ilvl ?? 0)
-                  ?.numFmt ===
-                  "bullet") ===
-                  bullet,
+                numberingLevelUsesBulletMarker(
+                  map.getLevel(item.formatting.numPr.numId, item.formatting.numPr.ilvl ?? 0),
+                ) === bullet,
             );
           if (earlier?.type !== "paragraph" || earlier.formatting?.numPr?.kind !== "reference")
             return refuse("There is no preceding compatible list.");

@@ -671,7 +671,7 @@ const candidate = ({
       return {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
         story: OP_STORIES.MAIN,
-        revisionIds: revisions,
+        revisionIds: revisions.slice(),
         decision: choose(2) === 0 ? REVISION_DECISIONS.ACCEPT : REVISION_DECISIONS.REJECT,
       };
     default: {

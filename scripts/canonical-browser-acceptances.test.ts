@@ -19,7 +19,7 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
     if (result.isErr()) {
       expect(result.error.name).toBe("CanonicalSessionError");
       expect(result.error.message).toBe(
-        "Canonical sessions currently require plain paragraphs and note references without revisions.",
+        "Canonical sessions currently require plain paragraphs and supported inline atoms.",
       );
       expect(document).toEqual(original);
     } else expect(result.value.projection.doc.eq(toProseDoc(result.value.document))).toBe(true);

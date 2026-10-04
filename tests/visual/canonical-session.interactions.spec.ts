@@ -4,6 +4,7 @@ import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { identityKeysIn, IDENTITY_SPACES } from "../../packages/docx-core/src/ops/ids";
+import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
 import type { buildCanonicalBridge } from "../parity/canonicalBridge";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
@@ -11,6 +12,28 @@ const reactPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
 const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
 
 const snapshot = (page: Page) => page.evaluate(() => globalThis.__folioCanonical?.snapshot());
+
+const clearRefusals = (page: Page) =>
+  page.evaluate(() => {
+    globalThis.__folioCanonicalFuzzErrors = [];
+  });
+
+const expectNoRefusals = async (page: Page) =>
+  expect(await page.evaluate(() => globalThis.__folioCanonicalFuzzErrors)).toEqual([]);
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return;
+  console.log(
+    "Canonical interaction failure state:",
+    JSON.stringify(
+      await page.evaluate(() => ({
+        activeElement: document.activeElement?.outerHTML,
+        refusals: globalThis.__folioCanonicalFuzzErrors,
+        snapshot: globalThis.__folioCanonical?.snapshot(),
+      })),
+    ),
+  );
+});
 
 type ExpectedProjection = Pick<
   ReturnType<ReturnType<typeof buildCanonicalBridge>["snapshot"]>,
@@ -37,6 +60,25 @@ const select = async (page: Page, anchor: number, head = anchor) => {
       to: head,
     }),
   ).toBe(true);
+};
+
+type LoadedFixture = Awaited<ReturnType<typeof canonicalLoadFixture>>;
+
+const loadReady = async (page: Page, source: LoadedFixture) => {
+  expect(
+    await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source.bytes),
+  ).toBe(true);
+  // Adapter loading schedules external-document synchronization after parsing.
+  // Input starts only once the canonical owner exposes the loaded baseline.
+  await page.waitForFunction((content) => {
+    const current = globalThis.__folioCanonical?.snapshot();
+    return (
+      current?.active &&
+      current.projectionMatchesCanonical &&
+      current.canUndo === false &&
+      JSON.stringify(current.document?.package.document.content) === content
+    );
+  }, source.content);
 };
 
 test("canonical input, history and saved document agree across both adapters", async ({ page }) => {
@@ -242,16 +284,13 @@ test("canonical input, history and saved document agree across both adapters", a
 
 test("canonical structural and formatting hooks survive save and reopen", async ({ page }) => {
   test.setTimeout(60_000);
-  const source = await createDocx(createEmptyDocument({ initialText: "ab" }));
+  const source = await canonicalLoadFixture(
+    await createDocx(createEmptyDocument({ initialText: "ab" })),
+  );
   for (const port of [reactPort, vuePort]) {
     await page.goto(`http://localhost:${port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
-    expect(
-      await page.evaluate(
-        (bytes) => globalThis.__folioCanonical?.load(bytes),
-        [...new Uint8Array(source)],
-      ),
-    ).toBe(true);
+    await loadReady(page, source);
     await select(page, 2);
     const initial = await expectProjection(page, { text: "ab", selection: { from: 2, to: 2 } });
     const original = initial.document.package.document.content.at(0);
@@ -275,7 +314,9 @@ test("canonical structural and formatting hooks survive save and reopen", async 
       original.paraId,
     );
     await select(page, 1, 3);
+    await clearRefusals(page);
     await page.keyboard.press(`${MODIFIER}+b`);
+    await expectNoRefusals(page);
     const formatted = await expectProjection(page, { text: "ab", selection: { from: 1, to: 3 } });
     const paragraph = formatted.document.package.document.content.at(0);
     expect(
@@ -336,14 +377,14 @@ test("canonical structural gestures and toolbar operations preserve each interme
   page,
 }) => {
   test.setTimeout(90_000);
-  const source = [...new Uint8Array(await createDocx(createEmptyDocument({ initialText: "ab" })))];
+  const source = await canonicalLoadFixture(
+    await createDocx(createEmptyDocument({ initialText: "ab" })),
+  );
   for (const port of [reactPort, vuePort]) {
     await page.goto(`http://localhost:${port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
     const reload = async () => {
-      expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
-        true,
-      );
+      await loadReady(page, source);
       await select(page, 2);
     };
     const undoExactly = async (before: Awaited<ReturnType<typeof snapshot>>) => {
@@ -365,7 +406,9 @@ test("canonical structural gestures and toolbar operations preserve each interme
     for (const shortcut of ["Shift+Enter", `${MODIFIER}+Enter`]) {
       await reload();
       const before = await snapshot(page);
+      await clearRefusals(page);
       await page.keyboard.press(shortcut);
+      await expectNoRefusals(page);
       const inserted = await snapshot(page);
       expect(inserted?.document?.package.document.content).toHaveLength(1);
       const paragraph = inserted?.document?.package.document.content.at(0);

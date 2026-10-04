@@ -31,6 +31,7 @@ export default library({
     typeAware: false,
   },
   rules: {
+    "folio-editor-commands/command-owner-boundary": "error",
     // AST rules that oxlint delegates to the (dormant) type-aware pass in the
     // monorepo, so folio's source was never held to them. Folio's fork style
     // uses non-null assertions; keep parity with the rule set it conforms to.
@@ -66,6 +67,7 @@ export default library({
     "./.oxlint-plugins/folio-layer-boundaries.ts",
     "./.oxlint-plugins/folio-asset-urls.ts",
     "./.oxlint-plugins/folio-base64.ts",
+    "./.oxlint-plugins/folio-editor-commands.ts",
     "./.oxlint-plugins/folio-fragment-ownership.ts",
     "./.oxlint-plugins/folio-identity-attributes.ts",
     "./.oxlint-plugins/folio-painted-text.ts",

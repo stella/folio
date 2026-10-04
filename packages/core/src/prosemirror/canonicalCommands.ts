@@ -10,7 +10,8 @@ export type CanonicalCommandIntent =
   | { type: "changeListLevel"; direction: "increase" | "decrease" }
   | { type: "removeList" }
   | { type: "restartNumbering"; start?: number }
-  | { type: "continueNumbering" };
+  | { type: "continueNumbering" }
+  | { type: "insertBreak"; from: number; to: number; breakType: "page" | "textWrapping" };
 
 type CanonicalCommandDescriptor = (state: EditorState) => readonly CanonicalCommandIntent[];
 const descriptors = new WeakMap<Command, CanonicalCommandDescriptor>();
