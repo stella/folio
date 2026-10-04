@@ -659,67 +659,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     type: "idle",
   };
   let lastInputRule: { session: CanonicalSession; version: number; caret: number } | undefined;
-  const canonicalInputLifecycle = {
-    breakUndoGroup: () => {
-      if (editorSession.type === "canonical") editorSession.session.breakUndoGroup();
-    },
-    beginComposition: () => {
-      if (deps.getReadOnly() || editorSession.type !== "canonical") return false;
-      const begun = editorSession.session.beginComposition();
-      if (begun.isErr()) {
-        refuse(begun.error.message);
-        return false;
-      }
-      return true;
-    },
-    endComposition: () => {
-      if (editorSession.type === "canonical") editorSession.session.endComposition();
-    },
-  };
-  const input = createCanonicalInputBoundary({
-    pastePlainText: (pmView) => {
-      if (deps.getReadOnly()) return;
-      pasteWithoutFormatting(pmView.state, (transaction) => pmView.dispatch(transaction), pmView);
-    },
-    cut: (pmView, event) => {
-      event.preventDefault();
-      if (deps.getReadOnly()) {
-        deps.onReadOnlyEditAttempt();
-        return true;
-      }
-      if (editorSession.type !== "canonical" || pmView.state.selection.empty) return true;
-      if (event.clipboardData === null) {
-        refuse("The clipboard cannot receive the cut content.");
-        return true;
-      }
-      syncCanonicalMode();
-      const session = editorSession.session;
-      const { from, to } = pmView.state.selection;
-      const prepared = session.prepareReplace(pmView.state, {
-        from,
-        to,
-        text: "",
-        semantic: "replacement",
-      });
-      if (prepared.isErr()) {
-        refuse(prepared.error.message);
-        return true;
-      }
-      const copied = Result.try({
-        try: () => {
-          const serialized = pmView.serializeForClipboard(pmView.state.selection.content());
-          event.clipboardData?.setData("text/html", serialized.dom.innerHTML);
-          event.clipboardData?.setData("text/plain", serialized.text);
-        },
-        catch: () =>
-          new CanonicalSessionRefusalError({
-            message: "The clipboard could not receive the cut content.",
-          }),
-      });
-      if (copied.isErr()) refuse(copied.error.message);
-      else publishCommit(prepared.value);
-      return true;
-    },
+  const canonicalStructuralInput = {
     command: (name) => {
       if (!view) return;
       let command = deps.getExtensionManager()?.getCommand(name)?.();
@@ -839,7 +779,70 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       }
       publishCommit(prepared.value);
     },
+  } satisfies Pick<Parameters<typeof createCanonicalInputBoundary>[0], "command" | "structure">;
+  const canonicalInputLifecycle = {
+    breakUndoGroup: () => {
+      if (editorSession.type === "canonical") editorSession.session.breakUndoGroup();
+    },
+    beginComposition: () => {
+      if (deps.getReadOnly() || editorSession.type !== "canonical") return false;
+      const begun = editorSession.session.beginComposition();
+      if (begun.isErr()) {
+        refuse(begun.error.message);
+        return false;
+      }
+      return true;
+    },
+    endComposition: () => {
+      if (editorSession.type === "canonical") editorSession.session.endComposition();
+    },
+  };
+  const input = createCanonicalInputBoundary({
+    pastePlainText: (pmView) => {
+      if (deps.getReadOnly()) return;
+      pasteWithoutFormatting(pmView.state, (transaction) => pmView.dispatch(transaction), pmView);
+    },
+    cut: (pmView, event) => {
+      event.preventDefault();
+      if (deps.getReadOnly()) {
+        deps.onReadOnlyEditAttempt();
+        return true;
+      }
+      if (editorSession.type !== "canonical" || pmView.state.selection.empty) return true;
+      if (event.clipboardData === null) {
+        refuse("The clipboard cannot receive the cut content.");
+        return true;
+      }
+      syncCanonicalMode();
+      const session = editorSession.session;
+      const { from, to } = pmView.state.selection;
+      const prepared = session.prepareReplace(pmView.state, {
+        from,
+        to,
+        text: "",
+        semantic: "replacement",
+      });
+      if (prepared.isErr()) {
+        refuse(prepared.error.message);
+        return true;
+      }
+      const copied = Result.try({
+        try: () => {
+          const serialized = pmView.serializeForClipboard(pmView.state.selection.content());
+          event.clipboardData?.setData("text/html", serialized.dom.innerHTML);
+          event.clipboardData?.setData("text/plain", serialized.text);
+        },
+        catch: () =>
+          new CanonicalSessionRefusalError({
+            message: "The clipboard could not receive the cut content.",
+          }),
+      });
+      if (copied.isErr()) refuse(copied.error.message);
+      else publishCommit(prepared.value);
+      return true;
+    },
     ...canonicalInputLifecycle,
+    ...canonicalStructuralInput,
     replace: (intent) => {
       if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
       syncCanonicalMode();

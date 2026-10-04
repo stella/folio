@@ -111,7 +111,7 @@
   "editor intent sequences preserve accepted editing, rejected baseline and exact journal undo": [
     {
       "seed": 1364722648,
-      "note": "Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists; Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph.",
+      "note": "Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists; Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph.; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists; Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph.; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
       "date": "2026-10-02"
     },
     {
@@ -251,24 +251,6 @@
       "path": "31:0:0:0:0:0:0:0:0:8:6:6:6:6:7:7:7:7:7:7:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:10:10:10:10:10:10:10:11:10:10:9:9:9:10:9:12:12:11:11:13:13:13:13:13:13:13:13",
       "note": "Direct and accepted tracked editor intents must agree for hyperlink marker seams around reviewed math atoms in table paragraphs.",
       "date": "2026-10-04"
-    },
-    {
-      "seed": 1254747133,
-      "path": "477:0:0:0:0:0:0:6:5:6:5:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:12:6:8:6:13:6:7:7:6:7:9:9:9:9:9:9:9:9:9",
-      "note": "Direct and accepted structural intents retain authored empty paragraph properties and container boundaries.",
-      "date": "2026-10-03"
-    },
-    {
-      "seed": 369550806,
-      "path": "0:0:0:0:0:0:0:0:0:0:1:0:0:1:1:1:3:4:3:3:4:4:5:4:4:7:8:8:8:8:8:8:7:7:7:7:7:7:9:8:7:15:8:7:8:8:8:7:8:7:7:9:9:9:9:9:9:9:9",
-      "note": "Tracked editor intent rejection must retain prior run property-change provenance",
-      "date": "2026-10-02"
-    },
-    {
-      "seed": 184846951,
-      "path": "0:0:0:0:0:0:0:0:0:3:1:1:3:3:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4",
-      "note": "Rejecting run property changes must preserve pre-existing matching run boundaries",
-      "date": "2026-10-02"
     }
   ],
   "the same operation on equal documents gives equal results": [
