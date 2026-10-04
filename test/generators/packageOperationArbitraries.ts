@@ -554,6 +554,90 @@ export const PACKAGE_OP_CASES = {
       { type: "setSectionProps", sectionIndex: 0, patch: { pageWidth: 13000 } },
       "restoreStoryParts",
     ),
+  insertColumn: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: "insertColumn",
+      story: "main",
+      blockId: tableFor({ ...args, story: "main" }).blockId,
+      column: args.seed.first % 3,
+      width: 1200,
+      newBlockIds: [freshParagraph(args).paraId ?? "", freshParagraph(args, 1).paraId ?? ""],
+    },
+  }),
+  deleteColumn: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: "deleteColumn",
+      story: "main",
+      blockId: tableFor({ ...args, story: "main" }).blockId,
+      column: args.seed.first % 2,
+    },
+  }),
+  mergeCells: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: "mergeCells",
+      story: "main",
+      blockId: tableFor({ ...args, story: "main" }).blockId,
+      top: 0,
+      bottom: 1,
+      left: 0,
+      right: 2,
+      newBlockIds: [],
+    },
+  }),
+  splitCell: (args: CaseArgs): GeneratedCase => {
+    const merge = PACKAGE_OP_CASES.mergeCells(args);
+    const merged = applyDocumentOp(merge.document, merge.op).unwrap().document;
+    return {
+      document: merged,
+      op: {
+        type: "splitCell",
+        story: "main",
+        blockId: tableFor({ ...args, document: merged, story: "main" }).blockId,
+        newBlockIds: [freshParagraph({ ...args, document: merged }).paraId ?? ""],
+      },
+    };
+  },
+  setTableGrid: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: "setTableGrid",
+      story: "main",
+      blockId: tableFor({ ...args, story: "main" }).blockId,
+      columnWidths: [1200 + (args.seed.first % 600), 2400],
+    },
+  }),
+  setCellProps: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: "setCellProps",
+      story: "main",
+      blockId: tableFor({ ...args, story: "main" }).blockId,
+      patch: { verticalAlign: args.seed.inherit ? "center" : "bottom" },
+    },
+  }),
+  setRowProps: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: "setRowProps",
+      story: "main",
+      blockId: tableFor({ ...args, story: "main" }).blockId,
+      patch: { header: args.seed.inherit },
+    },
+  }),
+  setTableProps: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: "setTableProps",
+      story: "main",
+      blockId: tableFor({ ...args, story: "main" }).blockId,
+      patch: { layout: args.seed.inherit ? "fixed" : "autofit" },
+    },
+  }),
+  setTable: (args: CaseArgs): GeneratedCase =>
+    inverseCase(args, PACKAGE_OP_CASES.setTableGrid(args).op, "setTable"),
 } satisfies Record<DocumentOp["type"], (args: CaseArgs) => GeneratedCase>;
 
 export const GENERATED_PACKAGE_OP_KINDS = Object.values(DOCUMENT_OP_TYPES);

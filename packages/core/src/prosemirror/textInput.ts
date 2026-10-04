@@ -28,8 +28,15 @@ export const dispatchEditorTextInput = <TView extends TextInputDispatchTarget<TV
   const { from, to } = typeof input === "string" ? view.state.selection : input;
   const text = typeof input === "string" ? input : input.text;
   const defaultTransaction = () => {
-    if (!(view.state.selection instanceof AllSelection)) {
-      return view.state.tr.insertText(text, from, to);
+    const { selection } = view.state;
+    if (!(selection instanceof AllSelection)) {
+      const tr = view.state.tr.insertText(text, from, to);
+      // Typing over a selection leaves the caret after the typed text;
+      // `insertText` puts it at the selection's mapped end, which for a node
+      // selection (an image, a field) is before the text.
+      return !selection.empty && selection.from === from && selection.to === to
+        ? tr.setSelection(TextSelection.create(tr.doc, from + text.length))
+        : tr;
     }
     // Select-all spans the block boundaries around the content: typing
     // replaces the text inside them, formatted as the first character it

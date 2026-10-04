@@ -42,6 +42,7 @@ export const BATCH_REJECTION_REASONS: {
     readonly CONFLICT: "conflict";
     readonly STALE_BASE: "staleBase";
     readonly INVALID_OPERATION: "invalidOperation";
+    readonly TABLE_REQUIRES_EXCLUSIVE_EDIT: "tableRequiresExclusiveEdit";
 };
 
 // @public (undocumented)
@@ -135,6 +136,12 @@ export type DeleteBlocksOp = {
     newIds?: NewIds;
 };
 
+// @public (undocumented)
+export type DeleteColumnOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.DELETE_COLUMN;
+    column: number;
+};
+
 // @public
 export type DeleteNumberingInstanceOp = {
     type: typeof DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE;
@@ -179,6 +186,10 @@ export type DeleteTableOp = {
 export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly UNSUPPORTED_SCHEMA: "unsupportedSchema";
     readonly BLOCK_NOT_FOUND: "blockNotFound";
+    readonly INVALID_OPERATION: "invalidOperation";
+    readonly TABLE_ROW_EMPTY: "tableRowEmpty";
+    readonly NO_CHANGE: "noChange";
+    readonly DEPENDENT_RECORDS: "dependentRecords";
     readonly INVALID_OFFSET: "invalidOffset";
     readonly CROSS_BLOCK_RANGE: "crossBlockRange";
     readonly SPLITS_SURROGATE_PAIR: "splitsSurrogatePair";
@@ -206,7 +217,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 7;
+export const DOCUMENT_OP_SCHEMA_VERSION = 8;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -237,6 +248,15 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly INSERT_ROW: "insertRow";
     readonly DELETE_ROW: "deleteRow";
     readonly SET_TABLE_ROWS: "setTableRows";
+    readonly INSERT_COLUMN: "insertColumn";
+    readonly DELETE_COLUMN: "deleteColumn";
+    readonly MERGE_CELLS: "mergeCells";
+    readonly SPLIT_CELL: "splitCell";
+    readonly SET_TABLE_GRID: "setTableGrid";
+    readonly SET_CELL_PROPS: "setCellProps";
+    readonly SET_ROW_PROPS: "setRowProps";
+    readonly SET_TABLE_PROPS: "setTableProps";
+    readonly SET_TABLE: "setTable";
     readonly CREATE_NUMBERING_INSTANCE: "createNumberingInstance";
     readonly DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance";
     readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
@@ -253,7 +273,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = (CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp) & {
+export type DocumentOp = (CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp) & {
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -287,6 +307,9 @@ export const documentStories: (document: Document_2) => OpStory[];
 
 // @public
 export type EditorIntent = {
+    type: "table";
+    operation: TableIntentOperation;
+} | {
     type: "replaceText";
     from: TextPosition;
     to: TextPosition;
@@ -394,6 +417,14 @@ export type InsertBlocksOp = {
 };
 
 // @public
+export type InsertColumnOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.INSERT_COLUMN;
+    column: number;
+    width: number;
+    newBlockIds: readonly string[];
+};
+
+// @public
 export type InsertContentOp = {
     type: typeof DOCUMENT_OP_TYPES.INSERT_CONTENT;
     at: TextPosition;
@@ -468,6 +499,16 @@ export type JoinInlineOp = {
 
 // @public
 export const MAX_BATCH_WIRE_BYTES: number;
+
+// @public
+export type MergeCellsOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.MERGE_CELLS;
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    newBlockIds: readonly string[];
+};
 
 // @public
 export function mergeRunContent(content1: RunContent[], content2: RunContent[]): RunContent[];
@@ -704,6 +745,12 @@ export type SequencedBatch = DocumentBatch & {
     effects?: readonly SequencedOpEffect[];
 };
 
+// @public (undocumented)
+export type SetCellPropsOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SET_CELL_PROPS;
+    patch: FormattingPatch<TableCellFormatting>;
+};
+
 // @public
 export type SetContainerBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS;
@@ -731,6 +778,12 @@ export type SetParagraphReviewOp = {
     blockId: string;
     expected: ParagraphReviewFields;
     review: ParagraphReviewFields;
+};
+
+// @public (undocumented)
+export type SetRowPropsOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SET_ROW_PROPS;
+    patch: FormattingPatch<TableRowFormatting>;
 };
 
 // @public
@@ -766,6 +819,27 @@ export type SetSectionPropsOp = {
 };
 
 // @public
+export type SetTableGridOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SET_TABLE_GRID;
+    columnWidths: readonly number[];
+};
+
+// @public
+export type SetTableOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_TABLE;
+    story: OpStory;
+    blockId: string;
+    expected: Table;
+    table: Table;
+};
+
+// @public (undocumented)
+export type SetTablePropsOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SET_TABLE_PROPS;
+    patch: FormattingPatch<TableFormatting>;
+};
+
+// @public
 export type SetTableRowsOp = {
     type: typeof DOCUMENT_OP_TYPES.SET_TABLE_ROWS;
     story: OpStory;
@@ -795,6 +869,12 @@ export type SplitBlockOp = {
 };
 
 // @public
+export type SplitCellOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SPLIT_CELL;
+    newBlockIds: readonly string[];
+};
+
+// @public
 export type SplitHalf = (typeof SPLIT_HALVES)[keyof typeof SPLIT_HALVES];
 
 // @public
@@ -810,6 +890,14 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 
 // @public (undocumented)
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
+
+// @public (undocumented)
+export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;
+
+// @public
+export type TableIntentOperation = { [Kind in TableEditOp["type"]]: Omit<Extract<TableEditOp, {
+        type: Kind;
+    }>, "revision" | "newIds" | "newBlockIds">; }[TableEditOp["type"]];
 
 // @public
 export type TextPosition = {

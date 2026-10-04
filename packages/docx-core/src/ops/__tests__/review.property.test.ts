@@ -46,7 +46,13 @@ import type { BlockContent, Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp, stampOf } from "../apply";
 import { storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
-import { IDENTITY_SPACES, identityKeysIn, idKey, paragraphIdsIn } from "../ids";
+import {
+  IDENTITY_SPACES,
+  identityKeysIn,
+  idKey,
+  packageIdentityKeys,
+  paragraphIdsIn,
+} from "../ids";
 import { gapAfterInserted } from "../inline";
 import { compareGaps, defaultInsertionGap, type Gap, isCommentAnchor, leafSpans } from "../leaves";
 import { paragraphLength, paragraphLogicalText } from "../offsets";
@@ -854,6 +860,27 @@ describe("tracked operations and their resolution", () => {
         const applied = applyDocumentOps(document, plan.value);
         if (applied.isErr()) throw applied.error;
         count(tally, plan.value.length > 1 ? "several" : "one");
+        const baseline = new Set(packageIdentityKeys(document.package));
+        const reported = new Set(
+          applied.value.revisions.map((id) => `${IDENTITY_SPACES.REVISION}:${id}`),
+        );
+        const freshSplitIds = packageIdentityKeys(applied.value.document.package).filter(
+          (key) =>
+            key.startsWith(`${IDENTITY_SPACES.REVISION}:`) &&
+            !baseline.has(key) &&
+            !reported.has(key),
+        );
+        if (freshSplitIds.length > 0) {
+          const plannedPool = new Set(
+            plan.value.flatMap((planned) =>
+              "newIds" in planned
+                ? (planned.newIds?.revision ?? []).map((id) => `${IDENTITY_SPACES.REVISION}:${id}`)
+                : [],
+            ),
+          );
+          for (const key of freshSplitIds) expect(plannedPool.has(key)).toBe(true);
+          count(tally, "fresh-split");
+        }
         const paragraph = paragraphById(document, op.from.blockId);
         if (paragraph === undefined) return;
         const text = paragraphLogicalText(paragraph);
@@ -904,6 +931,7 @@ describe("tracked operations and their resolution", () => {
       { numRuns: NUM_RUNS / 5 },
     );
     expect(tally.get("one") ?? 0).toBeGreaterThan(0);
+    expect(tally.get("fresh-split") ?? 0).toBeGreaterThan(0);
   });
 });
 

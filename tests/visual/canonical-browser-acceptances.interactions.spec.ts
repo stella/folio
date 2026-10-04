@@ -12,10 +12,8 @@ import type {} from "../parity/canonicalFuzzErrors";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const snapshot = async (page: Page) => {
-  const read = () => page.evaluate(() => globalThis.__folioCanonical?.snapshot());
-  // Native composition completion is asynchronous; observe the committed state.
-  await expect(read).toPass({ timeout: 2_000 });
-  const value = await read();
+  await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
+  const value = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
   expect(value?.active).toBe(true);
   expect(value?.projectionMatchesCanonical).toBe(true);
   expect(value?.projectionJSON).toEqual(value?.canonicalProjectionJSON);
@@ -32,7 +30,7 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
   for (const mode of ["editing", "suggesting"] as const) {
     test(`canonical acceptance seed ${seed} / ${mode}`, async ({ page }, info) => {
       const missing = createMissingOpBurndown();
-      await page.goto("/?session=canonical");
+      await page.goto("/?session=canonical", { waitUntil: "networkidle" });
       await page.waitForSelector(".layout-page");
       await page.evaluate(() => {
         globalThis.__folioCanonicalFuzzErrors = [];
@@ -55,12 +53,15 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
         });
         return;
       }
+      await page.waitForFunction(() => globalThis.__folioCanonical != null);
       expect(
         await page.evaluate(
           async (bytes) => globalThis.__folioCanonical?.load(bytes),
           [...new Uint8Array(source)],
         ),
       ).toBe(true);
+      await page.waitForLoadState("networkidle");
+      await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
       expect(
         await page.evaluate((value) => globalThis.__folioCanonical?.setMode(value), mode),
       ).toBe(true);

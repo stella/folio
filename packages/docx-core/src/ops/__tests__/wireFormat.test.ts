@@ -7,7 +7,7 @@
  * record an operation embeds, shows up here as a diff of the fixture; it
  * needs a new schema version and a migration, not an updated released fixture.
  * The fixture for an unreleased schema records that cutover's final contract;
- * schema 7 includes cut provenance and owned-field presence in one cutover.
+ * schema 8 includes table editing variants in the current operation contract.
  *
  * `bun packages/docx-core/src/ops/__tests__/wireFixtures.ts` generates the current fixture.
  */
@@ -76,6 +76,99 @@ test("every operation kind and its inverse keep their persisted JSON", async () 
   expect(envelopes().every(({ schema }) => schema === DOCUMENT_OP_SCHEMA_VERSION)).toBe(true);
 });
 
+test("semantic table wire fixtures exercise geometry, ids, patches and tracked payloads", () => {
+  const fixtures = envelopes().map(({ op }) => op);
+  const fields = {
+    insertColumn: {
+      type: true,
+      story: true,
+      blockId: true,
+      column: true,
+      width: true,
+      newBlockIds: true,
+      revision: true,
+      newIds: true,
+    },
+    deleteColumn: {
+      type: true,
+      story: true,
+      blockId: true,
+      column: true,
+      revision: true,
+      newIds: true,
+    },
+    mergeCells: {
+      type: true,
+      story: true,
+      blockId: true,
+      top: true,
+      bottom: true,
+      left: true,
+      right: true,
+      newBlockIds: true,
+      revision: true,
+      newIds: true,
+    },
+    splitCell: {
+      type: true,
+      story: true,
+      blockId: true,
+      newBlockIds: true,
+      revision: true,
+      newIds: true,
+    },
+    setTableGrid: {
+      type: true,
+      story: true,
+      blockId: true,
+      columnWidths: true,
+      revision: true,
+      newIds: true,
+    },
+    setCellProps: {
+      type: true,
+      story: true,
+      blockId: true,
+      patch: true,
+      revision: true,
+      newIds: true,
+    },
+    setRowProps: {
+      type: true,
+      story: true,
+      blockId: true,
+      patch: true,
+      revision: true,
+      newIds: true,
+    },
+    setTableProps: {
+      type: true,
+      story: true,
+      blockId: true,
+      patch: true,
+      revision: true,
+      newIds: true,
+    },
+  } as const satisfies {
+    [Kind in import("../types").TableEditOp["type"]]: Record<
+      keyof Extract<import("../types").TableEditOp, { type: Kind }>,
+      true
+    >;
+  };
+  for (const [kind, declared] of Object.entries(fields)) {
+    const matching = fixtures.filter((op) => op.type === kind);
+    expect(matching.length).toBeGreaterThan(0);
+    const exercised = new Set(matching.flatMap((op) => Object.keys(op)));
+    expect([...exercised].toSorted()).toEqual(Object.keys(declared).toSorted());
+  }
+  const restorations = fixtures.filter((op) => op.type === DOCUMENT_OP_TYPES.SET_TABLE);
+  expect(restorations.length).toBeGreaterThan(0);
+  for (const op of restorations) {
+    expect(op.expected.type).toBe("table");
+    expect(op.table.type).toBe("table");
+  }
+});
+
 test("older envelopes are refused structurally and current envelopes apply", async () => {
   const document: Document = {
     package: { document: { content: [{ type: "paragraph", paraId: "00000001", content: [] }] } },
@@ -86,12 +179,12 @@ test("older envelopes are refused structurally and current envelopes apply", asy
     text: "x",
     runProps: "inherit",
   } as const;
-  // Schema 5 belongs to PR6; this reader implements the explicit schema-7 cutover.
+  // Older operation schemas are refused after the schema-8 cutover.
   const older: unknown = await Bun.file(
     new URL("./__fixtures__/ops-v4.json", import.meta.url),
   ).json();
   expect(Array.isArray(older)).toBe(true);
-  for (const schema of [4, 5, 6, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [1, 2, 3, 4, 5, 6, 7, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
     const refused = applyDocumentOpEnvelope(document, { schema, op });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");

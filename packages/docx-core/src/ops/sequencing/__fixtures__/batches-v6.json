@@ -1,0 +1,234 @@
+[
+  {
+    "schema": 6,
+    "opId": "01JTESTBATCH000000000000001",
+    "actor": "actor-1",
+    "baseRev": 0,
+    "ops": [
+      {
+        "type": "insertText",
+        "at": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 0
+        },
+        "text": "A😀",
+        "runProps": "inherit"
+      },
+      {
+        "type": "insertContent",
+        "at": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 3
+        },
+        "slice": {
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "tab"
+                }
+              ]
+            }
+          ],
+          "openStart": 0,
+          "openEnd": 0
+        }
+      },
+      {
+        "type": "deleteRange",
+        "from": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 1
+        },
+        "to": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 3
+        },
+        "revision": {
+          "id": 42,
+          "author": "Editor",
+          "date": "2026-01-01T00:00:00Z"
+        }
+      },
+      {
+        "type": "setRunProps",
+        "from": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 0
+        },
+        "to": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 1
+        },
+        "patch": {
+          "bold": true,
+          "italic": null
+        },
+        "expected": {
+          "bold": null,
+          "italic": true
+        },
+        "whenEmpty": "omit"
+      },
+      {
+        "type": "setParagraphProps",
+        "story": "main",
+        "blockId": "00000001",
+        "patch": {
+          "alignment": "center",
+          "spaceBefore": null
+        }
+      },
+      {
+        "type": "splitBlock",
+        "at": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 1
+        },
+        "newBlockId": "00000002",
+        "newHalf": "second",
+        "newIds": {
+          "revision": [43],
+          "control": [9]
+        }
+      },
+      {
+        "type": "joinBlocks",
+        "story": "main",
+        "blockId": "00000001",
+        "nextBlockId": "00000002",
+        "survivor": "first"
+      },
+      {
+        "type": "insertBlocks",
+        "story": "main",
+        "at": {
+          "type": "after",
+          "blockId": "00000001"
+        },
+        "blocks": [
+          {
+            "type": "paragraph",
+            "paraId": "00000003",
+            "content": [
+              {
+                "type": "run",
+                "formatting": {
+                  "bold": true
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "New"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "deleteBlocks",
+        "story": "main",
+        "blockIds": ["00000003"]
+      },
+      {
+        "type": "resolveRevision",
+        "story": "main",
+        "revisionIds": [42],
+        "decision": "accept"
+      }
+    ]
+  },
+  {
+    "schema": 6,
+    "opId": "01JTESTBATCH000000000000002",
+    "actor": "actor-2",
+    "baseRev": 1,
+    "revision": 2,
+    "ops": [
+      {
+        "type": "insertText",
+        "at": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 1,
+          "zeroWidthBefore": 2
+        },
+        "text": "Z",
+        "runProps": {
+          "bold": true,
+          "language": {
+            "val": "cs-CZ"
+          }
+        },
+        "revision": {
+          "id": 42,
+          "author": "Editor",
+          "date": "2026-01-01T00:00:00Z"
+        }
+      }
+    ]
+  },
+  {
+    "schema": 6,
+    "opId": "01JTESTBATCH000000000000003",
+    "actor": "actor-1",
+    "baseRev": 2,
+    "revision": 3,
+    "ops": [
+      {
+        "type": "splitBlock",
+        "at": {
+          "story": "main",
+          "blockId": "00000001",
+          "offset": 3
+        },
+        "newBlockId": "00000004"
+      },
+      {
+        "type": "joinBlocks",
+        "story": "main",
+        "blockId": "00000004",
+        "nextBlockId": "00000001"
+      },
+      {
+        "type": "deleteBlocks",
+        "story": "main",
+        "blockIds": ["00000003"]
+      },
+      {
+        "type": "resolveRevision",
+        "story": "main",
+        "revisionIds": [42],
+        "decision": "accept"
+      }
+    ],
+    "effects": [
+      {
+        "type": "splitBlock",
+        "newHalf": "first"
+      },
+      {
+        "type": "joinBlocks",
+        "firstLength": 3
+      },
+      {
+        "type": "touchedBlocks",
+        "blockIds": ["00000001", "00000003"]
+      },
+      {
+        "type": "touchedBlocks",
+        "blockIds": ["00000001"]
+      }
+    ]
+  }
+]

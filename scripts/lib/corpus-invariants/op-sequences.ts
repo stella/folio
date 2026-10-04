@@ -1,7 +1,7 @@
-import { panic } from "better-result";
 /** Reproducible, bounded operation sequences over seeded corpus models. */
 import { isDeepStrictEqual } from "node:util";
-import type { Document, Paragraph } from "../../../packages/docx-core/src/model/document";
+import { panic } from "better-result";
+import type { Document, Paragraph, Table } from "../../../packages/docx-core/src/model/document";
 import {
   applyDocumentOp,
   normalizeForOps,
@@ -14,6 +14,7 @@ import {
   type AppliedDocumentOp,
   type NoteStory,
   sectionPropertiesAt,
+  type TableEditOp,
 } from "../../../packages/docx-core/src/ops/documentOps";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
@@ -23,6 +24,7 @@ import { parseDocx } from "@stll/folio-core/docx/parser";
 import { serializeDocument } from "@stll/folio-core/docx/serializer/documentSerializer";
 import { storyParagraphs, blockListAt } from "../../../packages/docx-core/src/ops/blocks";
 import { leafSpans } from "../../../packages/docx-core/src/ops/leaves";
+import { tableGrid } from "../../../packages/docx-core/src/ops/tableGrid";
 import { paragraphLength } from "../../../packages/docx-core/src/ops/offsets";
 import {
   packageIdentityKeys,
@@ -32,6 +34,7 @@ import {
 import type { CorpusInvariantInput } from "./contract";
 
 export const OP_SEQUENCE_SEEDS = [0x17a3, 0x5b91, 0xcf27] as const;
+const MAX_NEW_IDS = 64;
 
 /** Exact records, including captures and binary contents; undefined is wire absence. */
 export const exactOpModel = (value: unknown): unknown => {
@@ -108,31 +111,6 @@ const randomFor = (seed: number) => {
   };
 };
 
-export const OP_SEQUENCE_FAMILIES = [
-  DOCUMENT_OP_TYPES.INSERT_TEXT,
-  DOCUMENT_OP_TYPES.INSERT_CONTENT,
-  DOCUMENT_OP_TYPES.DELETE_RANGE,
-  DOCUMENT_OP_TYPES.SET_RUN_PROPS,
-  DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-  DOCUMENT_OP_TYPES.SPLIT_BLOCK,
-  DOCUMENT_OP_TYPES.JOIN_BLOCKS,
-  DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-  DOCUMENT_OP_TYPES.DELETE_BLOCKS,
-  DOCUMENT_OP_TYPES.INSERT_TABLE,
-  DOCUMENT_OP_TYPES.DELETE_TABLE,
-  DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-  DOCUMENT_OP_TYPES.INSERT_ROW,
-  DOCUMENT_OP_TYPES.DELETE_ROW,
-  DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-  DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
-  DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
-  DOCUMENT_OP_TYPES.ADD_NOTE,
-  DOCUMENT_OP_TYPES.REMOVE_NOTE,
-  DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
-  DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
-] as const;
-export const OP_SEQUENCE_LENGTH = OP_SEQUENCE_FAMILIES.length;
-
 /** Every schema member needs a generator decision when the operations API grows. */
 export const OP_GENERATOR_ROLES = {
   [DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER]: "generated",
@@ -159,13 +137,74 @@ export const OP_GENERATOR_ROLES = {
   [DOCUMENT_OP_TYPES.INSERT_ROW]: "generated",
   [DOCUMENT_OP_TYPES.DELETE_ROW]: "generated",
   [DOCUMENT_OP_TYPES.RESOLVE_REVISION]: "generated",
+  [DOCUMENT_OP_TYPES.INSERT_COLUMN]: "generated",
+  [DOCUMENT_OP_TYPES.DELETE_COLUMN]: "generated",
+  [DOCUMENT_OP_TYPES.MERGE_CELLS]: "generated",
+  [DOCUMENT_OP_TYPES.SPLIT_CELL]: "generated",
+  [DOCUMENT_OP_TYPES.SET_TABLE_GRID]: "generated",
+  [DOCUMENT_OP_TYPES.SET_CELL_PROPS]: "generated",
+  [DOCUMENT_OP_TYPES.SET_ROW_PROPS]: "generated",
+  [DOCUMENT_OP_TYPES.SET_TABLE_PROPS]: "generated",
   [DOCUMENT_OP_TYPES.SPLIT_INLINE]: "inverse",
   [DOCUMENT_OP_TYPES.JOIN_INLINE]: "inverse",
   [DOCUMENT_OP_TYPES.REPLACE_BLOCKS]: "inverse",
   [DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW]: "inverse",
   [DOCUMENT_OP_TYPES.REPLACE_INLINE]: "inverse",
   [DOCUMENT_OP_TYPES.SET_TABLE_ROWS]: "inverse",
+  [DOCUMENT_OP_TYPES.SET_TABLE]: "inverse",
 } as const satisfies Record<DocumentOp["type"], "generated" | "inverse">;
+
+type GeneratedOpType = {
+  [Kind in keyof typeof OP_GENERATOR_ROLES]: (typeof OP_GENERATOR_ROLES)[Kind] extends "generated"
+    ? Kind
+    : never;
+}[keyof typeof OP_GENERATOR_ROLES];
+const isGeneratedFamily = (family: DocumentOp["type"]): family is GeneratedOpType =>
+  OP_GENERATOR_ROLES[family] === "generated";
+export const OP_SEQUENCE_FAMILIES = Object.values(DOCUMENT_OP_TYPES).filter(isGeneratedFamily);
+export const OP_SEQUENCE_LENGTH = OP_SEQUENCE_FAMILIES.length;
+
+/** The semantic subset also has a total decision, including newly added edit kinds. */
+const TABLE_EDIT_FAMILIES = {
+  insertColumn: true,
+  deleteColumn: true,
+  mergeCells: true,
+  splitCell: true,
+  setTableGrid: true,
+  setCellProps: true,
+  setRowProps: true,
+  setTableProps: true,
+} as const satisfies Record<TableEditOp["type"], true>;
+const isTableEditFamily = (family: GeneratedOpType): family is TableEditOp["type"] =>
+  Object.hasOwn(TABLE_EDIT_FAMILIES, family);
+
+/** Resolve the table path already captured by the story walker, without rescanning the story. */
+const tableForParagraph = (
+  document: Document,
+  location: ReturnType<typeof storyParagraphs>[number],
+) => {
+  const stepIndex = location.list.findLastIndex((step) => step.kind === "tableCell");
+  const step = location.list.at(stepIndex);
+  if (step?.kind !== "tableCell") return undefined;
+  const table = blockListAt(
+    document.package.document.content,
+    location.list.slice(0, stepIndex),
+  ).at(step.block);
+  if (table?.type !== "table") return undefined;
+  const row = table.rows.at(step.row);
+  const cell = row?.cells.at(step.cell);
+  if (!row || !cell) return undefined;
+  return { table, row, cell, rowIndex: step.row, cellIndex: step.cell };
+};
+const inferredGridWidth = (table: Table) => {
+  const first = table.rows.at(0);
+  return (
+    table.columnWidths?.length ??
+    (first?.formatting?.gridBefore ?? 0) +
+      (first?.cells.reduce((sum, cell) => sum + (cell.formatting?.gridSpan ?? 1), 0) ?? 0) +
+      (first?.formatting?.gridAfter ?? 0)
+  );
+};
 
 type CandidateOptions = {
   document: Document;
@@ -182,7 +221,33 @@ const candidate = ({
   tracked,
 }: CandidateOptions): DocumentOp | undefined => {
   const paragraphs = storyParagraphs(document.package.document);
-  const location = paragraphs.at(choose(paragraphs.length));
+  let candidates = paragraphs;
+  if (isTableEditFamily(family)) {
+    const inTables = paragraphs.filter(
+      (candidateLocation) => tableForParagraph(document, candidateLocation) !== undefined,
+    );
+    if (inTables.length > 0) candidates = inTables;
+    if (family === DOCUMENT_OP_TYPES.SPLIT_CELL) {
+      const horizontalSpans = candidates.filter((candidateLocation) => {
+        const target = tableForParagraph(document, candidateLocation);
+        return (
+          (target?.cell.formatting?.gridSpan ?? 1) > 1 &&
+          target?.cell.formatting?.vMerge === undefined
+        );
+      });
+      if (horizontalSpans.length > 0) candidates = horizontalSpans;
+    }
+  }
+  let location = candidates.at(choose(candidates.length));
+  if (location === undefined && isTableEditFamily(family)) {
+    // No main-story paragraph can anchor this family: apply still emits its
+    // structured blockNotFound refusal rather than silently skipping coverage.
+    location = {
+      list: [],
+      index: 0,
+      paragraph: { type: "paragraph", paraId: "00000001", content: [] },
+    };
+  }
   if (location === undefined || location.paragraph.paraId === undefined) return undefined;
   const paragraph = location.paragraph;
   const blockId = location.paragraph.paraId;
@@ -192,12 +257,28 @@ const candidate = ({
   let paraId = 1;
   while (ids.has(idKey(paraId.toString(16).padStart(8, "0")))) paraId += 1;
   const newBlockId = paraId.toString(16).padStart(8, "0");
+  // Oversized tables exhaust the bounded pool and are explicitly refused by apply;
+  // never allocate unbounded paragraph ids while probing a corpus file.
+  const freshBlockIds = (count: number) => {
+    const fresh: string[] = [];
+    let next = paraId;
+    while (fresh.length < Math.min(count, MAX_NEW_IDS)) {
+      const value = next.toString(16).padStart(8, "0");
+      if (!ids.has(idKey(value))) fresh.push(value);
+      next += 1;
+    }
+    return fresh;
+  };
   const taken = new Set(packageIdentityKeys(document.package));
   const freshRevision: number[] = [];
   const freshControl: number[] = [];
-  for (let id = 1; freshRevision.length < 64 || freshControl.length < 64; id += 1) {
-    if (freshRevision.length < 64 && !taken.has(`revision:${id}`)) freshRevision.push(id);
-    if (freshControl.length < 64 && !taken.has(`control:${id}`)) freshControl.push(id);
+  for (
+    let id = 1;
+    freshRevision.length < MAX_NEW_IDS || freshControl.length < MAX_NEW_IDS;
+    id += 1
+  ) {
+    if (freshRevision.length < MAX_NEW_IDS && !taken.has(`revision:${id}`)) freshRevision.push(id);
+    if (freshControl.length < MAX_NEW_IDS && !taken.has(`control:${id}`)) freshControl.push(id);
   }
   const revisionId = freshRevision.at(0);
   if (revisionId === undefined) return undefined;
@@ -245,7 +326,7 @@ const candidate = ({
       };
     }
     case "removeHeaderFooter": {
-      const candidates = Array.from({ length: sectionCount }, (_, sectionIndex) => {
+      const removableStories = Array.from({ length: sectionCount }, (_, sectionIndex) => {
         const properties = sectionPropertiesAt(document, sectionIndex);
         const headers =
           properties?.headerReferences
@@ -263,7 +344,7 @@ const candidate = ({
             ) ?? [];
         return [...headers, ...footers];
       }).flat();
-      const selected = candidates.at(choose(candidates.length));
+      const selected = removableStories.at(choose(removableStories.length));
       return selected ? { type: DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER, ...selected } : undefined;
     }
     case "addNote": {
@@ -405,7 +486,15 @@ const candidate = ({
         at: { type: "before", blockId },
         table: {
           type: "table",
-          rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [freshParagraph] }] }],
+          columnWidths: [900, 900],
+          rows: [
+            {
+              type: "tableRow",
+              cells: [
+                { type: "tableCell", formatting: { gridSpan: 2 }, content: [freshParagraph] },
+              ],
+            },
+          ],
         },
       };
     case "deleteTable":
@@ -416,7 +505,13 @@ const candidate = ({
       const blocks = [...expected];
       blocks.splice(location.index, 0, {
         type: "table",
-        rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [freshParagraph] }] }],
+        columnWidths: [900, 900],
+        rows: [
+          {
+            type: "tableRow",
+            cells: [{ type: "tableCell", formatting: { gridSpan: 2 }, content: [freshParagraph] }],
+          },
+        ],
       });
       return {
         type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
@@ -427,13 +522,24 @@ const candidate = ({
       };
     }
     case "insertRow": {
-      if (!location.list.some((step) => step.kind === "tableCell")) return undefined;
+      const target = tableForParagraph(document, location);
+      if (target === undefined) return undefined;
+      const width = inferredGridWidth(target.table);
       return {
         type: DOCUMENT_OP_TYPES.INSERT_ROW,
         story: OP_STORIES.MAIN,
         blockId,
         at: 0,
-        row: { type: "tableRow", cells: [{ type: "tableCell", content: [freshParagraph] }] },
+        row: {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              ...(width > 1 ? { formatting: { gridSpan: width } } : {}),
+              content: [freshParagraph],
+            },
+          ],
+        },
         newIds,
         ...review,
       };
@@ -447,6 +553,119 @@ const candidate = ({
         newIds,
         ...review,
       };
+    case "insertColumn": {
+      const target = tableForParagraph(document, location);
+      const grid = target === undefined ? undefined : tableGrid(target.table, family);
+      const width = target === undefined ? 1 : inferredGridWidth(target.table);
+      const column = choose(width + 1);
+      const count = grid?.isOk()
+        ? grid.value.rows.filter((cells, row) => {
+            const before = target?.table.rows.at(row)?.formatting?.gridBefore ?? 0;
+            const rowEnd = width - (target?.table.rows.at(row)?.formatting?.gridAfter ?? 0);
+            return (
+              column >= before &&
+              column <= rowEnd &&
+              !cells.some((cell) => cell.start < column && column < cell.end)
+            );
+          }).length
+        : 0;
+      return {
+        type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+        story: OP_STORIES.MAIN,
+        blockId,
+        column,
+        width: 900 + choose(600),
+        newBlockIds: freshBlockIds(count),
+        newIds,
+        ...review,
+      };
+    }
+    case "deleteColumn": {
+      const target = tableForParagraph(document, location);
+      return {
+        type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+        story: OP_STORIES.MAIN,
+        blockId,
+        column: choose(target === undefined ? 1 : inferredGridWidth(target.table)),
+        newIds,
+        ...review,
+      };
+    }
+    case "mergeCells": {
+      const target = tableForParagraph(document, location);
+      const grid = target === undefined ? undefined : tableGrid(target.table, family);
+      const rowIndex = target?.rowIndex ?? 0;
+      const cells = grid?.isOk() ? grid.value.rows.at(rowIndex) : undefined;
+      return {
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        story: OP_STORIES.MAIN,
+        blockId,
+        top: rowIndex,
+        bottom: rowIndex + 1,
+        left: cells?.at(0)?.start ?? 0,
+        right: cells?.at(-1)?.end ?? 1,
+        newBlockIds: [],
+        newIds,
+        ...review,
+      };
+    }
+    case "splitCell": {
+      const target = tableForParagraph(document, location);
+      const count = (target?.cell.formatting?.gridSpan ?? 1) - 1;
+      return {
+        type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+        story: OP_STORIES.MAIN,
+        blockId,
+        newBlockIds: freshBlockIds(count),
+        newIds,
+        ...review,
+      };
+    }
+    case "setTableGrid": {
+      const target = tableForParagraph(document, location);
+      const width = target === undefined ? 1 : inferredGridWidth(target.table);
+      return {
+        type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+        story: OP_STORIES.MAIN,
+        blockId,
+        columnWidths: Array.from({ length: Math.min(width, MAX_NEW_IDS) }, () => 900 + choose(600)),
+        newIds,
+        ...review,
+      };
+    }
+    case "setCellProps": {
+      const target = tableForParagraph(document, location);
+      return {
+        type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+        story: OP_STORIES.MAIN,
+        blockId,
+        patch: { fitText: target?.cell.formatting?.fitText !== true },
+        newIds,
+        ...review,
+      };
+    }
+    case "setRowProps": {
+      const target = tableForParagraph(document, location);
+      return {
+        type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+        story: OP_STORIES.MAIN,
+        blockId,
+        patch: { cantSplit: target?.row.formatting?.cantSplit !== true },
+        newIds,
+        ...review,
+      };
+    }
+    case "setTableProps": {
+      const target = tableForParagraph(document, location);
+      return {
+        type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+        story: OP_STORIES.MAIN,
+        blockId,
+        patch: { layout: target?.table.formatting?.layout === "fixed" ? "autofit" : "fixed" },
+        newIds,
+        ...review,
+      };
+    }
     case "resolveRevision":
       if (revisions.length === 0) return undefined;
       return {
@@ -489,7 +708,8 @@ export const generateOpSequence = (document: Document, seed: number): OpSequence
   const inverseGroups: (readonly DocumentOp[])[] = [];
   for (let index = 0; index < OP_SEQUENCE_LENGTH; index += 1) {
     const family = OP_SEQUENCE_FAMILIES.at((index + shift) % OP_SEQUENCE_FAMILIES.length);
-    if (family === undefined) continue;
+    if (family === undefined)
+      panic("The generated operation schedule must cover its declared family.");
     const op = candidate({
       document: current,
       choose,

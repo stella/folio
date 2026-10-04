@@ -496,3 +496,56 @@ test.each([
     GlobalRegistrator.unregister();
   }
 });
+
+test.each(["editing", "suggesting"] as const)(
+  "a loaded session clears its explicit mode override for host %s",
+  (hostMode) => {
+    GlobalRegistrator.register();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = createEmptyDocument({ initialText: "Start" });
+    const paragraph = source.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+    paragraph.paraId = "12345678";
+    let identity = "first";
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getDocumentIdentity: () => identity,
+      getExperimentalSession: () => "canonical",
+      getEditingMode: () => hostMode,
+      getSuggestionAuthor: () => "Current host author",
+    });
+    const manager = createHiddenEditorManager(deps);
+    try {
+      manager.ensureView();
+      expect(
+        manager.api.setCanonicalMode({ type: "suggesting", author: "Previous session author" }),
+      ).toBe(true);
+      identity = "second";
+      manager.syncExternalDocument();
+      const view = manager.getView();
+      if (view === null) panic("Expected reseeded canonical editor view");
+      manager.api.setSelection(6);
+      view.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
+          inputType: "insertText",
+          data: "!",
+          cancelable: true,
+          bubbles: true,
+        }),
+      );
+      const marks = view.state.doc.nodeAt(6)?.marks ?? [];
+      expect(marks.some((mark) => mark.attrs["author"] === "Previous session author")).toBe(false);
+      expect(marks.some((mark) => mark.attrs["author"] === "Current host author")).toBe(
+        hostMode === "suggesting",
+      );
+      expect(view.state.doc.textContent).toBe("Start!");
+    } finally {
+      manager.destroyView();
+      host.remove();
+      GlobalRegistrator.unregister();
+    }
+  },
+);

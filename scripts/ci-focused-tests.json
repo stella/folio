@@ -7,6 +7,8 @@
   "scripts/cross-host-lane.test.ts",
   "scripts/interleaving-lane.test.ts",
   "tests/visual/interleavingBridge.test.ts",
+  "scripts/corpus-ops.test.ts",
+  "scripts/review-projection.test.ts",
   "scripts/ci-plan.test.ts",
   "scripts/ci-result.test.mjs",
   "packages/docx-core/src/ops/__tests__/contract.test.ts",
