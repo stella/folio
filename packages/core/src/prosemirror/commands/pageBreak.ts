@@ -6,6 +6,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
 
 import { pageBreakRunParagraphProjectionDisposition } from "../pageBreakRunProjection";
+import { withCanonicalCommand } from "../canonicalCommands";
 
 const UNSUPPORTED_PAGE_BREAK_RUN_ANCESTORS = new Set(["tableCell", "tableHeader", "textBox"]);
 
@@ -32,7 +33,7 @@ const hasTextBoxAnchorAtOrAfter = (
  * position among neighbouring run content. Block-level `pageBreak` remains a
  * legacy input boundary and is never emitted by this command.
  */
-export const insertPageBreak: Command = (state, dispatch) => {
+const insertPageBreakCommand: Command = (state, dispatch) => {
   const { schema } = state;
   const pageBreakRunType = schema.nodes["pageBreakRun"];
   const { $from } = state.selection;
@@ -61,3 +62,16 @@ export const insertPageBreak: Command = (state, dispatch) => {
 
   return true;
 };
+
+export const insertPageBreak = withCanonicalCommand(insertPageBreakCommand, (state) =>
+  insertPageBreakCommand(state)
+    ? [
+        {
+          type: "insertBreak",
+          from: state.selection.from,
+          to: state.selection.to,
+          breakType: "page",
+        },
+      ]
+    : [],
+);

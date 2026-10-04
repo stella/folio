@@ -349,3 +349,130 @@ test("canonical header edits and new footer and note stories survive adapter sav
     container.remove();
   }
 });
+
+test("canonical toolbar capture shortcuts publish formatting and break intents with exact undo", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<DocxEditorRef>();
+  const errors: Error[] = [];
+  // oxlint-disable-next-line react-perf/jsx-no-new-function-as-prop -- This test renders the editor once.
+  const onError = (error: Error) => errors.push(error);
+  const initialDocument = createEmptyDocument({ initialText: "ab" });
+  const paragraph = initialDocument.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected keyboard fixture paragraph");
+  paragraph.paraId = "12345678";
+  let executed = 0;
+
+  try {
+    await act(async () => {
+      root.render(
+        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+          <DocxEditor
+            ref={editor}
+            document={initialDocument}
+            experimentalSession="canonical"
+            onError={onError}
+            showToolbar
+          />
+        </IntlProvider>,
+      );
+    });
+    await act(async () => editor.current?.ensureEditorView({ focus: false }));
+    const api = editor.current?.getEditor() ?? panic("Expected mounted editor API");
+    const view = api.getView() ?? panic("Expected mounted body view");
+    const expectProjection = () => {
+      const projection = api.getCanonicalStoryProjection("main");
+      if (!projection) panic("Expected canonical body projection");
+      expect(view.state.doc.eq(projection)).toBe(true);
+      expect(errors).toEqual([]);
+    };
+    const select = async (to: number) => {
+      await act(async () => {
+        api.setSelection(to === 3 ? 1 : 2, to);
+        api.focus();
+      });
+      expect(view.hasFocus()).toBe(true);
+    };
+    const press = async (options: KeyboardEventInit) => {
+      const event = new KeyboardEvent("keydown", {
+        ...options,
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => {
+        view.dom.dispatchEvent(event);
+      });
+      expect(event.defaultPrevented).toBe(true);
+      executed++;
+    };
+    const undo = async (before: {
+      document: ReturnType<typeof api.getCanonicalDocument>;
+      selection: ReturnType<typeof view.state.selection.toJSON>;
+    }) => {
+      await act(async () => {
+        expect(api.undo()).toBe(true);
+      });
+      expect(api.getCanonicalDocument()).toEqual(before.document);
+      expect(view.state.selection.toJSON()).toEqual(before.selection);
+      expectProjection();
+    };
+
+    for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {
+      for (const { key, property } of [
+        { key: "b", property: "bold" },
+        { key: "i", property: "italic" },
+        { key: "u", property: "underline" },
+      ] as const) {
+        await select(3);
+        const before = {
+          document: api.getCanonicalDocument(),
+          selection: view.state.selection.toJSON(),
+        };
+        await press({ key, ...modifier });
+        expectProjection();
+        const formatted = api.getCanonicalDocument()?.package.document.content.at(0);
+        expect(
+          formatted?.type === "paragraph" &&
+            formatted.content.some(
+              (run) =>
+                run.type === "run" &&
+                (property === "underline"
+                  ? run.formatting?.underline?.style === "single"
+                  : run.formatting?.[property] === true),
+            ),
+        ).toBe(true);
+        await undo(before);
+      }
+    }
+
+    for (const shortcut of [
+      { key: "Enter", shiftKey: true, breakType: "textWrapping" },
+      { key: "Enter", ctrlKey: true, breakType: "page" },
+      { key: "Enter", metaKey: true, breakType: "page" },
+    ] as const) {
+      await select(2);
+      const before = {
+        document: api.getCanonicalDocument(),
+        selection: view.state.selection.toJSON(),
+      };
+      await press(shortcut);
+      expectProjection();
+      const content = api.getCanonicalDocument()?.package.document.content;
+      expect(content).toHaveLength(1);
+      const first = content?.at(0);
+      const breaks =
+        first?.type === "paragraph"
+          ? first.content.flatMap((run) =>
+              run.type === "run" ? run.content.filter((leaf) => leaf.type === "break") : [],
+            )
+          : [];
+      expect(breaks).toEqual([{ type: "break", breakType: shortcut.breakType }]);
+      await undo(before);
+    }
+    expect(executed).toBe(9);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

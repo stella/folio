@@ -27,6 +27,7 @@ import { createStyleResolver } from "@stll/folio-core/prosemirror";
 import { getCachedNumberingMap } from "@stll/folio-core/docx";
 import { clearFormatting } from "@stll/folio-core/prosemirror/commands/formatting";
 import { insertPageBreak } from "@stll/folio-core/prosemirror/commands/pageBreak";
+import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import {
   insertSectionBreakNextPage,
   insertSectionBreakContinuous,
@@ -49,7 +50,7 @@ export function useFormattingActions(opts: UseFormattingActionsOptions) {
   function handleClearFormatting() {
     const view = targetView();
     if (!view) return;
-    clearFormatting(view.state, view.dispatch, view);
+    executeEditorCommand(view, clearFormatting);
     view.focus();
   }
 
@@ -70,9 +71,9 @@ export function useFormattingActions(opts: UseFormattingActionsOptions) {
       if (resolved.runFormatting) attrs.runFormatting = resolved.runFormatting;
       const styleName = resolver.getStyle(styleId)?.name;
       if (styleName) attrs.styleName = styleName;
-      applyStyle(styleId, attrs)(view.state, (tr) => view.dispatch(tr));
+      executeEditorCommand(view, applyStyle(styleId, attrs));
     } else {
-      applyStyle(styleId)(view.state, (tr) => view.dispatch(tr));
+      executeEditorCommand(view, applyStyle(styleId));
     }
     view.focus();
   }
@@ -80,21 +81,21 @@ export function useFormattingActions(opts: UseFormattingActionsOptions) {
   function handleInsertPageBreak() {
     const view = opts.editorView.value;
     if (!view) return;
-    insertPageBreak(view.state, (tr) => view.dispatch(tr), view);
+    executeEditorCommand(view, insertPageBreak);
     view.focus();
   }
 
   function handleInsertSectionBreakNextPage() {
     const view = opts.editorView.value;
     if (!view) return;
-    insertSectionBreakNextPage(view.state, (tr) => view.dispatch(tr), view);
+    executeEditorCommand(view, insertSectionBreakNextPage);
     view.focus();
   }
 
   function handleInsertSectionBreakContinuous() {
     const view = opts.editorView.value;
     if (!view) return;
-    insertSectionBreakContinuous(view.state, (tr) => view.dispatch(tr), view);
+    executeEditorCommand(view, insertSectionBreakContinuous);
     view.focus();
   }
 

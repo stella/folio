@@ -105,6 +105,19 @@ export const prepareCanonicalCommands = (
   const paragraphs = selectedParagraphs(session, state);
   for (const command of commands) {
     switch (command.type) {
+      case "insertBreak": {
+        const from = session.projection.addressAt(command.from);
+        if (from.isErr()) return from;
+        const to = session.projection.addressAt(command.to);
+        if (to.isErr()) return to;
+        intents.push({
+          type: "insertAtom",
+          from: from.value,
+          to: to.value,
+          atom: { type: "break", breakType: command.breakType },
+        });
+        break;
+      }
       case "formatRun": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;

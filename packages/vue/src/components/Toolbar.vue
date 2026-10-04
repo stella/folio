@@ -503,7 +503,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import type { EditorView } from "prosemirror-view";
-import type { Command, Transaction } from "prosemirror-state";
+import type { Command } from "prosemirror-state";
 import { undoDepth, redoDepth } from "prosemirror-history";
 import {
   extractSelectionContext,
@@ -511,6 +511,7 @@ import {
 } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import { listStateLevel, NO_LIST_STATE } from "@stll/folio-core/prosemirror";
 import { clearFormatting } from "@stll/folio-core/prosemirror/commands/formatting";
+import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import type { ColorValue, Theme, Style } from "@stll/folio-core/types/document";
 import MaterialSymbol from "./ui/MaterialSymbol.vue";
 import ImageWrapDropdown from "./ui/ImageWrapDropdown.vue";
@@ -857,7 +858,7 @@ function execCommand(name: string, ...args: unknown[]) {
     return;
   }
   const command = cmdFactory(...args);
-  command(v.state, (tr: Transaction) => v.dispatch(tr), v);
+  executeEditorCommand(v, command);
   // The dispatched transaction triggers the host's onSelectionUpdate, which
   // bumps stateTick — `ctx` re-derives marks for the toolbar automatically.
   // Only refocus if PM lost focus — unconditional focus() can dispatch
@@ -893,7 +894,7 @@ function onTextColor(color: ColorValue | string) {
 function handleClearFormatting() {
   const v = props.view;
   if (!v) return;
-  clearFormatting(v.state, (tr: Transaction) => v.dispatch(tr), v);
+  executeEditorCommand(v, clearFormatting);
   if (!v.hasFocus()) v.focus();
 }
 
