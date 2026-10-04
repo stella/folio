@@ -1,6 +1,7 @@
 /** Seeded, shrinkable input traces shared by browser interaction specs. */
 
 import fc from "fast-check";
+import type { BrowserDragTarget } from "./browserDragTarget";
 
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
 
@@ -9,7 +10,6 @@ export const BROWSER_TRACE_FIXED_SEEDS = {
   nightly: [11, 29, 47, 83, 131, 197, 263, 347, 431, 557],
 } as const;
 
-export type BrowserDragTarget = "table" | "list" | "note" | "field" | "inlineObject";
 export type BrowserPasteKind = Extract<
   (typeof SUGGESTION_INPUT_KINDS)[number],
   "pastePlain" | "pasteHtml" | "pasteWordHtml" | "pasteListHtml" | "pasteTable" | "pasteMultiBlock"

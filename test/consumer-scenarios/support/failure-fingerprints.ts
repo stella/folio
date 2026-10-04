@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,7 +30,7 @@ const deepestMessage = (failure: unknown): string => {
     seen.add(current);
     current = current.cause;
   }
-  return current instanceof Error ? current.message : String(current);
+  return stripVTControlCharacters(current instanceof Error ? current.message : String(current));
 };
 
 /** Keep the mismatch kind while removing generated values and document prose. */
@@ -161,7 +162,7 @@ export const failureRecord = (
   failure: unknown,
   extra: Partial<Pick<FailureRecord, "replays" | "flow" | "shrink">> = {},
 ): FailureRecord => {
-  const message = failure instanceof Error ? failure.message : String(failure);
+  const message = deepestMessage(failure);
   return {
     version: 1,
     marker,

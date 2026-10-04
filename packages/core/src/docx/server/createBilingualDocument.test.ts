@@ -208,8 +208,12 @@ describe("createBilingualDocument", () => {
         : [],
     );
     expect(
-      columnParagraphs(document).left.map(({ formatting: _formatting, ...content }) => content),
-    ).toEqual(sourceParagraphs.map(({ formatting: _formatting, ...content }) => content));
+      structuredClone(
+        columnParagraphs(document).left.map(({ formatting: _formatting, ...content }) => content),
+      ),
+    ).toStrictEqual(
+      structuredClone(sourceParagraphs.map(({ formatting: _formatting, ...content }) => content)),
+    );
   });
 
   test("projects direct and inherited full-page geometry into each column", async () => {

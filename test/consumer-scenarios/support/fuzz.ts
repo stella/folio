@@ -36,7 +36,13 @@ import {
   targetFeatureSignature,
   type FeatureCoverage,
 } from "./feature-coverage.ts";
-import { COLLISION_FIXTURES, FIXTURES, openReviewer, STORY_FIXTURES } from "./documents.ts";
+import {
+  COLLISION_FIXTURES,
+  FIXTURES,
+  openReviewer,
+  pinnedParaIdsOf,
+  STORY_FIXTURES,
+} from "./documents.ts";
 import { normalizeAssertion } from "./failure-fingerprints.ts";
 import {
   type Action,
@@ -94,7 +100,7 @@ export type Flow = {
   trace: FlowStep[];
   /** The running step, when a flow file planned it. */
   planned: FlowStep | undefined;
-  /** Ids of the fixture's blocks, which every run of the flow opens with. */
+  /** Ids of the fixture's blocks that every run of the flow opens with (`stableFixtureIds`). */
   fixtureIds: ReadonlySet<string>;
   swarm: string[] | undefined;
   weights: FeatureCoverage | undefined;
@@ -184,7 +190,8 @@ const randomOperations = (
 
 // A block a flow inserted gets a new id on every run, so a pinned operation
 // names it by its position in the story's blocks when the step drew, `@<n>`.
-// A fixture block keeps its id, which survives steps before it going away.
+// A fixture block keeps its id (`stableFixtureIds`), which survives steps
+// before it going away.
 const POSITION = /^@(\d+)$/u;
 
 const mapBlockIds = (value: unknown, map: (id: string) => string): unknown => {
@@ -270,8 +277,15 @@ const appliedOf = (operations: readonly Operation[], receipt: Receipt | null) =>
   };
 };
 
-/** `suggest_changes` with ids on its operations, checked against what they asked. */
-const suggestChecked = async (flow: Flow, args: { operations: unknown }, entry: string) => {
+/**
+ * `suggest_changes` with ids on its operations, checked against what they
+ * asked; returns how many applied.
+ */
+const suggestChecked = async (
+  flow: Flow,
+  args: { operations: unknown },
+  entry: string,
+): Promise<number> => {
   const operations = Array.isArray(args.operations)
     ? (args.operations as unknown[]).map((operation, index) =>
         typeof operation === "object" && operation !== null && !("id" in operation)
@@ -286,12 +300,9 @@ const suggestChecked = async (flow: Flow, args: { operations: unknown }, entry: 
   done(receipt ? `applied ${receipt.applied.length}` : `refused: ${result.ok ? "" : result.error}`);
   const asked = Array.isArray(operations) ? (operations as Operation[]) : [];
   touch(flow, asked);
-  await assertRequestedOutcome(
-    flow.reviewer,
-    pre,
-    appliedOf(asked, receipt),
-    `step ${flow.log.length - 1}`,
-  );
+  const outcome = appliedOf(asked, receipt);
+  await assertRequestedOutcome(flow.reviewer, pre, outcome, `step ${flow.log.length - 1}`);
+  return outcome.applied.length;
 };
 
 /** Record what a step is about to do; `outcome` completes the entry. */
@@ -309,13 +320,13 @@ const secondaryStories = (reviewer: Reviewer): FolioDocumentStoryHandle[] =>
     .map((story) => story.handle)
     .filter((handle) => handle.type !== "main");
 
-/** One core batch, checked against what it asked. */
+/** One core batch, checked against what it asked; returns how many operations applied. */
 const coreBatchStep = async (
   flow: Flow,
   story: FolioDocumentStoryHandle,
   operations: readonly Operation[],
   entry: string,
-): Promise<void> => {
+): Promise<number> => {
   const batch = { ...coreBatch(operations, flow.mode), atomic: flow.random.chance(0.5) };
   const done = record(flow, `${entry} (atomic: ${batch.atomic}) ${JSON.stringify(operations)}`);
   const pre = await capture(flow.reviewer, flow.mode, { story, step: flow.session });
@@ -325,19 +336,30 @@ const coreBatchStep = async (
       : flow.reviewer.applyDocumentOperationsToStory({ story, batch: batch as never });
   done(`applied ${result.applied.length}, skipped ${result.skipped.length}`);
   touch(flow, operations);
-  await assertRequestedOutcome(
-    flow.reviewer,
-    pre,
-    appliedOf(batch.operations, result),
-    `step ${flow.log.length - 1}`,
-  );
+  const outcome = appliedOf(batch.operations, result);
+  await assertRequestedOutcome(flow.reviewer, pre, outcome, `step ${flow.log.length - 1}`);
+  return outcome.applied.length;
 };
+
+/**
+ * What a step came to: a batch and how many of its operations applied, a
+ * model mistake (refused by design), a step with nothing to act on, or a
+ * review or session step.
+ */
+export type StepEffect =
+  | { type: "batch"; applied: number }
+  | { type: "mistake" }
+  | { type: "skipped" }
+  | { type: "ran" };
+
+const SKIPPED = { type: "skipped" } as const satisfies StepEffect;
+const RAN = { type: "ran" } as const satisfies StepEffect;
 
 /**
  * One step: drawn from the flow's generator, or the one a flow file planned,
  * whose generator resumes at the position it recorded.
  */
-const step = async (flow: Flow, planned?: FlowStep): Promise<void> => {
+const step = async (flow: Flow, planned?: FlowStep): Promise<StepEffect> => {
   for (const block of blocksOf(flow)) flow.seenIds.add(block.id);
   let action: Action;
   if (planned === undefined) {
@@ -351,42 +373,47 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<void> => {
   const { random } = flow;
   switch (action) {
     case "suggest_changes": {
-      await suggestChecked(flow, { operations: randomOperations(flow) }, action);
-      return;
+      const applied = await suggestChecked(flow, { operations: randomOperations(flow) }, action);
+      return { type: "batch", applied };
     }
     case "core batch": {
-      await coreBatchStep(flow, MAIN, randomOperations(flow), action);
-      return;
+      const applied = await coreBatchStep(flow, MAIN, randomOperations(flow), action);
+      return { type: "batch", applied };
     }
     case "story batch": {
       const stories = secondaryStories(flow.reviewer);
       if (stories.length === 0) {
-        await coreBatchStep(flow, MAIN, randomOperations(flow), "core batch");
-        return;
+        const applied = await coreBatchStep(flow, MAIN, randomOperations(flow), "core batch");
+        return { type: "batch", applied };
       }
       const story = random.pick(stories);
       const blocks = blocksOfStory(flow.reviewer, story) as Block[];
       const operations = randomOperations(flow, blocks, pickerFor(flow, story));
-      await coreBatchStep(flow, story, operations, `story batch in ${JSON.stringify(story)}`);
-      return;
+      const applied = await coreBatchStep(
+        flow,
+        story,
+        operations,
+        `story batch in ${JSON.stringify(story)}`,
+      );
+      return { type: "batch", applied };
     }
     case "mistake": {
       const [name, build] = random.pick(Object.entries(MISTAKES));
       const args = build(blocksOf(flow), random, [...flow.seenIds]);
       if (typeof args === "object" && args !== null && "operations" in args) {
         await suggestChecked(flow, args, `${action} ${name}`);
-        return;
+        return { type: "mistake" };
       }
       const done = record(flow, `${action} ${name} ${JSON.stringify(args)}`);
       const result = tool(flow, "suggest_changes", args);
       done(result.ok ? "ok" : "refused");
-      return;
+      return { type: "mistake" };
     }
     case "add_comment": {
       const blocks = blocksOf(flow).filter((block) => block.text.length > 0);
       if (blocks.length === 0) {
         record(flow, `${action} skipped`);
-        return;
+        return SKIPPED;
       }
       const pick = pickerFor(flow);
       const picker = typeof pick === "function" ? pick("commentOnBlock") : pick;
@@ -394,26 +421,26 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<void> => {
       const done = record(flow, `${action} on ${block.id}`);
       const result = tool(flow, "add_comment", { blockId: block.id, text: sentence(random) });
       done(result.ok ? "ok" : result.error);
-      return;
+      return RAN;
     }
     case "reply and resolve": {
       const comments = flow.reviewer.getComments();
       if (comments.length === 0) {
         record(flow, `${action} skipped`);
-        return;
+        return SKIPPED;
       }
       const comment = random.pick(comments);
       record(flow, `${action} ${comment.id}`);
       tool(flow, "reply_comment", { commentId: String(comment.id), text: sentence(random) });
       tool(flow, "resolve_comment", { commentId: String(comment.id), reopen: comment.done });
-      return;
+      return RAN;
     }
     case "accept one":
     case "reject one": {
       const changes = flow.reviewer.getChanges();
       if (changes.length === 0) {
         record(flow, `${action} skipped`);
-        return;
+        return SKIPPED;
       }
       const change = random.pick(changes);
       const done = record(flow, `${action} ${change.type} ${change.id}`);
@@ -422,7 +449,7 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<void> => {
           ? flow.reviewer.acceptChange(change)
           : flow.reviewer.rejectChange(change);
       done(String(resolved));
-      return;
+      return RAN;
     }
     case "accept all":
     case "reject all": {
@@ -435,14 +462,14 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<void> => {
       );
       done(String(accept ? flow.reviewer.acceptAll() : flow.reviewer.rejectAll()));
       await assertResolvedTo(flow.reviewer, expected, `step ${flow.log.length - 1}`);
-      return;
+      return RAN;
     }
     case "save and reopen": {
       record(flow, action);
       const { reopened } = await saveAndReopen(flow.reviewer, "save and reopen", saveOptions(flow));
       flow.reviewer = reopened;
       flow.session = "reopened";
-      return;
+      return RAN;
     }
     case "new reviewer": {
       // Another person opens the saved file and carries on under their name.
@@ -450,19 +477,19 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<void> => {
       const { bytes } = await saveAndReopen(flow.reviewer, action, saveOptions(flow));
       flow.reviewer = await openReviewer(bytes, SECOND_REVIEWER);
       flow.session = "newReviewer";
-      return;
+      return RAN;
     }
     case "selective save": {
       // The patching save the editor uses; the same reviewer keeps working after it.
       const done = record(flow, action);
       const result = await flow.reviewer.save({ repack: "refuse" });
       done(result.type === "selective" ? "selective" : `refused: ${result.reason}`);
-      if (result.type !== "selective") return;
+      if (result.type !== "selective") return RAN;
       const reopened = await openReviewer(new Uint8Array(result.buffer));
       if (saveOptions(flow).compare !== false) {
         assertSameState(reopened, flow.reviewer, `step ${flow.log.length - 1}: selective save`);
       }
-      return;
+      return RAN;
     }
   }
 };
@@ -582,10 +609,38 @@ export const describeFlow = (
 };
 
 /**
- * A finished flow: what it ran, as a flow file, its signature if asked for
- * and its final saved package if asked for.
+ * A finished flow: what it ran, as a flow file, what each step came to, its
+ * signature if asked for and its final saved package if asked for.
  */
-export type FlowRun = { flow: FlowFile; signature: string[]; saved?: Uint8Array };
+export type FlowRun = {
+  flow: FlowFile;
+  effects: StepEffect[];
+  signature: string[];
+  saved?: Uint8Array;
+};
+
+/**
+ * The steps of a run that did nothing: a batch none of whose operations
+ * applied, or a step that found nothing to act on. A checked-in flow with
+ * one passes without exercising what it guards, as one whose ids drifted
+ * from the fixture does.
+ */
+export const vacuousSteps = ({ effects }: FlowRun): number[] =>
+  effects.flatMap((effect, index) => {
+    switch (effect.type) {
+      case "batch":
+        return effect.applied === 0 ? [index] : [];
+      case "skipped":
+        return [index];
+      case "mistake":
+      case "ran":
+        return [];
+      default: {
+        const unhandled: never = effect;
+        throw new Error(`Unhandled step effect ${JSON.stringify(unhandled)}`);
+      }
+    }
+  });
 
 /** A flow that failed; `flow` holds its steps up to the one that failed. */
 export class FlowError extends Error {
@@ -651,6 +706,48 @@ type Plan = {
   origin?: string;
 };
 
+type LoadFixtureOptions = Pick<FlowFile, "fixture" | "kind" | "generation">;
+
+const loadFixture = ({ fixture, kind, generation }: LoadFixtureOptions): Promise<Uint8Array> => {
+  if (fixture === LARGE_DOCUMENT_FIXTURE) return largeDocument();
+  if (isPublicCorpusFixture(fixture)) return loadPublicCorpusFixture(fixture);
+  const load = flowFixtures(kind, generation)[fixture];
+  if (load === undefined) {
+    throw new TypeError(`${kind} flow (${generation}): no fixture ${fixture}`);
+  }
+  return load();
+};
+
+/**
+ * The fixture block ids a flow may name verbatim: a public-corpus file's own
+ * ids, or the paraIds the fixture's model carried (support/documents.ts
+ * `pinnedParaIdsOf`). Any other id was minted while the fixture was built (a
+ * reviewer edit's new paragraph) and differs between runs, so a flow names
+ * that block by position.
+ */
+const stableFixtureIds = async (fixture: string, bytes: Uint8Array): Promise<Set<string>> => {
+  const ids = blockIdsOf(await openReviewer(bytes));
+  if (isPublicCorpusFixture(fixture)) return ids;
+  const pinned = pinnedParaIdsOf(bytes);
+  return new Set([...ids].filter((id) => pinned.has(id)));
+};
+
+/**
+ * The block ids `flow` names verbatim that its fixture, built now, does not
+ * open with as stable ids: the references a replay would no longer resolve.
+ */
+export const unstableFixtureRefs = async (flow: FlowFile): Promise<string[]> => {
+  const stable = await stableFixtureIds(flow.fixture, await loadFixture(flow));
+  const refs = new Set<string>();
+  for (const { operations } of flow.steps) {
+    mapBlockIds(operations ?? [], (id) => {
+      if (!POSITION.test(id) && !stable.has(id)) refs.add(id);
+      return id;
+    });
+  }
+  return [...refs];
+};
+
 const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   registerFeatureOperations(Object.keys(GENERATORS));
   const { seed, kind, generation, fixture, mode } = plan;
@@ -662,15 +759,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   ) {
     throw new TypeError("flow file: swarm contains an unknown or unsupported operation kind");
   }
-  const load = (() => {
-    if (fixture === LARGE_DOCUMENT_FIXTURE) return largeDocument;
-    if (isPublicCorpusFixture(fixture)) return () => loadPublicCorpusFixture(fixture);
-    return flowFixtures(kind, generation)[fixture];
-  })();
-  if (load === undefined) {
-    throw new TypeError(`${kind} flow (${generation}): no fixture ${fixture}`);
-  }
-  const bytes = await load();
+  const bytes = await loadFixture({ fixture, kind, generation });
   const weights = plan.weights === undefined ? undefined : parseFeatureCoverage(plan.weights);
   const flow: Flow = {
     reviewer: await openReviewer(bytes),
@@ -685,7 +774,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
     trace: [],
     planned: undefined,
     // Read from a reviewer of its own, so the flow's never serves an extra read.
-    fixtureIds: blockIdsOf(await openReviewer(bytes)),
+    fixtureIds: await stableFixtureIds(fixture, bytes),
     swarm: plan.swarm,
     weights,
     operationHits: weights === undefined ? undefined : featureOperationHits(weights),
@@ -718,9 +807,10 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
         relations.afterStep(current.reviewer, await saved(), label),
     },
   ];
+  const effects: StepEffect[] = [];
   try {
     for (let index = 0; index < plan.steps; index += 1) {
-      await step(flow, plan.planned?.[index]);
+      effects.push(await step(flow, plan.planned?.[index]));
       const label = `step ${index}`;
       let saved: Promise<{ bytes: Uint8Array; reopened: Reviewer }> | undefined;
       const context: StepContext = {
@@ -755,6 +845,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   }
   return {
     flow: file(),
+    effects,
     signature: [...signature].sort(),
     ...(captured === undefined ? {} : { saved: captured }),
   };

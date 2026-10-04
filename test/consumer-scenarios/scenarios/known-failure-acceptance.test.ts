@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { FlowError, runFlowFile } from "../support/fuzz.ts";
+import { FlowError, runFlowFile, unstableFixtureRefs } from "../support/fuzz.ts";
 import { failureMarker } from "../support/failure-fingerprints.ts";
 import { flowShape, parseFlowFile, type FlowFile } from "../support/flow-file.ts";
 
@@ -85,6 +85,15 @@ assert.equal(
   acceptanceEntries.length,
   "each parked consumer fingerprint must have exactly one acceptance replay",
 );
+
+test("acceptance flows name fixture blocks only by the paraIds fixture models pin", async () => {
+  const unstable: Record<string, string[]> = {};
+  for (const { fingerprint, flow } of acceptanceEntries) {
+    const refs = await unstableFixtureRefs(flow);
+    if (refs.length > 0) unstable[fingerprint] = refs;
+  }
+  assert.deepEqual(unstable, {});
+});
 
 for (const {
   fingerprint,

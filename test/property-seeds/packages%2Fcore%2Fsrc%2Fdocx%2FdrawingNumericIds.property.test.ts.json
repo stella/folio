@@ -1,0 +1,10 @@
+{
+  "every rebuilt drawing uses bounded numeric ids without changing its lexical model id": [
+    {
+      "seed": 1182167535,
+      "path": "0:0",
+      "note": "Drawing fixtures must satisfy the image model including wrap before testing bounded IDs",
+      "date": "2026-10-01"
+    }
+  ]
+}

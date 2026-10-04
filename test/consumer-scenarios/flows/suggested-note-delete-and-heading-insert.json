@@ -12,7 +12,7 @@
       "operations": [
         {
           "type": "deleteBlock",
-          "blockId": "2F355A9D"
+          "blockId": "7735D914"
         }
       ]
     },
@@ -22,7 +22,7 @@
       "operations": [
         {
           "type": "insertAfterBlock",
-          "blockId": "6C3D4F0C",
+          "blockId": "04D9A0FF",
           "text": "Warranty goods schedule.",
           "styleId": "Heading2"
         }

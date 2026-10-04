@@ -281,10 +281,11 @@ export const prepareCanonicalAutoformat = (
   if (text !== " " || from !== to) return undefined;
   const at = session.projection.addressAt(from);
   if (at.isErr()) return undefined;
-  const source = session.projection.paragraph(at.value.blockId)?.source;
-  if (source === undefined || source.formatting?.numPr?.kind === "reference") return undefined;
-  const prefix =
-    state.doc.resolve(from).parent.textBetween(0, at.value.offset, "", "\uFFFC") + text;
+  const address = session.projection.paragraph(at.value.blockId);
+  if (address === undefined || address.source.formatting?.numPr?.kind === "reference")
+    return undefined;
+  const source = address.source;
+  const prefix = address.text.slice(0, at.value.offset) + text;
   const requests = listRequestsForMarker(prefix);
   const heading = /^(?<hashes>#{1,6}) $/u.exec(prefix)?.groups?.["hashes"];
   if (requests === null && heading === undefined) return undefined;

@@ -375,6 +375,66 @@ describe("canonical structural commands", () => {
     );
   });
 
+  test("note-reference digits and inline atoms do not become autoformat markers", async () => {
+    await assertProperty(
+      fc.asyncProperty(fc.constantFrom(".", ")"), async (punctuation) => {
+        for (const type of ["footnoteRef", "endnoteRef"] as const) {
+          for (const id of [1, 12]) {
+            for (const atom of ["none", "tab", "break"] as const) {
+              const document = seed();
+              document.package.document.content = [
+                {
+                  type: "paragraph",
+                  paraId: "12345678",
+                  content: [
+                    {
+                      type: "run",
+                      content: [
+                        { type, id },
+                        ...(atom === "tab" ? [{ type: "tab" as const }] : []),
+                        ...(atom === "break"
+                          ? [{ type: "break" as const, breakType: "page" as const }]
+                          : []),
+                        { type: "text", text: punctuation },
+                      ],
+                    },
+                  ],
+                },
+              ];
+              const session = createCanonicalSession(document).unwrap();
+              let state = EditorState.create({ schema, doc: session.projection.doc });
+              const address =
+                session.projection.paragraph("12345678") ?? panic("Note paragraph is absent.");
+              const logicalEnd = session.projection
+                .positionAt({
+                  story: session.projection.story,
+                  blockId: address.blockId,
+                  offset: address.text.length,
+                })
+                .unwrap();
+              expect(session.projection.addressAt(logicalEnd).unwrap().offset).toBe(
+                address.text.length,
+              );
+              expect(logicalEnd).toBe(address.start + address.node.content.size);
+              state = select(state, logicalEnd);
+              const before = structuredClone(session.document);
+              const selection = state.selection.toJSON();
+              const prepared = prepareCanonicalAutoformat(session, state, {
+                from: state.selection.head,
+                to: state.selection.head,
+                text: " ",
+              });
+              expect(prepared).toBeUndefined();
+              expect(session.document).toStrictEqual(before);
+              expect(state.selection.toJSON()).toStrictEqual(selection);
+            }
+          }
+        }
+      }),
+      { numRuns: 4 },
+    );
+  });
+
   test("generated restart, continue and nesting commands preserve zero starts and exact history", async () => {
     await assertProperty(
       fc.asyncProperty(
@@ -574,37 +634,55 @@ describe("canonical structural commands", () => {
     );
   });
 
-  test("split identities never reuse retired identities and undo restores each source lineage", () => {
-    const document = seed();
-    const first = document.package.document.content.at(0);
-    const second = document.package.document.content.at(1);
-    if (first?.type !== "paragraph" || second?.type !== "paragraph")
-      return panic("Missing lineage fixture.");
-    first.paraId = "00000001";
-    second.paraId = "00000002";
-    const xml = "<w:pPr><w:keepNext/></w:pPr>";
-    assignParagraphPropertySource(first, xml);
-    assignDocumentParagraphPropertySourceContract(document, "a".repeat(64));
-    const token = getParagraphPropertySourceToken(first);
-    const session = createCanonicalSession(document).unwrap();
-    let state = EditorState.create({ schema, doc: session.projection.doc });
-    state = select(state, 7);
-    state = accept(session, state, session.prepareJoin(state, "forward").unwrap());
-    // Joining retires 00000001; subsequent splits must allocate a fresh identity.
-    state = select(state, 3);
-    state = accept(session, state, session.prepareSplit(state).unwrap());
-    const allocated = paragraphs(session).find(({ paraId }) => paraId !== "00000002");
-    expect(allocated).toBeDefined();
-    expect(allocated?.paraId).not.toBe("00000001");
-    expect(allocated && getParagraphPropertySource(allocated)).toBeUndefined();
-    expect(allocated && getParagraphPropertySourceToken(allocated)).toBeUndefined();
-    state = accept(session, state, session.prepareUndo(state).unwrap());
-    state = accept(session, state, session.prepareUndo(state).unwrap());
-    const restored = paragraphs(session).at(0) ?? panic("Undo did not restore retired paragraph.");
-    expect(restored.paraId).toBe("00000001");
-    expect(getParagraphPropertySource(restored)?.xml).toBe(xml);
-    expect(getParagraphPropertySourceToken(restored)).toBe(token);
-    expect(texts(session)).toEqual(["ab😀cd", "EF"]);
+  test("split identities never reuse retired identities and undo restores each source lineage", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.array(fc.constantFrom(0, 1, 2, 4, 5, 6, 7, 8), { minLength: 1, maxLength: 8 }),
+        async (offsets) => {
+          const document = seed();
+          const first = document.package.document.content.at(0);
+          const second = document.package.document.content.at(1);
+          if (first?.type !== "paragraph" || second?.type !== "paragraph")
+            return panic("Missing lineage fixture.");
+          first.paraId = "00000001";
+          second.paraId = "00000002";
+          const xml = "<w:pPr><w:keepNext/></w:pPr>";
+          assignParagraphPropertySource(first, xml);
+          assignDocumentParagraphPropertySourceContract(document, "a".repeat(64));
+          const token = getParagraphPropertySourceToken(first);
+          const session = createCanonicalSession(document).unwrap();
+          let state = EditorState.create({ schema, doc: session.projection.doc });
+          state = select(state, 7);
+          state = accept(session, state, session.prepareJoin(state, "forward").unwrap());
+          const joined = session.document;
+          const retired = new Set(["00000001"]);
+          for (const offset of offsets) {
+            state = select(state, offset + 1);
+            state = accept(session, state, session.prepareSplit(state).unwrap());
+            const allocated = paragraphs(session).find(({ paraId }) => paraId !== "00000002");
+            if (allocated?.paraId === undefined) return panic("Split omitted its new identity.");
+            expect(retired.has(allocated.paraId)).toBe(false);
+            retired.add(allocated.paraId);
+            expect(getParagraphPropertySource(allocated)).toBeUndefined();
+            expect(getParagraphPropertySourceToken(allocated)).toBeUndefined();
+            const split = session.document;
+            state = accept(session, state, session.prepareUndo(state).unwrap());
+            expect(session.document).toStrictEqual(joined);
+            state = accept(session, state, session.prepareRedo(state).unwrap());
+            expect(session.document).toStrictEqual(split);
+            state = accept(session, state, session.prepareUndo(state).unwrap());
+          }
+          state = accept(session, state, session.prepareUndo(state).unwrap());
+          const restored =
+            paragraphs(session).at(0) ?? panic("Undo did not restore retired paragraph.");
+          expect(restored.paraId).toBe("00000001");
+          expect(getParagraphPropertySource(restored)?.xml).toBe(xml);
+          expect(getParagraphPropertySourceToken(restored)).toBe(token);
+          expect(texts(session)).toEqual(["ab😀cd", "EF"]);
+        },
+      ),
+      { numRuns: 24 },
+    );
   });
 
   test("numbering definitions survive DOCX save and reopen after list commands", async () => {

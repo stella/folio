@@ -1,18 +1,29 @@
 /** Package-shaped cases for the same inverse/locality laws across every operation kind. */
 import { panic } from "better-result";
-import type { BlockContent, Document, Paragraph, Table } from "../../model/document";
-import { applyDocumentOp } from "../apply";
-import { storyBody, storyParagraphs } from "../blocks";
-import { normalizeForOps } from "../contract";
-import { paragraphIdsIn } from "../ids";
-import { packageResourcesOf } from "../packageResources";
-import { DOCUMENT_OP_TYPES, type DocumentOp, type OpStory } from "../types";
+import fc from "fast-check";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Table,
+} from "../../packages/docx-core/src/model/document";
+import { applyDocumentOp } from "../../packages/docx-core/src/ops/apply";
+import { storyBody, storyParagraphs } from "../../packages/docx-core/src/ops/blocks";
+import { normalizeForOps } from "../../packages/docx-core/src/ops/contract";
+import { paragraphIdsIn } from "../../packages/docx-core/src/ops/ids";
+import { packageResourcesOf } from "../../packages/docx-core/src/ops/packageResources";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  type OpStory,
+} from "../../packages/docx-core/src/ops/types";
 import {
   GENERATED_OP_KINDS,
   opForStory,
   opSeedArbitrary,
+  textFormattingArbitrary,
   type OpSeed,
-} from "./documentArbitraries";
+} from "../../packages/docx-core/src/ops/__tests__/documentArbitraries";
 
 export const GENERATED_PACKAGE_STORIES = [
   "main",
@@ -28,8 +39,10 @@ const paragraph = (id: string, text: string): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
-/** Every draw carries all editable stories and balanced, package-wide identities. */
-export const packageDocumentArbitrary = opSeedArbitrary.map((seed): Document => {
+type PackageDocumentSeed = Pick<OpSeed, "first" | "formatting" | "inherit" | "text">;
+
+/** Only these four inputs determine package content; operation-only dimensions do not. */
+const packageDocumentFromSeed = (seed: PackageDocumentSeed): Document => {
   let nextParagraph = 1;
   const named = (text: string): Paragraph =>
     paragraph((nextParagraph++).toString(16).toUpperCase().padStart(8, "0"), text);
@@ -172,7 +185,22 @@ export const packageDocumentArbitrary = opSeedArbitrary.map((seed): Document => 
       },
     },
   });
-});
+};
+
+/** Every draw carries all editable stories and balanced, package-wide identities. */
+export const packageDocumentArbitrary = opSeedArbitrary.map(packageDocumentFromSeed);
+
+/** Capture replay has no dependency on operation-only generator dimensions. */
+export const captureDocumentArbitrary = fc
+  .record({
+    first: fc.nat(),
+    formatting: textFormattingArbitrary,
+    inherit: fc.boolean(),
+    text: fc
+      .array(fc.constantFrom("x", "y", "ü", "😀"), { minLength: 1, maxLength: 3 })
+      .map((parts) => parts.join("")),
+  })
+  .map(packageDocumentFromSeed);
 
 type CaseArgs = { document: Document; seed: OpSeed; story: OpStory };
 type GeneratedCase = { document: Document; op: DocumentOp };
@@ -440,15 +468,34 @@ export const PACKAGE_OP_CASES = {
       content: [freshParagraph(args)],
     },
   }),
-  removeHeaderFooter: (args: CaseArgs): GeneratedCase => ({
-    document: args.document,
-    op: {
-      type: "removeHeaderFooter",
+  removeHeaderFooter: (args: CaseArgs): GeneratedCase => {
+    if (args.seed.first % 2 !== 0)
+      return {
+        document: args.document,
+        op: {
+          type: "removeHeaderFooter",
+          sectionIndex: 0,
+          story: { kind: "header", rId: "rIdHeader" },
+          referenceType: "default",
+        },
+      };
+    const created = applyDocumentOp(args.document, {
+      type: "createHeaderFooter",
       sectionIndex: 0,
-      story: { kind: "header", rId: "rIdHeader" },
-      referenceType: "default",
-    },
-  }),
+      story: { kind: "footer", rId: "rIdGenerated" },
+      referenceType: "first",
+      content: [freshParagraph(args)],
+    }).unwrap().document;
+    return {
+      document: created,
+      op: {
+        type: "removeHeaderFooter",
+        sectionIndex: 0,
+        story: { kind: "footer", rId: "rIdGenerated" },
+        referenceType: "first",
+      },
+    };
+  },
   addNote: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
     op: {

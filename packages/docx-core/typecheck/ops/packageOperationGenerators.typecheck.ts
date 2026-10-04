@@ -1,5 +1,5 @@
 import type { DocumentOp } from "../../src/ops/types";
-import type { PACKAGE_OP_CASES } from "../../src/ops/__tests__/packageOperationArbitraries";
+import type { PACKAGE_OP_CASES } from "../../../../test/generators/packageOperationArbitraries";
 
 type Assert<Condition extends true> = Condition;
 

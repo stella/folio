@@ -7,12 +7,15 @@ import {
   ParagraphPropertySourceValidationError,
   TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
   cloneDocumentWithParagraphPropertySources,
+  cloneParagraphWithoutPropertySource,
   copyDocumentParagraphPropertySources,
   copyParagraphPropertySource,
   decodeTableCellParagraphSourcePayload,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
+  inspectParagraphSourceIdentity,
+  paragraphPropertySourceBelongsToDocument,
   restoreTableCellsWithParagraphPropertySources,
   transportTableCellsWithParagraphPropertySources,
   visitDocumentStoryParagraphs,
@@ -69,6 +72,43 @@ const firstParagraphIn = (content: BlockContent[]): Paragraph | undefined => {
 };
 
 describe("paragraph-property source identity", () => {
+  test("immutable captures retain their owner without copying durable identity", async () => {
+    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
+    const paragraph = [...(copyDocumentParagraphPropertySources(document)?.values() ?? [])].find(
+      (candidate) => getParagraphPropertySource(candidate) !== undefined,
+    );
+    if (!paragraph) throw new TypeError("Expected a parsed paragraph");
+    const derived = { ...paragraph, content: [...paragraph.content] };
+    expect(getParagraphPropertySource(derived)).toBe(getParagraphPropertySource(paragraph));
+    expect(paragraphPropertySourceBelongsToDocument(derived, document)).toBe(true);
+    expect(getParagraphPropertySourceToken(derived)).toBeUndefined();
+    expect(inspectParagraphSourceIdentity(paragraph, document)).toEqual({
+      type: "durable",
+      token: getParagraphPropertySourceToken(paragraph),
+    });
+    expect(inspectParagraphSourceIdentity(derived, document)).toEqual({ type: "capture-only" });
+    expect(getParagraphPropertySource(structuredClone(derived))).toBeUndefined();
+    const unbound = cloneParagraphWithoutPropertySource(derived, {});
+    expect(getParagraphPropertySource(unbound)).toBeUndefined();
+    expect(inspectParagraphSourceIdentity(unbound, document)).toEqual({ type: "authored" });
+    const capturedWire = JSON.stringify(derived);
+    const unboundWire = JSON.stringify(unbound);
+    expect(capturedWire).toBe(unboundWire);
+    expect(new TextEncoder().encode(capturedWire)).toEqual(new TextEncoder().encode(unboundWire));
+    expect(structuredClone(derived)).toStrictEqual(structuredClone(unbound));
+    expect(JSON.stringify(derived)).not.toContain("paragraphPropertyCapture");
+
+    const forged = { ...derived };
+    const captureKey = Object.getOwnPropertySymbols(forged).find(
+      (key) => key.description === "paragraphPropertyCapture",
+    );
+    if (!captureKey) throw new TypeError("Expected the private capture handle");
+    Object.defineProperty(forged, captureKey, { value: {} });
+    expect(getParagraphPropertySource(forged)).toBeUndefined();
+    expect(inspectParagraphSourceIdentity(forged, document)).toEqual({ type: "invalid" });
+    expect(paragraphPropertySourceBelongsToDocument(forged, document)).toBe(false);
+  });
+
   test("the private contract follows immutable derivations without entering JSON", async () => {
     const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
     const contract = getDocumentParagraphPropertySourceContract(document);

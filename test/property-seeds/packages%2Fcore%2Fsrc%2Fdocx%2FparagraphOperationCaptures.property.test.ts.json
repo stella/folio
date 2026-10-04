@@ -1,0 +1,22 @@
+{
+  "operation sequences retain parsed paragraph captures through composition": [
+    {
+      "seed": 231829227,
+      "path": "0",
+      "note": "Capture composition replay on the four-input package arbitrary; the same replay checks capture-handle ablation changes source bytes while public records stay equal.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1180649147,
+      "path": "0",
+      "note": "Capture composition replay on the four-input package arbitrary; the same replay checks capture-handle ablation changes source bytes while public records stay equal.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1467770682,
+      "path": "0",
+      "note": "Capture composition replay on the four-input package arbitrary; the same replay checks capture-handle ablation changes source bytes while public records stay equal.",
+      "date": "2026-10-03"
+    }
+  ]
+}

@@ -4,7 +4,12 @@ import { Result, panic } from "better-result";
 import { applyDocumentOp, applyDocumentOps } from "./apply";
 import { captureDocumentOp } from "./wire";
 import { applyFormattingPatch } from "./patch";
-import { paragraphNumberingReference } from "../model/paragraphNumbering";
+import { isNumberingLevel } from "../model/numberingLevel";
+import {
+  isNumberingReference,
+  NO_NUMBERING_NUM_ID,
+  paragraphNumberingReference,
+} from "../model/paragraphNumbering";
 
 import {
   MAX_REVISION_ID,
@@ -1302,9 +1307,10 @@ export const compileEditorIntent = (
         intent.target.type === "existing" ? intent.target.numId : intent.target.num.numId;
       if (
         !Number.isInteger(numId) ||
-        numId <= 0 ||
+        !isNumberingReference(numId) ||
+        numId < NO_NUMBERING_NUM_ID ||
         numId > MAX_REVISION_ID ||
-        intent.items.some(({ ilvl }) => !Number.isInteger(ilvl) || ilvl < 0 || ilvl > 8)
+        intent.items.some(({ ilvl }) => !isNumberingLevel(ilvl))
       )
         return Result.err(
           new DocumentOpRefusal({

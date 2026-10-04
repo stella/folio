@@ -442,12 +442,14 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
   const validSlot = (slot: unknown): slot is RetainedIdentity["source"][number] => {
     if (typeof slot !== "object" || slot === null || !("space" in slot) || !("id" in slot))
       return false;
+    // Revision/control ids allow zero; note-record reserved ids do not apply here.
+    const retainedId = slot.id;
     return (
       (slot.space === IDENTITY_SPACES.REVISION || slot.space === IDENTITY_SPACES.CONTROL) &&
-      typeof slot.id === "number" &&
-      Number.isInteger(slot.id) &&
-      slot.id >= 0 &&
-      slot.id <= MAX_REVISION_ID
+      typeof retainedId === "number" &&
+      Number.isInteger(retainedId) &&
+      retainedId >= 0 &&
+      retainedId <= MAX_REVISION_ID
     );
   };
   const validEntry = (entry: unknown): boolean => {
