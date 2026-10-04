@@ -1204,6 +1204,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       applyCanonicalStoryHistory: ({ view: storyView, story, direction }) => {
         if (story === OP_STORIES.MAIN && storyView === view) return history(direction);
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly()) return false;
+        syncCanonicalMode();
         const session = editorSession.session;
         if (direction === "undo" ? !session.canUndo : !session.canRedo) return false;
         const prepared =
@@ -1239,6 +1240,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       },
       replaceCanonicalStoryText: ({ view: storyView, story, intent }) => {
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly()) return false;
+        syncCanonicalMode();
         const session = editorSession.session;
         const prepared = session.prepareReplace(storyView.state, { ...intent, story });
         if (prepared.isErr()) {

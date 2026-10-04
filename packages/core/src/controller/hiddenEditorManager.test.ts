@@ -1,6 +1,7 @@
+import * as documentOps from "@stll/docx-core/ops";
 import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, spyOn } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
@@ -583,6 +584,7 @@ test.each([
   });
   const manager = createHiddenEditorManager(deps);
   let storyView: EditorView | undefined;
+  const compilation = spyOn(documentOps, "compileEditorIntent");
   try {
     manager.ensureView();
     const projection = manager.api.getCanonicalStoryProjection(story);
@@ -601,6 +603,7 @@ test.each([
     expect(committedState.doc.textContent).toBe("Story!");
     expect(manager.api.canUndo()).toBe(true);
     mode = "suggesting";
+    compilation.mockClear();
     const committedEnd = storyView.state.doc.content.size - 1;
     expect(
       manager.api.replaceCanonicalStoryText({
@@ -609,6 +612,7 @@ test.each([
         intent: { from: committedEnd, to: committedEnd, text: "untracked" },
       }),
     ).toBe(false);
+    expect(compilation.mock.calls.at(-1)?.[1].mode.type).toBe("suggesting");
     expect(
       manager.api.applyCanonicalStoryHistory({ view: storyView, story, direction: "undo" }),
     ).toBe(false);
@@ -621,6 +625,7 @@ test.each([
       "Suggesting is unavailable in the experimental canonical session.",
     ]);
   } finally {
+    compilation.mockRestore();
     storyView?.destroy();
     manager.destroyView();
     host.remove();
