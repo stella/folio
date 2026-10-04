@@ -215,7 +215,7 @@ describe("document style sets", () => {
   });
 
   test("a package with no styles part yields a set built on Word's own default", async () => {
-    const document = await parseDocx(await packageWithoutStylesPart());
+    const document = await parseDocx(await packageWithoutStylesPart(), { preloadFonts: false });
 
     const extracted = extractDocumentStyleSet(document, { name: "From a style-less package" });
 
