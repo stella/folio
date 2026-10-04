@@ -5,7 +5,7 @@ import { assertProperty, propertyTestTimeout } from "../../../../test/property-t
 setDefaultTimeout(propertyTestTimeout(30_000));
 import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
-import { DOCUMENT_OP_TYPES, OP_STORIES } from "@stll/docx-core/ops";
+import { DOCUMENT_OP_TYPES, OP_STORIES, packageResourcesOpOf } from "@stll/docx-core/ops";
 import { createCanonicalSession } from "./canonicalSession";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { schema } from "../prosemirror/schema";
@@ -15,6 +15,8 @@ import { createDocx } from "../docx/rezip";
 import { createSimpleDocument } from "../docx/serializer/documentSerializer";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import type { SaveDiagnostic } from "../docx/saveDiagnostics";
+import { assertExactModel } from "../../../../test/exactModel";
+import type { Style } from "../types/document";
 import { canonicalSaveParagraphXml } from "../../../../test/canonicalSaveSequence";
 
 const IDS = ["11111111", "22222222", "33333333"] as const;
@@ -45,6 +47,48 @@ test("generated canonical histories save the model and preserve every block outs
         const session = createCanonicalSession(await openSource()).unwrap();
         let state = EditorState.create({ schema, doc: session.projection.doc });
         expect(session.captureSaveSnapshot().changedBlockIds).toEqual([]);
+        // Clipboard resource commits change package definitions, not body structure or touched ids.
+        const resourceBaseline = session.captureSaveSnapshot();
+        const addedStyle = {
+          styleId: "CanonicalGeneratedResource",
+          type: "paragraph",
+          name: `Resource ${edits.at(0)?.text ?? "x"}`,
+          pPr: { keepNext: true },
+        } satisfies Style;
+        const withResources = {
+          ...session.document,
+          package: {
+            ...session.document.package,
+            styles: {
+              ...session.document.package.styles,
+              styles: [...(session.document.package.styles?.styles ?? []), addedStyle],
+            },
+          },
+        };
+        const resourceOp = packageResourcesOpOf({ before: session.document, after: withResources });
+        const resourceCommit = session.prepareOperations(state, [resourceOp]).unwrap();
+        state = state.apply(resourceCommit.transaction);
+        resourceCommit.publish().unwrap();
+        expect(session.captureSaveSnapshot().changedBlockIds).toEqual(
+          resourceBaseline.changedBlockIds,
+        );
+        expect(session.captureSaveSnapshot().structure).toBe(resourceBaseline.structure);
+        expect(session.document.package.styles?.styles).toContainEqual(addedStyle);
+        const resourceUndo = session.prepareUndo(state).unwrap();
+        state = state.apply(resourceUndo.transaction);
+        resourceUndo.publish().unwrap();
+        assertExactModel(session.captureSaveSnapshot().document, resourceBaseline.document);
+        expect(session.captureSaveSnapshot().changedBlockIds).toEqual(
+          resourceBaseline.changedBlockIds,
+        );
+        expect(session.captureSaveSnapshot().structure).toBe(resourceBaseline.structure);
+        const resourceRedo = session.prepareRedo(state).unwrap();
+        state = state.apply(resourceRedo.transaction);
+        resourceRedo.publish().unwrap();
+        expect(session.captureSaveSnapshot().changedBlockIds).toEqual(
+          resourceBaseline.changedBlockIds,
+        );
+        expect(session.captureSaveSnapshot().structure).toBe(resourceBaseline.structure);
         for (const { id, text, undo } of edits) {
           const prepared = session
             .prepareOperations(state, [
@@ -125,6 +169,7 @@ test("generated canonical histories save the model and preserve every block outs
         for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
           const saved = await serializeCanonicalSave({ snapshot, options: { mode } });
           const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+          expect(reopened.package.styles?.styles).toContainEqual(addedStyle);
           expect(describePackageDifferences(snapshot.document, reopened)).toEqual({
             messages: [],
             omitted: 0,
