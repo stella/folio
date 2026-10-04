@@ -52,7 +52,10 @@ import {
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
 import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
-import { serializeDocument } from "./serializer/documentSerializer";
+import {
+  serializeDocument,
+  type DocumentBodyAuthorityOptions,
+} from "./serializer/documentSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { readRootNamespaceBindings } from "./serializer/partNamespaces";
@@ -307,20 +310,21 @@ async function patchNumberingPart(
   return true;
 }
 
-export type SelectiveSaveOptions = SaveDiagnosticOptions & {
-  /** Changed paragraph IDs to selectively patch */
-  changedParaIds: Set<string>;
-  /** Whether paragraph membership, order, or block structure changed. */
-  structuralChange: boolean;
-  /** Whether any changes affected paragraphs without paraId */
-  hasUntrackedChanges: boolean;
-  /**
-   * Maximum allowed `originalBuffer.byteLength` for the selective path. Above
-   * this size the function returns null and the caller falls back to full
-   * repack. Defaults to {@link DEFAULT_SELECTIVE_SAVE_MAX_BYTES}.
-   */
-  maxBytes?: number;
-};
+export type SelectiveSaveOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & {
+    /** Changed paragraph IDs to selectively patch */
+    changedParaIds: Set<string>;
+    /** Whether paragraph membership, order, or block structure changed. */
+    structuralChange: boolean;
+    /** Whether any changes affected paragraphs without paraId */
+    hasUntrackedChanges: boolean;
+    /**
+     * Maximum allowed `originalBuffer.byteLength` for the selective path. Above
+     * this size the function returns null and the caller falls back to full
+     * repack. Defaults to {@link DEFAULT_SELECTIVE_SAVE_MAX_BYTES}.
+     */
+    maxBytes?: number;
+  };
 
 /**
  * Attempt a selective save — patch only changed paragraphs in document.xml.
@@ -477,6 +481,7 @@ export async function attemptSelectiveSave(
       // the body serializes it.
       const serializedDocXml = serializeDocument(doc, readRootNamespaceBindings(originalDocXml), {
         xml: originalDocXml,
+        bodyAuthority: options.bodyAuthority,
         onDiagnostic: options.onDiagnostic,
       });
       const bodyParaIds = collectParaIds(serializedDocXml);

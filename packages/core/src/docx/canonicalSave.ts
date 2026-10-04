@@ -49,6 +49,7 @@ export const serializeCanonicalSave = async ({
   if (baseline && (useSelective || flags.selectiveSaveTripwire)) {
     const { attemptSelectiveSave } = await import("./selectiveSave");
     selectiveBuffer = await attemptSelectiveSave(document, baseline, {
+      bodyAuthority: "canonical",
       changedParaIds: new Set(snapshot.changedBlockIds),
       structuralChange: snapshot.structure === "changed",
       hasUntrackedChanges: false,
@@ -64,7 +65,7 @@ export const serializeCanonicalSave = async ({
     return baseline
       ? repackWithCanonicalStoryRemovals({
           document,
-          repack: () => repackDocx(document, { onDiagnostic }),
+          repack: () => repackDocx(document, { onDiagnostic, bodyAuthority: "canonical" }),
         })
       : createDocx(document);
   };

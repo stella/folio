@@ -92,7 +92,10 @@ import {
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
-import { serializeDocument } from "./serializer/documentSerializer";
+import {
+  serializeDocument,
+  type DocumentBodyAuthorityOptions,
+} from "./serializer/documentSerializer";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
 import {
   serializeEndnotes,
@@ -966,16 +969,17 @@ async function processNewHyperlinks(
 /**
  * Options for repacking DOCX
  */
-export type RepackOptions = SaveDiagnosticOptions & {
-  /** Compression level (0-9, default: 6) */
-  compressionLevel?: number;
-  /** Whether to update modification date in docProps/core.xml */
-  updateModifiedDate?: boolean;
-  /** Custom modifier name for lastModifiedBy */
-  modifiedBy?: string;
-  /** Changed note paragraphs that must be serialized even without source paraIds. */
-  changedNoteParaIds?: ReadonlySet<string>;
-};
+export type RepackOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & {
+    /** Compression level (0-9, default: 6) */
+    compressionLevel?: number;
+    /** Whether to update modification date in docProps/core.xml */
+    updateModifiedDate?: boolean;
+    /** Custom modifier name for lastModifiedBy */
+    modifiedBy?: string;
+    /** Changed note paragraphs that must be serialized even without source paraIds. */
+    changedNoteParaIds?: ReadonlySet<string>;
+  };
 
 /**
  * Bring the ids a package addresses itself by inside the bounds the format
@@ -1136,19 +1140,20 @@ const cloneDocxZip = (source: JSZip): JSZip => {
   return clone;
 };
 
-type FinishRepackOptions = SaveDiagnosticOptions & {
-  document: Document;
-  originalZip: JSZip;
-  outputZip: JSZip;
-  originalDocument: OriginalDocumentPart | undefined;
-  originalCorePropertiesXml: string | undefined;
-  compressionLevel: number;
-  updateModifiedDate: boolean;
-  modifiedBy?: string;
-  changedNoteParaIds?: ReadonlySet<string>;
-  sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
-  sectionReferenceRemovals?: readonly RemovedSectionReference[];
-};
+type FinishRepackOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & {
+    document: Document;
+    originalZip: JSZip;
+    outputZip: JSZip;
+    originalDocument: OriginalDocumentPart | undefined;
+    originalCorePropertiesXml: string | undefined;
+    compressionLevel: number;
+    updateModifiedDate: boolean;
+    modifiedBy?: string;
+    changedNoteParaIds?: ReadonlySet<string>;
+    sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
+    sectionReferenceRemovals?: readonly RemovedSectionReference[];
+  };
 
 const normalizeExportDrawingIds = ({ package: docxPackage }: Document): void => {
   normalizeDrawingIds({
@@ -1171,6 +1176,7 @@ const finishRepack = async ({
   modifiedBy,
   changedNoteParaIds,
   onDiagnostic,
+  bodyAuthority,
   sectionEndpointRemoval,
   sectionReferenceRemovals,
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
@@ -1189,7 +1195,7 @@ const finishRepack = async ({
   const documentXml = serializeDocument(
     document,
     originalDocument === undefined ? undefined : readRootNamespaceBindings(originalDocument.xml),
-    { xml: originalDocument?.xml, onDiagnostic },
+    { xml: originalDocument?.xml, onDiagnostic, bodyAuthority },
   );
   if (originalDocument?.xml) {
     assertDocumentPackageFidelity({
@@ -1310,6 +1316,7 @@ async function repackDocxWithSectionEndpointRemoval({
     compressionLevel,
     updateModifiedDate,
     onDiagnostic: options.onDiagnostic,
+    bodyAuthority: options.bodyAuthority,
     ...(modifiedBy !== undefined ? { modifiedBy } : {}),
     ...(changedNoteParaIds !== undefined ? { changedNoteParaIds } : {}),
     ...(sectionEndpointRemoval !== undefined ? { sectionEndpointRemoval } : {}),
@@ -1395,7 +1402,11 @@ export async function repackDocxFromRaw(
   const documentXml = serializeDocument(
     exportDocument,
     rawContent.documentXml ? readRootNamespaceBindings(rawContent.documentXml) : undefined,
-    { xml: rawContent.documentXml ?? undefined, onDiagnostic: options.onDiagnostic },
+    {
+      xml: rawContent.documentXml ?? undefined,
+      onDiagnostic: options.onDiagnostic,
+      bodyAuthority: options.bodyAuthority,
+    },
   );
   if (rawContent.documentXml) {
     assertDocumentPackageFidelity({

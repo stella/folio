@@ -164,14 +164,22 @@ const replayableDocumentSources = new WeakMap<DocumentBody, string>();
  *   prefix only the source document bound keeps its URI
  * @returns Complete XML string for document.xml
  */
+export type DocumentBodyAuthorityOptions = {
+  /** Canonical saves preserve trusted source blocks; default saves serialize the model. */
+  bodyAuthority?: "canonical" | "model" | undefined;
+};
+
 export function serializeDocument(
   doc: Document,
   sourceBindings?: ReadonlyMap<string, string>,
-  source?: SaveDiagnosticOptions & { xml?: string | undefined },
+  source?: SaveDiagnosticOptions & DocumentBodyAuthorityOptions & { xml?: string | undefined },
 ): string {
   // Reset for every pass, including complete source replay.
   resetAutoIdCounter();
-  const baseline = getDocumentSourceBaseline(doc);
+  const baseline =
+    source?.bodyAuthority === "canonical"
+      ? getDocumentSourceBaseline(doc)
+      : ({ type: "missing" } as const);
   const sourceMatches =
     baseline.type === "captured" && (source?.xml === undefined || source.xml === baseline.xml);
   // Exact snapshots can replay the trusted part without generating or scanning XML.

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import JSZip from "jszip";
 import { parseDocx } from "./parser";
 import { createDocx, repackDocx } from "./rezip";
+import { readRootNamespaceBindings } from "./serializer/partNamespaces";
 import { createSimpleDocument, serializeDocument } from "./serializer/documentSerializer";
 import { captureDocumentSourceBaseline, getDocumentSourceBaseline } from "./headerFooterVerbatim";
 import { cloneDocumentWithParagraphPropertySources } from "./paragraphPropertySource";
@@ -22,7 +23,7 @@ test("trusted body replay preserves authored shell, metadata, gaps and untouched
   const paragraph = document.package.document.content.at(1);
   if (paragraph?.type !== "paragraph") throw new Error("Missing paragraph");
   paragraph.content = [{ type: "run", content: [{ type: "text", text: "after" }] }];
-  const saved = await repackDocx(document);
+  const saved = await repackDocx(document, { bodyAuthority: "canonical" });
   const xml = await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text");
   expect(xml).toContain(untouched);
   expect(xml).toContain("<!-- authored gap -->\t");
@@ -41,7 +42,7 @@ test("document metadata changes serialize from the current model without losing 
   const document = await parsedSource();
   document.package.document.background = { color: { rgb: "ABCDEF" } };
   document.package.document.finalSectionProperties = undefined;
-  const xml = serializeDocument(document);
+  const xml = serializeDocument(document, undefined, { bodyAuthority: "canonical" });
   expect(xml).toContain(untouched);
   expect(xml).toContain('w:color="ABCDEF"');
   expect(xml).not.toContain("<q:sectPr>");
@@ -51,6 +52,7 @@ test("trusted source correspondence failures emit a body diagnostic", async () =
   const document = await parsedSource();
   const diagnostics: unknown[] = [];
   serializeDocument(document, undefined, {
+    bodyAuthority: "canonical",
     xml: source + " ",
     onDiagnostic: (value) => diagnostics.push(value),
   });
@@ -60,21 +62,22 @@ test("trusted source correspondence failures emit a body diagnostic", async () =
 test("unchanged trusted bodies replay exact source across clones and key orders", async () => {
   const parsed = await parsedSource();
   for (const document of [parsed, cloneDocumentWithParagraphPropertySources(parsed)]) {
-    expect(serializeDocument(document)).toBe(source);
+    expect(serializeDocument(document, undefined, { bodyAuthority: "canonical" })).toBe(source);
     const { content, ...metadata } = document.package.document;
     document.package.document = { ...metadata, content };
-    expect(serializeDocument(document)).toBe(source);
+    expect(serializeDocument(document, undefined, { bodyAuthority: "canonical" })).toBe(source);
   }
 });
 
 test("body replay rejects a modified captured baseline even when current content is unchanged", async () => {
   const document = await parsedSource();
-  expect(serializeDocument(document)).toBe(source);
+  expect(serializeDocument(document, undefined, { bodyAuthority: "canonical" })).toBe(source);
   const baseline = getDocumentSourceBaseline(document);
   if (baseline.type !== "captured") throw new Error("Missing source baseline");
   baseline.body.content.pop();
   const diagnostics: unknown[] = [];
   const xml = serializeDocument(document, undefined, {
+    bodyAuthority: "canonical",
     onDiagnostic: (value) => diagnostics.push(value),
   });
   expect(xml).not.toBe(source);
@@ -92,9 +95,33 @@ test("unchanged replay retains the block and document cardinality refusal checks
     const diagnostics: unknown[] = [];
     expect(
       serializeDocument(document, undefined, {
+        bodyAuthority: "canonical",
         onDiagnostic: (value) => diagnostics.push(value),
       }),
     ).not.toBe(xml);
     expect(diagnostics).toEqual([{ type: "sourceReplayMismatch", part: "word/document.xml" }]);
   }
+});
+
+test("model authority serializes independently of captured canonical replay state", async () => {
+  const document = await parsedSource();
+  const diagnostics: unknown[] = [];
+  const modelXml = serializeDocument(document, undefined, {
+    bodyAuthority: "model",
+    onDiagnostic: (value) => diagnostics.push(value),
+  });
+  expect(modelXml).not.toBe(source);
+  expect(serializeDocument(document)).toBe(modelXml);
+  const baseline = getDocumentSourceBaseline(document);
+  if (baseline.type !== "captured") throw new Error("Missing source baseline");
+  baseline.body.content.pop();
+  expect(
+    serializeDocument(document, undefined, {
+      onDiagnostic: (value) => diagnostics.push(value),
+    }),
+  ).toBe(modelXml);
+  const saved = await repackDocx(document);
+  const xml = await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text");
+  expect(xml).toBe(serializeDocument(document, readRootNamespaceBindings(source)));
+  expect(diagnostics).toEqual([]);
 });
