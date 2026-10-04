@@ -1,0 +1,10 @@
+{
+  "every emitted note reference survives all emphasis combinations and neighboring text": [
+    {
+      "seed": -1134360331,
+      "path": "0:1",
+      "date": "2026-10-04",
+      "note": "Emphasis wrapping must retain complete note-reference syntax next to words and punctuation."
+    }
+  ]
+}

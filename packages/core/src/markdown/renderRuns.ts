@@ -162,8 +162,8 @@ const punctuationFor =
     return /[\p{P}\p{S}]/u.test(ch);
   };
 
-/** One escape pair (`\*`) or one code point of escaped inline text. */
-const INLINE_UNIT = /\\[\s\S]|[\s\S]/gu;
+/** Escape pairs and generated note references are indivisible inline units. */
+const INLINE_UNIT = /\\[\s\S]|\[\^e?\d+\]|[\s\S]/gu;
 
 /**
  * Wrap `inner` in `mark` so a CommonMark reader reads it back. A delimiter
