@@ -80,6 +80,30 @@ export const captureStoryParts = (document: Document, owned: StoryParts): StoryP
   if (owned.footnotes !== undefined) parts.footnotes = pkg.footnotes ?? null;
   if (owned.endnotes !== undefined) parts.endnotes = pkg.endnotes ?? null;
   if (owned.settings !== undefined) parts.settings = pkg.settings ?? null;
+  const undefinedFields: NonNullable<StoryParts["undefinedFields"]>[number][] = [];
+  const bodyKeys = Object.keys(owned.body ?? {})
+    .filter((key): key is keyof NonNullable<StoryParts["body"]> => key in values)
+    .filter((key) => Object.hasOwn(body, key) && Reflect.get(body, key) === undefined);
+  if (bodyKeys.length > 0) undefinedFields.push({ target: "body", keys: bodyKeys });
+  const packageKeys = Object.keys(owned)
+    .filter(
+      (key): key is keyof Omit<StoryParts, "body" | "sections" | "undefinedFields"> =>
+        key !== "body" && key !== "sections" && key !== "undefinedFields",
+    )
+    .filter((key) => Object.hasOwn(pkg, key) && Reflect.get(pkg, key) === undefined);
+  if (packageKeys.length > 0) undefinedFields.push({ target: "package", keys: packageKeys });
+  for (const fields of owned.sections ?? []) {
+    const section = body.sections?.at(fields.index);
+    if (!section) continue;
+    const keys = Object.keys(fields)
+      .filter(
+        (key): key is keyof Omit<NonNullable<StoryParts["sections"]>[number], "index"> =>
+          key !== "index",
+      )
+      .filter((key) => Object.hasOwn(section, key) && Reflect.get(section, key) === undefined);
+    if (keys.length > 0) undefinedFields.push({ target: "section", index: fields.index, keys });
+  }
+  if (undefinedFields.length > 0) parts.undefinedFields = undefinedFields;
   return parts;
 };
 
@@ -119,7 +143,7 @@ const changedParts = (before: Document, after: Document): StoryParts => {
     parts.endnotes = before.package.endnotes ?? null;
   if (before.package.settings !== after.package.settings)
     parts.settings = before.package.settings ?? null;
-  return parts;
+  return captureStoryParts(before, parts);
 };
 
 const restoreParts = (document: Document, parts: StoryParts): Document => {
@@ -236,6 +260,40 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
   if (parts.settings !== undefined) {
     if (parts.settings === null) delete pkg.settings;
     else pkg.settings = parts.settings;
+  }
+  for (const fields of parts.undefinedFields ?? []) {
+    switch (fields.target) {
+      case "body":
+        for (const key of fields.keys) {
+          if (
+            !parts.body ||
+            !Object.hasOwn(parts.body, key) ||
+            Reflect.get(parts.body, key) !== null
+          )
+            return panic("Undefined body metadata names an unowned field.");
+          Reflect.set(pkg.document, key, undefined);
+        }
+        break;
+      case "package":
+        for (const key of fields.keys) {
+          if (!Object.hasOwn(parts, key) || Reflect.get(parts, key) !== null)
+            return panic("Undefined package metadata names an unowned field.");
+          Reflect.set(pkg, key, undefined);
+        }
+        break;
+      case "section": {
+        const owned = parts.sections?.find(({ index }) => index === fields.index);
+        const section = pkg.document.sections?.at(fields.index);
+        if (!owned || !section)
+          return panic("Undefined section metadata names an unowned section.");
+        for (const key of fields.keys) {
+          if (!Object.hasOwn(owned, key) || Reflect.get(owned, key) !== null)
+            return panic("Undefined section metadata names an unowned field.");
+          Reflect.set(section, key, undefined);
+        }
+        break;
+      }
+    }
   }
   return { ...document, package: pkg };
 };
@@ -360,11 +418,47 @@ const withSectionProperties = (
   return { ...document, package: { ...document.package, document: next } };
 };
 
+const undefinedFieldsIssue = (parts: StoryParts): string | undefined => {
+  for (const fields of parts.undefinedFields ?? []) {
+    switch (fields.target) {
+      case "body":
+        if (
+          fields.keys.some(
+            (key) =>
+              !parts.body ||
+              !Object.hasOwn(parts.body, key) ||
+              Reflect.get(parts.body, key) !== null,
+          )
+        )
+          return "Undefined body metadata must name owned null fields.";
+        break;
+      case "package":
+        if (
+          fields.keys.some((key) => !Object.hasOwn(parts, key) || Reflect.get(parts, key) !== null)
+        )
+          return "Undefined package metadata must name owned null fields.";
+        break;
+      case "section": {
+        const owned = parts.sections?.find(({ index }) => index === fields.index);
+        if (
+          !owned ||
+          fields.keys.some((key) => !Object.hasOwn(owned, key) || Reflect.get(owned, key) !== null)
+        )
+          return "Undefined section metadata must name owned null fields.";
+        break;
+      }
+    }
+  }
+  return undefined;
+};
+
 export const applyStoryLifecycle = (
   document: Document,
   op: LifecycleOp,
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS) {
+    const metadataIssue = undefinedFieldsIssue(op.parts);
+    if (metadataIssue) return refuse(op, metadataIssue);
     if (!structurallyEqual(captureStoryParts(document, op.expected), op.expected))
       return Result.err(
         new DocumentOpRefusal({
