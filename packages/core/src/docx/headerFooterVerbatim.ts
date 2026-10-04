@@ -28,7 +28,7 @@ const contentBaselines = new WeakMap<
     }
   | {
       type: "body";
-      fingerprint: string;
+      fingerprint: { type: "pending" } | { type: "captured"; value: string };
       xml: string;
       body: Document["package"]["document"];
     }
@@ -207,7 +207,7 @@ export const captureDocumentSourceBaseline = (document: Document, xml: string): 
   const handle = {};
   contentBaselines.set(handle, {
     type: "body",
-    fingerprint: canonicalJson(body),
+    fingerprint: { type: "pending" },
     xml,
     body,
   });
@@ -228,7 +228,12 @@ export const getDocumentSourceBaseline = (
 ):
   | { type: "missing" }
   | { type: "mismatch" }
-  | { type: "captured"; body: Document["package"]["document"]; xml: string } => {
+  | {
+      type: "captured";
+      body: Document["package"]["document"];
+      xml: string;
+      fingerprint: string;
+    } => {
   const body = document.package.document;
   const handle =
     BASELINE_HANDLE in body
@@ -238,11 +243,12 @@ export const getDocumentSourceBaseline = (
   if (handle === undefined) return { type: "missing" };
   if (typeof handle !== "object" || handle === null) return { type: "mismatch" };
   const baseline = contentBaselines.get(handle);
-  if (
-    !baseline ||
-    baseline.type !== "body" ||
-    baseline.fingerprint !== canonicalJson(baseline.body)
-  )
-    return { type: "mismatch" };
-  return { type: "captured", body: baseline.body, xml: baseline.xml };
+  if (!baseline || baseline.type !== "body") return { type: "mismatch" };
+  const fingerprint = JSON.stringify(baseline.body);
+  // The cloned body stays private until this first read. Capture its integrity
+  // fingerprint lazily so parsing alone never pays for save-only comparisons.
+  if (baseline.fingerprint.type === "pending")
+    baseline.fingerprint = { type: "captured", value: fingerprint };
+  if (baseline.fingerprint.value !== fingerprint) return { type: "mismatch" };
+  return { type: "captured", body: baseline.body, xml: baseline.xml, fingerprint };
 };

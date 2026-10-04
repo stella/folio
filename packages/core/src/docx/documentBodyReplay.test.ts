@@ -3,6 +3,7 @@ import JSZip from "jszip";
 import { parseDocx } from "./parser";
 import { createDocx, repackDocx } from "./rezip";
 import { createSimpleDocument, serializeDocument } from "./serializer/documentSerializer";
+import { captureDocumentSourceBaseline, getDocumentSourceBaseline } from "./headerFooterVerbatim";
 import { cloneDocumentWithParagraphPropertySources } from "./paragraphPropertySource";
 
 const WORD = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -54,4 +55,46 @@ test("trusted source correspondence failures emit a body diagnostic", async () =
     onDiagnostic: (value) => diagnostics.push(value),
   });
   expect(diagnostics).toEqual([{ type: "sourceReplayMismatch", part: "word/document.xml" }]);
+});
+
+test("unchanged trusted bodies replay exact source across clones and key orders", async () => {
+  const parsed = await parsedSource();
+  for (const document of [parsed, cloneDocumentWithParagraphPropertySources(parsed)]) {
+    expect(serializeDocument(document)).toBe(source);
+    const { content, ...metadata } = document.package.document;
+    document.package.document = { ...metadata, content };
+    expect(serializeDocument(document)).toBe(source);
+  }
+});
+
+test("body replay rejects a modified captured baseline even when current content is unchanged", async () => {
+  const document = await parsedSource();
+  expect(serializeDocument(document)).toBe(source);
+  const baseline = getDocumentSourceBaseline(document);
+  if (baseline.type !== "captured") throw new Error("Missing source baseline");
+  baseline.body.content.pop();
+  const diagnostics: unknown[] = [];
+  const xml = serializeDocument(document, undefined, {
+    onDiagnostic: (value) => diagnostics.push(value),
+  });
+  expect(xml).not.toBe(source);
+  expect(diagnostics).toEqual([{ type: "sourceReplayMismatch", part: "word/document.xml" }]);
+});
+
+test("unchanged replay retains the block and document cardinality refusal checks", async () => {
+  for (const xml of [
+    source.replace("</q:document>", "<q:body/></q:document>"),
+    source.replace("<q:body>", "<q:background/><q:body>"),
+    source.replace("</q:body>", "<q:p/></q:body>"),
+  ]) {
+    const document = await parsedSource();
+    captureDocumentSourceBaseline(document, xml);
+    const diagnostics: unknown[] = [];
+    expect(
+      serializeDocument(document, undefined, {
+        onDiagnostic: (value) => diagnostics.push(value),
+      }),
+    ).not.toBe(xml);
+    expect(diagnostics).toEqual([{ type: "sourceReplayMismatch", part: "word/document.xml" }]);
+  }
 });

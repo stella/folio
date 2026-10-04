@@ -606,6 +606,44 @@ const replayCellContent = ({
   return true;
 };
 
+const readDocumentStory = (xml: string) => {
+  const document = readStory(xml);
+  if (!document || getLocalName(document.root.name) !== "document") return null;
+  const bodies = wordChildren(document.root, "body");
+  const body = bodies.at(0);
+  if (
+    bodies.length !== 1 ||
+    !body ||
+    wordChildren(body, "sectPr").length > 1 ||
+    wordChildren(document.root, "background").length > 1
+  )
+    return null;
+  const range = getXmlSourceRange(body);
+  return range ? { document, body, range } : null;
+};
+
+/** Validate source/model correspondence before replaying an unchanged complete part. */
+export const canReplayDocumentSource = (sourceXml: string, baseline: DocumentBody): boolean => {
+  const source = readDocumentStory(sourceXml);
+  if (!source) return false;
+  const body = readStory(
+    sourceXml.slice(source.range.start, source.range.end),
+    source.body.namespaceScope,
+    "sectPr",
+  );
+  return (
+    body !== null &&
+    body.blocks.length === baseline.content.length &&
+    body.blocks.every((block, index) =>
+      modelMatchesElement({
+        value: baseline.content[index],
+        element: block.element,
+        mode: "source",
+      }),
+    )
+  );
+};
+
 type DocumentBlockReplayOptions = {
   sourceXml: string;
   serializedXml: string;
@@ -620,31 +658,11 @@ export const buildDocumentBlockReplay = ({
   baseline,
   current,
 }: DocumentBlockReplayOptions): string | null => {
-  const source = readStory(sourceXml);
-  const generated = readStory(serializedXml);
-  if (
-    !source ||
-    !generated ||
-    getLocalName(source.root.name) !== "document" ||
-    getLocalName(generated.root.name) !== "document"
-  )
-    return null;
-  const sourceBodies = wordChildren(source.root, "body");
-  const generatedBodies = wordChildren(generated.root, "body");
-  const sourceBody = sourceBodies.at(0);
-  const generatedBody = generatedBodies.at(0);
-  if (sourceBodies.length !== 1 || generatedBodies.length !== 1 || !sourceBody || !generatedBody)
-    return null;
-  if (
-    wordChildren(sourceBody, "sectPr").length > 1 ||
-    wordChildren(generatedBody, "sectPr").length > 1 ||
-    wordChildren(source.root, "background").length > 1 ||
-    wordChildren(generated.root, "background").length > 1
-  )
-    return null;
-  const sourceRange = getXmlSourceRange(sourceBody);
-  const generatedRange = getXmlSourceRange(generatedBody);
-  if (!sourceRange || !generatedRange) return null;
+  const sourceStory = readDocumentStory(sourceXml);
+  const generatedStory = readDocumentStory(serializedXml);
+  if (!sourceStory || !generatedStory) return null;
+  const { body: sourceBody, range: sourceRange } = sourceStory;
+  const { document: generated, body: generatedBody, range: generatedRange } = generatedStory;
   let bodyXml = replayBlocks(
     {
       sourceXml: sourceXml.slice(sourceRange.start, sourceRange.end),
