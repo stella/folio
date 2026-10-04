@@ -2100,6 +2100,7 @@ export const applyFolioDocumentOperations = ({
     // canonical-gap: publicOps.suggestedMode
     // canonical-gap: publicOps.tableProjection
     // canonical-gap: publicOps.unsupportedInline
+    // canonical-gap: publicOps.secondaryStories
     // canonical-gap: pm-document-operations
     const outcome = applyFolioAIEditOperations({
       ...common,

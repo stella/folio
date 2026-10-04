@@ -2,6 +2,7 @@
 import { panic, Result, TaggedError } from "better-result";
 import {
   applyDocumentOps,
+  OP_STORIES,
   compileEditorIntent,
   createEditorIntentIdAllocator,
   documentStories,
@@ -254,6 +255,15 @@ export class CanonicalPublicOperations {
       };
     };
     for (const operation of batch.operations) {
+      if (story !== OP_STORIES.MAIN) {
+        refusals.set(operation.id, { gap: CANONICAL_GAP.publicSecondaryStories });
+        skip(
+          operation.id,
+          "unsupportedBlock",
+          "Canonical public secondary-story routing is unavailable.",
+        );
+        continue;
+      }
       if (!state || projected.isErr() || session.isComposing) {
         skip(operation.id, "documentNotEditable");
         continue;
