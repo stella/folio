@@ -1,5 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 import { EditorState } from "prosemirror-state";
 import { panic } from "better-result";
 import {
@@ -60,7 +63,7 @@ const setup = (text = "alpha beta") => {
 
 describe("canonical public operation batches", () => {
   test("generated mixed human and public histories undo through one journal", () => {
-    fc.assert(
+    assertProperty(
       fc.property(
         fc.array(fc.stringMatching(/^[a-z]{1,8}$/), { minLength: 1, maxLength: 8 }),
         (words) => {

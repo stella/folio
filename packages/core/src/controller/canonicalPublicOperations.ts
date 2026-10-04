@@ -115,7 +115,7 @@ const compilePublicIntents = ({
         ? ({
             type: "splitParagraph",
             at: sourceIntent.at,
-            to: sourceIntent.to,
+            ...(sourceIntent.to === undefined ? {} : { to: sourceIntent.to }),
             newBlockId: ids.newBlockId,
           } as const)
         : sourceIntent;
@@ -349,9 +349,10 @@ export class CanonicalPublicOperations {
       ops.push(...compiled.value.ops);
       nextRevisionId = compiled.value.nextRevisionId;
       const revisionIds = compiled.value.revisions;
+      const revisionId = revisionIds.at(0);
       appliedById.set(operation.id, {
         id: operation.id,
-        ...(revisionIds.length === 0 ? {} : { revisionId: revisionIds.at(0), revisionIds }),
+        ...(revisionId === undefined ? {} : { revisionId, revisionIds }),
       });
     }
     if (batch.atomic && skipped.length > 0) {
@@ -430,11 +431,7 @@ export class CanonicalPublicOperations {
           message: message ?? `The operation was refused: ${reason}.`,
         }),
       );
-    if (
-      "comment" in operation ||
-      operation.type === "commentOnBlock" ||
-      operation.type === "commentOnRange"
-    )
+    if ("comment" in operation)
       return refusal("unsupportedBlock", "Canonical comment operations are unavailable.");
     switch (operation.type) {
       case "replaceInBlock":
