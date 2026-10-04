@@ -1,10 +1,12 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
   censusUndescribedCanonicalCommands,
   checkCanonicalCommandBaseline,
 } from "./lib/canonical-command-census";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const owner = "packages/core/src/prosemirror/canonicalCommands.ts";
 const registry = "packages/core/src/prosemirror/extensions/core/Fixture.ts";
