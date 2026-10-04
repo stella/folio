@@ -1,48 +1,4 @@
 {
-  "generated clipboard replacements preserve retained tail lineage and authored seams": [
-    {
-      "seed": 1418808295,
-      "path": "0:0:1:1:1:2",
-      "date": "2026-10-02",
-      "note": "Retain exact clipboard source ownership, selection and journal behavior observed in leaf CI."
-    },
-    {
-      "seed": -1408566367,
-      "path": "0:0:0:0:0:0:1:0:0:0:1:1:1",
-      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
-      "date": "2026-10-03"
-    },
-    {
-      "seed": -239249692,
-      "path": "0:0:0:0:1:0:1",
-      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
-      "date": "2026-10-03"
-    },
-    {
-      "seed": 341854196,
-      "path": "1:0:0:0:0:0:1",
-      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
-      "date": "2026-10-03"
-    },
-    {
-      "seed": 920771850,
-      "path": "0:1:0:0:0:0:1:0:0:0:0:1:1",
-      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
-      "date": "2026-10-03"
-    },
-    {
-      "seed": 423924683,
-      "path": "42:0:0:0:1:6",
-      "note": "Merge surviving text leaves within the recorded maximum cut depth after wrapper removal.",
-      "date": "2026-10-03"
-    },
-    {
-      "seed": 782520743,
-      "path": "1:0:0:0:0:1:1:0:0:1",
-      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
-      "date": "2026-10-03"
-    }
-  ],
   "generated compound intents reserve source IDs before additional action stamps": [
     {
       "seed": -137924357,
@@ -130,6 +86,44 @@
       "seed": 1820773325,
       "path": "2:0:0:0:0:0",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated nested replacements preserve reviewed source seams in every resolution order": [
+    {
+      "seed": -1408566367,
+      "path": "0:0:0:0:0:0:1:0:0:0:1:1:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -239249692,
+      "path": "0:0:0:0:1:0:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 341854196,
+      "path": "1:0:0:0:0:0:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 920771850,
+      "path": "0:1:0:0:0:0:1:0:0:0:0:1:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 423924683,
+      "path": "42:0:0:0:1:6",
+      "note": "Merge surviving text leaves within the recorded maximum cut depth after wrapper removal.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 782520743,
+      "path": "1:0:0:0:0:1:1:0:0:1",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
       "date": "2026-10-03"
     }
   ],

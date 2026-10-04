@@ -2,94 +2,6 @@
   {
     "schema": 8,
     "op": {
-      "type": "setPackageResources",
-      "expected": {
-        "styles": {
-          "type": "omitted"
-        },
-        "numbering": {
-          "type": "omitted"
-        },
-        "relationships": {
-          "type": "omitted"
-        },
-        "media": {
-          "type": "omitted"
-        }
-      },
-      "resources": {
-        "styles": {
-          "type": "omitted"
-        },
-        "numbering": {
-          "type": "omitted"
-        },
-        "relationships": {
-          "type": "omitted"
-        },
-        "media": {
-          "type": "present",
-          "value": [
-            [
-              "word/media/clipboard.png",
-              {
-                "path": "word/media/clipboard.png",
-                "mimeType": "image/png",
-                "data": [137, 80, 78, 71]
-              }
-            ]
-          ]
-        }
-      }
-    }
-  },
-  {
-    "schema": 8,
-    "op": {
-      "type": "setPackageResources",
-      "expected": {
-        "styles": {
-          "type": "omitted"
-        },
-        "numbering": {
-          "type": "omitted"
-        },
-        "relationships": {
-          "type": "omitted"
-        },
-        "media": {
-          "type": "present",
-          "value": [
-            [
-              "word/media/clipboard.png",
-              {
-                "path": "word/media/clipboard.png",
-                "mimeType": "image/png",
-                "data": [137, 80, 78, 71]
-              }
-            ]
-          ]
-        }
-      },
-      "resources": {
-        "styles": {
-          "type": "omitted"
-        },
-        "numbering": {
-          "type": "omitted"
-        },
-        "relationships": {
-          "type": "omitted"
-        },
-        "media": {
-          "type": "omitted"
-        }
-      }
-    }
-  },
-  {
-    "schema": 8,
-    "op": {
       "type": "createNumberingInstance",
       "abstractNum": {
         "abstractNumId": 7,
@@ -7022,6 +6934,3270 @@
                         "kind": "footnote"
                       }
                     ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [700, 701, 702],
+        "control": [703]
+      },
+      "type": "insertColumn",
+      "column": 1,
+      "width": 1500,
+      "newBlockIds": ["00000200", "00000201"]
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1500, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000200",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000201",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [700, 701, 702],
+        "control": [703]
+      },
+      "type": "deleteColumn",
+      "column": 1
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [700, 701, 702],
+        "control": [703]
+      },
+      "type": "mergeCells",
+      "top": 0,
+      "bottom": 2,
+      "left": 0,
+      "right": 2,
+      "newBlockIds": ["00000202"]
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true,
+                  "gridSpan": 2,
+                  "vMerge": "restart"
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  },
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  },
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  },
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000202",
+                    "content": []
+                  }
+                ],
+                "formatting": {
+                  "gridSpan": 2,
+                  "vMerge": "continue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [700, 701, 702],
+        "control": [703]
+      },
+      "type": "setTableGrid",
+      "columnWidths": [1600, 2200]
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1600, 2200],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [700, 701, 702],
+        "control": [703]
+      },
+      "type": "setCellProps",
+      "patch": {
+        "verticalAlign": "bottom",
+        "noWrap": null,
+        "fitText": true,
+        "width": {
+          "type": "dxa",
+          "value": 1500
+        }
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "bottom",
+                  "fitText": true,
+                  "width": {
+                    "type": "dxa",
+                    "value": 1500
+                  }
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [700, 701, 702],
+        "control": [703]
+      },
+      "type": "setRowProps",
+      "patch": {
+        "header": null,
+        "cantSplit": false,
+        "heightRule": "exact",
+        "height": {
+          "type": "dxa",
+          "value": 300
+        }
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "cantSplit": false,
+              "heightRule": "exact",
+              "height": {
+                "type": "dxa",
+                "value": 300
+              }
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [700, 701, 702],
+        "control": [703]
+      },
+      "type": "setTableProps",
+      "patch": {
+        "justification": "right",
+        "layout": "autofit",
+        "styleId": null,
+        "bidi": true
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "right",
+          "layout": "autofit",
+          "bidi": true
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [501, 502, 503]
+      },
+      "type": "insertColumn",
+      "column": 2,
+      "width": 1300,
+      "newBlockIds": ["00000203", "00000204"],
+      "revision": {
+        "id": 500,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800, 1300],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old",
+          "gridChange": {
+            "id": 502,
+            "columnWidths": [1200, 1800]
+          }
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000203",
+                    "content": []
+                  }
+                ],
+                "structuralChange": {
+                  "type": "tableCellInsertion",
+                  "info": {
+                    "id": 500,
+                    "author": "Reviewer",
+                    "date": "2026-02-03T04:05:06Z",
+                    "initials": "R"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000204",
+                    "content": []
+                  }
+                ],
+                "structuralChange": {
+                  "type": "tableCellInsertion",
+                  "info": {
+                    "id": 501,
+                    "author": "Reviewer",
+                    "date": "2026-02-03T04:05:06Z",
+                    "initials": "R"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "propertyChanges": [
+          {
+            "type": "tablePropertyChange",
+            "info": {
+              "id": 503,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            },
+            "previousFormatting": {
+              "justification": "center",
+              "layout": "fixed",
+              "styleId": "Old"
+            }
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [511, 512, 513]
+      },
+      "type": "deleteColumn",
+      "column": 1,
+      "revision": {
+        "id": 510,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old",
+          "gridChange": {
+            "id": 512,
+            "columnWidths": [1200, 1800]
+          }
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ],
+                "structuralChange": {
+                  "type": "tableCellDeletion",
+                  "info": {
+                    "id": 510,
+                    "author": "Reviewer",
+                    "date": "2026-02-03T04:05:06Z",
+                    "initials": "R"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ],
+                "structuralChange": {
+                  "type": "tableCellDeletion",
+                  "info": {
+                    "id": 511,
+                    "author": "Reviewer",
+                    "date": "2026-02-03T04:05:06Z",
+                    "initials": "R"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "propertyChanges": [
+          {
+            "type": "tablePropertyChange",
+            "info": {
+              "id": 513,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            },
+            "previousFormatting": {
+              "justification": "center",
+              "layout": "fixed",
+              "styleId": "Old"
+            }
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [521]
+      },
+      "type": "setTableGrid",
+      "columnWidths": [1300, 1900],
+      "revision": {
+        "id": 520,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1300, 1900],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old",
+          "gridChange": {
+            "id": 520,
+            "columnWidths": [1200, 1800]
+          }
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "propertyChanges": [
+          {
+            "type": "tablePropertyChange",
+            "info": {
+              "id": 521,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            },
+            "previousFormatting": {
+              "justification": "center",
+              "layout": "fixed",
+              "styleId": "Old"
+            }
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [700, 701, 702],
+        "control": [703]
+      },
+      "type": "setCellProps",
+      "patch": {
+        "fitText": true
+      },
+      "revision": {
+        "id": 530,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true,
+                  "fitText": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ],
+                "propertyChanges": [
+                  {
+                    "type": "tableCellPropertyChange",
+                    "info": {
+                      "id": 530,
+                      "author": "Reviewer",
+                      "date": "2026-02-03T04:05:06Z",
+                      "initials": "R"
+                    },
+                    "previousFormatting": {
+                      "verticalAlign": "center",
+                      "noWrap": true
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [700, 701, 702],
+        "control": [703]
+      },
+      "type": "setRowProps",
+      "patch": {
+        "hidden": true
+      },
+      "revision": {
+        "id": 540,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true,
+              "hidden": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ],
+            "propertyChanges": [
+              {
+                "type": "tableRowPropertyChange",
+                "info": {
+                  "id": 540,
+                  "author": "Reviewer",
+                  "date": "2026-02-03T04:05:06Z",
+                  "initials": "R"
+                },
+                "previousFormatting": {
+                  "header": true,
+                  "cantSplit": true
+                }
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [700, 701, 702],
+        "control": [703]
+      },
+      "type": "setTableProps",
+      "patch": {
+        "bidi": true
+      },
+      "revision": {
+        "id": 550,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old",
+          "bidi": true
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "propertyChanges": [
+          {
+            "type": "tablePropertyChange",
+            "info": {
+              "id": 550,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            },
+            "previousFormatting": {
+              "justification": "center",
+              "layout": "fixed",
+              "styleId": "Old"
+            }
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000100",
+      "newIds": {
+        "revision": [561, 562, 563, 564, 565]
+      },
+      "type": "mergeCells",
+      "top": 0,
+      "bottom": 2,
+      "left": 0,
+      "right": 1,
+      "newBlockIds": [],
+      "revision": {
+        "id": 560,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000100",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true,
+                  "vMerge": "restart"
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ],
+                "structuralChange": {
+                  "type": "tableCellMerge",
+                  "info": {
+                    "id": 560,
+                    "author": "Reviewer",
+                    "date": "2026-02-03T04:05:06Z",
+                    "initials": "R"
+                  },
+                  "verticalMerge": "rest"
+                },
+                "propertyChanges": [
+                  {
+                    "type": "tableCellPropertyChange",
+                    "info": {
+                      "id": 561,
+                      "author": "Reviewer",
+                      "date": "2026-02-03T04:05:06Z",
+                      "initials": "R"
+                    },
+                    "previousFormatting": {
+                      "verticalAlign": "center",
+                      "noWrap": true
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true,
+                  "vMerge": "continue"
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ],
+                "structuralChange": {
+                  "type": "tableCellMerge",
+                  "info": {
+                    "id": 562,
+                    "author": "Reviewer",
+                    "date": "2026-02-03T04:05:06Z",
+                    "initials": "R"
+                  },
+                  "verticalMerge": "continue"
+                },
+                "propertyChanges": [
+                  {
+                    "type": "tableCellPropertyChange",
+                    "info": {
+                      "id": 563,
+                      "author": "Reviewer",
+                      "date": "2026-02-03T04:05:06Z",
+                      "initials": "R"
+                    },
+                    "previousFormatting": {
+                      "verticalAlign": "center",
+                      "noWrap": true
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000100",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000101",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000110",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "verticalAlign": "center",
+                  "noWrap": true
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000111",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000300",
+      "type": "splitCell",
+      "newBlockIds": ["00000302"],
+      "newIds": {
+        "revision": [710, 711]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000300",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {},
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000300",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000302",
+                    "content": []
+                  }
+                ],
+                "formatting": {}
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "gridSpan": 2
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000301",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "gridSpan": 2
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000300",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "gridSpan": 2
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000301",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "story": "main",
+      "blockId": "00000300",
+      "type": "splitCell",
+      "newBlockIds": ["00000302"],
+      "newIds": {
+        "revision": [571]
+      },
+      "revision": {
+        "id": 570,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      }
+    }
+  },
+  {
+    "schema": 8,
+    "op": {
+      "type": "setTable",
+      "story": "main",
+      "blockId": "00000300",
+      "expected": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {},
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000300",
+                    "content": []
+                  }
+                ],
+                "propertyChanges": [
+                  {
+                    "type": "tableCellPropertyChange",
+                    "info": {
+                      "id": 570,
+                      "author": "Reviewer",
+                      "date": "2026-02-03T04:05:06Z",
+                      "initials": "R"
+                    },
+                    "previousFormatting": {
+                      "gridSpan": 2
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000302",
+                    "content": []
+                  }
+                ],
+                "formatting": {},
+                "structuralChange": {
+                  "type": "tableCellInsertion",
+                  "info": {
+                    "id": 571,
+                    "author": "Reviewer",
+                    "date": "2026-02-03T04:05:06Z",
+                    "initials": "R"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "gridSpan": 2
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000301",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "table": {
+        "type": "table",
+        "columnWidths": [1200, 1800],
+        "formatting": {
+          "justification": "center",
+          "layout": "fixed",
+          "styleId": "Old"
+        },
+        "rows": [
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": true,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "gridSpan": 2
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000300",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "formatting": {
+              "header": false,
+              "cantSplit": true
+            },
+            "cells": [
+              {
+                "type": "tableCell",
+                "formatting": {
+                  "gridSpan": 2
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000301",
+                    "content": []
                   }
                 ]
               }

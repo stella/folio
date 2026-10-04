@@ -19,7 +19,7 @@ import {
 } from "prosemirror-commands";
 import { isHistoryTransaction } from "prosemirror-history";
 import { undoInputRule } from "prosemirror-inputrules";
-import { Slice, type Node as PMNode, type MarkType } from "prosemirror-model";
+import { Slice, type Fragment, type Node as PMNode, type MarkType } from "prosemirror-model";
 import {
   AllSelection,
   EditorState,
@@ -876,7 +876,11 @@ function applySuggestionInsert(
   // the text span inside them, as over a text selection of the whole document:
   // the typed text lands in the last paragraph, whose break is the one that
   // stays, formatted as the first character it replaces.
-  const selectsAll = view.state.selection instanceof AllSelection;
+  const { selection } = view.state;
+  // Typing over the selection (not a replacement range the browser names)
+  // leaves the caret after the typed text, whatever kind of selection it was.
+  const typesOverSelection = !selection.empty && selection.from === from && selection.to === to;
+  const selectsAll = selection instanceof AllSelection;
   if (selectsAll) {
     from = Math.max(from, Selection.atStart(view.state.doc).from);
     to = Math.min(to, Selection.atEnd(view.state.doc).to);
@@ -933,8 +937,9 @@ function applySuggestionInsert(
     }
   }
   separateSplitStretch(tr, insertAt, insertAt + text.length, insertAttrs.revisionId);
-  if (view.state.selection instanceof AllSelection) {
-    // The caret follows the typed text, as after typing over any selection.
+  if (typesOverSelection) {
+    // `insertText` lands the caret at the selection's mapped end, which for a
+    // node selection is before the typed text.
     tr.setSelection(TextSelection.create(tr.doc, insertAt + text.length));
   }
 
@@ -1565,6 +1570,78 @@ function recordSplitParagraph(
   });
 }
 
+type ReplacedInline = {
+  /** Where the content stood, in the document after the user's transactions. */
+  at: number;
+  content: Fragment;
+};
+
+/**
+ * The inline content a step removed from within one textblock, and where it
+ * started: the node a node selection held (an image, a field, a note
+ * reference) or a range of runs. Null for a step that removed nothing, or removed paragraph or table
+ * structure the catch-all cannot put back.
+ */
+function replacedInline(
+  before: PMNode | undefined,
+  step: Step,
+): { from: number; content: Fragment } | null {
+  if (!(step instanceof ReplaceStep) || !before || step.from === step.to) {
+    return null;
+  }
+  const $from = before.resolve(step.from);
+  if (!$from.parent.inlineContent || !$from.sameParent(before.resolve(step.to))) {
+    return null;
+  }
+  return {
+    from: step.from,
+    content: $from.parent.content.cut($from.parentOffset, step.to - $from.start()),
+  };
+}
+
+type RestoreReplacedInlineOptions = {
+  tr: Transaction;
+  replaced: readonly ReplacedInline[];
+  insertionType: MarkType;
+  deletionType: MarkType;
+  pluginState: SuggestionModeState;
+};
+
+/**
+ * A transaction the plugin did not build (a command, a default paste, a
+ * keymap) replaced inline content directly. Put it back in front of what
+ * replaced it as a tracked deletion, as typing over a selection does, so
+ * rejecting restores it and accepting removes it. The author's own
+ * insertions are retracted instead.
+ */
+function restoreReplacedInline({
+  tr,
+  replaced,
+  insertionType,
+  deletionType,
+  pluginState,
+}: RestoreReplacedInlineOptions): void {
+  for (const { at, content } of replaced) {
+    // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+    const pos = tr.mapping.map(at, -1);
+    const $pos = tr.doc.resolve(pos);
+    const index = $pos.index();
+    if (!$pos.parent.canReplace(index, index, content)) {
+      continue;
+    }
+    tr.insert(pos, content);
+    markRangeAsDeleted(
+      tr,
+      tr.doc,
+      pos,
+      pos + content.size,
+      insertionType,
+      deletionType,
+      pluginState,
+    );
+  }
+}
+
 /**
  * Create the suggestion mode plugin.
  * When active, text edits become tracked changes.
@@ -1836,9 +1913,18 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
       const laterMaps = transactions
         .slice(transactions.indexOf(userTr) + 1)
         .flatMap((transaction) => transaction.mapping.maps);
+      // Another plugin's appended normalization is not a user's replacement:
+      // restoring what it removed would hand it the same work again.
+      const restoresReplaced = userTr.getMeta("appendedTransaction") === undefined;
+      const replaced: ReplacedInline[] = [];
       for (const [stepIndex, step] of userTr.steps.entries()) {
         const stepMap = step.getMap();
         const following = new Mapping([...userTr.mapping.maps.slice(stepIndex + 1), ...laterMaps]);
+        const removed = restoresReplaced ? replacedInline(userTr.docs[stepIndex], step) : null;
+        if (removed) {
+          // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+          replaced.push({ at: following.map(removed.from, -1), content: removed.content });
+        }
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
         stepMap.forEach((_oldFrom, _oldTo, stepFrom, stepTo) => {
           // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
@@ -1862,6 +1948,15 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
             }
             recordSplitParagraph(tr, userTr.docs[stepIndex], step, newFrom, newTo, markAttrs);
           }
+        });
+      }
+      if (deletionType) {
+        restoreReplacedInline({
+          tr,
+          replaced,
+          insertionType,
+          deletionType,
+          pluginState,
         });
       }
 

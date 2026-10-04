@@ -11,6 +11,14 @@ export const DOCUMENT_OP_REFUSAL_REASONS = Object.freeze({
   UNSUPPORTED_SCHEMA: "unsupportedSchema",
   /** No paragraph in the story carries the id. */
   BLOCK_NOT_FOUND: "blockNotFound",
+  /** A raw operation is missing required fields or supplies their wrong shape. */
+  INVALID_OPERATION: "invalidOperation",
+  /** Removing a column would leave a row with no active cells. */
+  TABLE_ROW_EMPTY: "tableRowEmpty",
+  /** The requested topology edit changes nothing. */
+  NO_CHANGE: "noChange",
+  /** Removed content carries anchors or review records that require coordinated resolution. */
+  DEPENDENT_RECORDS: "dependentRecords",
   /** An offset is not an integer from `0` to the paragraph's length, or a range runs backwards. */
   INVALID_OFFSET: "invalidOffset",
   /** A range starts and ends in different paragraphs or stories. */

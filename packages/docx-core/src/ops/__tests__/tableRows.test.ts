@@ -523,8 +523,8 @@ describe("table row review", () => {
     expect(nextAfter).toBe(after);
   });
 
-  test.each(["cell", "table column property"] as const)(
-    "resolving a %s structural revision is untrackable",
+  test.each(["cell", "table property"] as const)(
+    "resolving a %s revision clears its selected mark",
     (kind) => {
       const base = makeRow("00000010");
       const markedRow: TableRow =
@@ -543,26 +543,34 @@ describe("table row review", () => {
             }
           : base;
       const table = tableOf(markedRow);
-      if (kind === "table column property") {
+      if (kind === "table property") {
+        table.formatting = { styleId: "current" };
         table.propertyChanges = [
           {
             type: "tablePropertyChange",
             info: { id: 50, author: "Other" },
-            previousFormatting: { gridChange: { id: 49, columnWidths: [2400] } },
+            previousFormatting: { styleId: "prior" },
           },
         ];
       }
       const document = documentOf(table);
-      expectRefusalWithoutMutation(
-        document,
-        {
-          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-          story: OP_STORIES.MAIN,
-          revisionIds: [50],
-          decision: REVISION_DECISIONS.ACCEPT,
-        },
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      const result = applied(document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [50],
+        decision: REVISION_DECISIONS.ACCEPT,
+      });
+      const resolvedTable = result.document.package.document.content.find(
+        (block) => block.type === "table",
       );
+      if (resolvedTable?.type !== "table") throw new Error("Resolved table remains present.");
+      if (kind === "cell") {
+        expect(resolvedTable.rows.at(0)?.cells.at(0)?.structuralChange).toBeUndefined();
+        expect(resolvedTable.rows.at(0)?.cells.at(0)).toBeDefined();
+      } else {
+        expect(resolvedTable.propertyChanges).toBeUndefined();
+        expect(resolvedTable.formatting?.styleId).toBe("current");
+      }
     },
   );
 });

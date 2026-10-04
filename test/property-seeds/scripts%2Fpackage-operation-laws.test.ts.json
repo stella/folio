@@ -3,28 +3,51 @@
     {
       "seed": -666539293,
       "note": "Saving a newly created story must not mutate the operation input or lose its content-type registration when removing and restoring it.",
+      "date": "2026-10-03",
+      "path": "0"
+    },
+    {
+      "seed": -2120778113,
+      "path": "0",
+      "note": "Story-removal package-byte class coverage replaces the obsolete broad-law shrink paths recorded under the all-operation law; it does not recover those old shrunk inputs.",
       "date": "2026-10-03"
     }
   ],
   "every operation preserves package inverse and declared scope laws": [
     {
       "seed": 327444275,
-      "note": "Package inverse retains modeled records but changes captured footer serialization after a join. Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.",
+      "path": "0",
+      "note": "Package inverse retains modeled records but changes captured footer serialization after a join. Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.; Package inverse retains modeled records but changes captured footer serialization after a join. Historical shrink path 9:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input. Retain the seeded join inverse witness under the expanded operation alphabet; its migrated shrink path now addresses a header. Historical shrink path 7:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input.",
       "date": "2026-10-03"
     },
     {
       "seed": -392419793,
-      "note": "Package inverse retains modeled records but changes captured header serialization after a join. Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases. setParagraphProps inverse changed the original serialized package parts: word/headerN.xml Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.",
+      "path": "0",
+      "note": "Package inverse retains modeled records but changes captured header serialization after a join. Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases. setParagraphProps inverse changed the original serialized package parts: word/headerN.xml Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.; Package inverse retains modeled records but changes captured header serialization after a join. The expanded operation alphabet makes this historical shrink path pass; the source replay law must hold. Historical shrink path 13:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input. setParagraphProps inverse changed the original serialized package parts: word/headerN.xml The expanded operation alphabet makes this historical shrink path pass; the source replay law must hold. Historical shrink path 41:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input.",
       "date": "2026-10-03"
     },
     {
       "seed": 1192899088,
-      "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.",
+      "path": "0",
+      "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.; setParagraphProps inverse changed the original serialized package parts: word/footerN.xml The expanded operation alphabet makes this historical shrink path pass; the source replay law must hold. Historical shrink path 14:1:1:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input.",
       "date": "2026-10-03"
     },
     {
       "seed": -2120778113,
-      "note": "Restoring a removed story must retain captured replay ownership Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.",
+      "path": "0",
+      "note": "Restoring a removed story must retain captured replay ownership Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.; Restoring a removed story must retain captured replay ownership Historical shrink path 5 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1947858305,
+      "note": "Expanded operation schedule retains the known header join inverse witness; table cases use their declared main-story domain. Historical shrink path 64:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input.",
+      "date": "2026-10-03",
+      "path": "0"
+    },
+    {
+      "seed": -804201985,
+      "path": "0",
+      "note": "Paragraph-property inverse retains exact header serialization under the expanded operation schedule. Historical shrink path 71 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input. Header paragraph-property inverse byte law under the extended table-operation schedule. Historical shrink path 127:1:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input.",
       "date": "2026-10-03"
     }
   ],
@@ -32,18 +55,47 @@
     {
       "seed": -392419793,
       "note": "setParagraphProps inverse changed the original serialized package parts: word/headerN.xml The original symptom does not reproduce with the canonical operation baseline; retain the seed on the per-kind law.",
-      "date": "2026-10-03"
+      "date": "2026-10-03",
+      "path": "0"
     },
     {
       "seed": 1192899088,
       "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml The original symptom does not reproduce with the canonical operation baseline; retain the seed on the per-kind law.",
+      "date": "2026-10-03",
+      "path": "0"
+    },
+    {
+      "seed": -804201985,
+      "path": "0",
+      "note": "Paragraph-property package-byte class coverage replaces the obsolete broad-law shrink paths recorded under the all-operation law; it does not recover those old shrunk inputs.",
       "date": "2026-10-03"
     }
   ],
   "operation sequence generation retains the parsed package control": [
     {
       "seed": 1138888773,
-      "note": "Retain the parsed-control regression seed after the numbering fixture expansion invalidated its historical shrink path (CI replay executed zero cases).",
+      "path": "0",
+      "note": "Retain the parsed-control regression seed after the numbering fixture expansion invalidated its historical shrink path (CI replay executed zero cases).; Sequence controls retain parsed paragraph-property captures across clone and composed inverse Historical shrink path 0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input.",
+      "date": "2026-10-03"
+    }
+  ],
+  "join package inverses retain authored stories": [
+    {
+      "seed": 327444275,
+      "path": "0",
+      "note": "Join package-byte class coverage replaces the obsolete broad-law shrink paths recorded under the all-operation law; it does not recover those old shrunk inputs.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -392419793,
+      "path": "0",
+      "note": "Join package-byte class coverage replaces the obsolete broad-law shrink paths recorded under the all-operation law; it does not recover those old shrunk inputs.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1947858305,
+      "path": "0",
+      "note": "Join package-byte class coverage replaces the obsolete broad-law shrink paths recorded under the all-operation law; it does not recover those old shrunk inputs.",
       "date": "2026-10-03"
     }
   ]

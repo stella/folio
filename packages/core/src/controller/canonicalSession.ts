@@ -419,6 +419,8 @@ const intentStory = (intent: EditorIntent): OpStory => {
     }
     case "joinParagraphs":
       return intent.story;
+    case "table":
+      return intent.operation.story;
     default: {
       const unreachable: never = intent;
       return unreachable;
