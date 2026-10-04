@@ -51,7 +51,7 @@ const mergeBase = Bun.spawnSync(
     "git",
     "merge-base",
     "HEAD",
-    process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : "origin/main",
+    process.env["GITHUB_BASE_REF"] ? `origin/${process.env["GITHUB_BASE_REF"]}` : "origin/main",
   ],
   { cwd: root },
 );
