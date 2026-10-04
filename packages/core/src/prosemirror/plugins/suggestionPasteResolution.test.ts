@@ -18,7 +18,7 @@ describe("tracked paste resolution", () => {
   test.each(TEXTBLOCK_SELECTION_PLACEMENTS)(
     "copied revisions resolve like direct paste at %s",
     async (placement) => {
-      const result = await runConformanceCase(trackedShape, copiedBlocks, placement);
+      const result = await runConformanceCase(trackedShape, copiedBlocks, placement, "prosemirror");
       expect(result).not.toBeNull();
       expect(result?.violations).toEqual([]);
     },
@@ -67,7 +67,7 @@ test.each(nestedCases)(
         return undefined;
       },
     } as const satisfies ConformanceOperation;
-    const result = await runConformanceCase(plainShape, operation, placement);
+    const result = await runConformanceCase(plainShape, operation, placement, "prosemirror");
     expect(result).not.toBeNull();
     expect(result?.violations).toEqual([]);
   },

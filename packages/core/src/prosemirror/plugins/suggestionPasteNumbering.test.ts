@@ -20,7 +20,7 @@ test.each(
 )(
   "tracked list paste resolves like direct paste: %s",
   async (_label, { shape, operation, placement }) => {
-    const result = await runConformanceCase(shape, operation, placement);
+    const result = await runConformanceCase(shape, operation, placement, "prosemirror");
     expect(result).not.toBeNull();
     expect(result?.violations).toEqual([]);
   },
@@ -45,7 +45,7 @@ test.each(
     ({ shape, placement }) => [`${shape.id} / ${placement}`, { shape, placement }] as const,
   ),
 )("one copied paragraph restores its properties: %s", async (_label, { shape, placement }) => {
-  const result = await runConformanceCase(shape, singleParagraphPaste, placement);
+  const result = await runConformanceCase(shape, singleParagraphPaste, placement, "prosemirror");
   expect(result).not.toBeNull();
   expect(result?.violations).toEqual([]);
 });

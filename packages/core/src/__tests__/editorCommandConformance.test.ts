@@ -33,7 +33,12 @@ import {
 } from "./editorCommandConformance";
 import { SUGGESTION_INPUT_DRIVERS, SUGGESTION_INPUT_KINDS } from "./suggestionInputKinds";
 import type { Violation } from "./editorCommandConformance";
-import { gapApplies, gapCovers, KNOWN_CONFORMANCE_GAPS } from "./editorCommandConformance.known";
+import {
+  gapApplies,
+  gapCovers,
+  KNOWN_CONFORMANCE_GAPS,
+  LEGACY_NODE_REPLACEMENTS,
+} from "./editorCommandConformance.known";
 import type { ConformanceCaseKey, KnownConformanceGap } from "./editorCommandConformance.known";
 import { EDITOR_MODES, harnessManager, SELECTION_PLACEMENTS } from "./editorHarness";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
@@ -53,7 +58,7 @@ featureCoverage.operations = CONFORMANCE_OPERATIONS.map(({ id }) => id);
 const caseId = ({ shape, operation, placement }: ConformanceCaseKey): string =>
   `${shape} › ${operation} @ ${placement}`;
 
-const CASES: ConformanceCaseKey[] = DOCUMENT_SHAPES.flatMap((shape) =>
+const MATRIX_CASES: ConformanceCaseKey[] = DOCUMENT_SHAPES.flatMap((shape) =>
   CONFORMANCE_OPERATIONS.flatMap((operation) =>
     (FULL_TIER ? SELECTION_PLACEMENTS : operation.placements).map((placement) => ({
       shape: shape.id,
@@ -62,6 +67,19 @@ const CASES: ConformanceCaseKey[] = DOCUMENT_SHAPES.flatMap((shape) =>
     })),
   ),
 ).filter((key) => FILTER === null || FILTER.test(caseId(key)));
+
+const CASES = [
+  ...new Map(
+    [
+      ...MATRIX_CASES,
+      ...LEGACY_NODE_REPLACEMENTS.map(
+        ({ operation }) => ({ shape: "image", operation, placement: "node" }) as const,
+      ),
+    ]
+      .filter((key) => FILTER === null || FILTER.test(caseId(key)))
+      .map((key) => [caseId(key), key]),
+  ).values(),
+];
 
 const gapUsage = new Map<KnownConformanceGap, { applied: number; covered: number }>(
   KNOWN_CONFORMANCE_GAPS.map((gap) => [gap, { applied: 0, covered: 0 }]),
@@ -153,6 +171,12 @@ describe("editor command conformance", () => {
         }
       }
 
+      expect(result.authority).toBe("canonical");
+      expect(result.violations.map(describeViolation)).toEqual([]);
+      // Legacy evidence has its own authority and cannot excuse a canonical violation.
+      const legacy = KNOWN_CONFORMANCE_GAPS.some((gap) => gapApplies(gap, key))
+        ? await runConformanceCase(shape, operation, key.placement, "prosemirror")
+        : null;
       for (const gap of KNOWN_CONFORMANCE_GAPS) {
         if (gapApplies(gap, key)) {
           const usage = gapUsage.get(gap);
@@ -161,7 +185,7 @@ describe("editor command conformance", () => {
           }
         }
       }
-      const unexpected = result.violations.filter((violation) => {
+      const unexpected = (legacy?.violations ?? []).filter((violation) => {
         const gap = KNOWN_CONFORMANCE_GAPS.find((candidate) =>
           gapCovers(candidate, key, violation.kind, violation.mode),
         );
@@ -175,7 +199,10 @@ describe("editor command conformance", () => {
         return false;
       });
       if (REPORT_PATH) {
-        appendFileSync(REPORT_PATH, `${JSON.stringify({ ...key, ...result, unexpected })}\n`);
+        appendFileSync(
+          REPORT_PATH,
+          `${JSON.stringify({ ...key, ...result, legacy, unexpected })}\n`,
+        );
       }
       expect(unexpected.map(describeViolation)).toEqual([]);
     },
