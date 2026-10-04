@@ -28,6 +28,7 @@ import {
 import { computeListRendering, getCachedNumberingMap } from "../../docx/numberingParser";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
+import { listRenderingDefinitionsMatch } from "./listRenderingDefinition";
 
 type FixtureOptions = {
   /** `w:start` for abstract level 0. */
@@ -145,6 +146,33 @@ describe("listRendering.levelStarts round-trip", () => {
     expect(markers(rebuilt).at(0)).toBe("7.\t(a)");
   });
 
+  test("definition matching excludes generated paragraph counter and folded-field metadata", async () => {
+    const initial = await numberedFixture({ start: 7, nestedStart: 1, foldedListNum: true });
+    const paragraph = initial.package.document.content.at(0);
+    const rendering = paragraph?.type === "paragraph" ? paragraph.listRendering : undefined;
+    if (rendering === undefined) throw new TypeError("Expected parsed list rendering.");
+    let cases = 0;
+    await assertProperty(
+      fc.property(
+        fc.record({
+          marker: fc.string(),
+          foldedMarkerSuffix: fc.string(),
+          implicitChildLevelAdvances: fc.integer({ min: 0, max: 100 }),
+          markerSecondSlotOffsetTwips: fc.integer({ min: 0, max: 10_000 }),
+        }),
+        (local) => {
+          cases += 1;
+          const changed = { ...structuredClone(rendering), ...local };
+          expect(listRenderingDefinitionsMatch(rendering, changed)).toBe(true);
+          expect(
+            listRenderingDefinitionsMatch(rendering, { ...changed, numId: rendering.numId + 1 }),
+          ).toBe(false);
+        },
+      ),
+    );
+    expect(cases).toBeGreaterThan(0);
+  });
+
   test("same reference recomputes cached rendering when its definition changes", async () => {
     const initial = await numberedFixture({ startOverride: 5 });
     for (const mutation of ["template", "start", "format", "marker", "tabs"] as const) {
@@ -158,6 +186,8 @@ describe("listRendering.levelStarts round-trip", () => {
       )
         throw new TypeError("Expected numbered rendering fixture.");
       const numPr = paragraph.formatting.numPr;
+      // A conversion must not reuse definition results across later model edits.
+      toProseDoc(changed);
       const instance = numbering.nums.find((num) => num.numId === numPr.numId);
       const definition = numbering.abstractNums.find(
         (abstract) => abstract.abstractNumId === instance?.abstractNumId,
