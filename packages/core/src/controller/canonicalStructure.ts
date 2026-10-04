@@ -68,7 +68,7 @@ const numberingIntent = (
       { length: 9 },
       (_, level): ListLevel => ({
         ilvl: level,
-        start: request.start ?? 1,
+        start: level === 0 ? (request.start ?? 1) : 1,
         numFmt: request.kind === "bullet" ? "bullet" : (request.format?.numFmt ?? "decimal"),
         lvlText:
           request.kind === "bullet"

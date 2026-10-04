@@ -11,6 +11,7 @@ import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
 import {
   assignDocumentParagraphPropertySourceContract,
+  cloneDocumentWithParagraphPropertySources,
   assignParagraphPropertySource,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
@@ -358,9 +359,14 @@ describe("canonical structural commands", () => {
               generated.type === "bullet" ? "bullet" : "decimal",
             );
             if (generated.type === "numbered") {
-              const level = session.document.package.numbering?.abstractNums.at(0)?.levels.at(0);
-              expect(level?.start).toBe(generated.start);
-              expect(level?.lvlText).toBe(`%1${generated.punctuation}`);
+              const levels = session.document.package.numbering?.abstractNums.at(0)?.levels;
+              expect(levels?.map(({ start }) => start)).toEqual([
+                generated.start,
+                ...Array.from({ length: 8 }, () => 1),
+              ]);
+              expect(levels?.map(({ lvlText }) => lvlText)).toEqual(
+                Array.from({ length: 9 }, (_, index) => `%${index + 1}${generated.punctuation}`),
+              );
             }
           }
           state = accept(session, state, session.prepareUndo(state).unwrap());
@@ -372,6 +378,91 @@ describe("canonical structural commands", () => {
         },
       ),
       { numRuns: 30 },
+    );
+  });
+
+  test("numbered autoformat keeps its start at level zero through every nested level", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.record({
+          start: fc.integer({ min: 2, max: 999 }),
+          punctuation: fc.constantFrom(".", ")"),
+        }),
+        async ({ start, punctuation }) => {
+          const document = seed();
+          const marker = `${start}${punctuation}`;
+          document.package.document.content = [
+            {
+              type: "paragraph",
+              paraId: "12345678",
+              content: [{ type: "run", content: [{ type: "text", text: marker }] }],
+            },
+          ];
+          const session = createCanonicalSession(document).unwrap();
+          let state = EditorState.create({ schema, doc: session.projection.doc });
+          state = select(state, marker.length + 1);
+          const history: {
+            before: Document;
+            after: Document;
+            preSelection: ReturnType<typeof state.selection.toJSON>;
+            postSelection: ReturnType<typeof state.selection.toJSON>;
+          }[] = [];
+          const apply = (commit: CanonicalCommit) => {
+            const before = cloneDocumentWithParagraphPropertySources(session.document);
+            const preSelection = state.selection.toJSON();
+            state = accept(session, state, commit);
+            history.push({
+              before,
+              after: cloneDocumentWithParagraphPropertySources(session.document),
+              preSelection,
+              postSelection: state.selection.toJSON(),
+            });
+          };
+          const initial = cloneDocumentWithParagraphPropertySources(session.document);
+          const initialSelection = state.selection.toJSON();
+          const prepared = prepareCanonicalAutoformat(session, state, {
+            from: state.selection.head,
+            to: state.selection.head,
+            text: " ",
+          });
+          apply(prepared?.unwrap() ?? panic("Numbered marker was not recognized."));
+
+          const expectedStarts = [start, ...Array.from({ length: 8 }, () => 1)];
+          const expectedFormats = Array.from({ length: 9 }, () => "decimal");
+          for (let level = 0; level <= 8; level += 1) {
+            if (level > 0) {
+              apply(
+                prepareCanonicalCommands(session, state, [
+                  { type: "changeListLevel", direction: "increase" },
+                ]).unwrap(),
+              );
+            }
+            const paragraph = paragraphs(session).at(0) ?? panic("List paragraph disappeared.");
+            const numbering = paragraph.formatting?.numPr;
+            expect(numbering?.kind === "reference" ? numbering.ilvl : undefined).toBe(level);
+            const attrs =
+              state.doc.firstChild?.attrs ?? panic("Rendered list paragraph disappeared.");
+            expect(attrs["listLevelStarts"]).toEqual(expectedStarts);
+            expect(attrs["listLevelNumFmts"]).toEqual(expectedFormats);
+            expect(attrs["listMarkerTemplate"]).toBe(`%${level + 1}${punctuation}`);
+          }
+
+          for (const entry of history.toReversed()) {
+            state = accept(session, state, session.prepareUndo(state).unwrap());
+            expect(session.document).toStrictEqual(entry.before);
+            expect(state.selection.toJSON()).toStrictEqual(entry.preSelection);
+          }
+          expect(session.document).toStrictEqual(initial);
+          expect(state.selection.toJSON()).toStrictEqual(initialSelection);
+          expect(session.canUndo).toBe(false);
+          for (const entry of history) {
+            state = accept(session, state, session.prepareRedo(state).unwrap());
+            expect(session.document).toStrictEqual(entry.after);
+            expect(state.selection.toJSON()).toStrictEqual(entry.postSelection);
+          }
+        },
+      ),
+      { numRuns: 16 },
     );
   });
 
