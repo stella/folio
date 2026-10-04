@@ -20,6 +20,7 @@ import type {
   CounterFormat,
   NumberFormat,
 } from "../types/document";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { CanonicalSessionError, type CanonicalSession } from "./canonicalSession";
 import {
   flattenClipboardStyleReferences,
@@ -37,7 +38,9 @@ import {
 } from "../docx/xmlParser";
 
 const refuse = (message: string) =>
-  Result.err(new CanonicalSessionError({ message, reason: "refused" }));
+  Result.err(
+    new CanonicalSessionError({ gap: CANONICAL_GAP.dispatch, message, reason: "refused" }),
+  );
 const IMAGE_RELATIONSHIP =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 const HYPERLINK_RELATIONSHIP =
@@ -260,6 +263,7 @@ export const prepareCanonicalPaste = ({
   if (slice.content.size === 0)
     return Result.err(
       new CanonicalSessionError({
+        gap: CANONICAL_GAP.dispatch,
         message: "The clipboard contains no content.",
         reason: "noChange",
       }),
@@ -286,6 +290,7 @@ export const prepareCanonicalPaste = ({
     try: () => proseDocToBlocks(state.schema.topNodeType.create(null, importedSlice.content), []),
     catch: (cause) =>
       new CanonicalSessionError({
+        gap: CANONICAL_GAP.dispatch,
         reason: "refused",
         message: `Clipboard normalization failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       }),
@@ -373,6 +378,7 @@ export const prepareCanonicalPaste = ({
       try: () => parseXml(xml, OOXML_NAMESPACE_SCOPE),
       catch: () =>
         new CanonicalSessionError({
+          gap: CANONICAL_GAP.dispatch,
           reason: "refused",
           message: "The clipboard hyperlink metadata is malformed.",
         }),
@@ -528,6 +534,7 @@ export const prepareCanonicalPaste = ({
             try: () => Uint8Array.from(atob(payload), (char) => char.charCodeAt(0)),
             catch: () =>
               new CanonicalSessionError({
+                gap: CANONICAL_GAP.dispatch,
                 message: "The clipboard image data is malformed.",
                 reason: "refused",
               }),

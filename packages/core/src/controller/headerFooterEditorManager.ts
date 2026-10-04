@@ -1,3 +1,8 @@
+import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+  type CanonicalGap,
+} from "../types/canonicalCapabilities";
 /**
  * Framework-neutral lifecycle owner for persistent header/footer EditorViews.
  *
@@ -60,7 +65,7 @@ export type HeaderFooterEditorManagerDeps = {
   getDocument: () => Document | null;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
-  onSessionRefusal?: ((reason: string) => void) | undefined;
+  onSessionRefusal?: ((reason: string, gap: CanonicalGap) => void) | undefined;
   getHost: () => HTMLElement | null;
   getStyles: () => StyleDefinitions | null | undefined;
   getTheme: () => Theme | null | undefined;
@@ -214,15 +219,17 @@ export const createHeaderFooterEditorManager = (
 
     // Pending IME input owns its view until the shared session commits.
     if (
-      deps.getExperimentalSession?.() === "canonical" &&
+      usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories) &&
       !deps.getCanonicalApi?.()?.getCanonicalStoryProjection(OP_STORIES.MAIN)
     )
       return;
 
-    const document =
-      deps.getExperimentalSession?.() === "canonical"
-        ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? deps.getDocument())
-        : deps.getDocument();
+    const document = usesCanonicalSession(
+      deps.getExperimentalSession?.(),
+      CANONICAL_GAP.secondaryStories,
+    )
+      ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? deps.getDocument())
+      : deps.getDocument();
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
@@ -249,7 +256,7 @@ export const createHeaderFooterEditorManager = (
         if (existing.mountNode.parentElement !== host) {
           host.append(existing.mountNode);
         }
-        if (deps.getExperimentalSession?.() === "canonical") {
+        if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories)) {
           const projected = deps
             .getCanonicalApi?.()
             ?.getCanonicalStoryProjection({ kind: part.kind, rId: part.rId });
@@ -315,7 +322,8 @@ export const createHeaderFooterEditorManager = (
         story: { kind: part.kind, rId: part.rId },
         getView: () => view,
         getApi: () => deps.getCanonicalApi?.() ?? null,
-        enabled: () => deps.getExperimentalSession?.() === "canonical",
+        enabled: () =>
+          usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories),
         onRefusal: deps.onSessionRefusal,
         onSelectionChange: () =>
           deps.onTransaction?.({
@@ -326,13 +334,16 @@ export const createHeaderFooterEditorManager = (
             selectionChanged: true,
           }),
       });
-      const canonicalProjection =
-        deps.getExperimentalSession?.() === "canonical"
-          ? deps
-              .getCanonicalApi?.()
-              ?.getCanonicalStoryProjection({ kind: part.kind, rId: part.rId })
-          : null;
-      if (deps.getExperimentalSession?.() === "canonical" && !canonicalProjection) {
+      const canonicalProjection = usesCanonicalSession(
+        deps.getExperimentalSession?.(),
+        CANONICAL_GAP.secondaryStories,
+      )
+        ? deps.getCanonicalApi?.()?.getCanonicalStoryProjection({ kind: part.kind, rId: part.rId })
+        : null;
+      if (
+        usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories) &&
+        !canonicalProjection
+      ) {
         manager.destroy();
         mountNode.remove();
         continue;
@@ -391,7 +402,7 @@ export const createHeaderFooterEditorManager = (
         rId,
       })),
     snapshotDocument: (document) => {
-      if (deps.getExperimentalSession?.() === "canonical")
+      if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories))
         return deps.getCanonicalApi?.()?.getCanonicalDocument() ?? document;
       let headers = document.package.headers;
       let footers = document.package.footers;

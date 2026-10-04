@@ -1,4 +1,5 @@
 import { assertExactModel } from "../../../../test/exactModel";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { describe, expect, spyOn, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
@@ -968,7 +969,10 @@ test(
               getDocument: () => source,
               getDocumentContext: () => source,
               getExperimentalSession: () => "canonical",
-              onSessionRefusal: (reason) => reasons.push(reason),
+              onSessionRefusal: (reason, gap) => {
+                expect(Object.values(CANONICAL_GAP).includes(gap)).toBe(true);
+                reasons.push(reason);
+              },
             });
             const manager = createHiddenEditorManager(deps);
             try {

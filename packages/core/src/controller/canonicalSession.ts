@@ -1,3 +1,4 @@
+import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { TextSelection, type EditorState, type Transaction } from "prosemirror-state";
@@ -43,13 +44,18 @@ import type { Document, Paragraph, StyleDefinitions } from "../types/document";
 
 export class CanonicalSessionError extends TaggedError("CanonicalSessionError")<{
   message: string;
+  gap: CanonicalGap;
   reason: "refused" | "noChange";
 }> {}
 
 const refuse = (message: string) =>
-  Result.err(new CanonicalSessionError({ message, reason: "refused" }));
+  Result.err(
+    new CanonicalSessionError({ gap: CANONICAL_GAP.dispatch, message, reason: "refused" }),
+  );
 const noChange = (message: string) =>
-  Result.err(new CanonicalSessionError({ message, reason: "noChange" }));
+  Result.err(
+    new CanonicalSessionError({ gap: CANONICAL_GAP.dispatch, message, reason: "noChange" }),
+  );
 
 const operationChangesPackage = (op: DocumentOp): boolean => {
   switch (op.type) {
@@ -332,6 +338,7 @@ const project = ({
     },
     catch: (cause) =>
       new CanonicalSessionError({
+        gap: CANONICAL_GAP.dispatch,
         reason: "refused",
         message: `Canonical projection failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       }),
@@ -343,6 +350,7 @@ const project = ({
     const source = body.content.at(index);
     if (source?.type !== "paragraph" || source.paraId === undefined) {
       failure = new CanonicalSessionError({
+        gap: CANONICAL_GAP.dispatch,
         reason: "refused",
         message: "The projection changed paragraph structure.",
       });
@@ -388,6 +396,7 @@ const project = ({
       node.content.size !== renderedSize
     ) {
       failure = new CanonicalSessionError({
+        gap: CANONICAL_GAP.dispatch,
         reason: "refused",
         message: "The paragraph cannot be projected as plain text.",
       });
@@ -551,6 +560,7 @@ export const publishCanonicalProjection = ({
     try: () => state.applyTransaction(commit.transaction),
     catch: (cause) =>
       new CanonicalSessionError({
+        gap: CANONICAL_GAP.dispatch,
         reason: "refused",
         message: `Canonical plugin staging failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       }),
@@ -764,6 +774,7 @@ class CanonicalSession {
   get document(): Document {
     if (this.isComposing)
       throw new CanonicalSessionError({
+        gap: CANONICAL_GAP.dispatch,
         reason: "refused",
         message: "Composition must finish before taking a snapshot.",
       });

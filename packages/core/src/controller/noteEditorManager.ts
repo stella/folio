@@ -1,3 +1,8 @@
+import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+  type CanonicalGap,
+} from "../types/canonicalCapabilities";
 /** Framework-neutral lifecycle owner for editable footnote and endnote stories. */
 
 import { OP_STORIES } from "@stll/docx-core/ops";
@@ -50,7 +55,7 @@ export type NoteEditorManagerDeps = {
   getDocument: () => Document | null;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
-  onSessionRefusal?: ((reason: string) => void) | undefined;
+  onSessionRefusal?: ((reason: string, gap: CanonicalGap) => void) | undefined;
   getHost: () => HTMLElement | null;
   getPlugins?: (() => Plugin[]) | undefined;
   getStyles: () => StyleDefinitions | null | undefined;
@@ -194,14 +199,16 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
     if (!host) return;
     // Pending IME input owns its view until the shared session commits.
     if (
-      deps.getExperimentalSession?.() === "canonical" &&
+      usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories) &&
       !deps.getCanonicalApi?.()?.getCanonicalStoryProjection(OP_STORIES.MAIN)
     )
       return;
-    const document =
-      deps.getExperimentalSession?.() === "canonical"
-        ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? deps.getDocument())
-        : deps.getDocument();
+    const document = usesCanonicalSession(
+      deps.getExperimentalSession?.(),
+      CANONICAL_GAP.secondaryStories,
+    )
+      ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? deps.getDocument())
+      : deps.getDocument();
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
@@ -229,7 +236,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       const existing = mounted.get(key);
       if (existing) {
         if (existing.mountNode.parentElement !== host) host.append(existing.mountNode);
-        if (deps.getExperimentalSession?.() === "canonical") {
+        if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories)) {
           const projected = deps
             .getCanonicalApi?.()
             ?.getCanonicalStoryProjection({ kind: storyKey.kind, id: storyKey.noteId });
@@ -309,18 +316,24 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         story: { kind: storyKey.kind, id: storyKey.noteId },
         getView: () => view,
         getApi: () => deps.getCanonicalApi?.() ?? null,
-        enabled: () => deps.getExperimentalSession?.() === "canonical",
+        enabled: () =>
+          usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories),
         onRefusal: deps.onSessionRefusal,
         onSelectionChange: () =>
           deps.onTransaction?.({ ...storyKey, view, docChanged: false, selectionChanged: true }),
       });
-      const canonicalProjection =
-        deps.getExperimentalSession?.() === "canonical"
-          ? deps
-              .getCanonicalApi?.()
-              ?.getCanonicalStoryProjection({ kind: storyKey.kind, id: storyKey.noteId })
-          : null;
-      if (deps.getExperimentalSession?.() === "canonical" && !canonicalProjection) {
+      const canonicalProjection = usesCanonicalSession(
+        deps.getExperimentalSession?.(),
+        CANONICAL_GAP.secondaryStories,
+      )
+        ? deps
+            .getCanonicalApi?.()
+            ?.getCanonicalStoryProjection({ kind: storyKey.kind, id: storyKey.noteId })
+        : null;
+      if (
+        usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories) &&
+        !canonicalProjection
+      ) {
         manager.destroy();
         mountNode.remove();
         continue;
@@ -384,7 +397,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
     getView: (story) => mounted.get(storyMapKey(story))?.view ?? null,
     listStories: () => enumerateDocumentNoteStories(deps.getDocument()),
     snapshotDocument: (document) => {
-      if (deps.getExperimentalSession?.() === "canonical")
+      if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories))
         return deps.getCanonicalApi?.()?.getCanonicalDocument() ?? document;
       let footnotes = document.package.footnotes;
       let endnotes = document.package.endnotes;

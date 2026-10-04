@@ -2094,6 +2094,11 @@ export const applyFolioDocumentOperations = ({
     // checked first, and a refused result must never reach a live editor.
     const held: { transaction?: Transaction } = {};
     const commentIds: number[] = [];
+    // canonical-gap: publicOps.comments
+    // canonical-gap: publicOps.suggestedMode
+    // canonical-gap: publicOps.tableProjection
+    // canonical-gap: publicOps.unsupportedInline
+    // canonical-gap: pm-document-operations
     const outcome = applyFolioAIEditOperations({
       ...common,
       view: {

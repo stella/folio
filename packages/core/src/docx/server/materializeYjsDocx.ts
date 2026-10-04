@@ -129,6 +129,7 @@ export const materializeYjsDocx = async ({
   const proseMirrorDocument = readProseMirrorDocument(yjsUpdate);
   const baseDocument = await parseDocx(sourceDocx, { preloadFonts: false });
   const converted = Result.try({
+    // canonical-gap: pm-save-projection
     try: () => fromProseDoc(proseMirrorDocument, baseDocument),
     catch: (cause) =>
       cause instanceof ParagraphPropertySourceValidationError
