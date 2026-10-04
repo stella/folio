@@ -326,6 +326,42 @@ describe("pinned regression seeds", () => {
     expect(runs).toBe(2 * 2);
   });
 
+  test("a pinned replay rejects when its raw property run completes zero cases", () => {
+    withEnv({});
+    overridePinnedSeedsForTesting({
+      [`${FILE}::a pinned replay rejects when its raw property run completes zero cases`]: [
+        { ...entry(101), path: "0:1" },
+      ],
+    });
+    let cases = 0;
+    expect(() =>
+      assertProperty(
+        fc.property(fc.constant(1), () => {
+          cases += 1;
+          return true;
+        }),
+        { seed: 202, numRuns: 1 },
+      ),
+    ).toThrow(/Fuzz infrastructure: Fuzz run interrupted or executed zero cases/);
+    expect(cases).toBe(0);
+  });
+
+  test("a generated pass rejects when its raw property run completes zero cases", () => {
+    withEnv({});
+    overridePinnedSeedsForTesting({});
+    let cases = 0;
+    expect(() =>
+      assertProperty(
+        fc.property(fc.constant(1), () => {
+          cases += 1;
+          return true;
+        }),
+        { seed: 202, path: "0:1", numRuns: 1 },
+      ),
+    ).toThrow(/Fuzz infrastructure: Fuzz run interrupted or executed zero cases/);
+    expect(cases).toBe(0);
+  });
+
   test("pinned-only assertions never draw a fresh pass or scale its case count", () => {
     withEnv({ PROPERTY_TEST_NUM_RUNS_FACTOR: "3" });
     const pinned = [entry(101), entry(202)];

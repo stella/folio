@@ -645,7 +645,9 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       inner.nodes.length === 0 &&
       children.length > 0
     ) {
-      seams.push(out.length);
+      // Removing an unselected parent establishes no cut between its neighbours.
+      // Fold only fragments this resolution emptied, preserving authored siblings.
+      folds.push(out.length);
       continue;
     }
     let rebuilt = rebuildNode(node, inner.nodes);

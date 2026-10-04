@@ -1,0 +1,40 @@
+{
+  "deleting the only column removes its table, restores exactly and selects a surviving sibling": [
+    {
+      "seed": 403890120,
+      "path": "0:0:0:0:0",
+      "date": "2026-10-03",
+      "note": "Table compiler identities and restoration agree with merged operation contracts."
+    }
+  ],
+  "empty vertical merge tracking keeps cell identities and compiles in both modes": [
+    {
+      "seed": 1765147404,
+      "path": "0:0:0:0:0:0",
+      "date": "2026-10-03",
+      "note": "Table compiler identities and restoration agree with merged operation contracts."
+    }
+  ],
+  "generated tracked compiler sequences accept to direct edits and reject to the exact baseline": [
+    {
+      "seed": 1717926680,
+      "path": "0:0:0:0:0:0:0:0",
+      "date": "2026-10-03",
+      "note": "Table compiler identities and restoration agree with merged operation contracts."
+    },
+    {
+      "seed": 1717926680,
+      "path": "0:0:0:0:0:0:0:2",
+      "date": "2026-10-03",
+      "note": "Revision pool order is retained while receipt membership includes table-level records."
+    }
+  ],
+  "merge and split have independent rectangle, content and topology effects": [
+    {
+      "seed": -95700572,
+      "path": "0:0:0:0:0",
+      "note": "Merge/split generator must distinguish refused vertical-group targets from successful horizontal owner splits",
+      "date": "2026-10-02"
+    }
+  ]
+}

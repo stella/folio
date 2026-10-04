@@ -8,6 +8,14 @@ import {
   DOCUMENT_OP_SCHEMA_VERSION,
   type DocumentOp,
   type DocumentOpType,
+  type TableEditOp,
+  type SetTableOp,
+  type InsertTableOp,
+  type DeleteTableOp,
+  type InsertRowOp,
+  type DeleteRowOp,
+  type SetTableRowsOp,
+  type SetContainerBlocksOp,
   type SplitHalf,
   type TextPosition,
 } from "../types";
@@ -45,6 +53,7 @@ export const BATCH_REJECTION_REASONS = {
   CONFLICT: "conflict",
   STALE_BASE: "staleBase",
   INVALID_OPERATION: "invalidOperation",
+  TABLE_REQUIRES_EXCLUSIVE_EDIT: "tableRequiresExclusiveEdit",
 } as const;
 
 export type BatchRejectionReason =
@@ -57,6 +66,37 @@ export class BatchRejection extends TaggedError("BatchRejection")<{
   opType?: DocumentOpType;
   overType?: DocumentOpType;
 }> {}
+
+/** Table edits and their structural inverses require exclusive editing until transforms exist. */
+export const TABLE_EXCLUSIVE_OP_TYPES = {
+  insertTable: true,
+  deleteTable: true,
+  setContainerBlocks: true,
+  insertRow: true,
+  deleteRow: true,
+  setTableRows: true,
+  insertColumn: true,
+  deleteColumn: true,
+  mergeCells: true,
+  splitCell: true,
+  setTableGrid: true,
+  setCellProps: true,
+  setRowProps: true,
+  setTableProps: true,
+  setTable: true,
+} as const satisfies Record<
+  (
+    | TableEditOp
+    | SetTableOp
+    | InsertTableOp
+    | DeleteTableOp
+    | InsertRowOp
+    | DeleteRowOp
+    | SetTableRowsOp
+    | SetContainerBlocksOp
+  )["type"],
+  true
+>;
 
 type Validator = (value: unknown) => boolean;
 type Fields = Readonly<Record<string, Validator>>;
@@ -223,7 +263,7 @@ const paragraph = object({
  * The unknown-input decoder accepts these operation kinds with scalar
  * formatting, language properties, plain runs and basic inline atoms.
  * Other embedded model records and inverse preconditions are refused;
- * typed in-process batches retain the complete DocumentOp contract.
+ * table operations require exclusive editing in both typed and wire batches.
  */
 const operationFields = {
   insertText: {
@@ -340,6 +380,15 @@ const operationFields = {
   removeNote: undefined,
   restoreStoryParts: undefined,
   setSectionProps: undefined,
+  insertColumn: undefined,
+  deleteColumn: undefined,
+  mergeCells: undefined,
+  splitCell: undefined,
+  setTableGrid: undefined,
+  setCellProps: undefined,
+  setRowProps: undefined,
+  setTableProps: undefined,
+  setTable: undefined,
 } satisfies Record<DocumentOpType, Fields | undefined>;
 
 export const BATCH_WIRE_OP_TYPES = Object.freeze(
@@ -482,6 +531,23 @@ const decodeDocumentBatch = (
       new BatchRejection({
         reason: BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA,
         message: "Unsupported document operation schema",
+      }),
+    );
+  }
+  if (
+    Array.isArray(value["ops"]) &&
+    value["ops"].some(
+      (op: unknown) =>
+        isRecord(op) &&
+        typeof op["type"] === "string" &&
+        Object.hasOwn(TABLE_EXCLUSIVE_OP_TYPES, op["type"]),
+    )
+  ) {
+    return Result.err(
+      new BatchRejection({
+        reason: BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
+        message:
+          "Table operations require exclusive editing until sequencing transforms are available",
       }),
     );
   }

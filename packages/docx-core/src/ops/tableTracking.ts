@@ -8,6 +8,7 @@ import {
   type DocumentBody,
   type Paragraph,
   type TableRow,
+  type TrackedChangeInfo,
 } from "../model/document";
 import { blockListAt, endsItsContainer, storyParagraphs, type ParagraphLocation } from "./blocks";
 import { structurallyEqual } from "./equality";
@@ -355,29 +356,42 @@ export const permitsCellFinalMark = (body: DocumentBody, location: ParagraphLoca
   }
 };
 
-/** Newly stamped row structural ids, including rows below wrappers and cells. */
-export const stampedTableRowRevisionIds = (
-  blocks: readonly BlockContent[],
-  stamp: RevisionStamp,
-  known: ReadonlySet<string>,
-): number[] => {
+/** Newly stamped table, row, cell and grid ids, including nested tables. */
+type StampedTableRevisionIdsOptions = {
+  blocks: readonly BlockContent[];
+  stamp: RevisionStamp;
+  known: ReadonlySet<string>;
+};
+export const stampedTableRevisionIds = ({
+  blocks,
+  stamp,
+  known,
+}: StampedTableRevisionIdsOptions): number[] => {
   const out: number[] = [];
+  const added = new Set<number>();
+  const addId = (id: number) => {
+    if (known.has(slotKey({ space: IDENTITY_SPACES.REVISION, id })) || added.has(id)) return;
+    added.add(id);
+    out.push(id);
+  };
+  const addInfo = (info: TrackedChangeInfo) => {
+    if (carriesStamp(info, stamp)) addId(info.id);
+  };
   const visit = (children: readonly BlockContent[]): void => {
     for (const block of children) {
       switch (block.type) {
         case "table":
+          for (const change of block.propertyChanges ?? []) addInfo(change.info);
+          if (block.formatting?.gridChange !== undefined) addId(block.formatting.gridChange.id);
           for (const row of block.rows) {
-            const change = row.structuralChange;
-            if (
-              change !== undefined &&
-              (change.type === "tableRowInsertion" || change.type === "tableRowDeletion") &&
-              carriesStamp(change.info, stamp) &&
-              !known.has(slotKey({ space: IDENTITY_SPACES.REVISION, id: change.info.id })) &&
-              !out.includes(change.info.id)
-            ) {
-              out.push(change.info.id);
+            if (row.structuralChange !== undefined) addInfo(row.structuralChange.info);
+            for (const change of row.propertyChanges ?? []) addInfo(change.info);
+            for (const change of row.tablePropertyExceptionChanges ?? []) addInfo(change.info);
+            for (const cell of row.cells) {
+              if (cell.structuralChange !== undefined) addInfo(cell.structuralChange.info);
+              for (const change of cell.propertyChanges ?? []) addInfo(change.info);
+              visit(cell.content);
             }
-            for (const cell of row.cells) visit(cell.content);
           }
           break;
         case "blockSdt":

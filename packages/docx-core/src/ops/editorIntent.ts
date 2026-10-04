@@ -23,7 +23,7 @@ import {
   type AbstractNumbering,
 } from "../model/document";
 import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
-import { IDENTITY_SPACES, idKey } from "./ids";
+import { IDENTITY_SPACES, idKey, packageParagraphIds } from "./ids";
 import { createCensusReader } from "./editorIntentCensus";
 import { defaultInsertionGap, alikeDepth, leafSpans, zeroWidthLeavesAt } from "./leaves";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
@@ -39,6 +39,9 @@ import { planTrackedReplace, rangeStartAfterDeletion } from "./rangeReplacement"
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { structurallyEqual } from "./equality";
 import { runsMergeable } from "./runMerge";
+import { locateTableRow, tableRowAnchor } from "./tableLocation";
+import { tableGrid } from "./tableGrid";
+import { tableEditParagraphDemand } from "./tableEdits";
 import { isRemovedRevisionNode, paragraphPropertiesOf } from "./review";
 import {
   DOCUMENT_OP_TYPES,
@@ -47,6 +50,8 @@ import {
   EMPTY_PROPERTY_SETS,
   SPLIT_HALVES,
   type DocumentOp,
+  type TableEditOp,
+  type TableIntentOperation,
   type NewIds,
   type OpStory,
   type RevisionStamp,
@@ -60,9 +65,11 @@ type SplitParagraphIntent = {
   at: TextPosition;
   to?: TextPosition;
 };
+export type { TableIntentOperation } from "./types";
 
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
+  | { type: "table"; operation: TableIntentOperation }
   | {
       type: "replaceText";
       from: TextPosition;
@@ -104,6 +111,14 @@ type EditorIntentAllocation = EditorIntent | SplitParagraphIntent;
 
 const intentEndpoints = (intent: EditorIntentAllocation) => {
   switch (intent.type) {
+    case "table":
+      return {
+        story: intent.operation.story,
+        fromId: intent.operation.blockId,
+        toId: intent.operation.blockId,
+        fromOffset: 0,
+        toOffset: 0,
+      };
     case "replaceText":
     case "insertAtom":
     case "formatRun":
@@ -157,6 +172,9 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
   }
 };
 
+const PARAGRAPH_REVISION_DEMAND = 3;
+const leafRevisionDemand = (ancestorCount: number) => 4 * (1 + ancestorCount);
+
 /** Cache only immutable document versions; never retain a retired version strongly. */
 export const createEditorIntentIdAllocator = () => {
   const readCensus = createCensusReader();
@@ -178,15 +196,15 @@ export const createEditorIntentIdAllocator = () => {
     // at both endpoints. Each paragraph adds join/mark/property stamps.
     let demand = 1;
     const selected = first < 0 || last < first ? [] : locations.slice(first, last + 1);
-    for (const { paragraph } of selected) {
-      demand += 3;
+    for (const { paragraph } of intent.type === "table" ? [] : selected) {
+      demand += PARAGRAPH_REVISION_DEMAND;
       const blockId = idKey(paragraph.paraId ?? "");
       for (const span of leafSpans(paragraph.content)) {
         if (blockId === idKey(fromId) && fromOffset !== undefined && span.after.offset < fromOffset)
           continue;
         if (blockId === idKey(toId) && toOffset !== undefined && span.before.offset > toOffset)
           continue;
-        demand += 4 * (1 + span.ancestors.length);
+        demand += leafRevisionDemand(span.ancestors.length);
       }
     }
     const fresh = (occupied: ReadonlySet<number>, count: number) => {
@@ -196,6 +214,51 @@ export const createEditorIntentIdAllocator = () => {
       }
       return ids;
     };
+    if (intent.type === "table") {
+      const op = intent.operation;
+      const located = locateTableRow(document, op);
+      demand = 1;
+      if (located.isOk()) {
+        switch (op.type) {
+          case DOCUMENT_OP_TYPES.INSERT_COLUMN:
+            demand = located.value.table.rows.length + 2;
+            break;
+          case DOCUMENT_OP_TYPES.DELETE_COLUMN: {
+            const table = located.value.table;
+            demand = table.rows.length + 2;
+            const grid = tableGrid(table, op.type);
+            if (op.column !== 0 || grid.isErr() || grid.value.width !== 1) break;
+            // Removing the final column tracks the whole table, including paragraph
+            // marks and every inline wrapper identity, rather than just its rows.
+            for (const { paragraph } of storyParagraphs({ content: [table] })) {
+              demand += PARAGRAPH_REVISION_DEMAND;
+              for (const span of leafSpans(paragraph.content))
+                demand += leafRevisionDemand(span.ancestors.length);
+            }
+            break;
+          }
+          case DOCUMENT_OP_TYPES.MERGE_CELLS:
+            demand = (op.bottom - op.top + 1) * 2;
+            break;
+          case DOCUMENT_OP_TYPES.SPLIT_CELL:
+            demand =
+              located.value.table.rows.at(located.value.rowIndex)?.cells.at(located.value.cellIndex)
+                ?.formatting?.gridSpan ?? 1;
+            break;
+          case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
+            demand = 2;
+            break;
+          case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
+          case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
+          case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+            break;
+          default: {
+            const unreachable: never = op;
+            return unreachable;
+          }
+        }
+      }
+    }
     const revision = fresh(census.revisions, demand + 1);
     let nextParagraph = 1;
     while (census.paragraphs.has(nextParagraph.toString(16).padStart(8, "0").toUpperCase()))
@@ -203,7 +266,10 @@ export const createEditorIntentIdAllocator = () => {
     return {
       revisionId: revision.at(0) ?? MAX_REVISION_ID + 1,
       newBlockId: nextParagraph.toString(16).padStart(8, "0").toUpperCase(),
-      newIds: { revision: revision.slice(1), control: fresh(census.controls, demand) },
+      newIds: {
+        revision: revision.slice(1),
+        control: fresh(census.controls, intent.type === "table" ? 0 : demand),
+      },
     };
   };
 };
@@ -464,6 +530,71 @@ export const compileEditorIntent = (
   let ops: DocumentOp[];
   let selection: TextPosition;
   switch (intent.type) {
+    case "table": {
+      const operation = intent.operation;
+      const located = locateTableRow(document, operation);
+      if (located.isErr()) return Result.err(located.error);
+      const demand = tableEditParagraphDemand(located.value, operation);
+      if (demand.isErr()) return Result.err(demand.error);
+      const occupied = new Set(packageParagraphIds(document.package).map(idKey));
+      const newBlockIds: string[] = [];
+      for (let nextId = 1; newBlockIds.length < demand.value; nextId += 1) {
+        if (nextId >= 0x8000_0000)
+          return Result.err(
+            new DocumentOpRefusal({
+              opType: operation.type,
+              reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+              message: "The paragraph identity space is exhausted.",
+            }),
+          );
+        const id = nextId.toString(16).padStart(8, "0").toUpperCase();
+        if (!occupied.has(idKey(id))) newBlockIds.push(id);
+      }
+      let op: TableEditOp;
+      switch (operation.type) {
+        case DOCUMENT_OP_TYPES.INSERT_COLUMN:
+        case DOCUMENT_OP_TYPES.MERGE_CELLS:
+        case DOCUMENT_OP_TYPES.SPLIT_CELL:
+          op = { ...operation, newBlockIds, ...tracked };
+          break;
+        default:
+          op = { ...operation, ...tracked };
+      }
+      let blockId = op.blockId;
+      if (op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN) {
+        const grid = tableGrid(located.value.table, op.type);
+        if (grid.isErr()) return Result.err(grid.error);
+        const rows = located.value.table.rows.map((row, index) => ({
+          ...row,
+          cells: row.cells.filter((_cell, cellIndex) => {
+            const entry = grid.value.rows[index]?.find((cell) => cell.index === cellIndex);
+            return (
+              entry !== undefined &&
+              (entry.start > op.column || entry.end <= op.column || entry.end - entry.start > 1)
+            );
+          }),
+        }));
+        const survivor =
+          tableRowAnchor(rows) ??
+          storyParagraphs(storyBody(document, op.story)).find((paragraph) =>
+            sameBlockList(paragraph.list, located.value.list),
+          )?.paragraph.paraId;
+        if (survivor === undefined)
+          return Result.err(
+            new DocumentOpRefusal({
+              opType: op.type,
+              reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+              message: "Deleting the final column requires deleting the table.",
+            }),
+          );
+        blockId = survivor;
+      }
+      const applied = applyDocumentOp(document, op);
+      if (applied.isErr()) return Result.err(applied.error);
+      ops = [trimAppliedNewIds({ before: document, op, applied: applied.value, story: op.story })];
+      selection = { story: op.story, blockId, offset: 0 };
+      break;
+    }
     case "setList": {
       const first = intent.items.at(0);
       if (first === undefined)
@@ -956,7 +1087,7 @@ export const compileEditorIntent = (
       );
       const applied = applyDocumentOp(current, op);
       if (applied.isErr()) return Result.err(applied.error);
-      const trimmed = trimAppliedNewIds({ op, applied: applied.value, story });
+      const trimmed = trimAppliedNewIds({ before: current, op, applied: applied.value, story });
       if ("newIds" in trimmed) {
         for (const id of trimmed.newIds?.revision ?? []) takenRevision.add(id);
         for (const id of trimmed.newIds?.control ?? []) takenControl.add(id);

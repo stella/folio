@@ -7,9 +7,10 @@ import type { Document } from "../../model/document";
 import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES, type DocumentOp } from "../types";
 import { envelopes } from "../__tests__/wireFixtures";
 import {
-  BATCH_WIRE_OP_TYPES,
   BATCH_REJECTION_REASONS,
+  BATCH_WIRE_OP_TYPES,
   MAX_BATCH_WIRE_BYTES,
+  TABLE_EXCLUSIVE_OP_TYPES,
   parseDocumentBatch,
   validateDocumentBatch,
   validateSequencedBatch,
@@ -27,7 +28,13 @@ test("unsupported operation families refuse production-shaped wire fixtures", ()
   for (const { op } of envelopes()) {
     if (supported.has(op.type)) continue;
     refused += 1;
-    expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
+    const result = validateDocumentBatch(withOp(op));
+    if (result.isOk()) throw new Error(`Unsupported ${op.type} must refuse.`);
+    expect(result.error.reason).toBe(
+      Object.hasOwn(TABLE_EXCLUSIVE_OP_TYPES, op.type)
+        ? BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT
+        : BATCH_REJECTION_REASONS.INVALID_OPERATION,
+    );
   }
   expect(refused).toBeGreaterThan(0);
 });
@@ -61,7 +68,7 @@ test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", 
 });
 
 test("unknown envelopes refuse invalid identities, revisions, schemas and keys", () => {
-  for (const schema of [4, 5, 6, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [1, 2, 3, 4, 5, 6, 7, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
     const refused = validateDocumentBatch({ ...fixture, schema });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
@@ -71,7 +78,7 @@ test("unknown envelopes refuse invalid identities, revisions, schemas and keys",
     [],
     {},
     { ...fixture, schema: 0 },
-    { ...fixture, schema: DOCUMENT_OP_SCHEMA_VERSION - 1 },
+    { ...fixture, schema: 3 },
     { ...fixture, actor: "" },
     { ...fixture, opId: "" },
     { ...fixture, baseRev: -1 },
@@ -183,7 +190,7 @@ test("empty and omitted identity pools decode without a schema change", () => {
     if (decoded.isErr()) throw decoded.error;
     expect(decoded.value).toStrictEqual(batch);
   }
-  for (let schema = 1; schema < DOCUMENT_OP_SCHEMA_VERSION; schema += 1) {
+  for (const schema of [1, 2, 3, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
     const decoded = parseDocumentBatch(JSON.stringify({ ...withOp(op), schema }));
     expect(decoded.isErr()).toBe(true);
     if (decoded.isErr())
@@ -366,4 +373,46 @@ test("sequencing refuses unsupported property-review and section-boundary payloa
     },
   ] as const satisfies readonly DocumentOp[];
   for (const op of operations) expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
+});
+
+test("older batch schemas and persisted batches are refused structurally", async () => {
+  for (const schema of [1, 2, 3, 4, 5, 6, 7]) {
+    const source = { ...fixture, schema };
+    const snapshot = structuredClone(source);
+    const result = validateDocumentBatch(source);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr())
+      expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA);
+    expect(source).toStrictEqual(snapshot);
+  }
+  const batches: unknown = await Bun.file(
+    path.join(import.meta.dir, "__fixtures__", "batches-v5.json"),
+  ).json();
+  if (!Array.isArray(batches)) throw new Error("Historical batch fixture must be an array.");
+  for (const source of batches) {
+    const result = validateDocumentBatch(source);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr())
+      expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA);
+  }
+});
+
+test("every table family refuses explicitly and mixed text/table batches apply nothing", () => {
+  const exercised = new Set<string>();
+  const text = fixture.ops.at(0);
+  if (!text) throw new Error("Fixture text operation missing.");
+  for (const { op } of envelopes()) {
+    if (!Object.hasOwn(TABLE_EXCLUSIVE_OP_TYPES, op.type)) continue;
+    exercised.add(op.type);
+    for (const ops of [[op], [text, op], [op, text]]) {
+      const batch = { ...fixture, ops };
+      const before = structuredClone(batch);
+      const result = validateDocumentBatch(batch);
+      if (result.isOk())
+        throw new Error(`Table operation ${op.type} must require exclusive editing.`);
+      expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT);
+      expect(batch).toStrictEqual(before);
+    }
+  }
+  expect([...exercised].toSorted()).toEqual(Object.keys(TABLE_EXCLUSIVE_OP_TYPES).toSorted());
 });

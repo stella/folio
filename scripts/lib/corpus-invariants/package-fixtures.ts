@@ -29,6 +29,17 @@ export const operationPackageBytes = async (
   let source = `<?xml version="1.0" encoding="UTF-8"?>${gap}<${prefix}Types xmlns${prefix ? ":ct" : ""}="http://schemas.openxmlformats.org/package/2006/content-types">${gap}${body}${gap}</${prefix}Types>`;
   if (seed.zeroWidth !== undefined) source = source.replaceAll('"', "'");
   zip.file("[Content_Types].xml", source);
+  const authoredParagraphParts = zip.file(/^word\/(?:document|header[^/]*|footer[^/]*)\.xml$/u);
+  const headerParts = authoredParagraphParts.filter((part) => /^word\/header/u.test(part.name));
+  const footerParts = authoredParagraphParts.filter((part) => /^word\/footer/u.test(part.name));
+  if (headerParts.length !== (document.package.headers?.size ?? 0))
+    return panic("Every generated header needs a package XML part.");
+  if (footerParts.length !== (document.package.footers?.size ?? 0))
+    return panic("Every generated footer needs a package XML part.");
+  for (const part of authoredParagraphParts) {
+    const paragraphXml = await part.async("text");
+    zip.file(part.name, paragraphXml.replaceAll("<w:pPr>", `<w:pPr>${gap}`));
+  }
   zip.file("custom/keep.opaque", "unrelated package bytes");
   return zip.generateAsync({ type: "arraybuffer" });
 };

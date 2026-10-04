@@ -27,6 +27,8 @@ import { operationPackageBytes } from "./lib/corpus-invariants/package-fixtures"
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { normalizeForOps } from "../packages/docx-core/src/ops/contract";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { visitDocxParagraphs } from "../packages/core/src/docx/paragraphTraversal";
 import { applyDocumentOps } from "../packages/docx-core/src/ops/apply";
 import { DOCUMENT_OP_TYPES } from "../packages/docx-core/src/ops/types";
 import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
@@ -36,6 +38,7 @@ import {
   GENERATED_PACKAGE_OP_KINDS,
   GENERATED_PACKAGE_STORIES,
   packageDocumentArbitrary,
+  captureDocumentArbitrary,
 } from "../test/generators/packageOperationArbitraries";
 
 class OperationPackageLawError extends TaggedError("OperationPackageLawError")<{
@@ -105,6 +108,27 @@ const assertPackageOperationLaws = async ({
   const originalModel = exactOpModel(before);
   const originalXml = serializeOpDocument(before);
   const control = await serializedOpParts(before);
+  if (kind === "joinBlocks" || kind === "setParagraphProps") {
+    // Anchor the inverse control to authored bytes, so losing captures before
+    // the baseline cannot make both sides agree on an already damaged package.
+    const source = await JSZip.loadAsync(bytes);
+    for (const part of source.file(/^word\/(?:document|header[^/]*|footer[^/]*)\.xml$/u)) {
+      const xml = await part.async("text");
+      // The XML parser normalizes CR and CRLF before capturing paragraph XML.
+      const capturedPrefix = xml
+        .replace(/\r\n?/gu, "\n")
+        .match(/<w:pPr>\s+/u)
+        ?.at(0);
+      if (capturedPrefix === undefined)
+        throw new OperationPackageLawError({
+          message: "Authored paragraph whitespace is missing.",
+        });
+      const saved = control.get(part.name);
+      if (saved === undefined)
+        throw new OperationPackageLawError({ message: `The baseline lost ${part.name}.` });
+      expect(new TextDecoder().decode(saved).replace(/\r\n?/gu, "\n")).toContain(capturedPrefix);
+    }
+  }
   const applied = applyDocumentOps(before, [generated.op]);
   if (applied.isErr())
     throw new OperationPackageLawError({
@@ -144,17 +168,8 @@ const assertPackageOperationLaws = async ({
 };
 
 test(
-  "every operation preserves package inverse and declared scope laws",
+  "every declared operation and story pair preserves package laws",
   async () => {
-    expect(new Set(GENERATED_PACKAGE_OP_KINDS)).toEqual(new Set(Object.values(DOCUMENT_OP_TYPES)));
-    const property = fc.asyncProperty(
-      fc.constantFrom(...GENERATED_PACKAGE_OP_KINDS),
-      packageDocumentArbitrary,
-      opSeedArbitrary,
-      fc.constantFrom(...GENERATED_PACKAGE_STORIES),
-      async (kind, document, seed, story) =>
-        assertPackageOperationLaws({ kind, document, seed, story }),
-    );
     const fixture = fc.sample(packageDocumentArbitrary, { seed: 1336, numRuns: 1 }).at(0);
     const operationSeed = fc.sample(opSeedArbitrary, { seed: 1339, numRuns: 1 }).at(0);
     if (!fixture || !operationSeed)
@@ -169,12 +184,40 @@ test(
         ],
       ),
     );
+    const exercised = new Set<string>();
+    for (const [kind, document, seed, story] of examples) {
+      await assertPackageOperationLaws({ kind, document, seed, story });
+      exercised.add(JSON.stringify([kind, story]));
+    }
+    expect(exercised).toEqual(
+      new Set(
+        GENERATED_PACKAGE_OP_KINDS.flatMap((kind) =>
+          GENERATED_PACKAGE_STORIES.map((story) => JSON.stringify([kind, story])),
+        ),
+      ),
+    );
+    expect(exercised.size).toBeGreaterThan(0);
+  },
+  propertyTestTimeout(120_000),
+);
+
+test(
+  "every operation preserves package inverse and declared scope laws",
+  async () => {
+    expect(new Set(GENERATED_PACKAGE_OP_KINDS)).toEqual(new Set(Object.values(DOCUMENT_OP_TYPES)));
+    const property = fc.asyncProperty(
+      fc.constantFrom(...GENERATED_PACKAGE_OP_KINDS),
+      packageDocumentArbitrary,
+      opSeedArbitrary,
+      fc.constantFrom(...GENERATED_PACKAGE_STORIES),
+      async (kind, document, seed, story) =>
+        assertPackageOperationLaws({ kind, document, seed, story }),
+    );
     const expected = Object.entries(OPERATION_LAW_DISPOSITIONS).flatMap(([kind, disposition]) =>
       knownFailures(disposition, kind),
     );
-    if (expected.length > 0)
-      await assertKnownProperty(property, expected, { numRuns: examples.length + 135, examples });
-    else await assertProperty(property, { numRuns: examples.length + 135, examples });
+    if (expected.length > 0) await assertKnownProperty(property, expected, { numRuns: 135 });
+    else await assertProperty(property, { numRuns: 135 });
   },
   propertyTestTimeout(120_000),
 );
@@ -182,17 +225,41 @@ test(
 test(
   "paragraph property package inverses retain authored stories",
   async () => {
+    let cases = 0;
     await assertProperty(
       fc.asyncProperty(
-        packageDocumentArbitrary,
+        captureDocumentArbitrary,
         opSeedArbitrary,
         fc.constantFrom(...GENERATED_PACKAGE_STORIES),
         async (document, seed, story) => {
+          cases += 1;
           await assertPackageOperationLaws({ kind: "setParagraphProps", document, seed, story });
         },
       ),
       { numRuns: 100 },
     );
+    expect(cases).toBeGreaterThan(0);
+  },
+  propertyTestTimeout(60_000),
+);
+
+test(
+  "join package inverses retain authored stories",
+  async () => {
+    let cases = 0;
+    await assertProperty(
+      fc.asyncProperty(
+        captureDocumentArbitrary,
+        opSeedArbitrary,
+        fc.constantFrom(...GENERATED_PACKAGE_STORIES),
+        async (document, seed, story) => {
+          cases += 1;
+          await assertPackageOperationLaws({ kind: "joinBlocks", document, seed, story });
+        },
+      ),
+      { numRuns: 100 },
+    );
+    expect(cases).toBeGreaterThan(0);
   },
   propertyTestTimeout(60_000),
 );
@@ -200,12 +267,14 @@ test(
 test(
   "operation sequence generation retains the parsed package control",
   async () => {
+    let cases = 0;
     await assertProperty(
       fc.asyncProperty(
-        packageDocumentArbitrary,
+        captureDocumentArbitrary,
         fc.integer({ min: 0, max: 0x7fffffff }),
         fc.constantFrom(" ", "\n", "\r\n", "\t"),
         async (document, seed, whitespace) => {
+          cases += 1;
           const zip = await JSZip.loadAsync(await createDocx(document));
           const xml = await zip.file("word/document.xml")?.async("text");
           if (!xml) throw new TypeError("Missing document part");
@@ -217,10 +286,26 @@ test(
           const sequence = generateOpSequence(parsed, seed);
           const initial = await serializedOpParts(sequence.original);
           expect(initial).toEqual(control);
+          const withoutCaptures = cloneDocumentWithParagraphPropertySources(sequence.original);
+          let removed = 0;
+          visitDocxParagraphs({ documentBody: withoutCaptures.package.document }, (paragraph) => {
+            for (const key of Object.getOwnPropertySymbols(paragraph)) {
+              if (key.description !== "paragraphPropertyCapture") continue;
+              expect(Reflect.deleteProperty(paragraph, key)).toBe(true);
+              removed++;
+            }
+          });
+          expect(removed).toBeGreaterThan(0);
+          expect(structuredClone(withoutCaptures.package.document.content)).toStrictEqual(
+            structuredClone(sequence.original.package.document.content),
+          );
+          const mutated = await serializedOpParts(withoutCaptures);
+          expect(mutated.get("word/document.xml")).not.toEqual(control.get("word/document.xml"));
         },
       ),
       { numRuns: 12 },
     );
+    expect(cases).toBeGreaterThan(0);
   },
   propertyTestTimeout(60_000),
 );

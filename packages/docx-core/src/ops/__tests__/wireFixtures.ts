@@ -560,6 +560,171 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     for (const inverse of applied.value.inverse) out.push(toOpEnvelope(inverse));
     lifecycleDocument = applied.value.document;
   }
+  // Semantic table fixtures are independent: no earlier review or geometry constrains a later case.
+  const editTable: Table = {
+    type: "table",
+    columnWidths: [1200, 1800],
+    formatting: { justification: "center", layout: "fixed", styleId: "Old" },
+    rows: [0, 1].map((index) => ({
+      type: "tableRow",
+      formatting: { header: index === 0, cantSplit: true },
+      cells: [0, 1].map((column) => ({
+        type: "tableCell",
+        formatting: { verticalAlign: "center", noWrap: true },
+        content: [{ type: "paragraph", paraId: `000001${index}${column}`, content: [] }],
+      })),
+    })),
+  };
+  const editDocument: Document = { package: { document: { content: [editTable, second] } } };
+  const editTarget = {
+    story: OP_STORIES.MAIN,
+    blockId: "00000100",
+    newIds: { revision: [700, 701, 702], control: [703] },
+  };
+  const editOps = [
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+      column: 1,
+      width: 1500,
+      newBlockIds: ["00000200", "00000201"],
+    },
+    { ...editTarget, type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 1 },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      top: 0,
+      bottom: 2,
+      left: 0,
+      right: 2,
+      newBlockIds: ["00000202"],
+    },
+    { ...editTarget, type: DOCUMENT_OP_TYPES.SET_TABLE_GRID, columnWidths: [1600, 2200] },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+      patch: {
+        verticalAlign: "bottom",
+        noWrap: null,
+        fitText: true,
+        width: { type: "dxa", value: 1500 },
+      },
+    },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+      patch: {
+        header: null,
+        cantSplit: false,
+        heightRule: "exact",
+        height: { type: "dxa", value: 300 },
+      },
+    },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+      patch: { justification: "right", layout: "autofit", styleId: null, bidi: true },
+    },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+      column: 2,
+      width: 1300,
+      newBlockIds: ["00000203", "00000204"],
+      revision: stamp(500),
+      newIds: { revision: [501, 502, 503] },
+    },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+      column: 1,
+      revision: stamp(510),
+      newIds: { revision: [511, 512, 513] },
+    },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+      columnWidths: [1300, 1900],
+      revision: stamp(520),
+      newIds: { revision: [521] },
+    },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+      patch: { fitText: true },
+      revision: stamp(530),
+    },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+      patch: { hidden: true },
+      revision: stamp(540),
+    },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+      patch: { bidi: true },
+      revision: stamp(550),
+    },
+    {
+      ...editTarget,
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      top: 0,
+      bottom: 2,
+      left: 0,
+      right: 1,
+      newBlockIds: [],
+      revision: stamp(560),
+      newIds: { revision: [561, 562, 563, 564, 565] },
+    },
+  ] as const satisfies readonly DocumentOp[];
+  for (const op of editOps) {
+    const result = applyDocumentOp(editDocument, op);
+    if (result.isErr()) throw result.error;
+    out.push(toOpEnvelope(op));
+    for (const inverse of result.value.inverse) out.push(toOpEnvelope(inverse));
+  }
+  const splitTable: Table = {
+    ...editTable,
+    rows: editTable.rows.map((sourceRow, index) =>
+      Object.assign({}, sourceRow, {
+        cells: [
+          {
+            type: "tableCell",
+            formatting: { gridSpan: 2 },
+            content: [{ type: "paragraph", paraId: `0000030${index}`, content: [] }],
+          },
+        ],
+      }),
+    ),
+  };
+  const splitOp = {
+    story: OP_STORIES.MAIN,
+    blockId: "00000300",
+    type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+    newBlockIds: ["00000302"],
+    newIds: { revision: [710, 711] },
+  } as const satisfies DocumentOp;
+  const splitResult = applyDocumentOp(
+    { package: { document: { content: [splitTable, second] } } },
+    splitOp,
+  );
+  if (splitResult.isErr()) throw splitResult.error;
+  out.push(toOpEnvelope(splitOp));
+  for (const inverse of splitResult.value.inverse) out.push(toOpEnvelope(inverse));
+  const trackedSplitOp = {
+    ...splitOp,
+    revision: stamp(570),
+    newIds: { revision: [571] },
+  };
+  const trackedSplitResult = applyDocumentOp(
+    { package: { document: { content: [splitTable, second] } } },
+    trackedSplitOp,
+  );
+  if (trackedSplitResult.isErr()) throw trackedSplitResult.error;
+  out.push(toOpEnvelope(trackedSplitOp));
+  for (const inverse of trackedSplitResult.value.inverse) out.push(toOpEnvelope(inverse));
+
   return out;
 };
 

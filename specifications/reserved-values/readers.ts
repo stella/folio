@@ -42,6 +42,9 @@ export const RESERVED_VALUE_READERS = {
   tableWidth: `${CORE}/layout-engine/types.ts#resolveTableWidthPx`,
   /** `w:gridSpan` 1/0, `w:vMerge` absent. */
   tableCellProperties: `${CORE}/docx/tableParser.ts#parseTableCellProperties`,
+  /** Modeled `w:vMerge` continuation, restart, or no merge. */
+  tableCellVerticalMerge:
+    "packages/docx-core/src/model/tableCellVerticalMerge.ts#tableCellVerticalMerge",
   /** `w:trHeight@hRule` `auto`. */
   tableRowProperties: `${CORE}/docx/tableParser.ts#parseTableRowProperties`,
   /** `w:tblLayout@type`, `w:tblOverlap@val`. */
