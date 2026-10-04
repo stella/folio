@@ -128,6 +128,9 @@ export const createSequencer: (document: Document_2) => {
 };
 
 // @public
+export const defaultInsertionGap: (items: readonly InlineNode[], offset: number) => Gap;
+
+// @public
 export type DeleteBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.DELETE_BLOCKS;
     story: OpStory;
@@ -217,7 +220,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 8;
+export const DOCUMENT_OP_SCHEMA_VERSION = 9;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -260,6 +263,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly CREATE_NUMBERING_INSTANCE: "createNumberingInstance";
     readonly DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance";
     readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
+    readonly SET_PACKAGE_RESOURCES: "setPackageResources";
 }>;
 
 // @public
@@ -273,7 +277,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = (CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp) & {
+export type DocumentOp = (CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -309,6 +313,21 @@ export const documentStories: (document: Document_2) => OpStory[];
 export type EditorIntent = {
     type: "table";
     operation: TableIntentOperation;
+} | {
+    type: "replaceFragment";
+    from: TextPosition;
+    to: TextPosition;
+    paragraphs: readonly Paragraph[];
+    openStart: 0 | 1;
+    openEnd: 0 | 1;
+} | {
+    type: "moveFragment";
+    from: TextPosition;
+    to: TextPosition;
+    target: TextPosition;
+    paragraphs: readonly Paragraph[];
+    openStart: 0 | 1;
+    openEnd: 0 | 1;
 } | {
     type: "replaceText";
     from: TextPosition;
@@ -556,6 +575,32 @@ export type OpStory = typeof OP_STORIES.MAIN | HeaderFooterStory | NoteStory;
 export const packageParagraphIds: (pkg: DocxPackage) => string[];
 
 // @public
+export type PackageResourceMedia = Omit<MediaFile, "data"> & {
+    data: readonly number[];
+};
+
+// @public
+export type PackageResourcePart<Value> = {
+    type: "omitted";
+} | {
+    type: "undefined";
+} | {
+    type: "present";
+    value: Value;
+};
+
+// @public
+export type PackageResources = {
+    styles: PackageResourcePart<StyleDefinitions>;
+    numbering: PackageResourcePart<NumberingDefinitions>;
+    relationships: PackageResourcePart<readonly (readonly [string, Relationship])[]>;
+    media: PackageResourcePart<readonly (readonly [string, PackageResourceMedia])[]>;
+};
+
+// @public
+export const packageResourcesOf: (input: Document_2) => PackageResources;
+
+// @public
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
 
 // @public
@@ -599,6 +644,7 @@ export const planTrackedReplace: (document: Document_2, options: PlanTrackedRepl
 
 // @public
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
+    sourceContainerPolicy: "join" | "separate";
     seamPolicy?: Extract<DocumentOp, {
         type: "insertContent";
     }>["seamPolicy"];
@@ -758,6 +804,13 @@ export type SetContainerBlocksOp = {
     blockId: string;
     expected: readonly BlockContent[];
     blocks: readonly BlockContent[];
+};
+
+// @public
+export type SetPackageResourcesOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
+    expected: PackageResources;
+    resources: PackageResources;
 };
 
 // @public
@@ -928,6 +981,9 @@ export const validateOpsDocument: (document: Document_2) => Result<Document_2, D
 
 // @public
 export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, BatchRejection>;
+
+// @public
+export const zeroWidthLeavesAt: (items: readonly InlineNode[], offset: number) => InlineNode[];
 
 // (No @packageDocumentation comment for this package)
 

@@ -354,6 +354,7 @@ export const listItemAttrs = (
   ...listLevelIndentAttrPatch(directParagraphIndentation(attrs), { numId, ilvl }, numbering),
   // Counted from the paragraph's own inline fields; the list does not change them.
   listImplicitChildLevelAdvances: attrs["listImplicitChildLevelAdvances"] ?? null,
+  listFoldedMarkerSuffix: attrs["listFoldedMarkerSuffix"] ?? undefined,
   listMarkerSecondSlotOffsetTwips: attrs["listMarkerSecondSlotOffsetTwips"] ?? null,
 });
 

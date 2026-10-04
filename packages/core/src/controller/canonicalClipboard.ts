@@ -281,7 +281,9 @@ export const prepareCanonicalPaste = ({
     ? new Slice(Fragment.from(paragraphType.create(null, slice.content)), 1, 1)
     : slice;
   const converted = Result.try({
-    try: () => proseDocToBlocks(state.schema.topNodeType.create(null, importedSlice.content)),
+    // Imported fragments mint new paragraph identities; matching source ids
+    // must not attach a durable paragraph owner from either document.
+    try: () => proseDocToBlocks(state.schema.topNodeType.create(null, importedSlice.content), []),
     catch: (cause) =>
       new CanonicalSessionError({
         reason: "refused",
