@@ -1,0 +1,10 @@
+{
+  "namespace-qualified guards count branches and resolve their ledger ids": [
+    {
+      "seed": -498017316,
+      "path": "0:0:0",
+      "note": "Use the ratchet diagnostic session branches, not session selectors, when asserting a counted namespace-qualified branch exceeds its baseline.",
+      "date": "2026-10-04"
+    }
+  ]
+}

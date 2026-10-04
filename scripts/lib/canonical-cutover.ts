@@ -87,10 +87,17 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
         file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
       );
       const imports = new Map<string, string>();
+      const namespaces = new Set<string>();
       for (const statement of tree.statements) {
         if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier))
           continue;
         const bindings = statement.importClause?.namedBindings;
+        if (
+          bindings &&
+          ts.isNamespaceImport(bindings) &&
+          /(?:^|\/)canonicalCapabilities(?:\.ts)?$/.test(statement.moduleSpecifier.text)
+        )
+          namespaces.add(bindings.name.text);
         if (bindings && ts.isNamedImports(bindings))
           for (const binding of bindings.elements) {
             const imported = binding.propertyName?.text ?? binding.name.text;
@@ -107,6 +114,31 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
               failures.push(`${file}: canonical guard primitives cannot be aliased`);
           }
       }
+      const memberKey = (node: ts.Node) => {
+        if (ts.isPropertyAccessExpression(node)) return node.name.text;
+        if (
+          ts.isElementAccessExpression(node) &&
+          node.argumentExpression &&
+          ts.isStringLiteral(node.argumentExpression)
+        )
+          return node.argumentExpression.text;
+        return undefined;
+      };
+      const primitiveName = (node: ts.Node): string | undefined => {
+        if (ts.isIdentifier(node)) return node.text;
+        if (
+          (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+          ts.isIdentifier(node.expression) &&
+          namespaces.has(node.expression.text)
+        )
+          return memberKey(node);
+        return undefined;
+      };
+      const gapKey = (node: ts.Node | undefined): string | undefined => {
+        if (!node || !(ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)))
+          return undefined;
+        return primitiveName(node.expression) === "CANONICAL_GAP" ? memberKey(node) : undefined;
+      };
       const lines = part.split("\n");
       const aliases = new Set<string>();
       const safeSelectors = new Set<string>();
@@ -133,7 +165,8 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
             aliases.add(node.name.text);
           if (
             ts.isArrowFunction(initial) &&
-            initial.body.getText().startsWith("usesCanonicalSession(")
+            ts.isCallExpression(initial.body) &&
+            primitiveName(initial.body.expression) === "usesCanonicalSession"
           )
             safeSelectors.add(node.name.text);
         }
@@ -181,7 +214,7 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
             operands.some(
               (operand) =>
                 !ts.isCallExpression(operand) ||
-                operand.expression.getText() !== "usesCanonicalSession",
+                primitiveName(operand.expression) !== "usesCanonicalSession",
             ) &&
             operands.some(
               (operand) =>
@@ -196,10 +229,10 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
             );
           }
         }
-        if (ts.isPropertyAccessExpression(node) && node.expression.getText() === "CANONICAL_GAP") {
-          const gap = gapNames.get(node.name.text);
-          if (gap === undefined)
-            failures.push(`${file}: unknown canonical gap key ${node.name.text}`);
+        const key = gapKey(node);
+        if (key !== undefined) {
+          const gap = gapNames.get(key);
+          if (gap === undefined) failures.push(`${file}: unknown canonical gap key ${key}`);
           else record(gap, file);
         }
         const conditionOf = () => {
@@ -220,25 +253,27 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
           failures.push(`${file}: bare session gate must name a ledger id`);
         if (ts.isCallExpression(node) && node.expression.getText() === "refuseCanonicalModelEdit") {
           const gap = node.arguments.at(0);
-          if (
-            !gap ||
-            !ts.isPropertyAccessExpression(gap) ||
-            gap.expression.getText() !== "CANONICAL_GAP"
-          )
+          if (gapKey(gap) === undefined)
             failures.push(`${file}: model refusal must name a ledger id`);
         }
-        if (ts.isCallExpression(node) && node.expression.getText() === "usesCanonicalSession") {
+        if (
+          ts.isCallExpression(node) &&
+          primitiveName(node.expression) === "usesCanonicalSession"
+        ) {
           counts.branches++;
           if (node.arguments.length !== 2)
             failures.push(`${file}: session branch needs a ledger id`);
           const gap = node.arguments.at(1);
-          if (
-            !gap ||
-            !(ts.isPropertyAccessExpression(gap) && gap.expression.getText() === "CANONICAL_GAP")
-          )
+          if (gapKey(gap) === undefined)
             failures.push(`${file}: session branch must name a constant ledger id`);
         }
-        if (ts.isNewExpression(node) && isRefusal(node.expression.getText())) {
+        if (
+          ts.isCallExpression(node) &&
+          node.expression.getText() === "handleSessionRefusal" &&
+          node.arguments.length !== 2
+        )
+          failures.push(`${file}: session refusal handler must receive its gap id`);
+        if (ts.isNewExpression(node) && isRefusal(primitiveName(node.expression) ?? "")) {
           const payload = node.arguments?.at(0);
           if (
             !payload ||
