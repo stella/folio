@@ -2,6 +2,7 @@ import { TextSelection } from "prosemirror-state";
 import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
 import type { BrowserDragTarget } from "../visual/browserDragTarget";
 import { canonicalTextSelection } from "./canonicalTextSelection";
+import { waitForCanonicalLoadOwner } from "./canonicalLoadOwner";
 import type { Document } from "@stll/folio-core";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
@@ -28,8 +29,14 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
   load: async (bytes: number[]) => {
     const ref = getRef();
     if (!ref) return false;
+    const previousOwner = ref.getEditor()?.getCanonicalDocument();
     await ref.loadDocumentBuffer(new Uint8Array(bytes));
     ref.ensureEditorView();
+    await waitForCanonicalLoadOwner({
+      previousOwner,
+      getOwner: () => getRef()?.getEditor()?.getCanonicalDocument(),
+      waitFrame: () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    });
     return true;
   },
   save: async () => {

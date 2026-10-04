@@ -1,10 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import fc from "fast-check";
-import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import { appendFileSync } from "node:fs";
 
 import { createDocx } from "../../packages/core/src/docx/rezip";
-import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import {
@@ -14,38 +12,16 @@ import {
   shellQuote,
   writeFailureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
-import { commonActionArbitraries, parseBrowserInputTraceConfig } from "./browserInputTrace";
-import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
+import { parseBrowserInputTraceConfig } from "./browserInputTrace";
+import { canonicalBrowserTraceArbitrary } from "./canonicalBrowserTrace";
+import { checkCanonicalBrowserHistory } from "./canonicalBrowserHistoryOracle";
 import type {} from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
 
-const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const config = parseBrowserInputTraceConfig(
   process.env,
   process.env["FOLIO_FUZZ_LANE"] === "nightly" ? "nightly" : "pullRequest",
 );
-const traceArbitrary = fc.array(fc.oneof(...commonActionArbitraries), {
-  minLength: 1,
-  maxLength: 12,
-});
-const snapshot = async (page: Page) => {
-  // An ended IME composition commits after the native flush settles; the
-  // canonical document refuses snapshots until then (canSnapshot is false).
-  await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
-  const current = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
-  expect(current?.active).toBe(true);
-  expect(current?.projectionMatchesCanonical).toBe(true);
-  expect(current?.projectionJSON).toEqual(current?.canonicalProjectionJSON);
-  if (!current?.document) throw new TypeError("Canonical document unavailable");
-  return current;
-};
-const drainErrors = (page: Page) =>
-  page.evaluate(() => {
-    const errors = globalThis.__folioCanonicalFuzzErrors;
-    if (!errors) throw new TypeError("Canonical error sink unavailable");
-    return errors.splice(0);
-  });
-
 for (const seed of config.seeds) {
   test(`canonical seed ${seed}: projection, exact history and save/reopen`, async ({
     page,
@@ -61,82 +37,13 @@ for (const seed of config.seeds) {
     });
     const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
     const verdict = await fc.check(
-      fc.asyncProperty(traceArbitrary, async (actions) => {
-        expect(
-          await page.evaluate(
-            async (bytes) => globalThis.__folioCanonical?.load(bytes),
-            [...new Uint8Array(source)],
-          ),
-        ).toBe(true);
-        await drainErrors(page);
-        expect(await page.evaluate(() => globalThis.__folioCanonical?.select(1, 6))).toBe(true);
-        await snapshot(page);
-        for (const action of actions) {
-          const before = await snapshot(page);
-          await driveCanonicalBrowserInput(page, action);
-          const after = await snapshot(page);
-          const errors = await drainErrors(page);
-          for (const error of errors) {
-            expect(error.type).toBe("CanonicalSessionRefusalError");
-            missing.record(action.kind);
-          }
-          if (errors.length > 0) {
-            // An explicit refusal cannot edit the model, projection or history.
-            expect(after.document).toEqual(before.document);
-            expect(after.projectionJSON).toEqual(before.projectionJSON);
-            expect(after.canUndo).toBe(before.canUndo);
-            expect(after.canRedo).toBe(before.canRedo);
-            continue;
-          }
-          if (action.kind === "typing") {
-            if (!before.textSelection) throw new TypeError("Missing input selection");
-            expect(after.text).toBe(
-              before.textSelection.before + action.text + before.textSelection.after,
-            );
-          }
-          if (
-            action.kind !== "undo" &&
-            action.kind !== "redo" &&
-            JSON.stringify(after.document) !== JSON.stringify(before.document)
-          ) {
-            applied++;
-            await page.keyboard.press(`${MODIFIER}+z`);
-            const undone = await snapshot(page);
-            expect(undone.document).toEqual(before.document);
-            expect(undone.projectionJSON).toEqual(before.projectionJSON);
-            expect(undone.selection).toEqual(before.selection);
-            await page.keyboard.press(`${MODIFIER}+Shift+z`);
-            const redone = await snapshot(page);
-            expect(redone.document).toEqual(after.document);
-            expect(redone.projectionJSON).toEqual(after.projectionJSON);
-            expect(redone.selection).toEqual(after.selection);
-            expect(await drainErrors(page)).toEqual([]);
-          }
-          const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
-          if (!saved) throw new TypeError("Canonical save unavailable");
-          expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
-          const reopened = structuredClone(
-            await parseDocx(new Uint8Array(saved), {
-              preloadFonts: false,
-              detectVariables: false,
-            }),
-          );
-          expect(reopened.package.document.content).toEqual(
-            after.document.package.document.content,
-          );
-        }
-        // Reopen through the actual host as well as the DOCX reader.
-        const final = await snapshot(page);
-        const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
-        if (!saved) throw new TypeError("Canonical save unavailable");
-        expect(
-          await page.evaluate(async (bytes) => globalThis.__folioCanonical?.load(bytes), saved),
-        ).toBe(true);
-        const reloaded = await snapshot(page);
-        expect(reloaded.document.package.document.content).toEqual(
-          final.document.package.document.content,
-        );
-        expect(reloaded.canUndo).toBe(false);
+      fc.asyncProperty(canonicalBrowserTraceArbitrary, async (actions) => {
+        applied += await checkCanonicalBrowserHistory({
+          page,
+          source: [...new Uint8Array(source)],
+          actions,
+          missing,
+        });
         completed++;
       }),
       {
