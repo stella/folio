@@ -1,4 +1,5 @@
 /** One editor intent, compiled to direct or tracked document operations. */
+import { cloneModel } from "./modelClone";
 import { INSERTION_SEAM_POLICIES } from "../model/content";
 import { Result, panic } from "better-result";
 import { applyDocumentOp, applyDocumentOps } from "./apply";
@@ -481,7 +482,7 @@ const identifyClipboardParagraphs = ({
   mode,
   firstBlockId,
 }: IdentifyClipboardParagraphsOptions): Result<Paragraph[], DocumentOpRefusal> => {
-  const copy = structuredClone([...paragraphs]);
+  const copy = cloneModel([...paragraphs]);
   const occupied = new Set(
     packageIdentityKeys(document.package).concat(reservedIdentityKeysIn(document.package)),
   );

@@ -1,3 +1,4 @@
+import { cloneModel } from "./modelClone";
 import { Result } from "better-result";
 
 import { MAX_REVISION_ID, type Document } from "../model/document";
@@ -15,7 +16,7 @@ const partOf = <Value>(present: boolean, value: Value | undefined): PackageResou
   if (!present) return { type: "omitted" };
   return value === undefined
     ? { type: "undefined" }
-    : { type: "present", value: structuredClone(value) };
+    : { type: "present", value: cloneModel(value) };
 };
 
 /** Capture maps and binary media as ordinary JSON data, preserving field presence. */
@@ -210,7 +211,7 @@ export const applyPackageResourcesOp = (
   if (violation !== undefined)
     return failed(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, violation);
   // The journal and resulting document must not share mutable resource records.
-  const resources = structuredClone(op.resources);
+  const resources = cloneModel(op.resources);
   const pkg = { ...document.package };
   delete pkg.styles;
   delete pkg.numbering;

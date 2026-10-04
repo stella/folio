@@ -26,33 +26,6 @@
       "seed": -2120778113,
       "note": "Restoring a removed story must retain captured replay ownership Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.",
       "date": "2026-10-03"
-    },
-    {
-      "seed": 327444275,
-      "path": "128:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
-      "note": "Package inverse retains modeled records but changes captured footer serialization after a join.",
-      "date": "2026-10-03",
-      "expectedFailure": {
-        "family": "T4",
-        "fingerprint": "20c2d3fdbf109520"
-      }
-    },
-    {
-      "seed": -392419793,
-      "path": "109:1:1:1:1:1:1:1:1:1:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3",
-      "note": "Package inverse retains modeled records but changes captured header serialization after a join.",
-      "date": "2026-10-03",
-      "expectedFailure": {
-        "family": "T4",
-        "fingerprint": "af2bdcaabf37424e"
-      }
-    }
-  ],
-  "operation sequence generation retains the parsed package control": [
-    {
-      "seed": 1138888773,
-      "note": "Retain the parsed-control regression seed after the numbering fixture expansion invalidated its historical shrink path (CI replay executed zero cases).",
-      "date": "2026-10-03"
     }
   ],
   "paragraph property package inverses retain authored stories": [
@@ -64,6 +37,13 @@
     {
       "seed": 1192899088,
       "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml The original symptom does not reproduce with the canonical operation baseline; retain the seed on the per-kind law.",
+      "date": "2026-10-03"
+    }
+  ],
+  "operation sequence generation retains the parsed package control": [
+    {
+      "seed": 1138888773,
+      "note": "Retain the parsed-control regression seed after the numbering fixture expansion invalidated its historical shrink path (CI replay executed zero cases).",
       "date": "2026-10-03"
     }
   ]
