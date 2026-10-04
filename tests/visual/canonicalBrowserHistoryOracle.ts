@@ -2,6 +2,11 @@ import { expect, type Page } from "@playwright/test";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
+import {
+  canonicalBrowserRefusalRows,
+  matchCanonicalRefusalRow,
+  validateHarnessRefusalRows,
+} from "../../test/canonical-refusal-rows";
 import { BROWSER_INPUT_ACTION_DISPOSITIONS, type BrowserInputAction } from "./browserInputTrace";
 import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
 import type {} from "../parity/canonicalBridge";
@@ -43,7 +48,7 @@ export const checkCanonicalBrowserHistory = async ({
   expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
     true,
   );
-  await drainErrors(page);
+  expect(await drainErrors(page)).toEqual([]);
   expect(await page.evaluate(() => globalThis.__folioCanonical?.select(1, 6))).toBe(true);
   const baseline = await snapshot(page);
   expect(baseline.canUndo).toBe(false);
@@ -55,13 +60,23 @@ export const checkCanonicalBrowserHistory = async ({
     await driveCanonicalBrowserInput(page, action);
     const after = await snapshot(page);
     const errors = await drainErrors(page);
+    const rows = canonicalBrowserRefusalRows(action);
+    validateHarnessRefusalRows(rows);
+    if (rows.length > 0) expect(errors.length).toBeGreaterThan(0);
     for (const error of errors) {
+      expect(error.status).toBe("refusal");
       expect(error.type).toBe("CanonicalSessionRefusalError");
-      missing.record(action.kind);
+      if (error.status !== "refusal") throw new TypeError(error.message);
+      const matchedRow = matchCanonicalRefusalRow({ rows, refusal: error });
+      expect(matchedRow).toBeDefined();
+      if (!matchedRow)
+        throw new TypeError("Canonical browser refusal did not match a declared row.");
+      missing.record(matchedRow.gap);
     }
     if (errors.length > 0) {
       expect(after.document).toEqual(before.document);
       expect(after.projectionJSON).toEqual(before.projectionJSON);
+      expect(after.selection).toEqual(before.selection);
       expect(after.canUndo).toBe(before.canUndo);
       expect(after.canRedo).toBe(before.canRedo);
       continue;
