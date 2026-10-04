@@ -226,7 +226,10 @@ import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
 import { pointsToHalfPoints, twipsToPixels } from "@stll/folio-core/utils/units";
 import { useDocumentHistory } from "../hooks/useHistory";
 import { createCanonicalSectionPropertiesOperation } from "@stll/folio-core/controller/canonicalOperations";
-import { repackWithCanonicalStoryRemovals } from "@stll/folio-core/docx/canonicalStoryRepack";
+import {
+  CanonicalSaveDiagnosticError,
+  serializeCanonicalSave,
+} from "@stll/folio-core/docx/canonicalSave";
 import { useTableSelection } from "../hooks/useTableSelection";
 import { getPageSize } from "@stll/folio-core/paged-layout/sectionGeometry";
 import { PagedEditor, VIEWPORT_PADDING_TOP } from "../paged-editor/PagedEditor";
@@ -3050,95 +3053,123 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       let savedBuffer: ArrayBuffer | null = null;
 
       try {
-        const view = pagedEditorRef.current?.getView();
-        const editorState = view?.state;
-        const baselineBuffer = originalBufferRef.current;
-        // Build the current document from the selected session. A note goes with its
-        // reference: one nothing refers to any more is not saved.
-        const current = buildCurrentDocument();
-        const doc = current ? withoutUnreferencedNotes(current) : null;
-        if (!doc) {
-          return null;
-        }
-
-        const { resolveSelectiveSaveFlags } =
-          await import("@stll/folio-core/docx/selectiveSaveFlags");
-        const flags = resolveSelectiveSaveFlags(featureFlags);
-
-        // The tripwire observes the selective path independently from the
-        // user-visible save mode. Only `useSelectiveForSave` is allowed to
-        // choose the returned bytes.
-        const useSelectiveForSave =
-          flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
-        const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
-        let selectiveBuffer: ArrayBuffer | null = null;
-
-        if (shouldAttemptSelective && editorState && baselineBuffer) {
-          const attemptSelectiveSave = await loadAttemptSelectiveSave();
-          selectiveBuffer = await attemptSelectiveSave(doc, baselineBuffer, {
-            changedParaIds: getChangedParagraphIds(editorState),
-            structuralChange: hasStructuralChanges(editorState),
-            hasUntrackedChanges: hasUntrackedChanges(editorState),
-            maxBytes: flags.selectiveSaveMaxBytes,
-          });
-        }
-
-        let buffer: ArrayBuffer | null = useSelectiveForSave ? selectiveBuffer : null;
-        let fullBuffer: ArrayBuffer | null = null;
-        const repackSourceDoc = baselineBuffer ? { ...doc, originalBuffer: baselineBuffer } : doc;
-        // A section the editor removed on purpose (its ending paragraph
-        // deleted, or that deletion accepted) is one the repack must be told
-        // about, or it refuses the smaller package.
-        const repackFull = async (): Promise<ArrayBuffer> => {
-          const repackDocx = await loadRepackDocx();
-          const repack = () => repackDocx(repackSourceDoc);
-          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-            return repackWithCanonicalStoryRemovals({ document: repackSourceDoc, repack });
+        const editor = pagedEditorRef.current?.getEditor();
+        const snapshot = editor?.captureCanonicalSave();
+        if (snapshot && editor) {
+          const view = editor.getView();
+          const editorState = view?.state;
+          const result = await serializeCanonicalSave({ snapshot, options, featureFlags });
+          for (const diagnostic of result.diagnostics) {
+            if (!options?.onDiagnostic)
+              onError?.(
+                new CanonicalSaveDiagnosticError({
+                  gap: CANONICAL_GAP.save,
+                  diagnostic,
+                  message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
+                }),
+              );
           }
-          return editorState
-            ? repackWithEditorSectionRemovals({
-                state: editorState,
-                document: repackSourceDoc,
-                repack,
-              })
-            : repack();
-        };
+          tripwireResult = result.tripwireResult;
+          // Keep the parsed baseline: canonical touched ids are cumulative against it.
+          if (
+            view &&
+            pagedEditorRef.current?.getEditor() === editor &&
+            editor.getView() === view &&
+            view.state.doc === editorState?.doc &&
+            editor.captureCanonicalSave()?.version === snapshot.version
+          ) {
+            view.dispatch(clearTrackedChanges(view.state));
+          }
+          savedBuffer = result.buffer;
+        } else {
+          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) return null;
+          const view = pagedEditorRef.current?.getView();
+          const editorState = view?.state;
+          const baselineBuffer = originalBufferRef.current;
+          // Build the current document from the selected session. A note goes with its
+          // reference: one nothing refers to any more is not saved.
+          const current = buildCurrentDocument();
+          const doc = current ? withoutUnreferencedNotes(current) : null;
+          if (!doc) {
+            return null;
+          }
 
-        if (!buffer) {
-          fullBuffer = await repackFull();
-          buffer = fullBuffer;
-        } else if (flags.selectiveSaveTripwire) {
-          try {
+          const { resolveSelectiveSaveFlags } =
+            await import("@stll/folio-core/docx/selectiveSaveFlags");
+          const flags = resolveSelectiveSaveFlags(featureFlags);
+
+          // The tripwire observes the selective path independently from the
+          // user-visible save mode. Only `useSelectiveForSave` is allowed to
+          // choose the returned bytes.
+          const useSelectiveForSave =
+            flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
+          const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
+          let selectiveBuffer: ArrayBuffer | null = null;
+
+          if (shouldAttemptSelective && editorState && baselineBuffer) {
+            const attemptSelectiveSave = await loadAttemptSelectiveSave();
+            selectiveBuffer = await attemptSelectiveSave(doc, baselineBuffer, {
+              changedParaIds: getChangedParagraphIds(editorState),
+              structuralChange: hasStructuralChanges(editorState),
+              hasUntrackedChanges: hasUntrackedChanges(editorState),
+              maxBytes: flags.selectiveSaveMaxBytes,
+            });
+          }
+
+          let buffer: ArrayBuffer | null = useSelectiveForSave ? selectiveBuffer : null;
+          let fullBuffer: ArrayBuffer | null = null;
+          const repackSourceDoc = baselineBuffer ? { ...doc, originalBuffer: baselineBuffer } : doc;
+          // A section the editor removed on purpose (its ending paragraph
+          // deleted, or that deletion accepted) is one the repack must be told
+          // about, or it refuses the smaller package.
+          const repackFull = async (): Promise<ArrayBuffer> => {
+            const repackDocx = await loadRepackDocx();
+            const repack = () => repackDocx(repackSourceDoc);
+            return editorState
+              ? repackWithEditorSectionRemovals({
+                  state: editorState,
+                  document: repackSourceDoc,
+                  repack,
+                })
+              : repack();
+          };
+
+          if (!buffer) {
             fullBuffer = await repackFull();
-          } catch {
-            // Tripwire-only full repack failures must never poison a
-            // successful selective save.
+            buffer = fullBuffer;
+          } else if (flags.selectiveSaveTripwire) {
+            try {
+              fullBuffer = await repackFull();
+            } catch {
+              // Tripwire-only full repack failures must never poison a
+              // successful selective save.
+            }
           }
-        }
 
-        if (flags.selectiveSaveTripwire && fullBuffer && onSelectiveSaveTripwire) {
-          // The comparison itself never blocks the save path. The host
-          // callback runs after the save try/catch so test harnesses may fail
-          // on mismatches by throwing.
-          try {
-            const { compareSelectiveVsFull } =
-              await import("@stll/folio-core/docx/selectiveSaveTripwire");
-            tripwireResult = await compareSelectiveVsFull(selectiveBuffer, fullBuffer);
-          } catch {
-            // Comparison failures must never poison the save path.
+          if (flags.selectiveSaveTripwire && fullBuffer && onSelectiveSaveTripwire) {
+            // The comparison itself never blocks the save path. The host
+            // callback runs after the save try/catch so test harnesses may fail
+            // on mismatches by throwing.
+            try {
+              const { compareSelectiveVsFull } =
+                await import("@stll/folio-core/docx/selectiveSaveTripwire");
+              tripwireResult = await compareSelectiveVsFull(selectiveBuffer, fullBuffer);
+            } catch {
+              // Comparison failures must never poison the save path.
+            }
           }
-        }
 
-        // Clear change tracker after successful save
-        if (
-          view &&
-          pagedEditorRef.current?.getView() === view &&
-          view.state.doc === editorState?.doc
-        ) {
-          originalBufferRef.current = buffer;
-          view.dispatch(clearTrackedChanges(view.state));
+          // Clear change tracker after successful save
+          if (
+            view &&
+            pagedEditorRef.current?.getView() === view &&
+            view.state.doc === editorState?.doc
+          ) {
+            originalBufferRef.current = buffer;
+            view.dispatch(clearTrackedChanges(view.state));
+          }
+          savedBuffer = buffer;
         }
-        savedBuffer = buffer;
       } catch (error) {
         onError?.(error instanceof Error ? error : new Error("Failed to save document"));
         return null;
@@ -3149,7 +3180,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       }
       return savedBuffer;
     },
-    [buildCurrentDocument, onError, originalBufferRef, featureFlags, onSelectiveSaveTripwire],
+    [
+      buildCurrentDocument,
+      onError,
+      originalBufferRef,
+      featureFlags,
+      onSelectiveSaveTripwire,
+      experimentalSession,
+    ],
   );
 
   // Host-facing save keeps callback and dirty-state policy outside the

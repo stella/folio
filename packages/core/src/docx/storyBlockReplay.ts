@@ -1,6 +1,6 @@
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
-import type { BlockContent } from "../types/document";
+import type { BlockContent, DocumentBody } from "../types/document";
 import { captureSourceProfileXml, isSafeCapturedXmlDocument } from "./verbatimCapture";
 import { canonicalJson } from "../utils/canonicalJson";
 import { spliceXml, type XmlSplice } from "./selectiveXmlPatch";
@@ -67,7 +67,7 @@ const XML_TOKEN =
   /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<(?:"[^"]*"|'[^']*'|[^'">])*>/gu;
 const XML_ATTRIBUTE = /([^\s=<>/]+)(\s*=\s*)(["'])(.*?)\3/gsu;
 
-const readStory = (xml: string, scope?: XmlNamespaceScope) => {
+const readStory = (xml: string, scope?: XmlNamespaceScope, ignoredChild?: string) => {
   const parsed = parseStreamingXmlWithSourceRanges(xml, scope);
   if (parsed.status !== "parsed") return null;
   const roots = getChildElements(parsed.value);
@@ -85,6 +85,11 @@ const readStory = (xml: string, scope?: XmlNamespaceScope) => {
   const children = getChildElements(root);
   const blocks = [];
   for (const element of children) {
+    if (
+      getLocalName(element.name) === ignoredChild &&
+      WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
+    )
+      continue;
     const range = getXmlSourceRange(element);
     if (!range) return null;
     blocks.push({ element, ...range });
@@ -214,15 +219,22 @@ type StoryBlockReplayOptions = {
   baselineContent: readonly BlockContent[];
   currentContent: readonly BlockContent[];
   serializedXml: string;
+  ignoredChild?: string;
 };
 
 /** Replace only mapped block ranges, retaining authored root syntax and every intervening gap. */
 const replayBlocks = (
-  { sourceXml, baselineContent, currentContent, serializedXml }: StoryBlockReplayOptions,
+  {
+    sourceXml,
+    baselineContent,
+    currentContent,
+    serializedXml,
+    ignoredChild,
+  }: StoryBlockReplayOptions,
   scope?: ReplayScopeOptions,
 ): string | null => {
-  const source = readStory(sourceXml, scope?.source);
-  const generated = readStory(serializedXml, scope?.generated);
+  const source = readStory(sourceXml, scope?.source, ignoredChild);
+  const generated = readStory(serializedXml, scope?.generated, ignoredChild);
   if (
     !source ||
     !generated ||
@@ -331,7 +343,17 @@ const replayBlocks = (
         newXml: `${opening.slice(0, -2)}>${fragments.join("")}</${source.root.name}>`,
       });
     } else {
-      const close = sourceXml.lastIndexOf("</", source.range.end);
+      const ignored =
+        ignoredChild === undefined
+          ? undefined
+          : getChildElements(source.root).find(
+              (child) =>
+                getLocalName(child.name) === ignoredChild &&
+                WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? ""),
+            );
+      const close =
+        (ignored && getXmlSourceRange(ignored)?.start) ??
+        sourceXml.lastIndexOf("</", source.range.end);
       if (close < source.range.start) return null;
       splices.push({ start: close, end: close, newXml: fragments.join("") });
     }
@@ -582,4 +604,127 @@ const replayCellContent = ({
     newXml: patched,
   });
   return true;
+};
+
+type DocumentBlockReplayOptions = {
+  sourceXml: string;
+  serializedXml: string;
+  baseline: DocumentBody;
+  current: DocumentBody;
+};
+
+/** Replay body blocks and modeled document metadata inside the authored part shell. */
+export const buildDocumentBlockReplay = ({
+  sourceXml,
+  serializedXml,
+  baseline,
+  current,
+}: DocumentBlockReplayOptions): string | null => {
+  const source = readStory(sourceXml);
+  const generated = readStory(serializedXml);
+  if (
+    !source ||
+    !generated ||
+    getLocalName(source.root.name) !== "document" ||
+    getLocalName(generated.root.name) !== "document"
+  )
+    return null;
+  const sourceBodies = wordChildren(source.root, "body");
+  const generatedBodies = wordChildren(generated.root, "body");
+  const sourceBody = sourceBodies.at(0);
+  const generatedBody = generatedBodies.at(0);
+  if (sourceBodies.length !== 1 || generatedBodies.length !== 1 || !sourceBody || !generatedBody)
+    return null;
+  if (
+    wordChildren(sourceBody, "sectPr").length > 1 ||
+    wordChildren(generatedBody, "sectPr").length > 1 ||
+    wordChildren(source.root, "background").length > 1 ||
+    wordChildren(generated.root, "background").length > 1
+  )
+    return null;
+  const sourceRange = getXmlSourceRange(sourceBody);
+  const generatedRange = getXmlSourceRange(generatedBody);
+  if (!sourceRange || !generatedRange) return null;
+  let bodyXml = replayBlocks(
+    {
+      sourceXml: sourceXml.slice(sourceRange.start, sourceRange.end),
+      serializedXml: serializedXml.slice(generatedRange.start, generatedRange.end),
+      baselineContent: baseline.content,
+      currentContent: current.content,
+      ignoredChild: "sectPr",
+    },
+    {
+      source: sourceBody.namespaceScope,
+      generated: generatedBody.namespaceScope,
+      generatedRoot: generated.root,
+    },
+  );
+  if (bodyXml === null) return null;
+  const replaceMetadata = (
+    xml: string,
+    sourceContainer: XmlElement,
+    generatedContainer: XmlElement,
+    name: string,
+  ): string | null => {
+    const before = wordChildren(sourceContainer, name);
+    const after = wordChildren(generatedContainer, name);
+    if (before.length > 1 || after.length > 1) return null;
+    const old = before.at(0);
+    const next = after.at(0);
+    const containerRange = getXmlSourceRange(sourceContainer);
+    const oldRange = old && getXmlSourceRange(old);
+    const nextRange = next && getXmlSourceRange(next);
+    if (!containerRange || (old && !oldRange) || (next && !nextRange)) return null;
+    const replacement =
+      next && nextRange
+        ? generatedFragment({
+            xml: serializedXml.slice(nextRange.start, nextRange.end),
+            element: next,
+            sourceNamespace: getNamespaceUri(sourceContainer) ?? "",
+            generatedRoot: generated.root,
+          })
+        : "";
+    if (replacement === null) return null;
+    if (oldRange)
+      return spliceXml(xml, [
+        {
+          start: oldRange.start - containerRange.start,
+          end: oldRange.end - containerRange.start,
+          newXml: replacement,
+        },
+      ]);
+    if (!next) return xml;
+    const insertion =
+      name === "background"
+        ? ([...xml.matchAll(XML_TOKEN)].at(0)?.[0].length ?? -1)
+        : xml.lastIndexOf("</");
+    if (insertion < 0) return null;
+    return spliceXml(xml, [{ start: insertion, end: insertion, newXml: replacement }]);
+  };
+  if (
+    canonicalJson(baseline.finalSectionProperties) !== canonicalJson(current.finalSectionProperties)
+  ) {
+    const reparsed = parseStreamingXmlWithSourceRanges(bodyXml, sourceBody.namespaceScope);
+    if (reparsed.status !== "parsed") return null;
+    const root = getChildElements(reparsed.value).at(0);
+    if (!root) return null;
+    bodyXml = replaceMetadata(bodyXml, root, generatedBody, "sectPr");
+    if (bodyXml === null) return null;
+  }
+  let result = spliceXml(sourceXml, [
+    { start: sourceRange.start, end: sourceRange.end, newXml: bodyXml },
+  ]);
+  if (result === null) return null;
+  if (canonicalJson(baseline.background) !== canonicalJson(current.background)) {
+    const reparsed = readStory(result);
+    if (!reparsed) return null;
+    // Root range can begin after an XML declaration: keep those absolute offsets.
+    const rootXml = result.slice(reparsed.range.start, reparsed.range.end);
+    const replaced = replaceMetadata(rootXml, reparsed.root, generated.root, "background");
+    if (replaced === null) return null;
+    result = spliceXml(result, [
+      { start: reparsed.range.start, end: reparsed.range.end, newXml: replaced },
+    ]);
+  }
+  return result;
 };

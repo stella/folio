@@ -30,6 +30,20 @@ import {
 
 const { usePageSetupControls } = await import("./usePageSetupControls");
 import { reviewDifferences } from "../../../../test/reviewDifferences";
+import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
+import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
+import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
+import {
+  CANONICAL_SAVE_SEEDS,
+  canonicalSaveFixture,
+  canonicalSaveSequence,
+  canonicalSaveParagraphXml,
+} from "../../../../test/canonicalSaveSequence";
+import {
+  clearTrackedChanges,
+  getChangedParagraphIds,
+  hasStructuralChanges,
+} from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
 
 const { useDocxEditor } = await import("./useDocxEditor");
@@ -464,7 +478,13 @@ test("Vue canonical stories share history and save headers, first-page footer, n
     });
     expect(removed.package.headers?.has(rId) ?? false).toBe(false);
     expect(removed.package.document.finalSectionProperties?.headerReferences ?? []).toEqual([]);
-    expect(errors).toEqual([]);
+    expect(errors).toHaveLength(2);
+    for (const error of errors) {
+      expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
+      if (!(error instanceof CanonicalSaveDiagnosticError)) panic("Expected typed save diagnostic");
+      expect(error.gap).toBe("pm-save-projection");
+      expect(error.diagnostic).toEqual({ type: "selectiveSaveRefused", part: "word/document.xml" });
+    }
   } finally {
     app.unmount();
     container.remove();
@@ -473,3 +493,120 @@ test("Vue canonical stories share history and save headers, first-page footer, n
     notes.remove();
   }
 });
+
+test.each(CANONICAL_SAVE_SEEDS)(
+  "generated canonical history %s saves independently of PM trackers",
+  async (seed) => {
+    const container = document.createElement("div");
+    const hidden = document.createElement("div");
+    const pages = document.createElement("div");
+    document.body.append(container, hidden, pages);
+    const errors: Error[] = [];
+    const flags = { selectiveSave: true, selectiveSaveMaxBytes: seed % 2 === 0 ? undefined : 1 };
+    let callbackCount = 0;
+    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
+    const app = createApp(
+      defineComponent({
+        setup() {
+          holder.editor = useDocxEditor({
+            hiddenContainer: shallowRef(hidden),
+            pagesContainer: shallowRef(pages),
+            experimentalSession: "canonical",
+            featureFlags: () => flags,
+            onError: (error) => errors.push(error),
+          });
+          return () => h("div");
+        },
+      }),
+    );
+    app.mount(container);
+    try {
+      const adapter = holder.editor ?? panic("Expected Vue adapter");
+      const bytes = await createDocx(canonicalSaveFixture(seed));
+      await adapter.loadBuffer(bytes);
+      const api = adapter.editor;
+      const view = adapter.editorView.value ?? panic("Expected canonical body view");
+      const untouchedId = (seed + 3).toString(16).padStart(8, "0").toUpperCase();
+      const baselineParagraphs = new Map<string, string>();
+      for (let index = 0; index < 4; index++) {
+        const paraId = (seed + index).toString(16).padStart(8, "0").toUpperCase();
+        baselineParagraphs.set(paraId, await canonicalSaveParagraphXml(bytes, paraId));
+      }
+      for (const [index, operations] of canonicalSaveSequence(seed).entries()) {
+        const before = adapter.getDocument();
+        expect(api.applyCanonicalOperations(operations)).toBe(true);
+        const canonical = adapter.getDocument() ?? panic("Expected canonical snapshot");
+        expect(api.undo()).toBe(true);
+        expect(adapter.getDocument()).toEqual(before);
+        expect(api.redo()).toBe(true);
+        expect(adapter.getDocument()).toEqual(canonical);
+        view.dispatch(clearTrackedChanges(view.state));
+        expect(getChangedParagraphIds(view.state).size).toBe(0);
+        const changedIds = new Set(
+          api.captureCanonicalSave()?.changedBlockIds ?? panic("Expected canonical save capture"),
+        );
+        expect(changedIds.has(untouchedId)).toBe(false);
+        expect(hasStructuralChanges(view.state)).toBe(false);
+        const saved = await adapter.save({ selective: index % 2 === 0 });
+        if (!saved) panic("Expected generated canonical save");
+        const savedBytes = await saved.arrayBuffer();
+        const reopened = await parseDocx(savedBytes, {
+          preloadFonts: false,
+          detectVariables: false,
+        });
+        expect(describePackageDifferences(canonical, reopened)).toEqual({
+          messages: [],
+          omitted: 0,
+        });
+        for (const [paraId, originalXml] of baselineParagraphs) {
+          if (!changedIds.has(paraId))
+            expect(await canonicalSaveParagraphXml(savedBytes, paraId)).toBe(originalXml);
+        }
+        expect(api.undo()).toBe(true);
+        expect(adapter.getDocument()).toEqual(before);
+        expect(api.redo()).toBe(true);
+        const diagnostics: SaveDiagnostic[] = [];
+        const errorsBeforeSerialization = errors.length;
+        const repeated = await api.getDocx({
+          mode: index % 2 === 0 ? "full" : "prefer-selective",
+          onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+        });
+        expect(errors.length).toBe(errorsBeforeSerialization);
+        callbackCount += diagnostics.length;
+        for (const diagnostic of diagnostics) {
+          expect(diagnostic).toEqual({ type: "selectiveSaveRefused", part: "word/document.xml" });
+        }
+        if (!repeated) panic("Expected repeated canonical serialization");
+        expect(
+          describePackageDifferences(
+            canonical,
+            await parseDocx(repeated, { preloadFonts: false, detectVariables: false }),
+          ),
+        ).toEqual({ messages: [], omitted: 0 });
+        for (const [paraId, originalXml] of baselineParagraphs) {
+          if (!changedIds.has(paraId))
+            expect(await canonicalSaveParagraphXml(repeated, paraId)).toBe(originalXml);
+        }
+      }
+      if (seed % 2 !== 0) {
+        expect(errors.length).toBeGreaterThan(0);
+        expect(callbackCount).toBeGreaterThan(0);
+      }
+      for (const error of errors) {
+        expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
+        if (!(error instanceof CanonicalSaveDiagnosticError))
+          panic("Expected typed save diagnostic");
+        expect(error.diagnostic).toEqual({
+          type: "selectiveSaveRefused",
+          part: "word/document.xml",
+        });
+        expect(error.gap).toBe("pm-save-projection");
+      }
+    } finally {
+      app.unmount();
+      container.remove();
+      hidden.remove();
+      pages.remove();
+    }
+  },
+);

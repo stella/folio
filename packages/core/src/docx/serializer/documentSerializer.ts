@@ -1,3 +1,6 @@
+import type { SaveDiagnosticOptions } from "../saveDiagnostics";
+import { getDocumentSourceBaseline } from "../headerFooterVerbatim";
+import { buildDocumentBlockReplay } from "../storyBlockReplay";
 /**
  * Document Serializer - Serialize complete document.xml
  *
@@ -160,6 +163,7 @@ export function serializeDocumentBody(body: DocumentBody): string {
 export function serializeDocument(
   doc: Document,
   sourceBindings?: ReadonlyMap<string, string>,
+  source?: SaveDiagnosticOptions & { xml?: string | undefined },
 ): string {
   // Reset auto-incrementing image/shape ID counter for this serialization pass
   resetAutoIdCounter();
@@ -168,7 +172,7 @@ export function serializeDocument(
     serializeDocumentBackground(doc.package.document.background) +
     `<w:body>${serializeDocumentBody(doc.package.document)}</w:body>`;
 
-  return (
+  const serializedXml =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     serializePartElement({
       partPath: "word/document.xml",
@@ -176,8 +180,20 @@ export function serializeDocument(
       baselinePrefixes: DOCUMENT_BASELINE_PREFIXES,
       sourceBindings,
       body,
-    })
-  );
+    });
+  const baseline = getDocumentSourceBaseline(doc);
+  if (baseline.type === "missing") return serializedXml;
+  if (baseline.type === "captured" && (source?.xml === undefined || source.xml === baseline.xml)) {
+    const replay = buildDocumentBlockReplay({
+      sourceXml: baseline.xml,
+      baseline: baseline.body,
+      current: doc.package.document,
+      serializedXml,
+    });
+    if (replay !== null) return replay;
+  }
+  source?.onDiagnostic?.({ type: "sourceReplayMismatch", part: "word/document.xml" });
+  return serializedXml;
 }
 
 /**

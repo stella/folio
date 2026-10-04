@@ -16,15 +16,22 @@ const readFingerprint = (hf: HeaderFooter): unknown => {
 };
 
 // The capture handle survives object spreads without exposing baseline content in JSON.
-const BASELINE_HANDLE = Symbol("header-footer-source-baseline");
+const BASELINE_HANDLE = Symbol("package-source-baseline");
 const contentBaselines = new WeakMap<
   object,
-  {
-    fingerprint: string;
-    xml: string | undefined;
-    contentFingerprint: string;
-    content: readonly BlockContent[];
-  }
+  | {
+      type: "headerFooter";
+      fingerprint: string;
+      xml: string | undefined;
+      contentFingerprint: string;
+      content: readonly BlockContent[];
+    }
+  | {
+      type: "body";
+      fingerprint: string;
+      xml: string;
+      body: Document["package"]["document"];
+    }
 >();
 
 const captureContentBaseline = (hf: HeaderFooter): void => {
@@ -33,6 +40,7 @@ const captureContentBaseline = (hf: HeaderFooter): void => {
   const handle = {};
   const content = structuredClone(hf.content);
   contentBaselines.set(handle, {
+    type: "headerFooter",
     fingerprint,
     xml: hf.verbatimXml,
     contentFingerprint: canonicalJson(content),
@@ -94,6 +102,7 @@ export const getHeaderFooterSourceBaseline = (
   const baseline = contentBaselines.get(handle);
   if (
     !baseline ||
+    baseline.type !== "headerFooter" ||
     baseline.fingerprint !== hf.verbatimFingerprint ||
     baseline.xml !== hf.verbatimXml ||
     baseline.contentFingerprint !== canonicalJson(baseline.content)
@@ -190,4 +199,50 @@ export const clearHeaderFooterVerbatimXml = (hf: HeaderFooter): void => {
   delete ext.verbatimXml;
   delete ext.verbatimFingerprint;
   Reflect.deleteProperty(hf, BASELINE_HANDLE);
+};
+
+/** Capture the body in the same trusted package registry as secondary stories. */
+export const captureDocumentSourceBaseline = (document: Document, xml: string): void => {
+  const body = structuredClone(document.package.document);
+  const handle = {};
+  contentBaselines.set(handle, {
+    type: "body",
+    fingerprint: canonicalJson(body),
+    xml,
+    body,
+  });
+  Object.defineProperty(document.package.document, BASELINE_HANDLE, {
+    value: handle,
+    enumerable: true,
+    configurable: true,
+  });
+  if (document.originalBuffer) {
+    const registry = packageBaselines.get(document.originalBuffer) ?? new Map();
+    registry.set("word/document.xml", new Map([["body", handle]]));
+    packageBaselines.set(document.originalBuffer, registry);
+  }
+};
+
+export const getDocumentSourceBaseline = (
+  document: Document,
+):
+  | { type: "missing" }
+  | { type: "mismatch" }
+  | { type: "captured"; body: Document["package"]["document"]; xml: string } => {
+  const body = document.package.document;
+  const handle =
+    BASELINE_HANDLE in body
+      ? body[BASELINE_HANDLE]
+      : document.originalBuffer &&
+        packageBaselines.get(document.originalBuffer)?.get("word/document.xml")?.get("body");
+  if (handle === undefined) return { type: "missing" };
+  if (typeof handle !== "object" || handle === null) return { type: "mismatch" };
+  const baseline = contentBaselines.get(handle);
+  if (
+    !baseline ||
+    baseline.type !== "body" ||
+    baseline.fingerprint !== canonicalJson(baseline.body)
+  )
+    return { type: "mismatch" };
+  return { type: "captured", body: baseline.body, xml: baseline.xml };
 };

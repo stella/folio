@@ -107,6 +107,62 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
               failures.push(`${file}: canonical guard primitives cannot be aliased`);
           }
       }
+      // Canonical persistence has one model-only owner. Consumers must capture
+      // its snapshot from the controller rather than assembling PM save signals.
+      const saveSnapshots = new Set<string>();
+      const collectSaveSnapshots = (node: ts.Node) => {
+        if (
+          ts.isVariableDeclaration(node) &&
+          ts.isIdentifier(node.name) &&
+          node.initializer &&
+          ts.isCallExpression(node.initializer) &&
+          /(?:\.|\?\.)captureCanonicalSave$/.test(node.initializer.expression.getText())
+        )
+          saveSnapshots.add(node.name.text);
+        ts.forEachChild(node, collectSaveSnapshots);
+      };
+      collectSaveSnapshots(tree);
+      const checkSaveOwnership = (node: ts.Node) => {
+        if (
+          ts.isVariableDeclaration(node) &&
+          ts.isIdentifier(node.name) &&
+          node.name.text === "serializeCanonicalSave" &&
+          !file.endsWith("/docx/canonicalSave.ts")
+        )
+          failures.push(`${file}: canonical serialization must use its core owner`);
+        if (
+          file.endsWith("/docx/canonicalSave.ts") &&
+          ts.isIdentifier(node) &&
+          (ts.isImportSpecifier(node.parent) ||
+            (ts.isCallExpression(node.parent) && node.parent.expression === node)) &&
+          [
+            "fromProseDoc",
+            "getChangedParagraphIds",
+            "hasStructuralChanges",
+            "hasUntrackedChanges",
+          ].includes(node.text)
+        )
+          failures.push(`${file}: canonical serialization cannot derive authority from PM`);
+        if (ts.isCallExpression(node) && node.expression.getText() === "serializeCanonicalSave") {
+          const argument = node.arguments.at(0);
+          const snapshot =
+            argument && ts.isObjectLiteralExpression(argument)
+              ? argument.properties.find((property) => property.name?.getText() === "snapshot")
+              : undefined;
+          let name: string | undefined;
+          if (snapshot && ts.isShorthandPropertyAssignment(snapshot)) name = snapshot.name.text;
+          if (
+            snapshot &&
+            ts.isPropertyAssignment(snapshot) &&
+            ts.isIdentifier(snapshot.initializer)
+          )
+            name = snapshot.initializer.text;
+          if (!name || !saveSnapshots.has(name))
+            failures.push(`${file}: canonical serialization requires a controller save snapshot`);
+        }
+        ts.forEachChild(node, checkSaveOwnership);
+      };
+      checkSaveOwnership(tree);
       const lines = part.split("\n");
       const aliases = new Set<string>();
       const safeSelectors = new Set<string>();

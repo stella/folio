@@ -1143,6 +1143,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
   const api = createHiddenEditorApi({
     getView: () => view,
     getDocumentContext: () => (editorSession.type === "refused" ? null : deps.getDocumentContext()),
+    captureCanonicalSave: () =>
+      editorSession.type === "canonical" ? editorSession.session.captureSaveSnapshot() : null,
     getCanonicalDocument: () =>
       editorSession.type === "canonical" ? editorSession.session.document : null,
     setCanonicalMode: (mode) => {

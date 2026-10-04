@@ -1189,6 +1189,7 @@ const finishRepack = async ({
   const documentXml = serializeDocument(
     document,
     originalDocument === undefined ? undefined : readRootNamespaceBindings(originalDocument.xml),
+    { xml: originalDocument?.xml, onDiagnostic },
   );
   if (originalDocument?.xml) {
     assertDocumentPackageFidelity({
@@ -1394,6 +1395,7 @@ export async function repackDocxFromRaw(
   const documentXml = serializeDocument(
     exportDocument,
     rawContent.documentXml ? readRootNamespaceBindings(rawContent.documentXml) : undefined,
+    { xml: rawContent.documentXml ?? undefined, onDiagnostic: options.onDiagnostic },
   );
   if (rawContent.documentXml) {
     assertDocumentPackageFidelity({

@@ -475,7 +475,10 @@ export async function attemptSelectiveSave(
       // when the source part is asked, and the save bails to a full repack on
       // every edit. What a changed id names is a body paragraph exactly when
       // the body serializes it.
-      const serializedDocXml = serializeDocument(doc, readRootNamespaceBindings(originalDocXml));
+      const serializedDocXml = serializeDocument(doc, readRootNamespaceBindings(originalDocXml), {
+        xml: originalDocXml,
+        onDiagnostic: options.onDiagnostic,
+      });
       const bodyParaIds = collectParaIds(serializedDocXml);
       const originalBodyParaIds = structuralChange ? collectParaIds(originalDocXml) : undefined;
 
