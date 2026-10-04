@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
-import { paragraphLogicalText } from "@stll/docx-core/ops";
+import { paragraphLogicalText } from "../../packages/docx-core/src/ops/offsets";
 import type { Document } from "../../packages/core/src/types/document";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { parseDocx } from "../../packages/core/src/docx/parser";
