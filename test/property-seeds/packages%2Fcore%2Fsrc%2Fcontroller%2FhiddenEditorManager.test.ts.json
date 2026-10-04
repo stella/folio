@@ -1,0 +1,10 @@
+{
+  "canonical undescribed commands preserve non-document effects and refuse raw mutations": [
+    {
+      "seed": 4497,
+      "path": "0:0:0:0",
+      "date": "2026-10-04",
+      "note": "Descriptorless selection-only commands must reach the API fallback while raw document mutations remain refused."
+    }
+  ]
+}
