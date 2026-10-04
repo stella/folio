@@ -15,6 +15,8 @@
  * paragraph was before any of the tracked changes.
  */
 
+import { withCanonicalCommand } from "./canonicalCommands";
+
 import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
@@ -458,39 +460,46 @@ const moveItems = ({ state, items, numId, numbering }: MoveItemsOptions): Transa
  * its list move to a new instance of the same definition, whose
  * `w:startOverride` at the item's level is `value`.
  */
-export const setNumberingValue =
-  (value: number): Command =>
-  (state, dispatch) => {
-    if (!Number.isSafeInteger(value) || value < 0) {
-      return false;
-    }
-    const selected = selectedListParagraph(state);
-    const numbering = getDocumentNumbering(state);
-    const abstractNumId = selected ? numbering?.getAbstractNumId(selected.membership.numId) : null;
-    if (!selected || !numbering || abstractNumId === null || abstractNumId === undefined) {
-      return false;
-    }
-    if (!dispatch) {
+export const setNumberingValue = (value: number): Command =>
+  withCanonicalCommand(
+    (state, dispatch) => {
+      if (!Number.isSafeInteger(value) || value < 0) {
+        return false;
+      }
+      const selected = selectedListParagraph(state);
+      const numbering = getDocumentNumbering(state);
+      const abstractNumId = selected
+        ? numbering?.getAbstractNumId(selected.membership.numId)
+        : null;
+      if (!selected || !numbering || abstractNumId === null || abstractNumId === undefined) {
+        return false;
+      }
+      if (!dispatch) {
+        return true;
+      }
+      const restarted = restartListInstance(numbering.definitions, {
+        abstractNumId,
+        ilvl: selected.membership.ilvl,
+        start: value,
+      });
+      dispatch(
+        moveItems({
+          state,
+          items: itemsFrom(state, selected.membership.numId, selected.pos),
+          numId: restarted.numId,
+          numbering: createNumberingMap(restarted.definitions),
+        }),
+      );
       return true;
-    }
-    const restarted = restartListInstance(numbering.definitions, {
-      abstractNumId,
-      ilvl: selected.membership.ilvl,
-      start: value,
-    });
-    dispatch(
-      moveItems({
-        state,
-        items: itemsFrom(state, selected.membership.numId, selected.pos),
-        numId: restarted.numId,
-        numbering: createNumberingMap(restarted.definitions),
-      }),
-    );
-    return true;
-  };
+    },
+    () => [{ type: "restartNumbering", start: value }],
+  );
 
 /** *Restart at 1*: the selected item starts its list over at one. */
-export const restartNumbering: Command = (state, dispatch) => setNumberingValue(1)(state, dispatch);
+export const restartNumbering = withCanonicalCommand(
+  (state, dispatch) => setNumberingValue(1)(state, dispatch),
+  () => [{ type: "restartNumbering" }],
+);
 
 /** The nearest list before `beforePos` of the kind `membership` has, other than its own. */
 const previousListOfKind = (
@@ -522,29 +531,32 @@ const previousListOfKind = (
  * join the nearest earlier list of the same kind, so their numbers carry on
  * from it. Not applicable when no such list precedes the item.
  */
-export const continueNumbering: Command = (state, dispatch) => {
-  const selected = selectedListParagraph(state);
-  const numbering = getDocumentNumbering(state);
-  if (!selected || !numbering) {
-    return false;
-  }
-  const previous = previousListOfKind(state, selected.pos, selected.membership);
-  if (previous === null) {
-    return false;
-  }
-  if (!dispatch) {
+export const continueNumbering = withCanonicalCommand(
+  (state, dispatch) => {
+    const selected = selectedListParagraph(state);
+    const numbering = getDocumentNumbering(state);
+    if (!selected || !numbering) {
+      return false;
+    }
+    const previous = previousListOfKind(state, selected.pos, selected.membership);
+    if (previous === null) {
+      return false;
+    }
+    if (!dispatch) {
+      return true;
+    }
+    dispatch(
+      moveItems({
+        state,
+        items: itemsFrom(state, selected.membership.numId, selected.pos),
+        numId: previous,
+        numbering,
+      }),
+    );
     return true;
-  }
-  dispatch(
-    moveItems({
-      state,
-      items: itemsFrom(state, selected.membership.numId, selected.pos),
-      numId: previous,
-      numbering,
-    }),
-  );
-  return true;
-};
+  },
+  () => [{ type: "continueNumbering" }],
+);
 
 /** What a context menu offers for the item the selection is in. */
 export type ListNumberingMenuState =

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
-import { applyDocumentOps, normalizeForOps } from "@stll/docx-core/ops";
+import { applyDocumentOp, applyDocumentOps, normalizeForOps } from "@stll/docx-core/ops";
 import { captureDocumentArbitrary } from "../../../../test/generators/packageOperationArbitraries";
 import {
   generateOpSequence,
@@ -39,6 +39,17 @@ test(
           // The sequence supplies the schedule; apply it to the parsed graph so
           // the byte oracle measures operation ownership, including private captures.
           const sequence = generateOpSequence(parsed, seed);
+          expect(sequence.mutations).toEqual([]);
+          expect(structuredClone(sequence.original.package)).toStrictEqual(
+            structuredClone(parsed.package),
+          );
+          let replay = parsed;
+          for (const step of sequence.steps) {
+            expect(structuredClone(replay.package)).toStrictEqual(
+              structuredClone(step.before.package),
+            );
+            replay = applyDocumentOp(replay, step.op).unwrap().document;
+          }
           const applied = applyDocumentOps(
             parsed,
             sequence.steps.map(({ op }) => op),

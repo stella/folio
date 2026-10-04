@@ -146,7 +146,10 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       const applied = Result.try({
         try: () => view.state.applyTransaction(transaction),
         catch: (cause) =>
-          new CanonicalSessionError({ message: `Composition projection failed: ${String(cause)}` }),
+          new CanonicalSessionError({
+            reason: "refused",
+            message: `Composition projection failed: ${String(cause)}`,
+          }),
       });
       if (applied.isErr()) {
         view.updateState(state.baseline);

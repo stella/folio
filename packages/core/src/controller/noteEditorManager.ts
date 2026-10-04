@@ -12,7 +12,7 @@ import { visitDocxParagraphs, visitParagraphRuns } from "../docx/paragraphTraver
 import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
-import { footnoteToProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { footnoteToProseDoc, type ToProseDocOptions } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
@@ -109,16 +109,8 @@ const resolveNote = (document: Document | null, story: NoteStoryKey): NoteStory 
   return notes?.find(({ id }) => id === story.noteId) ?? null;
 };
 
-const noteToProseDocument = (
-  note: NoteStory,
-  styles: StyleDefinitions | null | undefined,
-  theme: Theme | null | undefined,
-) => {
-  const options: { styles?: StyleDefinitions; theme?: Theme | null } = {};
-  if (styles) options.styles = styles;
-  if (theme !== undefined) options.theme = theme;
-  return footnoteToProseDoc(note.content, options);
-};
+const noteToProseDocument = (note: NoteStory, options: ToProseDocOptions) =>
+  footnoteToProseDoc(note.content, options);
 
 const buildInitialState = (
   document: PMNode,
@@ -213,6 +205,11 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
+    const proseOptions: ToProseDocOptions = {
+      ...(styles ? { styles } : {}),
+      ...(theme !== undefined ? { theme } : {}),
+      ...(numbering !== undefined ? { numbering } : {}),
+    };
     const externalPlugins = deps.getPlugins?.() ?? EMPTY_PLUGINS;
     const wanted = new Map(
       enumerateDocumentNoteStories(document).map((story) => [storyMapKey(story), story] as const),
@@ -264,7 +261,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           existing.dirty = false;
           continue;
         }
-        const nextProseDocument = noteToProseDocument(note, styles, theme);
+        const nextProseDocument = noteToProseDocument(note, proseOptions);
         const contextIsCurrent =
           existing.appliedStyles === styles &&
           existing.appliedTheme === theme &&
@@ -307,7 +304,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       mountNode.dataset["noteKind"] = storyKey.kind;
       mountNode.dataset["noteId"] = String(storyKey.noteId);
       host.append(mountNode);
-      const proseDocument = noteToProseDocument(note, styles, theme);
+      const proseDocument = noteToProseDocument(note, proseOptions);
       const canonical = createCanonicalStoryEditor({
         story: { kind: storyKey.kind, id: storyKey.noteId },
         getView: () => view,
@@ -399,6 +396,11 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         // A list started in this story defined its instance on its paragraphs.
         const lists = storyListNumbering(story.view.state, numbering);
         numbering = lists.numbering;
+        const proseOptions: ToProseDocOptions = {
+          ...(story.appliedStyles ? { styles: story.appliedStyles } : {}),
+          ...(story.appliedTheme !== undefined ? { theme: story.appliedTheme } : {}),
+          ...(numbering !== undefined ? { numbering } : {}),
+        };
         if (story.note.kind === "footnote") {
           const index = footnotes?.findIndex(({ id }) => id === story.note.noteId) ?? -1;
           const current = index === -1 ? null : footnotes?.at(index);
@@ -418,11 +420,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           footnotes[index] = updated;
           story.appliedNote = updated;
           story.appliedContent = updated.content;
-          story.appliedProseDocument = noteToProseDocument(
-            updated,
-            story.appliedStyles,
-            story.appliedTheme,
-          );
+          story.appliedProseDocument = noteToProseDocument(updated, proseOptions);
           continue;
         }
         const index = endnotes?.findIndex(({ id }) => id === story.note.noteId) ?? -1;
@@ -443,11 +441,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         endnotes[index] = updated;
         story.appliedNote = updated;
         story.appliedContent = updated.content;
-        story.appliedProseDocument = noteToProseDocument(
-          updated,
-          story.appliedStyles,
-          story.appliedTheme,
-        );
+        story.appliedProseDocument = noteToProseDocument(updated, proseOptions);
       }
       if (!footnotesChanged && !endnotesChanged) return document;
       return {

@@ -5,6 +5,9 @@
  * textFormattingToMarks, clearFormatting
  */
 
+import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
+import type { RunPropsPatch } from "@stll/docx-core/ops";
+
 import type { Attrs, MarkType, Mark, Schema } from "prosemirror-model";
 import { toggleMark } from "prosemirror-commands";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
@@ -338,8 +341,31 @@ function createMarkWithMergedAttrs(
   return markType.create(mergeMarkAttrs(markType, currentMark, nextAttrs));
 }
 
+type CanonicalSetMarkFormattingOptions = { state: EditorState; type: MarkType; attrs: MarkAttrs };
+const canonicalSetMarkFormatting = ({ state, type, attrs }: CanonicalSetMarkFormattingOptions) => {
+  const markType = documentMarkType(state, type);
+  const { from, to, empty } = state.selection;
+  if (empty) {
+    const current = markType.isInSet(state.storedMarks ?? state.selection.$from.marks());
+    return canonicalRunFormatting(
+      state,
+      marksToTextFormatting([createMarkWithMergedAttrs(markType, current, attrs)]),
+    );
+  }
+  return selectRunFormattingCarrierRepresentations({ doc: state.doc, from, to }).map(
+    (representation) => ({
+      type: "formatRun" as const,
+      from: representation.from,
+      to: representation.to,
+      patch: marksToTextFormatting([
+        createMarkWithMergedAttrs(markType, markType.isInSet(representation.node.marks), attrs),
+      ]),
+    }),
+  );
+};
+
 export function setMark(type: MarkType, attrs: MarkAttrs): Command {
-  return (state, dispatch) => {
+  const command: Command = (state, dispatch) => {
     const markType = documentMarkType(state, type);
     const { from, to, empty } = state.selection;
 
@@ -381,6 +407,10 @@ export function setMark(type: MarkType, attrs: MarkAttrs): Command {
 
     return true;
   };
+  if (!RUN_FORMATTING_MARK_NAMES.has(type.name)) return command;
+  return withCanonicalCommand(command, (state) =>
+    canonicalSetMarkFormatting({ state, type, attrs }),
+  );
 }
 
 type PairedToggleProperty = "bold" | "italic";
@@ -510,32 +540,55 @@ const withRunFormattingOverride =
     );
 
 /** `toggleMark` for the document's own counterpart of `type`. */
-export const toggleDocumentMark =
-  (type: MarkType): Command =>
-  (state, dispatch, view) =>
+export const toggleDocumentMark = (type: MarkType): Command => {
+  const command: Command = (state, dispatch, view) =>
     toggleMark(documentMarkType(state, type))(state, dispatch, view);
+  if (!RUN_FORMATTING_MARK_NAMES.has(type.name)) return command;
+  return withCanonicalCommand(command, (state) => {
+    const markType = documentMarkType(state, type);
+    const formatting = marksToTextFormatting([markType.create()]);
+    if (!isMarkActive(state, markType)) return canonicalRunFormatting(state, formatting);
+    const keys = markType.name === "strike" ? ["strike", "doubleStrike"] : Object.keys(formatting);
+    return canonicalRunFormatting(state, Object.fromEntries(keys.map((key) => [key, null])));
+  });
+};
 
 /** UI toggle whose direct-formatting contract explicitly targets both script families. */
-export const toggleMarkForAllScripts =
-  (type: MarkType, property: PairedToggleProperty): Command =>
-  (state, dispatch) => {
-    const markType = documentMarkType(state, type);
-    const enabled = !isMarkActive(state, markType);
-    return withRunFormattingOverride(toggleMark(markType), (attrs) =>
-      updatePairedToggleAttrs(attrs, property, enabled),
-    )(state, dispatch);
-  };
+export const toggleMarkForAllScripts = (type: MarkType, property: PairedToggleProperty): Command =>
+  withCanonicalCommand(
+    (state, dispatch) => {
+      const markType = documentMarkType(state, type);
+      const enabled = !isMarkActive(state, markType);
+      return withRunFormattingOverride(toggleMark(markType), (attrs) =>
+        updatePairedToggleAttrs(attrs, property, enabled),
+      )(state, dispatch);
+    },
+    (state) => {
+      const enabled = !isMarkActive(state, documentMarkType(state, type));
+      const patch: RunPropsPatch =
+        property === "bold"
+          ? { bold: enabled, boldCs: enabled }
+          : { italic: enabled, italicCs: enabled };
+      return canonicalRunFormatting(state, patch);
+    },
+  );
 
 /** UI size command whose direct-formatting contract explicitly targets both script families. */
 export const setFontSizeForAllScripts = (markType: MarkType, size: number): Command =>
-  withRunFormattingOverride(setMark(markType, { size }), (attrs) =>
-    updateFontSizeCompanionAttrs(attrs, size),
+  withCanonicalCommand(
+    withRunFormattingOverride(setMark(markType, { size }), (attrs) =>
+      updateFontSizeCompanionAttrs(attrs, size),
+    ),
+    (state) => canonicalRunFormatting(state, { fontSize: size, fontSizeCs: size }),
   );
 
 /** Clears both ordinary and complex-script direct size through the UI command boundary. */
 export const clearFontSizeForAllScripts = (markType: MarkType): Command =>
-  withRunFormattingOverride(removeMark(markType), (attrs) =>
-    updateFontSizeCompanionAttrs(attrs, undefined),
+  withCanonicalCommand(
+    withRunFormattingOverride(removeMark(markType), (attrs) =>
+      updateFontSizeCompanionAttrs(attrs, undefined),
+    ),
+    (state) => canonicalRunFormatting(state, { fontSize: null, fontSizeCs: null }),
   );
 
 function selectionHasVisibleUnderline(state: EditorState, markType: MarkType): boolean {
@@ -565,16 +618,28 @@ function selectionHasVisibleUnderline(state: EditorState, markType: MarkType): b
 }
 
 export function toggleUnderlineMark(markType: MarkType): Command {
-  return (state, dispatch) =>
-    setMark(markType, {
-      style: selectionHasVisibleUnderline(state, documentMarkType(state, markType))
-        ? "none"
-        : "single",
-    })(state, dispatch);
+  return withCanonicalCommand(
+    (state, dispatch) =>
+      setMark(markType, {
+        style: selectionHasVisibleUnderline(state, documentMarkType(state, markType))
+          ? "none"
+          : "single",
+      })(state, dispatch),
+    (state) =>
+      canonicalSetMarkFormatting({
+        state,
+        type: markType,
+        attrs: {
+          style: selectionHasVisibleUnderline(state, documentMarkType(state, markType))
+            ? "none"
+            : "single",
+        },
+      }),
+  );
 }
 
 export function removeMark(type: MarkType): Command {
-  return (state, dispatch) => {
+  const command: Command = (state, dispatch) => {
     const markType = documentMarkType(state, type);
     const { from, to, empty } = state.selection;
 
@@ -594,6 +659,12 @@ export function removeMark(type: MarkType): Command {
 
     return true;
   };
+  if (!RUN_FORMATTING_MARK_NAMES.has(type.name)) return command;
+  return withCanonicalCommand(command, (state) => {
+    const formatting = marksToTextFormatting([documentMarkType(state, type).create()]);
+    const patch = Object.fromEntries(Object.keys(formatting).map((key) => [key, null]));
+    return canonicalRunFormatting(state, patch);
+  });
 }
 
 /**

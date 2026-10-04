@@ -1,0 +1,16 @@
+{
+  "generated Enter modifier traces refuse native composition lag without editing callbacks": [
+    {
+      "seed": -1318145371,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1650860415,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ]
+}

@@ -16,11 +16,21 @@ type ReplaceTextInput = {
 
 type CanonicalInputOptions = {
   replace: (input: ReplaceTextInput) => void;
+  structure?: (
+    type:
+      | "split"
+      | "joinBackward"
+      | "joinForward"
+      | "lineBreak"
+      | "pageBreak"
+      | "tab"
+      | "indent"
+      | "outdent",
+  ) => void;
+  command?: (name: "toggleBold" | "toggleItalic" | "toggleUnderline") => void;
   breakUndoGroup?: () => void;
   beginComposition?: () => boolean;
   endComposition?: () => void;
-  split?: () => void;
-  join?: (direction: "backward" | "forward") => void;
   undo: () => boolean;
   redo: () => boolean;
   refuse: (reason: string) => void;
@@ -41,11 +51,17 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
   });
   let proposal: NativeProposal = { type: "idle" };
   let authorizedInput: { view: EditorView; state: EditorState } | null = null;
+  let groupClosed = false;
   const beginGesture = () => {
     proposal = { type: "idle" };
     authorizedInput = null;
+    groupClosed = false;
   };
-  const closeGroup = () => options.breakUndoGroup?.();
+  const closeGroup = () => {
+    if (groupClosed) return;
+    groupClosed = true;
+    options.breakUndoGroup?.();
+  };
   const repaint = (view: EditorView) => {
     queueMicrotask(() => {
       if (!view.isDestroyed) view.updateState(view.state);
@@ -168,14 +184,46 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         );
         return true;
       }
+      if (
+        modifier &&
+        (event.key.toLowerCase() === "b" ||
+          event.key.toLowerCase() === "i" ||
+          event.key.toLowerCase() === "u") &&
+        options.command !== undefined
+      ) {
+        event.preventDefault();
+        switch (event.key.toLowerCase()) {
+          case "b":
+            options.command("toggleBold");
+            break;
+          case "i":
+            options.command("toggleItalic");
+            break;
+          case "u":
+            options.command("toggleUnderline");
+            break;
+        }
+        return true;
+      }
       if (event.key === "Enter") {
-        if (!options.split || view.composing || composition.active)
+        if (view.composing)
           return refuseEvent(
             event,
             "Paragraph structure edits are unavailable during composition.",
           );
         event.preventDefault();
-        options.split();
+        closeGroup();
+        if (options.structure === undefined)
+          return refuseEvent(event, "Paragraph structure edits are unavailable in this session.");
+        if (modifier) options.structure("pageBreak");
+        else options.structure(event.shiftKey ? "lineBreak" : "split");
+        return true;
+      }
+      if (event.key === "Tab" && !modifier && !event.altKey && options.structure !== undefined) {
+        event.preventDefault();
+        const list = view.state.selection.$from.parent.attrs["numPr"];
+        if (list?.kind === "reference") options.structure(event.shiftKey ? "outdent" : "indent");
+        else if (!event.shiftKey) options.structure("tab");
         return true;
       }
       if (event.key !== "Backspace" && event.key !== "Delete") return false;
@@ -186,13 +234,17 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
           options.refuse("Only plain character deletion is available in this session.");
         return true;
       }
-      const direction = event.key === "Backspace" ? "backward" : "forward";
-      const { selection } = view.state;
-      if (options.join && selection.empty && isCanonicalJoinBoundary(view.state, direction)) {
-        options.join(direction);
+      const selection = view.state.selection;
+      if (
+        selection.empty &&
+        options.structure !== undefined &&
+        isCanonicalJoinBoundary(view.state, event.key === "Backspace" ? "backward" : "forward")
+      ) {
+        closeGroup();
+        options.structure(event.key === "Backspace" ? "joinBackward" : "joinForward");
         return true;
       }
-      const range = deletionRange(view.state, direction);
+      const range = deletionRange(view.state, event.key === "Backspace" ? "backward" : "forward");
       if (range.isErr()) {
         closeGroup();
         options.refuse(range.error.message);
@@ -200,7 +252,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         options.replace({
           ...range.value,
           text: "",
-          semantic: direction === "backward" ? "deleteBackward" : "deleteForward",
+          semantic: event.key === "Backspace" ? "deleteBackward" : "deleteForward",
         });
       return true;
     },
@@ -289,28 +341,37 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
           };
           return false;
         }
-        if (event.inputType === "insertParagraph" && event.cancelable && options.split) {
+        if (
+          (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") &&
+          event.cancelable &&
+          options.structure !== undefined
+        ) {
           event.preventDefault();
-          options.split();
+          closeGroup();
+          options.structure(event.inputType === "insertParagraph" ? "split" : "lineBreak");
           return true;
         }
         if (
           event.inputType === "deleteContentBackward" ||
           event.inputType === "deleteContentForward"
         ) {
-          const direction = event.inputType === "deleteContentBackward" ? "backward" : "forward";
-          const { selection } = view.state;
+          const selection = view.state.selection;
+          const backward = event.inputType === "deleteContentBackward";
           if (
             event.cancelable &&
-            options.join &&
             selection.empty &&
-            isCanonicalJoinBoundary(view.state, direction)
+            options.structure !== undefined &&
+            isCanonicalJoinBoundary(view.state, backward ? "backward" : "forward")
           ) {
             event.preventDefault();
-            options.join(direction);
+            closeGroup();
+            options.structure(backward ? "joinBackward" : "joinForward");
             return true;
           }
-          const range = deletionRange(view.state, direction);
+          const range = deletionRange(
+            view.state,
+            event.inputType === "deleteContentBackward" ? "backward" : "forward",
+          );
           if (range.isErr()) return refuseEvent(event, range.error.message);
           const input = {
             ...range.value,

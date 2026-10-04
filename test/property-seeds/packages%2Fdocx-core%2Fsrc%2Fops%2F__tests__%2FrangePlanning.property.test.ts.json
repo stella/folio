@@ -29,6 +29,24 @@
       "path": "10:2:1:1:1:3:3:3:3:3:0:0:0:1:1:1:1:1:2:2:2:2:2:2:2:4:2:2:3:2:4:2:4:4:2:2:2:6:6:6",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1096659045,
+      "path": "1:3:2:2:2:2:2:2:2:2:2:0:0:2:1:1:2:2:2:2:2:2:2:2:2:2:2:3:32:32",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 519159351,
+      "path": "1:3:3:5:6:6:6:6:6:6:6:6:6:8:7:7:7:8:8:8:8:8:8:8:10:2:7:7:7:7:6:10:2:5:11:9:7:7",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 527872595,
+      "path": "1:2:5:4:3:3:4:4:4:4:4:4:4:4:4:4:4:6:5:6:6:6:6:6:6:6:8:2:5:7:7:7",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ]
 }
