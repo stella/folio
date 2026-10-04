@@ -137,11 +137,6 @@ describe("canonical cutover guard", () => {
         code: "class Reviewer {\nstatic fromBuffer() {}\n}",
       },
     ];
-    fixtures.push({
-      gap: CANONICAL_GAP.save,
-      file: "packages/core/src/prosemirror/conversion.ts",
-      code: "fromProseDoc(doc);",
-    });
     for (const { gap, file, code } of fixtures)
       expect(
         failuresOf(code, file).some((failure) =>
@@ -157,7 +152,9 @@ describe("canonical cutover guard", () => {
     ];
     expect([...new Set([...fixtures.map(({ gap }) => gap), ...publicGaps])].sort()).toEqual(
       Object.entries(CANONICAL_CAPABILITIES)
-        .filter(([, capability]) => capability.kind === "mutation-source")
+        .filter(
+          ([id, capability]) => capability.kind === "mutation-source" || id === CANONICAL_GAP.save,
+        )
         .map(([id]) => id)
         .sort(),
     );
