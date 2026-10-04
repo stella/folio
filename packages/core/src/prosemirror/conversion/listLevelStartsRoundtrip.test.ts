@@ -156,9 +156,13 @@ describe("listRendering.levelStarts round-trip", () => {
       fc.property(
         fc.record({
           marker: fc.string(),
-          foldedMarkerSuffix: fc.string(),
-          implicitChildLevelAdvances: fc.integer({ min: 0, max: 100 }),
-          markerSecondSlotOffsetTwips: fc.integer({ min: 0, max: 10_000 }),
+          foldedMarkerSuffix: fc.option(fc.string(), { nil: undefined }),
+          implicitChildLevelAdvances: fc.option(fc.integer({ min: 0, max: 100 }), {
+            nil: undefined,
+          }),
+          markerSecondSlotOffsetTwips: fc.option(fc.integer({ min: 0, max: 10_000 }), {
+            nil: undefined,
+          }),
         }),
         (local) => {
           cases += 1;
@@ -167,6 +171,27 @@ describe("listRendering.levelStarts round-trip", () => {
           expect(
             listRenderingDefinitionsMatch(rendering, { ...changed, numId: rendering.numId + 1 }),
           ).toBe(false);
+          const model = structuredClone(initial);
+          const source = model.package.document.content.at(0);
+          if (source?.type !== "paragraph") throw new TypeError("Expected list paragraph.");
+          // Alignment must still match the definition for the cached projection path.
+          source.listRendering = {
+            ...changed,
+            markerSecondSlotOffsetTwips: rendering.markerSecondSlotOffsetTwips,
+          };
+          const expected = {
+            ...CLEARED_LIST_RENDERING_ATTRS,
+            ...listRenderingAttrPatch(source.listRendering),
+          };
+          for (const projection of [
+            toProseDoc(model),
+            headerFooterToProseDoc([source], model.package),
+            footnoteToProseDoc([source], model.package),
+          ]) {
+            for (const [key, value] of Object.entries(expected)) {
+              expect(projection.child(0).attrs[key]).toEqual(value);
+            }
+          }
         },
       ),
     );
