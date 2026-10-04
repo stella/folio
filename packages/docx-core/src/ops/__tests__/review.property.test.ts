@@ -1055,6 +1055,7 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
       return new Set([idKey(op.blockId), ...paragraphIdsIn([op.expected, op.rows]).map(idKey)]);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return new Set();
+    case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:

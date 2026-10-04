@@ -68,7 +68,10 @@ test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", 
 });
 
 test("unknown envelopes refuse invalid identities, revisions, schemas and keys", () => {
-  for (const schema of [1, 2, 3, 4, 5, 6, 7, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [
+    ...Array.from({ length: DOCUMENT_OP_SCHEMA_VERSION - 1 }, (_, index) => index + 1),
+    DOCUMENT_OP_SCHEMA_VERSION + 1,
+  ]) {
     const refused = validateDocumentBatch({ ...fixture, schema });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
@@ -190,7 +193,10 @@ test("empty and omitted identity pools decode without a schema change", () => {
     if (decoded.isErr()) throw decoded.error;
     expect(decoded.value).toStrictEqual(batch);
   }
-  for (const schema of [1, 2, 3, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [
+    ...Array.from({ length: DOCUMENT_OP_SCHEMA_VERSION - 1 }, (_, index) => index + 1),
+    DOCUMENT_OP_SCHEMA_VERSION + 1,
+  ]) {
     const decoded = parseDocumentBatch(JSON.stringify({ ...withOp(op), schema }));
     expect(decoded.isErr()).toBe(true);
     if (decoded.isErr())

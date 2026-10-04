@@ -31,7 +31,7 @@ import {
   isEmptyWatermarkHostParagraph,
   type OpStory,
 } from "../../../packages/docx-core/src/ops/documentOps";
-import type { StoryParts } from "../../../packages/docx-core/src/ops/types";
+import type { PackageResources, StoryParts } from "../../../packages/docx-core/src/ops/types";
 import { storyParagraphs } from "../../../packages/docx-core/src/ops/blocks";
 import { leafSpans, isCommentAnchor } from "../../../packages/docx-core/src/ops/leaves";
 import type { CommentOp } from "../../../packages/docx-core/src/ops/types";
@@ -325,6 +325,25 @@ const withoutOwnedRecords = ({
         ),
       );
       if (out.package.relationships.size === 0) delete out.package.relationships;
+    }
+    return out;
+  }
+  if (op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES) {
+    const out = structuredClone(document);
+    for (const [key, resource] of Object.entries(op.resources))
+      if (!sameOpModel(resource, Reflect.get(op.expected, key)))
+        Reflect.deleteProperty(out.package, key);
+    // Keyed package maps own exactly the entries the operation carries, or the whole map
+    // when its presence changes.
+    const maps = { relationships: op.relationships, media: op.media } as const;
+    for (const [field, change] of Object.entries(maps)) {
+      if (change.expected !== change.next) {
+        Reflect.deleteProperty(out.package, field);
+        continue;
+      }
+      const entries: unknown = Reflect.get(out.package, field);
+      if (!(entries instanceof Map)) continue;
+      for (const { key } of change.entries) entries.delete(key);
     }
     return out;
   }
@@ -719,6 +738,27 @@ export const serializedLocalityFailures = ({
         else if (ownedStory.kind === "endnote")
           ownedRelationshipTypes.add(RELATIONSHIP_TYPES.endnotes);
       }
+    }
+    if (op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES) {
+      const resourceRelationships = {
+        styles: RELATIONSHIP_TYPES.styles,
+        numbering: RELATIONSHIP_TYPES.numbering,
+      } satisfies Record<keyof PackageResources, string>;
+      for (const [key, relationshipType] of Object.entries(resourceRelationships)) {
+        if (sameOpModel(Reflect.get(op.expected, key), Reflect.get(op.resources, key))) continue;
+        lifecycle = true;
+        ownedRelationshipTypes.add(relationshipType);
+      }
+      if (op.media.expected !== op.media.next || op.media.entries.length > 0) {
+        lifecycle = true;
+        ownedRelationshipTypes.add(RELATIONSHIP_TYPES.image);
+      }
+      if (
+        op.relationships.expected !== op.relationships.next ||
+        op.relationships.entries.length > 0
+      )
+        lifecycle = true;
+      for (const { key } of op.relationships.entries) ownedRelationshipIds.add(key);
     }
     if (
       op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE ||

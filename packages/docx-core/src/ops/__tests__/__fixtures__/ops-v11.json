@@ -2,6 +2,100 @@
   {
     "schema": 11,
     "op": {
+      "type": "setPackageResources",
+      "expected": {
+        "styles": {
+          "type": "omitted"
+        },
+        "numbering": {
+          "type": "omitted"
+        }
+      },
+      "resources": {
+        "styles": {
+          "type": "omitted"
+        },
+        "numbering": {
+          "type": "omitted"
+        }
+      },
+      "relationships": {
+        "expected": "omitted",
+        "next": "omitted",
+        "entries": []
+      },
+      "media": {
+        "expected": "omitted",
+        "next": "present",
+        "entries": [
+          {
+            "key": "word/media/clipboard.png",
+            "expected": {
+              "type": "absent"
+            },
+            "next": {
+              "type": "present",
+              "value": {
+                "path": "word/media/clipboard.png",
+                "mimeType": "image/png",
+                "data": [137, 80, 78, 71]
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 11,
+    "op": {
+      "type": "setPackageResources",
+      "expected": {
+        "styles": {
+          "type": "omitted"
+        },
+        "numbering": {
+          "type": "omitted"
+        }
+      },
+      "resources": {
+        "styles": {
+          "type": "omitted"
+        },
+        "numbering": {
+          "type": "omitted"
+        }
+      },
+      "relationships": {
+        "expected": "omitted",
+        "next": "omitted",
+        "entries": []
+      },
+      "media": {
+        "expected": "present",
+        "next": "omitted",
+        "entries": [
+          {
+            "key": "word/media/clipboard.png",
+            "expected": {
+              "type": "present",
+              "value": {
+                "path": "word/media/clipboard.png",
+                "mimeType": "image/png",
+                "data": [137, 80, 78, 71]
+              }
+            },
+            "next": {
+              "type": "absent"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 11,
+    "op": {
       "type": "createComment",
       "comment": {
         "id": 400,

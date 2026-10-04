@@ -275,7 +275,7 @@ export const prepareCanonicalCommands = (
       }
     }
   }
-  return session.prepareIntents(state, intents);
+  return session.prepareIntents(state, { intents });
 };
 
 type CanonicalAutoformatInput = { from: number; to: number; text: string };
@@ -301,10 +301,12 @@ export const prepareCanonicalAutoformat = (
   const request = requests?.at(0);
   const styleId = `Heading${heading?.length ?? 1}`;
   if (request === undefined && !session.hasStyle(styleId)) return undefined;
-  return session.prepareIntents(state, [
-    { type: "replaceText", from: start, to: at.value, text: "" },
-    request === undefined
-      ? { type: "formatParagraph", at: start, patch: { styleId } }
-      : numberingIntent(session, [source], request),
-  ]);
+  return session.prepareIntents(state, {
+    intents: [
+      { type: "replaceText", from: start, to: at.value, text: "" },
+      request === undefined
+        ? { type: "formatParagraph", at: start, patch: { styleId } }
+        : numberingIntent(session, [source], request),
+    ],
+  });
 };

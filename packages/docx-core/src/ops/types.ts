@@ -49,10 +49,10 @@ import type {
   Endnote,
   SectionProperties,
   DocumentBody,
-  Relationship,
   DocumentSettings,
   Section,
 } from "../model/document";
+import type { StyleDefinitions, Relationship, MediaFile } from "../model/styles";
 import type { AbstractNumbering, NumberingDefinitions, NumberingInstance } from "../model/lists";
 
 /** JSON-safe map presence, including an explicitly undefined section map. */
@@ -82,6 +82,7 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 9 adds exact, JSON-safe package resource replacement for clipboard imports.
  * Version 8 adds semantic table edits and exact whole-table restoration.
  * Version 7 adds lossless own-undefined operation snapshot presence and
  * explicit revision-boundary provenance. An explicit undefined patch value now
@@ -275,6 +276,7 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
   CREATE_NUMBERING_INSTANCE: "createNumberingInstance",
   DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance",
   SET_SECTION_ENDPOINT: "setSectionEndpoint",
+  SET_PACKAGE_RESOURCES: "setPackageResources",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -757,6 +759,47 @@ export type DeleteNumberingInstanceOp = {
   restore?: NumberingPartState;
 };
 
+/** Presence is explicit so inverses restore omitted and undefined package fields exactly. */
+export type PackageResourcePart<Value> =
+  | { type: "omitted" }
+  | { type: "undefined" }
+  | { type: "present"; value: Value };
+
+/** JSON-safe media bytes, rather than an ArrayBuffer that JSON discards. */
+export type PackageResourceMedia = Omit<MediaFile, "data"> & { data: readonly number[] };
+
+/** Package definitions captured before and after an explicit clipboard import. */
+export type PackageResources = {
+  styles: PackageResourcePart<StyleDefinitions>;
+  numbering: PackageResourcePart<NumberingDefinitions>;
+};
+
+export type PackageResourcePresence = PackageResourcePart<unknown>["type"];
+
+export type PackageResourceEntry<Value> = { type: "absent" } | { type: "present"; value: Value };
+
+export type PackageResourceEntryChange<Value> = {
+  key: string;
+  expected: PackageResourceEntry<Value>;
+  next: PackageResourceEntry<Value>;
+};
+
+/** Keyed changes to a package map; entries the operation leaves alone are not carried. */
+export type PackageResourceMapChange<Value> = {
+  expected: PackageResourcePresence;
+  next: PackageResourcePresence;
+  entries: readonly PackageResourceEntryChange<Value>[];
+};
+
+/** Replace merged definitions and change keyed package entries, refusing stale package data. */
+export type SetPackageResourcesOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
+  expected: PackageResources;
+  resources: PackageResources;
+  relationships: PackageResourceMapChange<Relationship>;
+  media: PackageResourceMapChange<PackageResourceMedia>;
+};
+
 /** A section endpoint is either a paragraph's sectPr or the body's final sectPr. */
 export type SectionEndpoint = { type: "paragraph"; blockId: string } | { type: "final" };
 export type SectionPropertiesState =
@@ -1056,6 +1099,7 @@ export type DocumentOp = (
   | CreateNumberingInstanceOp
   | DeleteNumberingInstanceOp
   | SetSectionEndpointOp
+  | SetPackageResourcesOp
 ) & {
   /** Own undefined fields recorded by the operation capture boundary. */
   undefinedFields?: readonly (readonly string[])[];

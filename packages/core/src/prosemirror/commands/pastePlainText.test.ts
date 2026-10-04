@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
-import type { EditorState } from "prosemirror-state";
+import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { registerClipboardIntentHandler } from "../clipboardIntent";
 
 import {
   buildPlainTextSlice,
@@ -144,4 +145,93 @@ describe("pasteWithoutFormatting dry run", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(firedError).toBeInstanceOf(Error);
   });
+
+  test("an asynchronous clipboard read uses the current state and owning intent handler", async () => {
+    const original = EditorState.create({
+      schema: blockSchema,
+      doc: blockSchema.node(
+        "doc",
+        null,
+        blockSchema.node("paragraph", null, blockSchema.text("abcd")),
+      ),
+    });
+    const read = Promise.withResolvers<string>();
+    let nativeDispatches = 0;
+    const view = {
+      dom: new EventTarget(),
+      isDestroyed: false,
+      state: original,
+      dispatch: () => {
+        nativeDispatches += 1;
+      },
+    } as unknown as EditorView;
+    const handled: {
+      plain: boolean;
+      from: number;
+      to: number;
+      texts: string[];
+      unmarked: boolean;
+    }[] = [];
+    registerClipboardIntentHandler(view, (slice, plain) => {
+      handled.push({
+        plain,
+        from: view.state.selection.from,
+        to: view.state.selection.to,
+        texts: paragraphTexts(slice.content),
+        unmarked: everyTextNodeIsUnmarked(slice.content),
+      });
+      view.state = view.state.apply(view.state.tr.replaceSelection(slice));
+      return true;
+    });
+    withClipboard(
+      () => read.promise,
+      () => {
+        expect(pasteWithoutFormatting(original, () => undefined, view)).toBe(true);
+      },
+    );
+    // The read belongs to the current view, including intervening edits and selection movement.
+    view.state = original.apply(original.tr.insertText("Z", 1));
+    view.state = view.state.apply(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 4, 5)),
+    );
+    read.resolve("X\r\nY");
+    await read.promise;
+    await Promise.resolve();
+    expect(handled).toEqual([{ plain: true, from: 4, to: 5, texts: ["X", "Y"], unmarked: true }]);
+    expect(paragraphTexts(view.state.doc.content)).toEqual(["ZabX", "Yd"]);
+    expect(nativeDispatches).toBe(0);
+  });
+
+  test.each(["refused", "destroyed"] as const)(
+    "a %s asynchronous clipboard intent cannot fall through to native mutation",
+    async (status) => {
+      const read = Promise.withResolvers<string>();
+      let nativeDispatches = 0;
+      let intentCalls = 0;
+      const view = {
+        dom: new EventTarget(),
+        isDestroyed: false,
+        state: fakeState,
+        dispatch: () => {
+          nativeDispatches += 1;
+        },
+      } as unknown as EditorView;
+      registerClipboardIntentHandler(view, () => {
+        intentCalls += 1;
+        return false;
+      });
+      withClipboard(
+        () => read.promise,
+        () => {
+          expect(pasteWithoutFormatting(fakeState, () => undefined, view)).toBe(true);
+        },
+      );
+      if (status === "destroyed") Object.defineProperty(view, "isDestroyed", { value: true });
+      read.resolve("pasted");
+      await read.promise;
+      await Promise.resolve();
+      expect(intentCalls).toBe(status === "destroyed" ? 0 : 1);
+      expect(nativeDispatches).toBe(0);
+    },
+  );
 });

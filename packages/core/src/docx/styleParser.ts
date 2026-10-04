@@ -783,7 +783,7 @@ function parseDocDefaults(
 /**
  * Resolve style inheritance chain
  */
-function resolveStyleInheritance(
+export function resolveStyleInheritance(
   style: Style,
   styleMap: StyleMap,
   visited = new Set<string>(),

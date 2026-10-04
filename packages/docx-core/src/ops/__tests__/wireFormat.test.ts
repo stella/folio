@@ -7,7 +7,8 @@
  * record an operation embeds, shows up here as a diff of the fixture; it
  * needs a new schema version and a migration, not an updated released fixture.
  * The fixture for an unreleased schema records that cutover's final contract;
- * schema 8 includes table editing variants in the current operation contract.
+ * schema 9 adds clipboard package resources over schema 8's semantic table edits,
+ * schema 10 adds comment operations, and schema 11 adds watermark operations.
  *
  * `bun packages/docx-core/src/ops/__tests__/wireFixtures.ts` generates the current fixture.
  */
@@ -179,7 +180,7 @@ test("older envelopes are refused structurally and current envelopes apply", asy
     text: "x",
     runProps: "inherit",
   } as const;
-  // Only the current schema is accepted; historical envelopes remain explicit refusals.
+  // Schemas 9 and 10 add clipboard resources and comments; schema 11 adds watermarks.
   const older: unknown = await Bun.file(
     new URL("./__fixtures__/ops-v4.json", import.meta.url),
   ).json();
@@ -246,4 +247,30 @@ test("lifecycle wire fixtures exercise each declared own-undefined target", () =
     ),
   );
   expect([...exercised].toSorted()).toEqual(Object.keys(targets).toSorted());
+});
+
+test("clipboard package resources remain pinned in the schema-10 wire contract", () => {
+  const resources = envelopes().filter(
+    ({ op }) => op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
+  );
+  expect(resources.length).toBeGreaterThan(0);
+  const clipboard = resources.find(
+    ({ op }) => op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES && op.media.entries.length > 0,
+  );
+  expect(clipboard).toBeDefined();
+  if (clipboard?.op.type !== DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES) return;
+  expect(clipboard.op.media).toMatchObject({
+    expected: "omitted",
+    next: "present",
+    entries: [
+      {
+        key: "word/media/clipboard.png",
+        expected: { type: "absent" },
+        next: {
+          type: "present",
+          value: expect.objectContaining({ mimeType: "image/png", data: [137, 80, 78, 71] }),
+        },
+      },
+    ],
+  });
 });

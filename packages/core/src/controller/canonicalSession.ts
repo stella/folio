@@ -14,6 +14,7 @@ import {
   normalizeForOps,
   OP_STORIES,
   packageParagraphIds,
+  paragraphLogicalText,
   validateOpsDocument,
   createEditorIntentIdAllocator,
   findStoryBody,
@@ -71,6 +72,7 @@ const operationChangesPackage = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+    case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
@@ -99,6 +101,7 @@ const operationChangesBodyProjection = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+    case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
@@ -279,32 +282,22 @@ const preservePropertySources = ({
   copyDocumentParagraphPropertySourceContract(target, source);
 };
 
-const supportsTextContent = (content: Paragraph["content"]): boolean =>
-  content.every((item) => {
-    switch (item.type) {
-      case "run":
-        return item.content.every(
-          (child) =>
-            (child.type === "text" &&
-              !hasIllegalXmlCharacters(child.text) &&
-              !/[\t\r\n]/u.test(child.text)) ||
-            child.type === "noteMarker" ||
-            child.type === "footnoteRef" ||
-            child.type === "endnoteRef" ||
-            child.type === "tab" ||
-            child.type === "break",
-        );
-      case "insertion":
-      case "deletion":
-        return supportsTextContent(item.content);
-      case "commentRangeStart":
-      case "commentRangeEnd":
-      case "commentReference":
-        return true;
-      default:
-        return false;
-    }
-  });
+const supportsTextContent = (content: Paragraph["content"]): boolean => {
+  const valid = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null) return true;
+    if (Array.isArray(value)) return value.every(valid);
+    if ("type" in value && value.type === "renderedPageBreak") return false;
+    if (
+      "type" in value &&
+      value.type === "text" &&
+      "text" in value &&
+      typeof value.text === "string"
+    )
+      return !hasIllegalXmlCharacters(value.text) && !/[\t\r\n]/u.test(value.text);
+    return Object.values(value).every(valid);
+  };
+  return content.every(valid);
+};
 
 const supportsSeed = (document: Document, stories = documentStories(document)): boolean => {
   if (commentDocumentIssue(document) !== undefined) return false;
@@ -343,8 +336,11 @@ const project = ({
 }: ProjectStoryOptions): Result<CanonicalProjection, CanonicalSessionError> => {
   const body = findStoryBody(document, story);
   if (!body) return refuse("The canonical story no longer exists.");
+  const currentStyles = Object.hasOwn(document.package, "styles")
+    ? document.package.styles
+    : styles;
   const options = {
-    ...(styles == null ? {} : { styles }),
+    ...(currentStyles == null ? {} : { styles: currentStyles }),
     ...(document.package.theme === undefined ? {} : { theme: document.package.theme }),
   };
   const converted = Result.try({
@@ -378,57 +374,38 @@ const project = ({
     let renderedText = "";
     let renderedSize = 0;
     const boundaries: number[][] = [[0]];
-    const appendContent = (content: Paragraph["content"]): void => {
-      for (const run of content) {
-        if (run.type === "insertion" || run.type === "deletion") {
-          appendContent(run.content);
-          continue;
-        }
-        if (
-          run.type === "commentRangeStart" ||
-          run.type === "commentRangeEnd" ||
-          run.type === "commentReference"
-        ) {
-          if (run.type === "commentReference") {
-            text += "\uFFFC";
+    node.descendants((child) => {
+      if (child.isText) {
+        const value = child.text ?? "";
+        if (child.marks.some(({ type }) => type.name === "footnoteRef")) {
+          text += "\uFFFC";
+          renderedSize += value.length;
+          boundaries.push([renderedSize]);
+        } else {
+          for (const unit of value.split("")) {
+            text += unit;
             renderedSize += 1;
             boundaries.push([renderedSize]);
-          } else {
-            const gaps = boundaries.at(-1) ?? panic("Missing canonical comment gap");
-            gaps.push(renderedSize);
-          }
-          continue;
-        }
-        if (run.type !== "run") panic("Canonical projection encountered unsupported content");
-        for (const child of run.content) {
-          if (child.type === "text") {
-            for (const unit of child.text.split("")) {
-              text += unit;
-              renderedText += unit;
-              renderedSize += 1;
-              boundaries.push([renderedSize]);
-            }
-          } else if (child.type === "footnoteRef" || child.type === "endnoteRef") {
-            text += "\uFFFC";
-            renderedText += String(child.id);
-            renderedSize += String(child.id).length;
-            boundaries.push([renderedSize]);
-          } else if (child.type === "tab" || child.type === "break") {
-            text += "\uFFFC";
-            renderedSize += 1;
-            boundaries.push([renderedSize]);
-          } else if (child.type === "noteMarker") {
-            renderedSize += 1;
-            const gaps = boundaries.at(-1) ?? panic("Missing canonical note gap");
-            gaps.push(renderedSize);
           }
         }
+        renderedText += value;
+        return false;
       }
-    };
-    appendContent(source.content);
+      if (!child.isLeaf) return true;
+      renderedSize += child.nodeSize;
+      if (child.type.name === "noteMarker") {
+        const gaps = boundaries.at(-1) ?? panic("Missing canonical note gap");
+        gaps.push(renderedSize);
+      } else {
+        text += "\uFFFC";
+        boundaries.push([renderedSize]);
+      }
+      return false;
+    });
     if (
       node.type.name !== "paragraph" ||
       node.attrs["paraId"] !== source.paraId ||
+      text !== paragraphLogicalText(source) ||
       node.textContent !== renderedText ||
       node.content.size !== renderedSize
     ) {
@@ -450,6 +427,8 @@ const project = ({
 
 const intentStory = (intent: EditorIntent): OpStory => {
   switch (intent.type) {
+    case "replaceFragment":
+    case "moveFragment":
     case "replaceText":
     case "formatRun":
     case "insertAtom":
@@ -633,6 +612,7 @@ type JournalledOpsOptions = {
   ops: readonly DocumentOp[];
   postSelection: CanonicalSelection;
   stagedApplied?: AppliedDocumentOp;
+  semantic?: CanonicalInputSemantic;
 };
 
 type CanonicalSessionSeedOptions = {
@@ -754,6 +734,9 @@ class CanonicalSession {
       case "setList":
       case "formatParagraph":
         return false;
+      case "replaceFragment":
+      case "moveFragment":
+        return true;
       case "replaceText":
       case "insertAtom":
       case "formatRun":
@@ -957,12 +940,20 @@ class CanonicalSession {
     state: EditorState,
     intent: EditorIntent,
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    return this.prepareIntents(state, [intent]);
+    return this.prepareIntents(state, { intents: [intent] });
   }
 
   prepareIntents(
     state: EditorState,
-    intents: readonly EditorIntent[],
+    {
+      intents,
+      resourceOps = [],
+      semantic = "structure",
+    }: {
+      intents: readonly EditorIntent[];
+      resourceOps?: readonly DocumentOp[];
+      semantic?: CanonicalInputSemantic;
+    },
   ): Result<CanonicalCommit, CanonicalSessionError> {
     const first = intents.at(0);
     if (first === undefined) return noChange("The intent batch is empty.");
@@ -977,12 +968,19 @@ class CanonicalSession {
     if (preSelection.isErr()) return preSelection;
     let document = this.currentDocument;
     let postSelection = preSelection.value;
-    const ops: DocumentOp[] = [];
+    const ops: DocumentOp[] = [...resourceOps];
     const edits: AppliedDocumentOp[] = [];
+    if (resourceOps.length > 0) {
+      const imported = applyDocumentOps(document, resourceOps);
+      if (imported.isErr()) return refuse(imported.error.message);
+      document = imported.value.document;
+      edits.push(imported.value);
+    }
     for (const intent of intents) {
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
+        firstBlockId: this.nextBlockId,
       });
       if (compiled.isErr()) return refuse(compiled.error.message);
       const applied = applyDocumentOps(document, compiled.value.ops);
@@ -1002,7 +1000,7 @@ class CanonicalSession {
       ...combineEdits(this.currentDocument, edits),
       revisions: edits.flatMap(({ revisions }) => revisions),
     };
-    return this.prepareJournalledOps({ state, ops, postSelection, stagedApplied });
+    return this.prepareJournalledOps({ state, ops, postSelection, stagedApplied, semantic });
   }
 
   prepareOps(
@@ -1018,6 +1016,7 @@ class CanonicalSession {
     ops,
     postSelection,
     stagedApplied,
+    semantic = "structure",
   }: JournalledOpsOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const story = postSelection.anchor.story;
     const projected = this.projectStory(story);
@@ -1045,7 +1044,7 @@ class CanonicalSession {
           postDocument: this.currentDocument,
           version,
           origin: "input",
-          semantic: "structure",
+          semantic,
           grouping: "isolated",
           time: Date.now(),
           boundary: this.groupingBoundary,
@@ -1093,7 +1092,7 @@ class CanonicalSession {
         at: { ...from.value, offset: 0 },
         patch: { styleId: nextStyle },
       });
-    return this.prepareIntents(state, intents);
+    return this.prepareIntents(state, { intents });
   }
 
   prepareJoin(

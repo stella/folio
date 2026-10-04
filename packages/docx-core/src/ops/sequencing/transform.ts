@@ -62,6 +62,7 @@ const operationStory = (op: DocumentOp) => {
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
+    case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
@@ -132,7 +133,11 @@ const transformRestoredOp = ({
   const story = operationStory(op);
   const overStory = operationStory(over);
   if (story === undefined || overStory === undefined)
-    return refusal(op, over, "Numbering and section metadata require an exclusive edit.");
+    return refusal(
+      op,
+      over,
+      "Package resources, numbering and section metadata require an exclusive edit.",
+    );
   if (!sameStory(story, overStory)) return Result.ok([op]);
   if (independent(op, over)) return Result.ok([op]);
   if (effect?.type === "touchedBlocks" && op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION) {

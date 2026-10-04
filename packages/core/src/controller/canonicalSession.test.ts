@@ -140,10 +140,12 @@ describe("canonical session", () => {
     const original = session.document;
     const at = { story: OP_STORIES.MAIN, blockId: "12345678", offset: 1 };
     const apply = spyOn(documentOps, "applyDocumentOps");
-    const prepared = session.prepareIntents(state, [
-      { type: "replaceText", from: at, to: at, text: "X" },
-      { type: "formatParagraph", at, patch: { alignment: "right" } },
-    ]);
+    const prepared = session.prepareIntents(state, {
+      intents: [
+        { type: "replaceText", from: at, to: at, text: "X" },
+        { type: "formatParagraph", at, patch: { alignment: "right" } },
+      ],
+    });
     const calls = apply.mock.calls.length;
     apply.mockRestore();
     expect(calls).toBe(2);
@@ -183,7 +185,7 @@ describe("canonical session", () => {
     const at = { story: OP_STORIES.MAIN, blockId: "12345678", offset: 0 };
     for (const result of [
       session.prepareReplace(state, { from: 1, to: 1, text: "" }),
-      session.prepareIntents(state, []),
+      session.prepareIntents(state, { intents: [] }),
       session.prepareIntent(state, { type: "formatParagraph", at, patch: {} }),
       session.prepareJoin(state, "backward"),
     ]) {
@@ -247,6 +249,13 @@ describe("canonical session", () => {
           if (kind === "footnote")
             document.package.footnotes = [{ type: "footnote", id, noteType, content }];
           else document.package.endnotes = [{ type: "endnote", id, noteType, content }];
+          // Clipboard support admits preserved inline XML in ordinary notes too.
+          expect(createCanonicalSession(document).isOk()).toBe(true);
+          content.push({
+            type: "paragraph",
+            paraId: "34567891",
+            content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
+          });
           expect(createCanonicalSession(document).isOk()).toBe(noteType !== "normal");
         }
       }
