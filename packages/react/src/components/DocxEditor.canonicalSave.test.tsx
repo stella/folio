@@ -233,6 +233,7 @@ test("canonical header edits and new footer and note stories survive adapter sav
     await act(async () => editor.current?.loadDocumentBuffer(bytes));
     await act(async () => editor.current?.ensureEditorView({ focus: false }));
     await act(async () => bindings.current?.handleHeaderFooterDoubleClick("header"));
+    expect(editor.current?.getEditorRef()?.getHfView("rIdCanonicalHeader")).not.toBeNull();
     const headerView =
       container.querySelector(".paged-editor__hidden-hf-pm .ProseMirror") ??
       panic("Expected mounted header editor");
@@ -626,3 +627,130 @@ test.each(["uncontrolled", "controlled"] as const)(
     }
   },
 );
+
+for (const mode of ["editing", "suggesting"] as const) {
+  test.each(["footnote", "endnote"] as const)(
+    `canonical painted note double-click routes active views and shared ${mode} history`,
+    async (kind) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      const editor = createRef<DocxEditorRef>();
+      const source = createEmptyDocument({ initialText: "Body" });
+      const paragraph = source.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") panic("Expected note body fixture");
+      paragraph.content.push({
+        type: "run",
+        content: [
+          { type: "footnoteRef", id: 1 },
+          { type: "endnoteRef", id: 1 },
+        ],
+      });
+      const noteContent = (text: string) =>
+        [
+          {
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text }] }],
+          },
+        ] satisfies typeof source.package.document.content;
+      source.package.footnotes = [{ type: "footnote", id: 1, content: noteContent("Footnote") }];
+      source.package.endnotes = [{ type: "endnote", id: 1, content: noteContent("Endnote") }];
+      const bytes = await createDocx(source);
+      try {
+        await act(async () =>
+          root.render(
+            <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+              <DocxEditor
+                ref={editor}
+                documentBuffer={bytes}
+                experimentalSession="canonical"
+                mode={mode}
+                author="Note reviewer"
+                showToolbar={false}
+              />
+            </IntlProvider>,
+          ),
+        );
+        await act(async () => editor.current?.loadDocumentBuffer(bytes));
+        await act(async () => editor.current?.ensureEditorView({ focus: false }));
+        const paged = editor.current?.getEditorRef() ?? panic("Expected paged adapter ref");
+        const body = paged.getView() ?? panic("Expected canonical body view");
+        // Paint identity fixture: happy-dom cannot paint pages, but this is the real delegated click path.
+        const pages =
+          container.querySelector(".paged-editor__pages") ?? panic("Expected pages container");
+        const target = document.createElement("span");
+        target.dataset["noteKind"] = kind;
+        target.dataset["noteId"] = "1";
+        pages.append(target);
+        await act(async () =>
+          target.dispatchEvent(
+            new MouseEvent("click", {
+              detail: 2,
+              bubbles: true,
+              cancelable: true,
+            }),
+          ),
+        );
+        const note = paged.getActiveView() ?? panic("Expected active canonical note view");
+        expect(note).not.toBe(body);
+        expect(note.state.doc.textContent).toContain(kind === "footnote" ? "Footnote" : "Endnote");
+        const before = editor.current?.getDocument() ?? panic("Expected canonical snapshot");
+        const end = note.state.doc.content.size - 1;
+        await act(async () => {
+          note.dispatch(note.state.tr.setSelection(TextSelection.create(note.state.doc, end)));
+          note.dom.dispatchEvent(
+            new InputEvent("beforeinput", {
+              bubbles: true,
+              cancelable: true,
+              inputType: "insertText",
+              data: "😀 edited",
+            }),
+          );
+        });
+        const after = editor.current?.getDocument() ?? panic("Expected note edit");
+        expect(after.package.document.content).toEqual(before.package.document.content);
+        expect(after.package[kind === "footnote" ? "endnotes" : "footnotes"]).toEqual(
+          before.package[kind === "footnote" ? "endnotes" : "footnotes"],
+        );
+        expect(
+          note.state.doc
+            .nodeAt(end)
+            ?.marks.some((mark) => mark.attrs["author"] === "Note reviewer"),
+        ).toBe(mode === "suggesting");
+        await act(async () => {
+          expect(paged.undo()).toBe(true);
+        });
+        expect(editor.current?.getDocument()).toEqual(before);
+        // Undo restores the selection immediately preceding the native edit.
+        expect(note.state.selection.toJSON()).toEqual({ type: "text", anchor: end, head: end });
+        await act(async () => {
+          expect(paged.redo()).toBe(true);
+        });
+        expect(editor.current?.getDocument()).toEqual(after);
+        let saved: ArrayBuffer | null | undefined;
+        await act(async () => {
+          saved = await editor.current?.save();
+        });
+        if (!saved) panic("Expected canonical note save");
+        const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+        expect(reviewDifferences(after, reopened)).toEqual({ messages: [], omitted: 0 });
+        for (const collection of ["footnotes", "endnotes"] as const) {
+          const authored = after.package[collection]?.find((value) => value.id === 1);
+          const parsed = reopened.package[collection]?.find((value) => value.id === 1);
+          if (!authored || !parsed) panic("Expected both saved note namespaces");
+          expect(
+            reviewDifferences(
+              { package: { document: { content: authored.content } } },
+              { package: { document: { content: parsed.content } } },
+            ),
+          ).toEqual({ messages: [], omitted: 0 });
+        }
+        await act(async () => paged.closeNoteStory());
+        expect(paged.getActiveView()).toBe(body);
+      } finally {
+        await act(async () => root.unmount());
+        container.remove();
+      }
+    },
+  );
+}

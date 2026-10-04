@@ -286,7 +286,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   function undoActiveView(): boolean {
     const view = opts.getActiveView();
-    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories)) {
+    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
       const story = opts.getActiveCanonicalStory?.() ?? "main";
       return view && story !== "main"
         ? opts.editor.applyCanonicalStoryHistory({ view, story, direction: "undo" })
@@ -298,7 +298,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   function redoActiveView(): boolean {
     const view = opts.getActiveView();
-    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories)) {
+    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
       const story = opts.getActiveCanonicalStory?.() ?? "main";
       return view && story !== "main"
         ? opts.editor.applyCanonicalStoryHistory({ view, story, direction: "redo" })
@@ -309,7 +309,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   }
 
   function canUndoActiveView(): boolean {
-    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories))
+    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting))
       return opts.editor.canUndo();
     const view = opts.getActiveView();
     if (view === opts.editorView.value) return opts.editor.canUndo();
@@ -317,7 +317,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   }
 
   function canRedoActiveView(): boolean {
-    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories))
+    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting))
       return opts.editor.canRedo();
     const view = opts.getActiveView();
     if (view === opts.editorView.value) return opts.editor.canRedo();
