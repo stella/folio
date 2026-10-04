@@ -85,6 +85,30 @@ describe("canonical command descriptors", () => {
     }
   });
 
+  test("hyperlink descriptors omit absent optional fields", () => {
+    const state = stateWithSelection();
+    for (const tooltip of [undefined, "", "Tip"]) {
+      for (const command of [
+        singletonManager.requireCommand("setHyperlink")("example.com", tooltip),
+        singletonManager.requireCommand("insertHyperlink")("Link", "#anchor", tooltip),
+      ]) {
+        const intents = getCanonicalCommandIntents(command, state);
+        expect(intents).toHaveLength(1);
+        for (const intent of intents ?? []) {
+          expect(Object.values(intent).includes(undefined)).toBe(false);
+          expect(Object.hasOwn(intent, "tooltip")).toBe(Boolean(tooltip));
+        }
+      }
+    }
+    const removal = getCanonicalCommandIntents(
+      singletonManager.requireCommand("removeHyperlink")(),
+      state,
+    );
+    expect(removal).toHaveLength(1);
+    for (const intent of removal ?? [])
+      expect(Object.values(intent).includes(undefined)).toBe(false);
+  });
+
   test("numbering command descriptors retain their start value", () => {
     const state = stateWithSelection();
     expect(
