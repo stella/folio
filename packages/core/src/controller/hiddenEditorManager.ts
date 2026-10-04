@@ -628,13 +628,12 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       refuse("Composition must finish before formatting.");
       return false;
     }
+    const intents = getCanonicalCommandIntents(command, view.state);
+    // Caller commands without document intents retain their ordinary selection
+    // and probe behavior; dispatchTransaction still refuses raw document edits.
+    if (intents === undefined) return undefined;
     syncCanonicalMode();
     editorSession.session.breakUndoGroup();
-    const intents = getCanonicalCommandIntents(command, view.state);
-    if (intents === undefined) {
-      refuse("This command has no canonical operation intent.");
-      return false;
-    }
     if (
       intents.length > 0 &&
       intents.every((intent) => intent.type === "formatRun" && intent.from === intent.to)

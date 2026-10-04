@@ -2674,6 +2674,37 @@ const finalParagraphPredecessor = (doc: PMNode, at: number) => {
   return null;
 };
 
+type CrossesBatchDeletionOptions = {
+  doc: PMNode;
+  /** Where the predecessor `finalParagraphPredecessor` found ends. */
+  from: number;
+  /** Where the emptied final paragraph starts. */
+  to: number;
+  batchRevisionIds: ReadonlySet<number>;
+};
+
+/**
+ * Whether a sibling between a final carrier's predecessor and the carrier
+ * has its break deleted by this batch.
+ */
+const crossesBatchDeletion = ({
+  doc,
+  from,
+  to,
+  batchRevisionIds,
+}: CrossesBatchDeletionOptions): boolean => {
+  const $to = doc.resolve(to);
+  let position = to;
+  for (let index = $to.index() - 1; index >= 0 && position > from; index--) {
+    const node = $to.parent.child(index);
+    position -= node.nodeSize;
+    const mark: unknown = node.attrs["pPrMark"];
+    const revisionId = isPlainDeletedPPrMark(mark) ? addedOrDeletedBreakRevisionId(mark) : null;
+    if (revisionId !== null && batchRevisionIds.has(revisionId)) return true;
+  }
+  return false;
+};
+
 /** Pending retirements, read after the merge has mapped any inserted separator. */
 const pendingRemovedFinalBreakPositions = (
   tr: Transaction,
@@ -2785,7 +2816,17 @@ const withRetiredFinalParagraphs = ({
           styleResolver,
           numbering,
           revision: { id: revisionId, author, date, ...revisionExtras },
-          keep: propertiesSetInBatch(emptied, batchRevisionIds),
+          // A paragraph this batch deleted between the two runs after the
+          // carrier's own edits, one at a time, and carries the predecessor's
+          // properties over whatever the batch set on the carrier.
+          keep: crossesBatchDeletion({
+            doc: tr.doc,
+            from: position + previous.nodeSize,
+            to: at,
+            batchRevisionIds,
+          })
+            ? new Set()
+            : propertiesSetInBatch(emptied, batchRevisionIds),
         });
       }
       resolvedOperationIds.add(operationId);

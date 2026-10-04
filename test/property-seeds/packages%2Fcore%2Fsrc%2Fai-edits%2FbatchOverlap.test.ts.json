@@ -35,6 +35,12 @@
       "path": "588:3",
       "note": "A tracked merge must account for the final break retired by a later deletion (path at factor 5).",
       "date": "2026-09-30"
+    },
+    {
+      "seed": 982145266,
+      "path": "111:7",
+      "note": "A tracked deletion of the paragraph before a deleted, reformatted last paragraph carries the predecessor's properties over the batch's formatting.",
+      "date": "2026-10-04"
     }
   ]
 }

@@ -82,6 +82,83 @@ const inputArbitrary = fc.record({
   bold: fc.boolean(),
 });
 
+test("list-level commands preserve plain paragraphs and refuse all-plain selections without history", async () => {
+  let cases = 0;
+  await assertProperty(
+    fc.property(
+      fc.record({
+        indent: fc.integer({ min: 1, max: 4000 }),
+        level: fc.integer({ min: 1, max: 7 }),
+        reverse: fc.boolean(),
+      }),
+      ({ indent: generatedIndent, level, reverse }) => {
+        cases += 1;
+        for (const indent of [undefined, 0, generatedIndent]) {
+          for (const direction of ["increase", "decrease"] as const) {
+            for (const kind of ["plain", "mixed"] as const) {
+              const document = seed();
+              for (const paragraph of document.package.document.content) {
+                if (paragraph.type !== "paragraph") panic("Expected paragraph fixture.");
+                paragraph.formatting = indent === undefined ? {} : { indentLeft: indent };
+              }
+              if (kind === "mixed") {
+                const builder = createCanonicalSession(document).unwrap();
+                let state = EditorState.create({ schema, doc: builder.projection.doc });
+                const last = builder.projection.doc.child(0).nodeSize + 1;
+                state = select(state, last);
+                accept(
+                  builder,
+                  state,
+                  prepareCanonicalCommands(builder, state, [
+                    { type: "toggleList", kind: "decimal" },
+                  ]).unwrap(),
+                );
+                Object.assign(document, builder.document);
+                const list = document.package.document.content.at(1);
+                if (list?.type !== "paragraph" || list.formatting?.numPr?.kind !== "reference")
+                  panic("Expected list fixture.");
+                list.formatting.numPr.ilvl = level;
+              }
+              const session = createCanonicalSession(document).unwrap();
+              let state = EditorState.create({ schema, doc: session.projection.doc });
+              const end = state.doc.content.size - 1;
+              state = reverse ? select(state, end, 1) : select(state, 1, end);
+              const before = session.document;
+              const selection = state.selection.toJSON();
+              const prepared = prepareCanonicalCommands(session, state, [
+                { type: "changeListLevel", direction },
+              ]);
+              if (kind === "plain") {
+                expect(prepared.isErr()).toBe(true);
+                if (prepared.isErr()) expect(prepared.error.reason).toBe("noChange");
+                expect(session.document).toStrictEqual(before);
+                expect(session.version).toBe(0);
+                expect(session.canUndo).toBe(false);
+                continue;
+              }
+              state = accept(session, state, prepared.unwrap());
+              expect(session.document.package.document.content.at(0)).toStrictEqual(
+                before.package.document.content.at(0),
+              );
+              const list = paragraphs(session).at(1);
+              expect(
+                list?.formatting?.numPr?.kind === "reference"
+                  ? list.formatting.numPr.ilvl
+                  : undefined,
+              ).toBe(level + (direction === "increase" ? 1 : -1));
+              state = accept(session, state, session.prepareUndo(state).unwrap());
+              expect(session.document).toStrictEqual(before);
+              expect(state.selection.toJSON()).toEqual(selection);
+              expect(session.canUndo).toBe(false);
+            }
+          }
+        }
+      },
+    ),
+  );
+  expect(cases).toBeGreaterThan(0);
+});
+
 const autoformatMarkerArbitrary = fc.oneof(
   fc.constantFrom("*", "-").map((marker) => ({ type: "bullet", marker }) as const),
   fc
