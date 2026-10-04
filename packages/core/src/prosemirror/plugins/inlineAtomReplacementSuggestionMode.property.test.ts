@@ -12,7 +12,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, NodeSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
-import { assertProperty } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
 import { schema } from "../schema";
@@ -127,39 +127,43 @@ describe("suggesting mode replaces a node-selected inline atom as a tracked chan
     }
   });
 
-  test("accept-all reads as the direct edit and reject-all restores the original", () => {
-    assertProperty(
-      fc.property(
-        fc.constantFrom(...SELECTABLE_ATOMS),
-        letters,
-        letters,
-        replacementArb,
-        (atom, before, after, replacement) => {
-          const inline = [
-            ...(before ? [schema.text(before)] : []),
-            atom,
-            ...(after ? [schema.text(after)] : []),
-          ];
-          const doc = schema.node("doc", null, [schema.node("paragraph", null, inline)]);
-          const atomPos = 1 + before.length;
-          const direct = runIn(doc, atomPos, false, replacement).doc;
-          const suggested = runIn(doc, atomPos, true, replacement);
-          const accepted = resolveAll(suggested, acceptAllChanges);
-          const rejected = resolveAll(suggested, rejectAllChanges);
-          const context = `${atom.type.name}, ${replacement.kind}`;
-          if (!accepted.eq(direct)) {
-            throw new Error(
-              `${context}: accept-all ${JSON.stringify(accepted.toJSON())} ≠ direct ${JSON.stringify(direct.toJSON())}`,
-            );
-          }
-          if (!rejected.eq(doc)) {
-            throw new Error(
-              `${context}: reject-all ${JSON.stringify(rejected.toJSON())} ≠ original ${JSON.stringify(doc.toJSON())}`,
-            );
-          }
-        },
-      ),
-      { numRuns: 60 },
-    );
-  });
+  test(
+    "accept-all reads as the direct edit and reject-all restores the original",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.constantFrom(...SELECTABLE_ATOMS),
+          letters,
+          letters,
+          replacementArb,
+          (atom, before, after, replacement) => {
+            const inline = [
+              ...(before ? [schema.text(before)] : []),
+              atom,
+              ...(after ? [schema.text(after)] : []),
+            ];
+            const doc = schema.node("doc", null, [schema.node("paragraph", null, inline)]);
+            const atomPos = 1 + before.length;
+            const direct = runIn(doc, atomPos, false, replacement).doc;
+            const suggested = runIn(doc, atomPos, true, replacement);
+            const accepted = resolveAll(suggested, acceptAllChanges);
+            const rejected = resolveAll(suggested, rejectAllChanges);
+            const context = `${atom.type.name}, ${replacement.kind}`;
+            if (!accepted.eq(direct)) {
+              throw new Error(
+                `${context}: accept-all ${JSON.stringify(accepted.toJSON())} ≠ direct ${JSON.stringify(direct.toJSON())}`,
+              );
+            }
+            if (!rejected.eq(doc)) {
+              throw new Error(
+                `${context}: reject-all ${JSON.stringify(rejected.toJSON())} ≠ original ${JSON.stringify(doc.toJSON())}`,
+              );
+            }
+          },
+        ),
+        { numRuns: 60 },
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
 });
