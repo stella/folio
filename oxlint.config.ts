@@ -82,6 +82,7 @@ export default library({
     "./.oxlint-plugins/folio-xml-splice.ts",
     "./.oxlint-plugins/folio-relationship-ids.ts",
     "./.oxlint-plugins/folio-typecheck-proofs.ts",
+    "./.oxlint-plugins/folio-harness-workspaces.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -502,6 +503,19 @@ export default library({
       files: ["test/__fixtures__/identity-attributes.*.ts"],
       rules: {
         "folio-identity-attributes/no-prefix-resolved-identity-read": "error",
+      },
+    },
+    {
+      // Root Playwright and parity harnesses run under Node, so runtime imports
+      // must resolve from the root manifest. Fixtures exercise every module
+      // syntax this guard handles; repo-wide lint ignores those fixtures.
+      files: [
+        "tests/visual/**/*.{ts,tsx}",
+        "tests/parity/**/*.{ts,tsx}",
+        "test/__fixtures__/harness-workspace*.ts",
+      ],
+      rules: {
+        "folio-harness-workspaces/no-undeclared-workspace-runtime-import": "error",
       },
     },
   ],
