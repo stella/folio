@@ -32,6 +32,7 @@ type CanonicalCapability = {
   kind: "routing" | "refusal" | "mutation-source";
   adapters: readonly ("react" | "vue")[];
   summary: string;
+  remainingCommands?: { registry: "extension-commands" };
 };
 
 export const CANONICAL_CAPABILITIES = {
@@ -42,6 +43,7 @@ export const CANONICAL_CAPABILITIES = {
     summary: "Explicit session selection and legacy authority routing.",
   },
   [CANONICAL_GAP.commands]: {
+    remainingCommands: { registry: "extension-commands" },
     owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
