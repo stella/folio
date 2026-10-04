@@ -1097,6 +1097,11 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   watch([() => toValue(editorMode), () => toValue(author)], () => {
+    editor.setCanonicalMode(
+      toValue(editorMode) === "suggesting"
+        ? { type: "suggesting", author: toValue(author) }
+        : { type: "editing" },
+    );
     const view = editorView.value;
     if (view) {
       syncSuggestionMode(view);

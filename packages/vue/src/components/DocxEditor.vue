@@ -1517,20 +1517,6 @@ const paragraphIndent = computed(() => {
 });
 
 function setEditorMode(mode: EditorMode): void {
-  if (
-    usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.suggesting) &&
-    mode === "suggesting"
-  ) {
-    const error = new CanonicalSessionRefusalError({
-      gap: CANONICAL_GAP.suggesting,
-      message: canonicalRefusalMessage(
-        CANONICAL_GAP.suggesting,
-        "Canonical sessions do not support suggesting mode.",
-      ),
-    });
-    reportEditorError(error);
-    return;
-  }
   if (editorMode.value === mode) {
     return;
   }

@@ -1096,13 +1096,6 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
 
   const publishStoryCommit = (storyView: EditorView, commit: CanonicalCommit): boolean => {
     if (!view || editorSession.type !== "canonical") return false;
-    if (deps.getEditingMode?.() === "suggesting") {
-      refuse(
-        "Suggesting is unavailable in the experimental canonical session.",
-        CANONICAL_GAP.suggesting,
-      );
-      return false;
-    }
     const session = editorSession.session;
     const bodyTransaction = view.state.tr;
     if (!bodyTransaction.doc.eq(commit.bodyProjection.doc))

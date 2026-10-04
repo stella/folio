@@ -11,7 +11,7 @@ import { panic } from "better-result";
 import { TextSelection } from "prosemirror-state";
 import { closeHistory } from "prosemirror-history";
 
-const { createApp, defineComponent, h, shallowRef } = await import("vue");
+const { createApp, defineComponent, h, nextTick, shallowRef } = await import("vue");
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx } from "@stll/folio-core/docx/rezip";
@@ -269,6 +269,8 @@ test("Vue canonical stories share history and save headers, first-page footer, n
   const notes = document.createElement("div");
   document.body.append(container, hidden, pages, notes);
   const errors: Error[] = [];
+  const editorMode = shallowRef<"editing" | "suggesting" | "viewing">("editing");
+  const author = shallowRef("Vue reviewer");
   const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
   const app = createApp(
     defineComponent({
@@ -278,6 +280,8 @@ test("Vue canonical stories share history and save headers, first-page footer, n
           pagesContainer: shallowRef(pages),
           noteEditorContainer: shallowRef(notes),
           experimentalSession: "canonical",
+          editorMode,
+          author,
           featureFlags: () => ({ selectiveSave: true }),
           onError: (error) => errors.push(error),
         });
@@ -294,6 +298,24 @@ test("Vue canonical stories share history and save headers, first-page footer, n
     const rId =
       [...(source.package.headers?.keys() ?? [])].at(0) ?? panic("Expected header identity");
     await adapter.loadBuffer(await createDocx(source));
+    editorMode.value = "suggesting";
+    await nextTick();
+    const bodyView = adapter.editorView.value ?? panic("Expected canonical body view");
+    bodyView.dom.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "insertText",
+        data: "!",
+      }),
+    );
+    let foundSuggestion = false;
+    bodyView.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((mark) => mark.attrs["author"] === "Vue reviewer")) {
+        foundSuggestion = true;
+      }
+    });
+    expect(foundSuggestion).toBe(true);
     const header = adapter.getHeaderFooterView(rId) ?? panic("Expected canonical header view");
     expect(
       header.state.doc.eq(
@@ -421,6 +443,7 @@ test("Vue canonical stories share history and save headers, first-page footer, n
       detectVariables: false,
     });
     expect(reviewDifferences(canonical, reopened)).toEqual({ messages: [], omitted: 0 });
+    expect(reopened.package.document.content).toEqual(canonical.package.document.content);
     expect(reopened.package.document.finalSectionProperties).toEqual(
       canonical.package.document.finalSectionProperties,
     );
