@@ -82,6 +82,28 @@ export const captureHeaderFooterPackageBaselines = (document: Document): void =>
   packageBaselines.set(document.originalBuffer, handles);
 };
 
+/**
+ * Transfer each header and footer part's capture handle across a trusted
+ * document graph clone. `structuredClone` drops symbol-keyed properties, so a
+ * clone would otherwise read an edited part as uncaptured ("missing") rather
+ * than as a mismatch against its source.
+ */
+export const copyHeaderFooterBaselineHandles = (target: Document, source: Document): void => {
+  for (const kind of ["headers", "footers"] as const) {
+    const targets = target.package[kind];
+    for (const [rId, sourcePart] of source.package[kind] ?? []) {
+      if (!(BASELINE_HANDLE in sourcePart)) continue;
+      const targetPart = targets?.get(rId);
+      if (!targetPart) continue;
+      Object.defineProperty(targetPart, BASELINE_HANDLE, {
+        value: sourcePart[BASELINE_HANDLE],
+        enumerable: true,
+        configurable: true,
+      });
+    }
+  }
+};
+
 /** Transfer the parsed package registry only across a trusted document graph clone. */
 export const copyHeaderFooterPackageBaselines = (target: Document, source: Document): void => {
   if (!target.originalBuffer || !source.originalBuffer) return;

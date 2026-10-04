@@ -42,6 +42,7 @@ import {
   type JoinBlocksOp,
   type SetParagraphPropsOp,
   type SetRunPropsOp,
+  type ReplaceInlineOp,
   type SplitBlockOp,
   EMPTY_PROPERTY_SETS,
   type DocumentOp,
@@ -104,6 +105,7 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
+    case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
       return op;
     default: {
       const unreachable: never = op;
@@ -335,7 +337,8 @@ type PlannedReviewOp =
   | JoinBlocksOp
   | SplitBlockOp
   | SetParagraphPropsOp
-  | SetRunPropsOp;
+  | SetRunPropsOp
+  | ReplaceInlineOp;
 
 type TrackedPlanOptions = {
   document: Document;
@@ -362,7 +365,7 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
   };
   const append = (input: PlannedReviewOp): Result<void, DocumentOpRefusal> => {
     let op: DocumentOp = input;
-    if (input.revision !== undefined) {
+    if (input.type !== DOCUMENT_OP_TYPES.REPLACE_INLINE && input.revision !== undefined) {
       // Source cuts consume the caller's pool in the same order as editing.
       // Additional mode-owned stamps use its other end and cannot displace them.
       let stampId = revision.id;
@@ -384,7 +387,7 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
     });
     const applied = applyDocumentOp(current, op);
     if (applied.isErr()) return Result.err(applied.error);
-    stampUsed ||= input.revision !== undefined && applied.value.revisions.length > 0;
+    stampUsed ||= stampOf(input) !== undefined && applied.value.revisions.length > 0;
     const before = current;
     current = applied.value.document;
     const story = (() => {
@@ -397,6 +400,7 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
           return input.at.story;
         case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
         case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+        case DOCUMENT_OP_TYPES.REPLACE_INLINE:
           return input.story;
         default: {
           const unreachable: never = input;

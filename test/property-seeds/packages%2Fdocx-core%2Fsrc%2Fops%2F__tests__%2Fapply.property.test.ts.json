@@ -278,5 +278,105 @@
       "date": "2026-10-02",
       "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
     }
+  ],
+  "generated clipboard fragments preserve history and accepted tracked content": [
+    {
+      "seed": 728914360,
+      "path": "49:2:3:3:4:4:4",
+      "note": "Revision allocation demand includes clipboard paragraphs and both closed edge boundaries",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 54534382,
+      "path": "3:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated clipboard sequences preserve arbitrary ranges, marked content and every inverse": [
+    {
+      "seed": -1470548670,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:3:0:0:0:0:0:0:0:0:0:0:1:1:0:0:0:0:0:0:1:0:2:1:1:1:1:1:1:1:2:1:2:1:1:1:2:1:1:1:1:1:1:1:1:1:1:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:2:1:2:2:0:8:2:3:1:1:1:1:1:1:1:3:1:4:1:1:2:1:1:1:1:1:1:3:2:3:3:3:3",
+      "date": "2026-10-02",
+      "note": "Retain exact clipboard selection, source-story ownership and resource/review journal semantics observed in child CI."
+    },
+    {
+      "seed": -1910611915,
+      "path": "0:0:0:0:0:0:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:0:0:0:0:0:3:0:0:0:0:0:0:0:0:2:0:0:0:0:1:0:1:1:2:0:0:1:1:1:1:1:2:0:0:0:0:0:0:0:0:0:0:1:0:0:0:2:0:0:0:2:0:0:0:0:0:0:2:1:3:2:1:2:1:2:2:2:2:7:1:1:1:1:2:1:4:4:2:2:2:2:2:3:2:2:2:2:2:3:2:2:2:4:2:2:3:3:4:4:4:4:4:5:1:0:0:0:0:0:0:0:0:1:0:0:0:0:0:0:0:0:0:0:3:0:0:0:2:0:3:1:0:0:0:1:1:6:0:1:8:0:1:0:0:0:0:1:1:1:1:1:1:1:2:0:1:0:1:1:0:0:0:0:0:0:0:1:0:5:1:0:1:1:1:0:1:0:1:0:0:0:1:1:0:0:0:0:0:2:0:0:1:2:1:1:1:1:1:1:4:0:3:3:0:0:0:0:0:12:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11:11:11:11:11:11:12:11:11:11:11:11:11:12:12:12:12:12:12:12:12",
+      "date": "2026-10-02",
+      "note": "Retain exact clipboard source ownership, selection and journal behavior observed in leaf CI."
+    },
+    {
+      "seed": -1470548670,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:3:0:0:0:0:0:0:0:0:0:0:1:1:0:0:0:0:0:0:1:0:2:1:1:1:1:1:1:1:2:1:2:1:1:1:2:1:1:1:1:1:1:1:1:1:1:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:2:1:2:2:0:8:2:3:1:1:1:1:1:1:1:3:1:4:1:1:2:1:1:1:1:1:1:3:2:3:3:3:3:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1910611915,
+      "path": "1:0:0:0:0:0:0:0:0:1:4:20:0:0:2:2:2:0:0:1:1:1:1:1:1:2:2:1:1:1:2:1:1:1:1:1:1:1:1:1:5:1:2:1:3:1:1:17:2:7:2:2:2:10:8:10:8:8:9:8:9:9:9:8:10:8:9:2:4:3:0:6:0:0:5:5:5:5:9:11:28:30:30:32:4:3:28:29:29:29:29:29:29:0:3:3:3:3:3:0:0:0:0:1:1:1:2:0:0:0:0:4:0:24:45:2:0:3:0:0:0:2:0:3:57:57:57:57:57:57:57",
+      "note": "Restore closed clipboard tail properties on the actual surviving mark, including absent formatting.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1910611915,
+      "path": "1:0:0:0:0:0:0:0:0:1:4:20:0:0:2:2:2:2:2:2:2:2:2:3:2:1:1:1:2:1:1:1:1:1:1:1:1:1:5:1:2:1:3:1:1:17:2:7:2:2:2:10:8:10:8:8:9:8:9:9:9:8:10:8:9:2:4:3:8:8:9:9:9:0:0:0:0:0:0:0:4:1:1:2:2:3:3:3:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "date": "2026-10-03",
+      "note": "Preserve exact clipboard seam behavior across closed/open edges and the surviving paragraph mark."
+    },
+    {
+      "seed": -1470548670,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:3:0:0:0:0:0:0:0:0:0:0:1:1:0:0:0:0:0:0:1:0:2:1:1:1:1:1:1:1:2:1:2:1:1:1:2:1:1:1:1:1:1:1:1:1:1:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:2:1:2:2:0:8:2:3:1:1:1:1:1:1:1:3:1:4:1:1:2:1:1:1:1:1:1:3:2:3:3:3:3:0:1:1",
+      "date": "2026-10-03",
+      "note": "Preserve exact clipboard seam behavior across closed/open edges and the surviving paragraph mark."
+    },
+    {
+      "seed": 150562937,
+      "path": "2:1:0:2:1:2:1:4:2:1:5:2:1:1:1:3:1:8:7:5:5:5:6:5:5:5:7:12:5:5:9:9:9:8:10:8:9:9:9:9:9:8:8:8:14:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:4:4:5:5:3:24:13:4:0:2:1:2:3:1:4:4:4:4:5:1:1:1:2:19:1:1:1:9:6:6:6:6:6:6:6:6:6:6:6:0:0:0:1:2:3:2:4:1:3:3:3:3:0:0:0:0:0:0:0:0:0:0:0:0:0:0:9:24:20:22:20:20:20:20:20:22:20:25:22:22:23:23:22:22:22:0:0:0:3:0:6:0:0:0:1:1:1:2:3:2:3:4:10:3:3:2:3:3:3:25:0:0:0:5:6:0:1:2:2:2:2:2:2:2:2:2:3:2:2:2:2:2:2:2:2:2:2:2:3:2:2:2:2:2:2:3:3:0:1:3:4:4:5:0:1:6:0:0:3:1:7:2:2:1:5:1:1:2:3:2:2:3:3:1:6:5:5:5:5:6:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:30:1:1:2:3:3:7:7:8:8:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "date": "2026-10-03",
+      "note": "Preserve edited seams for the leading paragraph of a multi-paragraph open clipboard replacement."
+    }
+  ],
+  "generated comment-anchor move sequences preserve marker gaps and refuse tracked transfer atomically": [
+    {
+      "seed": -1354577293,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -933871918,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated move intents rebase the original target and refuse atomically": [
+    {
+      "seed": -1300277500,
+      "path": "0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -253280134,
+      "path": "9",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "rejecting generated run formatting restores authored boundaries inside wrappers and pending review": [
+    {
+      "seed": 1885693896,
+      "path": "0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1458871499,
+      "path": "0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
   ]
 }

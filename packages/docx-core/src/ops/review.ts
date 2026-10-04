@@ -490,12 +490,11 @@ const wrapList = (
                   ? gap.zeroWidthBefore - start.zeroWidthSeen
                   : gap.zeroWidthBefore,
             });
-            const beforeChain = spanningRecords([node], [localGap(state.gaps[0])], 0, 1);
             const afterChain = spanningRecords([node], [localGap(state.gaps[1])], 0, 1);
             const retainedAfter =
               region === 1 && state.kind === WRAP_KINDS.DELETION
                 ? afterChain.flatMap((record, depth) => {
-                    const source = beforeChain.includes(record) ? [] : identitySlots(record);
+                    const source = identitySlots(record);
                     return source.length === 0 ? [] : [{ depth, source, target: source }];
                   })
                 : [];

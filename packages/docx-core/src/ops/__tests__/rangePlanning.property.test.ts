@@ -358,10 +358,15 @@ test("cross-paragraph deletion and replacement plans satisfy generated review la
       ).toStrictEqual(deletion);
       const sourceIds = new Set(paragraphs.map(({ paraId }) => paraId));
       expectLaws({ document, ops: deletion.value, direct: directDeletion(identified), sourceIds });
-      const replaced = planTrackedReplace(document, { ...options, replacement });
+      const replacementOptions = {
+        ...options,
+        replacement,
+        sourceContainerPolicy: "join",
+      } as const;
+      const replaced = planTrackedReplace(document, replacementOptions);
       if (replaced.isErr()) throw replaced.error;
       expect(
-        planTrackedReplace(structuredClone(document), structuredClone({ ...options, replacement })),
+        planTrackedReplace(structuredClone(document), structuredClone(replacementOptions)),
       ).toStrictEqual(replaced);
       expectLaws({
         document,

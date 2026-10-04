@@ -153,6 +153,7 @@ describe("failure reporting", () => {
       fixture,
       `import { test } from "bun:test";
 import fc from "fast-check";
+import ts from "typescript";
 import { assertProperty } from "../property-testing";
 test("nightly replay fixture", () => {
   assertProperty(fc.property(fc.constant(false), (value) => value), { seed: 33, numRuns: 1 });
