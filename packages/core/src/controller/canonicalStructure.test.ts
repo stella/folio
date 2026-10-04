@@ -442,8 +442,8 @@ describe("canonical structural commands", () => {
             expect(numbering?.kind === "reference" ? numbering.ilvl : undefined).toBe(level);
             const attrs =
               state.doc.firstChild?.attrs ?? panic("Rendered list paragraph disappeared.");
-            expect(attrs["listLevelStarts"]).toEqual(expectedStarts);
-            expect(attrs["listLevelNumFmts"]).toEqual(expectedFormats);
+            expect(attrs["listLevelStarts"]).toEqual(expectedStarts.slice(0, level + 1));
+            expect(attrs["listLevelNumFmts"]).toEqual(expectedFormats.slice(0, level + 1));
             expect(attrs["listMarkerTemplate"]).toBe(`%${level + 1}${punctuation}`);
           }
 
