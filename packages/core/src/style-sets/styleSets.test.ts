@@ -245,9 +245,9 @@ describe("document style sets", () => {
       createStyleResolver(document.package.styles).resolveParagraphStyle(undefined),
     );
     phase("serializing extracted style set");
-    await expect(createDocx(createEmptyDocument({ styleSet: extracted }))).resolves.toBeInstanceOf(
-      ArrayBuffer,
-    );
+    const saved = await createDocx(createEmptyDocument({ styleSet: extracted }));
+    phase("serialized extracted style set");
+    expect(saved).toBeInstanceOf(ArrayBuffer);
     phase("complete");
   });
 
