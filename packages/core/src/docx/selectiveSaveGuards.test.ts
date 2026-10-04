@@ -214,7 +214,7 @@ describe("fallback contract", () => {
         {
           type: "hyperlink",
           href: "https://example.com",
-          content: [{ type: "run", content: [{ type: "text", text: "link" }] }],
+          children: [{ type: "run", content: [{ type: "text", text: "link" }] }],
         },
       ],
     });

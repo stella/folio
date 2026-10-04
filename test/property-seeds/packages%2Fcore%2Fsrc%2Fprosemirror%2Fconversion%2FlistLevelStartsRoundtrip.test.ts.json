@@ -1,0 +1,10 @@
+{
+  "definition matching excludes generated paragraph counter and folded-field metadata": [
+    {
+      "seed": 1870906312,
+      "path": "8:0:0",
+      "date": "2026-10-04",
+      "note": "Absent paragraph-local fields must retain cleared attributes in cached list projections."
+    }
+  ]
+}

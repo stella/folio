@@ -15,6 +15,7 @@ export const OPERATION_LAW_DISPOSITIONS = {
   createNumberingInstance: "holds",
   deleteNumberingInstance: "holds",
   setSectionEndpoint: "holds",
+  setPackageResources: "holds",
   removeHeaderFooter: "holds",
   addNote: "holds",
   removeNote: "holds",

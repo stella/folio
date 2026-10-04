@@ -135,7 +135,7 @@ test.each(["body", "cell"] as const)(
           tail: { content: [run("last new")], openStart: 0, openEnd: 0 },
         },
       } satisfies PlanTrackedReplaceOptions;
-      const planned = planTrackedReplace(document, options);
+      const planned = planTrackedReplace(document, { ...options, sourceContainerPolicy: "join" });
       if (planned.isErr()) throw planned.error;
       const tracked = apply(document, planned.value);
       const accepted = resolve(tracked, REVISION_DECISIONS.ACCEPT);
