@@ -2594,6 +2594,64 @@
       "fingerprint": "ae64d24bcde21275",
       "issueOrPr": "#1415",
       "firstSeen": "2026-10-03"
+    },
+    {
+      "fingerprint": "ef7715a0e2fbe84d",
+      "issueOrPr": "#1518",
+      "firstSeen": "2026-10-04",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1518,
+        "primary": "51aa440b2cbd71f7",
+        "title": "consumer flow tables / tracked-changes: clearing the style of a block merged with the next keeps the heading style",
+        "reportSeed": 1492412849,
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "tables",
+          "mode": "tracked-changes",
+          "seed": 1492412849,
+          "steps": [
+            {
+              "action": "core batch",
+              "seed": 2500319401,
+              "operations": [
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "412DDC7F",
+                  "separator": " "
+                },
+                {
+                  "type": "setBlockParagraphProperties",
+                  "blockId": "412DDC7F",
+                  "properties": {
+                    "styleId": null
+                  }
+                }
+              ]
+            }
+          ],
+          "swarm": [
+            "replaceRange",
+            "insertAfterBlock",
+            "replaceBlock",
+            "deleteBlock",
+            "mergeBlockWithNext",
+            "setBlockParagraphProperties",
+            "insertTableRow",
+            "deleteTableRow",
+            "insertTableColumn",
+            "deleteTable"
+          ],
+          "origin": "shrunk from random flow seed 1492412849"
+        }
+      }
+    },
+    {
+      "fingerprint": "51aa440b2cbd71f7",
+      "issueOrPr": "#1518",
+      "firstSeen": "2026-10-04"
     }
   ]
 }

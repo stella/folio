@@ -298,6 +298,8 @@ const withoutNoteTrailer = (markdown: string): string => {
   return body;
 };
 
+const isListTextToken = ({ type }: Token) => type === "text" || type === "paragraph";
+
 /**
  * `docxToMarkdown` → views, matched against the texts the content reader
  * reports (a Markdown line carries no block boundary of its own). Pipe-table
@@ -382,7 +384,7 @@ export const markdownViews = (
             throw new Error("Ordered Markdown list item has no rendered number");
           }
           const number = token.ordered ? marker : BULLET;
-          if (!item.tokens.some((child) => child.type === "text" || child.type === "paragraph")) {
+          if (!item.tokens.some(isListTextToken)) {
             appendParagraphs("", { kind: "listItem", ...(number === undefined ? {} : { number }) });
           }
           for (const child of item.tokens) {
