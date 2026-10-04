@@ -57,13 +57,15 @@ type PackageMap<Stored> = {
   entries: ReadonlyMap<string, Stored>;
 };
 
+const presenceOf = (present: boolean, map: unknown): PackageResourcePresence => {
+  if (!present) return "omitted";
+  return map === undefined ? "undefined" : "present";
+};
+
 const packageMapOf = <Stored>(
   present: boolean,
   map: ReadonlyMap<string, Stored> | undefined,
-): PackageMap<Stored> => ({
-  presence: !present ? "omitted" : map === undefined ? "undefined" : "present",
-  entries: map ?? new Map(),
-});
+): PackageMap<Stored> => ({ presence: presenceOf(present, map), entries: map ?? new Map() });
 
 const relationshipsOf = ({ package: pkg }: Document) =>
   packageMapOf(Object.hasOwn(pkg, "relationships"), pkg.relationships);

@@ -11,7 +11,7 @@ import { applyDocumentOp } from "../../packages/docx-core/src/ops/apply";
 import { storyBody, storyParagraphs } from "../../packages/docx-core/src/ops/blocks";
 import { normalizeForOps } from "../../packages/docx-core/src/ops/contract";
 import { paragraphIdsIn } from "../../packages/docx-core/src/ops/ids";
-import { packageResourcesOf } from "../../packages/docx-core/src/ops/packageResources";
+import { packageResourcesOpOf } from "../../packages/docx-core/src/ops/packageResources";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -536,28 +536,31 @@ export const PACKAGE_OP_CASES = {
   deleteNumberingInstance: (args: CaseArgs): GeneratedCase =>
     inverseCase(args, numberingCreation(args), "deleteNumberingInstance"),
   setPackageResources: (args: CaseArgs): GeneratedCase => {
-    const expected = packageResourcesOf(args.document);
-    const styles = expected.styles.type === "present" ? expected.styles.value : { styles: [] };
-    return {
-      document: args.document,
-      op: {
-        type: "setPackageResources",
-        expected,
-        resources: {
-          ...expected,
-          styles: {
-            type: "present",
-            value: {
-              ...styles,
-              styles: [
-                ...styles.styles,
-                { styleId: "GeneratedPackageStyle", type: "paragraph", name: args.seed.text },
-              ],
-            },
-          },
+    const pkg = args.document.package;
+    const styles = pkg.styles ?? { styles: [] };
+    const relationships = new Map(pkg.relationships);
+    relationships.set("rIdGeneratedPackage", {
+      id: "rIdGeneratedPackage",
+      type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+      target: `https://example.com/${args.seed.first}`,
+      targetMode: "External",
+    });
+    const after: Document = {
+      ...args.document,
+      package: {
+        ...pkg,
+        styles: {
+          ...styles,
+          styles: [
+            ...styles.styles,
+            { styleId: "GeneratedPackageStyle", type: "paragraph", name: args.seed.text },
+          ],
         },
+        relationships,
       },
     };
+    // Built by the producer so the generated op always has the shape apply expects.
+    return { document: args.document, op: packageResourcesOpOf({ before: args.document, after }) };
   },
   setSectionEndpoint: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
