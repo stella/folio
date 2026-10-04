@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 1492413172,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 476930320,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "A second-level heading.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "A new bullet.",
+          "numbering": {
+            "start": "new",
+            "kind": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "mistake",
+      "seed": 1924848951
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "deleteTableRow"
+  ],
+  "origin": "shrunk from collisions flow seed 1492413172",
+  "title": "Interrupted bullet list after tracked edits"
+}

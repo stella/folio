@@ -8,6 +8,7 @@ import { documentShape } from "../../packages/core/src/__tests__/documentShapes"
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
 import {
   BROWSER_SHAPE_TARGETS,
+  BROWSER_INPUT_ACTION_DISPOSITIONS,
   BROWSER_TRACE_FIXED_SEEDS,
   browserImeActionArbitrary,
   browserInputTraceArbitrary,
@@ -29,6 +30,14 @@ test("browser traces replay deterministically and exercise the declared shapes a
   const kinds = new Set(traces.flatMap(({ actions }) => actions.map(({ kind }) => kind)));
   for (const kind of [...SUGGESTION_INPUT_KINDS, "undo", "redo", "historyBurst", "selectionDrag"]) {
     expect(kinds.has(kind)).toBe(true);
+  }
+  expect([...kinds].sort()).toEqual(Object.keys(BROWSER_INPUT_ACTION_DISPOSITIONS).sort());
+  for (const action of traces.flatMap(({ actions }) => actions)) {
+    if (action.kind === "undo" || action.kind === "redo" || action.kind === "historyBurst")
+      expect(BROWSER_INPUT_ACTION_DISPOSITIONS[action.kind]).toBe("history");
+    else if (action.kind === "selectionDrag")
+      expect(BROWSER_INPUT_ACTION_DISPOSITIONS[action.kind]).toBe("selection");
+    else expect(BROWSER_INPUT_ACTION_DISPOSITIONS[action.kind]).toBe("edit");
   }
   const targetFeatures = {
     table: "table",

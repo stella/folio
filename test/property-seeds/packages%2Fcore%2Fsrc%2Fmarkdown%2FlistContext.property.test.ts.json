@@ -1,0 +1,10 @@
+{
+  "orphan list levels never inherit absent or interrupted Markdown ancestors": [
+    {
+      "seed": 1580126975,
+      "path": "0",
+      "date": "2026-10-04",
+      "note": "Skipped OOXML levels and interrupted list ancestry must not turn list items into indented code."
+    }
+  ]
+}

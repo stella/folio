@@ -29,6 +29,26 @@ export type BrowserInputAction =
   | { kind: "historyBurst"; keys: ("undo" | "redo")[] }
   | { kind: "selectionDrag"; target: BrowserDragTarget };
 
+export const BROWSER_INPUT_ACTION_DISPOSITIONS = {
+  typing: "edit",
+  enter: "edit",
+  backspace: "edit",
+  delete: "edit",
+  pastePlain: "edit",
+  pasteHtml: "edit",
+  pasteWordHtml: "edit",
+  pasteListHtml: "edit",
+  pasteTable: "edit",
+  pasteMultiBlock: "edit",
+  imeReplacement: "edit",
+  cut: "edit",
+  dragCellDelete: "edit",
+  undo: "history",
+  redo: "history",
+  historyBurst: "history",
+  selectionDrag: "selection",
+} as const satisfies Record<BrowserInputAction["kind"], "edit" | "history" | "selection">;
+
 export type BrowserInputTrace = {
   shape: keyof typeof BROWSER_SHAPE_TARGETS;
   actions: BrowserInputAction[];

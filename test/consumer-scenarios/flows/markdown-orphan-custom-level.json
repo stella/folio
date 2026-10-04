@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "direct",
+  "seed": 1492413222,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2052731395,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Supplier notice delivery.",
+          "numbering": {
+            "numId": 5,
+            "level": 1
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "commentOnRange",
+    "insertAfterBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from collisions flow seed 1492413222",
+  "title": "Custom numbered item after numbered headings"
+}

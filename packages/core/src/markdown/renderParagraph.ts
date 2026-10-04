@@ -56,6 +56,7 @@ export function renderParagraphBlock(
 
   const headingLevel = markdownHeadingLevel(ctx, para);
   if (headingLevel !== undefined) {
+    ctx.listIndentWidths = [];
     // A numbered heading (`1. Scope`, through its style's `w:numPr` or its
     // own) keeps its number; a bulleted one its glyph, as a heading has no
     // Markdown bullet syntax to borrow.
@@ -73,6 +74,8 @@ export function renderParagraphBlock(
   if (para.listRendering && label !== undefined) {
     return { markdown: renderListItem(ctx, para.listRendering, label, inline), isListItem: true };
   }
+
+  ctx.listIndentWidths = [];
 
   if (isQuoteStyle(styleId, ctx.builtInStyles)) {
     return {
@@ -128,23 +131,13 @@ function escapeLeadingBlockMarker(text: string): string {
 }
 
 /**
- * A markdown list marker's width when no ancestor at that level has rendered
- * yet (e.g. a DOCX paragraph numbered at a level its list skipped over). Two
- * spaces is the old fixed-indent behaviour, kept as a fallback rather than a
- * guess of zero.
- */
-const DEFAULT_LIST_INDENT_WIDTH = 2;
-
-/**
- * The indent a level's item needs: the combined marker width of every
- * shallower level's most recently rendered item (see
- * `RenderContext.listIndentWidths`), so a child sits inside its parent's
- * content column per CommonMark's list-nesting rule, not a fixed guess.
+ * Only emitted Markdown ancestors contribute columns. OOXML levels may skip
+ * ancestors or resume after prose; inventing those columns creates code blocks.
  */
 function listIndentWidth(ctx: RenderContext, level: number): number {
   let width = 0;
   for (let ancestor = 0; ancestor < level; ancestor++) {
-    width += ctx.listIndentWidths[ancestor] ?? DEFAULT_LIST_INDENT_WIDTH;
+    width += ctx.listIndentWidths[ancestor] ?? 0;
   }
   return width;
 }
@@ -167,8 +160,12 @@ function renderListItem(
   label: string,
   inline: string,
 ): string {
+  // Custom Word labels are paragraph text in CommonMark, not nesting parents.
+  const nativeMarker = list.isBullet || /^\d{1,9}[.)]$/u.test(label);
+  if (!nativeMarker) ctx.listIndentWidths = [];
+  ctx.listIndentWidths.length = list.level;
   const indent = " ".repeat(listIndentWidth(ctx, list.level));
   const marker = list.isBullet ? "- " : `${label} `;
-  ctx.listIndentWidths[list.level] = marker.length;
+  if (nativeMarker) ctx.listIndentWidths[list.level] = marker.length;
   return `${indent}${marker}${inline}`.trimEnd();
 }

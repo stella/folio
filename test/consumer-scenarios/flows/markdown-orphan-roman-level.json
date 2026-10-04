@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 1492412551,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1108765369,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": {
+            "numbering": {
+              "start": "new",
+              "kind": "bullet"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "mistake",
+      "seed": 3948237734
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "insertAfterBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from random flow seed 1492412551",
+  "title": "Interrupted Roman list after tracked edits"
+}

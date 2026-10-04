@@ -111,7 +111,7 @@ const matchNoteReferences = (line: string, text: string): string => {
     : line;
 };
 
-const LIST_MARKER = /^(?<marker>\S+)\s+$/u;
+const LIST_MARKER = /^[ \t]*(?<marker>\S+)[ \t]+$/u;
 const HTML_CELL_INLINE_TAGS = new Set([
   "a",
   "strong",
@@ -332,7 +332,7 @@ export const markdownViews = (
       const expected = nextExpected();
       let boundary: number | undefined;
       if (expected.kind === "listItem" && expectedViews.at(cursor)?.kind === "listItem") {
-        for (const marker of remaining.matchAll(/\n(?=\S+?[.)](?:[ \t]+|\n|$))/gu)) {
+        for (const marker of remaining.matchAll(/\n(?=[ \t]*\S+?[.)](?:[ \t]+|\n|$))/gu)) {
           const candidate = suffixView(remaining.slice(0, marker.index), expected, kind);
           if (candidate.kind === "listItem" && candidate.text === expected.text) {
             boundary = marker.index;
