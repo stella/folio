@@ -13,6 +13,7 @@ import {
   normalizeForOps,
   OP_STORIES,
   packageParagraphIds,
+  paragraphLogicalText,
   validateOpsDocument,
   createEditorIntentIdAllocator,
   findStoryBody,
@@ -65,6 +66,7 @@ const operationChangesPackage = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+    case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
@@ -87,6 +89,7 @@ const operationChangesBodyProjection = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+    case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
@@ -267,41 +270,40 @@ const preservePropertySources = ({
   copyDocumentParagraphPropertySourceContract(target, source);
 };
 
-const supportsTextContent = (content: Paragraph["content"]): boolean =>
-  content.every((item) => {
-    switch (item.type) {
-      case "run":
-        return item.content.every(
-          (child) =>
-            (child.type === "text" &&
-              !hasIllegalXmlCharacters(child.text) &&
-              !/[\t\r\n]/u.test(child.text)) ||
-            child.type === "noteMarker" ||
-            child.type === "footnoteRef" ||
-            child.type === "endnoteRef" ||
-            child.type === "tab" ||
-            child.type === "break",
-        );
-      case "insertion":
-      case "deletion":
-        return (
-          !(
-            item.resolutionJoins !== undefined &&
-            item.content.some((child) => child.type === "hyperlink")
-          ) && supportsTextContent(item.content)
-        );
-      case "hyperlink":
-        return supportsTextContent(item.children);
-      case "bookmarkStart":
-      case "bookmarkEnd":
-        return true;
-      default:
-        return false;
-    }
-  });
+const supportsTextContent = (content: Paragraph["content"]): boolean => {
+  const valid = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null) return true;
+    if (Array.isArray(value)) return value.every(valid);
+    if (
+      "type" in value &&
+      (value.type === "insertion" || value.type === "deletion") &&
+      "resolutionJoins" in value &&
+      value.resolutionJoins !== undefined &&
+      "content" in value &&
+      Array.isArray(value.content) &&
+      value.content.some(
+        (child: unknown) =>
+          typeof child === "object" &&
+          child !== null &&
+          "type" in child &&
+          child.type === "hyperlink",
+      )
+    )
+      return false;
+    if ("type" in value && value.type === "renderedPageBreak") return false;
+    if (
+      "type" in value &&
+      value.type === "text" &&
+      "text" in value &&
+      typeof value.text === "string"
+    )
+      return !hasIllegalXmlCharacters(value.text) && !/[\t\r\n]/u.test(value.text);
+    return Object.values(value).every(valid);
+  };
+  return content.every(valid);
+};
 
 const supportsSeed = (document: Document, stories = documentStories(document)): boolean => {
-  if ((document.package.document.comments?.length ?? 0) > 0) return false;
   return stories.every((story) => {
     const body = findStoryBody(document, story);
     if (story !== OP_STORIES.MAIN && (story.kind === "footnote" || story.kind === "endnote")) {
@@ -337,8 +339,11 @@ const project = ({
 }: ProjectStoryOptions): Result<CanonicalProjection, CanonicalSessionError> => {
   const body = findStoryBody(document, story);
   if (!body) return refuse("The canonical story no longer exists.");
+  const currentStyles = Object.hasOwn(document.package, "styles")
+    ? document.package.styles
+    : styles;
   const options = {
-    ...(styles == null ? {} : { styles }),
+    ...(currentStyles == null ? {} : { styles: currentStyles }),
     ...(document.package.theme === undefined ? {} : { theme: document.package.theme }),
   };
   const converted = Result.try({
@@ -392,11 +397,38 @@ const project = ({
           appendContent(run.children, "all");
           continue;
         }
-        if (run.type === "insertion" || run.type === "deletion") {
+        if (
+          run.type === "insertion" ||
+          run.type === "deletion" ||
+          run.type === "moveFrom" ||
+          run.type === "moveTo" ||
+          run.type === "inlineSdt" ||
+          run.type === "inlineWrapper"
+        ) {
           appendContent(run.content, "all");
           continue;
         }
-        if (run.type !== "run") panic("Canonical projection encountered unsupported content");
+        if (
+          run.type === "commentRangeStart" ||
+          run.type === "commentRangeEnd" ||
+          run.type === "moveFromRangeStart" ||
+          run.type === "moveFromRangeEnd" ||
+          run.type === "moveToRangeStart" ||
+          run.type === "moveToRangeEnd"
+        ) {
+          const gaps = boundaries.at(-1) ?? panic("Missing canonical range gap");
+          gaps.push(renderedSize);
+          continue;
+        }
+        if (run.type !== "run") {
+          const atom = node.nodeAt(renderedSize);
+          if (!atom?.isAtom) panic("Canonical source atom lost its projection");
+          text += "\uFFFC";
+          renderedText += atom.textContent;
+          renderedSize += atom.nodeSize;
+          boundaries.push([renderedSize]);
+          continue;
+        }
         for (const child of run.content) {
           if (child.type === "text") {
             for (const unit of child.text.split("")) {
@@ -418,6 +450,13 @@ const project = ({
             renderedSize += 1;
             const gaps = boundaries.at(-1) ?? panic("Missing canonical note gap");
             gaps.push(renderedSize);
+          } else {
+            const atom = node.nodeAt(renderedSize);
+            if (!atom?.isAtom) panic("Canonical run atom lost its projection");
+            text += "\uFFFC";
+            renderedText += atom.textContent;
+            renderedSize += atom.nodeSize;
+            boundaries.push([renderedSize]);
           }
         }
       }
@@ -426,6 +465,7 @@ const project = ({
     if (
       node.type.name !== "paragraph" ||
       node.attrs["paraId"] !== source.paraId ||
+      text !== paragraphLogicalText(source) ||
       node.textContent !== renderedText ||
       node.content.size !== renderedSize
     ) {
@@ -450,6 +490,8 @@ const intentStory = (intent: EditorIntent): OpStory => {
     case "setHyperlink":
     case "removeHyperlink":
     case "insertHyperlink":
+    case "replaceFragment":
+    case "moveFragment":
     case "replaceText":
     case "formatRun":
     case "insertAtom":
@@ -633,6 +675,7 @@ type JournalledOpsOptions = {
   ops: readonly DocumentOp[];
   postSelection: CanonicalSelection;
   stagedApplied?: AppliedDocumentOp;
+  semantic?: CanonicalInputSemantic;
 };
 
 type CanonicalSessionSeedOptions = {
@@ -757,6 +800,9 @@ class CanonicalSession {
       case "setHyperlink":
       case "removeHyperlink":
       case "insertHyperlink":
+      case "replaceFragment":
+      case "moveFragment":
+        return true;
       case "replaceText":
       case "insertAtom":
       case "formatRun":
@@ -960,12 +1006,20 @@ class CanonicalSession {
     state: EditorState,
     intent: EditorIntent,
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    return this.prepareIntents(state, [intent]);
+    return this.prepareIntents(state, { intents: [intent] });
   }
 
   prepareIntents(
     state: EditorState,
-    intents: readonly EditorIntent[],
+    {
+      intents,
+      resourceOps = [],
+      semantic = "structure",
+    }: {
+      intents: readonly EditorIntent[];
+      resourceOps?: readonly DocumentOp[];
+      semantic?: CanonicalInputSemantic;
+    },
   ): Result<CanonicalCommit, CanonicalSessionError> {
     const first = intents.at(0);
     if (first === undefined) return noChange("The intent batch is empty.");
@@ -980,8 +1034,14 @@ class CanonicalSession {
     if (preSelection.isErr()) return preSelection;
     let document = this.currentDocument;
     let postSelection = preSelection.value;
-    const ops: DocumentOp[] = [];
+    const ops: DocumentOp[] = [...resourceOps];
     const edits: AppliedDocumentOp[] = [];
+    if (resourceOps.length > 0) {
+      const imported = applyDocumentOps(document, resourceOps);
+      if (imported.isErr()) return refuse(imported.error.message);
+      document = imported.value.document;
+      edits.push(imported.value);
+    }
     for (const intent of intents) {
       if (
         this.mode.type === "suggesting" &&
@@ -1000,6 +1060,7 @@ class CanonicalSession {
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
+        firstBlockId: this.nextBlockId,
       });
       if (compiled.isErr()) return refuse(compiled.error.message);
       const applied = applyDocumentOps(document, compiled.value.ops);
@@ -1021,7 +1082,7 @@ class CanonicalSession {
       ...combineEdits(this.currentDocument, edits),
       revisions: edits.flatMap(({ revisions }) => revisions),
     };
-    return this.prepareJournalledOps({ state, ops, postSelection, stagedApplied });
+    return this.prepareJournalledOps({ state, ops, postSelection, stagedApplied, semantic });
   }
 
   prepareOps(
@@ -1037,6 +1098,7 @@ class CanonicalSession {
     ops,
     postSelection,
     stagedApplied,
+    semantic = "structure",
   }: JournalledOpsOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const story = postSelection.anchor.story;
     const projected = this.projectStory(story);
@@ -1064,7 +1126,7 @@ class CanonicalSession {
           postDocument: this.currentDocument,
           version,
           origin: "input",
-          semantic: "structure",
+          semantic,
           grouping: "isolated",
           time: Date.now(),
           boundary: this.groupingBoundary,
@@ -1112,7 +1174,7 @@ class CanonicalSession {
         at: { ...from.value, offset: 0 },
         patch: { styleId: nextStyle },
       });
-    return this.prepareIntents(state, intents);
+    return this.prepareIntents(state, { intents });
   }
 
   prepareJoin(

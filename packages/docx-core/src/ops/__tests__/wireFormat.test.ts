@@ -7,7 +7,7 @@
  * record an operation embeds, shows up here as a diff of the fixture; it
  * needs a new schema version and a migration, not an updated released fixture.
  * The fixture for an unreleased schema records that cutover's final contract;
- * schema 8 includes table editing variants in the current operation contract.
+ * schema 9 adds clipboard package resources over schema 8's semantic table edits.
  *
  * `bun packages/docx-core/src/ops/__tests__/wireFixtures.ts` generates the current fixture.
  */
@@ -179,12 +179,12 @@ test("older envelopes are refused structurally and current envelopes apply", asy
     text: "x",
     runProps: "inherit",
   } as const;
-  // Older operation schemas are refused after the schema-8 cutover.
+  // Schema 8 adds semantic table edits; schema 9 adds clipboard package resources.
   const older: unknown = await Bun.file(
     new URL("./__fixtures__/ops-v4.json", import.meta.url),
   ).json();
   expect(Array.isArray(older)).toBe(true);
-  for (const schema of [1, 2, 3, 4, 5, 6, 7, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [1, 2, 3, 4, 5, 6, 7, 8, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
     const refused = applyDocumentOpEnvelope(document, { schema, op });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
@@ -198,4 +198,30 @@ test("older envelopes are refused structurally and current envelopes apply", asy
   expect(paragraph?.type).toBe("paragraph");
   if (paragraph?.type === "paragraph") expect(paragraphLogicalText(paragraph)).toBe("x");
   expect(current.inverse.length).toBe(1);
+});
+
+test("clipboard package resources remain pinned in the schema-9 wire contract", () => {
+  const resources = envelopes().filter(
+    ({ op }) => op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
+  );
+  expect(resources.length).toBeGreaterThan(0);
+  const clipboard = resources.find(
+    ({ op }) => op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES && op.media.entries.length > 0,
+  );
+  expect(clipboard).toBeDefined();
+  if (clipboard?.op.type !== DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES) return;
+  expect(clipboard.op.media).toMatchObject({
+    expected: "omitted",
+    next: "present",
+    entries: [
+      {
+        key: "word/media/clipboard.png",
+        expected: { type: "absent" },
+        next: {
+          type: "present",
+          value: expect.objectContaining({ mimeType: "image/png", data: [137, 80, 78, 71] }),
+        },
+      },
+    ],
+  });
 });
