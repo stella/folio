@@ -705,6 +705,8 @@ class CanonicalSession {
   private intentNeedsIdentityIds(document: Document, intent: EditorIntent): boolean {
     let blockIds: readonly string[];
     switch (intent.type) {
+      case "table":
+        return true;
       case "setList":
       case "formatParagraph":
         return false;
