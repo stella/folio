@@ -24,6 +24,7 @@ import { isUnsafePackagePath } from "./packageParts";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import {
   hasUnmaterializedInlineResources,
+  hasUnmaterializedHyperlinkBindings,
   applyUpdatesToZip,
   findMaxRId,
   updateCoreProperties,
@@ -427,6 +428,7 @@ export async function attemptSelectiveSave(
   try {
     const JSZip = (await import("jszip")).default;
     const zip = await JSZip.loadAsync(originalBuffer);
+    if (await hasUnmaterializedHyperlinkBindings(doc, zip)) return null;
 
     // The selective path overlays a handful of parts on top of the ORIGINAL
     // zip and re-emits everything else verbatim, which is what the document's

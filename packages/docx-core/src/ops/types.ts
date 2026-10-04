@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 8: text, formatting and review edits on
+ * Document operations, schema version 9: text, formatting and review edits on
  * independently addressed document stories, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -50,6 +50,7 @@ import type {
   DocumentSettings,
   Section,
 } from "../model/document";
+import type { StyleDefinitions, Relationship, MediaFile } from "../model/styles";
 import type { AbstractNumbering, NumberingDefinitions, NumberingInstance } from "../model/lists";
 
 /** JSON-safe map presence, including an explicitly undefined section map. */
@@ -79,6 +80,7 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 9 adds exact, JSON-safe package resource replacement for clipboard imports.
  * Version 8 adds semantic table edits and exact whole-table restoration.
  * Version 7 adds lossless own-undefined operation snapshot presence and
  * explicit revision-boundary provenance. An explicit undefined patch value now
@@ -100,7 +102,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 8;
+export const DOCUMENT_OP_SCHEMA_VERSION = 9;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -225,7 +227,7 @@ export const SECTION_BOUNDARY_POLICIES = Object.freeze({
   REPLACE: "replace",
 } as const);
 
-/** The operation kinds of schema version 8. */
+/** The operation kinds of schema version 9. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
   CREATE_HEADER_FOOTER: "createHeaderFooter",
   REMOVE_HEADER_FOOTER: "removeHeaderFooter",
@@ -266,6 +268,7 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
   CREATE_NUMBERING_INSTANCE: "createNumberingInstance",
   DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance",
   SET_SECTION_ENDPOINT: "setSectionEndpoint",
+  SET_PACKAGE_RESOURCES: "setPackageResources",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -748,6 +751,47 @@ export type DeleteNumberingInstanceOp = {
   restore?: NumberingPartState;
 };
 
+/** Presence is explicit so inverses restore omitted and undefined package fields exactly. */
+export type PackageResourcePart<Value> =
+  | { type: "omitted" }
+  | { type: "undefined" }
+  | { type: "present"; value: Value };
+
+/** JSON-safe media bytes, rather than an ArrayBuffer that JSON discards. */
+export type PackageResourceMedia = Omit<MediaFile, "data"> & { data: readonly number[] };
+
+/** Package definitions captured before and after an explicit clipboard import. */
+export type PackageResources = {
+  styles: PackageResourcePart<StyleDefinitions>;
+  numbering: PackageResourcePart<NumberingDefinitions>;
+};
+
+export type PackageResourcePresence = PackageResourcePart<unknown>["type"];
+
+export type PackageResourceEntry<Value> = { type: "absent" } | { type: "present"; value: Value };
+
+export type PackageResourceEntryChange<Value> = {
+  key: string;
+  expected: PackageResourceEntry<Value>;
+  next: PackageResourceEntry<Value>;
+};
+
+/** Keyed changes to a package map; entries the operation leaves alone are not carried. */
+export type PackageResourceMapChange<Value> = {
+  expected: PackageResourcePresence;
+  next: PackageResourcePresence;
+  entries: readonly PackageResourceEntryChange<Value>[];
+};
+
+/** Replace merged definitions and change keyed package entries, refusing stale package data. */
+export type SetPackageResourcesOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
+  expected: PackageResources;
+  resources: PackageResources;
+  relationships: PackageResourceMapChange<Relationship>;
+  media: PackageResourceMapChange<PackageResourceMedia>;
+};
+
 /** A section endpoint is either a paragraph's sectPr or the body's final sectPr. */
 export type SectionEndpoint = { type: "paragraph"; blockId: string } | { type: "final" };
 export type SectionPropertiesState =
@@ -939,7 +983,7 @@ export type TableIntentOperation = {
   >;
 }[TableEditOp["type"]];
 
-/** A schema-version-8 document operation. */
+/** A schema-version-9 document operation. */
 export type DocumentOp = (
   | CreateHeaderFooterOp
   | RemoveHeaderFooterOp
@@ -973,6 +1017,7 @@ export type DocumentOp = (
   | CreateNumberingInstanceOp
   | DeleteNumberingInstanceOp
   | SetSectionEndpointOp
+  | SetPackageResourcesOp
 ) & {
   /** Own undefined fields recorded by the operation capture boundary. */
   undefinedFields?: readonly (readonly string[])[];

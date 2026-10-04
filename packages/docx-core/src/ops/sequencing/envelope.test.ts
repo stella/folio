@@ -68,7 +68,7 @@ test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", 
 });
 
 test("unknown envelopes refuse invalid identities, revisions, schemas and keys", () => {
-  for (const schema of [1, 2, 3, 4, 5, 6, 7, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [1, 2, 3, 4, 5, 6, 7, 8, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
     const refused = validateDocumentBatch({ ...fixture, schema });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
@@ -376,7 +376,7 @@ test("sequencing refuses unsupported property-review and section-boundary payloa
 });
 
 test("older batch schemas and persisted batches are refused structurally", async () => {
-  for (const schema of [1, 2, 3, 4, 5, 6, 7]) {
+  for (const schema of [1, 2, 3, 4, 5, 6, 7, 8]) {
     const source = { ...fixture, schema };
     const snapshot = structuredClone(source);
     const result = validateDocumentBatch(source);
