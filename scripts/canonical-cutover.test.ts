@@ -74,6 +74,51 @@ describe("canonical cutover guard", () => {
     );
   });
 
+  test("namespace-qualified guards count branches and resolve their ledger ids", () => {
+    assertProperty(
+      fc.property(
+        fc.constantFrom(...Object.entries(CANONICAL_GAP)),
+        fc.constantFrom("caps", "canonical", "ledger1"),
+        fc.boolean(),
+        fc.boolean(),
+        ([key, gap], namespace, bracketGuard, bracketGap) => {
+          const call = bracketGuard
+            ? `${namespace}["usesCanonicalSession"]`
+            : `${namespace}.usesCanonicalSession`;
+          const tag = bracketGap
+            ? `${namespace}["CANONICAL_GAP"]["${key}"]`
+            : `${namespace}.CANONICAL_GAP.${key}`;
+          const fixture = source(
+            `import * as ${namespace} from "@stll/folio-core/types/canonicalCapabilities"; if (${call}(experimentalSession, ${tag})) edit();`,
+          );
+          const inspected = inspectCanonicalSources([
+            source(selectors, "packages/react/src/other.tsx"),
+            fixture,
+          ]);
+          expect(inspected.failures).toEqual([]);
+          expect(inspected.branches[fixture.file]).toBe(1);
+          expect(inspected.sites.get(gap)?.has(fixture.file)).toBe(true);
+          expect(
+            checkCanonicalBaseline(inspected.branches, {
+              "packages/react/src/other.tsx": Object.keys(CANONICAL_GAP).length,
+            }),
+          ).toContain(`${fixture.file}: session branches increased from 0 to 1`);
+        },
+      ),
+    );
+    for (const call of [
+      "caps.usesCanonicalSession(experimentalSession)",
+      "caps.usesCanonicalSession(experimentalSession, caps.CANONICAL_GAP.unknown)",
+      "caps.usesCanonicalSession(experimentalSession, 'free-text')",
+      "new caps.CanonicalSessionRefusalError({ message: 'refused' })",
+    ]) {
+      expect(
+        failuresOf(`import * as caps from "@stll/folio-core/types/canonicalCapabilities"; ${call};`)
+          .length,
+      ).toBeGreaterThan(0);
+    }
+  });
+
   test("rejects unknown and missing gate/refusal ids", () => {
     for (const fixture of [
       "usesCanonicalSession(experimentalSession);",
@@ -81,6 +126,7 @@ describe("canonical cutover guard", () => {
       "const alias = experimentalSession; if (alias === 'canonical') refuse();",
       "if (experimentalSession) refuse();",
       "refuseCanonicalModelEdit('free-text');",
+      "handleSessionRefusal('Note story unavailable');",
       "usesCanonicalSession(experimentalSession, 'free-text');",
       "usesCanonicalSession(experimentalSession, CANONICAL_GAP.unknown);",
       "new CanonicalSessionRefusalError({ message: 'refused' });",
