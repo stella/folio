@@ -10,6 +10,7 @@ import {
 import { schema } from "../packages/core/src/prosemirror/schema";
 import { toProseDoc } from "../packages/core/src/prosemirror/conversion/toProseDoc";
 import { createEmptyDocument } from "../packages/core/src/utils/createDocument";
+import { canonicalJson } from "../packages/core/src/utils/canonicalJson";
 import { createDocx } from "../packages/core/src/docx/rezip";
 import { parseDocx } from "../packages/core/src/docx/parser";
 import {
@@ -153,8 +154,10 @@ test(
               preloadFonts: false,
               detectVariables: false,
             });
-            expect(reopened.package.document.content).toEqual(
-              session.document.package.document.content,
+            // A reopened package owns fresh private captures, including for
+            // paragraphs whose properties were authored by the preceding join.
+            expect(canonicalJson(reopened.package.document.content)).toEqual(
+              canonicalJson(session.document.package.document.content),
             );
             const reopenedSession = createCanonicalSession(reopened).unwrap();
             expect(portableProjection(reopenedSession.projection.doc)).toEqual(

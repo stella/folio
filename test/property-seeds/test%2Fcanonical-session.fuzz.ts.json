@@ -2,6 +2,12 @@
   "canonical property flows preserve projection, exact history and saved content": [
     {
       "seed": -347416988,
+      "path": "2:0:0:0:2:3:4:4",
+      "note": "Cross-paragraph typing creates paragraph properties that acquire a private capture only on reopen",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": -347416988,
       "note": "Canonical generated fixtures require paragraph identities before serialization",
       "date": "2026-10-01"
     },
