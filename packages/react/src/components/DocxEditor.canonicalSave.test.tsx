@@ -607,6 +607,25 @@ test.each(CANONICAL_SAVE_SEEDS)(
           }
         }
       });
+      await act(async () => {
+        const captured = api.captureCanonicalSave() ?? panic("Expected save snapshot");
+        const pendingSave = adapter.save({ selective: false });
+        expect(api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
+        expect(api.isCanonicalSaveCurrent(captured.version)).toBe(false);
+        const capturedSave = await pendingSave;
+        if (!capturedSave) panic("Expected captured save during later composition");
+        const capturedBytes = capturedSave;
+        expect(
+          describePackageDifferences(
+            captured.document,
+            await parseDocx(capturedBytes, {
+              preloadFonts: false,
+              detectVariables: false,
+            }),
+          ),
+        ).toEqual({ messages: [], omitted: 0 });
+        expect(api.updateCanonicalInputLifecycle("endComposition")).toBe(true);
+      });
       if (seed % 2 !== 0) {
         expect(errors.length).toBeGreaterThan(0);
         expect(callbackCount).toBeGreaterThan(0);
