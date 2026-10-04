@@ -461,3 +461,26 @@ test("rejects malformed, duplicate and unreferenced note definitions", () => {
     );
   }
 });
+
+test("Markdown custom marker oracle recognizes legal indentation without hiding marker drift", () => {
+  let cases = 0;
+  for (const marker of ["1.2.", "i.", "a)", "(7)"]) {
+    for (let indent = 0; indent <= 3; indent++) {
+      const expected = [
+        { kind: "listItem" as const, text: "First", number: marker },
+        { kind: "listItem" as const, text: "Second", number: marker },
+      ];
+      const prefix = " ".repeat(indent);
+      assert.deepEqual(
+        markdownViews(`${prefix}${marker} First\n${prefix}${marker} Second`, expected),
+        expected,
+      );
+      assert.notDeepEqual(
+        markdownViews(`${prefix}wrong. First\n${prefix}${marker} Second`, expected),
+        expected,
+      );
+      cases++;
+    }
+  }
+  assert.equal(cases, 16);
+});

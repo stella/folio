@@ -167,6 +167,8 @@ export function renderBlocks(
   pkg: DocxPackage | undefined,
   blocks: BlockContent[],
 ): string {
+  const outerListIndentWidths = ctx.listIndentWidths;
+  ctx.listIndentWidths = [];
   const out: string[] = [];
   let prevWasListItem = false;
 
@@ -195,7 +197,9 @@ export function renderBlocks(
         break;
       }
       case "table": {
+        ctx.listIndentWidths = [];
         const md = renderTable(ctx, pkg, block);
+        ctx.listIndentWidths = [];
         if (md) {
           if (out.length) {
             out.push("");
@@ -207,6 +211,7 @@ export function renderBlocks(
       }
       case "blockSdt":
       case "blockCustomXml": {
+        ctx.listIndentWidths = [];
         const nested = renderBlocks(ctx, pkg, block.content);
         if (nested) {
           if (out.length) {
@@ -214,10 +219,13 @@ export function renderBlocks(
           }
           out.push(nested);
         }
+        ctx.listIndentWidths = [];
+        prevWasListItem = false;
         break;
       }
       // Markup folio keeps opaquely, with no text it can claim to render.
-      case "preservedBlock":
+      case "preservedBlock": {
+        const previousLength = out.length;
         if (isAltChunkMarkup(block.xml)) {
           out.push(
             block.readerText === undefined
@@ -229,7 +237,12 @@ export function renderBlocks(
         } else if (isOpaqueNestedRowMarkup(block.xml)) {
           out.push("[Unsupported nested w:tr content]");
         }
+        if (out.length !== previousLength) {
+          ctx.listIndentWidths = [];
+          prevWasListItem = false;
+        }
         break;
+      }
       // A delimiter, with no text to render.
       case "bookmarkStart":
       case "bookmarkEnd":
@@ -241,5 +254,6 @@ export function renderBlocks(
     }
   }
 
+  ctx.listIndentWidths = outerListIndentWidths;
   return out.join("\n");
 }

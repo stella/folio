@@ -149,6 +149,7 @@ function renderGfmRow(ctx: RenderContext, pkg: DocxPackage | undefined, row: Tab
 }
 
 function renderGfmCell(ctx: RenderContext, pkg: DocxPackage | undefined, cell: TableCell): string {
+  ctx.listIndentWidths = [];
   const blocks: string[] = [];
   const renderBlocks = (content: readonly BlockContent[]): void => {
     for (const item of content) {

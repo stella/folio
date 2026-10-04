@@ -213,7 +213,7 @@ describe("toMarkdown — block structure", () => {
     // The heading is its own block: it neither joins nor swallows the blank
     // line around the list that follows it.
     expect(out).toBe(
-      "## 1. Scope\n\n### 1.1. Definitions\n\n  1.2. an item\n  1.3. another\n\n## 2. Payment",
+      "## 1. Scope\n\n### 1.1. Definitions\n\n1.2. an item\n1.3. another\n\n## 2. Payment",
     );
   });
 
