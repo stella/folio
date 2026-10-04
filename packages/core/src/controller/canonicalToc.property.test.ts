@@ -326,9 +326,11 @@ test("TOC after undo never reuses retired paragraph identities", () => {
         }).unwrap().state;
       };
       execute("Contents");
-      const retired = new Set(paragraphs(session.document)
-        .filter((paragraph) => !originalIds.has(paragraph.paraId))
-        .map((paragraph) => paragraph.paraId));
+      const retired = new Set(
+        paragraphs(session.document)
+          .filter((paragraph) => !originalIds.has(paragraph.paraId))
+          .map((paragraph) => paragraph.paraId),
+      );
       state = publishCanonicalProjection({
         session,
         state,
