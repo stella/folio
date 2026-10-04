@@ -221,7 +221,7 @@ export const HyperlinkExtension = createMarkExtension({
                   from: state.selection.from,
                   to: state.selection.to,
                   href: normalizeHyperlinkInput(href),
-                  tooltip: tooltip || undefined,
+                  ...(tooltip ? { tooltip } : {}),
                 },
               ],
       );
@@ -258,17 +258,17 @@ export const HyperlinkExtension = createMarkExtension({
       },
       (state) => {
         const range = removalRange(state);
-        return range
-          ? [
-              {
-                type: "removeHyperlink",
-                ...range,
-                hyperlinkStyleId: getDocumentBuiltInStyles(state).styleIdForBuiltInName(
-                  BUILT_IN_STYLE_NAME.hyperlink,
-                ),
-              },
-            ]
-          : [];
+        if (!range) return [];
+        const hyperlinkStyleId = getDocumentBuiltInStyles(state).styleIdForBuiltInName(
+          BUILT_IN_STYLE_NAME.hyperlink,
+        );
+        return [
+          {
+            type: "removeHyperlink",
+            ...range,
+            ...(hyperlinkStyleId === undefined ? {} : { hyperlinkStyleId }),
+          },
+        ];
       },
     );
 
@@ -293,7 +293,7 @@ export const HyperlinkExtension = createMarkExtension({
             to: state.selection.to,
             text,
             href: normalizeHyperlinkInput(href),
-            tooltip: tooltip || undefined,
+            ...(tooltip ? { tooltip } : {}),
           },
         ],
       );
