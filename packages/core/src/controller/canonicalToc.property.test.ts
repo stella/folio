@@ -301,3 +301,46 @@ test("PAGEREF cache length never changes atom address width", () => {
     { numRuns: 12 },
   );
 });
+
+test("TOC after undo never reuses retired paragraph identities", () => {
+  assertProperty(
+    fc.property(fc.boolean(), fc.integer({ min: 0, max: 8 }), (localized, level) => {
+      const session = createCanonicalSession(fixture(level, localized, 12240)).unwrap();
+      let state = EditorState.create({ schema, doc: session.projection.doc });
+      const at = session.projection
+        .positionAt({ story: "main", blockId: "23456789", offset: 4 })
+        .unwrap();
+      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, at)));
+      const originalIds = new Set(
+        paragraphs(session.document).map((paragraph) => paragraph.paraId),
+      );
+      const execute = (title: string) => {
+        const command = singletonManager.requireCommand("generateTOC")({ title });
+        const intents =
+          getCanonicalCommandIntents(command, state) ?? panic("Missing TOC descriptor");
+        session.breakUndoGroup();
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: prepareCanonicalCommands(session, state, intents).unwrap(),
+        }).unwrap().state;
+      };
+      execute("Contents");
+      const retired = new Set(paragraphs(session.document)
+        .filter((paragraph) => !originalIds.has(paragraph.paraId))
+        .map((paragraph) => paragraph.paraId));
+      state = publishCanonicalProjection({
+        session,
+        state,
+        commit: session.prepareUndo(state).unwrap(),
+      }).unwrap().state;
+      execute("New contents");
+      const fresh = paragraphs(session.document)
+        .filter((paragraph) => !originalIds.has(paragraph.paraId))
+        .map((paragraph) => paragraph.paraId);
+      expect(fresh.some((id) => retired.has(id))).toBe(false);
+      expect(session.canRedo).toBe(false);
+    }),
+    { numRuns: 12 },
+  );
+});

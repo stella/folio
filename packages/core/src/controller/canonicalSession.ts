@@ -757,12 +757,13 @@ class CanonicalSession {
 
   private intentMode(document: Document, intent: EditorIntent): EditorIntentMode {
     if (this.mode.type === "editing" && !this.intentNeedsIdentityIds(document, intent))
-      return { type: "editing" };
+      return { type: "editing", reservedBlockIds: this.allocatedBlockIds };
     const ids = this.allocateIntentIds(document, intent);
     return this.mode.type === "editing"
-      ? { type: "editing", newIds: ids.newIds }
+      ? { type: "editing", newIds: ids.newIds, reservedBlockIds: this.allocatedBlockIds }
       : {
           type: "suggesting",
+          reservedBlockIds: this.allocatedBlockIds,
           revision: {
             id: ids.revisionId,
             author: this.mode.author,

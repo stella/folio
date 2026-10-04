@@ -103,9 +103,13 @@ export type EditorIntent =
   | { type: "joinParagraphs"; story: OpStory; blockId: string; nextBlockId: string };
 
 /** Revision metadata and every fresh identity are supplied before compilation. */
-export type EditorIntentMode =
+export type EditorIntentMode = {
+  /** Identities consumed during this editor lifetime, including undone insertions. */
+  reservedBlockIds?: ReadonlySet<string>;
+} & (
   | { type: "editing"; newIds?: NewIds }
-  | { type: "suggesting"; revision: RevisionStamp; newIds: NewIds };
+  | { type: "suggesting"; revision: RevisionStamp; newIds: NewIds }
+);
 
 type CompileEditorIntentOptions = { intent: EditorIntent; mode: EditorIntentMode };
 type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition };
@@ -570,7 +574,9 @@ export const compileEditorIntent = (
       if (located.isErr()) return Result.err(located.error);
       const demand = tableEditParagraphDemand(located.value, operation);
       if (demand.isErr()) return Result.err(demand.error);
-      const occupied = new Set(packageParagraphIds(document.package).map(idKey));
+      const occupied = new Set(
+        [...packageParagraphIds(document.package), ...(mode.reservedBlockIds ?? [])].map(idKey),
+      );
       const newBlockIds: string[] = [];
       for (let nextId = 1; newBlockIds.length < demand.value; nextId += 1) {
         if (nextId >= 0x8000_0000)

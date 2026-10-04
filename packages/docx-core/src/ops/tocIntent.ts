@@ -61,8 +61,19 @@ const takeBookmarkId = (
   return undefined;
 };
 
-const takeParagraphIds = (document: Document, count: number): string[] | undefined => {
-  const occupied = new Set(packageParagraphIds(document.package).map(idKey));
+type TakeParagraphIdsOptions = {
+  document: Document;
+  count: number;
+  reserved: ReadonlySet<string> | undefined;
+};
+const takeParagraphIds = ({
+  document,
+  count,
+  reserved,
+}: TakeParagraphIdsOptions): string[] | undefined => {
+  const occupied = new Set(
+    [...packageParagraphIds(document.package), ...(reserved ?? [])].map(idKey),
+  );
   const ids: string[] = [];
   for (let id = 1; id < 0x8000_0000 && ids.length < count; id += 1) {
     const candidate = id.toString(16).padStart(8, "0").toUpperCase();
@@ -302,7 +313,7 @@ export const compileGenerateTOCIntent = (
   const toc = tocParagraphs(intent, links);
   const story = intent.at.story;
   if (gap.offset === 0 || gap.offset === targetLength) {
-    const ids = takeParagraphIds(document, toc.length);
+    const ids = takeParagraphIds({ document, count: toc.length, reserved: mode.reservedBlockIds });
     if (ids === undefined) return refuse("The paragraph identity space is exhausted.");
     ops.push({
       type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
@@ -319,7 +330,9 @@ export const compileGenerateTOCIntent = (
     });
   }
 
-  const newBlockId = takeParagraphIds(document, 1)?.at(0);
+  const newBlockId = takeParagraphIds({ document, count: 1, reserved: mode.reservedBlockIds })?.at(
+    0,
+  );
   if (newBlockId === undefined) return refuse("The paragraph identity space is exhausted.");
   const split = {
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
@@ -332,7 +345,7 @@ export const compileGenerateTOCIntent = (
   const afterSplit = applyDocumentOp(document, split);
   if (afterSplit.isErr()) return Result.err(afterSplit.error);
   document = afterSplit.value.document;
-  const tocIds = takeParagraphIds(document, toc.length);
+  const tocIds = takeParagraphIds({ document, count: toc.length, reserved: mode.reservedBlockIds });
   if (tocIds === undefined) return refuse("The paragraph identity space is exhausted.");
   const blocks = identifyTocParagraphs(toc, tocIds);
   ops.push({
