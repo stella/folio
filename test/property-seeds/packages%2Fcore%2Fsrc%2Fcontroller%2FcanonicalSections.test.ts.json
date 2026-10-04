@@ -1,0 +1,18 @@
+{
+  "generated final-section patches preserve earlier endpoints and exact note-property undo/redo": [
+    {
+      "seed": 20261012,
+      "path": "4:0:1:1",
+      "note": "Exact lifecycle inverses must preserve own-undefined final section properties.",
+      "date": "2026-10-05"
+    }
+  ],
+  "manager section patches refuse read-only and composition without changing model or journal": [
+    {
+      "seed": 20261013,
+      "path": "0:0",
+      "note": "Composition refusal must be checked before ending composition; model snapshots are read only after composition ends.",
+      "date": "2026-10-05"
+    }
+  ]
+}

@@ -237,9 +237,9 @@ test("manager section patches refuse read-only and composition without changing 
             expect(manager.api.applyCanonicalSectionProperties(notePatch(kind, 900))?.status).toBe(
               "refused",
             );
-            expect(manager.api.getCanonicalDocument()).toStrictEqual(initial);
             expect(manager.api.canUndo()).toBe(false);
             manager.api.updateCanonicalInputLifecycle("endComposition");
+            expect(manager.api.getCanonicalDocument()).toStrictEqual(initial);
             expect(manager.api.applyCanonicalSectionProperties(notePatch(kind, 900))).toEqual({
               status: "applied",
               version: 1,
