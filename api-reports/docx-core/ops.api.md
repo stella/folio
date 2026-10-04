@@ -574,6 +574,28 @@ export type OpStory = typeof OP_STORIES.MAIN | HeaderFooterStory | NoteStory;
 // @public
 export const packageParagraphIds: (pkg: DocxPackage) => string[];
 
+// @public (undocumented)
+export type PackageResourceEntry<Value> = {
+    type: "absent";
+} | {
+    type: "present";
+    value: Value;
+};
+
+// @public (undocumented)
+export type PackageResourceEntryChange<Value> = {
+    key: string;
+    expected: PackageResourceEntry<Value>;
+    next: PackageResourceEntry<Value>;
+};
+
+// @public
+export type PackageResourceMapChange<Value> = {
+    expected: PackageResourcePresence;
+    next: PackageResourcePresence;
+    entries: readonly PackageResourceEntryChange<Value>[];
+};
+
 // @public
 export type PackageResourceMedia = Omit<MediaFile, "data"> & {
     data: readonly number[];
@@ -593,12 +615,10 @@ export type PackageResourcePart<Value> = {
 export type PackageResources = {
     styles: PackageResourcePart<StyleDefinitions>;
     numbering: PackageResourcePart<NumberingDefinitions>;
-    relationships: PackageResourcePart<readonly (readonly [string, Relationship])[]>;
-    media: PackageResourcePart<readonly (readonly [string, PackageResourceMedia])[]>;
 };
 
 // @public
-export const packageResourcesOf: (input: Document_2) => PackageResources;
+export const packageResourcesOpOf: (input: PackageResourcesOpOptions) => SetPackageResourcesOp;
 
 // @public
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
@@ -811,6 +831,8 @@ export type SetPackageResourcesOp = {
     type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
     expected: PackageResources;
     resources: PackageResources;
+    relationships: PackageResourceMapChange<Relationship>;
+    media: PackageResourceMapChange<PackageResourceMedia>;
 };
 
 // @public

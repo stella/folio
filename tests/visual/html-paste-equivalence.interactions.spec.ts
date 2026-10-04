@@ -290,7 +290,7 @@ const expectCanonicalHistoryState = (actual: CanonicalSnapshot, expected: Canoni
   assertExactModel(actual.selection, expected.selection);
 };
 
-test("canonical rich clipboard preserves generated marks, open ends and exact history in both adapters @browser-input:pasteHtml", async ({
+test("canonical rich clipboard preserves generated marks, open ends and exact history in both adapters", async ({
   page,
 }) => {
   test.setTimeout(120_000);
