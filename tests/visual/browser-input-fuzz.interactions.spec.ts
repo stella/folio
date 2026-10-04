@@ -559,9 +559,11 @@ const resolveCanonicalSaved = async ({
 }: ResolveFuzzOptions) => {
   await page.evaluate(
     async ({ bytes, ids, resolution }) => {
+      const bridge = globalThis.__folioCanonical;
+      if (!bridge || !(await bridge.load(bytes)))
+        throw new TypeError("Canonical fuzz load unavailable.");
       const ref = globalThis.__folioPlayground?.getEditorRef();
       if (!ref) throw new TypeError("Canonical fuzz editor unavailable.");
-      await ref.loadDocumentBuffer(new Uint8Array(bytes));
       const core = ref.getEditor();
       if (!core?.getCanonicalDocument())
         throw new TypeError("Canonical review authority unavailable.");

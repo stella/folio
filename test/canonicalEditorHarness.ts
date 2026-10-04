@@ -4,6 +4,7 @@ import type { Slice } from "prosemirror-model";
 import type { Command, Transaction } from "prosemirror-state";
 
 import { storyRevisionIds } from "./reviewProjection";
+import { assertExactModel } from "./exactModel";
 import {
   createHiddenEditorManager,
   CanonicalSessionRefusalError,
@@ -15,7 +16,10 @@ import {
 import { EditorState as PMEditorState } from "prosemirror-state";
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
 import { getCanonicalCommandIntents } from "../packages/core/src/prosemirror/canonicalCommands";
-import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
+import {
+  CANONICAL_CAPABILITIES,
+  CANONICAL_GAP,
+} from "../packages/core/src/types/canonicalCapabilities";
 import type { CanonicalGap } from "../packages/core/src/types/canonicalCapabilities";
 import type { Document } from "../packages/core/src/types/document";
 import { keyboardEventFor, type EditorMode } from "../packages/core/src/__tests__/editorHarness";
@@ -25,7 +29,41 @@ import { singletonManager } from "../packages/core/src/prosemirror/schema";
 export type HarnessRefusal = {
   gap: CanonicalGap;
   message: string;
-  expectation: "missing-command-descriptor" | "unexpected";
+  expectation: "declared" | "unexpected";
+  row?: string;
+};
+
+export type HarnessRefusalRow = {
+  id: string;
+  gap: CanonicalGap;
+  message: string;
+};
+
+/** Rows are created by the attempted input, rather than mirroring ledger membership. */
+export const validateHarnessRefusalRows = (
+  rows: readonly HarnessRefusalRow[],
+  capabilities: Readonly<Record<string, unknown>> = CANONICAL_CAPABILITIES,
+) => {
+  for (const row of rows)
+    if (!Object.hasOwn(capabilities, row.gap))
+      panic(`Retired canonical refusal row must become strict: ${row.id} (${row.gap})`);
+};
+
+type HarnessRefusalProblemsOptions = {
+  rows: readonly HarnessRefusalRow[];
+  refusals: readonly HarnessRefusal[];
+};
+export const harnessRefusalProblems = ({ rows, refusals }: HarnessRefusalProblemsOptions) => {
+  validateHarnessRefusalRows(rows);
+  return refusals
+    .filter(
+      (refusal) =>
+        !rows.some(
+          (row) =>
+            row.id === refusal.row && row.gap === refusal.gap && row.message === refusal.message,
+        ),
+    )
+    .map(({ gap, message }) => `${gap}: ${message}`);
 };
 
 /** A disposable driver over the production controller, with no PM mutation fallback. */
@@ -34,7 +72,45 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
   const host = document.createElement("div");
   document.body.append(host);
   const refusals: HarnessRefusal[] = [];
-  let expectedGap: CanonicalGap | undefined;
+  const refusalRows: HarnessRefusalRow[] = [];
+  let acceptedTransactions = 0;
+  let expectedRow: HarnessRefusalRow | undefined;
+  const withRefusalRow = <T>(row: HarnessRefusalRow | undefined, action: () => T) => {
+    expectedRow = row;
+    if (row) {
+      validateHarnessRefusalRows([row]);
+      refusalRows.push(row);
+    }
+    const before = {
+      document: manager.api.getCanonicalDocument(),
+      state: editorView.state,
+      canUndo: manager.api.canUndo(),
+      canRedo: manager.api.canRedo(),
+      refusals: refusals.length,
+      acceptedTransactions,
+    };
+    try {
+      const result = action();
+      if (row && row.id !== "missing-command-descriptor" && refusals.length === before.refusals)
+        panic(`Canonical refusal row must become strict: ${row.id}`);
+      if (refusals.length > before.refusals) {
+        const after = manager.api.getCanonicalDocument();
+        if (!after || !before.document) panic("Refusal lost canonical authority");
+        assertExactModel(after, before.document);
+        if (
+          !editorView.state.doc.eq(before.state.doc) ||
+          !editorView.state.selection.eq(before.state.selection) ||
+          manager.api.canUndo() !== before.canUndo ||
+          manager.api.canRedo() !== before.canRedo ||
+          acceptedTransactions !== before.acceptedTransactions
+        )
+          panic("Canonical refusal changed projection, selection or journal availability");
+      }
+      return result;
+    } finally {
+      expectedRow = undefined;
+    }
+  };
   const manager = createHiddenEditorManager({
     getHost: () => host,
     getDocument: () => source,
@@ -50,7 +126,9 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     getPrecomputedInitialState: () => null,
     getReadOnly: () => false,
     getDocumentIdentity: () => "conformance",
-    onTransaction: () => {},
+    onTransaction: () => {
+      acceptedTransactions += 1;
+    },
     onSelectionChange: () => {},
     onKeyDown: () => false,
     onReadOnlyEditAttempt: () => {},
@@ -58,10 +136,12 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     onEditorViewDestroy: () => {},
     onRemoteSelectionsChange: () => {},
     onSessionRefusal: (message, gap) => {
+      const row = expectedRow;
       refusals.push({
         gap,
         message,
-        expectation: gap === expectedGap ? "missing-command-descriptor" : "unexpected",
+        expectation: row && gap === row.gap && message === row.message ? "declared" : "unexpected",
+        ...(row ? { row: row.id } : {}),
       });
     },
   });
@@ -81,16 +161,18 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     manager.api.getCanonicalDocument() ?? panic("Canonical snapshot unavailable.");
   const execute = (command: Command) => {
     const count = refusals.length;
-    expectedGap =
+    const row =
       getCanonicalCommandIntents(command, editorView.state) === undefined
-        ? CANONICAL_GAP.dispatch
+        ? {
+            id: "missing-command-descriptor",
+            gap: CANONICAL_GAP.dispatch,
+            message: "A plugin attempted an unclassified canonical document mutation.",
+          }
         : undefined;
-    try {
+    return withRefusalRow(row, () => {
       const applied = executeEditorCommand(editorView, command);
       return refusals.length === count && applied;
-    } finally {
-      expectedGap = undefined;
-    }
+    });
   };
   const resolve = (decision: "accept" | "reject") => {
     const ids = storyRevisionIds(snapshot());
@@ -105,6 +187,7 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     dispatch: (transaction: Transaction) => editorView.dispatch(transaction),
     execute,
     refusals,
+    refusalRows,
     snapshot,
     history: manager.api,
     dispose,
@@ -112,7 +195,16 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     pressKey: (binding: string) => {
       const fields = keyboardEventFor(binding);
       const event = new KeyboardEvent("keydown", { ...fields, bubbles: true, cancelable: true });
-      editorView.dom.dispatchEvent(event);
+      const row =
+        (fields.key === "Backspace" || fields.key === "Delete") &&
+        (fields.ctrlKey || fields.metaKey || fields.altKey)
+          ? {
+              id: "modified-deletion",
+              gap: CANONICAL_GAP.dispatch,
+              message: "Only plain character deletion is available in this session.",
+            }
+          : undefined;
+      withRefusalRow(row, () => editorView.dom.dispatchEvent(event));
       return event.defaultPrevented;
     },
     typeText: (text: string) => {
@@ -128,10 +220,35 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     },
     paste: (slice: Slice) => {
       const event = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
-      editorView.someProp("handlePaste", (handler) => handler(editorView, event, slice));
+      let paragraphsOnly = true;
+      let inlineOnly = true;
+      slice.content.forEach((node) => {
+        paragraphsOnly &&= node.type.name === "paragraph";
+        inlineOnly &&= node.isInline;
+      });
+      let row: HarnessRefusalRow | undefined;
+      if (slice.openStart > 1 || slice.openEnd > 1)
+        row = {
+          id: "clipboard-nested-blocks",
+          gap: CANONICAL_GAP.dispatch,
+          message: "Clipboard tables and nested block containers require canonical table editing.",
+        };
+      else if (!paragraphsOnly && !inlineOnly)
+        row = {
+          id: "clipboard-table",
+          gap: CANONICAL_GAP.dispatch,
+          message: "Clipboard tables and embedded blocks require canonical table editing.",
+        };
+      withRefusalRow(row, () =>
+        editorView.someProp("handlePaste", (handler) => handler(editorView, event, slice)),
+      );
     },
     cut: () => {
-      const event = new ClipboardEvent("cut", { bubbles: true, cancelable: true });
+      const event = new ClipboardEvent("cut", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: new DataTransfer(),
+      });
       editorView.dom.dispatchEvent(event);
       return event.defaultPrevented;
     },

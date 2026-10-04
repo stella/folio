@@ -25,6 +25,7 @@ import { assertExactModel } from "../../../../test/exactModel";
 import {
   createCanonicalEditorHarness,
   resolveCanonicalHarnessDocument,
+  harnessRefusalProblems,
   type CanonicalEditorHarness,
   type HarnessRefusal,
 } from "../../../../test/canonicalEditorHarness";
@@ -321,7 +322,7 @@ const PASTED_PARAGRAPHS = (schemaDoc: PMNode) => {
   );
 };
 
-const PASTED_TABLE = (schemaDoc: PMNode) => {
+export const PASTED_TABLE = (schemaDoc: PMNode) => {
   const { schema } = schemaDoc.type;
   const cell = (text: string) =>
     schema.node("tableCell", null, [schema.node("paragraph", null, schema.text(text))]);
@@ -661,7 +662,8 @@ const runMode = (
   mode: EditorMode,
   authority: HarnessAuthority,
 ): ModeRun | null => {
-  if (authority === "canonical") return runCanonicalMode(loaded, shape, operation, placement, mode);
+  if (authority === "canonical")
+    return runCanonicalMode({ loaded, shape, operation, placement, mode });
   const before = placeSelection(loaded.states[mode], shape.focus, placement);
   if (!before) {
     return null;
@@ -711,13 +713,20 @@ const runMode = (
   };
 };
 
-const runCanonicalMode = (
-  loaded: LoadedShape,
-  shape: DocumentShape,
-  operation: ConformanceOperation,
-  placement: SelectionPlacement,
-  mode: EditorMode,
-): ModeRun | null => {
+type RunCanonicalModeOptions = {
+  loaded: LoadedShape;
+  shape: DocumentShape;
+  operation: ConformanceOperation;
+  placement: SelectionPlacement;
+  mode: EditorMode;
+};
+const runCanonicalMode = ({
+  loaded,
+  shape,
+  operation,
+  placement,
+  mode,
+}: RunCanonicalModeOptions): ModeRun | null => {
   const driver = createCanonicalEditorHarness(caseBase(loaded.base), mode);
   try {
     const placed = placeSelection(driver.state, shape.focus, placement);
@@ -746,14 +755,15 @@ const runCanonicalMode = (
     const after = driver.state;
     const base = driver.snapshot();
     const changed = !after.doc.eq(before.doc);
-    if (driver.refusals.some(({ expectation }) => expectation === "unexpected"))
+    const refusalProblems = harnessRefusalProblems({
+      rows: driver.refusalRows,
+      refusals: driver.refusals,
+    });
+    if (refusalProblems.length > 0)
       historyViolations.push({
         kind: "silent-refusal",
         mode,
-        detail: driver.refusals
-          .filter(({ expectation }) => expectation === "unexpected")
-          .map(({ gap, message }) => `${gap}: ${message}`)
-          .join("; "),
+        detail: refusalProblems.join("; "),
       });
     if (!changed && driver.refusals.length > 0) {
       assertExactModel(base, beforeModel);
@@ -927,11 +937,12 @@ const exhaustHistory = (state: EditorState, command: typeof undo): EditorState =
 
 type Observation = { summary: ContentSummary; markdown: string };
 
-const resolvedSnapshot = (
-  run: ModeRun,
-  phase: "before" | "after",
-  decision: "accept" | "reject",
-) => {
+type ResolvedSnapshotOptions = {
+  run: ModeRun;
+  phase: "before" | "after";
+  decision: "accept" | "reject";
+};
+const resolvedSnapshot = ({ run, phase, decision }: ResolvedSnapshotOptions) => {
   const state = phase === "before" ? run.before : run.after;
   const model = phase === "before" ? run.beforeModel : run.base;
   if (run.authority === "prosemirror")
@@ -1107,7 +1118,8 @@ export const runConformanceCase = async (
   // claimed key) and leaves the document as it was is refusing just as silently.
   if (
     editing.status === "changed" &&
-    (suggesting.status === "refused" || suggesting.status === "unchanged")
+    (suggesting.status === "refused" || suggesting.status === "unchanged") &&
+    !suggesting.refusals.some(({ expectation }) => expectation === "declared")
   ) {
     violations.push({
       kind: "silent-refusal",
@@ -1118,15 +1130,23 @@ export const runConformanceCase = async (
 
   if (suggesting.status === "changed") {
     try {
-      const rejectedOriginal = observe(...resolvedSnapshot(suggesting, "before", "reject"));
-      const rejected = observe(...resolvedSnapshot(suggesting, "after", "reject"));
+      const rejectedOriginal = observe(
+        ...resolvedSnapshot({ run: suggesting, phase: "before", decision: "reject" }),
+      );
+      const rejected = observe(
+        ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "reject" }),
+      );
       const rejectDifference = compareObservations(rejectedOriginal, rejected);
       if (rejectDifference && operation.suggesting !== "direct") {
         violations.push({ kind: "reject-mismatch", mode: "suggesting", detail: rejectDifference });
       }
       if (editing.status === "changed") {
-        const acceptedEditing = observe(...resolvedSnapshot(editing, "after", "accept"));
-        const accepted = observe(...resolvedSnapshot(suggesting, "after", "accept"));
+        const acceptedEditing = observe(
+          ...resolvedSnapshot({ run: editing, phase: "after", decision: "accept" }),
+        );
+        const accepted = observe(
+          ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "accept" }),
+        );
         const acceptDifference = compareObservations(acceptedEditing, accepted);
         if (acceptDifference) {
           violations.push({
@@ -1138,10 +1158,10 @@ export const runConformanceCase = async (
       }
       if (operation.suggesting !== "direct") {
         const reopenedOriginal = await observeReopened(
-          ...resolvedSnapshot(suggesting, "before", "reject"),
+          ...resolvedSnapshot({ run: suggesting, phase: "before", decision: "reject" }),
         );
         const reopenedRejected = await observeReopened(
-          ...resolvedSnapshot(suggesting, "after", "reject"),
+          ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "reject" }),
         );
         const reopenedRejectDifference = compareObservations(reopenedOriginal, reopenedRejected);
         if (reopenedRejectDifference && !rejectDifference) {
@@ -1153,10 +1173,10 @@ export const runConformanceCase = async (
         }
         if (editing.status === "changed") {
           const reopenedEditing = await observeReopened(
-            ...resolvedSnapshot(editing, "after", "accept"),
+            ...resolvedSnapshot({ run: editing, phase: "after", decision: "accept" }),
           );
           const reopenedAccepted = await observeReopened(
-            ...resolvedSnapshot(suggesting, "after", "accept"),
+            ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "accept" }),
           );
           const reopenedAcceptDifference = compareObservations(reopenedEditing, reopenedAccepted);
           if (reopenedAcceptDifference) {

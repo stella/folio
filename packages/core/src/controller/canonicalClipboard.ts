@@ -21,7 +21,11 @@ import type {
   NumberFormat,
 } from "../types/document";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import { CanonicalSessionError, type CanonicalSession } from "./canonicalSession";
+import {
+  CanonicalSessionError,
+  canonicalSelectionRange,
+  type CanonicalSession,
+} from "./canonicalSession";
 import {
   flattenClipboardStyleReferences,
   importClipboardStyles,
@@ -303,11 +307,10 @@ export const prepareCanonicalPaste = ({
   }
   if (moveTarget === undefined && (plain || sourceDocument === undefined))
     flattenClipboardStyleReferences(paragraphs);
-  const from = session.projection.addressAt(
-    pasteTarget ?? moveSource?.from ?? state.selection.from,
-  );
+  const selectionRange = canonicalSelectionRange(state);
+  const from = session.projection.addressAt(pasteTarget ?? moveSource?.from ?? selectionRange.from);
   if (from.isErr()) return from;
-  const to = session.projection.addressAt(pasteTarget ?? moveSource?.to ?? state.selection.to);
+  const to = session.projection.addressAt(pasteTarget ?? moveSource?.to ?? selectionRange.to);
   if (to.isErr()) return to;
   let styles = session.document.package.styles;
   let styleIds: ReadonlyMap<string, string> | undefined;
@@ -455,7 +458,7 @@ export const prepareCanonicalPaste = ({
       if (plain)
         item.formatting = marksToTextFormatting(
           state.storedMarks ??
-            state.doc.resolve(pasteTarget ?? moveSource?.from ?? state.selection.from).marks(),
+            state.doc.resolve(pasteTarget ?? moveSource?.from ?? selectionRange.from).marks(),
         );
       for (const child of item.content) {
         if (child.type !== "drawing") continue;

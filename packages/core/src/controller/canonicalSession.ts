@@ -220,8 +220,9 @@ class CanonicalProjection {
       type = "inlineNode";
     else if (selection instanceof AllSelection) {
       type = "all";
-      anchorPosition = Selection.atStart(state.doc).from;
-      headPosition = Selection.atEnd(state.doc).to;
+      const range = canonicalSelectionRange(state);
+      anchorPosition = range.from;
+      headPosition = range.to;
     } else
       return refuse(
         "Canonical input requires text, an inline atom, or the whole document selection.",
@@ -882,8 +883,9 @@ class CanonicalSession {
       state.selection instanceof AllSelection &&
       from === state.selection.from &&
       to === state.selection.to;
-    const inputFrom = replacesAll ? Selection.atStart(state.doc).from : from;
-    const inputTo = replacesAll ? Selection.atEnd(state.doc).to : to;
+    const range = canonicalSelectionRange(state);
+    const inputFrom = replacesAll ? range.from : from;
+    const inputTo = replacesAll ? range.to : to;
     const start = projection.inputAddressAt(inputFrom);
     if (start.isErr()) return start;
     const end = projection.inputAddressAt(inputTo);
@@ -1549,6 +1551,12 @@ const visibleDeletionContext = (state: EditorState) => {
   return { text, physicalGaps, visibleOffset };
 };
 
+/** Whole-document selection uses the first and last content gaps for authored operations. */
+export const canonicalSelectionRange = (state: EditorState) =>
+  state.selection instanceof AllSelection
+    ? { from: Selection.atStart(state.doc).from, to: Selection.atEnd(state.doc).to }
+    : { from: state.selection.from, to: state.selection.to };
+
 export const isCanonicalJoinBoundary = (
   state: EditorState,
   direction: "backward" | "forward",
@@ -1571,11 +1579,7 @@ export const deletionRange = (
     selection.node.type.name !== "noteMarker"
   )
     return Result.ok({ from: selection.from, to: selection.to });
-  if (selection instanceof AllSelection)
-    return Result.ok({
-      from: Selection.atStart(state.doc).from,
-      to: Selection.atEnd(state.doc).to,
-    });
+  if (selection instanceof AllSelection) return Result.ok(canonicalSelectionRange(state));
   if (!(selection instanceof TextSelection))
     return refuse(
       "Canonical deletion requires text, an inline atom, or the whole document selection.",
