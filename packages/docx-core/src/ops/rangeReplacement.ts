@@ -3,8 +3,14 @@ import { Result, panic } from "better-result";
 
 import type { Document, Paragraph } from "../model/document";
 import { storyBody, storyParagraphs } from "./blocks";
-import { identityKeysIn, idKey } from "./ids";
-import { defaultInsertionGap } from "./leaves";
+import { idKey } from "./ids";
+import {
+  childNodes,
+  rebuildNode,
+  asParagraphContent,
+  type InlineNode,
+  defaultInsertionGap,
+} from "./leaves";
 import { gapAfterInserted } from "./inline";
 import { appendTrackedDeletion, createTrackedPlan, type PlanTrackedDeletionOptions } from "./plan";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -62,10 +68,12 @@ export const rangeStartAfterDeletion = ({
  * paragraph, and the inline tail inserted into the retained original paragraph.
  * Each new paragraph's own fields apply to it, including when it takes the
  * source prefix. The last fragment keeps the original survivor's identity.
- * Closed inline slices are required; review and content-control ids in the
- * fragment, and section-bearing paragraphs, are unsupported.
+ * Closed inline slices are required. Imported review and content-control ids
+ * must already be distinct from destination identities; section-bearing
+ * paragraphs require an explicit package import policy.
  */
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
+  sourceContainerPolicy: "join" | "separate";
   seamPolicy?: Extract<DocumentOp, { type: "insertContent" }>["seamPolicy"];
   replacement: {
     paragraphs: readonly Paragraph[];
@@ -94,17 +102,67 @@ export const planTrackedReplace = (
   if (replacement.tail.openStart !== 0 || replacement.tail.openEnd !== 0) {
     return refuse("Tracked replacement requires a closed tail slice.");
   }
-  if (
-    identityKeysIn(replacement).length > 0 ||
-    replacement.paragraphs.some(({ sectionProperties }) => sectionProperties !== undefined)
-  ) {
-    return refuse(
-      "Tracked replacement cannot insert identified review, content-control or section records.",
-    );
+  if (replacement.paragraphs.some(({ sectionProperties }) => sectionProperties !== undefined)) {
+    return refuse("Tracked replacement cannot import section-bearing paragraphs.");
   }
   const plan = createTrackedPlan({ document, revision, newIds });
   const deleted = appendTrackedDeletion({ document, options, plan });
   if (deleted.isErr()) return Result.err(deleted.error);
+  if (
+    options.sourceContainerPolicy === "separate" &&
+    (replacement.tail.content.length > 0 ||
+      replacement.paragraphs.some((paragraph) => paragraph.content.length > 0))
+  ) {
+    const deletionIds = new Set(
+      plan.ops.flatMap((op) =>
+        op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision !== undefined
+          ? [op.revision.id]
+          : [],
+      ),
+    );
+    const deletionBlocks = new Set(
+      plan.ops.flatMap((op) => {
+        if (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE) return [idKey(op.from.blockId)];
+        if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) return [idKey(op.nextBlockId)];
+        return [];
+      }),
+    );
+    const breakRemovedSeam = (node: InlineNode): InlineNode => {
+      let next = node;
+      if (
+        node.type === "deletion" &&
+        deletionIds.has(node.info.id) &&
+        node.resolutionJoins !== undefined &&
+        node.resolutionJoins.remove > 0
+      ) {
+        next = Object.assign({}, node, {
+          resolutionJoins: Object.assign({}, node.resolutionJoins, { remove: 0 }),
+        });
+      }
+      const children = childNodes(next);
+      if (children === undefined) return next;
+      const changed = children.map(breakRemovedSeam);
+      return changed.every((child, index) => child === children[index])
+        ? next
+        : rebuildNode(next, changed);
+    };
+    // The new authored payload separates the source's two cut pieces.
+    // Removing this deletion must retain its identity transfers without
+    // joining the payload to the retained suffix.
+    for (const { paragraph } of storyParagraphs(storyBody(plan.document(), from.story))) {
+      if (!deletionBlocks.has(idKey(paragraph.paraId ?? ""))) continue;
+      const content = paragraph.content.map(breakRemovedSeam);
+      if (content.every((node, index) => node === paragraph.content[index])) continue;
+      const patched = plan.append({
+        type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+        story: from.story,
+        blockId: paragraph.paraId ?? "",
+        expected: paragraph.content,
+        content: asParagraphContent(content),
+      });
+      if (patched.isErr()) return Result.err(patched.error);
+    }
+  }
   // Tracking leaves selected content in place. Every fragment is inserted at
   // its leading boundary; splitting moves the old mark to the original half.
   let at = rangeStartAfterDeletion({
@@ -130,6 +188,7 @@ export const planTrackedReplace = (
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
         at,
         slice: { content: paragraph.content, openStart: 0, openEnd: 0 },
+        ...(options.seamPolicy === undefined ? {} : { seamPolicy: options.seamPolicy }),
         revision,
       });
       if (inserted.isErr()) return Result.err(inserted.error);
@@ -140,6 +199,7 @@ export const planTrackedReplace = (
       content: _content,
       sectionProperties: _section,
       pPrMark: _mark,
+      propertyChanges: _changes,
       ...newParagraph
     } = paragraph;
     const split = plan.append({

@@ -10,6 +10,7 @@
 import { Fragment, Slice } from "prosemirror-model";
 import type { Schema } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
+import { dispatchClipboardIntent } from "../clipboardIntent";
 
 const PARAGRAPH_BREAK = /(?:\r\n?|\n)+/;
 
@@ -83,7 +84,8 @@ export const pasteWithoutFormatting: Command = (state, dispatch, view) => {
         return undefined;
       }
       const slice = buildPlainTextSlice(text, schema);
-      view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+      if (dispatchClipboardIntent(view, slice) === undefined)
+        view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
       return undefined;
     })
     .catch((error: unknown) => {

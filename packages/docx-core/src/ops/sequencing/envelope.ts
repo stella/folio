@@ -379,6 +379,7 @@ const operationFields = {
   setCommentResolution: undefined,
   deleteComment: undefined,
   restoreCommentState: undefined,
+  setPackageResources: undefined,
   addNote: undefined,
   createHeaderFooter: undefined,
   removeHeaderFooter: undefined,
