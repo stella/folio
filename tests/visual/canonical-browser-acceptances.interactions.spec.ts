@@ -44,7 +44,7 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
       if (eligibility.isErr()) {
         expect(eligibility.error.name).toBe("CanonicalSessionError");
         expect(eligibility.error.message).toBe(
-          "Canonical sessions currently require plain paragraphs and note references without revisions.",
+          "Canonical sessions currently require plain paragraphs and supported inline atoms.",
         );
         missing.record(`source:${trace.shape}`);
         await info.attach("canonical-missing-ops", {

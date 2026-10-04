@@ -12,6 +12,28 @@ const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
 
 const snapshot = (page: Page) => page.evaluate(() => globalThis.__folioCanonical?.snapshot());
 
+const clearRefusals = (page: Page) =>
+  page.evaluate(() => {
+    globalThis.__folioCanonicalFuzzErrors = [];
+  });
+
+const expectNoRefusals = async (page: Page) =>
+  expect(await page.evaluate(() => globalThis.__folioCanonicalFuzzErrors)).toEqual([]);
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return;
+  console.log(
+    "Canonical interaction failure state:",
+    JSON.stringify(
+      await page.evaluate(() => ({
+        activeElement: document.activeElement?.outerHTML,
+        refusals: globalThis.__folioCanonicalFuzzErrors,
+        snapshot: globalThis.__folioCanonical?.snapshot(),
+      })),
+    ),
+  );
+});
+
 type ExpectedProjection = Pick<
   ReturnType<ReturnType<typeof buildCanonicalBridge>["snapshot"]>,
   "text" | "selection"
@@ -275,7 +297,9 @@ test("canonical structural and formatting hooks survive save and reopen", async 
       original.paraId,
     );
     await select(page, 1, 3);
+    await clearRefusals(page);
     await page.keyboard.press(`${MODIFIER}+b`);
+    await expectNoRefusals(page);
     const formatted = await expectProjection(page, { text: "ab", selection: { from: 1, to: 3 } });
     const paragraph = formatted.document.package.document.content.at(0);
     expect(
@@ -365,7 +389,9 @@ test("canonical structural gestures and toolbar operations preserve each interme
     for (const shortcut of ["Shift+Enter", `${MODIFIER}+Enter`]) {
       await reload();
       const before = await snapshot(page);
+      await clearRefusals(page);
       await page.keyboard.press(shortcut);
+      await expectNoRefusals(page);
       const inserted = await snapshot(page);
       expect(inserted?.document?.package.document.content).toHaveLength(1);
       const paragraph = inserted?.document?.package.document.content.at(0);
