@@ -13,7 +13,9 @@ import { resolveCanonicalReviewRange } from "./canonicalReview";
 import { createEmptyDocument } from "../utils/createDocument";
 import { EditorState, Plugin } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
-import { OP_STORIES } from "@stll/docx-core/ops";
+import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
+import type { Paragraph } from "../types/document";
+import type { FolioDocumentOperationStory } from "../document-operations";
 import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
 import { createNoteEditorManager } from "./noteEditorManager";
 
@@ -1083,4 +1085,120 @@ test(
     }
   },
   propertyTestTimeout(30_000),
+);
+
+const SECONDARY_PUBLIC_STORIES = {
+  header: { kind: "header", rId: "rIdSecondary" },
+  footer: { kind: "footer", rId: "rIdSecondary" },
+  footnote: { kind: "footnote", id: 21 },
+  endnote: { kind: "endnote", id: 22 },
+} as const satisfies Record<Exclude<OpStory, "main">["kind"], Exclude<OpStory, "main">>;
+const secondaryParagraph = (paraId: string): Paragraph => ({
+  type: "paragraph",
+  paraId,
+  content: [{ type: "run", content: [{ type: "text", text: "Source" }] }],
+});
+
+test.each([
+  { atomic: true, dryRun: false, status: "rejected" },
+  { atomic: false, dryRun: false, status: "committed" },
+  { atomic: true, dryRun: true, status: "previewed" },
+] as const)(
+  "canonical public secondary story refusals preserve state (%j)",
+  ({ atomic, dryRun, status }) => {
+    GlobalRegistrator.register();
+    const exercised = new Set<string>();
+    try {
+      for (const story of Object.values(SECONDARY_PUBLIC_STORIES)) {
+        exercised.add(story.kind);
+        const host = document.createElement("div");
+        document.body.append(host);
+        const source = createEmptyDocument({ initialText: "Main" });
+        const main = source.package.document.content.at(0);
+        if (main?.type !== "paragraph") panic("Missing body fixture");
+        main.paraId = "74000000";
+        const content = [secondaryParagraph("74000001"), secondaryParagraph("74000002")];
+        let publicStory: FolioDocumentOperationStory;
+        switch (story.kind) {
+          case "header":
+          case "footer": {
+            publicStory = { type: story.kind, relationshipId: story.rId };
+            if (story.kind === "header")
+              source.package.headers = new Map([
+                [story.rId, { type: "header", hdrFtrType: "default", content }],
+              ]);
+            else
+              source.package.footers = new Map([
+                [story.rId, { type: "footer", hdrFtrType: "default", content }],
+              ]);
+            break;
+          }
+          case "footnote":
+            publicStory = { type: story.kind, noteId: story.id };
+            source.package.footnotes = [{ type: story.kind, id: story.id, content }];
+            main.content.push({ type: "run", content: [{ type: "footnoteRef", id: story.id }] });
+            break;
+          case "endnote":
+            publicStory = { type: story.kind, noteId: story.id };
+            source.package.endnotes = [{ type: story.kind, id: story.id, content }];
+            main.content.push({ type: "run", content: [{ type: "endnoteRef", id: story.id }] });
+            break;
+        }
+        const { deps } = makeDeps({
+          getHost: () => host,
+          getDocument: () => source,
+          getDocumentContext: () => source,
+          getExperimentalSession: () => "canonical",
+        });
+        const manager = createHiddenEditorManager(deps);
+        try {
+          manager.ensureView();
+          const view = manager.getView() ?? panic("Missing canonical body view");
+          const before = manager.api.getCanonicalDocument() ?? panic("Missing canonical model");
+          const bodyState = view.state;
+          const projection =
+            manager.api.getCanonicalStoryProjection(story) ??
+            panic("Missing valid secondary projection");
+          const result = manager.api.applyCanonicalDocumentOperations({
+            story: publicStory,
+            snapshot: createFolioAIEditSnapshot(projection),
+            batch: {
+              version: 1,
+              mode: "direct",
+              atomic,
+              dryRun,
+              operations: content.map(({ paraId }, index) => ({
+                id: `replace-${index}`,
+                type: "replaceBlock",
+                blockId: paraId ?? panic("Missing fixture identity"),
+                text: "Changed",
+              })),
+            },
+          });
+          expect(result?.status).toBe(status);
+          expect(result?.applied).toEqual([]);
+          expect(result?.skipped).toMatchObject(
+            [0, 1].map((index) => ({
+              id: `replace-${index}`,
+              reason: "unsupportedBlock",
+              canonicalRefusal: { gap: CANONICAL_GAP.publicSecondaryStories },
+            })),
+          );
+          expect(result?.undoHandle).toBeNull();
+          expect(view.state).toBe(bodyState);
+          expect(manager.api.getCanonicalStoryProjection(story)?.eq(projection)).toBe(true);
+          assertExactModel(manager.api.getCanonicalDocument(), before);
+          assertExactModel(manager.api.getDocument(), before);
+          expect(manager.api.canUndo()).toBe(false);
+          expect(manager.api.canRedo()).toBe(false);
+        } finally {
+          manager.destroyView();
+          host.remove();
+        }
+      }
+      expect([...exercised].sort()).toEqual(Object.keys(SECONDARY_PUBLIC_STORIES).sort());
+    } finally {
+      GlobalRegistrator.unregister();
+    }
+  },
 );
