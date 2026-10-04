@@ -1,10 +1,17 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { panic } from "better-result";
+import { panic, Result } from "better-result";
 import type { Slice } from "prosemirror-model";
 import type { Command, Transaction } from "prosemirror-state";
 
+import {
+  canonicalActivationRefusalRow,
+  validateHarnessRefusalRows,
+  type HarnessRefusal,
+  type HarnessRefusalRow,
+} from "./canonical-refusal-rows";
 import { storyRevisionIds } from "./reviewProjection";
 import { assertExactModel } from "./exactModel";
+import { cloneDocumentWithParagraphPropertySources } from "../packages/core/src/docx/paragraphPropertySource";
 import {
   createHiddenEditorManager,
   CanonicalSessionRefusalError,
@@ -16,55 +23,11 @@ import {
 import { EditorState as PMEditorState } from "prosemirror-state";
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
 import { getCanonicalCommandIntents } from "../packages/core/src/prosemirror/canonicalCommands";
-import {
-  CANONICAL_CAPABILITIES,
-  CANONICAL_GAP,
-} from "../packages/core/src/types/canonicalCapabilities";
-import type { CanonicalGap } from "../packages/core/src/types/canonicalCapabilities";
+import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import type { Document } from "../packages/core/src/types/document";
 import { keyboardEventFor, type EditorMode } from "../packages/core/src/__tests__/editorHarness";
 import { HARNESS_AUTHOR } from "../packages/core/src/__tests__/editorHarness";
 import { singletonManager } from "../packages/core/src/prosemirror/schema";
-
-export type HarnessRefusal = {
-  gap: CanonicalGap;
-  message: string;
-  expectation: "declared" | "unexpected";
-  row?: string;
-};
-
-export type HarnessRefusalRow = {
-  id: string;
-  gap: CanonicalGap;
-  message: string;
-};
-
-/** Rows are created by the attempted input, rather than mirroring ledger membership. */
-export const validateHarnessRefusalRows = (
-  rows: readonly HarnessRefusalRow[],
-  capabilities: Readonly<Record<string, unknown>> = CANONICAL_CAPABILITIES,
-) => {
-  for (const row of rows)
-    if (!Object.hasOwn(capabilities, row.gap))
-      panic(`Retired canonical refusal row must become strict: ${row.id} (${row.gap})`);
-};
-
-type HarnessRefusalProblemsOptions = {
-  rows: readonly HarnessRefusalRow[];
-  refusals: readonly HarnessRefusal[];
-};
-export const harnessRefusalProblems = ({ rows, refusals }: HarnessRefusalProblemsOptions) => {
-  validateHarnessRefusalRows(rows);
-  return refusals
-    .filter(
-      (refusal) =>
-        !rows.some(
-          (row) =>
-            row.id === refusal.row && row.gap === refusal.gap && row.message === refusal.message,
-        ),
-    )
-    .map(({ gap, message }) => `${gap}: ${message}`);
-};
 
 /** A disposable driver over the production controller, with no PM mutation fallback. */
 export const createCanonicalEditorHarness = (source: Document, mode: EditorMode) => {
@@ -75,6 +38,9 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
   const refusalRows: HarnessRefusalRow[] = [];
   let acceptedTransactions = 0;
   let expectedRow: HarnessRefusalRow | undefined;
+  const activationRow = canonicalActivationRefusalRow(source);
+  const activationSource = cloneDocumentWithParagraphPropertySources(source);
+  if (activationRow) validateHarnessRefusalRows([activationRow]);
   const withRefusalRow = <T>(row: HarnessRefusalRow | undefined, action: () => T) => {
     expectedRow = row;
     if (row) {
@@ -152,10 +118,27 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
   manager.ensureView();
   const editorView = manager.getView();
   if (!editorView) {
-    dispose();
     const refusal = refusals.at(0);
+    if (activationRow) {
+      assertExactModel(source, activationSource);
+      if (
+        manager.api.getCanonicalDocument() !== null ||
+        manager.api.canUndo() ||
+        manager.api.canRedo() ||
+        refusal?.gap !== activationRow.gap ||
+        refusal.message !== activationRow.message
+      ) {
+        dispose();
+        panic("Canonical activation refusal changed authority or lost its ledger contract");
+      }
+    }
+    dispose();
     if (refusal) throw new CanonicalSessionRefusalError(refusal);
     panic("The canonical conformance controller did not create its view.");
+  }
+  if (activationRow) {
+    dispose();
+    panic("Canonical activation refusal row must become strict");
   }
   const snapshot = () =>
     manager.api.getCanonicalDocument() ?? panic("Canonical snapshot unavailable.");
@@ -256,6 +239,27 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
 };
 
 export type CanonicalEditorHarness = ReturnType<typeof createCanonicalEditorHarness>;
+
+/** Unsupported activation is a counted precondition; every other initialization failure is strict. */
+export const createCanonicalHarnessCase = (source: Document, mode: EditorMode) => {
+  const created = Result.try({
+    try: () => createCanonicalEditorHarness(source, mode),
+    catch: (error) => error,
+  });
+  if (created.isOk()) return { type: "ready", driver: created.value } as const;
+  const row = canonicalActivationRefusalRow(source);
+  if (
+    row &&
+    created.error instanceof CanonicalSessionRefusalError &&
+    created.error.gap === row.gap &&
+    created.error.message === row.message
+  )
+    return {
+      type: "activationRefused",
+      refusal: { gap: row.gap, message: row.message, expectation: "declared", row: row.id },
+    } as const;
+  throw created.error;
+};
 
 /** Review observations use a fresh canonical session, leaving the case's journal untouched. */
 export const resolveCanonicalHarnessDocument = (

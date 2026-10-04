@@ -1495,6 +1495,18 @@ export const createCanonicalSession = (
   document: Document,
   styles?: StyleDefinitions | null,
 ): Result<CanonicalSession, CanonicalSessionError> => {
+  if (
+    documentStories(document).some((story) =>
+      findStoryBody(document, story)?.content.some((block) => block.type === "table"),
+    )
+  )
+    return Result.err(
+      new CanonicalSessionError({
+        gap: CANONICAL_GAP.tableActivation,
+        reason: "refused",
+        message: "Canonical sessions cannot activate documents containing tables.",
+      }),
+    );
   if (!supportsSeed(document)) {
     return refuse(
       "Canonical sessions currently require plain paragraphs and supported inline atoms.",

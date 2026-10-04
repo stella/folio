@@ -21,13 +21,16 @@
  */
 
 import { panic } from "better-result";
+import { isDeepStrictEqual } from "node:util";
+import {
+  harnessRefusalProblems,
+  type HarnessRefusal,
+} from "../../../../test/canonical-refusal-rows";
 import { assertExactModel } from "../../../../test/exactModel";
 import {
-  createCanonicalEditorHarness,
+  createCanonicalHarnessCase,
   resolveCanonicalHarnessDocument,
-  harnessRefusalProblems,
   type CanonicalEditorHarness,
-  type HarnessRefusal,
 } from "../../../../test/canonicalEditorHarness";
 import { assertValidFolioDocumentModel } from "../docx/modelValidation";
 import { repackDocx } from "../docx/rezip";
@@ -36,6 +39,8 @@ import { Fragment, Slice } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { redo, undo } from "prosemirror-history";
 import type { EditorState } from "prosemirror-state";
+import { EditorState as PMEditorState } from "prosemirror-state";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { CellSelection, TableMap } from "prosemirror-tables";
 
 import type { DocumentShape } from "./documentShapes";
@@ -604,7 +609,6 @@ export type Violation = {
 
 type LoadedShape = {
   base: Document;
-  states: Record<EditorMode, EditorState>;
 };
 
 const loadedShapes = new Map<string, Promise<LoadedShape>>();
@@ -614,13 +618,7 @@ export const loadShape = (shape: DocumentShape): Promise<LoadedShape> => {
   if (!pending) {
     pending = (async () => {
       const base = await parseShapeDocument(await shape.build());
-      return {
-        base,
-        states: {
-          editing: createHarnessState(base, "editing"),
-          suggesting: createHarnessState(base, "suggesting"),
-        },
-      };
+      return { base };
     })();
     loadedShapes.set(shape.id, pending);
   }
@@ -664,7 +662,7 @@ const runMode = (
 ): ModeRun | null => {
   if (authority === "canonical")
     return runCanonicalMode({ loaded, shape, operation, placement, mode });
-  const before = placeSelection(loaded.states[mode], shape.focus, placement);
+  const before = placeSelection(createHarnessState(loaded.base, mode), shape.focus, placement);
   if (!before) {
     return null;
   }
@@ -727,7 +725,22 @@ const runCanonicalMode = ({
   placement,
   mode,
 }: RunCanonicalModeOptions): ModeRun | null => {
-  const driver = createCanonicalEditorHarness(caseBase(loaded.base), mode);
+  const created = createCanonicalHarnessCase(caseBase(loaded.base), mode);
+  if (created.type === "activationRefused") {
+    const state = PMEditorState.create({ doc: toProseDoc(loaded.base) });
+    return {
+      authority: "canonical",
+      beforeModel: loaded.base,
+      historyViolations: [],
+      refusals: [created.refusal],
+      mode,
+      before: state,
+      after: state,
+      base: loaded.base,
+      status: "refused",
+    };
+  }
+  const driver = created.driver;
   try {
     const placed = placeSelection(driver.state, shape.focus, placement);
     if (!placed) return null;
@@ -754,7 +767,7 @@ const runCanonicalMode = ({
     }
     const after = driver.state;
     const base = driver.snapshot();
-    const changed = !after.doc.eq(before.doc);
+    const changed = !after.doc.eq(before.doc) || !isDeepStrictEqual(base, beforeModel);
     const refusalProblems = harnessRefusalProblems({
       rows: driver.refusalRows,
       refusals: driver.refusals,
@@ -1082,12 +1095,27 @@ export type CaseResult = {
   refusals: readonly HarnessRefusal[];
 };
 
-export const runConformanceCase = async (
-  shape: DocumentShape,
-  operation: ConformanceOperation,
-  placement: SelectionPlacement,
-  authority: HarnessAuthority = "canonical",
-): Promise<CaseResult | null> => {
+type ConformanceCaseOptions = {
+  shape: DocumentShape;
+  operation: ConformanceOperation;
+  placement: SelectionPlacement;
+};
+
+/** The standing lane always drives the canonical owner. */
+export const runConformanceCase = (options: ConformanceCaseOptions) =>
+  runCaseWithAuthority({ ...options, authority: "canonical" });
+
+/** Explicit replay for legacy plugin regressions and pinned known failures. */
+export const runLegacyConformanceCase = (options: ConformanceCaseOptions) =>
+  runCaseWithAuthority({ ...options, authority: "prosemirror" });
+
+type RunCaseWithAuthorityOptions = ConformanceCaseOptions & { authority: HarnessAuthority };
+const runCaseWithAuthority = async ({
+  shape,
+  operation,
+  placement,
+  authority,
+}: RunCaseWithAuthorityOptions): Promise<CaseResult | null> => {
   const loaded = await loadShape(shape);
   const runs: Partial<Record<EditorMode, ModeRun>> = {};
   for (const mode of EDITOR_MODES) {

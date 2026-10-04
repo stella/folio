@@ -3,6 +3,14 @@ import { driveBrowserIme } from "./browserImeDriver";
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
+import { parseDocx } from "../../packages/core/src/docx/parser";
+import {
+  canonicalActivationRefusalRow,
+  matchCanonicalRefusalRow,
+  validateHarnessRefusalRows,
+} from "../../test/canonical-refusal-rows";
+import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
+import type {} from "../parity/canonicalFuzzErrors";
 
 import knownFailures from "../../test/known-failure-fingerprints.json" with { type: "json" };
 
@@ -42,6 +50,11 @@ declare global {
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const INPUT_TRACE = browserInputTraceArbitrary();
 const PAINTED_TARGET_MODULE = `/@fs${new URL("./browserPaintedTargets.ts", import.meta.url).pathname}`;
+const missingCanonical = createMissingOpBurndown();
+test.afterAll(() => console.info(missingCanonical.markdown()));
+
+const drainCanonicalErrors = (page: Page) =>
+  page.evaluate(() => globalThis.__folioCanonicalFuzzErrors?.splice(0) ?? []);
 
 type Block = {
   kind: string;
@@ -89,20 +102,66 @@ type LoadFuzzOptions = {
   authority: FuzzAuthority;
 };
 const load = async ({ page, bytes, baseline, suggesting, authority }: LoadFuzzOptions) => {
+  const activationRow =
+    authority === "canonical"
+      ? canonicalActivationRefusalRow(
+          await parseDocx(bytes, { preloadFonts: false, detectVariables: false }),
+        )
+      : undefined;
+  if (activationRow) validateHarnessRefusalRows([activationRow]);
   await page.goto(authority === "canonical" ? "/?session=canonical" : "/");
   await page.waitForSelector(".layout-page");
   await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView());
   await page.waitForFunction(
     () => !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
   );
+  if (authority === "canonical")
+    await page.evaluate(() => {
+      globalThis.__folioCanonicalFuzzErrors = [];
+    });
   await page.evaluate(
-    async (source) => {
+    async ({ source, canonical, refused }) => {
+      if (canonical && !refused) {
+        if (!(await globalThis.__folioCanonical?.load(source)))
+          throw new TypeError("Canonical fuzz load unavailable.");
+        return;
+      }
       const ref = globalThis.__folioPlayground?.getEditorRef();
       if (!ref) throw new Error("browser editor unavailable");
       await ref.loadDocumentBuffer(new Uint8Array(source));
     },
-    [...new Uint8Array(bytes)],
+    {
+      source: [...new Uint8Array(bytes)],
+      canonical: authority === "canonical",
+      refused: activationRow !== undefined,
+    },
   );
+  if (activationRow) {
+    await page.waitForFunction(() => (globalThis.__folioCanonicalFuzzErrors?.length ?? 0) > 0);
+    const errors = await drainCanonicalErrors(page);
+    expect(errors).toHaveLength(1);
+    for (const error of errors) {
+      expect(error.status).toBe("refusal");
+      if (error.status !== "refusal") throw new TypeError(error.message);
+      expect(matchCanonicalRefusalRow({ rows: [activationRow], refusal: error })).toEqual(
+        activationRow,
+      );
+    }
+    expect(
+      await page.evaluate(() => {
+        const ref = globalThis.__folioPlayground?.getEditorRef();
+        const core = ref?.getEditor();
+        return {
+          view: ref?.getEditorRef()?.getView() != null,
+          owner: core?.getCanonicalDocument() != null,
+          undo: core?.canUndo() ?? false,
+          redo: core?.canRedo() ?? false,
+        };
+      }),
+    ).toEqual({ view: false, owner: false, undo: false, redo: false });
+    missingCanonical.record(activationRow.gap);
+    return { type: "activationRefused", row: activationRow } as const;
+  }
   await expect.poll(() => liveBlocks(page)).toEqual(projectLive(baseline));
   await editor(page);
   if (authority === "canonical") {
@@ -121,6 +180,8 @@ const load = async ({ page, bytes, baseline, suggesting, authority }: LoadFuzzOp
   await page.evaluate(() =>
     globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.focus(),
   );
+  if (authority === "canonical") expect(await drainCanonicalErrors(page)).toEqual([]);
+  return { type: "ready" } as const;
 };
 
 const selectTableTarget = async (page: Page) => {
@@ -648,16 +709,6 @@ for (const seed of config.seeds) {
           process.env["FOLIO_FUZZ_FAILURES_DIR"] ?? "fuzz-artifacts/browser/findings",
           failureRecord(marker, failure, { flow: trace }),
         );
-        if (
-          browserAcceptances.some(
-            (acceptance) =>
-              seed === acceptance.reportSeed &&
-              marker.fingerprint === acceptance.fingerprint &&
-              marker.primary === acceptance.primary,
-          )
-        ) {
-          test.fail(true, "#1341 expected browser-fuzz failure");
-        }
       }
       const detail =
         failure instanceof Error ? (failure.stack ?? failure.message) : fc.stringify(failure);

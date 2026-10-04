@@ -2,6 +2,10 @@ import { expect, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 import { AllSelection, NodeSelection } from "prosemirror-state";
 
+import {
+  validateHarnessRefusalRows,
+  harnessRefusalProblems,
+} from "../../../../test/canonical-refusal-rows";
 import { assertExactModel } from "../../../../test/exactModel";
 import { createEmptyDocument } from "../utils/createDocument";
 import { modelMarkdown, parseShapeDocument } from "./editorHarness";
@@ -10,10 +14,30 @@ import { PASTED_LIST, PASTED_TABLE } from "./editorCommandConformance";
 import { CANONICAL_CAPABILITIES, CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
   createCanonicalEditorHarness,
+  createCanonicalHarnessCase,
   resolveCanonicalHarnessDocument,
-  validateHarnessRefusalRows,
-  harnessRefusalProblems,
 } from "../../../../test/canonicalEditorHarness";
+
+test.each(["editing", "suggesting"] as const)(
+  "canonical table activation is an exact ledger precondition in %s",
+  async (mode) => {
+    const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("tables")));
+    const hosts = globalThis.document?.body.childElementCount ?? 0;
+    const result = createCanonicalHarnessCase(source, mode);
+    expect(result.type).toBe("activationRefused");
+    if (result.type !== "activationRefused") {
+      result.driver.dispose();
+      throw new TypeError("Table activation row must become strict");
+    }
+    expect(result.refusal).toEqual({
+      gap: CANONICAL_GAP.tableActivation,
+      message: "Canonical sessions cannot activate documents containing tables.",
+      expectation: "declared",
+      row: "table-session-activation",
+    });
+    expect(document.body.childElementCount).toBe(hosts);
+  },
+);
 
 test("canonical refusal rows cannot survive a retired ledger id", () => {
   const row = { id: "clipboard-table", gap: CANONICAL_GAP.dispatch, message: "refused" };

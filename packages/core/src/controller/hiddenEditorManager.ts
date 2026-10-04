@@ -551,7 +551,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const result = createCanonicalSession(document, deps.getStyles());
     if (result.isErr()) {
       editorSession = { type: "refused", reason: result.error.message, documentIdentity };
-      refuse(result.error.message);
+      refuse(result.error.message, result.error.gap);
       return false;
     }
     editorSession = { type: "canonical", session: result.value };

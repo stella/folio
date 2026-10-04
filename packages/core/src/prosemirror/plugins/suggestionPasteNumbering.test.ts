@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { panic } from "better-result";
 
 import {
-  runConformanceCase,
+  runLegacyConformanceCase,
   type ConformanceOperation,
 } from "../../__tests__/editorCommandConformance";
 import { textblocks } from "../../__tests__/editorHarness";
@@ -20,7 +20,11 @@ test.each(
 )(
   "tracked list paste resolves like direct paste: %s",
   async (_label, { shape, operation, placement }) => {
-    const result = await runConformanceCase(shape, operation, placement, "prosemirror");
+    const result = await runLegacyConformanceCase({
+      shape: shape,
+      operation: operation,
+      placement,
+    });
     expect(result).not.toBeNull();
     expect(result?.violations).toEqual([]);
   },
@@ -45,7 +49,11 @@ test.each(
     ({ shape, placement }) => [`${shape.id} / ${placement}`, { shape, placement }] as const,
   ),
 )("one copied paragraph restores its properties: %s", async (_label, { shape, placement }) => {
-  const result = await runConformanceCase(shape, singleParagraphPaste, placement, "prosemirror");
+  const result = await runLegacyConformanceCase({
+    shape: shape,
+    operation: singleParagraphPaste,
+    placement,
+  });
   expect(result).not.toBeNull();
   expect(result?.violations).toEqual([]);
 });

@@ -30,6 +30,7 @@ import {
   KEY_BINDING_OPERATIONS,
   REGISTRY_COMMAND_OPERATIONS,
   runConformanceCase,
+  runLegacyConformanceCase,
 } from "./editorCommandConformance";
 import { SUGGESTION_INPUT_DRIVERS, SUGGESTION_INPUT_KINDS } from "./suggestionInputKinds";
 import type { Violation } from "./editorCommandConformance";
@@ -152,7 +153,7 @@ describe("editor command conformance", () => {
       if (!shape || !operation) {
         throw new Error(`Unknown case ${caseId(key)}`);
       }
-      const result = await runConformanceCase(shape, operation, key.placement);
+      const result = await runConformanceCase({ shape, operation, placement: key.placement });
       if (!result) {
         return;
       }
@@ -175,7 +176,7 @@ describe("editor command conformance", () => {
       expect(result.violations.map(describeViolation)).toEqual([]);
       // Legacy evidence has its own authority and cannot excuse a canonical violation.
       const legacy = KNOWN_CONFORMANCE_GAPS.some((gap) => gapApplies(gap, key))
-        ? await runConformanceCase(shape, operation, key.placement, "prosemirror")
+        ? await runLegacyConformanceCase({ shape, operation, placement: key.placement })
         : null;
       for (const gap of KNOWN_CONFORMANCE_GAPS) {
         if (gapApplies(gap, key)) {

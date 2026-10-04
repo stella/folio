@@ -10,6 +10,7 @@ export const CANONICAL_GAP = {
   secondaryStories: "secondary-story-routing",
   collaboration: "collaboration-session",
   dispatch: "unclassified-transactions",
+  tableActivation: "table-session-activation",
   save: "pm-save-projection",
   history: "pm-history",
   suggestionPlugin: "pm-suggestion-plugin",
@@ -97,6 +98,12 @@ export const CANONICAL_CAPABILITIES = {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary: "Unclassified native and plugin mutations are refused at the projection boundary.",
+  },
+  [CANONICAL_GAP.tableActivation]: {
+    owner: "controller",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary: "Canonical session activation requires table projection and cell addressing.",
   },
   [CANONICAL_GAP.save]: {
     owner: "controller",
