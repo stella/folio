@@ -189,6 +189,8 @@ export type ListRendering = {
   marker: string;
   /** Source `w:lvlText` pattern retained so newly inserted siblings can be numbered. */
   markerTemplate?: string;
+  /** Cached display text of inline LISTNUM fields folded after the list marker. */
+  foldedMarkerSuffix?: string;
   /** List level (0-8) */
   level: number;
   /** Numbering ID */

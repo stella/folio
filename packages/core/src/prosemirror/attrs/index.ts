@@ -439,6 +439,7 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
   optionalBoolean(attrs, "listIsLegal", "paragraph.attrs.listIsLegal", issues);
   optionalString(attrs, "listMarker", "paragraph.attrs.listMarker", issues);
   optionalString(attrs, "listMarkerTemplate", "paragraph.attrs.listMarkerTemplate", issues);
+  optionalString(attrs, "listFoldedMarkerSuffix", "paragraph.attrs.listFoldedMarkerSuffix", issues);
   optionalBoolean(attrs, "listMarkerHidden", "paragraph.attrs.listMarkerHidden", issues);
   optionalTextFormatting(
     attrs,
@@ -3723,6 +3724,7 @@ const validateParagraphFormatting = (
   optionalOneOf(value, "listNumFmt", `${path}.listNumFmt`, issues, COUNTER_FORMAT_VALUES);
   optionalString(value, "listMarker", `${path}.listMarker`, issues);
   optionalString(value, "listMarkerTemplate", `${path}.listMarkerTemplate`, issues);
+  optionalString(value, "listFoldedMarkerSuffix", `${path}.listFoldedMarkerSuffix`, issues);
   optionalTextFormatting(value, "listMarkerFormatting", `${path}.listMarkerFormatting`, issues);
   optionalOneOf(value, "listMarkerAlignment", `${path}.listMarkerAlignment`, issues, [
     "left",
