@@ -1,3 +1,8 @@
+import {
+  CANONICAL_GAP,
+  usesCanonicalSession,
+  type CanonicalGap,
+} from "../types/canonicalCapabilities";
 import { OP_STORIES } from "@stll/docx-core/ops";
 /**
  * Hidden-editor view lifecycle manager
@@ -72,6 +77,7 @@ import {
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 
 export class CanonicalSessionRefusalError extends TaggedError("CanonicalSessionRefusalError")<{
+  gap: CanonicalGap;
   message: string;
 }> {}
 
@@ -429,7 +435,7 @@ export type HiddenEditorManagerDeps = {
   getExperimentalSession?: () => "canonical" | undefined;
   getEditingMode?: () => EditorMode;
   getSuggestionAuthor?: () => string;
-  onSessionRefusal?: (reason: string) => void;
+  onSessionRefusal?: (reason: string, gap: CanonicalGap) => void;
   /**
    * Identity of the loaded document as tracked by the adapter's loader: the
    * same value across internal edits (so typing does not trigger an external
@@ -516,12 +522,13 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           : { type: "editing" }),
     );
   };
-  const refuse = (reason: string): void => {
-    if (deps.onSessionRefusal) deps.onSessionRefusal(reason);
-    else throw new CanonicalSessionRefusalError({ message: reason });
+  const refuse = (reason: string, gap: CanonicalGap = CANONICAL_GAP.dispatch): void => {
+    const message = reason;
+    if (deps.onSessionRefusal) deps.onSessionRefusal(message, gap);
+    else throw new CanonicalSessionRefusalError({ gap, message });
   };
   const seedSession = (document: Document | null): boolean => {
-    if (deps.getExperimentalSession?.() !== "canonical") {
+    if (!usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
       editorSession = { type: "prosemirror" };
       return true;
     }
@@ -534,7 +541,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         ? "Canonical sessions do not support collaboration."
         : "Canonical sessions require a loaded Document.";
       editorSession = { type: "refused", reason, documentIdentity };
-      refuse(reason);
+      refuse(reason, CANONICAL_GAP.collaboration);
       return false;
     }
     const result = createCanonicalSession(document, deps.getStyles());
@@ -597,6 +604,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const intents = getCanonicalCommandIntents(command, view.state);
     // Caller commands without document intents retain their ordinary selection
     // and probe behavior; dispatchTransaction still refuses raw document edits.
+    // canonical-gap: command-descriptors
     if (intents === undefined) return undefined;
     syncCanonicalMode();
     editorSession.session.breakUndoGroup();
@@ -638,7 +646,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         }
       }
       if (command === undefined) {
-        refuse("The formatting command is unavailable.");
+        refuse("The formatting command is unavailable.", CANONICAL_GAP.commands);
         return;
       }
       const handled = executeCanonicalCommand(command);
@@ -798,7 +806,11 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     }
     const collaboration = deps.getCollaboration();
     const collaborationModules = deps.getCollaborationModules();
-    if (collaboration && !collaborationModules && deps.getExperimentalSession?.() !== "canonical") {
+    if (
+      collaboration &&
+      !collaborationModules &&
+      !usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)
+    ) {
       return;
     }
 
@@ -1001,7 +1013,11 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     }
     const collaboration = deps.getCollaboration();
     const collaborationModules = deps.getCollaborationModules();
-    if (collaboration && !collaborationModules && deps.getExperimentalSession?.() !== "canonical") {
+    if (
+      collaboration &&
+      !collaborationModules &&
+      !usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)
+    ) {
       return;
     }
 
@@ -1011,7 +1027,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const collaborationSourceChanged = currentCollaborationFragment !== lastCollaborationFragment;
 
     const sessionChanged =
-      (editorSession.type !== "prosemirror") !== (deps.getExperimentalSession?.() === "canonical");
+      (editorSession.type !== "prosemirror") !==
+      usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting);
     if (collaboration && !collaborationSourceChanged && !sessionChanged) {
       return;
     }
@@ -1078,7 +1095,10 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
   const publishStoryCommit = (storyView: EditorView, commit: CanonicalCommit): boolean => {
     if (!view || editorSession.type !== "canonical") return false;
     if (deps.getEditingMode?.() === "suggesting") {
-      refuse("Suggesting is unavailable in the experimental canonical session.");
+      refuse(
+        "Suggesting is unavailable in the experimental canonical session.",
+        CANONICAL_GAP.suggesting,
+      );
       return false;
     }
     const session = editorSession.session;
@@ -1204,7 +1224,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         return publishCommit(prepared.value);
       },
       getCanonicalStoryProjection: (story) => {
-        if (deps.getExperimentalSession?.() === "canonical") ensureView();
+        if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting))
+          ensureView();
         if (editorSession.type !== "canonical" || editorSession.session.isComposing) return null;
         const result = editorSession.session.projectStory(story);
         if (result.isErr()) {

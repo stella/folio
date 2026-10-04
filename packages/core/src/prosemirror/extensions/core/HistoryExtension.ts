@@ -165,6 +165,7 @@ export const HistoryExtension = createExtension({
   onSchemaReady(_ctx: ExtensionContext, options: HistoryOptions): ExtensionRuntime {
     return {
       plugins: [
+        // canonical-gap: pm-history
         history({
           depth: options.depth,
           newGroupDelay: options.newGroupDelay,

@@ -1,3 +1,4 @@
+import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/canonicalCapabilities";
 /**
  * Pages-area pointer composable — owns every mousedown / mousemove /
  * click / dblclick / scroll handler on the pages viewport, plus the
@@ -468,7 +469,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
 
     if (!rId) {
       let materialized: Document | null;
-      if (opts.getExperimentalSession?.() === "canonical") {
+      if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
         const sectionIndex = opts.layout.value?.pages.at(pageNumber - 1)?.sectionIndex;
         const operation = createCanonicalHeaderFooterOperation({
           document: doc,
@@ -488,7 +489,8 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       if (!materialized) return;
       opts.syncHfPMs();
       opts.reLayout();
-      if (opts.getExperimentalSession?.() !== "canonical") opts.onDocumentChange(materialized);
+      if (!usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting))
+        opts.onDocumentChange(materialized);
       resolution = resolveHeaderFooterContent(materialized.package);
       rId ??= pickActiveHeaderFooterRId(resolution, position, isFirstPage);
     }
@@ -531,7 +533,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function handleHfSave() {
-    if (opts.getExperimentalSession?.() === "canonical") {
+    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
       hfEdit.value = null;
       opts.syncHfPMs();
       return;
@@ -554,7 +556,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       hfEdit.value = null;
       return;
     }
-    if (opts.getExperimentalSession?.() === "canonical") {
+    if (usesCanonicalSession(opts.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
       const operations = removeCanonicalHeaderFooterOperations({
         document: doc,
         position: edit.position,

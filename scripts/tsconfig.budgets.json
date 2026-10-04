@@ -7,6 +7,8 @@
   },
   "include": [
     "api-surface-budget.ts",
+    "check-canonical-cutover.ts",
+    "canonical-cutover.test.ts",
     "typecheck-budget.ts",
     "lib/exact-object.ts",
     "fuzz-failure-issues.ts",

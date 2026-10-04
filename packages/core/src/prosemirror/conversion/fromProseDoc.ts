@@ -5809,6 +5809,7 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
  * Preserves all non-content parts of the original document
  */
 export function updateDocumentContent(originalDocument: Document, pmDoc: PMNode): Document {
+  // canonical-gap: pm-save-projection
   return fromProseDoc(pmDoc, originalDocument);
 }
 
