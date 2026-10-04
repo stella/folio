@@ -21,7 +21,7 @@ export const LIST_LEVEL_RESERVED = {
   ilvl: readerOwned({
     slot: "w:lvl@ilvl",
     sentinel: "9",
-    reader: RESERVED_VALUE_READERS.numbering,
+    reader: RESERVED_VALUE_READERS.numberingLevel,
     evidence: "ilvl-outside-zero-to-eight-names-no-level",
   }),
   start: readerOwned({
@@ -123,7 +123,7 @@ export const LEVEL_OVERRIDE_RESERVED = {
   ilvl: readerOwned({
     slot: "w:lvlOverride@ilvl",
     sentinel: "9",
-    reader: RESERVED_VALUE_READERS.numbering,
+    reader: RESERVED_VALUE_READERS.numberingLevel,
     evidence: "ilvl-outside-zero-to-eight-names-no-level",
   }),
   startOverride: readerOwned({

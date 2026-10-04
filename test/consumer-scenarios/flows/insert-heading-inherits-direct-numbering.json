@@ -12,13 +12,13 @@
       "operations": [
         {
           "type": "insertAfterBlock",
-          "blockId": "048C530C",
+          "blockId": "412DDC7F",
           "text": "A second-level heading.",
           "styleId": "Heading2"
         },
         {
           "type": "insertAfterBlock",
-          "blockId": "048C530C",
+          "blockId": "412DDC7F",
           "text": "A new bullet.",
           "numbering": {
             "start": "new",

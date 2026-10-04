@@ -1,4 +1,5 @@
 import { Result } from "better-result";
+import { isNumberingReference, NO_NUMBERING_NUM_ID } from "../model/paragraphNumbering";
 
 import {
   MAX_REVISION_ID,
@@ -87,7 +88,12 @@ const applyCreateNumberingInstance = (document: Document, op: CreateNumberingIns
   }
   const prior = document.package.numbering;
   const numbering = prior ?? { abstractNums: [], nums: [] };
-  if (!Number.isSafeInteger(op.num.numId) || op.num.numId <= 0 || op.num.numId > MAX_REVISION_ID) {
+  if (
+    !Number.isSafeInteger(op.num.numId) ||
+    !isNumberingReference(op.num.numId) ||
+    op.num.numId < NO_NUMBERING_NUM_ID ||
+    op.num.numId > MAX_REVISION_ID
+  ) {
     return failed(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,

@@ -1,3 +1,4 @@
+import { cloneModel } from "./modelClone";
 import { replaceStoryBody } from "./stories";
 /** Whole-table edits and their exact structural inverse. */
 import { Result, panic } from "better-result";
@@ -287,7 +288,7 @@ const commitBlocks = ({
         ? before.find((candidate) => structurallyEqual(candidate, block))
         : beforeBlocksById.get(idKey(id));
     if (existing !== undefined && structurallyEqual(existing, block)) return existing;
-    const cloned = reuseParagraphs([structuredClone(block)]).at(0);
+    const cloned = reuseParagraphs([cloneModel(block)]).at(0);
     if (cloned === undefined) return panic("Cloning one block must preserve one block.");
     return cloned;
   });

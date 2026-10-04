@@ -1,0 +1,18 @@
+{
+  "generated numbering definitions keep their metadata and markers": [
+    {
+      "seed": 870802920,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Preserve parsed list counter markers on unchanged numbering definitions instead of replacing them with the base template",
+      "date": "2026-10-02"
+    }
+  ],
+  "generated symbol-font bullets and folded LISTNUM fields preserve parsed rendering": [
+    {
+      "seed": -1715044072,
+      "path": "6:0:0:1:1:1:1:1:1:1:1",
+      "note": "Retain generated source rendering and exact rejection behavior reported by stack CI.",
+      "date": "2026-10-03"
+    }
+  ]
+}

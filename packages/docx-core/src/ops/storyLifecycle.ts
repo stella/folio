@@ -1,4 +1,5 @@
 /** Explicit story lifecycle and section property edits, with exact JSON-safe inverses. */
+import { cloneModel } from "./modelClone";
 import { panic, Result } from "better-result";
 import { DEFAULT_TAB_STOP_TWIPS } from "../model/document";
 import type {
@@ -301,8 +302,8 @@ export const storyLifecycleEdit = (
     inverse: [
       {
         type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
-        expected: structuredClone(next),
-        parts: structuredClone(prior),
+        expected: cloneModel(next),
+        parts: cloneModel(prior),
       },
     ],
     touched: {
@@ -372,7 +373,7 @@ export const applyStoryLifecycle = (
           message: "Story lifecycle inverse is stale.",
         }),
       );
-    return storyLifecycleEdit(document, restoreParts(document, structuredClone(op.parts)), op);
+    return storyLifecycleEdit(document, restoreParts(document, cloneModel(op.parts)), op);
   }
   const properties = sectionPropertiesAt(document, op.sectionIndex);
   if (!properties) return refuse(op, "The section does not exist.");
@@ -412,7 +413,7 @@ export const applyStoryLifecycle = (
     const part: HeaderFooter = {
       type: kind,
       hdrFtrType: op.referenceType,
-      content: structuredClone(op.content),
+      content: cloneModel(op.content),
     };
     nextParts.set(op.story.rId, part);
     nextRefs.push({ type: op.referenceType, rId: op.story.rId });

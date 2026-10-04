@@ -12,7 +12,7 @@
       "operations": [
         {
           "type": "deleteBlock",
-          "blockId": "1108F4A8"
+          "blockId": "412DDC7F"
         }
       ]
     },
@@ -22,7 +22,7 @@
       "operations": [
         {
           "type": "setBlockParagraphProperties",
-          "blockId": "1108F4A8",
+          "blockId": "412DDC7F",
           "properties": {
             "styleId": null
           }

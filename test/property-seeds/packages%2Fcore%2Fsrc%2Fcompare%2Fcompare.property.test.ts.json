@@ -1,0 +1,32 @@
+{
+  "the change count never exceeds the blocks the script touched (${name})": [
+    {
+      "seed": -508007194,
+      "path": "4:3:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "#1127: upstream-complex-styles.docx, a moved paragraph's undefined Heading2 style",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": -507695470,
+      "path": "10:3:2:2",
+      "note": "#1127: upstream-complex-styles.docx, found as PROPERTY_TEST_SEED=1790493666962 (fast-check reads it as this 32-bit seed)",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": -507912694,
+      "path": "1:0:1",
+      "note": "#1127: upstream-complex-styles.docx",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": -1791229527,
+      "note": "A recreated relocation displaced a persisted exact anchor and split neighbouring edits into deletion/insertion changes. Found on upstream-complex-styles.docx; pinned by seed alone since the key covers every fixture.",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 752725439,
+      "note": "A recreated relocation displaced a persisted exact anchor and split neighbouring edits into deletion/insertion changes. Found on upstream-complex-styles.docx; pinned by seed alone since the key covers every fixture.",
+      "date": "2026-09-30"
+    }
+  ]
+}

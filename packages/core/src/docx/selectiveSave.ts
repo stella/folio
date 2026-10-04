@@ -1,3 +1,4 @@
+import type { SaveDiagnosticOptions } from "./saveDiagnostics";
 /**
  * Selective Save Module
  *
@@ -306,7 +307,7 @@ async function patchNumberingPart(
   return true;
 }
 
-export type SelectiveSaveOptions = {
+export type SelectiveSaveOptions = SaveDiagnosticOptions & {
   /** Changed paragraph IDs to selectively patch */
   changedParaIds: Set<string>;
   /** Whether paragraph membership, order, or block structure changed. */
@@ -594,7 +595,10 @@ export async function attemptSelectiveSave(
     }
 
     // Serialize modified headers/footers
-    for (const [path, xml] of await collectHeaderFooterUpdates(doc, zip)) {
+    for (const [path, xml] of await collectHeaderFooterUpdates(doc, {
+      sourceZip: zip,
+      onDiagnostic: options.onDiagnostic,
+    })) {
       updates.set(path, xml);
     }
 

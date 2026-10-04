@@ -1,0 +1,16 @@
+{
+  "every view settles on the layout of the text it reads, through any event sequence": [
+    {
+      "seed": -1487704601,
+      "path": "31:0:0:0:0:0:0:0:0:1:0:0:1:1:1:1:1:1:1:3:3:5:6:7:9:9:12",
+      "note": "a view switched away and back before its re-render, while an edit's pass laid out the view in between, kept that pass's layout (found at path 33:…, which counted the two example scenarios)",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": -315487089,
+      "path": "14:4:5:3:14:14:14:4:13:14:14:14:14:5:4:2:5:5:5:3:4:4:4:4:2:2:2:2:5:3:9:38:38:39:42:54:44:55:55:62:70:71:72:72:102:104:110:119:124:125:139:167:167:181:47:194:205:190:204:204:204:205:226:208:210:207:209:208:207:209:208:208:207:207:207:210:209:208:208:208:207:211:207:207:208:210:212:209",
+      "note": "a hidden insertion split a word across two runs in Original; the line width summed \"confirm\" + \"ation\" and differed from the materialised line in the last floating-point digit (found at path 16:…, which counted the two example scenarios)",
+      "date": "2026-09-30"
+    }
+  ]
+}

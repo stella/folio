@@ -243,14 +243,30 @@ const save = async (reviewer: Reviewer): Promise<Uint8Array> =>
   new Uint8Array(await reviewer.toBuffer());
 
 /**
+ * Whether a story is still in a document. A note goes with its reference:
+ * accepting the deletion of the text that holds the reference removes the
+ * note, whatever it holds by then.
+ */
+type StoryPresence = "present" | "removed";
+
+type ResolvedState = {
+  rows: Row[];
+  story: StoryPresence;
+  bytes: Uint8Array;
+  comments: Comment[];
+  links: LinkSnapshot;
+};
+
+/**
  * `bytes` opened, every change resolved one way, saved and reopened: the
- * blocks a reader is left with, and the saved package.
+ * blocks a reader is left with, whether the story is still there, and the
+ * saved package.
  */
 export const resolvedState = async (
   bytes: Uint8Array,
   resolution: "accept" | "reject",
   story: Story = MAIN,
-): Promise<{ rows: Row[]; bytes: Uint8Array; comments: Comment[]; links: LinkSnapshot }> => {
+): Promise<ResolvedState> => {
   const reviewer = await openReviewer(bytes);
   if (resolution === "accept") reviewer.acceptAll();
   else reviewer.rejectAll();
@@ -258,6 +274,7 @@ export const resolvedState = async (
   const reopened = await openReviewer(saved);
   return {
     rows: rowsOf(reopened, story),
+    story: reopened.readStory(story) === null ? "removed" : "present",
     bytes: saved,
     comments: commentsOf(reopened),
     links: captureLinks(reopened),
@@ -336,6 +353,12 @@ export type Model = {
   unmodelled: string[];
   /** Blocks that are paragraphs of a text box drawn in the block before them. */
   inTextBox?: ReadonlySet<string>;
+  /**
+   * The story in the resolved pre-state. A removed one (a note whose
+   * reference's deletion is pending) stays removed once accepted: nothing
+   * an operation puts in it survives.
+   */
+  story: StoryPresence;
 };
 
 const fieldsOf = (row: Row): Fields => {
@@ -379,6 +402,7 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
     styles: new Set(),
     comments: [],
     unmodelled: [],
+    story: "present",
   };
   const known = new Set(rows.map((row) => row.id));
   const indexOf = (id: string | undefined): number =>
@@ -590,12 +614,24 @@ const paragraphRequest = (
       !pre?.previewRuns?.some((run) => run.directFormatting !== undefined)
     ) {
       for (const property of ["bold", "italic", "underline"] as const) {
-        const flags = formattingAt(example, property) ?? Array(example.text.length).fill(false);
+        const flags =
+          formattingAt({ row: example, property }) ?? Array(example.text.length).fill(false);
         if (!flags.every((flag) => flag === flags[0])) continue;
         const expected = flags[0] === true;
         checks.push((row) => {
-          const actual = formattingAt(row, property) ?? Array(row.text.length).fill(false);
-          return actual.every((flag) => flag === expected)
+          const actual = formattingAt({ row, property }) ?? Array(row.text.length).fill(false);
+          return actual.every(
+            (flag, offset) =>
+              flag === expected ||
+              model.rows.some(
+                (entry) =>
+                  entry.pre === pre &&
+                  entry.formats.some(
+                    (format) =>
+                      format.property === property && offset >= format.start && offset < format.end,
+                  ),
+              ),
+          )
             ? null
             : `effective ${property} differs from style ${styleId}`;
         });
@@ -688,18 +724,27 @@ const untouchedText = (row: ModelRow): boolean =>
 type Expect = (model: Model, operation: Operation) => void;
 
 /**
- * A text box's paragraphs belong to the paragraph it is drawn in, which a
- * reader lists just before them: a block inserted after that paragraph
- * follows them.
+ * The paragraphs of the text boxes drawn in `row`, which a reader lists just
+ * after it; none for a paragraph inside a text box.
  */
-const pastTextBoxes = (model: Model, row: ModelRow): ModelRow => {
-  const boxed = (candidate: ModelRow | undefined) =>
-    candidate?.pre !== undefined && model.inTextBox?.has(candidate.pre.id) === true;
-  if (boxed(row)) return row;
-  let index = model.rows.indexOf(row);
-  while (boxed(model.rows[index + 1])) index += 1;
-  return model.rows[index] ?? row;
+const textBoxRowsOf = (model: Model, row: ModelRow): ModelRow[] => {
+  const boxed = (candidate: ModelRow): boolean =>
+    candidate.pre !== undefined && model.inTextBox?.has(candidate.pre.id) === true;
+  if (boxed(row)) return [];
+  const rows: ModelRow[] = [];
+  for (const candidate of model.rows.slice(model.rows.indexOf(row) + 1)) {
+    if (!boxed(candidate)) break;
+    rows.push(candidate);
+  }
+  return rows;
 };
+
+/**
+ * A text box's paragraphs belong to the paragraph it is drawn in: a block
+ * inserted after that paragraph follows them.
+ */
+const pastTextBoxes = (model: Model, row: ModelRow): ModelRow =>
+  textBoxRowsOf(model, row).at(-1) ?? row;
 
 /**
  * Where a block inserted next to `row` goes: next to the row itself, or, for
@@ -818,7 +863,12 @@ export const EXPECTATIONS = {
     addComment(model, operation);
   },
   deleteBlock: (model, operation) => {
-    target(model, operation["blockId"]).removed = true;
+    const row = target(model, operation["blockId"]);
+    row.removed = true;
+    // The text boxes drawn in the paragraph go with it once the deletion
+    // resolves; the suggested live view still lists their paragraphs.
+    if (model.mode === "suggested") return;
+    for (const boxed of textBoxRowsOf(model, row)) boxed.removed = true;
   },
   splitBlock: (model, operation) => {
     const row = target(model, operation["blockId"]);
@@ -1040,6 +1090,7 @@ const applyEdits = (text: string, edits: readonly TextEdit[], splits: ModelRow["
 };
 
 const materialize = (model: Model): Expected[] => {
+  if (model.story === "removed") return [];
   const out: Expected[] = [];
   let joinNext: string | undefined;
   const push = (entry: Expected) => {
@@ -1088,12 +1139,25 @@ const materialize = (model: Model): Expected[] => {
 const visible = <T extends { text: string }>(rows: readonly T[]): T[] =>
   rows.filter((row) => row.text.length > 0);
 
-const formattingAt = (row: Row, property: "bold" | "italic" | "underline"): boolean[] | null => {
+type FormattingAtOptions = {
+  row: Row;
+  property: "bold" | "italic" | "underline";
+  source?: "effective" | "direct";
+};
+
+const formattingAt = ({
+  row,
+  property,
+  source = "effective",
+}: FormattingAtOptions): (boolean | undefined)[] | null => {
   const runs = row.previewRuns;
   if (!runs || runs.map((run) => run.text).join("") !== row.text) return null;
-  return runs.flatMap((run) =>
-    Array.from({ length: run.text.length }, () => run[property] === true),
-  );
+  return runs.flatMap((run) => {
+    const direct = run.directFormatting?.[property];
+    const directFlag = typeof direct === "boolean" ? direct : undefined;
+    const flag = source === "effective" ? run[property] === true : directFlag;
+    return Array.from({ length: run.text.length }, () => flag);
+  });
 };
 
 /** Compare `actual` with what `model` expects; every mismatch, as text. */
@@ -1116,7 +1180,7 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
       const actualValue = row[key as keyof Row];
       if (JSON.stringify(actualValue) !== JSON.stringify(value)) {
         problems.push(
-          `"${row.text}": ${key} is ${JSON.stringify(actualValue)}, expected ${JSON.stringify(value)}`,
+          `"${row.text}": ${key} is ${JSON.stringify(actualValue)}, expected ${JSON.stringify(value)}\n    before ${JSON.stringify(entry.pre)}\n    after ${JSON.stringify(row)}`,
         );
       }
     }
@@ -1125,27 +1189,35 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
       if (problem !== null) problems.push(`"${row.text}": ${problem}`);
     }
     for (const format of entry.formats) {
-      const flags = formattingAt(row, format.property);
+      const flags = formattingAt({ row, property: format.property });
       if (flags === null) continue;
-      const missing = flags.slice(format.start, format.end).some((flag) => !flag);
+      const restyled = entry.fields.styleId !== entry.pre?.styleId;
+      const requestedFlags = restyled
+        ? formattingAt({ row, property: format.property, source: "direct" })
+        : flags;
+      const missing = requestedFlags?.slice(format.start, format.end).some((flag) => flag !== true);
       if (missing) {
         problems.push(
           `"${row.text}": [${format.start}, ${format.end}) is not all ${format.property}`,
         );
       }
-      // Outside the range, every character keeps what it had.
-      const before = entry.pre && formattingAt(entry.pre, format.property);
+      // A restyle may change inherited values; the range must still preserve direct provenance.
+      const source = restyled ? "direct" : "effective";
+      const outsideFlags = formattingAt({ row, property: format.property, source });
+      const before =
+        entry.pre && formattingAt({ row: entry.pre, property: format.property, source });
       const inside = (offset: number) =>
         entry.formats.some(
           (other) =>
             other.property === format.property && offset >= other.start && offset < other.end,
         );
-      const changed = before
-        ? flags.findIndex((flag, offset) => !inside(offset) && flag !== before[offset])
-        : -1;
+      const changed =
+        before && outsideFlags
+          ? outsideFlags.findIndex((flag, offset) => !inside(offset) && flag !== before[offset])
+          : -1;
       if (changed !== -1) {
         problems.push(
-          `"${row.text}": ${format.property} changed at ${changed}, outside what was asked`,
+          `"${row.text}": ${format.property} changed at ${changed}, outside what was asked\n    before runs ${JSON.stringify(entry.pre?.previewRuns)}\n    after runs ${JSON.stringify(row.previewRuns)}`,
         );
       }
     }
@@ -1312,6 +1384,8 @@ export type Pre = {
   mode: Mode;
   live: string;
   rows: Row[];
+  /** Whether the story of `rows` is in that state. */
+  resolvedStory: StoryPresence;
   /** The reviewer's own blocks, when `rows` are another view of them. */
   liveRows: Row[];
   /** Immutable pre-state; suggestions have not entered saved package bytes yet. */
@@ -1414,6 +1488,7 @@ export const capture = async (
       mode,
       live,
       rows,
+      resolvedStory: "present",
       liveRows: rows,
       numberingSource: { type: "live", document: reviewer.toDocument() },
       comments: liveComments,
@@ -1428,6 +1503,7 @@ export const capture = async (
     mode,
     live,
     rows: accepted.rows,
+    resolvedStory: accepted.story,
     liveRows: rowsOf(reviewer, story),
     numberingSource: { type: "package", bytes: accepted.bytes },
     comments: accepted.comments,
@@ -1555,6 +1631,7 @@ export const assertRequestedOutcome = async (
   }
   model.inTextBox = pre.targets.inTextBox;
   model.mode = pre.mode;
+  model.story = pre.resolvedStory;
   for (const operation of outcome.applied) expectOperation(model, operation);
   // An operation the oracle cannot model changes the document in a way it
   // cannot predict; the rest of the batch is not compared either.

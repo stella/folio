@@ -313,17 +313,31 @@ const resultOfOutcome = (outcome: CorpusTaskOutcome): CorpusFileResult => {
     }
     // The worker died on this file: a fact about the file, which gates.
     case "aborted": {
-      return { kind: "complete", failures: outcome.failures };
+      return { kind: "complete", failures: outcome.failures, declaredRefusals: [] };
     }
     // The deadline expired, so this file's evidence is as load-dependent as a
     // budget truncation's, and it is treated as one.
     case "watchdog-expired": {
-      return { kind: "truncated", failures: outcome.failures, stage: WATCHDOG_STAGE };
+      return {
+        kind: "truncated",
+        failures: outcome.failures,
+        declaredRefusals: [],
+        stage: WATCHDOG_STAGE,
+      };
     }
     case "checked": {
       return outcome.truncatedAt === undefined
-        ? { kind: "complete", failures: outcome.failures }
-        : { kind: "truncated", failures: outcome.failures, stage: outcome.truncatedAt };
+        ? {
+            kind: "complete",
+            failures: outcome.failures,
+            declaredRefusals: outcome.declaredRefusals,
+          }
+        : {
+            kind: "truncated",
+            failures: outcome.failures,
+            declaredRefusals: outcome.declaredRefusals,
+            stage: outcome.truncatedAt,
+          };
     }
     default: {
       throw new CorpusGateError({
@@ -346,7 +360,11 @@ const corpusFileResult = (outcome: CorpusTaskOutcome, listed: boolean): CorpusFi
   if (!listed || result.kind === "not-a-docx") {
     return result;
   }
-  return { kind: "report-only", failures: result.failures };
+  return {
+    kind: "report-only",
+    failures: result.failures,
+    declaredRefusals: result.declaredRefusals,
+  };
 };
 
 const runGate = async ({
@@ -417,6 +435,7 @@ const runGate = async ({
           referenceMs: outcome.cost.referenceMs,
           producer: outcome.producer,
           failures: outcome.failures,
+          declaredRefusals: outcome.declaredRefusals,
           timings: outcome.timings,
           evidence: evidenceOf(result),
         });

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { captureVerbatimXml, UntranslatableStrictNamespaceError } from "./verbatimCapture";
+import {
+  captureVerbatimXml,
+  captureSourceProfileXml,
+  UntranslatableStrictNamespaceError,
+} from "./verbatimCapture";
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import { parseXml, type XmlElement } from "./xmlParser";
 
 const STRICT_W = "http://purl.oclc.org/ooxml/wordprocessingml/main";
@@ -81,5 +86,53 @@ describe("verbatim capture", () => {
     expect(() =>
       capture('<x:thing xmlns:x="http://purl.oclc.org/ooxml/invented/vocabulary"/>'),
     ).toThrow(UntranslatableStrictNamespaceError);
+  });
+});
+
+describe("generated source-profile capture", () => {
+  test("converts Strict percentage slots and graphic vocabularies without changing user values or frozen input", () => {
+    const word = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const drawing = "http://schemas.openxmlformats.org/drawingml/2006/main";
+    const picture = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+    const xml = `<w:tbl xmlns:w="${word}" xmlns:a="${drawing}" xmlns:vendor="urn:vendor">
+      <w:tblPr><w:tblW w:w="2500" w:type="pct" vendor:w="2500"/><w:tblInd w:w="720" w:type="dxa"/></w:tblPr>
+      <w:tr><w:tc><w:p><w:r><w:t label="${word}" vendor:uri="${picture}">2500 ${picture}</w:t></w:r></w:p></w:tc></w:tr>
+      <a:graphic><a:graphicData uri="${picture}" vendor:uri="${picture}"><a:alpha val="60000" vendor:val="60000"/></a:graphicData></a:graphic>
+      <vendor:graphicData uri="${picture}"/>
+    </w:tbl>`;
+    const element = fragment(xml);
+    const before = structuredClone(element);
+    const freeze = (value: unknown): void => {
+      if (typeof value !== "object" || value === null || Object.isFrozen(value)) return;
+      for (const child of Object.values(value)) freeze(child);
+      Object.freeze(value);
+    };
+    freeze(element);
+    const strict = captureSourceProfileXml(element, DOCX_CONFORMANCE_CLASSES.STRICT);
+    expect(strict).toContain(`xmlns:w="${STRICT_W}"`);
+    expect(strict).toContain(`xmlns:a="${STRICT_A}"`);
+    expect(strict).toContain('<w:tblW w:w="50%" w:type="pct" vendor:w="2500"/>');
+    expect(strict).toContain('<w:tblInd w:w="720" w:type="dxa"/>');
+    expect(strict).toContain('<a:alpha val="60%" vendor:val="60000"/>');
+    expect(strict).toContain('uri="http://purl.oclc.org/ooxml/drawingml/picture"');
+    expect(strict).toContain(`label="${word}" vendor:uri="${picture}"`);
+    expect(strict).toContain(`2500 ${picture}`);
+    expect(strict).toContain(`<vendor:graphicData uri="${picture}"/>`);
+    expect(strict).toContain(`vendor:uri="${picture}"`);
+    const normalized = captureVerbatimXml(fragment(strict));
+    expect(normalized).toContain('<w:tblW w:w="2500" w:type="pct" vendor:w="2500"/>');
+    const authored = capture(
+      `<w:tblW xmlns:w="${STRICT_W}" xmlns:vendor="urn:vendor" w:w="50%" w:type="pct" vendor:w="60%"/>`,
+    );
+    expect(authored).toContain('w:w="2500"');
+    expect(authored).toContain('vendor:w="60%"');
+    const authoredAlpha = capture(
+      `<a:alpha xmlns:a="${STRICT_A}" xmlns:vendor="urn:vendor" val="60%" vendor:val="50%"/>`,
+    );
+    expect(authoredAlpha).toContain('val="60000"');
+    expect(authoredAlpha).toContain('vendor:val="50%"');
+    expect(normalized).toContain('<a:alpha val="60000" vendor:val="60000"/>');
+    expect(element).toEqual(before);
+    expect(captureSourceProfileXml(element, DOCX_CONFORMANCE_CLASSES.TRANSITIONAL)).toBe(xml);
   });
 });

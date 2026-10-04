@@ -12,12 +12,12 @@
       "operations": [
         {
           "type": "insertBeforeBlock",
-          "blockId": "0F49D7B9",
+          "blockId": "581FD868",
           "text": "Term delivery schedule period period clause notice agreement."
         },
         {
           "type": "replaceInBlock",
-          "blockId": "0F49D7B9",
+          "blockId": "581FD868",
           "find": "the",
           "replace": "the Customer",
           "precondition": {
@@ -36,12 +36,12 @@
       "operations": [
         {
           "type": "insertBeforeBlock",
-          "blockId": "0F49D7B9",
+          "blockId": "581FD868",
           "text": "Warranty agreement buyer buyer supplier written period delivery."
         },
         {
           "type": "replaceInBlock",
-          "blockId": "0F49D7B9",
+          "blockId": "581FD868",
           "find": "schedule",
           "replace": "amended",
           "precondition": {

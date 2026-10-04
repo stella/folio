@@ -6,6 +6,8 @@
  * operation contract and a save, so a fixture is itself a first round trip.
  */
 
+import { createHash } from "node:crypto";
+
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
@@ -33,9 +35,112 @@ export const AUTHOR = "Consumer Scenario";
 export const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
   bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 
-/** `createDocx` + `ensureParaIds`, the recipe the published README gives. */
+/** A paraId `ensureParaIds` keeps: eight hex digits, below 0x80000000, not all zero. */
+const fixtureParaId = (seed: string): string => {
+  const value = createHash("sha256").update(seed).digest().readUInt32BE(0) & 0x7f_ff_ff_ff;
+  return value.toString(16).toUpperCase().padStart(8, "0");
+};
+
+const isParagraph = (value: object): value is Paragraph =>
+  "type" in value && value.type === "paragraph";
+
+/**
+ * The paraIds each fixture's model carried into `createDocx`, keyed by the
+ * exact bytes a fixture returned; per package, so no answer depends on what
+ * else the process built.
+ */
+const PINNED_PARA_IDS = new WeakMap<Uint8Array, ReadonlySet<string>>();
+
+/**
+ * The paraIds the model behind `bytes` carried, rather than ids
+ * `ensureParaIds` minted from the serialized bytes (a note separator) or a
+ * reviewer edit minted while the fixture was built. `bytes` must be the
+ * object `packFixture` or a fixture returned (a reviewer-built fixture
+ * carries the ids of the fixture it opened).
+ */
+export const pinnedParaIdsOf = (bytes: Uint8Array): ReadonlySet<string> => {
+  const pinned = PINNED_PARA_IDS.get(bytes);
+  if (pinned === undefined) {
+    throw new TypeError("pinnedParaIdsOf: these bytes are not a fixture packFixture returned");
+  }
+  return pinned;
+};
+
+/**
+ * A copy of `document` with every story paragraph given a `w14:paraId`
+ * named by its story and its position there (depth first, so table cells
+ * and text boxes count too), and the ids it carries. The reviewer's block
+ * id is the paragraph's paraId, and flows pin fixture blocks by id
+ * (support/flow-file.ts); an id `ensureParaIds` mints derives from a hash of
+ * document.xml as the serializer writes it, so a serializer change would
+ * re-mint every id and detach every flow.
+ */
+const pinParaIds = (source: FolioDocument): { document: FolioDocument; pinned: Set<string> } => {
+  const document = structuredClone(source);
+  const pkg = document.package;
+  const stories: [string, unknown][] = [
+    ["body", pkg.document.content],
+    ...[...(pkg.headers ?? [])].map(([rId, part]): [string, unknown] => [`header:${rId}`, part]),
+    ...[...(pkg.footers ?? [])].map(([rId, part]): [string, unknown] => [`footer:${rId}`, part]),
+    ...(pkg.footnotes ?? []).map((note): [string, unknown] => [`footnote:${note.id}`, note]),
+    ...(pkg.endnotes ?? []).map((note): [string, unknown] => [`endnote:${note.id}`, note]),
+  ];
+  const pinned = new Set<string>();
+  for (const [story, root] of stories) {
+    let ordinal = 0;
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item);
+        return;
+      }
+      if (typeof value !== "object" || value === null) return;
+      if (isParagraph(value)) {
+        if (value.paraId === undefined) {
+          const seed = `${story}:${ordinal}`;
+          let id = fixtureParaId(seed);
+          for (let salt = 1; pinned.has(id) || id === "00000000"; salt += 1) {
+            id = fixtureParaId(`${seed}:${salt}`);
+          }
+          value.paraId = id;
+        }
+        pinned.add(value.paraId);
+        ordinal += 1;
+      }
+      for (const item of Object.values(value)) visit(item);
+    };
+    visit(root);
+  }
+  return { document, pinned };
+};
+
+/**
+ * `createDocx` + `ensureParaIds`, the recipe the published README gives:
+ * `ensureParaIds` mints every paraId. For an ad-hoc document; a fixture a
+ * flow can name blocks of goes through `packFixture`.
+ */
 export const packDocument = async (document: FolioDocument): Promise<Uint8Array> =>
   (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx;
+
+/**
+ * `packDocument` on a copy of `source` whose story paragraphs carry pinned
+ * paraIds (see `pinParaIds`), so `ensureParaIds` mints only the note
+ * separators the serializer adds; `pinnedParaIdsOf` answers for the
+ * returned bytes. Positional ids repeat across fixtures, so two unrelated
+ * fixtures share paraIds: never compare or merge them by paragraph identity.
+ */
+export const packFixture = async (source: FolioDocument): Promise<Uint8Array> => {
+  const { document, pinned } = pinParaIds(source);
+  const bytes = await packDocument(document);
+  PINNED_PARA_IDS.set(bytes, pinned);
+  return bytes;
+};
+
+/** A reviewer-built fixture's save, carrying the pinned ids of the fixture it opened. */
+const saveFixture = async (reviewer: Reviewer, base: Uint8Array): Promise<Uint8Array> => {
+  const bytes = new Uint8Array(await reviewer.toBuffer());
+  PINNED_PARA_IDS.set(bytes, pinnedParaIdsOf(base));
+  return bytes;
+};
 
 export const openReviewer = (bytes: Uint8Array, author = AUTHOR): Promise<Reviewer> =>
   FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), { author });
@@ -100,11 +205,11 @@ const PLAIN_MARKDOWN = [
 ].join("\n\n");
 
 /** Headings and paragraphs; no numbering part at all. */
-export const plainDocument = (): Promise<Uint8Array> => packDocument(fromMarkdown(PLAIN_MARKDOWN));
+export const plainDocument = (): Promise<Uint8Array> => packFixture(fromMarkdown(PLAIN_MARKDOWN));
 
 /** A bulleted, a numbered and a nested list (the Markdown numbering part). */
 export const listDocument = (): Promise<Uint8Array> =>
-  packDocument(
+  packFixture(
     fromMarkdown(
       [
         "# Delivery Terms",
@@ -149,7 +254,7 @@ export const styleNumberedDocument = (): Promise<Uint8Array> => {
   heading2.pPr = { ...heading2.pPr, numPr: paragraphNumberingFromSlots({ numId: 5, ilvl: 0 }) };
   const heading3 = findStyle(document, "Heading3");
   heading3.pPr = { ...heading3.pPr, numPr: paragraphNumberingFromSlots({ numId: 5, ilvl: 1 }) };
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /** A clause numbered by a direct `w:numPr` next to plain body text. */
@@ -170,7 +275,7 @@ export const directNumberedDocument = (): Promise<Uint8Array> => {
       numPr: paragraphNumberingFromSlots({ numId: 7, ilvl: 0 }),
     };
   }
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /** One decimal definition that no paragraph uses (instance 901, #1103). */
@@ -185,7 +290,7 @@ export const UNUSED_NUMBERING: Numbering = {
 export const unusedNumberingDocument = (): Promise<Uint8Array> => {
   const document = fromMarkdown(PLAIN_MARKDOWN);
   document.package.numbering = structuredClone(UNUSED_NUMBERING);
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /** A Markdown table between paragraphs, and a built table with a header row. */
@@ -208,7 +313,7 @@ export const tableDocument = (): Promise<Uint8Array> => {
     }),
     paragraph("Schedules may change by agreement."),
   );
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /** A footnote and an endnote referenced from body paragraphs. */
@@ -226,12 +331,13 @@ export const notesDocument = (): Promise<Uint8Array> => {
     ]),
     paragraph([run("Warranty terms apply."), endnote(document, "See the warranty schedule.")]),
   );
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /** Open comments, a reply and a resolved thread, saved through the reviewer. */
 export const commentDocument = async (): Promise<Uint8Array> => {
-  const reviewer = await openReviewer(await plainDocument());
+  const base = await plainDocument();
+  const reviewer = await openReviewer(base);
   applyOrThrow(reviewer, {
     mode: "direct",
     operations: [
@@ -258,12 +364,13 @@ export const commentDocument = async (): Promise<Uint8Array> => {
   };
   reviewer.replyTo(comment("Define good order."), { text: "Good order means undamaged." });
   reviewer.resolveComment(String(comment("Thirty days is long.").id));
-  return new Uint8Array(await reviewer.toBuffer());
+  return saveFixture(reviewer, base);
 };
 
 /** Pending tracked insertions, deletions and a replaced word. */
 export const trackedChangesDocument = async (): Promise<Uint8Array> => {
-  const reviewer = await openReviewer(await listDocument(), "Earlier Reviewer");
+  const base = await listDocument();
+  const reviewer = await openReviewer(base, "Earlier Reviewer");
   applyOrThrow(reviewer, {
     mode: "tracked-changes",
     operations: [
@@ -287,7 +394,7 @@ export const trackedChangesDocument = async (): Promise<Uint8Array> => {
       },
     ],
   });
-  return new Uint8Array(await reviewer.toBuffer());
+  return saveFixture(reviewer, base);
 };
 
 /** Emoji outside the Basic Multilingual Plane, a modifier and a ZWJ sequence, next to words. */
@@ -299,7 +406,7 @@ export const EMOJI_TEXTS = [
 
 /** Paragraphs whose words sit next to surrogate pairs. */
 export const emojiDocument = (): Promise<Uint8Array> =>
-  packDocument(fromMarkdown(["# Emoji", ...EMOJI_TEXTS].join("\n\n")));
+  packFixture(fromMarkdown(["# Emoji", ...EMOJI_TEXTS].join("\n\n")));
 
 /** A table whose first column merges vertically through its last two rows. */
 export const mergedTableDocument = (): Promise<Uint8Array> => {
@@ -314,7 +421,7 @@ export const mergedTableDocument = (): Promise<Uint8Array> => {
     }),
     paragraph("After the table."),
   );
-  return packDocument(document);
+  return packFixture(document);
 };
 
 type HeaderFooterKind = "default" | "first" | "even";
@@ -444,7 +551,7 @@ export const storiesDocument = (): Promise<Uint8Array> => {
     ...pkg.document.finalSectionProperties,
     ...references,
   };
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /**

@@ -1,3 +1,6 @@
+import type { SaveDiagnosticOptions } from "./saveDiagnostics";
+import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
+import { registerContentTypeParts } from "./contentTypeRegistry";
 import { removeResolvedHeaderFooterParts } from "./removeHeaderFooterParts";
 import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
@@ -963,7 +966,7 @@ async function processNewHyperlinks(
 /**
  * Options for repacking DOCX
  */
-export type RepackOptions = {
+export type RepackOptions = SaveDiagnosticOptions & {
   /** Compression level (0-9, default: 6) */
   compressionLevel?: number;
   /** Whether to update modification date in docProps/core.xml */
@@ -1133,7 +1136,7 @@ const cloneDocxZip = (source: JSZip): JSZip => {
   return clone;
 };
 
-type FinishRepackOptions = {
+type FinishRepackOptions = SaveDiagnosticOptions & {
   document: Document;
   originalZip: JSZip;
   outputZip: JSZip;
@@ -1167,10 +1170,11 @@ const finishRepack = async ({
   updateModifiedDate,
   modifiedBy,
   changedNoteParaIds,
+  onDiagnostic,
   sectionEndpointRemoval,
   sectionReferenceRemovals,
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
-  await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
+  document = await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
   await materializeEmbeddedMedia({ document, zip: outputZip, compressionLevel });
 
   const parts = collectDocxParts(document, outputZip);
@@ -1211,7 +1215,12 @@ const finishRepack = async ({
 
   await rebindWatermarkRelIds(document, outputZip, compressionLevel);
 
-  await serializeHeadersFootersToZip(document, outputZip, compressionLevel);
+  await serializeHeadersFootersToZip({
+    doc: document,
+    zip: outputZip,
+    compressionLevel,
+    onDiagnostic,
+  });
 
   await serializeNotesToZip({
     doc: document,
@@ -1299,6 +1308,7 @@ async function repackDocxWithSectionEndpointRemoval({
     originalCorePropertiesXml,
     compressionLevel,
     updateModifiedDate,
+    onDiagnostic: options.onDiagnostic,
     ...(modifiedBy !== undefined ? { modifiedBy } : {}),
     ...(changedNoteParaIds !== undefined ? { changedNoteParaIds } : {}),
     ...(sectionEndpointRemoval !== undefined ? { sectionEndpointRemoval } : {}),
@@ -1336,7 +1346,7 @@ export async function repackDocxFromRaw(
     modifiedBy,
     changedNoteParaIds,
   } = options;
-  const exportDocument = withoutOrphanCommentRanges(doc);
+  let exportDocument = withoutOrphanCommentRanges(doc);
 
   // Create a new ZIP with all original files
   const newZip = new JSZip();
@@ -1367,7 +1377,7 @@ export async function repackDocxFromRaw(
   // Promote in-memory header/footer parts to real parts/relationships first, so
   // collectDocxParts sees them and processNewImages can write image relations
   // into a newly created header/footer's own rels.
-  await materializeNewHeaderFooterParts(exportDocument, newZip, compressionLevel);
+  exportDocument = await materializeNewHeaderFooterParts(exportDocument, newZip, compressionLevel);
   await materializeEmbeddedMedia({ document: exportDocument, zip: newZip, compressionLevel });
 
   const parts = collectDocxParts(exportDocument, newZip);
@@ -1403,7 +1413,12 @@ export async function repackDocxFromRaw(
   await rebindWatermarkRelIds(exportDocument, newZip, compressionLevel);
 
   // Serialize and update modified headers/footers
-  await serializeHeadersFootersToZip(exportDocument, newZip, compressionLevel);
+  await serializeHeadersFootersToZip({
+    doc: exportDocument,
+    zip: newZip,
+    compressionLevel,
+    onDiagnostic: options.onDiagnostic,
+  });
   await serializeHeaderFooterSettingsIntoZip(exportDocument, newZip, compressionLevel);
 
   // Splice edited footnote/endnote bodies back into their parts (separators and
@@ -1986,19 +2001,22 @@ async function materializeNewHeaderFooterParts(
   doc: Document,
   zip: JSZip,
   compressionLevel: number,
-): Promise<void> {
-  // Cheap guard so the common repack (no in-memory parts) skips the zip scans
-  // and rels walk below.
-  if (!hasUnmaterializedHeaderFooter(doc)) {
-    return;
-  }
-  // A from-scratch document has no relationship map yet; the minted
-  // relationships below become its first entries.
-  doc.package.relationships ??= new Map();
-  const rels = doc.package.relationships;
+): Promise<Document> {
+  if (!doc.package.headers?.size && !doc.package.footers?.size) return doc;
+  // Registration belongs to this output; a later inverse still uses the input source ZIP.
+  doc = {
+    ...doc,
+    package: {
+      ...doc.package,
+      relationships: new Map(doc.package.relationships),
+      ...(doc.package.headers === undefined ? {} : { headers: new Map(doc.package.headers) }),
+      ...(doc.package.footers === undefined ? {} : { footers: new Map(doc.package.footers) }),
+    },
+  };
+  const rels = doc.package.relationships ?? panic("The export owns its relationship map.");
 
   const relEntries: string[] = [];
-  const overrides: string[] = [];
+  const contentTypeParts: { partName: string; contentType: string }[] = [];
   let maxHeaderNum = findMaxHeaderFooterNum(zip, "header");
   let maxFooterNum = findMaxHeaderFooterNum(zip, "footer");
   // The zip's document rels may hold relationships the model map does not
@@ -2051,9 +2069,17 @@ async function materializeNewHeaderFooterParts(
       return;
     }
     for (const rId of [...map.keys()]) {
-      const existing = rels.get(rId) ?? zipRels.get(rId);
+      const registered = zipRels.get(rId);
+      const existing = registered ?? rels.get(rId);
       if (existing && existing.type === relType && existing.target) {
-        continue; // Already a materialized part of this kind.
+        rels.set(rId, existing);
+        const path = resolveRelativePath(relsPath, existing.target);
+        contentTypeParts.push({ partName: `/${path}`, contentType });
+        if (!registered)
+          relEntries.push(
+            `<Relationship Id="${escapeXmlAttribute(rId)}" Type="${relType}" Target="${escapeXmlAttribute(existing.target)}"/>`,
+          );
+        continue;
       }
       // When the id is already taken by an unrelated relationship, mint a fresh
       // one and re-point the section references — reusing it would duplicate the
@@ -2066,6 +2092,22 @@ async function materializeNewHeaderFooterParts(
           map.delete(rId);
           map.set(effectiveRId, headerFooter);
         }
+        const body = doc.package.document;
+        doc.package.document = {
+          ...body,
+          content: body.content.map((block) =>
+            block.type === "paragraph" && block.sectionProperties !== undefined
+              ? cloneParagraphWithPropertySource(block, {
+                  sectionProperties: structuredClone(block.sectionProperties),
+                })
+              : block,
+          ),
+          ...(body.finalSectionProperties === undefined
+            ? {}
+            : {
+                finalSectionProperties: structuredClone(body.finalSectionProperties),
+              }),
+        };
         for (const block of doc.package.document.content) {
           if (block.type === "paragraph") {
             remapRefs(
@@ -2094,39 +2136,29 @@ async function materializeNewHeaderFooterParts(
       relEntries.push(
         `<Relationship Id="${escapeXmlAttribute(effectiveRId)}" Type="${relType}" Target="${filename}"/>`,
       );
-      overrides.push(`<Override PartName="/word/${filename}" ContentType="${contentType}"/>`);
+      contentTypeParts.push({ partName: `/word/${filename}`, contentType });
     }
   };
 
   materialize(doc.package.headers, RELATIONSHIP_TYPES.header, "header", HEADER_CONTENT_TYPE, true);
   materialize(doc.package.footers, RELATIONSHIP_TYPES.footer, "footer", FOOTER_CONTENT_TYPE, false);
 
-  if (relEntries.length === 0) {
-    return;
-  }
-
   const compressionOptions = { level: compressionLevel };
-  zip.file(
-    relsPath,
-    relsXml.replace("</Relationships>", `${relEntries.join("")}</Relationships>`),
-    { compression: "DEFLATE", compressionOptions },
-  );
+  if (relEntries.length > 0)
+    zip.file(
+      relsPath,
+      relsXml.replace("</Relationships>", `${relEntries.join("")}</Relationships>`),
+      { compression: "DEFLATE", compressionOptions },
+    );
 
   const ctFile = zip.file("[Content_Types].xml");
   if (ctFile) {
-    let ctXml = await ctFile.async("text");
-    const missing = overrides.filter((override) => {
-      const partName = /PartName="(?<partName>[^"]+)"/u.exec(override)?.groups?.["partName"];
-      return partName ? !ctXml.includes(`PartName="${partName}"`) : true;
-    });
-    if (missing.length > 0) {
-      ctXml = ctXml.replace("</Types>", `${missing.join("")}</Types>`);
-      zip.file("[Content_Types].xml", ctXml, {
-        compression: "DEFLATE",
-        compressionOptions,
-      });
-    }
+    const original = await ctFile.async("text");
+    const updated = registerContentTypeParts(original, contentTypeParts);
+    if (updated !== original)
+      zip.file("[Content_Types].xml", updated, { compression: "DEFLATE", compressionOptions });
   }
+  return doc;
 }
 
 /**
@@ -2331,9 +2363,11 @@ async function rebindWatermarkRelIds(
  * `sourceZip` supplies each part as it stands before the save so the rebuilt
  * root can keep any prefix binding only the source document declared.
  */
+type CollectHeaderFooterUpdatesOptions = SaveDiagnosticOptions & { sourceZip: JSZip };
+
 export async function collectHeaderFooterUpdates(
   doc: Document,
-  sourceZip: JSZip,
+  { sourceZip, onDiagnostic }: CollectHeaderFooterUpdatesOptions,
 ): Promise<Map<string, string>> {
   const updates = new Map<string, string>();
   const rels = doc.package.relationships;
@@ -2362,7 +2396,15 @@ export async function collectHeaderFooterUpdates(
         const bindings = sourceFile
           ? readRootNamespaceBindings(await sourceFile.async("text"))
           : new Map<string, string>();
-        updates.set(path, serializeHeaderFooter(headerFooter, { path, bindings }));
+        updates.set(
+          path,
+          serializeHeaderFooter(headerFooter, {
+            path,
+            bindings,
+            onDiagnostic,
+            originalBuffer: doc.originalBuffer,
+          }),
+        );
       }
     }
   }
@@ -2373,13 +2415,22 @@ export async function collectHeaderFooterUpdates(
 /**
  * Serialize modified headers and footers into the ZIP
  */
-async function serializeHeadersFootersToZip(
-  doc: Document,
-  zip: JSZip,
-  compressionLevel: number,
-): Promise<void> {
+type SerializeHeadersFootersOptions = SaveDiagnosticOptions & {
+  doc: Document;
+  zip: JSZip;
+  compressionLevel: number;
+};
+async function serializeHeadersFootersToZip({
+  doc,
+  zip,
+  compressionLevel,
+  onDiagnostic,
+}: SerializeHeadersFootersOptions): Promise<void> {
   const compressionOptions = { level: compressionLevel };
-  for (const [filename, xml] of await collectHeaderFooterUpdates(doc, zip)) {
+  for (const [filename, xml] of await collectHeaderFooterUpdates(doc, {
+    sourceZip: zip,
+    onDiagnostic,
+  })) {
     zip.file(filename, xml, { compression: "DEFLATE", compressionOptions });
   }
 }
@@ -3097,7 +3148,7 @@ export function isDocxBuffer(buffer: ArrayBuffer): boolean {
  * ignored for a document that carries a source package, which keeps the
  * properties that package already states.
  */
-export type DocumentPropertiesOptions = {
+export type DocumentPropertiesOptions = SaveDiagnosticOptions & {
   /** `dc:creator` in `docProps/core.xml`. Omitted when absent. */
   creator?: string;
   /** `Application` in `docProps/app.xml`. Omitted, with `AppVersion`, when absent. */
@@ -3233,6 +3284,7 @@ export async function createDocx(
       originalCorePropertiesXml: source.corePropertiesXml,
       compressionLevel: 6,
       updateModifiedDate: true,
+      onDiagnostic: properties.onDiagnostic,
     });
   }
 
@@ -3245,6 +3297,7 @@ export async function createDocx(
     originalCorePropertiesXml: await zip.file("docProps/core.xml")?.async("text"),
     compressionLevel: 6,
     updateModifiedDate: true,
+    onDiagnostic: properties.onDiagnostic,
   });
 }
 
