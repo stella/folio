@@ -19,6 +19,7 @@ export type ListRenderingAttrField = Exclude<keyof ListRendering, "level" | "num
 export const LIST_RENDERING_ATTR_BY_FIELD = {
   marker: "listMarker",
   markerTemplate: "listMarkerTemplate",
+  foldedMarkerSuffix: "listFoldedMarkerSuffix",
   isBullet: "listIsBullet",
   isLegal: "listIsLegal",
   numFmt: "listNumFmt",
@@ -73,6 +74,7 @@ export const listRenderingAttrPatch = (rendering: ListRendering): Partial<Paragr
   const patch: ListRenderingAttrPatch = {
     listMarker: rendering.marker || undefined,
     listMarkerTemplate: rendering.markerTemplate || undefined,
+    listFoldedMarkerSuffix: rendering.foldedMarkerSuffix,
     listIsBullet: rendering.isBullet || undefined,
     listIsLegal: rendering.isLegal || undefined,
     listNumFmt: rendering.numFmt || undefined,
@@ -120,6 +122,7 @@ export const listRenderingFromAttrs = ({
 }: ListRenderingFromAttrsOptions): ListRendering => {
   const optional: OptionalListRenderingFields = {
     markerTemplate: attrs.listMarkerTemplate ?? undefined,
+    foldedMarkerSuffix: attrs.listFoldedMarkerSuffix ?? undefined,
     isLegal: attrs.listIsLegal ?? undefined,
     numFmt: attrs.listNumFmt ?? undefined,
     markerHidden: attrs.listMarkerHidden ?? undefined,

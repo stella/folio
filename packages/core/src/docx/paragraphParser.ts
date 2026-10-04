@@ -2289,7 +2289,8 @@ export function parseParagraph(
           // leaves the line and the markers stay. The field and the tab stay
           // in the content as markup that shows nothing, where they stood.
           paragraph.content = consolidated(fold.content);
-          listRendering.marker = `${listRendering.marker}\t${fold.cached.join(" ")}`;
+          listRendering.foldedMarkerSuffix = fold.cached.join(" ");
+          listRendering.marker = `${listRendering.marker}\t${listRendering.foldedMarkerSuffix}`;
           const nextLevel = numbering.getLevel(numId, ilvl + 1);
           if (
             nextLevel?.pPr?.hangingIndent === true &&
