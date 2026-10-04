@@ -16,6 +16,8 @@ import {
   type AppliedDocumentOp,
   type NoteStory,
   sectionPropertiesAt,
+  planDocumentWatermarkCoverage,
+  planDocumentWatermarkHosts,
   type TableEditOp,
 } from "../../../packages/docx-core/src/ops/documentOps";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
@@ -125,6 +127,7 @@ export const OP_GENERATOR_ROLES = {
   [DOCUMENT_OP_TYPES.ADD_NOTE]: "generated",
   [DOCUMENT_OP_TYPES.REMOVE_NOTE]: "generated",
   [DOCUMENT_OP_TYPES.SET_SECTION_PROPS]: "generated",
+  [DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK]: "generated",
   [DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE]: "generated",
   [DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE]: "inverse",
   [DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT]: "inverse",
@@ -444,6 +447,59 @@ const candidate = ({
         type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
         num: { numId, abstractNumId },
         abstractNum: { abstractNumId, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+      };
+    }
+    case "setDocumentWatermark": {
+      if (
+        choose(3) === 0 &&
+        [...(document.package.headers?.values() ?? [])].some(
+          (header) => header.watermark !== undefined,
+        )
+      )
+        return {
+          type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+          change: { kind: "remove" },
+          coverage: [],
+          hosts: [],
+        };
+      const occupied = new Set([
+        ...(document.package.headers?.keys() ?? []),
+        ...(document.package.footers?.keys() ?? []),
+        ...(document.package.relationships?.keys() ?? []),
+      ]);
+      const occupiedParagraphs = new Set(packageParagraphIds(document.package).map(idKey));
+      let paragraphNumber = Number.parseInt(freshParagraph.paraId ?? "00000001", 16);
+      let identity = 1;
+      const allocateParagraph = () => {
+        let allocatedParaId = paragraphNumber.toString(16).toUpperCase().padStart(8, "0");
+        while (occupiedParagraphs.has(idKey(allocatedParaId)))
+          allocatedParaId = (++paragraphNumber).toString(16).toUpperCase().padStart(8, "0");
+        occupiedParagraphs.add(idKey(allocatedParaId));
+        return allocatedParaId;
+      };
+      const hosts = planDocumentWatermarkHosts(document).map((rId) => ({
+        rId,
+        paraId: allocateParagraph(),
+      }));
+      const coverage = planDocumentWatermarkCoverage(document).map((type) => {
+        while (occupied.has(`rIdCorpusWatermark${identity}`)) identity++;
+        const rId = `rIdCorpusWatermark${identity++}`;
+        occupied.add(rId);
+        return { type, rId, paraId: allocateParagraph() };
+      });
+      return {
+        type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+        change: {
+          kind: "set",
+          watermark: {
+            kind: "text",
+            text: ["Draft", "Návrh", "草案"][choose(3)] ?? "Draft",
+            diagonal: choose(2) === 0,
+            opacity: 0.4,
+          },
+        },
+        coverage,
+        hosts,
       };
     }
     case "setSectionProps": {

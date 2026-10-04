@@ -1,3 +1,4 @@
+import { applyDocumentWatermark } from "./watermark";
 import { applyCommentOp } from "./comments";
 import { cloneModel } from "./modelClone";
 import { noteContentWithAutomaticMark } from "./noteMarks";
@@ -2265,6 +2266,8 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
 
 const dispatch = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK:
+      return applyDocumentWatermark(document, op);
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
@@ -2363,6 +2366,7 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
       return op.revision;
+    case DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK:
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:

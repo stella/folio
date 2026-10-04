@@ -506,3 +506,5 @@ export const COMMENT_PART_RELATIONSHIPS = {
     target: "commentsExtended.xml",
   },
 } as const;
+
+export { WATERMARK_DEFAULTS, normalizeCanonicalWatermark } from "./watermarkDefaults";

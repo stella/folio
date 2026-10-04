@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 10: text, formatting and review edits on
+ * Document operations, schema version 11: text, formatting and review edits on
  * independently addressed document stories, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -31,6 +31,7 @@ import { captureDocumentOp } from "./wire";
 import type {
   Paragraph,
   Comment,
+  Watermark,
   ParagraphContent,
   ParagraphFormatting,
   ParagraphMarkChange,
@@ -102,7 +103,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 10;
+export const DOCUMENT_OP_SCHEMA_VERSION = 11;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -227,8 +228,9 @@ export const SECTION_BOUNDARY_POLICIES = Object.freeze({
   REPLACE: "replace",
 } as const);
 
-/** The operation kinds of schema version 10. */
+/** The operation kinds of schema version 11. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
+  SET_DOCUMENT_WATERMARK: "setDocumentWatermark",
   CREATE_COMMENT: "createComment",
   UPDATE_COMMENT_CONTENT: "updateCommentContent",
   SET_COMMENT_RESOLUTION: "setCommentResolution",
@@ -845,6 +847,19 @@ export type SetSectionPropsOp = {
 };
 /** JSON-safe lifecycle deltas: omitted fields are unowned, null restores absence. */
 export type StoryParts = {
+  /** Owned fields whose source explicitly had an undefined own property. */
+  undefinedFields?: readonly (
+    | { target: "body"; keys: readonly (keyof NonNullable<StoryParts["body"]>)[] }
+    | {
+        target: "package";
+        keys: readonly (keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">)[];
+      }
+    | {
+        target: "section";
+        index: number;
+        keys: readonly (keyof Omit<NonNullable<StoryParts["sections"]>[number], "index">)[];
+      }
+  )[];
   body?: {
     [Key in keyof Omit<DocumentBody, "sections">]?: Key extends "content"
       ? DocumentBody[Key]
@@ -947,6 +962,13 @@ export type TableIntentOperation = {
 }[TableEditOp["type"]];
 
 /** A comment definition owns one range, point, thread relation or revision association. */
+export type SetDocumentWatermarkOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK;
+  change: { kind: "set"; watermark: Watermark } | { kind: "remove" };
+  coverage: readonly { type: HeaderFooterType; rId: string; paraId: string }[];
+  hosts: readonly { rId: string; paraId: string }[];
+};
+
 export type CommentAnchor =
   | { kind: "range"; from: TextPosition; to: TextPosition }
   | { kind: "point"; at: TextPosition }
@@ -998,9 +1020,10 @@ export type CommentOp =
   | DeleteCommentOp
   | RestoreCommentStateOp;
 
-/** A schema-version-10 document operation. */
+/** A schema-version-11 document operation. */
 export type DocumentOp = (
   | CommentOp
+  | SetDocumentWatermarkOp
   | CreateHeaderFooterOp
   | RemoveHeaderFooterOp
   | AddNoteOp

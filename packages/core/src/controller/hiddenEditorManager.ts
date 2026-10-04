@@ -1,3 +1,4 @@
+import { createCanonicalWatermarkOperation } from "./canonicalWatermark";
 import { createCanonicalSectionPropertiesOperation } from "./canonicalOperations";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import {
@@ -1203,6 +1204,35 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           }
         : null,
     canonicalOperations: {
+      applyCanonicalWatermark: (change) => {
+        ensureView();
+        const fail = (message: string) => {
+          refuse(message, CANONICAL_GAP.watermark);
+          return { status: "refused", gap: CANONICAL_GAP.watermark, message } as const;
+        };
+        if (editorSession.type === "refused") return fail(editorSession.reason);
+        if (editorSession.type !== "canonical") {
+          if (isCanonicalModelSessionRequested())
+            return fail("The canonical document is not ready for watermark changes.");
+          return null;
+        }
+        if (!view || deps.getReadOnly() || isDestroying)
+          return fail("The document is not editable.");
+        const session = editorSession.session;
+        if (session.isComposing) return fail("Watermarks cannot change during composition.");
+        const compiled = createCanonicalWatermarkOperation(session.document, change);
+        if (compiled.isErr()) return fail(compiled.error.message);
+        const prepared = session.prepareOperations(view.state, [compiled.value]);
+        if (prepared.isErr()) return fail(prepared.error.message);
+        let failureMessage = "The watermark projection could not publish.";
+        if (
+          !publishCommit(prepared.value, (message) => {
+            failureMessage = message;
+          })
+        )
+          return fail(failureMessage);
+        return { status: "applied", version: session.version };
+      },
       applyCanonicalSectionProperties: (patch) => {
         ensureView();
         const fail = (message: string) => {

@@ -327,3 +327,51 @@ test(
   },
   propertyTestTimeout(30_000),
 );
+
+test(
+  "watermark package laws exercise set and remove across default, first and even coverage",
+  async () => {
+    const document = fc.sample(packageDocumentArbitrary, { seed: 1336, numRuns: 1 }).at(0);
+    const seed = fc.sample(opSeedArbitrary, { seed: 1339, numRuns: 1 }).at(0);
+    if (!document || !seed)
+      throw new OperationPackageLawError({ message: "Missing watermark law fixture" });
+    const exercised = new Set<string>();
+    const expectedCoverage = [[], ["first"], ["first", "even"]];
+    for (const first of [0, 1]) {
+      for (const second of [0, 1, 2]) {
+        const varied = { ...seed, first, second };
+        const generated = generatedCaseFor({
+          document,
+          seed: varied,
+          story: "main",
+          kind: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+        });
+        if (generated.op.type !== DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK)
+          throw new OperationPackageLawError({ message: "Expected generated watermark operation" });
+        exercised.add(`${generated.op.change.kind}:${second}`);
+        if (generated.op.change.kind === "set") {
+          expect(generated.op.coverage.map(({ type }) => type)).toEqual(
+            expectedCoverage.at(second),
+          );
+        } else {
+          expect(generated.op.coverage).toEqual([]);
+          expect(
+            [...(generated.document.package.headers?.values() ?? [])].some(
+              (header) => header.watermark !== undefined,
+            ),
+          ).toBe(true);
+        }
+        await assertPackageOperationLaws({
+          kind: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+          document,
+          seed: varied,
+          story: "main",
+        });
+      }
+    }
+    expect(exercised).toEqual(
+      new Set(["set:0", "set:1", "set:2", "remove:0", "remove:1", "remove:2"]),
+    );
+  },
+  propertyTestTimeout(30_000),
+);

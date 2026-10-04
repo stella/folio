@@ -271,6 +271,77 @@ describe("serializeHeaderFooter — watermark replay", () => {
     expect(out.match(/<w:p(?=[\s>])/gu)?.length).toBe(1);
   });
 
+  test("merges a canonical watermark into its modeled host and preserves identity and position", () => {
+    const header: HeaderFooter = {
+      type: "header",
+      hdrFtrType: "default",
+      content: [
+        {
+          type: "paragraph",
+          paraId: "A1B2C3D4",
+          content: [{ type: "run", content: [{ type: "text", text: "before" }] }],
+        },
+        {
+          type: "paragraph",
+          paraId: "E5F6A7B8",
+          textId: "10293847",
+          formatting: { styleId: "ChangedHeader" },
+          content: [],
+        },
+        {
+          type: "paragraph",
+          paraId: "C9D0E1F2",
+          content: [{ type: "run", content: [{ type: "text", text: "after" }] }],
+        },
+      ],
+      watermark: { kind: "text", text: "DRAFT", font: "Calibri", color: "C0C0C0", diagonal: true },
+      watermarkBlockIndex: 1,
+    };
+
+    const xml = serializeHeaderFooter(header, {
+      path: "word/header1.xml",
+      bindings: new Map(),
+      watermarkHostAuthority: "canonical",
+    });
+    const reopened = parseHeader(xml);
+
+    expect(xml.match(/<w:p(?=[\s>])/gu)?.length).toBe(3);
+    expect(reopened.content.map((block) => block.type)).toEqual([
+      "paragraph",
+      "paragraph",
+      "paragraph",
+    ]);
+    expect(reopened.content.map((block) => block.type === "paragraph" && block.paraId)).toEqual([
+      "A1B2C3D4",
+      "E5F6A7B8",
+      "C9D0E1F2",
+    ]);
+    expect(reopened.content.at(1)).toMatchObject({
+      type: "paragraph",
+      textId: "10293847",
+      formatting: { styleId: "ChangedHeader" },
+    });
+    expect(reopened.watermarkBlockIndex).toBe(1);
+    expect(reopened.watermark).toEqual(header.watermark);
+    expect(xml.indexOf("before")).toBeLessThan(xml.indexOf('string="DRAFT"'));
+    expect(xml.indexOf('string="DRAFT"')).toBeLessThan(xml.indexOf("after"));
+  });
+
+  test("model watermarks retain insertion semantics without canonical host authority", () => {
+    const header: HeaderFooter = {
+      type: "header",
+      hdrFtrType: "default",
+      content: [{ type: "paragraph", content: [] }],
+      watermark: { kind: "text", text: "DRAFT" },
+      watermarkBlockIndex: 0,
+    };
+
+    const xml = serializeHeaderFooter(header);
+
+    expect(xml.match(/<w:p(?=[\s>])/gu)?.length).toBe(2);
+    expect(xml.indexOf('string="DRAFT"')).toBeLessThan(xml.indexOf("</w:p>"));
+  });
+
   test("keeps watermark position after a block content control", () => {
     const sourceXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:hdr ${NS}>

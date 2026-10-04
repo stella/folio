@@ -67,6 +67,7 @@ export {
   REVISION_DECISIONS,
   SPLIT_HALVES,
   toOpEnvelope,
+  type SetDocumentWatermarkOp,
   type CommentAnchor,
   type CommentState,
   type CreateCommentOp,
@@ -146,3 +147,12 @@ export {
 export { packageParagraphIds } from "./ids";
 
 export { commentDocumentIssue, freshCommentId } from "./comments";
+
+export {
+  planDocumentWatermarkCoverage,
+  planDocumentWatermarkHosts,
+  ensureDocumentWatermarkHeaderCoverage,
+  setDocumentWatermarkWithCoverage,
+  isEmptyWatermarkHostParagraph,
+  type WatermarkHeaderCoverage,
+} from "./watermark";

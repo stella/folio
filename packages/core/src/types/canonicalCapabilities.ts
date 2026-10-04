@@ -80,10 +80,11 @@ export const CANONICAL_CAPABILITIES = {
       "The shared controller journals section properties; default sessions keep model changes.",
   },
   [CANONICAL_GAP.watermark]: {
-    owner: "adapters",
-    kind: "refusal",
-    adapters: ["vue"],
-    summary: "Vue watermark mutations still change the model directly.",
+    owner: "controller",
+    kind: "routing",
+    adapters: ["react", "vue"],
+    summary:
+      "The shared controller journals watermark changes; default sessions keep model changes.",
   },
   [CANONICAL_GAP.secondaryStories]: {
     owner: "controller",

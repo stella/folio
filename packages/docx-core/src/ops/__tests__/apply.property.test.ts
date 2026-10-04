@@ -138,6 +138,7 @@ const INVERSE_KINDS = {
   addNote: ["restoreStoryParts"],
   removeNote: ["restoreStoryParts"],
   setSectionProps: ["restoreStoryParts"],
+  setDocumentWatermark: ["restoreStoryParts"],
   restoreStoryParts: ["restoreStoryParts"],
   deleteBlocks: ["insertBlocks", "replaceBlocks", "replaceInline", "setParagraphReview"],
   insertBlocks: ["replaceBlocks"],
@@ -250,6 +251,7 @@ const namedIds = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
       return new Set();
@@ -1582,6 +1584,7 @@ describe("document operations", () => {
           case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
           case DOCUMENT_OP_TYPES.ADD_NOTE:
           case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+          case DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK:
           case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
           case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
           case DOCUMENT_OP_TYPES.DELETE_BLOCKS:

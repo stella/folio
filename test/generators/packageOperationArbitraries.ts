@@ -1,3 +1,7 @@
+import {
+  planDocumentWatermarkCoverage,
+  planDocumentWatermarkHosts,
+} from "../../packages/docx-core/src/ops/documentOps";
 import { freshCommentId } from "../../packages/docx-core/src/ops/comments";
 /** Package-shaped cases for the same inverse/locality laws across every operation kind. */
 import { panic } from "better-result";
@@ -559,6 +563,74 @@ export const PACKAGE_OP_CASES = {
         type: "removeNote",
         at: { story: "main", blockId: target.paraId, offset: 4 },
         story: { kind: "footnote", id: 2 },
+      },
+    };
+  },
+  setDocumentWatermark: (args: CaseArgs): GeneratedCase => {
+    const watermarkSet = (document: Document, text: string) => {
+      const occupied = new Set([
+        ...(document.package.headers?.keys() ?? []),
+        ...(document.package.footers?.keys() ?? []),
+        ...(document.package.relationships?.keys() ?? []),
+      ]);
+      const paragraphIds = new Set(paragraphIdsIn(document.package));
+      let nextParagraph = args.seed.fresh;
+      const allocateParagraph = () => {
+        let paraId = nextParagraph.toString(16).toUpperCase().padStart(8, "0");
+        while (paragraphIds.has(paraId))
+          paraId = (++nextParagraph).toString(16).toUpperCase().padStart(8, "0");
+        paragraphIds.add(paraId);
+        return paraId;
+      };
+      const hosts = planDocumentWatermarkHosts(document).map((rId) => ({
+        rId,
+        paraId: allocateParagraph(),
+      }));
+      const coverage = planDocumentWatermarkCoverage(document).map((type, index) => {
+        let value = index;
+        while (occupied.has(`rIdGeneratedWatermark${value}`)) value++;
+        const rId = `rIdGeneratedWatermark${value}`;
+        occupied.add(rId);
+        return { type, rId, paraId: allocateParagraph() };
+      });
+      return {
+        type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+        change: {
+          kind: "set",
+          watermark: {
+            kind: "text",
+            text,
+            diagonal: args.seed.inherit,
+            opacity: 0.4,
+          },
+        },
+        coverage,
+        hosts,
+      } as const satisfies DocumentOp;
+    };
+    let document = args.document;
+    if (args.seed.third % 2 !== 0) {
+      document = applyDocumentOp(
+        document,
+        watermarkSet(document, `${args.seed.text} baseline`),
+      ).unwrap().document;
+    }
+    if (args.seed.second % 3 !== 0) {
+      document = applyDocumentOp(document, {
+        type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+        sectionIndex: 0,
+        patch: { titlePg: true, evenAndOddHeaders: args.seed.second % 3 === 2 },
+      }).unwrap().document;
+    }
+    const op = watermarkSet(document, args.seed.text || "Draft");
+    if (args.seed.first % 2 !== 0) return { document, op };
+    return {
+      document: applyDocumentOp(document, op).unwrap().document,
+      op: {
+        type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+        change: { kind: "remove" },
+        coverage: [],
+        hosts: [],
       },
     };
   },

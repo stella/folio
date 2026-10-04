@@ -1,3 +1,4 @@
+import { WATERMARK_DEFAULTS } from "@stll/docx-core/model";
 /**
  * Watermark detection inside a `<w:hdr>` element.
  *
@@ -358,11 +359,11 @@ function readVmlPictureWatermark(shape: XmlElement, imagedata: XmlElement): Wate
 // Default picture-watermark dimensions Word emits. Kept in sync with
 // headerFooterSerializer's synthesis defaults so parse/set/save
 // preserves uniform picture-watermark scale.
-const PICTURE_WATERMARK_DEFAULT_WIDTH_PT = 415;
-const PICTURE_WATERMARK_DEFAULT_HEIGHT_PT = 207;
-const PICTURE_WATERMARK_SCALE_EPSILON = 0.01;
-const PICTURE_WATERMARK_WASHOUT_GAIN = "19661f";
-const PICTURE_WATERMARK_WASHOUT_BLACKLEVEL = "22938f";
+const PICTURE_WATERMARK_DEFAULT_WIDTH_PT = WATERMARK_DEFAULTS.pictureWidthPt;
+const PICTURE_WATERMARK_DEFAULT_HEIGHT_PT = WATERMARK_DEFAULTS.pictureHeightPt;
+const PICTURE_WATERMARK_SCALE_EPSILON = WATERMARK_DEFAULTS.pictureScaleEpsilon;
+const PICTURE_WATERMARK_WASHOUT_GAIN = WATERMARK_DEFAULTS.pictureWashoutGain;
+const PICTURE_WATERMARK_WASHOUT_BLACKLEVEL = WATERMARK_DEFAULTS.pictureWashoutBlacklevel;
 
 function readVmlPictureWatermarkScale(shape: XmlElement): number | undefined {
   const shapeStyle = getAttribute(shape, null, "style") ?? "";

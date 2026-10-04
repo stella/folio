@@ -19,6 +19,7 @@ import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { CanonicalDocxInputError } from "@stll/folio-core/docx/canonicalSessionInput";
 import { createEmptyHeaderFooter } from "@stll/folio-core/utils/headerFooter";
 import type { Comment } from "@stll/folio-core/types/content";
+import { getDocumentWatermark, type Watermark } from "@stll/folio-core/watermark";
 
 const { isMacPlatform } = await import("@stll/folio-core/managers/editorShortcuts");
 import {
@@ -30,6 +31,7 @@ import {
 
 const { usePageSetupControls } = await import("./usePageSetupControls");
 import { reviewDifferences } from "../../../../test/reviewDifferences";
+import { expectCanonicalWatermarkRoundTrip } from "../../../../test/canonicalWatermarkRoundTrip";
 import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
 
 const { useDocxEditor } = await import("./useDocxEditor");
@@ -517,22 +519,86 @@ test("Vue canonical stories share history and save headers, first-page footer, n
       },
     });
     controls.handlePageSetupApply({ marginLeft: 720, footnotePr: { numStart: 2 } });
-    const canonical = adapter.getDocument() ?? panic("Expected canonical document");
-    expect(canonical.package.document.finalSectionProperties?.marginLeft).toBe(720);
-    expect(canonical.package.document.finalSectionProperties?.titlePg).toBe(true);
+    const sectionCanonical = adapter.getDocument() ?? panic("Expected canonical document");
+    expect(sectionCanonical.package.document.finalSectionProperties?.marginLeft).toBe(720);
+    expect(sectionCanonical.package.document.finalSectionProperties?.titlePg).toBe(true);
     expect(adapter.editor.undo()).toBe(true);
     expect(adapter.getDocument()?.package.document.finalSectionProperties?.marginLeft).not.toBe(
       720,
     );
     expect(adapter.editor.redo()).toBe(true);
     expect(adapter.getDocument()?.package.document.finalSectionProperties?.marginLeft).toBe(720);
+
+    const textWatermark = {
+      kind: "text",
+      text: "DRAFT",
+      font: "Calibri",
+      color: "C0C0C0",
+      diagonal: true,
+    } satisfies Watermark;
+    expect(
+      adapter.editor.applyCanonicalWatermark({ kind: "set", watermark: textWatermark })?.status,
+    ).toBe("applied");
+    expect(
+      getDocumentWatermark(adapter.getDocument() ?? panic("Expected canonical document")),
+    ).toEqual(textWatermark);
+    expect(adapter.editor.undo()).toBe(true);
+    expect(
+      getDocumentWatermark(adapter.getDocument() ?? panic("Expected canonical document")),
+    ).toBe(undefined);
+    expect(adapter.editor.redo()).toBe(true);
+    expect(
+      getDocumentWatermark(adapter.getDocument() ?? panic("Expected canonical document")),
+    ).toEqual(textWatermark);
+
+    const pictureWatermark = {
+      kind: "picture",
+      imageRId: "rIdExternalWatermark",
+      imageTarget: "https://example.test/watermark.png",
+      imageTargetExternal: true,
+      scale: 0.6,
+      widthPt: 249,
+      heightPt: 124.2,
+    } satisfies Watermark;
+    expect(
+      adapter.editor.applyCanonicalWatermark({ kind: "set", watermark: pictureWatermark })?.status,
+    ).toBe("applied");
+    expect(
+      getDocumentWatermark(adapter.getDocument() ?? panic("Expected canonical document")),
+    ).toEqual(pictureWatermark);
+    expect(adapter.editor.undo()).toBe(true);
+    expect(
+      getDocumentWatermark(adapter.getDocument() ?? panic("Expected canonical document")),
+    ).toEqual(textWatermark);
+    expect(adapter.editor.redo()).toBe(true);
+    const pictureCanonical = adapter.getDocument() ?? panic("Expected canonical document");
+    expect(getDocumentWatermark(pictureCanonical)).toEqual(pictureWatermark);
+    const pictureSaved = await adapter.save();
+    if (!pictureSaved) panic("Expected saved canonical picture watermark");
+    const reopenedPicture = await parseDocx(await pictureSaved.arrayBuffer(), {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    expectCanonicalWatermarkRoundTrip(pictureCanonical, reopenedPicture);
+
+    expect(adapter.editor.applyCanonicalWatermark({ kind: "remove" })?.status).toBe("applied");
+    expect(
+      getDocumentWatermark(adapter.getDocument() ?? panic("Expected canonical document")),
+    ).toBe(undefined);
+    expect(adapter.editor.undo()).toBe(true);
+    expect(
+      getDocumentWatermark(adapter.getDocument() ?? panic("Expected canonical document")),
+    ).toEqual(pictureWatermark);
+    expect(adapter.editor.redo()).toBe(true);
+    const canonical = adapter.getDocument() ?? panic("Expected canonical document");
+    expect(getDocumentWatermark(canonical)).toBeUndefined();
     const saved = await adapter.save();
     if (!saved) panic("Expected canonical story save");
     const reopened = await parseDocx(await saved.arrayBuffer(), {
       preloadFonts: false,
       detectVariables: false,
     });
-    expect(reviewDifferences(canonical, reopened)).toEqual({ messages: [], omitted: 0 });
+    expectCanonicalWatermarkRoundTrip(canonical, reopened);
     expect(reopened.package.document.finalSectionProperties).toEqual(
       canonical.package.document.finalSectionProperties,
     );

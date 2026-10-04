@@ -179,12 +179,15 @@ test("older envelopes are refused structurally and current envelopes apply", asy
     text: "x",
     runProps: "inherit",
   } as const;
-  // Older operation schemas are refused after the schema-8 cutover.
+  // Only the current schema is accepted; historical envelopes remain explicit refusals.
   const older: unknown = await Bun.file(
     new URL("./__fixtures__/ops-v4.json", import.meta.url),
   ).json();
   expect(Array.isArray(older)).toBe(true);
-  for (const schema of [1, 2, 3, 4, 5, 6, 7, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [
+    ...Array.from({ length: DOCUMENT_OP_SCHEMA_VERSION - 1 }, (_, index) => index + 1),
+    DOCUMENT_OP_SCHEMA_VERSION + 1,
+  ]) {
     const refused = applyDocumentOpEnvelope(document, { schema, op });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
@@ -198,4 +201,31 @@ test("older envelopes are refused structurally and current envelopes apply", asy
   expect(paragraph?.type).toBe("paragraph");
   if (paragraph?.type === "paragraph") expect(paragraphLogicalText(paragraph)).toBe("x");
   expect(current.inverse.length).toBe(1);
+});
+
+test("watermark wire fixtures exercise every declared field and watermark variant", () => {
+  const fixtures = envelopes()
+    .map(({ op }) => op)
+    .filter((op) => op.type === DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK);
+  const fields = {
+    type: true,
+    change: true,
+    coverage: true,
+    hosts: true,
+  } as const satisfies Record<keyof import("../types").SetDocumentWatermarkOp, true>;
+  const variants = { text: true, picture: true } as const satisfies Record<
+    import("../../model/document").Watermark["kind"],
+    true
+  >;
+  const exercisedFields = new Set(fixtures.flatMap((op) => Object.keys(op)));
+  expect([...exercisedFields].toSorted()).toEqual(Object.keys(fields).toSorted());
+  expect(
+    new Set(
+      fixtures.map((op) =>
+        op.change.kind === "remove" ? "remove" : `set:${op.change.watermark.kind}`,
+      ),
+    ),
+  ).toEqual(new Set(["remove", ...Object.keys(variants).map((kind) => `set:${kind}`)]));
+  expect(fixtures.some((op) => op.coverage.length > 0)).toBe(true);
+  expect(fixtures.some((op) => op.hosts.length > 0)).toBe(true);
 });

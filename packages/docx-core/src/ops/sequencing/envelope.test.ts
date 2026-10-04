@@ -376,7 +376,10 @@ test("sequencing refuses unsupported property-review and section-boundary payloa
 });
 
 test("older batch schemas and persisted batches are refused structurally", async () => {
-  for (const schema of [1, 2, 3, 4, 5, 6, 7]) {
+  for (const schema of Array.from(
+    { length: DOCUMENT_OP_SCHEMA_VERSION - 1 },
+    (_, index) => index + 1,
+  )) {
     const source = { ...fixture, schema };
     const snapshot = structuredClone(source);
     const result = validateDocumentBatch(source);

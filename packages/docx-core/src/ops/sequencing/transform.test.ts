@@ -466,6 +466,7 @@ test("story lifecycle operation pairs refuse sequencing in both directions", () 
     DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
     DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
     DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+    DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
     DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
   ]);
   const exercised = new Set<string>();

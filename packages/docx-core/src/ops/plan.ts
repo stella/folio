@@ -88,6 +88,7 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
       return { ...op, newIds };
+    case DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
     case DOCUMENT_OP_TYPES.DELETE_COMMENT:

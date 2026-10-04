@@ -557,6 +557,21 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       content: [{ type: "paragraph", paraId: "000000A1", content: [] }],
     },
     {
+      type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+      hosts: [],
+      change: { kind: "set", watermark: { kind: "text", text: "Draft", opacity: 0.4 } },
+      coverage: [
+        { type: "default", rId: "rIdWatermarkDefault", paraId: "000000A3" },
+        { type: "first", rId: "rIdWatermarkFirst", paraId: "000000A4" },
+      ],
+    },
+    {
+      type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+      hosts: [],
+      change: { kind: "remove" },
+      coverage: [],
+    },
+    {
       type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
       sectionIndex: 0,
       patch: { footnotePr: { numStart: 2 } },
@@ -590,6 +605,63 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     for (const inverse of applied.value.inverse) out.push(toOpEnvelope(inverse));
     lifecycleDocument = applied.value.document;
   }
+  const existingHeader: Document = {
+    package: {
+      document: {
+        content: [second],
+        finalSectionProperties: {
+          headerReferences: [{ type: "default", rId: "rIdExistingWatermark" }],
+        },
+      },
+      headers: new Map([
+        [
+          "rIdExistingWatermark",
+          {
+            type: "header",
+            hdrFtrType: "default",
+            content: [{ type: "paragraph", paraId: "000000A6", content: [] }],
+          },
+        ],
+      ]),
+    },
+  };
+  const pictureWatermark = {
+    type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+    change: {
+      kind: "set",
+      watermark: {
+        kind: "picture",
+        imageRId: "rIdWatermarkImage",
+        imageTarget: "word/media/logo.png",
+        imageTargetExternal: false,
+        scale: 0.5,
+        widthPt: 120,
+        heightPt: 80,
+        washout: true,
+      },
+    },
+    coverage: [],
+    hosts: [{ rId: "rIdExistingWatermark", paraId: "000000A7" }],
+  } as const satisfies DocumentOp;
+  const pictureEdit = applyDocumentOp(existingHeader, pictureWatermark).unwrap();
+  out.push(toOpEnvelope(pictureWatermark));
+  for (const inverse of pictureEdit.inverse) out.push(toOpEnvelope(inverse));
+  // Pin inverse restoration of authored own-undefined lifecycle fields.
+  const undefinedLifecycle: Document = {
+    package: {
+      document: { content: [second], finalSectionProperties: undefined },
+      headers: undefined,
+    },
+  };
+  const undefinedWatermark = {
+    type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+    hosts: [],
+    change: { kind: "set", watermark: { kind: "text", text: "Own undefined" } },
+    coverage: [{ type: "default", rId: "rIdOwnUndefined", paraId: "000000A5" }],
+  } as const satisfies DocumentOp;
+  const undefinedEdit = applyDocumentOp(undefinedLifecycle, undefinedWatermark).unwrap();
+  out.push(toOpEnvelope(undefinedWatermark));
+  for (const inverse of undefinedEdit.inverse) out.push(toOpEnvelope(inverse));
   // Semantic table fixtures are independent: no earlier review or geometry constrains a later case.
   const editTable: Table = {
     type: "table",

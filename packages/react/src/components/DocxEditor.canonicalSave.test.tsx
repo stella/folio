@@ -16,6 +16,7 @@ import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import type { Document } from "@stll/folio-core/types/document";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { CanonicalCommentResult } from "@stll/folio-core/types/canonicalComments";
+import { getDocumentWatermark, type Watermark } from "@stll/folio-core/watermark";
 import {
   createCanonicalHeaderFooterOperation,
   DOCUMENT_OP_TYPES,
@@ -23,6 +24,7 @@ import {
 } from "@stll/folio-core/controller/canonicalOperations";
 import * as headerFooterHook from "./hooks/useHeaderFooterEditor";
 import { reviewDifferences } from "../../../../test/reviewDifferences";
+import { expectCanonicalWatermarkRoundTrip } from "../../../../test/canonicalWatermarkRoundTrip";
 
 import { DocxEditor } from "./DocxEditor";
 import * as editorDialogs from "./DocxEditorDialogs";
@@ -180,6 +182,90 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
       messages: [],
       omitted: 0,
     });
+
+    const api = editor.current?.getEditor() ?? panic("Expected editor API");
+    const getWatermark = () =>
+      getDocumentWatermark(editor.current?.getDocument() ?? panic("Expected canonical document"));
+    const textWatermark = {
+      kind: "text",
+      text: "DRAFT",
+      font: "Calibri",
+      color: "C0C0C0",
+      diagonal: true,
+    } satisfies Watermark;
+    await act(async () => {
+      expect(api.applyCanonicalWatermark({ kind: "set", watermark: textWatermark })?.status).toBe(
+        "applied",
+      );
+    });
+    expect(getWatermark()).toEqual(textWatermark);
+    await act(async () => {
+      expect(editor.current?.undo()).toBe(true);
+    });
+    expect(getWatermark()).toBeUndefined();
+    await act(async () => {
+      expect(editor.current?.redo()).toBe(true);
+    });
+    expect(getWatermark()).toEqual(textWatermark);
+
+    const pictureWatermark = {
+      kind: "picture",
+      imageRId: "rIdExternalWatermark",
+      imageTarget: "https://example.test/watermark.png",
+      imageTargetExternal: true,
+      scale: 0.6,
+      widthPt: 249,
+      heightPt: 124.2,
+    } satisfies Watermark;
+    await act(async () => {
+      expect(
+        api.applyCanonicalWatermark({ kind: "set", watermark: pictureWatermark })?.status,
+      ).toBe("applied");
+    });
+    expect(getWatermark()).toEqual(pictureWatermark);
+    await act(async () => {
+      expect(editor.current?.undo()).toBe(true);
+    });
+    expect(getWatermark()).toEqual(textWatermark);
+    await act(async () => {
+      expect(editor.current?.redo()).toBe(true);
+    });
+    const pictureCanonical = editor.current?.getDocument() ?? panic("Expected picture watermark");
+    expect(getWatermark()).toEqual(pictureWatermark);
+    let pictureSaved: ArrayBuffer | null | undefined;
+    await act(async () => {
+      pictureSaved = await editor.current?.save();
+    });
+    if (!pictureSaved) panic("Expected saved canonical picture watermark");
+    const reopenedPicture = await parseDocx(pictureSaved, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    expectCanonicalWatermarkRoundTrip(pictureCanonical, reopenedPicture);
+
+    await act(async () => {
+      expect(api.applyCanonicalWatermark({ kind: "remove" })?.status).toBe("applied");
+    });
+    expect(getWatermark()).toBeUndefined();
+    await act(async () => {
+      expect(editor.current?.undo()).toBe(true);
+    });
+    expect(getWatermark()).toEqual(pictureWatermark);
+    await act(async () => {
+      expect(editor.current?.redo()).toBe(true);
+    });
+    const removedCanonical = editor.current?.getDocument() ?? panic("Expected removed watermark");
+    expect(getWatermark()).toBeUndefined();
+    let removedSaved: ArrayBuffer | null | undefined;
+    await act(async () => {
+      removedSaved = await editor.current?.save();
+    });
+    if (!removedSaved) panic("Expected saved canonical watermark removal");
+    const reopenedRemoved = await parseDocx(removedSaved, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    expectCanonicalWatermarkRoundTrip(removedCanonical, reopenedRemoved);
   } finally {
     await act(async () => root.unmount());
     dialogs.mockRestore();

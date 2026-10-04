@@ -331,3 +331,88 @@ test("the first locality part is chosen across relationship, content type and by
     serializedLocalityStepFailures({ step, control, edited, documentPart: "custom/main.xml" }),
   ).toEqual(["restoreStoryParts changed unrelated package content types: [Content_Types].xml"]);
 });
+
+test("watermark ownership preserves existing story content and unrelated section fields", () => {
+  const before: Document = fixture();
+  before.package.document.finalSectionProperties = {
+    headerReferences: [{ type: "default", rId: "rIdHeader" }],
+    pageWidth: 12000,
+  };
+  const step = stepFor(
+    {
+      type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+      hosts: [{ rId: "rIdHeader", paraId: "00000006" }],
+      change: { kind: "set", watermark: { kind: "text", text: "Draft" } },
+      coverage: [],
+    },
+    before,
+  );
+  expect(localityStepFailures(step)).toEqual([]);
+  for (const story of [
+    "main",
+    { kind: "header", rId: "rIdHeader" },
+    { kind: "footer", rId: "rIdFooter" },
+  ] as const) {
+    const changed = structuredClone(step.edit.document);
+    const content = (() => {
+      if (story === "main") return changed.package.document.content;
+      if (story.kind === "header") return changed.package.headers?.get(story.rId)?.content;
+      return changed.package.footers?.get(story.rId)?.content;
+    })();
+    const target = content?.at(0);
+    if (target?.type !== "paragraph" || !target.paraId) throw new Error("Expected locality target");
+    target.content = [{ type: "run", content: [{ type: "text", text: "Unowned" }] }];
+    const corrupted = {
+      ...step,
+      edit: {
+        ...step.edit,
+        document: changed,
+        touched: { ...step.edit.touched, modified: [target.paraId] },
+      },
+    };
+    expect(
+      localityStepFailures(corrupted).some((message) =>
+        message.includes("outside its addressed story"),
+      ),
+    ).toBe(true);
+  }
+  const changed = structuredClone(step.edit.document);
+  if (!changed.package.document.finalSectionProperties) throw new Error("Expected final section");
+  changed.package.document.finalSectionProperties.pageWidth = 13000;
+  expect(
+    localityStepFailures({ ...step, edit: { ...step.edit, document: changed } }).some((message) =>
+      message.includes("outside its declared story and section fields"),
+    ),
+  ).toBe(true);
+});
+
+test("watermark decoration ownership cannot hide a changed existing header relationship", () => {
+  const before: Document = fixture();
+  before.package.document.finalSectionProperties = {
+    headerReferences: [{ type: "default", rId: "rIdHeader" }],
+  };
+  const step = stepFor(
+    {
+      type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+      hosts: [{ rId: "rIdHeader", paraId: "00000006" }],
+      change: { kind: "set", watermark: { kind: "text", text: "Draft" } },
+      coverage: [],
+    },
+    before,
+  );
+  const control = parts();
+  const edited = new Map(control);
+  edited.set(
+    "custom/_rels/main.xml.rels",
+    bytes(
+      new TextDecoder()
+        .decode(control.get("custom/_rels/main.xml.rels"))
+        .replace("../stories/header3.xml", "../stories/changed.xml"),
+    ),
+  );
+  expect(
+    serializedLocalityStepFailures({ step, control, edited, documentPart: "custom/main.xml" }),
+  ).toEqual([
+    "setDocumentWatermark changed an existing header relationship payload: custom/_rels/main.xml.rels#rIdHeader",
+  ]);
+});

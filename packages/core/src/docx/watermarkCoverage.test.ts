@@ -6,9 +6,12 @@
  */
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import { getParagraphPropertySource } from "./paragraphPropertySource";
 
 import type { HeaderFooter } from "../types/document";
-import { setDocumentWatermark } from "../watermark";
+import { setDocumentWatermark, ensureWatermarkHeaderCoverage } from "../watermark/index";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx, validateDocx } from "./rezip";
 
@@ -54,3 +57,45 @@ describe("watermark header coverage on save (eigenpal #684)", () => {
     expect(reparsed.package.headers?.size).toBe(2);
   });
 });
+
+// The old coverage fixture had only a final section, so it missed mid-body source transfer.
+test(
+  "generated legacy watermark coverage preserves private paragraph property sources",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(fc.boolean(), async (evenPages) => {
+        for (const mode of ["set", "coverage"] as const) {
+          const zip = await JSZip.loadAsync(await createEmptyDocx());
+          zip.file(
+            "word/document.xml",
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body><w:p w14:paraId="00000001"><w:pPr><w:keepNext/><w:sectPr><w:titlePg/></w:sectPr></w:pPr><w:r><w:t>First section</w:t></w:r></w:p><w:p w14:paraId="00000002"><w:r><w:t>Last section</w:t></w:r></w:p><w:sectPr/></w:body></w:document>',
+          );
+          const source = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+            preloadFonts: false,
+          });
+          source.package.settings = {
+            ...source.package.settings,
+            defaultTabStop: 720,
+            evenAndOddHeaders: evenPages,
+          };
+          const before = source.package.document.content.at(0);
+          if (before?.type !== "paragraph") throw new Error("Expected parsed section carrier");
+          const capture = getParagraphPropertySource(before);
+          expect(capture).toBeDefined();
+          const watermark = { kind: "text", text: "DRAFT" } as const;
+          const changed =
+            mode === "set"
+              ? setDocumentWatermark(source, watermark)
+              : ensureWatermarkHeaderCoverage(source, watermark);
+          const after = changed.package.document.content.at(0);
+          if (after?.type !== "paragraph") throw new Error("Expected changed section carrier");
+          expect(after).not.toBe(before);
+          expect(after.sectionProperties?.headerReferences).toHaveLength(evenPages ? 3 : 2);
+          expect(getParagraphPropertySource(after)).toBe(capture);
+        }
+      }),
+      { seed: 20261020, numRuns: 12 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);

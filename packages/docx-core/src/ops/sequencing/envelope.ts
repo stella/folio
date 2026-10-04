@@ -385,6 +385,7 @@ const operationFields = {
   removeNote: undefined,
   restoreStoryParts: undefined,
   setSectionProps: undefined,
+  setDocumentWatermark: undefined,
   insertColumn: undefined,
   deleteColumn: undefined,
   mergeCells: undefined,

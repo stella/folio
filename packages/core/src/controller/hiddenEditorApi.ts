@@ -21,6 +21,10 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document, SectionProperties } from "../types/document";
 import type { CanonicalSectionPropertiesResult } from "../types/canonicalSections";
 import type {
+  CanonicalWatermarkRequest,
+  CanonicalWatermarkResult,
+} from "../types/canonicalWatermark";
+import type {
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
@@ -71,6 +75,7 @@ export type HiddenEditorApi = {
   applyCanonicalSectionProperties: (
     patch: FormattingPatch<SectionProperties>,
   ) => CanonicalSectionPropertiesResult | null;
+  applyCanonicalWatermark: (change: CanonicalWatermarkRequest) => CanonicalWatermarkResult | null;
   getCanonicalStorySelection: (story: OpStory) => { anchor: number; head: number } | null;
   getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
   replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
@@ -122,6 +127,7 @@ export type HiddenEditorApiDeps = {
     | "applyCanonicalOperations"
     | "applyCanonicalComment"
     | "applyCanonicalSectionProperties"
+    | "applyCanonicalWatermark"
     | "getCanonicalStoryProjection"
     | "replaceCanonicalStoryText"
     | "applyCanonicalStoryHistory"
@@ -210,6 +216,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       deps.canonicalOperations?.applyCanonicalComment(request) ?? null,
     applyCanonicalSectionProperties: (patch) =>
       deps.canonicalOperations?.applyCanonicalSectionProperties(patch) ?? null,
+    applyCanonicalWatermark: (change) =>
+      deps.canonicalOperations?.applyCanonicalWatermark(change) ?? null,
     applyCanonicalOperations: (ops) =>
       deps.canonicalOperations?.applyCanonicalOperations(ops) ?? false,
     getCanonicalStorySelection: (story) =>

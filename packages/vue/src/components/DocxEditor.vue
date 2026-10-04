@@ -478,7 +478,6 @@
 import {
   CANONICAL_GAP,
   usesCanonicalSession,
-  type CanonicalGap,
   canonicalRefusalMessage,
 } from "@stll/folio-core/types/canonicalCapabilities";
 
@@ -506,6 +505,7 @@ import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/se
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { useTransientNotice } from "../composables/useTransientNotice";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
+import type { CanonicalWatermarkRequest } from "@stll/folio-core/types/canonicalWatermark";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
@@ -647,17 +647,6 @@ function reportEditorError(error: Error): void {
   if (CanonicalSessionRefusalError.is(error)) showRefusalNotice(error.message);
   props.onError?.(error);
   emit("error", error);
-}
-
-function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
-  if (!usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting))
-    return false;
-  const error = new CanonicalSessionRefusalError({
-    gap,
-    message: canonicalRefusalMessage(gap, message),
-  });
-  reportEditorError(error);
-  return true;
 }
 
 const editorMode = ref<EditorMode>(props.mode);
@@ -1565,16 +1554,12 @@ function handleMenuAction(action: string): void {
 }
 
 function handleWatermarkApply(watermark: Watermark | undefined): void {
-  if (
-    refuseCanonicalModelEdit(
-      CANONICAL_GAP.watermark,
-      "Watermark changes are unavailable in this session.",
-    )
-  )
-    return;
   if (readOnly.value) {
     return;
   }
+  const change: CanonicalWatermarkRequest =
+    watermark === undefined ? { kind: "remove" } : { kind: "set", watermark };
+  if (editor.applyCanonicalWatermark(change) !== null) return;
   const doc = getDocument();
   if (!doc) {
     return;

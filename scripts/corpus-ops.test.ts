@@ -9,6 +9,8 @@ import {
   DOCUMENT_OP_TYPES,
   INHERIT_RUN_PROPS,
   normalizeForOps,
+  planDocumentWatermarkCoverage,
+  planDocumentWatermarkHosts,
   OP_STORIES,
   type DocumentOp,
 } from "../packages/docx-core/src/ops/documentOps";
@@ -639,3 +641,133 @@ describe("corpus operation invariants", () => {
     });
   });
 });
+
+test("watermark SET cannot hide changes to a retained identified empty source host", () => {
+  const before = documentFixture();
+  const header = before.package.headers?.get("rId10");
+  if (!header) throw new Error("Missing source header");
+  const hostId = "60000090";
+  header.content.push({ type: "paragraph", paraId: hostId, content: [] });
+  header.watermarkBlockIndex = header.content.length - 1;
+  header.watermark = { kind: "text", text: "Before" };
+  before.package.document.finalSectionProperties = {
+    headerReferences: [{ type: "default", rId: "rId10" }],
+  };
+  const op = {
+    type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+    change: { kind: "set", watermark: { kind: "text", text: "After" } },
+    coverage: [],
+    hosts: [],
+  } as const satisfies DocumentOp;
+  const edit = applyDocumentOp(before, op).unwrap();
+  expect(localityStepFailures({ before, op, edit })).toEqual([]);
+  const originalHost = header.content.at(header.watermarkBlockIndex);
+  expect(
+    edit.document.package.headers?.get("rId10")?.content.at(header.watermarkBlockIndex),
+  ).toEqual(originalHost);
+  for (const dimension of ["text", "format"] as const) {
+    const changed = structuredClone(edit.document);
+    const host = changed.package.headers
+      ?.get("rId10")
+      ?.content.find((block) => block.type === "paragraph" && block.paraId === hostId);
+    if (host?.type !== "paragraph") throw new Error("Missing retained source host");
+    if (dimension === "text")
+      host.content = [{ type: "run", content: [{ type: "text", text: "Unowned source edit" }] }];
+    else host.formatting = { ...host.formatting, keepNext: true };
+    const forged = {
+      ...edit,
+      document: changed,
+      touched: { ...edit.touched, modified: [...edit.touched.modified, hostId] },
+    };
+    expect(localityStepFailures({ before, op, edit: forged })).toContain(
+      "setDocumentWatermark declared a touched block outside its addressed story",
+    );
+  }
+});
+
+test(
+  "compound watermark and header lifecycle ownership preserves unowned relationship payloads",
+  async () => {
+    const relationshipPath = "word/_rels/document.xml.rels";
+    for (const schedule of [
+      ["remove", "watermark"],
+      ["watermark", "remove"],
+      ["remove", "restore", "watermark"],
+    ] as const) {
+      const seed = documentFixture();
+      seed.package.document.finalSectionProperties = {
+        headerReferences: [{ type: "default", rId: "rId10" }],
+      };
+      const source = applyDocumentOp(seed, {
+        type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+        sectionIndex: 0,
+        story: { kind: "header", rId: "rIdCompoundOwned" },
+        referenceType: "first",
+        content: [makeParagraph("63000000", "Lifecycle header")],
+      }).unwrap().document;
+      const steps = [];
+      let current = source;
+      let identity = 0;
+      let restoration: DocumentOp | undefined;
+      for (const kind of schedule) {
+        let op: DocumentOp;
+        switch (kind) {
+          case "remove":
+            op = {
+              type: DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
+              sectionIndex: 0,
+              story: { kind: "header", rId: "rIdCompoundOwned" },
+              referenceType: "first",
+            };
+            break;
+          case "restore":
+            if (!restoration) throw new Error("Missing generated header restoration");
+            op = restoration;
+            break;
+          case "watermark": {
+            const identityStart = identity;
+            const coverage = planDocumentWatermarkCoverage(current).map((type, index) => ({
+              type,
+              rId: `rIdCompoundFresh${identityStart + index}`,
+              paraId: `6400000${identityStart + index}`,
+            }));
+            const hostIdentityStart = identityStart + coverage.length;
+            const hosts = planDocumentWatermarkHosts(current).map((rId, index) => ({
+              rId,
+              paraId: `6400000${hostIdentityStart + index}`,
+            }));
+            identity = hostIdentityStart + hosts.length;
+            op = {
+              type: DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK,
+              change: { kind: "set", watermark: { kind: "text", text: "Draft" } },
+              coverage,
+              hosts,
+            };
+            break;
+          }
+          default: {
+            const unreachable: never = kind;
+            throw new Error(`Unknown compound operation ${unreachable}`);
+          }
+        }
+        const edit = applyDocumentOp(current, op).unwrap();
+        if (kind === "remove") restoration = edit.inverse.at(0);
+        steps.push({ before: current, op, edit });
+        current = edit.document;
+      }
+      const control = await serializedOpParts(source);
+      const edited = await serializedOpParts(current);
+      const options = { sequence: { steps }, control, documentPart: "word/document.xml" };
+      expect(serializedLocalityFailures({ ...options, edited })).toEqual([]);
+      const xml = new TextDecoder().decode(edited.get(relationshipPath));
+      const corruptXml = xml.replace('Id="rId10"', 'Id="rId10" opaque="tampered"');
+      expect(corruptXml).not.toBe(xml);
+      const corrupt = new Map(edited);
+      corrupt.set(relationshipPath, new TextEncoder().encode(corruptXml));
+      expect(serializedLocalityFailures({ ...options, edited: corrupt })).toContain(
+        `sequence changed an existing header relationship payload: ${relationshipPath}#rId10`,
+      );
+    }
+  },
+  propertyTestTimeout(30_000),
+);

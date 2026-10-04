@@ -67,6 +67,7 @@ const operationStory = (op: DocumentOp) => {
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+    case DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
       return undefined;
     default: {

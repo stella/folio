@@ -14,6 +14,7 @@ import type {
   Relationship,
   SectionProperties,
   DocumentBody,
+  HeaderFooter,
 } from "../../../packages/docx-core/src/model/document";
 import {
   COMMENT_PART_RELATIONSHIPS,
@@ -27,6 +28,7 @@ import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
   sameStory,
+  isEmptyWatermarkHostParagraph,
   type OpStory,
 } from "../../../packages/docx-core/src/ops/documentOps";
 import type { StoryParts } from "../../../packages/docx-core/src/ops/types";
@@ -143,6 +145,33 @@ const lifecycleOwnership = (op: DocumentOp) => {
   }
 };
 
+/** Explicit lifecycle payloads may change a header relationship; watermark decorations may not. */
+const explicitHeaderRelationshipIds = (op: DocumentOp): string[] => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+      return op.story.kind === "header" ? [op.story.rId] : [];
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS: {
+      if (op.parts.headers === undefined) return [];
+      const prior = new Map(op.expected.headers ?? []);
+      const next = new Map(op.parts.headers ?? []);
+      return [...new Set([...prior.keys(), ...next.keys()])].filter(
+        (rId) => !sameOpModel(prior.get(rId), next.get(rId)),
+      );
+    }
+    default:
+      return [];
+  }
+};
+
+const watermarkHostId = (header: HeaderFooter) => {
+  if (header.watermarkBlockIndex === undefined) return undefined;
+  const host = header.content.at(header.watermarkBlockIndex);
+  return host?.type === "paragraph" && isEmptyWatermarkHostParagraph(host)
+    ? host.paraId
+    : undefined;
+};
+
 type WithoutOwnedRecordsOptions = {
   document: Document;
   original: Document;
@@ -185,7 +214,7 @@ const withoutRestoredRecords = (document: Document, parts: StoryParts): Document
     settings: () => {
       if (parts.settings !== undefined) delete out.package.settings;
     },
-  } satisfies Record<keyof Omit<StoryParts, "body" | "sections">, () => void>;
+  } satisfies Record<keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">, () => void>;
   for (const strip of Object.values(stripPackage)) strip();
   const restoredSections = new Set(
     (parts.sections ?? []).flatMap(({ index, properties }) =>
@@ -341,6 +370,71 @@ const withoutOwnedRecords = ({
     delete out.package.document.sections;
     return out;
   }
+  if (op.type === DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK) {
+    const out = structuredClone(document);
+    const created = new Set(op.coverage.map(({ rId }) => rId));
+    if (out.package.headers !== undefined) {
+      for (const [rId, header] of out.package.headers) {
+        if (created.has(rId)) {
+          out.package.headers.delete(rId);
+          continue;
+        }
+        const source = original.package.headers?.get(rId);
+        const hostId = op.change.kind === "remove" && source ? watermarkHostId(source) : undefined;
+        const insertedHost = op.hosts.find((host) => host.rId === rId)?.paraId;
+        const ownedHosts = new Set([hostId, insertedHost].filter((id) => id !== undefined));
+        header.content = header.content.filter(
+          (block) =>
+            block.type !== "paragraph" ||
+            block.paraId === undefined ||
+            !ownedHosts.has(block.paraId),
+        );
+        delete header.watermark;
+        delete header.rawWatermarkXml;
+        delete header.watermarkBlockIndex;
+      }
+      if (out.package.headers.size === 0 && original.package.headers === undefined)
+        delete out.package.headers;
+    }
+    const stripReferences = (
+      properties: SectionProperties | undefined,
+      source: SectionProperties | undefined,
+    ) => {
+      if (!properties?.headerReferences) return;
+      properties.headerReferences = properties.headerReferences.filter(
+        ({ rId }) => !created.has(rId),
+      );
+      if (properties.headerReferences.length === 0 && source?.headerReferences === undefined)
+        delete properties.headerReferences;
+    };
+    for (const block of out.package.document.content) {
+      if (block.type !== "paragraph") continue;
+      const source = original.package.document.content.find(
+        (candidate) => candidate.type === "paragraph" && candidate.paraId === block.paraId,
+      );
+      stripReferences(
+        block.sectionProperties,
+        source?.type === "paragraph" ? source.sectionProperties : undefined,
+      );
+    }
+    stripReferences(
+      out.package.document.finalSectionProperties,
+      original.package.document.finalSectionProperties,
+    );
+    if (
+      out.package.document.finalSectionProperties !== undefined &&
+      Object.keys(out.package.document.finalSectionProperties).length === 0 &&
+      original.package.document.finalSectionProperties === undefined
+    )
+      delete out.package.document.finalSectionProperties;
+    if (out.package.relationships !== undefined) {
+      for (const rId of created) out.package.relationships.delete(rId);
+      if (out.package.relationships.size === 0 && original.package.relationships === undefined)
+        delete out.package.relationships;
+    }
+    delete out.package.document.sections;
+    return out;
+  }
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS)
     return withoutRestoredRecords(document, op.parts);
   const ownership = lifecycleOwnership(op);
@@ -442,6 +536,12 @@ const addressedStory = (op: DocumentOp) => {
 type OwnsStoryContentOptions = { op: DocumentOp; story: OpStory; original: Document };
 const ownsStoryContent = ({ op, story, original }: OwnsStoryContentOptions): boolean => {
   if (isCommentOp(op)) return commentStories(op, original).some((owned) => sameStory(owned, story));
+  if (op.type === DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK)
+    return (
+      story !== OP_STORIES.MAIN &&
+      story.kind === "header" &&
+      op.coverage.some(({ rId }) => rId === story.rId)
+    );
   const addressed = addressedStory(op);
   if (addressed !== undefined && sameStory(addressed, story)) return true;
   const lifecycle = lifecycleOwnership(op);
@@ -475,12 +575,42 @@ export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): stri
   const inserted = new Set(edit.touched.inserted.map(idKey));
   const removed = new Set(edit.touched.removed.map(idKey));
   const touched = new Set([...modified, ...inserted, ...removed]);
+  const watermarkOwnsTouched = (story: OpStory, paragraphId: string) => {
+    if (op.type !== DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK) return false;
+    const id = idKey(paragraphId);
+    if (story === OP_STORIES.MAIN)
+      return before.package.document.content.some(
+        (block) =>
+          block.type === "paragraph" &&
+          block.sectionProperties !== undefined &&
+          block.paraId !== undefined &&
+          idKey(block.paraId) === id,
+      );
+    if (story.kind !== "header") return false;
+    if (
+      [...op.coverage, ...op.hosts].some(
+        ({ rId, paraId }) => rId === story.rId && idKey(paraId) === id,
+      )
+    )
+      return true;
+    if (op.change.kind !== "remove") return false;
+    const header = before.package.headers?.get(story.rId);
+    const hostId = header ? watermarkHostId(header) : undefined;
+    return hostId !== undefined && idKey(hostId) === id;
+  };
   for (const document of [before, edit.document]) {
     for (const story of documentStories(document)) {
-      if (ownsStoryContent({ op, story, original: before })) continue;
+      if (
+        op.type !== DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK &&
+        ownsStoryContent({ op, story, original: before })
+      )
+        continue;
       if (
         storyParagraphs(storyBody(document, story)).some(
-          ({ paragraph }) => paragraph.paraId !== undefined && touched.has(idKey(paragraph.paraId)),
+          ({ paragraph }) =>
+            paragraph.paraId !== undefined &&
+            touched.has(idKey(paragraph.paraId)) &&
+            !watermarkOwnsTouched(story, paragraph.paraId),
         )
       )
         failures.push(`${op.type} declared a touched block outside its addressed story`);
@@ -567,6 +697,13 @@ export const serializedLocalityFailures = ({
   const ownedRelationshipTypes = new Set<string>();
   let lifecycle = false;
   for (const { op, before } of sequence.steps) {
+    if (op.type === DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK) {
+      lifecycle = true;
+      ownedPaths.add(documentPart);
+      // Watermarks own header decorations; unrelated header content stays guarded by model locality.
+      for (const rId of before.package.headers?.keys() ?? []) ownedRelationshipIds.add(rId);
+      for (const { rId } of op.coverage) ownedRelationshipIds.add(rId);
+    }
     if (isCommentOp(op)) {
       lifecycle = true;
       ownedPaths.add("word/comments.xml");
@@ -599,7 +736,7 @@ export const serializedLocalityFailures = ({
         footnotes: RELATIONSHIP_TYPES.footnotes,
         endnotes: RELATIONSHIP_TYPES.endnotes,
         settings: RELATIONSHIP_TYPES.settings,
-      } satisfies Record<keyof Omit<StoryParts, "body" | "sections">, string>;
+      } satisfies Record<keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">, string>;
       for (const [key, relationshipType] of Object.entries(restoredRelationships)) {
         if (
           Object.entries(op.parts).some(
@@ -643,16 +780,16 @@ export const serializedLocalityFailures = ({
     new TextDecoder().decode(parts.get(part) ?? new Uint8Array());
   const controlRelationships = parseRelationships(decode(control, relationshipsPath));
   const editedRelationships = parseRelationships(decode(edited, relationshipsPath));
+  const relationshipAttributes = (parts: Map<string, Uint8Array>) =>
+    new Map(
+      getChildElements(parseXmlDocument(decode(parts, relationshipsPath))).flatMap((element) => {
+        const id = getAttribute(element, null, "Id");
+        return id ? [[id, getAttributes(element)] as const] : [];
+      }),
+    );
   if (sequence.steps.some(({ op }) => isCommentOp(op))) {
-    const attributes = (parts: Map<string, Uint8Array>) =>
-      new Map(
-        getChildElements(parseXmlDocument(decode(parts, relationshipsPath))).flatMap((element) => {
-          const id = getAttribute(element, null, "Id");
-          return id ? [[id, getAttributes(element)] as const] : [];
-        }),
-      );
-    const baselineAttributes = attributes(control);
-    const editedAttributes = attributes(edited);
+    const baselineAttributes = relationshipAttributes(control);
+    const editedAttributes = relationshipAttributes(edited);
     for (const [id, relation] of controlRelationships) {
       if (
         !editedRelationships.has(id) ||
@@ -662,6 +799,20 @@ export const serializedLocalityFailures = ({
       if (!sameOpModel(baselineAttributes.get(id), editedAttributes.get(id)))
         failures.push(
           `sequence changed an existing comment relationship payload: ${relationshipsPath}#${id}`,
+        );
+    }
+  }
+  if (sequence.steps.some(({ op }) => op.type === DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK)) {
+    const lifecycleHeaderIds = new Set(
+      sequence.steps.flatMap(({ op }) => explicitHeaderRelationshipIds(op)),
+    );
+    const baselineAttributes = relationshipAttributes(control);
+    const editedAttributes = relationshipAttributes(edited);
+    for (const [id, relationship] of controlRelationships) {
+      if (relationship.type !== RELATIONSHIP_TYPES.header || lifecycleHeaderIds.has(id)) continue;
+      if (!sameOpModel(baselineAttributes.get(id), editedAttributes.get(id)))
+        failures.push(
+          `sequence changed an existing header relationship payload: ${relationshipsPath}#${id}`,
         );
     }
   }

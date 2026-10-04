@@ -24,6 +24,7 @@ export const OPERATION_LAW_DISPOSITIONS = {
   addNote: "holds",
   removeNote: "holds",
   setSectionProps: "holds",
+  setDocumentWatermark: "holds",
   restoreStoryParts: "holds",
   deleteBlocks: "holds",
   insertBlocks: "holds",

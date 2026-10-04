@@ -1,3 +1,4 @@
+import { WATERMARK_DEFAULTS } from "@stll/docx-core/model";
 import type { SaveDiagnosticOptions } from "../saveDiagnostics";
 /**
  * Header/Footer Serializer - Serialize headers/footers to OOXML XML
@@ -98,7 +99,10 @@ function serializeBlock(block: BlockContent): string {
  * @returns Complete XML string for header*.xml or footer*.xml
  */
 type HeaderFooterSerializeOptions = SourcePart &
-  SaveDiagnosticOptions & { originalBuffer?: ArrayBuffer | undefined };
+  SaveDiagnosticOptions & {
+    originalBuffer?: ArrayBuffer | undefined;
+    watermarkHostAuthority?: "canonical" | "model" | undefined;
+  };
 
 export function serializeHeaderFooter(
   hf: HeaderFooter,
@@ -132,13 +136,13 @@ export function serializeHeaderFooter(
     const watermarkHost = hf.content.at(watermarkInsertIndex);
     const rawWatermarkXml = hf.rawWatermarkXml;
     const mergesIntoRetainedHost =
-      rawWatermarkXml !== undefined &&
+      (rawWatermarkXml !== undefined || source?.watermarkHostAuthority === "canonical") &&
       watermarkHost?.type === "paragraph" &&
       isEmptyParagraph(watermarkHost);
     if (mergesIntoRetainedHost) {
       blocksXml[watermarkInsertIndex] = serializeRawWatermarkIntoHost({
         hostXml: blocksXml[watermarkInsertIndex] ?? serializeParagraph(watermarkHost),
-        rawWatermarkXml,
+        rawWatermarkXml: rawWatermarkXml ?? watermarkXml,
       });
     }
     contentXml =
@@ -241,8 +245,10 @@ function synthesizeTextWatermark(watermark: Extract<Watermark, { kind: "text" }>
   // producer default"; we map it to Word's silver fallback rather than
   // emitting an invalid VML `fillcolor="#auto"`.
   const fillcolor =
-    watermark.color && watermark.color !== "auto" ? `#${watermark.color}` : "#C0C0C0";
-  const fontFamily = watermark.font ?? "Calibri";
+    watermark.color && watermark.color !== "auto"
+      ? `#${watermark.color}`
+      : `#${WATERMARK_DEFAULTS.textColor}`;
+  const fontFamily = watermark.font ?? WATERMARK_DEFAULTS.textFont;
   const text = escapeXmlAttribute(watermark.text);
   // VML opacity rides on a `<v:fill>` child rather than the shape's
   // own `fillcolor` attribute. Word reads the decimal form (`opacity=
@@ -260,10 +266,10 @@ function synthesizeTextWatermark(watermark: Extract<Watermark, { kind: "text" }>
 // multiplicative factor (1.0 = native), so 0.5 → half-size, 1.5 →
 // one-and-a-half size; we apply it to both axes to preserve the
 // caller's intended ratio.
-const PICTURE_WATERMARK_DEFAULT_WIDTH_PT = 415;
-const PICTURE_WATERMARK_DEFAULT_HEIGHT_PT = 207;
-const PICTURE_WATERMARK_WASHOUT_GAIN = "19661f";
-const PICTURE_WATERMARK_WASHOUT_BLACKLEVEL = "22938f";
+const PICTURE_WATERMARK_DEFAULT_WIDTH_PT = WATERMARK_DEFAULTS.pictureWidthPt;
+const PICTURE_WATERMARK_DEFAULT_HEIGHT_PT = WATERMARK_DEFAULTS.pictureHeightPt;
+const PICTURE_WATERMARK_WASHOUT_GAIN = WATERMARK_DEFAULTS.pictureWashoutGain;
+const PICTURE_WATERMARK_WASHOUT_BLACKLEVEL = WATERMARK_DEFAULTS.pictureWashoutBlacklevel;
 
 function synthesizePictureWatermark(watermark: Extract<Watermark, { kind: "picture" }>): string {
   // Same VML shapetype convention as Word's UI: shape id begins with

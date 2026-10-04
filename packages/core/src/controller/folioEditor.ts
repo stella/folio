@@ -99,6 +99,16 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
         };
       return api.applyCanonicalSectionProperties(patch);
     },
+    applyCanonicalWatermark: (change) => {
+      const api = deps.getEditorApi();
+      if (!api)
+        return {
+          status: "refused",
+          gap: CANONICAL_GAP.watermark,
+          message: "The editor is not ready for watermark changes.",
+        };
+      return api.applyCanonicalWatermark(change);
+    },
     applyCanonicalOperations: (ops) => deps.getEditorApi()?.applyCanonicalOperations(ops) ?? false,
     getCanonicalStorySelection: (story) =>
       deps.getEditorApi()?.getCanonicalStorySelection(story) ?? null,
