@@ -117,7 +117,7 @@ test("generated point/range comment histories preserve exact undo, projection an
           expect(
             editor.session.document.package.document.comments?.some(
               (comment) => comment.id === id || comment.id === replyId,
-            ),
+            ) ?? false,
           ).toBe(false);
           editor.history("undo");
           expect(editor.session.document).toEqual(committed);

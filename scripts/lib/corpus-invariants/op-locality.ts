@@ -185,7 +185,7 @@ const withoutRestoredRecords = (document: Document, parts: StoryParts): Document
     settings: () => {
       if (parts.settings !== undefined) delete out.package.settings;
     },
-  } satisfies Record<keyof Omit<StoryParts, "body" | "sections">, () => void>;
+  } satisfies Record<keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">, () => void>;
   for (const strip of Object.values(stripPackage)) strip();
   const restoredSections = new Set(
     (parts.sections ?? []).flatMap(({ index, properties }) =>
@@ -599,7 +599,7 @@ export const serializedLocalityFailures = ({
         footnotes: RELATIONSHIP_TYPES.footnotes,
         endnotes: RELATIONSHIP_TYPES.endnotes,
         settings: RELATIONSHIP_TYPES.settings,
-      } satisfies Record<keyof Omit<StoryParts, "body" | "sections">, string>;
+      } satisfies Record<keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">, string>;
       for (const [key, relationshipType] of Object.entries(restoredRelationships)) {
         if (
           Object.entries(op.parts).some(

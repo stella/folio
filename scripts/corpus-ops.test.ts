@@ -1,7 +1,13 @@
 import { propertyTestTimeout } from "../test/property-testing";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { describe, expect, test } from "bun:test";
-import type { BlockContent, Document, Paragraph } from "../packages/docx-core/src/model/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  PreservedAttribute,
+} from "../packages/docx-core/src/model/document";
+import { OOXML_NAMESPACES } from "@stll/folio-core/docx/serializer/partNamespaces";
 import { DEFAULT_TAB_STOP_TWIPS } from "../packages/docx-core/src/model/document";
 import {
   applyDocumentOp,
@@ -33,6 +39,7 @@ import {
   prepareOpDocument,
   sameOpModel,
   serializedOpParts,
+  serializeOpDocument,
   seedFromBytes,
 } from "./lib/corpus-invariants/op-sequences";
 
@@ -42,6 +49,9 @@ const makeParagraph = (paraId: string, text: string) =>
     paraId,
     content: [{ type: "run", content: [{ type: "text", text }] }],
   }) satisfies Paragraph;
+
+const sourceParagraphAttributes = (value: string) =>
+  [{ namespace: OOXML_NAMESPACES.w.uri, name: "rsidR", value }] satisfies PreservedAttribute[];
 
 const documentFixture = () =>
   normalizeForOps({
@@ -150,7 +160,11 @@ describe("corpus operation invariants", () => {
       },
       anchor: { kind: "point", at: { story: OP_STORIES.MAIN, blockId: "60000001", offset: 0 } },
     } as const satisfies DocumentOp;
-    const first = applyDocumentOp(documentFixture(), create).unwrap().document;
+    const source = documentFixture();
+    const sourceParagraph = source.package.document.content.at(1);
+    if (sourceParagraph?.type !== "paragraph") throw new Error("Missing source paragraph");
+    sourceParagraph.preservedAttributes = sourceParagraphAttributes("00112233");
+    const first = applyDocumentOp(source, create).unwrap().document;
     const before = applyDocumentOp(first, {
       ...create,
       comment: {
@@ -166,6 +180,9 @@ describe("corpus operation invariants", () => {
       content: [makeParagraph("60000020", "Updated")],
     } as const;
     const edit = applyDocumentOp(before, op).unwrap();
+    // A serializable production-shaped control proves the oracle sees authored source attributes.
+    expect(serializeOpDocument(before)).toContain('rsidR="00112233"');
+    expect(serializeOpDocument(edit.document)).toContain('rsidR="00112233"');
     expect(localityStepFailures({ before, op, edit })).toEqual([]);
     const changed = structuredClone(edit.document);
     const foreign = changed.package.document.comments?.find(({ id }) => id === 9101);
@@ -186,9 +203,8 @@ describe("corpus operation invariants", () => {
     const changedSource = structuredClone(edit.document);
     const untouched = changedSource.package.document.content.at(1);
     if (untouched?.type !== "paragraph") throw new Error("Missing untouched source paragraph");
-    untouched.preservedAttributes = [
-      { namespace: "urn:foreign", name: "stamp", value: "tampered" },
-    ];
+    untouched.preservedAttributes = sourceParagraphAttributes("44556677");
+    expect(serializeOpDocument(changedSource)).toContain('rsidR="44556677"');
     expect(
       localityStepFailures({ before, op, edit: { ...edit, document: changedSource } }).length,
     ).toBeGreaterThan(0);
