@@ -1,5 +1,109 @@
 # @stll/folio-core
 
+## 0.55.0
+
+### Minor Changes
+
+- [#1314](https://github.com/stella/folio/pull/1314) [`8785b4a`](https://github.com/stella/folio/commit/8785b4a6b65748af2b6c72b24eef8441e2702684) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Commit IME composition atomically and group canonical history by semantic input boundaries.
+
+- [#1306](https://github.com/stella/folio/pull/1306) [`e719a0b`](https://github.com/stella/folio/commit/e719a0bebee7ba1baa8685a5f98c6fc3c5b0afd8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add experimental canonical Document text sessions with classified input, atomic projection, owned snapshots, typed contracts, and inverse undo history.
+
+- [#1475](https://github.com/stella/folio/pull/1475) [`0e57245`](https://github.com/stella/folio/commit/0e5724534d895f2cd2293b4e7c72b4cfdb1fb791) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Extend canonical sessions and shared undo history to header, footer, and note stories.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Compile canonical paragraph, list, inline atom and formatting commands into reversible document operations.
+
+- [#1339](https://github.com/stella/folio/pull/1339) [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route canonical suggesting input and revision review through tracked document operations in both adapters.
+
+- [#1475](https://github.com/stella/folio/pull/1475) [`0e57245`](https://github.com/stella/folio/commit/0e5724534d895f2cd2293b4e7c72b4cfdb1fb791) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add independent per-locale message entry points and lightweight locale metadata.
+
+### Patch Changes
+
+- [#1523](https://github.com/stella/folio/pull/1523) [`263a89c`](https://github.com/stella/folio/commit/263a89c56837799a0ae9dc1b8ed2edd5a31031e3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked batch that deletes a paragraph before a deleted, reformatted last paragraph now leaves the surviving paragraph its own properties, as applying the operations one at a time does.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Apply an autoformatted numbered marker's start only to its first level, keeping nested levels at one.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read autoformat markers in canonical logical text so rendered note references cannot become list prefixes.
+
+- [#1521](https://github.com/stella/folio/pull/1521) [`f14d104`](https://github.com/stella/folio/commit/f14d1043127e7f750678f24200e481d105311077) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve plain paragraphs during list-level commands and allow non-document caller commands in canonical sessions.
+
+- [#1506](https://github.com/stella/folio/pull/1506) [`a011fb8`](https://github.com/stella/folio/commit/a011fb88c051b44a8f37d3e9dcc088f3c34f38cb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Validate cross-paragraph composition replacements and retain refused gestures until native completion.
+
+- [#1501](https://github.com/stella/folio/pull/1501) [`ae11395`](https://github.com/stella/folio/commit/ae11395ea3d938e44d19dae83c3e99daac4571f7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve original paragraph source ownership when undo restores removed paragraphs.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read canonical list marker classification through the numbering owner.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve parsed list markers, authored formatting and exact canonical history while handling input no-ops consistently.
+
+- [#1446](https://github.com/stella/folio/pull/1446) [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve review identity provenance when cutting retained deletions and omit unused paragraph formatting allocations.
+
+- [#1474](https://github.com/stella/folio/pull/1474) [`e953583`](https://github.com/stella/folio/commit/e95358379352f16aa2196d5ec95b448b02bfe692) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reset explicit editing mode overrides when loading a new canonical session.
+
+- [#1339](https://github.com/stella/folio/pull/1339) [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Share plain-run seam merging between parsing and canonical joins, restore exact undo content, and preserve optional identity pools.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve typed refusal reasons for canonical secondary story input.
+
+- [#1331](https://github.com/stella/folio/pull/1331) [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Correct shared story edit refusals, lifecycle inverses, and package serialization.
+
+- [#1339](https://github.com/stella/folio/pull/1339) [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored run-property presence and journal parser-compatible text seams across canonical story edits.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route toolbar commands through the selected editor controller and journal page-break shortcuts.
+
+- [#1474](https://github.com/stella/folio/pull/1474) [`e953583`](https://github.com/stella/folio/commit/e95358379352f16aa2196d5ec95b448b02bfe692) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retain consumed identities in compiled tracked plans and prepare canonical table intents.
+
+- [#1446](https://github.com/stella/folio/pull/1446) [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve absent run formatting and classify every canonical input and package operation.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep paragraph property-source tokens unique when splitting paragraphs.
+
+- [#1451](https://github.com/stella/folio/pull/1451) [`4c286c5`](https://github.com/stella/folio/commit/4c286c5b7c898d4436b8968f20fa8f0beea0e976) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve folded inline LISTNUM display text when resolving list markers.
+
+- [#1339](https://github.com/stella/folio/pull/1339) [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bound editor identity allocation to the intent and retain only consumed IDs in operation history.
+
+- [#1331](https://github.com/stella/folio/pull/1331) [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep note-marker attribute readers internal while preserving shared validation and caches.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reuse numbering definitions within a conversion and retain matching paragraph rendering.
+
+- [#1470](https://github.com/stella/folio/pull/1470) [`7c35edd`](https://github.com/stella/folio/commit/7c35eddd79bdf2c08805e4468e58daf42fb178f7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the list-number fields shown in a paragraph's list marker when the paragraph is saved. Such a field, and the tab after it, now stay in the paragraph content as preserved markup and are written back as they were read.
+
+  The reader now draws a list-number field in the list marker only when the field opens a numbered paragraph whose marker has text of its own. A list-number field that follows other text, or that stands in a bulleted paragraph, is shown inline where it stands.
+
+- [#1527](https://github.com/stella/folio/pull/1527) [`ab533e1`](https://github.com/stella/folio/commit/ab533e1ea13c8db375c4fc6fc90b03f3378666cd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve list markers when logical numbering levels have no active Markdown ancestors.
+
+- [#1528](https://github.com/stella/folio/pull/1528) [`eba5709`](https://github.com/stella/folio/commit/eba5709264ec48a5b2de082e18a8c5dd1b691257) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep generated note-reference markers intact when applying Markdown emphasis.
+
+- [#1446](https://github.com/stella/folio/pull/1446) [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use shared numbering readers for editor intent validation and list-level resolution.
+
+- [#1487](https://github.com/stella/folio/pull/1487) [`dc8629f`](https://github.com/stella/folio/commit/dc8629f7c351a5fb1cf500c58b8dee73a679e4de) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve paragraph-id namespaces in element scope and locate the main part through package relationships using a shared UTF-8 URI target resolver.
+
+- [#1331](https://github.com/stella/folio/pull/1331) [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Defer story synchronization until canonical IME composition commits.
+
+- [#1513](https://github.com/stella/folio/pull/1513) [`525c99e`](https://github.com/stella/folio/commit/525c99e409ac6c4567383c4de4ad2a622a397f8c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Allocate endnote ids from the target document alone, so building one document no longer shifts the ids minted for another.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve parsed list rendering when LISTNUM counters have no second marker slot.
+
+- [#1511](https://github.com/stella/folio/pull/1511) [`d52874d`](https://github.com/stella/folio/commit/d52874da2a0da3836d090032cffeae1473e7ba99) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retain private paragraph formatting captures across model edits and their inverses.
+
+- [#1446](https://github.com/stella/folio/pull/1446) [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve canonical review resolution and explicit formatting presence across editor and document boundaries.
+
+- [#1446](https://github.com/stella/folio/pull/1446) [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve namespace bindings and markup compatibility when selectively saving tracked review history.
+
+- [#1446](https://github.com/stella/folio/pull/1446) [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve tracked source seams across review order and complete run review policy handling.
+
+- [#1490](https://github.com/stella/folio/pull/1490) [`f723606`](https://github.com/stella/folio/commit/f7236067beb0a347eedee07523a791efd831cf0d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve unchanged header and footer block XML during edits and restore original part bytes after undo.
+
+- [#1507](https://github.com/stella/folio/pull/1507) [`ef4910d`](https://github.com/stella/folio/commit/ef4910dff8189a37d234eae81b563edf653510d8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored content-type entries and register restored story parts without mutating their source document.
+
+- [#1446](https://github.com/stella/folio/pull/1446) [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the composition status declaration stable across package builds.
+
+- [#1339](https://github.com/stella/folio/pull/1339) [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve canonical suggestion content across save and reopen, minimize operation exports, and reduce type instantiation cost.
+
+- [#1447](https://github.com/stella/folio/pull/1447) [`1c0afab`](https://github.com/stella/folio/commit/1c0afabf0030766048d1eb5a1527aaac09c892a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve compound structural editing and exact history in story-aware canonical sessions.
+
+- [#1517](https://github.com/stella/folio/pull/1517) [`357c49c`](https://github.com/stella/folio/commit/357c49ccf247eec8c1825be038d81c8a0eb2ef87) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Track the inline content a command, paste or keystroke replaces in suggesting mode (such as a selected image) as a deletion, and leave the caret after text typed over a node selection.
+
+- [#1331](https://github.com/stella/folio/pull/1331) [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use typed note markers consistently in creation, layout, and serialization.
+- Updated dependencies [[`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`3ac5183`](https://github.com/stella/folio/commit/3ac5183e0e51648dd8392584269e3498170c5bda), [`e953583`](https://github.com/stella/folio/commit/e95358379352f16aa2196d5ec95b448b02bfe692), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`3ac5183`](https://github.com/stella/folio/commit/3ac5183e0e51648dd8392584269e3498170c5bda), [`4c286c5`](https://github.com/stella/folio/commit/4c286c5b7c898d4436b8968f20fa8f0beea0e976), [`3ac5183`](https://github.com/stella/folio/commit/3ac5183e0e51648dd8392584269e3498170c5bda), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`7c35edd`](https://github.com/stella/folio/commit/7c35eddd79bdf2c08805e4468e58daf42fb178f7), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`e953583`](https://github.com/stella/folio/commit/e95358379352f16aa2196d5ec95b448b02bfe692), [`d52874d`](https://github.com/stella/folio/commit/d52874da2a0da3836d090032cffeae1473e7ba99), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`e953583`](https://github.com/stella/folio/commit/e95358379352f16aa2196d5ec95b448b02bfe692), [`e6b890c`](https://github.com/stella/folio/commit/e6b890cd058463cb0efdf66badd94c1a6c97ca88), [`e6b890c`](https://github.com/stella/folio/commit/e6b890cd058463cb0efdf66badd94c1a6c97ca88), [`e6b890c`](https://github.com/stella/folio/commit/e6b890cd058463cb0efdf66badd94c1a6c97ca88), [`9b5a8ff`](https://github.com/stella/folio/commit/9b5a8ffe7bbbdb06a1e24231c33280b473cf3356), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`e953583`](https://github.com/stella/folio/commit/e95358379352f16aa2196d5ec95b448b02bfe692), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`3ac5183`](https://github.com/stella/folio/commit/3ac5183e0e51648dd8392584269e3498170c5bda)]:
+  - @stll/docx-core@0.31.0
+
 ## 0.54.2
 
 ### Patch Changes
