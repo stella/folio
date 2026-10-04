@@ -6,7 +6,10 @@
  * - Commands from paragraph.ts (alignment, spacing, indent, style)
  */
 
-import { withCanonicalParagraphFormatting } from "../../canonicalCommands";
+import {
+  withCanonicalParagraphFormatting,
+  withCanonicalStartParagraphFormatting,
+} from "../../canonicalCommands";
 
 import { mintBookmarkId, reserveProseBookmarkIds } from "../../../docx/bookmarkIds";
 
@@ -1337,49 +1340,72 @@ export const ParagraphExtension = createNodeExtension({
             dispatch(tr.scrollIntoView());
             return true;
           },
-        toggleBidi: () => (state: EditorState, dispatch?: (tr: Transaction) => void) => {
-          const { $from } = state.selection;
-          const paragraph = $from.parent;
-          if (paragraph.type.name !== "paragraph") {
-            return false;
-          }
-          // Toggle to the opposite explicit direction. A manual decision
-          // (`source: "manual"`) is authoritative, so auto-detection never
-          // revisits it.
-          const next: ParagraphDirection = directionIsRtl(paragraph.attrs["direction"])
-            ? { source: "manual", value: "ltr" }
-            : { source: "manual", value: "rtl" };
-          return setParagraphAttr("direction", next)(state, dispatch);
+        toggleBidi: () => {
+          const directionFor = (paragraph: PMNode): ParagraphDirection => ({
+            source: "manual",
+            value: directionIsRtl(expectParagraphAttrs(paragraph).direction) ? "ltr" : "rtl",
+          });
+          return withCanonicalStartParagraphFormatting(
+            (state, dispatch) => {
+              const paragraph = state.selection.$from.parent;
+              if (paragraph.type.name !== "paragraph") return false;
+              return setParagraphAttr("direction", directionFor(paragraph))(state, dispatch);
+            },
+            (paragraph) => ({ bidi: directionIsRtl(directionFor(paragraph)) }),
+          );
         },
-        setRtl: () => setParagraphAttr("direction", { source: "manual", value: "rtl" }),
-        setLtr: () => setParagraphAttr("direction", { source: "manual", value: "ltr" }),
-        setTabs: (tabs: TabStop[]) => setParagraphAttr("tabs", tabs.length > 0 ? tabs : null),
-        addTabStop:
-          (position: number, alignment: TabStopAlignment = "left", leader: TabLeader = "none") =>
-          (state: EditorState, dispatch?: (tr: Transaction) => void) => {
-            const { $from } = state.selection;
-            const paragraph = $from.parent;
-            if (paragraph.type.name !== "paragraph") {
-              return false;
-            }
-            const currentTabs: TabStop[] = paragraph.attrs["tabs"] || [];
-            const filtered = currentTabs.filter((t: TabStop) => t.position !== position);
-            const newTabs = [...filtered, { position, alignment, leader }].toSorted(
-              (a: TabStop, b: TabStop) => a.position - b.position,
+        setRtl: () =>
+          withCanonicalParagraphFormatting(
+            setParagraphAttr("direction", { source: "manual", value: "rtl" }),
+            { bidi: true },
+          ),
+        setLtr: () =>
+          withCanonicalParagraphFormatting(
+            setParagraphAttr("direction", { source: "manual", value: "ltr" }),
+            { bidi: false },
+          ),
+        setTabs: (tabs: TabStop[]) =>
+          withCanonicalParagraphFormatting(
+            setParagraphAttr("tabs", tabs.length > 0 ? tabs : null),
+            { tabs: tabs.length > 0 ? tabs : null },
+          ),
+        addTabStop: (
+          position: number,
+          alignment: TabStopAlignment = "left",
+          leader: TabLeader = "none",
+        ) => {
+          const tabsFor = (paragraph: PMNode) =>
+            [
+              ...(expectParagraphAttrs(paragraph).tabs ?? []).filter(
+                (tab) => tab.position !== position,
+              ),
+              { position, alignment, leader },
+            ].toSorted((a, b) => a.position - b.position);
+          return withCanonicalStartParagraphFormatting(
+            (state, dispatch) => {
+              const paragraph = state.selection.$from.parent;
+              if (paragraph.type.name !== "paragraph") return false;
+              return setParagraphAttr("tabs", tabsFor(paragraph))(state, dispatch);
+            },
+            (paragraph) => ({ tabs: tabsFor(paragraph) }),
+          );
+        },
+        removeTabStop: (position: number) => {
+          const tabsFor = (paragraph: PMNode) => {
+            const tabs = (expectParagraphAttrs(paragraph).tabs ?? []).filter(
+              (tab) => tab.position !== position,
             );
-            return setParagraphAttr("tabs", newTabs)(state, dispatch);
-          },
-        removeTabStop:
-          (position: number) => (state: EditorState, dispatch?: (tr: Transaction) => void) => {
-            const { $from } = state.selection;
-            const paragraph = $from.parent;
-            if (paragraph.type.name !== "paragraph") {
-              return false;
-            }
-            const currentTabs: TabStop[] = paragraph.attrs["tabs"] || [];
-            const newTabs = currentTabs.filter((t: TabStop) => t.position !== position);
-            return setParagraphAttr("tabs", newTabs.length > 0 ? newTabs : null)(state, dispatch);
-          },
+            return tabs.length > 0 ? tabs : null;
+          };
+          return withCanonicalStartParagraphFormatting(
+            (state, dispatch) => {
+              const paragraph = state.selection.$from.parent;
+              if (paragraph.type.name !== "paragraph") return false;
+              return setParagraphAttr("tabs", tabsFor(paragraph))(state, dispatch);
+            },
+            (paragraph) => ({ tabs: tabsFor(paragraph) }),
+          );
+        },
       },
     };
   },

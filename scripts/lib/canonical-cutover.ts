@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { censusUndescribedCanonicalCommands } from "./canonical-command-census";
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
@@ -310,7 +311,19 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
   }
   for (const gap of gapIds)
     if (!sites.has(gap)) failures.push(`Ledger entry ${gap} has no source site`);
-  return { failures, sites, branches };
+  const remainingCommands = new Map<string, string[]>();
+  for (const [gap, capability] of Object.entries(CANONICAL_CAPABILITIES)) {
+    if (!("remainingCommands" in capability)) continue;
+    remainingCommands.set(
+      gap,
+      censusUndescribedCanonicalCommands(
+        sources.filter(
+          ({ file }) => file.startsWith("packages/core/src/prosemirror/") && file.endsWith(".ts"),
+        ),
+      ),
+    );
+  }
+  return { failures, sites, branches, remainingCommands };
 };
 
 export const checkCanonicalBaseline = (
@@ -329,7 +342,12 @@ export const checkCanonicalBaseline = (
   return failures;
 };
 
-export const canonicalCutoverDocs = (sites: Map<string, Set<string>>) => {
+type CanonicalCutoverDocsOptions = {
+  sites: Map<string, Set<string>>;
+  remainingCommands: Map<string, string[]>;
+};
+
+export const canonicalCutoverDocs = ({ sites, remainingCommands }: CanonicalCutoverDocsOptions) => {
   const headers = ["Id", "Owner", "Kind", "Adapters", "Remaining work", "Source files"];
   const rows = Object.entries(CANONICAL_CAPABILITIES).map(([id, capability]) => [
     id,
@@ -360,5 +378,15 @@ export const canonicalCutoverDocs = (sites: Map<string, Set<string>>) => {
     tableRow(widths.map((width) => "-".repeat(width))),
     ...rows.map(tableRow),
     "",
+    "## Remaining command registrations",
+    "",
+    "Derived from the extension command registry. Entries lack a structural proof that every factory return path attaches a canonical descriptor; this conservative census is not a runtime support policy. CI requires the committed list to match the census and rejects new entries against the PR-base source census.",
+    "",
+    ...[...remainingCommands].flatMap(([gap, commands]) =>
+      [`### ${gap} (${commands.length})`, ""].concat(
+        commands.map((command) => `- \`${command}\``),
+        [""],
+      ),
+    ),
   ].join("\n");
 };

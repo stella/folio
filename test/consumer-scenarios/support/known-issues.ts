@@ -16,6 +16,8 @@ export const OPEN_ISSUES = {} as const;
  * repro in the scenario that pins it.
  */
 export const FINDINGS = {
+  LEGACY_PARAGRAPH_TAB_EDITS_LOST:
+    "legacy paragraph tab commands edit PM attrs, but imported paragraph serialization retains original tabs; canonical descriptors retire this defect for canonical sessions",
   TERMINAL_DELETE_BATCH_FORMATTING:
     "accepting a tracked batch with preceding paragraph formatting and terminal deletion loses the requested formatting",
   INSERT_AFTER_PENDING_MERGE:
@@ -73,6 +75,8 @@ export const KNOWN_FAILING_FLOWS: readonly {
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
+  LEGACY_PARAGRAPH_TAB_EDITS_LOST:
+    /legacy (?:setTabs|addTabStop|removeTabStop) serialization retains original paragraph tabs/u,
   TERMINAL_DELETE_BATCH_FORMATTING: /directAlignment is undefined, expected "center"/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
