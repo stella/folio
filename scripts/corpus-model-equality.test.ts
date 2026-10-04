@@ -29,6 +29,15 @@ const onlyMessage = (left: unknown, right: unknown): string | undefined =>
   messagesBetween(left, right).at(0);
 
 describe("describePackageDifferences", () => {
+  test("missing Document containers cannot make the equality oracle pass vacuously", () => {
+    const malformed = [undefined, null, {}, { document: { content: [] } }, { package: {} }];
+    for (const value of malformed) {
+      expect(() => Reflect.apply(describePackageDifferences, undefined, [value, value])).toThrow(
+        "Model equality requires Document inputs containing a document package.",
+      );
+    }
+  });
+
   test("two identical packages differ in nothing", () => {
     expect(messagesBetween([{ text: "a" }], [{ text: "a" }])).toEqual([]);
   });
