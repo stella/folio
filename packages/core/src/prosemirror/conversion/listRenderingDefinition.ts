@@ -4,6 +4,7 @@ import { canonicalJson } from "../../utils/canonicalJson";
 // Paragraph counters and folded fields do not belong to the numbering definition.
 const RENDERING_FIELDS = {
   marker: { key: "marker", source: "paragraph" },
+  foldedMarkerSuffix: { key: "foldedMarkerSuffix", source: "paragraph" },
   implicitChildLevelAdvances: { key: "implicitChildLevelAdvances", source: "paragraph" },
   markerSecondSlotOffsetTwips: { key: "markerSecondSlotOffsetTwips", source: "paragraph" },
   markerTemplate: { key: "markerTemplate", source: "definition" },
