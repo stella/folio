@@ -63,6 +63,13 @@ const insertPageBreakCommand: Command = (state, dispatch) => {
   return true;
 };
 
+/**
+ * Insert a page-break run at the current text cursor.
+ *
+ * Keeping the atom inline preserves its authored run, revision marks, and exact
+ * position among neighbouring run content. Block-level `pageBreak` remains a
+ * legacy input boundary and is never emitted by this command.
+ */
 export const insertPageBreak = withCanonicalCommand(insertPageBreakCommand, (state) =>
   insertPageBreakCommand(state)
     ? [
