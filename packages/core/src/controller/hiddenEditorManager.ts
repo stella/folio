@@ -26,7 +26,7 @@ import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand"
 import { prepareCanonicalCommands, prepareCanonicalAutoformat } from "./canonicalStructure";
 import { panic, Result, TaggedError } from "better-result";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
-import { EditorState as PMEditorState } from "prosemirror-state";
+import { EditorState as PMEditorState, TextSelection } from "prosemirror-state";
 import type { DirectEditorProps } from "prosemirror-view";
 import { EditorView } from "prosemirror-view";
 import type * as YProseMirror from "y-prosemirror";
@@ -47,7 +47,10 @@ import {
   ensureParaIdsInDoc,
   ensureParaIdsInState,
 } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
-import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import {
+  createDocumentStylesPlugin,
+  createDocumentStyleContextPlugin,
+} from "../prosemirror/plugins/documentStyles";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
 import { createTextInputPlugin } from "../prosemirror/textInput";
@@ -560,7 +563,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       doc: session.projection.doc,
       plugins: [
         createParagraphChangeTrackerPlugin(),
-        createDocumentStylesPlugin(deps.getStyles() ?? session.document.package.styles),
+        createDocumentStyleContextPlugin(deps.getStyles() ?? session.document.package.styles),
         createDocumentNumberingPlugin(session.document.package.numbering),
       ],
     });
@@ -1104,6 +1107,20 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         bodyTransaction.doc.content.size,
         commit.bodyProjection.doc.content,
       );
+    if (
+      commit.selection.anchor.story === OP_STORIES.MAIN &&
+      commit.selection.head.story === OP_STORIES.MAIN
+    ) {
+      const anchor = commit.bodyProjection.positionAt(commit.selection.anchor);
+      const head = commit.bodyProjection.positionAt(commit.selection.head);
+      if (anchor.isErr() || head.isErr()) {
+        refuse("The canonical body history selection is unavailable.");
+        return false;
+      }
+      bodyTransaction.setSelection(
+        TextSelection.create(bodyTransaction.doc, anchor.value, head.value),
+      );
+    }
     markPackageChange(bodyTransaction);
     bodyTransaction.setMeta("addToHistory", false);
     const bodyStaged = Result.try(() => view?.state.applyTransaction(bodyTransaction));

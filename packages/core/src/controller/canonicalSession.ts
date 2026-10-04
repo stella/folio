@@ -580,6 +580,7 @@ export type CanonicalCommit = {
   document: Document;
   projection: CanonicalProjection;
   bodyProjection: CanonicalProjection;
+  selection: CanonicalSelection;
   touched: TouchedBlocks;
   version: number;
   origin: CanonicalOrigin;
@@ -1419,7 +1420,10 @@ class CanonicalSession {
     }
     if (!transaction.doc.eq(projected.value.doc))
       transaction.replaceWith(0, transaction.doc.content.size, projected.value.doc.content);
-    if (sameStory(selection.anchor.story, story) && sameStory(selection.head.story, story)) {
+    if (
+      sameStory(selection.anchor.story, projectedStory) &&
+      sameStory(selection.head.story, projectedStory)
+    ) {
       const anchor = projected.value.positionAt(selection.anchor);
       const head = projected.value.positionAt(selection.head);
       if (anchor.isOk() && head.isOk())
@@ -1450,6 +1454,7 @@ class CanonicalSession {
       document: applied.value.document,
       projection: projected.value,
       bodyProjection: bodyProjection.value,
+      selection,
       touched: applied.value.touched,
       version: baseVersion + 1,
       origin,

@@ -22,7 +22,10 @@ import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
-import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import {
+  createDocumentStylesPlugin,
+  createDocumentStyleContextPlugin,
+} from "../prosemirror/plugins/documentStyles";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
 import type {
@@ -345,7 +348,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           ? EditorState.create({
               doc: canonicalProjection,
               plugins: [
-                createDocumentStylesPlugin(styles),
+                createDocumentStyleContextPlugin(styles),
                 createDocumentNumberingPlugin(numbering),
               ],
             })
