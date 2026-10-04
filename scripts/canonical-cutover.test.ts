@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
@@ -10,6 +11,8 @@ import {
   checkCanonicalBaseline,
   canonicalCutoverDocs,
 } from "./lib/canonical-cutover";
+
+setDefaultTimeout(propertyTestTimeout(10_000));
 
 const selectors = Object.keys(CANONICAL_GAP)
   .map((key) => `usesCanonicalSession(experimentalSession, CANONICAL_GAP.${key});`)
@@ -42,7 +45,7 @@ describe("canonical cutover guard", () => {
   });
 
   test("rejects raw selectors across syntax and Vue templates", () => {
-    fc.assert(
+    assertProperty(
       fc.property(
         fc.constantFrom(
           "experimentalSession",
@@ -187,7 +190,7 @@ describe("canonical cutover guard", () => {
   });
 
   test("per-file counts require every decrease and reject every increase", () => {
-    fc.assert(
+    assertProperty(
       fc.property(fc.nat({ max: 1000 }), fc.nat({ max: 1000 }), (before, after) => {
         const failures = checkCanonicalBaseline({ "fixture.ts": after }, { "fixture.ts": before });
         expect(failures.length).toBe(before === after ? 0 : 1);
