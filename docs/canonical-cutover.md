@@ -31,3 +31,64 @@ Session branch counts are held per file in `scripts/canonical-cutover-baseline.j
 | publicOps.unsupportedInline | document-operations | mutation-source | react, vue | Public inline payloads still require canonical compiler coverage.                            | `packages/core/src/document-operations.ts`                                                                                                                                                                                                                                                                                                                                               |
 | publicOps.headlessSession   | document-operations | mutation-source | react, vue | The headless reviewer has no canonical session selector while its mutations remain PM-owned. | `packages/core/src/ai-edits/headless.ts`                                                                                                                                                                                                                                                                                                                                                 |
 | pm-ai-snapshots             | ai-edits            | mutation-source | react, vue | Headless AI edits still use PM execution and snapshot undo.                                  | `packages/core/src/ai-edits/headless.ts`                                                                                                                                                                                                                                                                                                                                                 |
+
+## Remaining command registrations
+
+Derived from the extension command registry. Entries lack a structural proof that every factory return path attaches a canonical descriptor; this conservative census is not a runtime support policy. CI requires the committed list to match the census and rejects new entries against the PR-base source census.
+
+### command-descriptors (54)
+
+- `packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#redo`
+- `packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#undo`
+- `packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts#generateTOC`
+- `packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts#insertSectionBreak`
+- `packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts#removeSectionBreak`
+- `packages/core/src/prosemirror/extensions/features/SelectionTrackerExtension.ts#extractSelectionContext`
+- `packages/core/src/prosemirror/extensions/marks/FontFamilyExtension.ts#clearFontFamily`
+- `packages/core/src/prosemirror/extensions/marks/FontFamilyExtension.ts#setFontFamily`
+- `packages/core/src/prosemirror/extensions/marks/FootnoteRefExtension.ts#deleteNoteRef`
+- `packages/core/src/prosemirror/extensions/marks/FootnoteRefExtension.ts#insertEndnote`
+- `packages/core/src/prosemirror/extensions/marks/FootnoteRefExtension.ts#insertFootnote`
+- `packages/core/src/prosemirror/extensions/marks/HighlightExtension.ts#clearHighlight`
+- `packages/core/src/prosemirror/extensions/marks/HighlightExtension.ts#setHighlight`
+- `packages/core/src/prosemirror/extensions/marks/HyperlinkExtension.ts#insertHyperlink`
+- `packages/core/src/prosemirror/extensions/marks/HyperlinkExtension.ts#removeHyperlink`
+- `packages/core/src/prosemirror/extensions/marks/HyperlinkExtension.ts#setHyperlink`
+- `packages/core/src/prosemirror/extensions/marks/StrikeExtension.ts#toggleStrike`
+- `packages/core/src/prosemirror/extensions/marks/SubscriptExtension.ts#toggleSubscript`
+- `packages/core/src/prosemirror/extensions/marks/SuperscriptExtension.ts#toggleSuperscript`
+- `packages/core/src/prosemirror/extensions/marks/TextColorExtension.ts#setTextColor`
+- `packages/core/src/prosemirror/extensions/marks/UnderlineExtension.ts#setUnderlineStyle`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addColumnLeft`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addColumnRight`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addRowAbove`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addRowBelow`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#applyTableStyle`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#autoFitContents`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#deleteColumn`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#deleteRow`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#deleteTable`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#distributeColumns`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#insertTable`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#mergeCells`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#removeTableBorders`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectColumn`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectRow`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectTable`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setAllTableBorders`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setCellBorder`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setCellFillColor`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setCellMargins`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setCellTextDirection`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setCellVerticalAlign`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setInsideTableBorders`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setOutsideTableBorders`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setRowHeight`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setTableBorderColor`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setTableBorderPreset`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setTableBorderWidth`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setTableBorders`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setTableProperties`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#splitCell`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#toggleHeaderRow`
+- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#toggleNoWrap`

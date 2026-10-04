@@ -280,7 +280,7 @@ describe("canonical cutover guard", () => {
 
   test("documentation derives its ids and sites from the same ledger", () => {
     const inspected = inspectCanonicalSources([source(selectors)]);
-    const docs = canonicalCutoverDocs(inspected.sites);
+    const docs = canonicalCutoverDocs(inspected);
     const ids = docs
       .split("\n")
       .filter(
