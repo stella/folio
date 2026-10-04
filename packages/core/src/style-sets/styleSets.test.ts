@@ -215,8 +215,15 @@ describe("document style sets", () => {
   });
 
   test("a package with no styles part yields a set built on Word's own default", async () => {
-    const document = await parseDocx(await packageWithoutStylesPart());
+    const phase = (stage: string) => {
+      if (process.env["CI"]) console.info(`Style-less package: ${stage}`);
+    };
+    phase("building fixture");
+    const buffer = await packageWithoutStylesPart();
+    // Style extraction does not require browser font readiness.
+    const document = await parseDocx(buffer, { preloadFonts: false, onProgress: phase });
 
+    phase("extracting styles");
     const extracted = extractDocumentStyleSet(document, { name: "From a style-less package" });
 
     // One style, carrying the identity and the formatting of Word's built-in
@@ -237,9 +244,11 @@ describe("document style sets", () => {
     expect(createStyleResolver(extracted.styles).resolveParagraphStyle(undefined)).toEqual(
       createStyleResolver(document.package.styles).resolveParagraphStyle(undefined),
     );
-    await expect(createDocx(createEmptyDocument({ styleSet: extracted }))).resolves.toBeInstanceOf(
-      ArrayBuffer,
-    );
+    phase("serializing extracted style set");
+    const saved = await createDocx(createEmptyDocument({ styleSet: extracted }));
+    phase("serialized extracted style set");
+    expect(saved).toBeInstanceOf(ArrayBuffer);
+    phase("complete");
   });
 
   test("inspection exposes selectable style metadata without document content", async () => {
