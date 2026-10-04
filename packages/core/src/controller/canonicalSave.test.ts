@@ -66,7 +66,61 @@ test("generated canonical histories save the model and preserve every block outs
             expect(session.captureSaveSnapshot().changedBlockIds).toContain(id);
           }
         }
+        const transientId = "0abcdefa";
+        const split = session
+          .prepareOperations(state, [
+            {
+              type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+              at: { story: OP_STORIES.MAIN, blockId: IDS[2], offset: 2 },
+              newBlockId: transientId,
+              newHalf: "second",
+            },
+          ])
+          .unwrap();
+        state = state.apply(split.transaction);
+        split.publish().unwrap();
+        expect(session.captureSaveSnapshot().changedBlockIds).toContain(transientId);
+
+        const join = session
+          .prepareOperations(state, [
+            {
+              type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+              story: OP_STORIES.MAIN,
+              blockId: IDS[2],
+              nextBlockId: transientId,
+              survivor: "first",
+            },
+          ])
+          .unwrap();
+        state = state.apply(join.transaction);
+        join.publish().unwrap();
         const snapshot = session.captureSaveSnapshot();
+        expect(snapshot.changedBlockIds).not.toContain(transientId);
+        expect(session.document.package.document.content).toHaveLength(IDS.length);
+        const selectiveDiagnostics: SaveDiagnostic[] = [];
+        const selectiveSave = await serializeCanonicalSave({
+          snapshot,
+          featureFlags: { selectiveSave: true },
+          options: {
+            mode: FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
+            onDiagnostic: (diagnostic) => selectiveDiagnostics.push(diagnostic),
+          },
+        });
+        expect(selectiveDiagnostics.some(({ type }) => type === "selectiveSaveRefused")).toBe(
+          false,
+        );
+        expect(
+          describePackageDifferences(
+            snapshot.document,
+            await parseDocx(selectiveSave.buffer, { preloadFonts: false }),
+          ),
+        ).toEqual({ messages: [], omitted: 0 });
+        for (const [index, id] of IDS.entries()) {
+          if (!snapshot.changedBlockIds.includes(id))
+            expect(await canonicalSaveParagraphXml(selectiveSave.buffer, id)).toBe(
+              SOURCE_BLOCKS[index],
+            );
+        }
         for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
           const saved = await serializeCanonicalSave({ snapshot, options: { mode } });
           const reopened = await parseDocx(saved.buffer, { preloadFonts: false });

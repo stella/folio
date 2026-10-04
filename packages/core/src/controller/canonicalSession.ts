@@ -694,6 +694,7 @@ const storyProjectionKey = (story: Exclude<OpStory, typeof OP_STORIES.MAIN>): st
 class CanonicalSession {
   private currentDocument: Document;
   private currentProjection: CanonicalProjection;
+  private readonly sourceBlockIds: ReadonlySet<string>;
   private currentVersion = 0;
   private readonly saveTouched = new Set<string>();
   private saveStructure: CanonicalSaveSnapshot["structure"] = "stable";
@@ -713,6 +714,7 @@ class CanonicalSession {
   constructor({ document, projection, styles }: CanonicalSessionSeedOptions) {
     this.currentDocument = document;
     this.currentProjection = projection;
+    this.sourceBlockIds = new Set(packageParagraphIds(document.package));
     for (const blockId of packageParagraphIds(document.package))
       this.allocatedBlockIds.add(blockId.toUpperCase());
     this.advanceBlockId();
@@ -839,10 +841,17 @@ class CanonicalSession {
         reason: "refused",
         message: "Composition must finish before saving the canonical document.",
       });
+    const retainedBlockIdKeys = new Set(
+      [...this.sourceBlockIds, ...packageParagraphIds(this.currentDocument.package)].map(
+        (blockId) => blockId.toUpperCase(),
+      ),
+    );
     return {
       document: cloneDocumentWithParagraphPropertySources(this.currentDocument),
       version: this.currentVersion,
-      changedBlockIds: [...this.saveTouched],
+      changedBlockIds: [...this.saveTouched].filter((blockId) =>
+        retainedBlockIdKeys.has(blockId.toUpperCase()),
+      ),
       structure: this.saveStructure,
     };
   }

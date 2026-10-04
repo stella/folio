@@ -16,6 +16,7 @@ const { createApp, defineComponent, h, shallowRef } = await import("vue");
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
+import { CanonicalSessionError } from "@stll/folio-core/controller/canonicalSession";
 import { CanonicalDocxInputError } from "@stll/folio-core/docx/canonicalSessionInput";
 import { createEmptyHeaderFooter } from "@stll/folio-core/utils/headerFooter";
 
@@ -619,6 +620,21 @@ test.each(CANONICAL_SAVE_SEEDS)(
         });
         expect(error.gap).toBe("pm-save-projection");
       }
+      // The prior sequence began composition after capture; also cover capture during composition.
+      const errorsBeforeComposition = errors.length;
+      expect(api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
+      expect(await adapter.save()).toBeNull();
+      expect(await api.getDocx()).toBeNull();
+      const compositionErrors = errors.slice(errorsBeforeComposition);
+      expect(compositionErrors).toHaveLength(2);
+      for (const error of compositionErrors) {
+        expect(error).toBeInstanceOf(CanonicalSessionError);
+        if (!(error instanceof CanonicalSessionError)) panic("Expected composition save refusal");
+        expect(error.gap).toBe("pm-save-projection");
+        expect(error.reason).toBe("refused");
+      }
+      expect(api.updateCanonicalInputLifecycle("endComposition")).toBe(true);
+      expect(api.captureCanonicalSave()?.document).toEqual(captured.document);
     } finally {
       app.unmount();
       container.remove();

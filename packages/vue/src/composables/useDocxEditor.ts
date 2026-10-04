@@ -1295,25 +1295,30 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     if (!view || !currentDocument) {
       return null;
     }
-    const snapshot = manager.api.captureCanonicalSave();
-    if (snapshot) {
-      const result = await serializeCanonicalSave({
-        snapshot,
-        options: serializationOptions,
-        featureFlags: toValue(featureFlags),
-      });
-      for (const diagnostic of result.diagnostics) {
-        if (!serializationOptions?.onDiagnostic)
-          onError?.(
-            new CanonicalSaveDiagnosticError({
-              gap: CANONICAL_GAP.save,
-              diagnostic,
-              message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
-            }),
-          );
+    try {
+      const snapshot = manager.api.captureCanonicalSave();
+      if (snapshot) {
+        const result = await serializeCanonicalSave({
+          snapshot,
+          options: serializationOptions,
+          featureFlags: toValue(featureFlags),
+        });
+        for (const diagnostic of result.diagnostics) {
+          if (!serializationOptions?.onDiagnostic)
+            onError?.(
+              new CanonicalSaveDiagnosticError({
+                gap: CANONICAL_GAP.save,
+                diagnostic,
+                message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
+              }),
+            );
+        }
+        if (result.tripwireResult) onSelectiveSaveTripwire?.(result.tripwireResult);
+        return result;
       }
-      if (result.tripwireResult) onSelectiveSaveTripwire?.(result.tripwireResult);
-      return result;
+    } catch (error) {
+      onError?.(error instanceof Error ? error : new Error(String(error)));
+      return null;
     }
     if (isCanonicalSession()) return null;
     // Legacy write-back can still owe the notes a restore or a deletion.
