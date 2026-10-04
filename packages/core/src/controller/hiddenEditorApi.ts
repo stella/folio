@@ -25,6 +25,7 @@ import type {
   FolioDocumentOperationUndoResult,
 } from "../document-operations";
 import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
+import type { CanonicalCommentRequest, CanonicalCommentResult } from "../types/canonicalComments";
 import type { CanonicalSessionMode } from "./canonicalSession";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
 
@@ -64,6 +65,7 @@ export type HiddenEditorApi = {
   ) => boolean;
   applyCanonicalStoryHistory: (options: CanonicalStoryHistoryOptions) => boolean;
   applyCanonicalOperations: (ops: readonly DocumentOp[]) => boolean;
+  applyCanonicalComment: (request: CanonicalCommentRequest) => CanonicalCommentResult | null;
   getCanonicalStorySelection: (story: OpStory) => { anchor: number; head: number } | null;
   getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
   replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
@@ -113,6 +115,7 @@ export type HiddenEditorApiDeps = {
     HiddenEditorApi,
     | "updateCanonicalInputLifecycle"
     | "applyCanonicalOperations"
+    | "applyCanonicalComment"
     | "getCanonicalStoryProjection"
     | "replaceCanonicalStoryText"
     | "applyCanonicalStoryHistory"
@@ -197,6 +200,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       deps.canonicalOperations?.updateCanonicalInputLifecycle(action) ?? false,
     applyCanonicalStoryHistory: (options) =>
       deps.canonicalOperations?.applyCanonicalStoryHistory(options) ?? false,
+    applyCanonicalComment: (request) =>
+      deps.canonicalOperations?.applyCanonicalComment(request) ?? null,
     applyCanonicalOperations: (ops) =>
       deps.canonicalOperations?.applyCanonicalOperations(ops) ?? false,
     getCanonicalStorySelection: (story) =>

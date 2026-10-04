@@ -5,6 +5,7 @@ import { TextSelection, type EditorState, type Transaction } from "prosemirror-s
 import {
   applyDocumentOps,
   combineEdits,
+  commentDocumentIssue,
   DOCUMENT_OP_TYPES,
   editorParagraphGroups,
   type AppliedDocumentOp,
@@ -58,6 +59,11 @@ const noChange = (message: string) =>
 
 const operationChangesPackage = (op: DocumentOp): boolean => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+    case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+    case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+    case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+    case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
@@ -80,6 +86,11 @@ const operationChangesPackage = (op: DocumentOp): boolean => {
 
 const operationChangesBodyProjection = (op: DocumentOp): boolean => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+    case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+    case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+    case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+    case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
@@ -284,13 +295,17 @@ const supportsTextContent = (content: Paragraph["content"]): boolean =>
       case "insertion":
       case "deletion":
         return supportsTextContent(item.content);
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+        return true;
       default:
         return false;
     }
   });
 
 const supportsSeed = (document: Document, stories = documentStories(document)): boolean => {
-  if ((document.package.document.comments?.length ?? 0) > 0) return false;
+  if (commentDocumentIssue(document) !== undefined) return false;
   return stories.every((story) => {
     const body = findStoryBody(document, story);
     if (story !== OP_STORIES.MAIN && (story.kind === "footnote" || story.kind === "endnote")) {
@@ -365,6 +380,21 @@ const project = ({
       for (const run of content) {
         if (run.type === "insertion" || run.type === "deletion") {
           appendContent(run.content);
+          continue;
+        }
+        if (
+          run.type === "commentRangeStart" ||
+          run.type === "commentRangeEnd" ||
+          run.type === "commentReference"
+        ) {
+          if (run.type === "commentReference") {
+            text += "\uFFFC";
+            renderedSize += 1;
+            boundaries.push([renderedSize]);
+          } else {
+            const gaps = boundaries.at(-1) ?? panic("Missing canonical comment gap");
+            gaps.push(renderedSize);
+          }
           continue;
         }
         if (run.type !== "run") panic("Canonical projection encountered unsupported content");

@@ -11,13 +11,14 @@ import { panic } from "better-result";
 import { TextSelection } from "prosemirror-state";
 import { closeHistory } from "prosemirror-history";
 
-const { createApp, defineComponent, h, shallowRef } = await import("vue");
+const { createApp, defineComponent, h, ref, shallowRef, nextTick } = await import("vue");
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { CanonicalDocxInputError } from "@stll/folio-core/docx/canonicalSessionInput";
 import { createEmptyHeaderFooter } from "@stll/folio-core/utils/headerFooter";
+import type { Comment } from "@stll/folio-core/types/content";
 
 const { isMacPlatform } = await import("@stll/folio-core/managers/editorShortcuts");
 import {
@@ -33,6 +34,7 @@ import { reviewDifferences } from "../../../../test/reviewDifferences";
 import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
 
 const { useDocxEditor } = await import("./useDocxEditor");
+const { useCommentManagement } = await import("./useCommentManagement");
 const { useKeyboardShortcuts } = await import("./useKeyboardShortcuts");
 
 // The save oracle exercises the composable's real hidden manager and serialization,
@@ -254,6 +256,116 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
     });
     expect(reviewDifferences(canonical, reopened)).toEqual({ messages: [], omitted: 0 });
     expect(editor.isDirty.value).toBe(false);
+  } finally {
+    app.unmount();
+    container.remove();
+    hidden.remove();
+    pages.remove();
+  }
+});
+
+test("Vue canonical comment projection follows controlled edits, undo, callbacks, and save", async () => {
+  const container = document.createElement("div");
+  const hidden = document.createElement("div");
+  const pages = document.createElement("div");
+  document.body.append(container, hidden, pages);
+  const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
+  const holder: {
+    editor: ReturnType<typeof useDocxEditor> | null;
+    comments: ReturnType<typeof useCommentManagement> | null;
+  } = { editor: null, comments: null };
+  const controlledComments = ref<Comment[] | undefined>([]);
+  const stateTick = ref(0);
+  const changes: Comment[][] = [];
+  const app = createApp(
+    defineComponent({
+      setup() {
+        const editor = useDocxEditor({
+          hiddenContainer: shallowRef(hidden),
+          pagesContainer: shallowRef(pages),
+          experimentalSession: "canonical",
+        });
+        holder.editor = editor;
+        editor.editor.on("docChange", () => {
+          stateTick.value += 1;
+        });
+        holder.comments = useCommentManagement({
+          editor: editor.editor,
+          editorView: editor.editorView,
+          getDocument: editor.getDocument,
+          author: () => "Reviewer",
+          commentsProp: () => controlledComments.value,
+          canonicalTick: stateTick,
+          onCommentsChange: (next) => {
+            changes.push(structuredClone(next));
+            controlledComments.value = structuredClone(next);
+          },
+          reLayout: () => undefined,
+        });
+        return () => h("div");
+      },
+    }),
+  );
+  app.mount(container);
+  try {
+    const adapter = holder.editor ?? panic("Expected Vue editor");
+    const management = holder.comments ?? panic("Expected Vue comment management");
+    await adapter.loadBuffer(bytes);
+    stateTick.value += 1;
+    await nextTick();
+    const created = adapter.editor.applyCanonicalComment({
+      type: "create",
+      text: "Review this",
+      author: "Reviewer",
+      anchor: { kind: "selection", from: 1, to: 8, story: "main" },
+    });
+    expect(created?.status).toBe("applied");
+    if (created?.status !== "applied" || created.commentId === undefined) {
+      panic("Expected canonical comment creation");
+    }
+    stateTick.value += 1;
+    await nextTick();
+    expect(management.comments.value).toEqual(created.comments);
+    expect(changes.at(-1)).toEqual(created.comments);
+
+    const revisedContent: Comment["content"] = [
+      {
+        type: "paragraph",
+        paraId:
+          created.comments[0]?.content[0]?.type === "paragraph"
+            ? created.comments[0].content[0].paraId
+            : undefined,
+        formatting: {},
+        content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "Updated" }] }],
+      },
+    ];
+    controlledComments.value = created.comments.map((comment) =>
+      comment.id === created.commentId
+        ? { ...comment, done: true, content: revisedContent }
+        : comment,
+    );
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await nextTick();
+    expect(adapter.getDocument()?.package.document.comments).toEqual(controlledComments.value);
+
+    expect(adapter.editor.undo()).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    stateTick.value += 1;
+    await nextTick();
+    const undone = adapter.getDocument()?.package.document.comments ?? [];
+    expect(undone.at(0)?.done).toBeFalsy();
+    expect(undone.at(0)?.content).toEqual(created.comments.at(0)?.content);
+    expect(controlledComments.value).toEqual(undone);
+    expect(changes.at(-1)).toEqual(undone);
+
+    const saved = await adapter.save();
+    if (!saved) panic("Expected saved canonical comments");
+    const reopened = await parseDocx(await saved.arrayBuffer(), {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    expect(reopened.package.document.comments).toEqual(undone);
   } finally {
     app.unmount();
     container.remove();

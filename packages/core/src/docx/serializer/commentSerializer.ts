@@ -263,7 +263,7 @@ export function serializeComments(
 type CommentExtendedEntry = {
   paraId: string;
   paraIdParent?: string;
-  done: boolean;
+  done?: boolean;
 };
 
 /**
@@ -303,7 +303,7 @@ function buildCommentExtendedEntries({
     entries.push({
       paraId,
       ...(parentParaId !== undefined ? { paraIdParent: parentParaId } : {}),
-      done: done ?? false,
+      ...(done === undefined ? {} : { done }),
     });
   }
 
@@ -328,7 +328,8 @@ export function serializeCommentsExtended(plan: CommentPartPlan): string | null 
         entry.paraIdParent !== undefined
           ? ` w15:paraIdParent="${escapeXmlAttribute(entry.paraIdParent)}"`
           : "";
-      return `<w15:commentEx w15:paraId="${escapeXmlAttribute(entry.paraId)}"${parentAttr} w15:done="${entry.done ? "1" : "0"}"/>`;
+      const doneAttr = entry.done === undefined ? "" : ` w15:done="${entry.done ? "1" : "0"}"`;
+      return `<w15:commentEx w15:paraId="${escapeXmlAttribute(entry.paraId)}"${parentAttr}${doneAttr}/>`;
     })
     .join("");
 

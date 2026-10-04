@@ -87,6 +87,7 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       deps.getEditorApi()?.updateCanonicalInputLifecycle(action) ?? false,
     applyCanonicalStoryHistory: (options) =>
       deps.getEditorApi()?.applyCanonicalStoryHistory(options) ?? false,
+    applyCanonicalComment: (request) => deps.getEditorApi()?.applyCanonicalComment(request) ?? null,
     applyCanonicalOperations: (ops) => deps.getEditorApi()?.applyCanonicalOperations(ops) ?? false,
     getCanonicalStorySelection: (story) =>
       deps.getEditorApi()?.getCanonicalStorySelection(story) ?? null,

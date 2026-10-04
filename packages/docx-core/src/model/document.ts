@@ -494,3 +494,15 @@ export type Document = {
   /** The same warnings as data: a stable code, a location, and the value. */
   parseWarnings?: ParseWarning[];
 };
+
+/** Standard package relationships owned by semantic comment operations. */
+export const COMMENT_PART_RELATIONSHIPS = {
+  comments: {
+    type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
+    target: "comments.xml",
+  },
+  commentsExtended: {
+    type: "http://schemas.microsoft.com/office/2011/relationships/commentsExtended",
+    target: "commentsExtended.xml",
+  },
+} as const;

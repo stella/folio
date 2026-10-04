@@ -128,6 +128,11 @@ const expectEveryKindApplied = (tally: Tally, runs: number): void => {
  * content that the plain-run seam merge would otherwise coalesce.
  */
 const INVERSE_KINDS = {
+  createComment: ["restoreCommentState"],
+  updateCommentContent: ["restoreCommentState"],
+  setCommentResolution: ["restoreCommentState"],
+  deleteComment: ["restoreCommentState"],
+  restoreCommentState: ["restoreCommentState"],
   createHeaderFooter: ["restoreStoryParts"],
   removeHeaderFooter: ["restoreStoryParts"],
   addNote: ["restoreStoryParts"],
@@ -236,6 +241,11 @@ const namedIds = (op: DocumentOp): Set<string> => {
       return new Set();
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
       return new Set(op.endpoint.type === "paragraph" ? [op.endpoint.blockId] : []);
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+    case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+    case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+    case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+    case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
@@ -1563,6 +1573,11 @@ describe("document operations", () => {
             );
             break;
           }
+          case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+          case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+          case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+          case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+          case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
           case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
           case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
           case DOCUMENT_OP_TYPES.ADD_NOTE:

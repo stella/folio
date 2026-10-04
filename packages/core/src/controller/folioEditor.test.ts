@@ -78,6 +78,7 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
     },
     applyCanonicalStoryHistory: () => false,
     applyCanonicalOperations: () => false,
+    applyCanonicalComment: () => null,
     getCanonicalStorySelection: () => null,
     getCanonicalStoryProjection: () => null,
     replaceCanonicalStoryText: () => false,

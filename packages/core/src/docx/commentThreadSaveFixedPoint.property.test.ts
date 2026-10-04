@@ -34,7 +34,7 @@ const W15_NAMESPACE = "http://schemas.microsoft.com/office/word/2012/wordml";
 type GeneratedComment = {
   /** Index of the comment this one replies to, or `null` for a thread root. */
   parent: number | null;
-  done: boolean;
+  done: boolean | undefined;
   text: string;
   /** Whether the model hands the save a comment with no paraId to thread by. */
   keepsParaId: boolean;
@@ -48,7 +48,7 @@ const commentForest = fc
   .array(
     fc.record({
       parentOffset: fc.option(fc.nat({ max: 5 }), { nil: null }),
-      done: fc.boolean(),
+      done: fc.option(fc.boolean(), { nil: undefined }),
       text: fc.stringMatching(/^[A-Za-z0-9 ]{1,12}$/u),
       keepsParaId: fc.boolean(),
     }),
@@ -109,7 +109,8 @@ const buildDocx = async (
       forest
         .map(({ parent, done }, index) => {
           const parentAttribute = parent === null ? "" : ` w15:paraIdParent="${paraId(parent)}"`;
-          return `<w15:commentEx w15:paraId="${paraId(index)}"${parentAttribute} w15:done="${done ? 1 : 0}"/>`;
+          const doneAttribute = done === undefined ? "" : ` w15:done="${done ? 1 : 0}"`;
+          return `<w15:commentEx w15:paraId="${paraId(index)}"${parentAttribute}${doneAttribute}/>`;
         })
         .join("") +
       "</w15:commentsEx>",
@@ -224,6 +225,9 @@ describe("saving threaded comments is a fixed point after the first save", () =>
           });
           stripParaIds(parsed.package.document.comments ?? [], forest);
           const expectedThreading = threading(parsed);
+          const expectedResolution = Object.fromEntries(
+            (parsed.package.document.comments ?? []).map(({ id, done }) => [id, done]),
+          );
 
           const first = await repackDocx(parsed, { updateModifiedDate: false });
           const reparsed = await parseDocx(first, { preloadFonts: false });
@@ -239,6 +243,11 @@ describe("saving threaded comments is a fixed point after the first save", () =>
           // A stable byte sequence that lost the threading would be a fixed point
           // and a data loss, so the reply links are asserted separately.
           expect(threading(reparsed)).toEqual(expectedThreading);
+          expect(
+            Object.fromEntries(
+              (reparsed.package.document.comments ?? []).map(({ id, done }) => [id, done]),
+            ),
+          ).toEqual(expectedResolution);
         },
       ),
       propertyConfig({ numRuns: 40 }),

@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 8: text, formatting and review edits on
+ * Document operations, schema version 10: text, formatting and review edits on
  * independently addressed document stories, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -30,6 +30,7 @@ import { captureDocumentOp } from "./wire";
 
 import type {
   Paragraph,
+  Comment,
   ParagraphContent,
   ParagraphFormatting,
   ParagraphMarkChange,
@@ -47,6 +48,7 @@ import type {
   Endnote,
   SectionProperties,
   DocumentBody,
+  Relationship,
   DocumentSettings,
   Section,
 } from "../model/document";
@@ -100,7 +102,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 8;
+export const DOCUMENT_OP_SCHEMA_VERSION = 10;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -225,8 +227,13 @@ export const SECTION_BOUNDARY_POLICIES = Object.freeze({
   REPLACE: "replace",
 } as const);
 
-/** The operation kinds of schema version 8. */
+/** The operation kinds of schema version 10. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
+  CREATE_COMMENT: "createComment",
+  UPDATE_COMMENT_CONTENT: "updateCommentContent",
+  SET_COMMENT_RESOLUTION: "setCommentResolution",
+  DELETE_COMMENT: "deleteComment",
+  RESTORE_COMMENT_STATE: "restoreCommentState",
   CREATE_HEADER_FOOTER: "createHeaderFooter",
   REMOVE_HEADER_FOOTER: "removeHeaderFooter",
   ADD_NOTE: "addNote",
@@ -939,8 +946,61 @@ export type TableIntentOperation = {
   >;
 }[TableEditOp["type"]];
 
-/** A schema-version-8 document operation. */
+/** A comment definition owns one range, point, thread relation or revision association. */
+export type CommentAnchor =
+  | { kind: "range"; from: TextPosition; to: TextPosition }
+  | { kind: "point"; at: TextPosition }
+  | { kind: "reply"; parentId: number }
+  | { kind: "revision"; story: OpStory; revisionId: number };
+export type CreateCommentOp = {
+  type: typeof DOCUMENT_OP_TYPES.CREATE_COMMENT;
+  comment: Omit<Comment, "parentId">;
+  anchor: CommentAnchor;
+  newIds?: NewIds;
+};
+export type UpdateCommentContentOp = {
+  type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
+  id: number;
+  content: readonly Paragraph[];
+  patch?: FormattingPatch<Pick<Comment, "author" | "initials" | "date">>;
+};
+export type SetCommentResolutionOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION;
+  id: number;
+  status: "open" | "resolved";
+};
+export type DeleteCommentOp = {
+  type: typeof DOCUMENT_OP_TYPES.DELETE_COMMENT;
+  id: number;
+  scope: "thread" | "reply";
+};
+/** Exact owned comment records and the paragraph fragments containing their anchors. */
+export type CommentState = {
+  relationshipPresence: "absent" | "undefined" | "present";
+  relationships: readonly { index: number; key: string; relationship: Relationship }[];
+  listPresence: "absent" | "undefined" | "present";
+  records: readonly { index: number; comment: Comment }[];
+  anchors: readonly { story: OpStory; blockId: string; content: readonly ParagraphContent[] }[];
+};
+export type RestoreCommentStateOp = {
+  type: typeof DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE;
+  ids: readonly number[];
+  /** Only identities introduced or retired by anchor scaffolding cuts. */
+  scaffoldIds: NewIds;
+  expected: CommentState;
+  state: CommentState;
+};
+
+export type CommentOp =
+  | CreateCommentOp
+  | UpdateCommentContentOp
+  | SetCommentResolutionOp
+  | DeleteCommentOp
+  | RestoreCommentStateOp;
+
+/** A schema-version-10 document operation. */
 export type DocumentOp = (
+  | CommentOp
   | CreateHeaderFooterOp
   | RemoveHeaderFooterOp
   | AddNoteOp

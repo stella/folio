@@ -59,6 +59,36 @@ const document: Document = { package: { document: { content: [first, second] } }
 /** Each operation, applied in turn to what the previous one produced. */
 const OPS: readonly DocumentOp[] = [
   {
+    type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+    comment: {
+      id: 400,
+      author: "Reviewer",
+      initials: undefined,
+      content: [
+        {
+          type: "paragraph",
+          paraId: "00001000",
+          content: [{ type: "run", content: [{ type: "text", text: "Comment" }] }],
+        },
+      ],
+    },
+    anchor: { kind: "point", at: at("00000001", 0) },
+  },
+  {
+    type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+    id: 400,
+    content: [
+      {
+        type: "paragraph",
+        paraId: "00001000",
+        content: [{ type: "run", content: [{ type: "text", text: "Edited" }] }],
+      },
+    ],
+    patch: { date: "2026-02-03T04:05:06Z" },
+  },
+  { type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION, id: 400, status: "resolved" },
+  { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id: 400, scope: "thread" },
+  {
     type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
     abstractNum: {
       abstractNumId: 7,

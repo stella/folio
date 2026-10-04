@@ -317,8 +317,7 @@
 
             <InlineHeaderFooterEditor
               v-if="
-                hfEdit &&
-                !usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting)
+                hfEdit && !canonicalAuthoritySession
               "
               :edit="hfEdit"
               :get-view="getActiveHeaderFooterView"
@@ -666,6 +665,9 @@ function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
 
 const editorMode = ref<EditorMode>(props.mode);
 const readOnly = computed(() => props.readOnly || editorMode.value === "viewing");
+const canonicalAuthoritySession = computed(() =>
+  usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting),
+);
 
 // Review controls (mirrors React's `useEditorMode` display state + toggle):
 //  - `showReviewControls` gates the toolbar's track-changes toggle + markup
@@ -1119,6 +1121,7 @@ const commentManagement = useCommentManagement({
   getDocument,
   author: () => props.author,
   commentsProp: () => props.comments,
+  canonicalTick: stateTick,
   onCommentsChange: (next) => {
     props.onCommentsChange?.(next);
     emit("comments-change", next);
@@ -1135,6 +1138,17 @@ const commentLifecycle = useCommentLifecycle({
   readOnly,
   createComment: commentManagement.createComment,
   pushComment: commentManagement.pushComment,
+  sessionKind: () => (canonicalAuthoritySession.value ? "canonical" : "prosemirror"),
+  createCanonicalComment: (text, range) => {
+    const result = editor.applyCanonicalComment({
+      type: "create",
+      text,
+      author: props.author,
+      anchor: { kind: "selection", ...range, story: "main" },
+    });
+    if (result === null) return null;
+    return result.status === "applied" ? (result.commentId ?? false) : false;
+  },
   reLayout,
   showSidebar,
   setActiveSidebarItem: (id) => {
@@ -1142,45 +1156,31 @@ const commentLifecycle = useCommentLifecycle({
   },
 });
 
-function refuseCanonicalCommentEdit(): boolean {
-  return refuseCanonicalModelEdit(
-    CANONICAL_GAP.comments,
-    "Comment changes are unavailable in this session.",
-  );
-}
-
 function handleStartAddComment(): void {
-  if (refuseCanonicalCommentEdit()) return;
   commentLifecycle.startAddComment();
 }
 
 function handleCommentAdd(text: string): boolean {
-  if (refuseCanonicalCommentEdit()) return false;
   return commentLifecycle.handleAddComment(text);
 }
 
 function handleCommentReply(parentId: number, text: string): void {
-  if (refuseCanonicalCommentEdit()) return;
   commentManagement.handleReply(parentId, text);
 }
 
 function handleCommentResolve(commentId: number): void {
-  if (refuseCanonicalCommentEdit()) return;
   commentManagement.handleResolve(commentId);
 }
 
 function handleCommentUnresolve(commentId: number): void {
-  if (refuseCanonicalCommentEdit()) return;
   commentManagement.handleUnresolve(commentId);
 }
 
 function handleCommentDelete(commentId: number): void {
-  if (refuseCanonicalCommentEdit()) return;
   commentManagement.handleDelete(commentId);
 }
 
 function handleTrackedChangeReply(revisionId: number, text: string): void {
-  if (refuseCanonicalCommentEdit()) return;
   commentManagement.handleTrackedChangeReply(revisionId, text);
 }
 
@@ -1803,7 +1803,6 @@ const { exposed } = useDocxEditorRefApi({
   // Mint during the held operation, then publish applied comments after commit.
   createAIEditComment: (text, author) => commentManagement.createComment(text, undefined, author),
   publishAIEditComments: (nextComments) => {
-    if (refuseCanonicalCommentEdit()) return;
     commentManagement.appendComments(nextComments);
   },
   getComments: () =>
@@ -1811,7 +1810,6 @@ const { exposed } = useDocxEditorRefApi({
       ? commentManagement.comments.value.map((comment) => structuredClone(comment))
       : commentManagement.comments.value,
   setComments: (nextComments) => {
-    if (refuseCanonicalCommentEdit()) return;
     commentManagement.setComments(nextComments);
   },
   focus: () => activeEditorView.value?.focus(),

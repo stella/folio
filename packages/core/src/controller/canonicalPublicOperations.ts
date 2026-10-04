@@ -2,6 +2,10 @@
 import { panic, Result, TaggedError } from "better-result";
 import {
   applyDocumentOps,
+  freshCommentId,
+  findStoryBody,
+  paragraphLength,
+  type TextPosition,
   compileEditorIntent,
   createEditorIntentIdAllocator,
   documentStories,
@@ -39,6 +43,7 @@ import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import { splitsGraphemeCluster, splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import { type CanonicalCommit, type CanonicalSession } from "./canonicalSession";
 
+import { canonicalCommentBody, compileCanonicalComments } from "./canonicalComments";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 
 type CanonicalPublicOperationRefusal = NonNullable<FolioAIEditSkippedOperation["canonicalRefusal"]>;
@@ -55,8 +60,8 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS = {
   insertAfterBlock: CANONICAL_GAP.publicUnsupportedInline,
   insertBeforeBlock: CANONICAL_GAP.publicUnsupportedInline,
   deleteBlock: CANONICAL_GAP.publicUnsupportedInline,
-  commentOnBlock: CANONICAL_GAP.publicComments,
-  commentOnRange: CANONICAL_GAP.publicComments,
+  commentOnBlock: "compile",
+  commentOnRange: "compile",
   insertTable: CANONICAL_GAP.publicTableProjection,
   insertSignatureTable: CANONICAL_GAP.publicTableProjection,
   deleteTable: CANONICAL_GAP.publicTableProjection,
@@ -76,6 +81,7 @@ export type CanonicalPublicOperationOptions = Omit<
 type ResolvedOperation = {
   operation: FolioDocumentOperation;
   intents: readonly EditorIntent[];
+  comment?: { text: string; from: TextPosition; to: TextPosition };
   normalizations: readonly FolioAIEditNormalization[];
   from: number;
   to: number;
@@ -277,12 +283,9 @@ export class CanonicalPublicOperations {
         continue;
       }
       const disposition = CANONICAL_PUBLIC_OPERATION_DISPOSITIONS[operation.type];
-      if (
-        disposition !== "compile" ||
-        ("comment" in operation && operation.comment !== undefined)
-      ) {
+      if (disposition !== "compile") {
         refusals.set(operation.id, {
-          gap: disposition === "compile" ? CANONICAL_GAP.publicComments : disposition,
+          gap: disposition,
         });
         skip(operation.id, "unsupportedBlock");
         continue;
@@ -323,7 +326,7 @@ export class CanonicalPublicOperations {
     const appliedById = new Map<string, FolioDocumentOperationResult["applied"][number]>();
     const allocate = createEditorIntentIdAllocator();
     const date = options.revisionStamp?.date ?? new Date().toISOString();
-    for (const { operation, intents, normalizations: adjustments } of resolved) {
+    for (const { operation, intents, comment, normalizations: adjustments } of resolved) {
       const compiled = compilePublicIntents({
         document,
         intents,
@@ -340,18 +343,69 @@ export class CanonicalPublicOperations {
         skip(operation.id, "unsupportedBlock", compiled.error.message);
         continue;
       }
-      if (compiled.value.ops.length === 0) {
+      let nextDocument = compiled.value.document;
+      const operationOps = [...compiled.value.ops];
+      let commentId: number | undefined;
+      if (comment) {
+        const id = freshCommentId(nextDocument);
+        const before = findStoryBody(document, story)?.content.find(
+          (block) => block.type === "paragraph" && block.paraId === comment.from.blockId,
+        );
+        const after = findStoryBody(nextDocument, story)?.content.find(
+          (block) => block.type === "paragraph" && block.paraId === comment.from.blockId,
+        );
+        if (id.isErr() || before?.type !== "paragraph" || after?.type !== "paragraph") {
+          refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
+          skip(
+            operation.id,
+            "unsupportedBlock",
+            id.isErr() ? id.error.message : "The comment anchor no longer exists.",
+          );
+          continue;
+        }
+        const to = {
+          ...comment.to,
+          offset: comment.to.offset + paragraphLength(after) - paragraphLength(before),
+        };
+        const commented = compileCanonicalComments({
+          document: nextDocument,
+          command: {
+            type: "create",
+            comment: {
+              id: id.value,
+              author: options.author ?? "AI",
+              date,
+              done: false,
+              content: canonicalCommentBody(nextDocument, comment.text),
+            },
+            anchor:
+              to.offset === comment.from.offset
+                ? { kind: "point", at: comment.from }
+                : { kind: "range", from: comment.from, to },
+          },
+        });
+        if (commented.isErr()) {
+          refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
+          skip(operation.id, "unsupportedBlock", commented.error.message);
+          continue;
+        }
+        nextDocument = commented.value.document;
+        operationOps.push(...commented.value.ops);
+        commentId = id.value;
+      }
+      if (operationOps.length === 0) {
         skip(operation.id, "noopOperation");
         continue;
       }
       normalizations.push(...adjustments);
-      document = compiled.value.document;
-      ops.push(...compiled.value.ops);
-      nextRevisionId = compiled.value.nextRevisionId;
+      document = nextDocument;
+      ops.push(...operationOps);
+      nextRevisionId = Math.max(compiled.value.nextRevisionId, (commentId ?? -1) + 1);
       const revisionIds = compiled.value.revisions;
       const revisionId = revisionIds.at(0);
       appliedById.set(operation.id, {
         id: operation.id,
+        ...(commentId === undefined ? {} : { commentId }),
         ...(revisionId === undefined ? {} : { revisionId, revisionIds }),
       });
     }
@@ -431,8 +485,6 @@ export class CanonicalPublicOperations {
           message: message ?? `The operation was refused: ${reason}.`,
         }),
       );
-    if ("comment" in operation)
-      return refusal("unsupportedBlock", "Canonical comment operations are unavailable.");
     switch (operation.type) {
       case "replaceInBlock":
       case "replaceRange":
@@ -440,6 +492,8 @@ export class CanonicalPublicOperations {
       case "splitBlock":
       case "formatRange":
       case "mergeBlockWithNext":
+      case "commentOnRange":
+      case "commentOnBlock":
         break;
       default:
         return refusal(
@@ -448,7 +502,9 @@ export class CanonicalPublicOperations {
         );
     }
     const blockId =
-      operation.type === "replaceRange" || operation.type === "formatRange"
+      operation.type === "replaceRange" ||
+      operation.type === "formatRange" ||
+      operation.type === "commentOnRange"
         ? operation.range.blockId
         : operation.blockId;
     const anchor = Object.hasOwn(options.snapshot.anchors, blockId)
@@ -481,8 +537,17 @@ export class CanonicalPublicOperations {
         text = operation.replace;
         break;
       }
+      case "commentOnBlock":
+        if (operation.quote !== undefined) {
+          start = clean.text.indexOf(operation.quote);
+          if (start < 0) return refusal("missingFind");
+          if (clean.text.indexOf(operation.quote, start + 1) >= 0) return refusal("ambiguousFind");
+          end = start + operation.quote.length;
+        }
+        break;
       case "replaceRange":
       case "formatRange":
+      case "commentOnRange":
         start = operation.range.startOffset;
         end = operation.range.endOffset;
         if (hashFolioAIBlockText(clean.text.slice(start, end)) !== operation.range.selectedTextHash)
@@ -551,7 +616,21 @@ export class CanonicalPublicOperations {
     const from = projection.value.addressAt(range.from);
     const to = projection.value.addressAt(range.to);
     if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+    const comment =
+      "comment" in operation && operation.comment !== undefined
+        ? { text: operation.comment.text, from: from.value, to: to.value }
+        : undefined;
+    if (operation.type === "commentOnBlock" || operation.type === "commentOnRange")
+      return Result.ok({
+        operation,
+        intents: [],
+        normalizations: [],
+        ...(comment === undefined ? {} : { comment }),
+        from: range.from,
+        to: range.to,
+      });
     if (
+      comment === undefined &&
       operation.type !== "splitBlock" &&
       operation.type !== "formatRange" &&
       operation.type !== "mergeBlockWithNext" &&
@@ -718,6 +797,7 @@ export class CanonicalPublicOperations {
     return Result.ok({
       operation,
       intents,
+      ...(comment === undefined ? {} : { comment }),
       normalizations,
       from: structural ? paragraph.start : range.from,
       to: claimedTo,

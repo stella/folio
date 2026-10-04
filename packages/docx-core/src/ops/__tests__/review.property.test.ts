@@ -44,7 +44,7 @@ import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { BlockContent, Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp, stampOf } from "../apply";
-import { storyParagraphs } from "../blocks";
+import { storyParagraphs, withBodyContent } from "../blocks";
 import { contractViolation } from "../contract";
 import {
   IDENTITY_SPACES,
@@ -844,94 +844,168 @@ describe("tracked operations and their resolution", () => {
   test("a planned tracked deletion removes only the author's own insertions", () => {
     const tally: Tally = new Map();
     assertProperty(
-      fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
-        const op = trackedOpFor(document, { ...seed, kind: 2 });
-        if (op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE || op.revision === undefined) return;
-        const plan = planTrackedDeletion(document, {
-          from: op.from,
-          to: op.to,
-          revision: op.revision,
-          newIds: { revision: Array.from({ length: 64 }, (_, index) => 700_000 + index) },
-        });
-        if (plan.isErr()) {
-          count(tally, "refused");
-          return;
-        }
-        const applied = applyDocumentOps(document, plan.value);
-        if (applied.isErr()) throw applied.error;
-        count(tally, plan.value.length > 1 ? "several" : "one");
-        const baseline = new Set(packageIdentityKeys(document.package));
-        const reported = new Set(
-          applied.value.revisions.map((id) => `${IDENTITY_SPACES.REVISION}:${id}`),
-        );
-        const freshSplitIds = packageIdentityKeys(applied.value.document.package).filter(
-          (key) =>
-            key.startsWith(`${IDENTITY_SPACES.REVISION}:`) &&
-            !baseline.has(key) &&
-            !reported.has(key),
-        );
-        if (freshSplitIds.length > 0) {
-          const plannedPool = new Set(
-            plan.value.flatMap((planned) =>
-              "newIds" in planned
-                ? (planned.newIds?.revision ?? []).map((id) => `${IDENTITY_SPACES.REVISION}:${id}`)
-                : [],
+      fc.property(
+        reviewDocumentArbitrary,
+        opSeedArbitrary,
+        fc.boolean(),
+        (source, seed, loadedComments) => {
+          let document = source;
+          if (loadedComments) {
+            const first = source.package.document.content.at(0);
+            if (first?.type !== "paragraph") return;
+            const ownedId = 900_001;
+            const content = [...source.package.document.content];
+            content[0] = {
+              ...first,
+              content: [
+                { type: "commentRangeStart", id: ownedId, displacedByCustomXml: "prev" },
+                ...first.content,
+                { type: "commentRangeEnd", id: ownedId, displacedByCustomXml: "next" },
+                { type: "commentReference", id: ownedId },
+              ],
+            };
+            const ids = new Set(
+              content.flatMap((block) =>
+                block.type === "paragraph"
+                  ? leafSpans(block.content).flatMap(({ node }) =>
+                      node.type === "commentRangeStart" ||
+                      node.type === "commentRangeEnd" ||
+                      node.type === "commentReference"
+                        ? [node.id]
+                        : [],
+                    )
+                  : [],
+              ),
+            );
+            const used = new Set(paragraphIdsIn(source.package).map(idKey));
+            let candidate = 0x60000000;
+            const comments = [...ids].map((id) => {
+              while (used.has(candidate.toString(16).toUpperCase().padStart(8, "0")))
+                candidate += 1;
+              const paraId = (candidate++).toString(16).toUpperCase().padStart(8, "0");
+              const comment = {
+                id,
+                author: "Loaded reviewer",
+                content: [
+                  {
+                    type: "paragraph" as const,
+                    paraId,
+                    content: [
+                      {
+                        type: "run" as const,
+                        content: [{ type: "text" as const, text: "reviewer text" }],
+                      },
+                    ],
+                  },
+                ],
+                preserved: { children: [{ index: 0, xml: '<opaque xmlns="urn:fixture"/>' }] },
+              };
+              Reflect.set(comment, "done", undefined);
+              return comment;
+            });
+            document = {
+              ...source,
+              package: {
+                ...source.package,
+                document: { ...withBodyContent(source.package.document, content), comments },
+              },
+            };
+          }
+          const op = trackedOpFor(document, { ...seed, kind: 2 });
+          if (op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE || op.revision === undefined) return;
+          const plan = planTrackedDeletion(document, {
+            from: op.from,
+            to: op.to,
+            revision: op.revision,
+            newIds: { revision: Array.from({ length: 64 }, (_, index) => 700_000 + index) },
+          });
+          if (plan.isErr()) {
+            count(tally, "refused");
+            return;
+          }
+          const applied = applyDocumentOps(document, plan.value);
+          if (applied.isErr()) throw applied.error;
+          count(tally, plan.value.length > 1 ? "several" : "one");
+          expect(applied.value.document.package.document.comments).toStrictEqual(
+            document.package.document.comments,
+          );
+          if (loadedComments) count(tally, "loaded-comments");
+          const baseline = new Set(packageIdentityKeys(document.package));
+          const reported = new Set(
+            applied.value.revisions.map((id) => `${IDENTITY_SPACES.REVISION}:${id}`),
+          );
+          const freshSplitIds = packageIdentityKeys(applied.value.document.package).filter(
+            (key) =>
+              key.startsWith(`${IDENTITY_SPACES.REVISION}:`) &&
+              !baseline.has(key) &&
+              !reported.has(key),
+          );
+          if (freshSplitIds.length > 0) {
+            const plannedPool = new Set(
+              plan.value.flatMap((planned) =>
+                "newIds" in planned
+                  ? (planned.newIds?.revision ?? []).map(
+                      (id) => `${IDENTITY_SPACES.REVISION}:${id}`,
+                    )
+                  : [],
+              ),
+            );
+            for (const key of freshSplitIds) expect(plannedPool.has(key)).toBe(true);
+            count(tally, "fresh-split");
+          }
+          const paragraph = paragraphById(document, op.from.blockId);
+          if (paragraph === undefined) return;
+          const text = paragraphLogicalText(paragraph);
+          const from = {
+            offset: op.from.offset,
+            zeroWidthBefore: op.from.zeroWidthBefore ?? Number.MAX_SAFE_INTEGER,
+          };
+          const to = { offset: op.to.offset, zeroWidthBefore: op.to.zeroWidthBefore ?? 0 };
+          const own = new Set<number>();
+          for (const span of leavesBetween(paragraph, from, to)) {
+            const removed = span.ancestors.some(
+              (ancestor) => ancestor.type === "deletion" || ancestor.type === "moveFrom",
+            );
+            const mine = span.ancestors.some(
+              (ancestor) =>
+                isAddedRevision(ancestor) &&
+                isTrackedWrapper(ancestor) &&
+                ancestor.info.author === op.revision?.author,
+            );
+            if (removed || !mine || isCommentAnchor(span.node)) continue;
+            const start = Math.max(span.before.offset, op.from.offset);
+            const end = Math.min(span.after.offset, op.to.offset);
+            for (let unit = start; unit < end; unit += 1) own.add(unit);
+          }
+          const expected = Array.from({ length: text.length }, (_, unit) =>
+            own.has(unit) ? "" : text.charAt(unit),
+          ).join("");
+          const after = paragraphById(applied.value.document, op.from.blockId);
+          expect(after === undefined ? undefined : paragraphLogicalText(after)).toBe(expected);
+          const anchors = (items: Paragraph["content"]) =>
+            leafSpans(items)
+              .filter(({ node }) => isCommentAnchor(node))
+              .map(({ node }) => node);
+          expect(anchors(after?.content ?? [])).toStrictEqual(anchors(paragraph.content));
+          // Rejecting what the plan recorded leaves only the retraction.
+          const retracted = applyAll(
+            document,
+            plan.value.filter(
+              (planned) =>
+                planned.type === DOCUMENT_OP_TYPES.DELETE_RANGE && planned.revision === undefined,
             ),
           );
-          for (const key of freshSplitIds) expect(plannedPool.has(key)).toBe(true);
-          count(tally, "fresh-split");
-        }
-        const paragraph = paragraphById(document, op.from.blockId);
-        if (paragraph === undefined) return;
-        const text = paragraphLogicalText(paragraph);
-        const from = {
-          offset: op.from.offset,
-          zeroWidthBefore: op.from.zeroWidthBefore ?? Number.MAX_SAFE_INTEGER,
-        };
-        const to = { offset: op.to.offset, zeroWidthBefore: op.to.zeroWidthBefore ?? 0 };
-        const own = new Set<number>();
-        for (const span of leavesBetween(paragraph, from, to)) {
-          const removed = span.ancestors.some(
-            (ancestor) => ancestor.type === "deletion" || ancestor.type === "moveFrom",
+          expectEquivalent(
+            resolved(applied.value.document, applied.value.revisions, REVISION_DECISIONS.REJECT),
+            retracted,
           );
-          const mine = span.ancestors.some(
-            (ancestor) =>
-              isAddedRevision(ancestor) &&
-              isTrackedWrapper(ancestor) &&
-              ancestor.info.author === op.revision?.author,
-          );
-          if (removed || !mine || isCommentAnchor(span.node)) continue;
-          const start = Math.max(span.before.offset, op.from.offset);
-          const end = Math.min(span.after.offset, op.to.offset);
-          for (let unit = start; unit < end; unit += 1) own.add(unit);
-        }
-        const expected = Array.from({ length: text.length }, (_, unit) =>
-          own.has(unit) ? "" : text.charAt(unit),
-        ).join("");
-        const after = paragraphById(applied.value.document, op.from.blockId);
-        expect(after === undefined ? undefined : paragraphLogicalText(after)).toBe(expected);
-        const anchors = (items: Paragraph["content"]) =>
-          leafSpans(items)
-            .filter(({ node }) => isCommentAnchor(node))
-            .map(({ node }) => node);
-        expect(anchors(after?.content ?? [])).toStrictEqual(anchors(paragraph.content));
-        // Rejecting what the plan recorded leaves only the retraction.
-        const retracted = applyAll(
-          document,
-          plan.value.filter(
-            (planned) =>
-              planned.type === DOCUMENT_OP_TYPES.DELETE_RANGE && planned.revision === undefined,
-          ),
-        );
-        expectEquivalent(
-          resolved(applied.value.document, applied.value.revisions, REVISION_DECISIONS.REJECT),
-          retracted,
-        );
-      }),
+        },
+      ),
       { numRuns: NUM_RUNS / 5 },
     );
     expect(tally.get("one") ?? 0).toBeGreaterThan(0);
     expect(tally.get("fresh-split") ?? 0).toBeGreaterThan(0);
+    expect(tally.get("loaded-comments") ?? 0).toBeGreaterThan(0);
   });
 });
 
@@ -981,6 +1055,11 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
       return new Set([idKey(op.blockId), ...paragraphIdsIn([op.expected, op.rows]).map(idKey)]);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return new Set();
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+    case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+    case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+    case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+    case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.ADD_NOTE:

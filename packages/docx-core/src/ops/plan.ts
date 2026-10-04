@@ -47,6 +47,7 @@ import {
   type DocumentOp,
   type NewIds,
   type OpStory,
+  type CreateCommentOp,
   type RevisionStamp,
   type TextPosition,
 } from "./types";
@@ -64,6 +65,7 @@ const usedIds = (document: Document, space: IdentitySpace): Set<number> =>
 /** The same operation with other new ids; one that takes none is returned as it is. */
 const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
@@ -86,6 +88,10 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
       return { ...op, newIds };
+    case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+    case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+    case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+    case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
@@ -155,6 +161,75 @@ export const trimAppliedNewIds = ({
       !known.has(key) &&
       (identities.has(key) || (space === IDENTITY_SPACES.REVISION && revisions.has(id)))
     );
+  });
+};
+
+/** Package-aware explicit pools for every semantic comment anchor cut, including replies. */
+export const allocateCommentAnchorIds = (
+  document: Document,
+  op: CreateCommentOp,
+): Result<NewIds, DocumentOpRefusal> => {
+  const keys = [...packageIdentityKeys(document.package), ...identityKeysIn(op)];
+  const firstIn = (space: IdentitySpace): number => {
+    let largest = 0;
+    for (const id of idsIn(keys, space)) largest = Math.max(largest, id);
+    return largest + 1;
+  };
+  const firstRevision = firstIn(IDENTITY_SPACES.REVISION);
+  const firstControl = firstIn(IDENTITY_SPACES.CONTROL);
+  const pool = (first: number, count: number): number[] =>
+    Array.from({ length: count }, (_, index) => first + index);
+  const attempt = (counts: { revision: number; control: number }) =>
+    applyDocumentOp(document, {
+      ...op,
+      newIds: {
+        revision: pool(firstRevision, counts.revision),
+        control: pool(firstControl, counts.control),
+      },
+    });
+  const capacity = {
+    revision: Math.max(0, MAX_REVISION_ID - firstRevision + 1),
+    control: Math.max(0, MAX_REVISION_ID - firstControl + 1),
+  };
+  let count = 0;
+  for (;;) {
+    const trial = attempt({
+      revision: Math.min(count, capacity.revision),
+      control: Math.min(count, capacity.control),
+    });
+    if (trial.isOk()) break;
+    if (trial.error.reason !== DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS)
+      return Result.err(trial.error);
+    const next = count === 0 ? 1 : count * 2;
+    if (next > MAX_DEMAND || count >= Math.max(capacity.revision, capacity.control))
+      return Result.err(
+        new DocumentOpRefusal({
+          opType: op.type,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          message: "Comment anchor cuts exhaust the package identity space.",
+        }),
+      );
+    count = next;
+  }
+  const counts = {
+    revision: Math.min(count, capacity.revision),
+    control: Math.min(count, capacity.control),
+  };
+  for (const space of [IDENTITY_SPACES.REVISION, IDENTITY_SPACES.CONTROL]) {
+    let low = 0;
+    let high = counts[space];
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      const trial = attempt({ ...counts, [space]: middle });
+      if (trial.isOk()) high = middle;
+      else if (trial.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS) low = middle + 1;
+      else return Result.err(trial.error);
+    }
+    counts[space] = low;
+  }
+  return Result.ok({
+    revision: pool(firstRevision, counts.revision),
+    control: pool(firstControl, counts.control),
   });
 };
 

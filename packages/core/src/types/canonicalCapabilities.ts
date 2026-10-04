@@ -61,9 +61,10 @@ export const CANONICAL_CAPABILITIES = {
   },
   [CANONICAL_GAP.comments]: {
     owner: "adapters",
-    kind: "refusal",
+    kind: "routing",
     adapters: ["react", "vue"],
-    summary: "Comment mutations still use direct model changes.",
+    summary:
+      "Default sessions retain comment model edits; canonical comments use semantic operations.",
   },
   [CANONICAL_GAP.modelEdits]: {
     owner: "adapters",
@@ -147,10 +148,10 @@ export const CANONICAL_CAPABILITIES = {
   [CANONICAL_GAP.publicComments]: {
     owner: "document-operations",
     defaultSessionMutation: "pm-public-operations",
-    kind: "refusal",
+    kind: "routing",
     adapters: ["react", "vue"],
     summary:
-      "Public comment operations refuse in canonical sessions; legacy sessions retain PM comments.",
+      "Canonical public comments compile to semantic operations; default sessions retain PM comments.",
   },
   [CANONICAL_GAP.publicSuggestedMode]: {
     owner: "document-operations",

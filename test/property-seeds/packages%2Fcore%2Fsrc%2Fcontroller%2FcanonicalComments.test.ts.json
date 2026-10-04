@@ -1,0 +1,10 @@
+{
+  "generated point/range comment histories preserve exact undo, projection and modeled save": [
+    {
+      "seed": 20261005,
+      "path": "0:0:0:0:0",
+      "note": "Generated anchors must derive the canonical paragraph identity after package id normalization, rather than naming the pre-save fixture id.",
+      "date": "2026-10-04"
+    }
+  ]
+}

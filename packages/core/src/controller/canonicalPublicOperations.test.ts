@@ -110,16 +110,13 @@ describe("canonical public operation batches", () => {
       replace: "gamma",
     } as const;
     const refused = editor.apply(
-      [
-        operation,
-        { id: "comment", type: "commentOnBlock", blockId: "12345678", comment: { text: "review" } },
-      ],
+      [operation, { id: "table", type: "deleteTable", blockId: "12345678" }],
       { atomic: true },
     );
     expect(refused.status).toBe("rejected");
     expect(
-      refused.issues.find(({ operationId }) => operationId === "comment")?.canonicalRefusal,
-    ).toEqual({ gap: "publicOps.comments" });
+      refused.issues.find(({ operationId }) => operationId === "table")?.canonicalRefusal,
+    ).toEqual({ gap: "publicOps.tableProjection" });
     expect(editor.session.document).toBe(before);
     expect(editor.state()).toBe(state);
     expect(editor.session.version).toBe(0);
@@ -232,6 +229,18 @@ test("all supported compiler kinds share direct/tracked undo and typed refusals"
       type: "mergeBlockWithNext",
       blockId: "12345678",
     },
+    commentOnBlock: {
+      id: "commentOnBlock",
+      type: "commentOnBlock",
+      blockId: "12345678",
+      comment: { text: "note" },
+    },
+    commentOnRange: {
+      id: "commentOnRange",
+      type: "commentOnRange",
+      range,
+      comment: { text: "note" },
+    },
   } as const satisfies Record<CompiledKind, FolioDocumentOperation>;
   for (const mode of ["direct", "tracked-changes"] as const) {
     for (const operation of Object.values(operations)) {
@@ -243,7 +252,10 @@ test("all supported compiler kinds share direct/tracked undo and typed refusals"
         revisionStamp: { date: "2026-01-01T00:00:00Z", idSeed: 500 },
       });
       expect(result.applied).toHaveLength(1);
-      if (mode === "tracked-changes") {
+      if (operation.type === "commentOnBlock" || operation.type === "commentOnRange") {
+        expect(result.applied.at(0)?.commentId).toBeDefined();
+        expect(result.applied.at(0)?.revisionIds).toBeUndefined();
+      } else if (mode === "tracked-changes") {
         expect(result.applied.at(0)?.revisionIds?.every((id) => id >= 500)).toBe(true);
         expect(result.nextRevisionId).toBeGreaterThan(500);
       }
@@ -304,4 +316,37 @@ test("save observes one immutable committed batch version", async () => {
   expect(capturedVersion).toBe(1);
   expect(editor.session.version).toBe(2);
   expect(editor.snapshot().blocks.at(0)?.text).toBe("later");
+});
+
+test("generated attached comments publish and undo atomically in direct and tracked modes", () => {
+  assertProperty(
+    fc.property(
+      fc.stringMatching(/^[a-z]{1,12}$/u),
+      fc.constantFrom("direct", "tracked-changes"),
+      (replacement, mode) => {
+        const editor = setup("A😀éB");
+        const initial = editor.session.document;
+        const operation = {
+          id: "commented",
+          type: "replaceInBlock",
+          blockId: "12345678",
+          find: "😀é",
+          replace: replacement,
+          comment: { text: "review" },
+        } as const;
+        const preview = editor.apply([operation], { mode, dryRun: true });
+        expect(preview.status).toBe("previewed");
+        expect(editor.session.document).toBe(initial);
+        const result = editor.apply([operation], { mode });
+        expect(result.applied).toHaveLength(1);
+        expect(result.applied.at(0)?.commentId).toBeDefined();
+        expect(editor.session.document.package.document.comments).toHaveLength(1);
+        expect(editor.executor.undo(result.undoHandle ?? panic("Missing handle")).status).toBe(
+          "undone",
+        );
+        expect(editor.session.document).toEqual(initial);
+      },
+    ),
+    { numRuns: 30, seed: 20261008 },
+  );
 });

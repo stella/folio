@@ -1,3 +1,4 @@
+import { freshCommentId } from "../../packages/docx-core/src/ops/comments";
 /** Package-shaped cases for the same inverse/locality laws across every operation kind. */
 import { panic } from "better-result";
 import fc from "fast-check";
@@ -272,7 +273,48 @@ const numberingCreation = ({ document }: CaseArgs) => {
   } satisfies DocumentOp;
 };
 
+const commentCreation = (args: CaseArgs) =>
+  ({
+    type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+    comment: {
+      id: freshCommentId(args.document).unwrap(),
+      author: "Reviewer",
+      content: [freshParagraph(args)],
+    },
+    anchor: {
+      kind: "point",
+      at: { story: args.story, blockId: targetFor(args).paraId ?? "", offset: 0 },
+    },
+  }) as const satisfies DocumentOp;
+
 export const PACKAGE_OP_CASES = {
+  createComment: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: commentCreation(args),
+  }),
+  updateCommentContent: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+      id: 7,
+      content: [freshParagraph(args)],
+      patch: { author: "Latest reviewer", initials: null },
+    },
+  }),
+  setCommentResolution: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
+      id: 7,
+      status: args.seed.inherit ? "open" : "resolved",
+    },
+  }),
+  deleteComment: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id: 7, scope: "thread" },
+  }),
+  restoreCommentState: (args: CaseArgs): GeneratedCase =>
+    inverseCase(args, commentCreation(args), "restoreCommentState"),
   insertText: direct("insertText"),
   insertContent: direct("insertContent"),
   deleteRange: (args: CaseArgs): GeneratedCase => {
