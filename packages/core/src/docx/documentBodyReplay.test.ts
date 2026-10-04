@@ -60,12 +60,43 @@ test("trusted source correspondence failures emit a body diagnostic", async () =
 });
 
 test("unchanged trusted bodies replay exact source across clones and key orders", async () => {
-  const parsed = await parsedSource();
-  for (const document of [parsed, cloneDocumentWithParagraphPropertySources(parsed)]) {
-    expect(serializeDocument(document, undefined, { bodyAuthority: "canonical" })).toBe(source);
-    const { content, ...metadata } = document.package.document;
-    document.package.document = { ...metadata, content };
-    expect(serializeDocument(document, undefined, { bodyAuthority: "canonical" })).toBe(source);
+  for (const bufferPresence of ["present", "absent"] as const) {
+    const parsed = await parsedSource();
+    if (bufferPresence === "absent") delete parsed.originalBuffer;
+    for (const document of [parsed, cloneDocumentWithParagraphPropertySources(parsed)]) {
+      expect(getDocumentSourceBaseline(document).type).toBe("captured");
+      expect(serializeDocument(document, undefined, { bodyAuthority: "canonical" })).toBe(source);
+      const { content, ...metadata } = document.package.document;
+      document.package.document = { ...metadata, content };
+      expect(serializeDocument(document, undefined, { bodyAuthority: "canonical" })).toBe(source);
+    }
+  }
+});
+
+test("trusted clones retain invalid body capture handles instead of recovering package fallback", async () => {
+  for (const bufferPresence of ["present", "absent"] as const) {
+    for (const invalid of [null, {}, 42]) {
+      const document = await parsedSource();
+      if (bufferPresence === "absent") delete document.originalBuffer;
+      const handle = Object.getOwnPropertySymbols(document.package.document).at(0);
+      if (!handle) throw new Error("Missing private body capture handle");
+      Object.defineProperty(document.package.document, handle, {
+        value: invalid,
+        enumerable: true,
+        configurable: true,
+      });
+      expect(getDocumentSourceBaseline(document)).toEqual({ type: "mismatch" });
+      const cloned = cloneDocumentWithParagraphPropertySources(document);
+      expect(getDocumentSourceBaseline(cloned)).toEqual({ type: "mismatch" });
+      const diagnostics: unknown[] = [];
+      expect(
+        serializeDocument(cloned, undefined, {
+          bodyAuthority: "canonical",
+          onDiagnostic: (value) => diagnostics.push(value),
+        }),
+      ).not.toBe(source);
+      expect(diagnostics).toEqual([{ type: "sourceReplayMismatch", part: "word/document.xml" }]);
+    }
   }
 });
 
