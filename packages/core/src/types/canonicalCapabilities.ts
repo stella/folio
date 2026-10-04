@@ -23,6 +23,7 @@ export const CANONICAL_GAP = {
   publicTableProjection: "publicOps.tableProjection",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   publicHeadlessSession: "publicOps.headlessSession",
+  publicSecondaryStories: "publicOps.secondaryStories",
 } as const;
 
 export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
@@ -177,6 +178,13 @@ export const CANONICAL_CAPABILITIES = {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary: "Unsupported public payloads refuse with a typed compiler capability gap.",
+  },
+  [CANONICAL_GAP.publicSecondaryStories]: {
+    owner: "document-operations",
+    defaultSessionMutation: "pm-public-operations",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary: "Public secondary-story batches refuse until canonical story routing is available.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",
