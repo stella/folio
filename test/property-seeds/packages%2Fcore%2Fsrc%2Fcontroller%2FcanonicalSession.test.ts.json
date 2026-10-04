@@ -41,6 +41,12 @@
       "seed": 11,
       "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1905709808,
+      "path": "89:3:2:3:8:4:2:0:1:3:0:0:0:0:0:3:1:0:0:0:0:0:2:2:1:1:0:0:0:6:0:0:5",
+      "note": "Cancelling all same-author insertions leaves no revisions to resolve; resolution remains atomic and creates no journal entry.",
+      "date": "2026-10-05"
     }
   ]
 }
