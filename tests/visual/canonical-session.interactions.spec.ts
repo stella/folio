@@ -4,7 +4,7 @@ import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { identityKeysIn, IDENTITY_SPACES } from "../../packages/docx-core/src/ops/ids";
-import { normalizeForOps } from "../../packages/docx-core/src/ops/contract";
+import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
 import type { buildCanonicalBridge } from "../parity/canonicalBridge";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
@@ -62,7 +62,7 @@ const select = async (page: Page, anchor: number, head = anchor) => {
   ).toBe(true);
 };
 
-type LoadedFixture = { bytes: number[]; content: string };
+type LoadedFixture = Awaited<ReturnType<typeof canonicalLoadFixture>>;
 
 const loadReady = async (page: Page, source: LoadedFixture) => {
   expect(
@@ -79,15 +79,6 @@ const loadReady = async (page: Page, source: LoadedFixture) => {
       JSON.stringify(current.document?.package.document.content) === content
     );
   }, source.content);
-};
-
-const loadedFixture = async (buffer: ArrayBuffer): Promise<LoadedFixture> => {
-  const bytes = new Uint8Array(buffer);
-  const parsed = await parseDocx(bytes, { preloadFonts: false, detectVariables: false });
-  return {
-    bytes: [...bytes],
-    content: JSON.stringify(normalizeForOps(parsed).package.document.content),
-  };
 };
 
 test("canonical input, history and saved document agree across both adapters", async ({ page }) => {
@@ -293,7 +284,9 @@ test("canonical input, history and saved document agree across both adapters", a
 
 test("canonical structural and formatting hooks survive save and reopen", async ({ page }) => {
   test.setTimeout(60_000);
-  const source = await loadedFixture(await createDocx(createEmptyDocument({ initialText: "ab" })));
+  const source = await canonicalLoadFixture(
+    await createDocx(createEmptyDocument({ initialText: "ab" })),
+  );
   for (const port of [reactPort, vuePort]) {
     await page.goto(`http://localhost:${port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
@@ -384,7 +377,9 @@ test("canonical structural gestures and toolbar operations preserve each interme
   page,
 }) => {
   test.setTimeout(90_000);
-  const source = await loadedFixture(await createDocx(createEmptyDocument({ initialText: "ab" })));
+  const source = await canonicalLoadFixture(
+    await createDocx(createEmptyDocument({ initialText: "ab" })),
+  );
   for (const port of [reactPort, vuePort]) {
     await page.goto(`http://localhost:${port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
