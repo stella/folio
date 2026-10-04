@@ -36,7 +36,10 @@ const STORIES = [
 const paragraph = (paraId: string, text: string): Paragraph => ({
   type: "paragraph",
   paraId,
-  content: [{ type: "run", formatting: { bold: true }, content: [{ type: "text", text }] }],
+  content: [
+    { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+    { type: "run", formatting: { bold: true }, content: [{ type: "text", text }] },
+  ],
 });
 
 const fixture = (): Document => ({
@@ -253,6 +256,9 @@ test("generated tracked secondary replacements preserve shared history and saved
               { type: DOCUMENT_OP_TYPES.RESOLVE_REVISION, story, revisionIds, decision },
             ]).unwrap();
             const expected = decision === "accept" ? direct.document : baseline;
+            expect(canonicalReviewBlocks(storyBody(resolved.document, story).content)).toEqual(
+              canonicalReviewBlocks(storyBody(expected, story).content),
+            );
             const reopenedResolved = applyDocumentOps(reopenedPending, [
               { type: DOCUMENT_OP_TYPES.RESOLVE_REVISION, story, revisionIds, decision },
             ]).unwrap();
@@ -262,9 +268,6 @@ test("generated tracked secondary replacements preserve shared history and saved
                 asMainStory(reopenedResolved.document, story),
               ),
             ).toEqual({ messages: [], omitted: 0 });
-            expect(canonicalReviewBlocks(storyBody(resolved.document, story).content)).toEqual(
-              canonicalReviewBlocks(storyBody(expected, story).content),
-            );
             for (const other of [OP_STORIES.MAIN, ...STORIES].filter(
               (candidate) => candidate !== story,
             )) {
