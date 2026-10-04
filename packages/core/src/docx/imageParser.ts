@@ -70,6 +70,8 @@ import {
   parseOnOffAttribute,
   parseOnOffValue,
   findByFullName,
+  findAttributeByNamespaceUri,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -217,7 +219,7 @@ const parseDocPrLink = (docPr: XmlElement, localName: string): ImageDocPrLink | 
   if (!element) {
     return undefined;
   }
-  const rId = getAttribute(element, "r", "id");
+  const rId = findAttributeByNamespaceUri(element, OFFICE_RELATIONSHIP_NAMESPACE_URIS, "id")?.value;
   return { xml: captureVerbatimXml(element), ...(rId == null ? {} : { rId }) };
 };
 

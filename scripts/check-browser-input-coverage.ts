@@ -18,7 +18,10 @@ const result = Bun.spawnSync(
   { cwd: root, stdout: "pipe", stderr: "pipe" },
 );
 if (result.exitCode !== 0) {
-  throw new Error(`Playwright test discovery failed:\n${result.stderr.toString()}`);
+  // The JSON reporter writes discovery errors to stdout, even on failure.
+  throw new Error(
+    `Playwright test discovery failed:\n${result.stdout.toString()}\n${result.stderr.toString()}`,
+  );
 }
 
 // SAFETY: This JSON is produced by the pinned Playwright reporter invoked above.

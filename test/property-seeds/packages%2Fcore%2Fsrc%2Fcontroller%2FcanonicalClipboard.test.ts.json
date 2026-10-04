@@ -1,0 +1,86 @@
+{
+  "foreign text and image hyperlink relationships never bind colliding destination ids": [
+    {
+      "seed": -612255769,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "date": "2026-10-02",
+      "note": "Retain exact clipboard source ownership, selection and journal behavior observed in leaf CI."
+    },
+    {
+      "seed": -967150161,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:1:1:0:0:0:0:0:0:0",
+      "note": "Empty modeled link targets must resolve from the foreign relationship, never the destination.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1153678734,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -614412611,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:2:2:0:0",
+      "date": "2026-10-03",
+      "note": "Foreign hyperlink fixtures provide resolved source defaults and preserve spacing provenance."
+    }
+  ],
+  "generated Strict and Transitional image link caches rebind ids while preserving authored metadata": [
+    {
+      "seed": 1115663567,
+      "path": "0:0",
+      "note": "Retain clipboard projection and exact history coverage during story integration.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated clipboard sequences preserve every intermediate journal state at arbitrary targets": [
+    {
+      "seed": 459031823,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:1:0:0:0:0:0:0:0:0:0:2:2:2:2:3:0:3:0:0:1:3:0:6:0:2:0:0:0:6:0:3:0:1:2:0:1:1:3:0:1:0:0:0:3:3:2:4:1:0:1:0:1:4:0:1:1:1:1:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "date": "2026-10-02",
+      "note": "Retain exact clipboard selection, source-story ownership and resource/review journal semantics observed in child CI."
+    },
+    {
+      "seed": 1577942130,
+      "path": "0:0:0:0:0:0:0:1:1:1:1:1:0:0:0:0:2:3:1:0:0:0:0:0:0:0:1:2:1:3:0:3:3:3:3:3:5:5:5:5:5:2:1:1:0:0:2:1:0:2:2:0:0:0:1:3:1:1:2:0:2:0:0:1:4:0:0:0:4:1:1:1:1:0:1:1:3:3:3:0:0:0:0:1:1:3:2:2:2:2:14:4:3:5:1:4:1:24:8:3:3:3:3:3:3:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "date": "2026-10-02",
+      "note": "Retain exact clipboard source ownership, selection and journal behavior observed in leaf CI."
+    }
+  ],
+  "generated marked slices obey all open edges, replacement directions and exact history": [
+    {
+      "seed": 1823472337,
+      "path": "0:0:0:0:0",
+      "note": "Retain clipboard projection and exact history coverage during story integration.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated multi-digit note moves preserve owned stories and exact arbitrary-target histories": [
+    {
+      "seed": 1371888650,
+      "path": "0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Retain clipboard projection and exact history coverage during story integration.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1284349434,
+      "path": "0:0:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:1:2:2:2:2:2:0:0:0:1:0:0:2:0:1:0:2:1:1:1:1:4:0:1:0:0:1:0:6:1:15:1:1",
+      "note": "Retain namespace-aware image links and canonical gaps at multi-unit note labels.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated owned story-reference moves preserve arbitrary-target sequences and count atomic refusals": [
+    {
+      "seed": -712579605,
+      "path": "0:1:1:1:1:1:1:1:1",
+      "date": "2026-10-02",
+      "note": "Retain exact clipboard selection, source-story ownership and resource/review journal semantics observed in child CI."
+    },
+    {
+      "seed": -799291990,
+      "path": "2:0:0:0:0:0:0:0:0:0",
+      "date": "2026-10-02",
+      "note": "Retain exact clipboard source ownership, selection and journal behavior observed in leaf CI."
+    }
+  ]
+}

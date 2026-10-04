@@ -299,7 +299,7 @@ export type DocxPackage = {
     conformanceClass?: DocxConformanceClass;
     document: DocumentBody;
     settings?: DocumentSettings;
-    styles?: StyleDefinitions;
+    styles?: StyleDefinitions | undefined;
     theme?: Theme;
     numbering?: NumberingDefinitions | undefined;
     fontTable?: FontTable;
@@ -307,8 +307,8 @@ export type DocxPackage = {
     endnotes?: Endnote[];
     headers?: Map<string, HeaderFooter>;
     footers?: Map<string, HeaderFooter>;
-    relationships?: RelationshipMap;
-    media?: Map<string, MediaFile>;
+    relationships?: RelationshipMap | undefined;
+    media?: Map<string, MediaFile> | undefined;
     properties?: {
         title?: string;
         subject?: string;

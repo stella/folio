@@ -1435,7 +1435,11 @@ function paragraphFormattingToAttrs(
   }
   // List rendering info from parsed numbering definitions
   if (paragraph.listRendering && formatting?.numPr?.kind !== "none") {
-    Object.assign(attrs, listRenderingAttrPatch(paragraph.listRendering));
+    Object.assign(
+      attrs,
+      CLEARED_LIST_RENDERING_ATTRS,
+      listRenderingAttrPatch(paragraph.listRendering),
+    );
   }
   // Store original inline formatting for lossless serialization round-trip
   if (formatting) {

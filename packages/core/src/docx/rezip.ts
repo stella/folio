@@ -42,7 +42,7 @@ import {
   validateDocxPackage,
 } from "@stll/docx-core";
 import { mintRelationshipId } from "@stll/docx-core/model";
-import { panic, TaggedError } from "better-result";
+import { panic, Result, TaggedError } from "better-result";
 import JSZip from "jszip";
 
 import {
@@ -56,15 +56,19 @@ import type {
   Footnote,
   HeaderFooter,
   Hyperlink,
+  Image,
   Paragraph,
-  ParagraphContent,
   Run,
   SectionProperties,
-  TrackedRunContent,
 } from "../types/content";
-import type { Document, Style, StyleDefinitions, Watermark } from "../types/document";
+import type { Document, Relationship, Style, StyleDefinitions, Watermark } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
-import { BLOCK_TREE_DESCENT, visitBlockTreeRecords } from "./paragraphTraversal";
+import {
+  BLOCK_TREE_DESCENT,
+  visitBlockTreeRecords,
+  visitInlineContentSlots,
+  visitParagraphRuns,
+} from "./paragraphTraversal";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import {
   type DocumentSectionFacts,
@@ -117,6 +121,10 @@ import {
 } from "./packageParts";
 import type { RawDocxContent } from "./unzip";
 import {
+  findAttributeByNamespaceUri,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
+  OOXML_NAMESPACE_SCOPE,
+  type XmlElement,
   findChild,
   findChildByNamespaceUri,
   findChildrenByNamespaceUri,
@@ -137,6 +145,11 @@ import {
 import { normalizeParaIdRangeInXmlParts } from "./paraIdRangeNormalization";
 import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
 import { isAllowedExternalWatermarkImageUrl } from "../watermark";
+import { captureVerbatimXml } from "./verbatimCapture";
+import {
+  cloneDocumentWithParagraphPropertySources,
+  copyDocumentParagraphPropertySourceContract,
+} from "./paragraphPropertySource";
 
 export class DocxPackageFidelityError extends TaggedError("DocxPackageFidelityError")<{
   message: string;
@@ -502,9 +515,11 @@ type DocxPart = {
   blocks: BlockContent[];
 };
 
+const PACKAGE_RELATIONSHIPS_NAMESPACE_URI =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
 const EMPTY_RELS_XML =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
-  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+  `<Relationships xmlns="${PACKAGE_RELATIONSHIPS_NAMESPACE_URI}"></Relationships>`;
 
 function headerFooterFilename(target: string): string {
   return target.startsWith("/") ? target.slice(1) : `word/${target}`;
@@ -860,102 +875,215 @@ const materializeEmbeddedMedia = async ({
 // NEW HYPERLINK HANDLING
 // ============================================================================
 
-/**
- * Collect all hyperlinks that have an href but no rId from block content.
- * These are newly created hyperlinks that need relationship entries.
- */
-export function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[] {
-  const hyperlinks: Hyperlink[] = [];
+type ExternalHyperlinkResource =
+  | { type: "text"; hyperlink: Hyperlink }
+  | { type: "drawing"; image: Image; drawing: Extract<DrawingContent, { rawXmlMode?: never }> };
 
-  const collectInlineHyperlinks = (
-    content: readonly (ParagraphContent | TrackedRunContent)[],
-  ): void => {
-    for (const item of content) {
-      switch (item.type) {
-        case "hyperlink":
-          if (item.href && !item.rId && !item.anchor) hyperlinks.push(item);
-          break;
-        case "simpleField":
-        case "inlineSdt":
-        // A link inside a bidirectional wrapper still needs the relationship
-        // its `href` is saved through; the wrapper only says how it is laid out.
-        case "inlineWrapper":
-        case "insertion":
-        case "deletion":
-        case "moveFrom":
-        case "moveTo":
-          collectInlineHyperlinks(item.content);
-          break;
-        default:
-          break;
+const collectExternalHyperlinkResources = (blocks: BlockContent[]): ExternalHyperlinkResource[] => {
+  const resources: ExternalHyperlinkResource[] = [];
+  visitBlockTreeRecords(blocks, (record) => {
+    if (record.type !== "paragraph") return BLOCK_TREE_DESCENT.descend;
+    visitInlineContentSlots(record, ({ item }) => {
+      if (item.type === "hyperlink" && item.href && !item.anchor) {
+        resources.push({ type: "text", hyperlink: item });
       }
-    }
-  };
-
-  for (const block of blocks) {
-    if (block.type === "paragraph") {
-      collectInlineHyperlinks(block.content);
-    } else if (block.type === "table") {
-      for (const row of block.rows) {
-        for (const cell of row.cells) {
-          hyperlinks.push(...collectHyperlinksWithoutRId(cell.content));
+    });
+    visitParagraphRuns(record, (run) => {
+      for (const drawing of run.content) {
+        if (
+          drawing.type === "drawing" &&
+          drawing.rawXmlMode === undefined &&
+          drawing.image.hlinkHref
+        ) {
+          resources.push({ type: "drawing", image: drawing.image, drawing });
         }
       }
-    } else if (block.type === "blockSdt" || block.type === "blockCustomXml") {
-      hyperlinks.push(...collectHyperlinksWithoutRId(block.content));
+    });
+    return BLOCK_TREE_DESCENT.descend;
+  });
+  return resources;
+};
+
+const externalHyperlinkTarget = (resource: ExternalHyperlinkResource) => {
+  switch (resource.type) {
+    case "text":
+      return { id: resource.hyperlink.rId, href: resource.hyperlink.href };
+    case "drawing":
+      return { id: resource.image.hlinkRId, href: resource.image.hlinkHref };
+    default: {
+      const unreachable: never = resource;
+      return unreachable;
     }
   }
+};
 
-  return hyperlinks;
+/** Newly authored text links; the census shares the complete owning-part traversal. */
+export function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[] {
+  return collectExternalHyperlinkResources(blocks).flatMap((resource) =>
+    resource.type === "text" && !resource.hyperlink.rId ? [resource.hyperlink] : [],
+  );
 }
 
 /** The selective save boundary must use the same resource census as full repack. */
 export const hasUnmaterializedInlineResources = (blocks: BlockContent[]): boolean =>
-  collectNewImages(blocks).length > 0 || collectHyperlinksWithoutRId(blocks).length > 0;
+  collectNewImages(blocks).length > 0 ||
+  collectExternalHyperlinkResources(blocks).some(
+    (resource) => externalHyperlinkTarget(resource).id === undefined,
+  );
 
-/**
- * Process newly created hyperlinks in every part: assign rIds and add
- * relationship entries to the owning part's rels. Mutates the hyperlinks' rId
- * fields in-place.
- */
+const matchesExternalHyperlink = (relation: Relationship | undefined, href: string): boolean =>
+  relation?.type === RELATIONSHIP_TYPES.hyperlink &&
+  relation.targetMode === "External" &&
+  relation.target === href;
+
+/** Compare against the already loaded source ZIP, without mutating model or package. */
+export const hasUnmaterializedHyperlinkBindings = async (
+  document: Document,
+  zip: JSZip,
+): Promise<boolean> => {
+  for (const { blocks, relsPath } of collectDocxParts(document, zip)) {
+    const resources = collectExternalHyperlinkResources(blocks);
+    if (resources.length === 0) continue;
+    // oxlint-disable-next-line no-await-in-loop -- each owning part has a distinct relationship table
+    const relationships = parseRelationships(await readRelsOrStub(zip, relsPath));
+    for (const resource of resources) {
+      const { id, href } = externalHyperlinkTarget(resource);
+      if (href && (id === undefined || !matchesExternalHyperlink(relationships.get(id), href)))
+        return true;
+    }
+  }
+  return false;
+};
+
+type RebindCapturedDrawingLinkOptions = { xml: string; previousId: string; nextId: string };
+const rebindCapturedDrawingLink = ({
+  xml,
+  previousId,
+  nextId,
+}: RebindCapturedDrawingLinkOptions): string => {
+  const parsed = Result.try({
+    try: () => parseXml(xml, OOXML_NAMESPACE_SCOPE),
+    catch: () =>
+      new DocxPackageFidelityError("Cannot rebind invalid captured drawing hyperlink XML."),
+  });
+  if (parsed.isErr()) throw parsed.error;
+  let rebound = 0;
+  const visit = (element: XmlElement): void => {
+    const attribute = findAttributeByNamespaceUri(
+      element,
+      OFFICE_RELATIONSHIP_NAMESPACE_URIS,
+      "id",
+    );
+    if (attribute?.value === previousId && element.attributes !== undefined) {
+      element.attributes[attribute.name] = nextId;
+      rebound += 1;
+    }
+    for (const child of element.elements ?? []) visit(child);
+  };
+  visit(parsed.value);
+  if (rebound !== 1)
+    throw new DocxPackageFidelityError(
+      "Captured drawing hyperlink must own exactly one click relationship.",
+    );
+  return (parsed.value.elements ?? []).map(captureVerbatimXml).join("");
+};
+
+/** Materialize each modeled hyperlink against the actual owning ZIP relationship table. */
 async function processNewHyperlinks(
   parts: DocxPart[],
   zip: JSZip,
   compressionLevel: number,
 ): Promise<void> {
   for (const { relsPath, blocks } of parts) {
-    const newHyperlinks = collectHyperlinksWithoutRId(blocks);
-    if (newHyperlinks.length === 0) {
-      continue;
-    }
-
+    const resources = collectExternalHyperlinkResources(blocks);
+    if (resources.length === 0) continue;
     // oxlint-disable-next-line no-await-in-loop -- rels parts are read and rewritten one at a time so each part's rId counter stays consistent
     const relsXml = await readRelsOrStub(zip, relsPath);
-    let maxId = findMaxRId(relsXml);
-    const relEntries: string[] = [];
-
-    for (const hyperlink of newHyperlinks) {
-      if (!hyperlink.href) {
-        continue;
-      }
-      maxId++;
-      const newRId = `rId${maxId}`;
-      relEntries.push(
-        `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.hyperlink}" Target="${escapeXmlAttribute(hyperlink.href)}" TargetMode="External"/>`,
+    const relationships = parseRelationships(relsXml);
+    const root = parseXmlDocument(relsXml);
+    if (
+      root?.name === undefined ||
+      getLocalName(root.name) !== "Relationships" ||
+      getNamespaceUri(root) !== PACKAGE_RELATIONSHIPS_NAMESPACE_URI
+    ) {
+      throw new DocxPackageFidelityError(
+        "Cannot materialize hyperlinks into an invalid relationship part.",
       );
-
-      // Rewrite the hyperlink's rId so the serializer outputs the correct reference
-      hyperlink.rId = newRId;
     }
-
-    zip.file(
-      relsPath,
-      relsXml.replace("</Relationships>", `${relEntries.join("")}</Relationships>`),
-      {
+    const strictRelationshipNamespace = "http://purl.oclc.org/ooxml/officeDocument/relationships";
+    const relationshipType = getChildElements(root).some((child) =>
+      getAttribute(child, null, "Type")?.startsWith(`${strictRelationshipNamespace}/`),
+    )
+      ? `${strictRelationshipNamespace}/hyperlink`
+      : RELATIONSHIP_TYPES.hyperlink;
+    const byTarget = new Map<string, string>();
+    for (const relation of relationships.values()) {
+      if (
+        relation.type === RELATIONSHIP_TYPES.hyperlink &&
+        relation.targetMode === "External" &&
+        !byTarget.has(relation.target)
+      ) {
+        byTarget.set(relation.target, relation.id);
+      }
+    }
+    let maxId = findMaxRId(relsXml);
+    const relEntries: XmlElement[] = [];
+    for (const resource of resources) {
+      const { id, href } = externalHyperlinkTarget(resource);
+      if (!href || (id !== undefined && matchesExternalHyperlink(relationships.get(id), href)))
+        continue;
+      let nextId = byTarget.get(href);
+      if (nextId === undefined) {
+        if (id !== undefined && !relationships.has(id)) nextId = id;
+        else {
+          do {
+            maxId += 1;
+            nextId = `rId${maxId}`;
+          } while (relationships.has(nextId));
+        }
+        relationships.set(nextId, {
+          id: nextId,
+          type: RELATIONSHIP_TYPES.hyperlink,
+          target: href,
+          targetMode: "External",
+        });
+        byTarget.set(href, nextId);
+        relEntries.push({
+          type: "element",
+          name: `${root.name.slice(0, -"Relationships".length)}Relationship`,
+          attributes: { Id: nextId, Type: relationshipType, Target: href, TargetMode: "External" },
+        });
+      }
+      switch (resource.type) {
+        case "text":
+          resource.hyperlink.rId = nextId;
+          break;
+        case "drawing": {
+          const source = resource.image.hlinkClickSource;
+          if (source !== undefined && source.rId === id && id !== undefined) {
+            resource.image.hlinkClickSource = {
+              xml: rebindCapturedDrawingLink({ xml: source.xml, previousId: id, nextId }),
+              rId: nextId,
+            };
+          }
+          resource.image.hlinkRId = nextId;
+          delete resource.drawing.rawXml;
+          delete resource.drawing.rawImageFingerprint;
+          break;
+        }
+        default: {
+          const unreachable: never = resource;
+          panic(`Unsupported hyperlink resource ${JSON.stringify(unreachable)}`);
+        }
+      }
+    }
+    if (relEntries.length > 0) {
+      (root.elements ??= []).push(...relEntries);
+      zip.file(relsPath, captureVerbatimXml(root), {
         compression: "DEFLATE",
         compressionOptions: { level: compressionLevel },
-      },
-    );
+      });
+    }
   }
 }
 
@@ -1160,8 +1288,17 @@ const normalizeExportDrawingIds = ({ package: docxPackage }: Document): void => 
   });
 };
 
+/** Keep export mutations off authority while retaining the source-buffer cache key. */
+const cloneExportDocument = (sourceDocument: Document): Document => {
+  const { originalBuffer, ...graph } = sourceDocument;
+  const document = cloneDocumentWithParagraphPropertySources(graph);
+  if (originalBuffer !== undefined) document.originalBuffer = originalBuffer;
+  copyDocumentParagraphPropertySourceContract(document, sourceDocument);
+  return document;
+};
+
 const finishRepack = async ({
-  document,
+  document: sourceDocument,
   originalZip,
   outputZip,
   originalDocument,
@@ -1174,7 +1311,11 @@ const finishRepack = async ({
   sectionEndpointRemoval,
   sectionReferenceRemovals,
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
-  document = await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
+  const document = await materializeNewHeaderFooterParts(
+    cloneExportDocument(sourceDocument),
+    outputZip,
+    compressionLevel,
+  );
   await materializeEmbeddedMedia({ document, zip: outputZip, compressionLevel });
 
   const parts = collectDocxParts(document, outputZip);
@@ -1346,7 +1487,7 @@ export async function repackDocxFromRaw(
     modifiedBy,
     changedNoteParaIds,
   } = options;
-  let exportDocument = withoutOrphanCommentRanges(doc);
+  let exportDocument = withoutOrphanCommentRanges(cloneExportDocument(doc));
 
   // Create a new ZIP with all original files
   const newZip = new JSZip();
