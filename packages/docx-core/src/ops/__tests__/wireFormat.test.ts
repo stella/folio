@@ -206,18 +206,22 @@ test("clipboard package resources remain pinned in the schema-9 wire contract", 
   );
   expect(resources.length).toBeGreaterThan(0);
   const clipboard = resources.find(
-    ({ op }) =>
-      op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES && op.resources.media.type === "present",
+    ({ op }) => op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES && op.media.entries.length > 0,
   );
   expect(clipboard).toBeDefined();
   if (clipboard?.op.type !== DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES) return;
-  expect(clipboard.op.resources.media).toMatchObject({
-    type: "present",
-    value: [
-      [
-        "word/media/clipboard.png",
-        expect.objectContaining({ mimeType: "image/png", data: [137, 80, 78, 71] }),
-      ],
+  expect(clipboard.op.media).toMatchObject({
+    expected: "omitted",
+    next: "present",
+    entries: [
+      {
+        key: "word/media/clipboard.png",
+        expected: { type: "absent" },
+        next: {
+          type: "present",
+          value: expect.objectContaining({ mimeType: "image/png", data: [137, 80, 78, 71] }),
+        },
+      },
     ],
   });
 });

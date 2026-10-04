@@ -1,7 +1,7 @@
 import { Result } from "better-result";
 import { Fragment, Slice } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
-import { DOCUMENT_OP_TYPES, packageResourcesOf, type DocumentOp } from "@stll/docx-core/ops";
+import { packageResourcesOpOf, type DocumentOp } from "@stll/docx-core/ops";
 import {
   relationshipIdOf,
   paragraphNumberingReference,
@@ -571,11 +571,7 @@ export const prepareCanonicalPaste = ({
         ...(importedResource ? { relationships, media } : {}),
       },
     };
-    resourceOps.push({
-      type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
-      expected: packageResourcesOf(session.document),
-      resources: packageResourcesOf(imported),
-    });
+    resourceOps.push(packageResourcesOpOf({ before: session.document, after: imported }));
   }
   const fragment = {
     from: from.value,

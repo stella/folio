@@ -48,7 +48,7 @@ import { contractViolation, normalizeForOps } from "../contract";
 import { paragraphIdsIn, identityKeysIn, packageIdentityKeys, IDENTITY_SPACES } from "../ids";
 import { sameRunFormatting } from "../inline";
 import { compareGaps, isCommentAnchor, leafSpans, zeroWidthLeavesAt } from "../leaves";
-import { packageResourcesOf } from "../packageResources";
+import { packageResourcesOf, packageResourcesOpOf } from "../packageResources";
 import {
   allocateEditorIntentIds,
   compileEditorIntent,
@@ -1620,19 +1620,27 @@ describe("document operations", () => {
             const allocation = allocateEditorIntentIds(document, intent);
             const before = document;
             const snapshot = structuredClone(before);
-            const priorResources = packageResourcesOf(before);
-            const media =
-              priorResources.media.type === "present" ? [...priorResources.media.value] : [];
             const path = `word/media/clipboard-step${stepIndex}.png`;
-            media.push([
-              path,
-              { path, mimeType: "image/png", data: [137, 80, 78, 71, step.resourceByte] },
-            ]);
-            const resourceOp = {
-              type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
-              expected: priorResources,
-              resources: { ...priorResources, media: { type: "present", value: media } },
-            } as const satisfies DocumentOp;
+            const resourceOp = packageResourcesOpOf({
+              before,
+              after: {
+                ...before,
+                package: {
+                  ...before.package,
+                  media: new Map([
+                    ...(before.package.media ?? []),
+                    [
+                      path,
+                      {
+                        path,
+                        mimeType: "image/png",
+                        data: Uint8Array.from([137, 80, 78, 71, step.resourceByte]).buffer,
+                      },
+                    ],
+                  ]),
+                },
+              },
+            });
             const resourceBaseline = applyDocumentOp(before, resourceOp).unwrap().document;
             const outcomes = [
               { type: "editing", newIds: allocation.newIds } as const,
@@ -1687,6 +1695,7 @@ describe("document operations", () => {
             if (!direct || !accepted) panic("Clipboard sequence lost a compilation mode.");
             assertExactModel(accepted.document, direct.document);
             assertExactModel(packageResourcesOf(direct.document), resourceOp.resources);
+            assertExactModel(direct.document.package.media, resourceBaseline.package.media);
             const expected = step.texts.map((text) => `paste${text}`);
             const expectedAlignments: NonNullable<Paragraph["formatting"]>["alignment"][] =
               step.texts.map(() => undefined);

@@ -462,18 +462,22 @@ export const serializedLocalityFailures = ({
       const resourceRelationships = {
         styles: RELATIONSHIP_TYPES.styles,
         numbering: RELATIONSHIP_TYPES.numbering,
-        media: RELATIONSHIP_TYPES.image,
-        relationships: undefined,
-      } satisfies Record<keyof PackageResources, string | undefined>;
+      } satisfies Record<keyof PackageResources, string>;
       for (const [key, relationshipType] of Object.entries(resourceRelationships)) {
         if (sameOpModel(Reflect.get(op.expected, key), Reflect.get(op.resources, key))) continue;
         lifecycle = true;
-        if (relationshipType !== undefined) ownedRelationshipTypes.add(relationshipType);
-        else
-          for (const part of [op.expected.relationships, op.resources.relationships])
-            if (part.type === "present")
-              for (const [id] of part.value) ownedRelationshipIds.add(id);
+        ownedRelationshipTypes.add(relationshipType);
       }
+      if (op.media.expected !== op.media.next || op.media.entries.length > 0) {
+        lifecycle = true;
+        ownedRelationshipTypes.add(RELATIONSHIP_TYPES.image);
+      }
+      if (
+        op.relationships.expected !== op.relationships.next ||
+        op.relationships.entries.length > 0
+      )
+        lifecycle = true;
+      for (const { key } of op.relationships.entries) ownedRelationshipIds.add(key);
     }
     if (
       op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE ||

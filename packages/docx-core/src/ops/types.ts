@@ -760,19 +760,36 @@ export type PackageResourcePart<Value> =
 /** JSON-safe media bytes, rather than an ArrayBuffer that JSON discards. */
 export type PackageResourceMedia = Omit<MediaFile, "data"> & { data: readonly number[] };
 
-/** Package resources captured before and after an explicit clipboard import. */
+/** Package definitions captured before and after an explicit clipboard import. */
 export type PackageResources = {
   styles: PackageResourcePart<StyleDefinitions>;
   numbering: PackageResourcePart<NumberingDefinitions>;
-  relationships: PackageResourcePart<readonly (readonly [string, Relationship])[]>;
-  media: PackageResourcePart<readonly (readonly [string, PackageResourceMedia])[]>;
 };
 
-/** Replace an explicitly merged resource state, refusing stale package data. */
+export type PackageResourcePresence = PackageResourcePart<unknown>["type"];
+
+export type PackageResourceEntry<Value> = { type: "absent" } | { type: "present"; value: Value };
+
+export type PackageResourceEntryChange<Value> = {
+  key: string;
+  expected: PackageResourceEntry<Value>;
+  next: PackageResourceEntry<Value>;
+};
+
+/** Keyed changes to a package map; entries the operation leaves alone are not carried. */
+export type PackageResourceMapChange<Value> = {
+  expected: PackageResourcePresence;
+  next: PackageResourcePresence;
+  entries: readonly PackageResourceEntryChange<Value>[];
+};
+
+/** Replace merged definitions and change keyed package entries, refusing stale package data. */
 export type SetPackageResourcesOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
   expected: PackageResources;
   resources: PackageResources;
+  relationships: PackageResourceMapChange<Relationship>;
+  media: PackageResourceMapChange<PackageResourceMedia>;
 };
 
 /** A section endpoint is either a paragraph's sectPr or the body's final sectPr. */

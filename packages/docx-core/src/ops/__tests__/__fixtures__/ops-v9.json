@@ -9,12 +9,6 @@
         },
         "numbering": {
           "type": "omitted"
-        },
-        "relationships": {
-          "type": "omitted"
-        },
-        "media": {
-          "type": "omitted"
         }
       },
       "resources": {
@@ -23,23 +17,32 @@
         },
         "numbering": {
           "type": "omitted"
-        },
-        "relationships": {
-          "type": "omitted"
-        },
-        "media": {
-          "type": "present",
-          "value": [
-            [
-              "word/media/clipboard.png",
-              {
+        }
+      },
+      "relationships": {
+        "expected": "omitted",
+        "next": "omitted",
+        "entries": []
+      },
+      "media": {
+        "expected": "omitted",
+        "next": "present",
+        "entries": [
+          {
+            "key": "word/media/clipboard.png",
+            "expected": {
+              "type": "absent"
+            },
+            "next": {
+              "type": "present",
+              "value": {
                 "path": "word/media/clipboard.png",
                 "mimeType": "image/png",
                 "data": [137, 80, 78, 71]
               }
-            ]
-          ]
-        }
+            }
+          }
+        ]
       }
     }
   },
@@ -53,22 +56,6 @@
         },
         "numbering": {
           "type": "omitted"
-        },
-        "relationships": {
-          "type": "omitted"
-        },
-        "media": {
-          "type": "present",
-          "value": [
-            [
-              "word/media/clipboard.png",
-              {
-                "path": "word/media/clipboard.png",
-                "mimeType": "image/png",
-                "data": [137, 80, 78, 71]
-              }
-            ]
-          ]
         }
       },
       "resources": {
@@ -77,13 +64,32 @@
         },
         "numbering": {
           "type": "omitted"
-        },
-        "relationships": {
-          "type": "omitted"
-        },
-        "media": {
-          "type": "omitted"
         }
+      },
+      "relationships": {
+        "expected": "omitted",
+        "next": "omitted",
+        "entries": []
+      },
+      "media": {
+        "expected": "present",
+        "next": "omitted",
+        "entries": [
+          {
+            "key": "word/media/clipboard.png",
+            "expected": {
+              "type": "present",
+              "value": {
+                "path": "word/media/clipboard.png",
+                "mimeType": "image/png",
+                "data": [137, 80, 78, 71]
+              }
+            },
+            "next": {
+              "type": "absent"
+            }
+          }
+        ]
       }
     }
   },

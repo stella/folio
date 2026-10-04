@@ -2,12 +2,18 @@ import { cloneModel } from "./modelClone";
 import { Result } from "better-result";
 
 import { MAX_REVISION_ID, type Document } from "../model/document";
+import type { MediaFile, Relationship } from "../model/styles";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   DOCUMENT_OP_TYPES,
+  type PackageResourceEntry,
+  type PackageResourceEntryChange,
+  type PackageResourceMapChange,
+  type PackageResourceMedia,
   type PackageResourcePart,
+  type PackageResourcePresence,
   type PackageResources,
   type SetPackageResourcesOp,
 } from "./types";
@@ -19,23 +25,10 @@ const partOf = <Value>(present: boolean, value: Value | undefined): PackageResou
     : { type: "present", value: cloneModel(value) };
 };
 
-/** Capture maps and binary media as ordinary JSON data, preserving field presence. */
+/** Capture style and numbering definitions as ordinary JSON data, preserving field presence. */
 export const packageResourcesOf = ({ package: pkg }: Document): PackageResources => ({
   styles: partOf(Object.hasOwn(pkg, "styles"), pkg.styles),
   numbering: partOf(Object.hasOwn(pkg, "numbering"), pkg.numbering),
-  relationships: partOf(
-    Object.hasOwn(pkg, "relationships"),
-    pkg.relationships === undefined ? undefined : [...pkg.relationships.entries()],
-  ),
-  media: partOf(
-    Object.hasOwn(pkg, "media"),
-    pkg.media === undefined
-      ? undefined
-      : [...pkg.media.entries()].map(
-          ([key, media]) =>
-            [key, Object.assign({}, media, { data: [...new Uint8Array(media.data)] })] as const,
-        ),
-  ),
 });
 
 const valueOf = <Value>(part: PackageResourcePart<Value>): Value | undefined => {
@@ -52,12 +45,161 @@ const valueOf = <Value>(part: PackageResourcePart<Value>): Value | undefined => 
   }
 };
 
+/** Binary media travels as a byte array, rather than an ArrayBuffer that JSON discards. */
+const mediaRecordOf = (media: MediaFile): PackageResourceMedia =>
+  Object.assign({}, media, { data: [...new Uint8Array(media.data)] });
+
+const mediaFileOf = (record: PackageResourceMedia): MediaFile =>
+  Object.assign({}, record, { data: new Uint8Array(record.data).buffer });
+
+type PackageMap<Stored> = {
+  presence: PackageResourcePresence;
+  entries: ReadonlyMap<string, Stored>;
+};
+
+const packageMapOf = <Stored>(
+  present: boolean,
+  map: ReadonlyMap<string, Stored> | undefined,
+): PackageMap<Stored> => ({
+  presence: !present ? "omitted" : map === undefined ? "undefined" : "present",
+  entries: map ?? new Map(),
+});
+
+const relationshipsOf = ({ package: pkg }: Document) =>
+  packageMapOf(Object.hasOwn(pkg, "relationships"), pkg.relationships);
+
+const mediaOf = ({ package: pkg }: Document) =>
+  packageMapOf(Object.hasOwn(pkg, "media"), pkg.media);
+
+const entryOf = <Stored, Value>(
+  stored: Stored | undefined,
+  record: (stored: Stored) => Value,
+): PackageResourceEntry<Value> =>
+  stored === undefined ? { type: "absent" } : { type: "present", value: record(stored) };
+
+type MapChangeOptions<Stored, Value> = {
+  before: PackageMap<Stored>;
+  after: PackageMap<Stored>;
+  record: (stored: Stored) => Value;
+};
+
+const mapChangeOf = <Stored, Value>({
+  before,
+  after,
+  record,
+}: MapChangeOptions<Stored, Value>): PackageResourceMapChange<Value> => {
+  const entries: PackageResourceEntryChange<Value>[] = [];
+  for (const key of new Set([...before.entries.keys(), ...after.entries.keys()])) {
+    const previous = before.entries.get(key);
+    const next = after.entries.get(key);
+    // Untouched entries keep their record, so an import never copies media it leaves alone.
+    if (previous === next) continue;
+    const change = { key, expected: entryOf(previous, record), next: entryOf(next, record) };
+    if (!structurallyEqual(change.expected, change.next)) entries.push(change);
+  }
+  return { expected: before.presence, next: after.presence, entries };
+};
+
+type PackageResourcesOpOptions = { before: Document; after: Document };
+
+/** Describe the package resource difference as one operation carrying only changed entries. */
+export const packageResourcesOpOf = ({
+  before,
+  after,
+}: PackageResourcesOpOptions): SetPackageResourcesOp => ({
+  type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
+  expected: packageResourcesOf(before),
+  resources: packageResourcesOf(after),
+  relationships: mapChangeOf({
+    before: relationshipsOf(before),
+    after: relationshipsOf(after),
+    record: (relationship: Relationship) => cloneModel(relationship),
+  }),
+  media: mapChangeOf({ before: mediaOf(before), after: mediaOf(after), record: mediaRecordOf }),
+});
+
+type MapApplication<Stored> =
+  | { type: "applied"; map: PackageMap<Stored> }
+  | { type: "refused"; reason: "stale" | "structureMismatch"; message: string };
+
+type ApplyMapChangeOptions<Stored, Value> = {
+  current: PackageMap<Stored>;
+  change: PackageResourceMapChange<Value>;
+  record: (stored: Stored) => Value;
+  stored: (value: Value) => Stored;
+};
+
+const applyMapChange = <Stored, Value>({
+  current,
+  change,
+  record,
+  stored,
+}: ApplyMapChangeOptions<Stored, Value>): MapApplication<Stored> => {
+  if (current.presence !== change.expected)
+    return {
+      type: "refused",
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      message: "The package resources changed.",
+    };
+  if (duplicates(change.entries.map(({ key }) => key)))
+    return {
+      type: "refused",
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message: "Package resource changes repeat a key.",
+    };
+  const entries = new Map(current.entries);
+  for (const { key, expected, next } of change.entries) {
+    if (!structurallyEqual(entryOf(current.entries.get(key), record), expected))
+      return {
+        type: "refused",
+        reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
+        message: "The package resources changed.",
+      };
+    if (next.type === "present") entries.set(key, stored(next.value));
+    else entries.delete(key);
+  }
+  if (change.next !== "present" && entries.size > 0)
+    return {
+      type: "refused",
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message: "A removed package map still has entries.",
+    };
+  return { type: "applied", map: { presence: change.next, entries } };
+};
+
+const inverseMapChange = <Value>(
+  change: PackageResourceMapChange<Value>,
+): PackageResourceMapChange<Value> => ({
+  expected: change.next,
+  next: change.expected,
+  entries: change.entries.map(({ key, expected, next }) => ({
+    key,
+    expected: next,
+    next: expected,
+  })),
+});
+
+const presentEntries = <Value>(change: PackageResourceMapChange<Value>) =>
+  change.entries.flatMap(({ key, next }) =>
+    next.type === "present" ? [[key, next.value] as const] : [],
+  );
+
 const duplicates = (ids: readonly (string | number)[]): boolean => new Set(ids).size !== ids.length;
 
-const resourceViolation = (
-  resources: PackageResources,
-  expected: PackageResources,
-): string | undefined => {
+type ResourceViolationOptions = {
+  op: SetPackageResourcesOp;
+  expected: PackageResources;
+  relationships: ReadonlyMap<string, Relationship>;
+  media: ReadonlyMap<string, MediaFile>;
+};
+
+/** Validate the definitions and entries this operation adds or changes. */
+const resourceViolation = ({
+  op: { resources, relationships: relationshipChange, media: mediaChange },
+  expected,
+  relationships,
+  media,
+}: ResourceViolationOptions): string | undefined => {
   const styles = valueOf(resources.styles);
   if (styles !== undefined && duplicates(styles.styles.map(({ styleId }) => styleId)))
     return "Imported styles contain duplicate ids.";
@@ -75,16 +217,13 @@ const resourceViolation = (
     if (numbering.nums.some(({ abstractNumId }) => !abstracts.includes(abstractNumId)))
       return "An imported numbering instance has no abstract definition.";
   }
-  const relationships = valueOf(resources.relationships) ?? [];
-  const media = valueOf(resources.media) ?? [];
+  const changedRelationships = presentEntries(relationshipChange);
   if (
-    duplicates(relationships.map(([key]) => key)) ||
-    relationships.some(([key, relationship]) => key.length === 0 || key !== relationship.id)
+    changedRelationships.some(([key, relationship]) => key.length === 0 || key !== relationship.id)
   )
-    return "Imported relationships contain invalid or duplicate ids.";
+    return "Imported relationships contain invalid ids.";
   if (
-    duplicates(media.map(([key]) => key)) ||
-    media.some(
+    presentEntries(mediaChange).some(
       ([key, file]) =>
         key !== file.path ||
         !key.startsWith("word/media/") ||
@@ -93,18 +232,17 @@ const resourceViolation = (
     )
   )
     return "Imported media contains invalid paths or bytes.";
-  const paths = new Set(media.map(([key]) => key));
-  for (const [, relationship] of relationships) {
+  for (const [, relationship] of changedRelationships) {
     if (!relationship.type.endsWith("/image") || relationship.targetMode === "External") continue;
     const target = relationship.target.startsWith("/")
       ? relationship.target.slice(1)
       : `word/${relationship.target}`;
-    if (!paths.has(target)) return "An imported image relationship has no media part.";
+    if (!media.has(target)) return "An imported image relationship has no media part.";
   }
   const available = {
     style: new Set<string | number>(styles?.styles.map(({ styleId }) => styleId) ?? []),
     numbering: new Set<string | number>(numbering?.nums.map(({ numId }) => numId) ?? []),
-    relationship: new Set<string | number>(relationships.map(([key]) => key)),
+    relationship: new Set<string | number>(relationships.keys()),
   } satisfies Record<ResourceReferenceKind, ReadonlySet<string | number>>;
   const unavailable = (kind: ResourceReferenceKind, id: string | number) =>
     !available[kind].has(id);
@@ -207,11 +345,31 @@ export const applyPackageResourcesOp = (
     Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
   if (!structurallyEqual(expected, op.expected))
     return failed(DOCUMENT_OP_REFUSAL_REASONS.STALE, "The package resources changed.");
-  const violation = resourceViolation(op.resources, expected);
+  // The journal and resulting document must not share mutable resource records.
+  const owned = cloneModel(op);
+  const relationships = applyMapChange({
+    current: relationshipsOf(document),
+    change: owned.relationships,
+    record: (relationship: Relationship) => cloneModel(relationship),
+    stored: (relationship: Relationship) => cloneModel(relationship),
+  });
+  if (relationships.type === "refused") return failed(relationships.reason, relationships.message);
+  const media = applyMapChange({
+    current: mediaOf(document),
+    change: owned.media,
+    record: mediaRecordOf,
+    stored: mediaFileOf,
+  });
+  if (media.type === "refused") return failed(media.reason, media.message);
+  const violation = resourceViolation({
+    op: owned,
+    expected,
+    relationships: relationships.map.entries,
+    media: media.map.entries,
+  });
   if (violation !== undefined)
     return failed(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, violation);
-  // The journal and resulting document must not share mutable resource records.
-  const resources = cloneModel(op.resources);
+  const { resources } = owned;
   const pkg = { ...document.package };
   delete pkg.styles;
   delete pkg.numbering;
@@ -219,22 +377,11 @@ export const applyPackageResourcesOp = (
   delete pkg.media;
   if (resources.styles.type !== "omitted") pkg.styles = valueOf(resources.styles);
   if (resources.numbering.type !== "omitted") pkg.numbering = valueOf(resources.numbering);
-  if (resources.relationships.type !== "omitted") {
-    const relationships = valueOf(resources.relationships);
-    pkg.relationships = relationships === undefined ? undefined : new Map(relationships);
-  }
-  if (resources.media.type !== "omitted") {
-    const media = valueOf(resources.media);
-    pkg.media =
-      media === undefined
-        ? undefined
-        : new Map(
-            media.map(([key, file]) => [
-              key,
-              Object.assign({}, file, { data: new Uint8Array(file.data).buffer }),
-            ]),
-          );
-  }
+  if (relationships.map.presence !== "omitted")
+    pkg.relationships =
+      relationships.map.presence === "present" ? new Map(relationships.map.entries) : undefined;
+  if (media.map.presence !== "omitted")
+    pkg.media = media.map.presence === "present" ? new Map(media.map.entries) : undefined;
   const removed = {
     style: missingIds(
       document.package.styles?.styles.map(({ styleId }) => styleId) ?? [],
@@ -260,7 +407,13 @@ export const applyPackageResourcesOp = (
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
       "A removed package resource is still referenced.",
     );
-  if (structurallyEqual(expected, op.resources))
+  if (
+    structurallyEqual(expected, resources) &&
+    owned.relationships.expected === owned.relationships.next &&
+    owned.relationships.entries.length === 0 &&
+    owned.media.expected === owned.media.next &&
+    owned.media.entries.length === 0
+  )
     return Result.ok({
       document,
       inverse: [],
@@ -274,6 +427,8 @@ export const applyPackageResourcesOp = (
         type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
         expected: packageResourcesOf(updated),
         resources: expected,
+        relationships: inverseMapChange(owned.relationships),
+        media: inverseMapChange(owned.media),
       },
     ],
     touched: { modified: [], inserted: [], removed: [] },

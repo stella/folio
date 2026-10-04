@@ -6,8 +6,9 @@ import { assertExactModel } from "../../../../../test/exactModel";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import type { Document } from "../../model/document";
+import type { MediaFile } from "../../model/styles";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
-import { packageResourcesOf } from "../packageResources";
+import { packageResourcesOf, packageResourcesOpOf } from "../packageResources";
 import { DOCUMENT_OP_TYPES, type DocumentOp, type SetPackageResourcesOp } from "../types";
 import { captureDocumentOp } from "../wire";
 
@@ -17,37 +18,52 @@ const document: Document = {
   package: { document: { content: [{ type: "paragraph", paraId: "00000001", content: [] }] } },
 };
 
-const imageOp = (input: Document, bytes: readonly number[]): SetPackageResourcesOp => ({
-  type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
-  expected: packageResourcesOf(input),
-  resources: {
-    ...packageResourcesOf(input),
-    relationships: {
-      type: "present",
-      value: [
-        [
-          "rId1",
-          {
-            id: "rId1",
-            type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
-            target: "media/clipboard.png",
-          },
-        ],
+const CLIPBOARD_MEDIA = "word/media/clipboard.png";
+const IMAGE_RELATIONSHIP =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
+
+const withImage = (input: Document, bytes: readonly number[]): Document => ({
+  ...input,
+  package: {
+    ...input.package,
+    relationships: new Map([
+      ...(input.package.relationships ?? []),
+      ["rId1", { id: "rId1", type: IMAGE_RELATIONSHIP, target: "media/clipboard.png" }],
+    ]),
+    media: new Map([
+      ...(input.package.media ?? []),
+      [
+        CLIPBOARD_MEDIA,
+        { path: CLIPBOARD_MEDIA, mimeType: "image/png", data: Uint8Array.from(bytes).buffer },
       ],
-    },
-    media: {
-      type: "present",
-      value: [
-        [
-          "word/media/clipboard.png",
-          {
-            path: "word/media/clipboard.png",
-            mimeType: "image/png",
-            data: bytes,
-          },
-        ],
-      ],
-    },
+    ]),
+  },
+});
+
+const imageOp = (input: Document, bytes: readonly number[]): SetPackageResourcesOp =>
+  packageResourcesOpOf({ before: input, after: withImage(input, bytes) });
+
+const unchangedOp = (input: Document): SetPackageResourcesOp =>
+  packageResourcesOpOf({ before: input, after: input });
+
+/** The parser stores each media part under its package path and a `word/`-relative alias. */
+const parsedImage: MediaFile = {
+  path: "word/media/image1.png",
+  mimeType: "image/png",
+  data: Uint8Array.from([137, 80, 78, 71]).buffer,
+};
+
+const withParsedImage = (input: Document): Document => ({
+  ...input,
+  package: {
+    ...input.package,
+    relationships: new Map([
+      ["rId7", { id: "rId7", type: IMAGE_RELATIONSHIP, target: "media/image1.png" }],
+    ]),
+    media: new Map([
+      [parsedImage.path, parsedImage],
+      ["media/image1.png", parsedImage],
+    ]),
   },
 });
 
@@ -57,7 +73,8 @@ test("binary resource operations survive JSON and undo restores exact package fi
       fc.array(fc.uint8Array({ maxLength: 128 }), { minLength: 8, maxLength: 16 }),
       fc.boolean(),
       fc.boolean(),
-      (steps, explicit, nestedUndefined) => {
+      fc.boolean(),
+      (steps, explicit, nestedUndefined, parsedMedia) => {
         const input: Document = explicit
           ? {
               ...document,
@@ -70,15 +87,16 @@ test("binary resource operations survive JSON and undo restores exact package fi
               },
             }
           : document;
+        const seeded = parsedMedia ? withParsedImage(input) : input;
         const initial: Document = nestedUndefined
           ? {
-              ...input,
+              ...seeded,
               package: {
-                ...input.package,
+                ...seeded.package,
                 styles: { styles: [], docDefaults: { rPr: { bold: undefined } } },
               },
             }
-          : input;
+          : seeded;
         const original = structuredClone(initial);
         let current = initial;
         const journal: {
@@ -91,9 +109,14 @@ test("binary resource operations survive JSON and undo restores exact package fi
           const before = current;
           const snapshot = structuredClone(before);
           const op = jsonTransport(captureDocumentOp(imageOp(before, [...bytes])));
+          if (op.type !== DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES)
+            throw new TypeError("Capture changed the resource operation type.");
+          // Untouched package entries, including parser aliases, never travel with an import.
+          expect(op.media.entries.every(({ key }) => key === CLIPBOARD_MEDIA)).toBe(true);
+          expect(op.relationships.entries.every(({ key }) => key === "rId1")).toBe(true);
           const forward = applyDocumentOp(before, op).unwrap();
           assertExactModel(before, snapshot);
-          const media = forward.document.package.media?.get("word/media/clipboard.png");
+          const media = forward.document.package.media?.get(CLIPBOARD_MEDIA);
           if (media === undefined)
             throw new TypeError("A valid resource import produced no media.");
           assertExactModel(new Uint8Array(media.data), bytes);
@@ -128,7 +151,7 @@ test("binary resource operations survive JSON and undo restores exact package fi
 
 test("byte mutations make a package resource inverse stale", () => {
   const forward = applyDocumentOp(document, imageOp(document, [1, 2, 3])).unwrap();
-  const media = forward.document.package.media?.get("word/media/clipboard.png");
+  const media = forward.document.package.media?.get(CLIPBOARD_MEDIA);
   if (media === undefined) throw new Error("Missing test media");
   new Uint8Array(media.data)[1] = 99;
   const undo = applyDocumentOps(forward.document, forward.inverse);
@@ -138,18 +161,20 @@ test("byte mutations make a package resource inverse stale", () => {
 
 test("invalid or duplicate resource imports and a later content refusal are atomic", () => {
   const valid = imageOp(document, [1]);
-  const media = valid.resources.media;
-  if (media.type !== "present") throw new Error("Missing test media state");
+  const entry = valid.media.entries.at(0);
+  if (entry?.next.type !== "present") throw new Error("Missing test media change");
   const bad: SetPackageResourcesOp[] = [
+    { ...valid, media: { ...valid.media, entries: [entry, entry] } },
     {
       ...valid,
-      resources: {
-        ...valid.resources,
-        media: { type: "present", value: [...media.value, ...media.value] },
+      media: {
+        ...valid.media,
+        entries: [
+          { ...entry, next: { type: "present", value: { ...entry.next.value, data: [-1] } } },
+        ],
       },
     },
-    imageOp(document, [-1]),
-    { ...valid, resources: { ...valid.resources, media: { type: "omitted" } } },
+    { ...valid, media: { ...valid.media, next: "omitted" } },
     {
       ...valid,
       resources: {
@@ -214,8 +239,7 @@ test("resource removal checks every typed style-link alias in retained definitio
     };
     const expected = packageResourcesOf(input);
     const removed = applyDocumentOp(input, {
-      type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
-      expected,
+      ...unchangedOp(input),
       resources: { ...expected, styles: { type: "present", value: { styles: [retained] } } },
     });
     expect(removed.isErr()).toBe(true);
@@ -244,8 +268,7 @@ test("resource removal checks every typed style-link alias in retained definitio
     };
     const expected = packageResourcesOf(input);
     const removed = applyDocumentOp(input, {
-      type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
-      expected,
+      ...unchangedOp(input),
       resources: { ...expected, styles: { type: "omitted" } },
     });
     expect(removed.isErr()).toBe(true);
@@ -315,8 +338,7 @@ test("new style and numbering imports refuse missing dependencies without import
   for (const key of ["basedOn", "next", "link"] as const) {
     const expected = packageResourcesOf(document);
     const result = applyDocumentOp(document, {
-      type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
-      expected,
+      ...unchangedOp(document),
       resources: {
         ...expected,
         styles: {
@@ -331,8 +353,7 @@ test("new style and numbering imports refuse missing dependencies without import
   }
   const expected = packageResourcesOf(document);
   const result = applyDocumentOp(document, {
-    type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
-    expected,
+    ...unchangedOp(document),
     resources: {
       ...expected,
       numbering: {
