@@ -845,6 +845,19 @@ export type SetSectionPropsOp = {
 };
 /** JSON-safe lifecycle deltas: omitted fields are unowned, null restores absence. */
 export type StoryParts = {
+  /** Owned fields whose source explicitly had an undefined own property. */
+  undefinedFields?: readonly (
+    | { target: "body"; keys: readonly (keyof NonNullable<StoryParts["body"]>)[] }
+    | {
+        target: "package";
+        keys: readonly (keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">)[];
+      }
+    | {
+        target: "section";
+        index: number;
+        keys: readonly (keyof Omit<NonNullable<StoryParts["sections"]>[number], "index">)[];
+      }
+  )[];
   body?: {
     [Key in keyof Omit<DocumentBody, "sections">]?: Key extends "content"
       ? DocumentBody[Key]

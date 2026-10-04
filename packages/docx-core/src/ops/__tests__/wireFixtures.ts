@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Document, Paragraph, Table, TableRow } from "../../model/document";
 import { captureSectionView, captureSectionViewState } from "../blocks";
 import { applyDocumentOp } from "../apply";
+import { captureStoryParts } from "../storyLifecycle";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
   SECTION_BOUNDARY_POLICIES,
@@ -590,6 +591,39 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     for (const inverse of applied.value.inverse) out.push(toOpEnvelope(inverse));
     lifecycleDocument = applied.value.document;
   }
+  // Persist the producer's own-undefined lifecycle presence across every target.
+  const undefinedLifecycle = {
+    package: {
+      document: {
+        content: [second],
+        background: undefined,
+        finalSectionProperties: undefined,
+        comments: undefined,
+        sections: [{ content: [second], properties: {}, headers: undefined, footers: undefined }],
+      },
+      headers: undefined,
+      footers: undefined,
+      footnotes: undefined,
+      endnotes: undefined,
+      settings: undefined,
+    },
+  } satisfies Document;
+  const undefinedParts = captureStoryParts(undefinedLifecycle, {
+    body: { background: null, finalSectionProperties: null, comments: null },
+    headers: null,
+    footers: null,
+    footnotes: null,
+    endnotes: null,
+    settings: null,
+    sections: [{ index: 0, properties: {}, headers: null, footers: null }],
+  });
+  out.push(
+    toOpEnvelope({
+      type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+      expected: undefinedParts,
+      parts: undefinedParts,
+    }),
+  );
   // Semantic table fixtures are independent: no earlier review or geometry constrains a later case.
   const editTable: Table = {
     type: "table",

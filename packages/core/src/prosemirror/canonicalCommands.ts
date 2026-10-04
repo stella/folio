@@ -31,19 +31,34 @@ export const getCanonicalCommandIntents = (command: Command, state: EditorState)
 export const canonicalRunFormatting = (state: EditorState, patch: RunPropsPatch) =>
   [{ type: "formatRun", from: state.selection.from, to: state.selection.to, patch }] as const;
 
+const canonicalParagraphFormatting = (
+  state: EditorState,
+  patch: ParagraphPropsPatch | ((paragraph: PMNode) => ParagraphPropsPatch),
+) => {
+  const intents: CanonicalCommandIntent[] = [];
+  state.doc.nodesBetween(state.selection.from, state.selection.to, (node, position) => {
+    if (node.type.name !== "paragraph") return;
+    intents.push({
+      type: "formatParagraph",
+      at: position + 1,
+      patch: typeof patch === "function" ? patch(node) : patch,
+    });
+  });
+  return intents;
+};
+
 export const withCanonicalParagraphFormatting = (
   command: Command,
   patch: ParagraphPropsPatch | ((paragraph: PMNode) => ParagraphPropsPatch),
+): Command => withCanonicalCommand(command, (state) => canonicalParagraphFormatting(state, patch));
+
+/** Commands that read the selection start apply that same patch across selected paragraphs. */
+export const withCanonicalStartParagraphFormatting = (
+  command: Command,
+  patch: (paragraph: PMNode) => ParagraphPropsPatch,
 ): Command =>
   withCanonicalCommand(command, (state) => {
-    const intents: CanonicalCommandIntent[] = [];
-    state.doc.nodesBetween(state.selection.from, state.selection.to, (node, position) => {
-      if (node.type.name !== "paragraph") return;
-      intents.push({
-        type: "formatParagraph",
-        at: position + 1,
-        patch: typeof patch === "function" ? patch(node) : patch,
-      });
-    });
-    return intents;
+    const paragraph = state.selection.$from.parent;
+    if (paragraph.type.name !== "paragraph") return [];
+    return canonicalParagraphFormatting(state, patch(paragraph));
   });

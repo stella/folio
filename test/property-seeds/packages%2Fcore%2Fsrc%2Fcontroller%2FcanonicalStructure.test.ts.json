@@ -14,5 +14,31 @@
       "note": "The projected numbering prefix covers levels zero through the paragraph level, while the definition retains all nine levels.",
       "date": "2026-10-04"
     }
+  ],
+  "generated direction and tab command histories preserve authored values and exact inverse": [
+    {
+      "seed": -1910096866,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Imported PM paragraph serialization retains original tabs and omits edited tabs; use current command attrs as the authored-intent oracle and preserve canonical tabs through save/reopen.",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": 1503925813,
+      "path": "1:0:0:0:2:2:3:1:1:1:2:2:1:2:2:3:1:2:1:1:1:1:1:1:1:1:1:1:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:0:0:0:0:0:0:1:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:0:0",
+      "note": "Empty tab arrays emit no w:tabs; save/reopen oracle compares emitted semantics while exact undo/redo still preserves authored empty arrays.",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": 499857711,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:2:0:0:0:0:0:0:0:0:0:0:0:1:1:0:0:0:1:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1",
+      "note": "OOXML omits the default tab leader none; normalize schema defaults only in the save/reopen oracle, preserving exact authored values in journal checks.",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": -1667796013,
+      "path": "1:0:7:7:4:4:4:6:2:2:2:2:3:2:2:2:2:2:2:2:2:2:2:2:5:5:5:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3",
+      "note": "Projection sorts tab positions while authored model preserves imported ordering; compare command semantics by position and preserve exact ordering through inverse/redo.",
+      "date": "2026-10-04"
+    }
   ]
 }
