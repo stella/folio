@@ -4,6 +4,9 @@
  * Serializes Comment[] to OOXML comments.xml format.
  */
 
+import { COMMENT_PART_RELATIONSHIPS } from "@stll/docx-core/model";
+import type { Document } from "../../types/document";
+
 import { commentThreadParaId } from "../commentThreadKey";
 import { deterministicHexId } from "../../utils/hexId";
 import type { Comment, Paragraph } from "../../types/content";
@@ -13,6 +16,12 @@ import { serializeWithPreservedChildren } from "../containerChildren";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { escapeXmlAttribute } from "@stll/docx-core";
+
+/** An owned empty part survives deletion of its final thread. */
+export const hasOwnedCommentsPart = (document: Document): boolean =>
+  [...(document.package.relationships?.values() ?? [])].some(
+    ({ type }) => type === COMMENT_PART_RELATIONSHIPS.comments.type,
+  );
 
 const DEFAULT_ANNOTATION_REFERENCE_PROPERTIES =
   '<w:rPr><w:rStyle w:val="CommentReference"/></w:rPr>';

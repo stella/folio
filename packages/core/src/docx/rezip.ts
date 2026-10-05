@@ -1,3 +1,4 @@
+import { getXmlSourceRange, parseStreamingXmlWithSourceRanges } from "./streamingXmlParser";
 import type { SaveDiagnosticOptions } from "./saveDiagnostics";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { registerContentTypeParts } from "./contentTypeRegistry";
@@ -41,7 +42,10 @@ import {
   escapeXmlText,
   validateDocxPackage,
 } from "@stll/docx-core";
-import { COMMENT_PART_RELATIONSHIPS, mintRelationshipId } from "@stll/docx-core/model";
+import { mintRelationshipId } from "@stll/docx-core/model";
+import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
+import { canonicalJson } from "../utils/canonicalJson";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
 import JSZip from "jszip";
 
@@ -89,14 +93,19 @@ import {
   collectParaIds,
   type NotePartPatch,
   patchNumberingDefinitions,
+  spliceXml,
 } from "./selectiveXmlPatch";
 import {
   type CommentPartPlan,
   planCommentParts,
+  hasOwnedCommentsPart,
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
-import { serializeDocument } from "./serializer/documentSerializer";
+import {
+  serializeDocument,
+  type DocumentBodyAuthorityOptions,
+} from "./serializer/documentSerializer";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
 import {
   serializeEndnotes,
@@ -383,9 +392,7 @@ async function serializeCommentsToZip(
     // A non-empty source part with an empty current model is different: the
     // user removed the last comment, so it must still be overwritten below to
     // prevent the old thread from reappearing.
-    const ownsCommentsPart = [...(doc.package.relationships?.values() ?? [])].some(
-      ({ type }) => type === COMMENT_PART_RELATIONSHIPS.comments.type,
-    );
+    const ownsCommentsPart = hasOwnedCommentsPart(doc);
     if (
       sourceCommentsXml === undefined ? !ownsCommentsPart : !hasCommentEntries(sourceCommentsXml)
     ) {
@@ -876,6 +883,167 @@ const materializeEmbeddedMedia = async ({
   await registerImageExtensions(zip, extensions, compressionLevel);
 };
 
+export class CanonicalImageRelationshipRefusalError extends TaggedError(
+  "CanonicalImageRelationshipRefusalError",
+)<{
+  message: string;
+  gap: typeof CANONICAL_GAP.save;
+  part: string;
+  relationshipId: string;
+  reason: "conflict" | "unresolved" | "missingMedia" | "unsafeTarget";
+}> {}
+
+type PublishCanonicalImageResourcesOptions = {
+  document: Document;
+  zip: JSZip;
+  compressionLevel: number;
+};
+
+/** Publish allocated pictures into each owning story without rebinding canonical ids. */
+export const publishCanonicalImageResources = async ({
+  document,
+  zip,
+  compressionLevel,
+}: PublishCanonicalImageResourcesOptions): Promise<void> => {
+  const baseline = getDocumentSourceBaseline(document);
+  for (const { relsPath, blocks } of collectDocxParts(document, zip)) {
+    const images: Image[] = [];
+    visitBlockTreeRecords(blocks, (record) => {
+      if (record.type !== "paragraph") return BLOCK_TREE_DESCENT.descend;
+      visitParagraphRuns(record, (run) => {
+        for (const content of run.content) {
+          if (content.type === "drawing" && content.image.rId !== undefined)
+            images.push(content.image);
+        }
+      });
+      return BLOCK_TREE_DESCENT.descend;
+    });
+    if (images.length === 0) continue;
+    // oxlint-disable-next-line no-await-in-loop -- each story owns an independent relationship table
+    let xml = await readRelsOrStub(zip, relsPath);
+    const local = parseRelationships(xml);
+    const partPath = relsPath.replace("/_rels/", "/").replace(/\.rels$/u, "");
+    let changed = false;
+    for (const image of images) {
+      const id = image.rId;
+      if (id === undefined) continue;
+      const refuse = (
+        reason: CanonicalImageRelationshipRefusalError["reason"],
+        message: string,
+      ): never => {
+        throw new CanonicalImageRelationshipRefusalError({
+          message,
+          gap: CANONICAL_GAP.save,
+          part: relsPath,
+          relationshipId: id,
+          reason,
+        });
+      };
+      const source = local.get(id);
+      const allocated = document.package.relationships?.get(id);
+      // Newly allocated root resources can be published into any story. Existing
+      // secondary bindings retain their own identity when root ids happen to repeat.
+      const allocatedMediaPath =
+        allocated?.targetMode === "External" || allocated?.type !== RELATIONSHIP_TYPES.image
+          ? undefined
+          : resolveRelativePath("word/_rels/document.xml.rels", allocated.target);
+      const allocatedMedia =
+        allocatedMediaPath === undefined
+          ? undefined
+          : document.package.media?.get(allocatedMediaPath);
+      const newlyAllocated =
+        allocated?.type === RELATIONSHIP_TYPES.image &&
+        (baseline.type !== "captured" ||
+          canonicalJson(allocated) !== canonicalJson(baseline.resourceRelationships?.get(id)));
+      const identifiesAllocated =
+        relsPath === "word/_rels/document.xml.rels" ||
+        newlyAllocated ||
+        (source === undefined &&
+          image.src !== undefined &&
+          (allocated?.targetMode === "External"
+            ? image.src === allocated.target
+            : image.src === allocatedMedia?.dataUrl));
+      const desired = identifiesAllocated ? allocated : source;
+      if (desired?.type !== RELATIONSHIP_TYPES.image)
+        return refuse("unresolved", "A canonical inline picture has no owning image relationship.");
+      const desiredRelsPath = desired === allocated ? "word/_rels/document.xml.rels" : relsPath;
+      const absolute =
+        desired.targetMode === "External"
+          ? undefined
+          : resolveRelativePath(desiredRelsPath, desired.target);
+      if (desired.targetMode === "External" && !isAllowedExternalWatermarkImageUrl(desired.target))
+        return refuse("unsafeTarget", "A canonical inline picture has an unsafe external target.");
+      if (absolute !== undefined && isUnsafePackagePath(absolute))
+        return refuse("unsafeTarget", "A canonical inline picture has an unsafe media target.");
+      if (source) {
+        const sourceAbsolute =
+          source.targetMode === "External"
+            ? undefined
+            : resolveRelativePath(relsPath, source.target);
+        if (
+          source.type !== RELATIONSHIP_TYPES.image ||
+          (source.targetMode === "External") !== (desired.targetMode === "External") ||
+          (absolute === undefined ? source.target !== desired.target : sourceAbsolute !== absolute)
+        )
+          return refuse(
+            "conflict",
+            "A canonical inline picture relationship conflicts with its owning source binding.",
+          );
+      }
+      if (absolute !== undefined && !findZipEntryCaseInsensitive(zip, absolute.toLowerCase())) {
+        const media = document.package.media?.get(absolute);
+        if (!media)
+          return refuse("missingMedia", "A canonical inline picture is missing its media bytes.");
+        if (isUnsafePackagePath(media.path) || media.path !== absolute)
+          return refuse(
+            "unsafeTarget",
+            "A canonical inline picture media path does not match its relationship.",
+          );
+        zip.file(absolute, media.data, {
+          compression: "DEFLATE",
+          compressionOptions: { level: compressionLevel },
+        });
+        const extension = absolute.split(".").at(-1)?.toLowerCase();
+        if (!extension || !/^[a-z0-9]+$/u.test(extension))
+          return refuse("unsafeTarget", "A canonical inline picture media extension is invalid.");
+        // oxlint-disable-next-line no-await-in-loop -- shared content types advance with each materialized picture
+        await registerImageExtensions(zip, new Set([extension]), compressionLevel);
+      }
+      if (source) continue;
+      const root = parseXmlDocument(xml);
+      const strict =
+        root !== null &&
+        getChildElements(root).some((element) =>
+          getAttribute(element, null, "Type")?.startsWith(
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/",
+          ),
+        );
+      const type = strict
+        ? "http://purl.oclc.org/ooxml/officeDocument/relationships/image"
+        : RELATIONSHIP_TYPES.image;
+      const target =
+        absolute === undefined ? desired.target : relativeTargetForPart(partPath, absolute);
+      xml = appendCanonicalRelationship({
+        xml,
+        partPath: relsPath,
+        relationshipXml: `<Relationship Id="${escapeXmlAttribute(id)}" Type="${type}" Target="${escapeXmlAttribute(target)}"${desired.targetMode === "External" ? ' TargetMode="External"' : ""}/>`,
+      });
+      local.set(id, {
+        id,
+        type: RELATIONSHIP_TYPES.image,
+        target,
+        ...(desired.targetMode === "External" ? { targetMode: "External" } : {}),
+      });
+      changed = true;
+    }
+    if (changed)
+      zip.file(relsPath, xml, {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      });
+  }
+};
+
 // ============================================================================
 // NEW HYPERLINK HANDLING
 // ============================================================================
@@ -1099,16 +1267,17 @@ async function processNewHyperlinks(
 /**
  * Options for repacking DOCX
  */
-export type RepackOptions = SaveDiagnosticOptions & {
-  /** Compression level (0-9, default: 6) */
-  compressionLevel?: number;
-  /** Whether to update modification date in docProps/core.xml */
-  updateModifiedDate?: boolean;
-  /** Custom modifier name for lastModifiedBy */
-  modifiedBy?: string;
-  /** Changed note paragraphs that must be serialized even without source paraIds. */
-  changedNoteParaIds?: ReadonlySet<string>;
-};
+export type RepackOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & {
+    /** Compression level (0-9, default: 6) */
+    compressionLevel?: number;
+    /** Whether to update modification date in docProps/core.xml */
+    updateModifiedDate?: boolean;
+    /** Custom modifier name for lastModifiedBy */
+    modifiedBy?: string;
+    /** Changed note paragraphs that must be serialized even without source paraIds. */
+    changedNoteParaIds?: ReadonlySet<string>;
+  };
 
 /**
  * Bring the ids a package addresses itself by inside the bounds the format
@@ -1269,19 +1438,20 @@ const cloneDocxZip = (source: JSZip): JSZip => {
   return clone;
 };
 
-type FinishRepackOptions = SaveDiagnosticOptions & {
-  document: Document;
-  originalZip: JSZip;
-  outputZip: JSZip;
-  originalDocument: OriginalDocumentPart | undefined;
-  originalCorePropertiesXml: string | undefined;
-  compressionLevel: number;
-  updateModifiedDate: boolean;
-  modifiedBy?: string;
-  changedNoteParaIds?: ReadonlySet<string>;
-  sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
-  sectionReferenceRemovals?: readonly RemovedSectionReference[];
-};
+type FinishRepackOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & {
+    document: Document;
+    originalZip: JSZip;
+    outputZip: JSZip;
+    originalDocument: OriginalDocumentPart | undefined;
+    originalCorePropertiesXml: string | undefined;
+    compressionLevel: number;
+    updateModifiedDate: boolean;
+    modifiedBy?: string;
+    changedNoteParaIds?: ReadonlySet<string>;
+    sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
+    sectionReferenceRemovals?: readonly RemovedSectionReference[];
+  };
 
 const normalizeExportDrawingIds = ({ package: docxPackage }: Document): void => {
   normalizeDrawingIds({
@@ -1313,6 +1483,7 @@ const finishRepack = async ({
   modifiedBy,
   changedNoteParaIds,
   onDiagnostic,
+  bodyAuthority,
   sectionEndpointRemoval,
   sectionReferenceRemovals,
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
@@ -1323,6 +1494,8 @@ const finishRepack = async ({
   );
   await materializeEmbeddedMedia({ document, zip: outputZip, compressionLevel });
 
+  if (bodyAuthority === "canonical")
+    await publishCanonicalImageResources({ document, zip: outputZip, compressionLevel });
   const parts = collectDocxParts(document, outputZip);
   normalizeExportDrawingIds(document);
   await processNewImages(parts, outputZip, compressionLevel);
@@ -1335,6 +1508,7 @@ const finishRepack = async ({
   const documentXml = serializeDocument(
     document,
     originalDocument === undefined ? undefined : readRootNamespaceBindings(originalDocument.xml),
+    { xml: originalDocument?.xml, onDiagnostic, bodyAuthority },
   );
   if (originalDocument?.xml) {
     assertDocumentPackageFidelity({
@@ -1359,7 +1533,7 @@ const finishRepack = async ({
     compressionOptions: { level: compressionLevel },
   });
 
-  await rebindWatermarkRelIds(document, outputZip, compressionLevel);
+  await rebindWatermarkRelIds({ document, zip: outputZip, compressionLevel, bodyAuthority });
 
   await serializeHeadersFootersToZip({
     doc: document,
@@ -1455,6 +1629,7 @@ async function repackDocxWithSectionEndpointRemoval({
     compressionLevel,
     updateModifiedDate,
     onDiagnostic: options.onDiagnostic,
+    bodyAuthority: options.bodyAuthority,
     ...(modifiedBy !== undefined ? { modifiedBy } : {}),
     ...(changedNoteParaIds !== undefined ? { changedNoteParaIds } : {}),
     ...(sectionEndpointRemoval !== undefined ? { sectionEndpointRemoval } : {}),
@@ -1526,6 +1701,12 @@ export async function repackDocxFromRaw(
   exportDocument = await materializeNewHeaderFooterParts(exportDocument, newZip, compressionLevel);
   await materializeEmbeddedMedia({ document: exportDocument, zip: newZip, compressionLevel });
 
+  if (options.bodyAuthority === "canonical")
+    await publishCanonicalImageResources({
+      document: exportDocument,
+      zip: newZip,
+      compressionLevel,
+    });
   const parts = collectDocxParts(exportDocument, newZip);
   normalizeExportDrawingIds(exportDocument);
   await processNewImages(parts, newZip, compressionLevel);
@@ -1540,6 +1721,11 @@ export async function repackDocxFromRaw(
   const documentXml = serializeDocument(
     exportDocument,
     rawContent.documentXml ? readRootNamespaceBindings(rawContent.documentXml) : undefined,
+    {
+      xml: rawContent.documentXml ?? undefined,
+      onDiagnostic: options.onDiagnostic,
+      bodyAuthority: options.bodyAuthority,
+    },
   );
   if (rawContent.documentXml) {
     assertDocumentPackageFidelity({
@@ -1556,7 +1742,12 @@ export async function repackDocxFromRaw(
   // Rebind picture-watermark image rIds so each header references the image in
   // its own rels (materialization, run before image processing above, gave
   // coverage-created header parts a relationship target to anchor against).
-  await rebindWatermarkRelIds(exportDocument, newZip, compressionLevel);
+  await rebindWatermarkRelIds({
+    document: exportDocument,
+    zip: newZip,
+    compressionLevel,
+    bodyAuthority: options.bodyAuthority,
+  });
 
   // Serialize and update modified headers/footers
   await serializeHeadersFootersToZip({
@@ -2337,14 +2528,69 @@ export function hasModelDrivenPictureWatermark(doc: Document): boolean {
  * media target, or mint a new one. Media bytes are materialized before this step. Raw watermark XML
  * changes only when its image relationship must be rebound.
  */
-async function rebindWatermarkRelIds(
-  doc: Document,
-  zip: JSZip,
-  compressionLevel: number,
-): Promise<void> {
+type AppendCanonicalRelationshipOptions = {
+  xml: string;
+  relationshipXml: string;
+  partPath: string;
+};
+const appendCanonicalRelationship = ({
+  xml,
+  relationshipXml,
+  partPath,
+}: AppendCanonicalRelationshipOptions): string => {
+  const parsed = parseStreamingXmlWithSourceRanges(xml);
+  if (parsed.status !== "parsed")
+    throw new DocxPackageFidelityError(`Cannot read canonical relationships in ${partPath}`);
+  const root = getChildElements(parsed.value).find(
+    (element) =>
+      getLocalName(element.name ?? "") === "Relationships" &&
+      getNamespaceUri(element) === PACKAGE_RELATIONSHIPS_NAMESPACE_URI,
+  );
+  const range = root ? getXmlSourceRange(root) : undefined;
+  if (!root?.name || !range)
+    throw new DocxPackageFidelityError(`Cannot find canonical relationship root in ${partPath}`);
+  const sourceRoot = xml.slice(range.start, range.end);
+  const bound = relationshipXml.replace(
+    "<Relationship ",
+    `<Relationship xmlns="${PACKAGE_RELATIONSHIPS_NAMESPACE_URI}" `,
+  );
+  const selfClosing = sourceRoot.endsWith("/>");
+  const close = xml.lastIndexOf("</", range.end);
+  if (!selfClosing && close < range.start)
+    throw new DocxPackageFidelityError(`Cannot extend canonical relationships in ${partPath}`);
+  const result = spliceXml(xml, [
+    selfClosing
+      ? { start: range.end - 2, end: range.end, newXml: ">" + bound + `</${root.name}>` }
+      : { start: close, end: close, newXml: bound },
+  ]);
+  if (result === null)
+    throw new DocxPackageFidelityError(`Cannot splice canonical relationships in ${partPath}`);
+  return result;
+};
+
+type RebindWatermarkRelIdsOptions = {
+  document: Document;
+  zip: JSZip;
+  compressionLevel: number;
+  bodyAuthority: "canonical" | "model" | undefined;
+};
+async function rebindWatermarkRelIds({
+  document: doc,
+  zip,
+  compressionLevel,
+  bodyAuthority,
+}: RebindWatermarkRelIdsOptions): Promise<void> {
   const rels = doc.package.relationships;
   const headers = doc.package.headers;
-  if (!rels || !headers) {
+  if (!headers) return;
+  if (!rels) {
+    if (
+      bodyAuthority === "canonical" &&
+      [...headers.values()].some(({ watermark }) => watermark?.kind === "picture")
+    )
+      throw new DocxPackageFidelityError(
+        "A canonical picture watermark has no header relationship map",
+      );
     return;
   }
 
@@ -2362,6 +2608,10 @@ async function rebindWatermarkRelIds(
     }
     const rel = rels.get(rId);
     if (!rel?.target) {
+      if (bodyAuthority === "canonical")
+        throw new DocxPackageFidelityError(
+          `A canonical picture watermark has no header target for ${rId}`,
+        );
       continue;
     }
     pending.push({
@@ -2441,6 +2691,13 @@ async function rebindWatermarkRelIds(
         // `file:` URL or UNC path into the exported package's relationships.
         // Fall back to whatever the rId already resolves to (or drop it,
         // same as an orphaned rId) rather than trusting the raw string.
+        if (
+          bodyAuthority === "canonical" &&
+          !isAllowedExternalWatermarkImageUrl(watermark.imageTarget)
+        )
+          throw new DocxPackageFidelityError(
+            "A canonical picture watermark has an unsafe external target",
+          );
         canonical = isAllowedExternalWatermarkImageUrl(watermark.imageTarget)
           ? { mode: "external", url: watermark.imageTarget }
           : resolveCanonical(watermark.imageRId);
@@ -2451,8 +2708,18 @@ async function rebindWatermarkRelIds(
       canonical = resolveCanonical(watermark.imageRId);
     }
     if (!canonical) {
+      if (bodyAuthority === "canonical")
+        throw new DocxPackageFidelityError(
+          "A canonical picture watermark image cannot be resolved",
+        );
       continue; // Orphaned rId with no embedded media anywhere — cannot invent.
     }
+    if (
+      bodyAuthority === "canonical" &&
+      canonical.mode === "internal" &&
+      !zip.file(canonical.absolute)
+    )
+      throw new DocxPackageFidelityError("A canonical picture watermark image part is missing");
 
     const relsXml = relsXmlByPath.get(relsPath) ?? EMPTY_RELS_XML;
     const localRels = parseRelationships(relsXml);
@@ -2461,6 +2728,27 @@ async function rebindWatermarkRelIds(
       // Already resolves to the canonical image. (A local rId resolving to a
       // *different* image — header rIds repeat across parts — must still be
       // rebound.)
+      continue;
+    }
+
+    if (bodyAuthority === "canonical") {
+      if (localRels.has(watermark.imageRId))
+        throw new DocxPackageFidelityError(
+          `A canonical picture watermark relationship ${watermark.imageRId} has a conflicting target`,
+        );
+      const relXml =
+        canonical.mode === "external"
+          ? `<Relationship Id="${escapeXmlAttribute(watermark.imageRId)}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXmlAttribute(canonical.url)}" TargetMode="External"/>`
+          : `<Relationship Id="${escapeXmlAttribute(watermark.imageRId)}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXmlAttribute(relativeTargetForPart(partPath, canonical.absolute))}"/>`;
+      relsXmlByPath.set(
+        relsPath,
+        appendCanonicalRelationship({
+          xml: relsXml,
+          relationshipXml: relXml,
+          partPath: relsPath,
+        }),
+      );
+      changedPaths.add(relsPath);
       continue;
     }
 
@@ -2968,15 +3256,16 @@ const styleDefinitionsToSerialize = (doc: Document): StyleDefinitions | undefine
   return missing.length === 0 ? styles : { ...styles, styles: [...styles.styles, ...missing] };
 };
 
-async function serializeAddedStylesIntoZip(
-  doc: Document,
-  originalZip: JSZip,
-  newZip: JSZip,
-  compressionLevel: number,
-): Promise<void> {
+type AddedStylesPlan =
+  | { type: "unchanged" }
+  | { type: "materialize"; styles: StyleDefinitions }
+  | { type: "patch"; path: string; xml: string };
+
+/** One append-only style owner for full repack and selective overlays. */
+export async function planAddedStyles(doc: Document, originalZip: JSZip): Promise<AddedStylesPlan> {
   const styles = doc.package.styles;
   if (!styles || styles.styles.length === 0) {
-    return;
+    return { type: "unchanged" };
   }
   const file = findNotePartEntry(originalZip, STYLES_PART_PATH);
   const originalXml = file ? await file.async("text") : null;
@@ -2992,17 +3281,7 @@ async function serializeAddedStylesIntoZip(
       ? originalXml.lastIndexOf(`</${rootName}>`)
       : -1;
   if (file === null || originalXml === null || rootClose < 0) {
-    // No usable styles part: write the whole model serialization so every
-    // style `document.xml` references resolves, and wire the part up.
-    await materializeNewNotePart({
-      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
-      newZip,
-      partPath: STYLES_PART_PATH,
-      relationshipType: RELATIONSHIP_TYPES.styles,
-      serializedPart: serializeStylesXml(styles),
-      compressionLevel,
-    });
-    return;
+    return { type: "materialize", styles };
   }
   // The part's ids and the ids already appended in this pass: two model styles
   // sharing an id would otherwise both be written, and a duplicate `w:styleId`
@@ -3017,7 +3296,7 @@ async function serializeAddedStylesIntoZip(
     added.push(style);
   }
   if (added.length === 0) {
-    return;
+    return { type: "unchanged" };
   }
   // The serializer writes `w:`; a part spelled otherwise gets each appended
   // style with its own namespace declarations, so the prefixes resolve.
@@ -3030,10 +3309,40 @@ async function serializeAddedStylesIntoZip(
       )
       .join("") +
     originalXml.slice(rootClose);
-  newZip.file(file.name, patched, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
-  });
+  return { type: "patch", path: file.name, xml: patched };
+}
+
+async function serializeAddedStylesIntoZip(
+  doc: Document,
+  originalZip: JSZip,
+  newZip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
+  const plan = await planAddedStyles(doc, originalZip);
+  switch (plan.type) {
+    case "unchanged":
+      return;
+    case "materialize":
+      await materializeNewNotePart({
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
+        newZip,
+        partPath: STYLES_PART_PATH,
+        relationshipType: RELATIONSHIP_TYPES.styles,
+        serializedPart: serializeStylesXml(plan.styles),
+        compressionLevel,
+      });
+      return;
+    case "patch":
+      newZip.file(plan.path, plan.xml, {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      });
+      return;
+    default: {
+      const exhaustive: never = plan;
+      return exhaustive;
+    }
+  }
 }
 
 type PatchNotePartIntoZipOptions = {
@@ -3294,12 +3603,13 @@ export function isDocxBuffer(buffer: ArrayBuffer): boolean {
  * ignored for a document that carries a source package, which keeps the
  * properties that package already states.
  */
-export type DocumentPropertiesOptions = SaveDiagnosticOptions & {
-  /** `dc:creator` in `docProps/core.xml`. Omitted when absent. */
-  creator?: string;
-  /** `Application` in `docProps/app.xml`. Omitted, with `AppVersion`, when absent. */
-  application?: string;
-};
+export type DocumentPropertiesOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & {
+    /** `dc:creator` in `docProps/core.xml`. Omitted when absent. */
+    creator?: string;
+    /** `Application` in `docProps/app.xml`. Omitted, with `AppVersion`, when absent. */
+    application?: string;
+  };
 
 /**
  * The application version a newly created package states.
@@ -3431,6 +3741,7 @@ export async function createDocx(
       compressionLevel: 6,
       updateModifiedDate: true,
       onDiagnostic: properties.onDiagnostic,
+      bodyAuthority: properties.bodyAuthority,
     });
   }
 
@@ -3444,6 +3755,7 @@ export async function createDocx(
     compressionLevel: 6,
     updateModifiedDate: true,
     onDiagnostic: properties.onDiagnostic,
+    bodyAuthority: properties.bodyAuthority,
   });
 }
 

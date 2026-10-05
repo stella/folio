@@ -16,15 +16,25 @@ const readFingerprint = (hf: HeaderFooter): unknown => {
 };
 
 // The capture handle survives object spreads without exposing baseline content in JSON.
-const BASELINE_HANDLE = Symbol("header-footer-source-baseline");
+const BASELINE_HANDLE = Symbol("package-source-baseline");
 const contentBaselines = new WeakMap<
   object,
-  {
-    fingerprint: string;
-    xml: string | undefined;
-    contentFingerprint: string;
-    content: readonly BlockContent[];
-  }
+  | {
+      type: "headerFooter";
+      fingerprint: string;
+      xml: string | undefined;
+      contentFingerprint: string;
+      content: readonly BlockContent[];
+    }
+  | {
+      type: "body";
+      fingerprint: { type: "pending" } | { type: "captured"; value: string };
+      xml: string;
+      body: Document["package"]["document"];
+      resourceStyles: Document["package"]["styles"];
+      resourceRelationships: Document["package"]["relationships"];
+      resourceMedia: ReadonlyMap<string, { data: ArrayBuffer; mimeType: string }>;
+    }
 >();
 
 const captureContentBaseline = (hf: HeaderFooter): void => {
@@ -33,6 +43,7 @@ const captureContentBaseline = (hf: HeaderFooter): void => {
   const handle = {};
   const content = structuredClone(hf.content);
   contentBaselines.set(handle, {
+    type: "headerFooter",
     fingerprint,
     xml: hf.verbatimXml,
     contentFingerprint: canonicalJson(content),
@@ -75,12 +86,19 @@ export const captureHeaderFooterPackageBaselines = (document: Document): void =>
 };
 
 /**
- * Transfer each header and footer part's capture handle across a trusted
+ * Transfer body, header and footer capture handles across a trusted
  * document graph clone. `structuredClone` drops symbol-keyed properties, so a
  * clone would otherwise read an edited part as uncaptured ("missing") rather
  * than as a mismatch against its source.
  */
 export const copyHeaderFooterBaselineHandles = (target: Document, source: Document): void => {
+  const sourceBody = source.package.document;
+  if (BASELINE_HANDLE in sourceBody)
+    Object.defineProperty(target.package.document, BASELINE_HANDLE, {
+      value: sourceBody[BASELINE_HANDLE],
+      enumerable: true,
+      configurable: true,
+    });
   for (const kind of ["headers", "footers"] as const) {
     const targets = target.package[kind];
     for (const [rId, sourcePart] of source.package[kind] ?? []) {
@@ -116,6 +134,7 @@ export const getHeaderFooterSourceBaseline = (
   const baseline = contentBaselines.get(handle);
   if (
     !baseline ||
+    baseline.type !== "headerFooter" ||
     baseline.fingerprint !== hf.verbatimFingerprint ||
     baseline.xml !== hf.verbatimXml ||
     baseline.contentFingerprint !== canonicalJson(baseline.content)
@@ -212,4 +231,75 @@ export const clearHeaderFooterVerbatimXml = (hf: HeaderFooter): void => {
   delete ext.verbatimXml;
   delete ext.verbatimFingerprint;
   Reflect.deleteProperty(hf, BASELINE_HANDLE);
+};
+
+/** Capture the body in the same trusted package registry as secondary stories. */
+export const captureDocumentSourceBaseline = (document: Document, xml: string): void => {
+  const body = structuredClone(document.package.document);
+  const handle = {};
+  contentBaselines.set(handle, {
+    type: "body",
+    fingerprint: { type: "pending" },
+    xml,
+    body,
+    resourceStyles: structuredClone(document.package.styles),
+    resourceRelationships: structuredClone(document.package.relationships),
+    resourceMedia: new Map(
+      [...(document.package.media ?? [])].map(([path, media]) => [
+        path,
+        { data: media.data, mimeType: media.mimeType },
+      ]),
+    ),
+  });
+  Object.defineProperty(document.package.document, BASELINE_HANDLE, {
+    value: handle,
+    enumerable: true,
+    configurable: true,
+  });
+  if (document.originalBuffer) {
+    const registry = packageBaselines.get(document.originalBuffer) ?? new Map();
+    registry.set("word/document.xml", new Map([["body", handle]]));
+    packageBaselines.set(document.originalBuffer, registry);
+  }
+};
+
+export const getDocumentSourceBaseline = (
+  document: Document,
+):
+  | { type: "missing" }
+  | { type: "mismatch" }
+  | {
+      type: "captured";
+      body: Document["package"]["document"];
+      xml: string;
+      fingerprint: string;
+      resourceStyles: Document["package"]["styles"];
+      resourceRelationships: Document["package"]["relationships"];
+      resourceMedia: ReadonlyMap<string, { data: ArrayBuffer; mimeType: string }>;
+    } => {
+  const body = document.package.document;
+  const handle =
+    BASELINE_HANDLE in body
+      ? body[BASELINE_HANDLE]
+      : document.originalBuffer &&
+        packageBaselines.get(document.originalBuffer)?.get("word/document.xml")?.get("body");
+  if (handle === undefined) return { type: "missing" };
+  if (typeof handle !== "object" || handle === null) return { type: "mismatch" };
+  const baseline = contentBaselines.get(handle);
+  if (!baseline || baseline.type !== "body") return { type: "mismatch" };
+  const fingerprint = JSON.stringify(baseline.body);
+  // The cloned body stays private until this first read. Capture its integrity
+  // fingerprint lazily so parsing alone never pays for save-only comparisons.
+  if (baseline.fingerprint.type === "pending")
+    baseline.fingerprint = { type: "captured", value: fingerprint };
+  if (baseline.fingerprint.value !== fingerprint) return { type: "mismatch" };
+  return {
+    type: "captured",
+    body: baseline.body,
+    xml: baseline.xml,
+    fingerprint,
+    resourceStyles: baseline.resourceStyles,
+    resourceRelationships: baseline.resourceRelationships,
+    resourceMedia: baseline.resourceMedia,
+  };
 };

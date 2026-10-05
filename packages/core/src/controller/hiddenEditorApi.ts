@@ -1,3 +1,4 @@
+import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 /**
  * Hidden-editor imperative API
  *
@@ -56,6 +57,9 @@ export type HiddenEditorApi = {
   /** Canonical snapshot, or null in the default session. */
   getCanonicalComments: () => Comment[] | null;
   getCanonicalDocument: () => Document | null;
+  captureCanonicalSave: () => CanonicalSaveSnapshot | null;
+  /** A save cannot acknowledge newer edits or an unfinished composition. */
+  isCanonicalSaveCurrent: (version: number) => boolean;
   /** Set the explicit mode for an active canonical session. */
   setCanonicalMode: (mode: CanonicalSessionMode) => boolean;
   /** Resolve canonical revisions as one batch and journal its exact inverse. */
@@ -115,6 +119,8 @@ export type HiddenEditorApiDeps = {
   getDocumentContext: () => Document | null;
   getCanonicalComments?: () => Comment[] | null;
   getCanonicalDocument?: () => Document | null;
+  captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
+  isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
   setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
   resolveCanonicalRevisions?: HiddenEditorApi["resolveCanonicalRevisions"];
   executeCanonicalCommand?: (command: Command) => boolean | undefined;
@@ -191,6 +197,9 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       !deps.isDestroying() && (deps.resolveCanonicalRevisions?.(revisionIds, resolution) ?? false),
 
     getCanonicalComments: () => deps.getCanonicalComments?.() ?? null,
+    captureCanonicalSave: () => deps.captureCanonicalSave?.() ?? null,
+    isCanonicalSaveCurrent: (version) => deps.isCanonicalSaveCurrent?.(version) ?? false,
+
     getCanonicalDocument: () => {
       const canonical = deps.getCanonicalDocument?.();
       return canonical ? cloneDocumentWithParagraphPropertySources(canonical) : null;
