@@ -41,20 +41,43 @@ jobs:
             /etc/apt/sources.list.d/microsoft-prod.sources
           bunx playwright install --with-deps chromium
 
+      - name: Check diagnostic harness
+        id: diagnostic-harness
+        if: github.ref != 'refs/heads/main'
+        continue-on-error: true
+        run: |
+          bun test scripts/canonical-fuzz-errors.test.ts scripts/canonical-browser-trace.test.ts
+          bun test packages/core/src/controller/hiddenEditorManager.test.ts -t 'canonical keyboard history restores deletion and identical replacement selections' --bail
+
       - name: Run canonical session property flows
         id: canonical
         continue-on-error: true
         run: |
           set -o pipefail
           mkdir -p fuzz-artifacts/canonical
-          bun test ./test/canonical-session.fuzz.ts 2>&1 | tee fuzz-artifacts/canonical/canonical-fuzz.log
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            bun test ./test/canonical-session.fuzz.ts 2>&1 | tee fuzz-artifacts/canonical/canonical-fuzz.log
+          else
+            FOLIO_CANONICAL_REPLAY_SET=redo bunx playwright test --project=interactions tests/visual/canonical-browser-history.interactions.spec.ts --workers=1 --output=fuzz-playwright/canonical 2>&1 | tee fuzz-artifacts/canonical/canonical-fuzz.log
+          fi
         env:
           CI: "true"
           PROPERTY_TEST_NUM_RUNS_FACTOR: "4"
           PROPERTY_TEST_SEED_SALT: canonical-${{ github.run_id }}
           FOLIO_PROPERTY_FAILURES_DIR: fuzz-artifacts/canonical/findings
 
+      - name: Keep canonical diagnostic evidence
+        if: always() && github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: canonical-history-diagnostics
+          path: |
+            fuzz-artifacts/canonical
+            fuzz-playwright/canonical
+          retention-days: 14
+
       - name: Host API flow fuzz
+        if: github.ref == 'refs/heads/main'
         id: host-api
         timeout-minutes: 8
         continue-on-error: true
@@ -77,7 +100,7 @@ jobs:
           retention-days: 14
 
       - name: Run nightly browser fuzzer
-        if: always()
+        if: always() && github.ref == 'refs/heads/main'
         id: fuzz
         timeout-minutes: 35
         continue-on-error: true
@@ -95,7 +118,7 @@ jobs:
           FOLIO_FUZZ_RUNS: "20"
 
       - name: Check fuzz health
-        if: always()
+        if: always() && github.ref == 'refs/heads/main'
         run: |
           if ! command -v bun >/dev/null || [ ! -f scripts/fuzz-health-check.ts ]; then
             echo "::error::Fuzz infrastructure unavailable before health reporting"
@@ -107,7 +130,7 @@ jobs:
           FUZZ_STEP_OUTCOME: ${{ steps.fuzz.outcome }}
 
       - name: Random AI and human revision interleaving
-        if: always()
+        if: always() && github.ref == 'refs/heads/main'
         id: interleaving
         continue-on-error: true
         timeout-minutes: 12
@@ -143,7 +166,7 @@ jobs:
           retention-days: 14
 
       - name: Preserve nightly failure status
-        if: always() && (steps.canonical.outcome == 'failure' || steps.fuzz.outcome == 'failure')
+        if: always() && (steps.diagnostic-harness.outcome == 'failure' || steps.canonical.outcome == 'failure' || steps.fuzz.outcome == 'failure')
         run: exit 1
 
   report:

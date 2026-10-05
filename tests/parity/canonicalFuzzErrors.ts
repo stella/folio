@@ -4,6 +4,7 @@ import type { SaveDiagnostic } from "../../packages/core/src/docx/saveDiagnostic
 import type { BrowserInputAction } from "../visual/browserInputTrace";
 import { CANONICAL_GAP } from "../../packages/core/src/types/canonicalCapabilities";
 import { CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS } from "../../test/canonicalSaveDiagnostics";
+import type { CanonicalHistoryObservation } from "./canonicalHistoryObservation";
 
 export type CanonicalFuzzPhase =
   | { type: "load" | "finalSave" | "reload" }
@@ -26,6 +27,7 @@ export type CanonicalFuzzError = CanonicalFuzzErrorDetails & {
 export type CanonicalFuzzObservation = {
   phase: CanonicalFuzzPhase;
   errors: CanonicalFuzzError[];
+  history?: CanonicalHistoryObservation;
 };
 
 /** The adapter reports a successful full-save fallback through its error channel. */

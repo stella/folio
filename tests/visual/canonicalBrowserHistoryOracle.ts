@@ -6,7 +6,13 @@ import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx"
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import { BROWSER_INPUT_ACTION_DISPOSITIONS, type BrowserInputAction } from "./browserInputTrace";
 import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
+import {
+  beginCanonicalHistoryObservation,
+  collectCanonicalHistoryObservation,
+  installCanonicalHistoryProbe,
+} from "./canonicalBrowserHistoryProbe";
 import type {} from "../parity/canonicalBridge";
+import type { CanonicalHistoryObservation } from "../parity/canonicalHistoryObservation";
 import {
   isCanonicalSaveFallback,
   type CanonicalFuzzObservation,
@@ -32,11 +38,27 @@ const drainErrors = (page: Page) =>
     return errors.splice(0);
   });
 
+const retainHistoryCapture = (
+  history: CanonicalHistoryObservation,
+  capture: Awaited<ReturnType<typeof collectCanonicalHistoryObservation>>["capture"],
+) => {
+  switch (capture.status) {
+    case "complete":
+      history.after = capture.after;
+      history.keys.push(...capture.keys);
+      return;
+    case "unavailable":
+      history.capture = { status: "unavailable", message: capture.message };
+      return;
+  }
+};
+
 type CanonicalBrowserHistoryOptions = {
   page: Page;
   source: number[];
   actions: readonly BrowserInputAction[];
   missing: ReturnType<typeof createMissingOpBurndown>;
+  observations?: CanonicalFuzzObservation[];
 };
 
 type CanonicalBrowserHistoryRunOptions = CanonicalBrowserHistoryOptions & {
@@ -50,15 +72,20 @@ const runCanonicalBrowserHistory = async ({
   missing,
   observations,
 }: CanonicalBrowserHistoryRunOptions): Promise<number> => {
+  await installCanonicalHistoryProbe(page);
   let observation: CanonicalFuzzObservation = { phase: { type: "load" }, errors: [] };
   const beginPhase = async (phase: CanonicalFuzzPhase) => {
     observation = { phase, errors: [] };
     observations.push(observation);
-    await page.evaluate((current) => {
-      globalThis.__folioCanonicalFuzzPhase = current;
-    }, phase);
+    observation.history = await beginCanonicalHistoryObservation(page, phase);
   };
   const collectErrors = async () => {
+    if (observation.history) {
+      const collected = await collectCanonicalHistoryObservation(page);
+      retainHistoryCapture(observation.history, collected.capture);
+      observation.errors = collected.errors;
+      return observation.errors;
+    }
     observation.errors = await drainErrors(page);
     return observation.errors;
   };
@@ -149,7 +176,7 @@ const runCanonicalBrowserHistory = async ({
 
 /** One history oracle for nightly properties and deterministic interaction replays. */
 export const checkCanonicalBrowserHistory = async (options: CanonicalBrowserHistoryOptions) => {
-  const observations: CanonicalFuzzObservation[] = [];
+  const observations = options.observations ?? [];
   const result = await Result.tryPromise({
     try: () => runCanonicalBrowserHistory({ ...options, observations }),
     catch: (cause: unknown) => cause,
@@ -158,6 +185,14 @@ export const checkCanonicalBrowserHistory = async (options: CanonicalBrowserHist
   throw await captureCanonicalOracleFailure({
     cause: result.error,
     observations,
-    drainErrors: () => drainErrors(options.page),
+    drainErrors: async () => {
+      const history = observations.at(-1)?.history;
+      if (history) {
+        const collected = await collectCanonicalHistoryObservation(options.page);
+        retainHistoryCapture(history, collected.capture);
+        return collected.errors;
+      }
+      return drainErrors(options.page);
+    },
   });
 };

@@ -3,6 +3,7 @@ import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelecti
 import type { BrowserDragTarget } from "../visual/browserDragTarget";
 import { canonicalTextSelection } from "./canonicalTextSelection";
 import { waitForCanonicalLoadOwner } from "./canonicalLoadOwner";
+import type { CanonicalHistoryState } from "./canonicalHistoryObservation";
 import type { Document } from "@stll/folio-core";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
@@ -44,6 +45,27 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     return buffer ? [...new Uint8Array(buffer)] : null;
   },
   canSnapshot: () => getRef()?.getEditor()?.getCanonicalStoryProjection("main") != null,
+  historyState: (detail: "input" | "version"): CanonicalHistoryState => {
+    const editor = getRef()?.getEditor();
+    const view = editor?.getView();
+    const ready = editor?.getCanonicalStoryProjection("main") != null;
+    return {
+      version:
+        detail === "version" && ready ? (editor?.captureCanonicalSave()?.version ?? null) : null,
+      focused: view?.hasFocus() ?? false,
+      composing: view?.composing ?? false,
+      canUndo: editor?.canUndo() ?? false,
+      canRedo: editor?.canRedo() ?? false,
+      selection: view
+        ? { anchor: view.state.selection.anchor, head: view.state.selection.head }
+        : null,
+      canonicalSelection: editor?.getCanonicalStorySelection("main") ?? null,
+    };
+  },
+  ownsKeyTarget: (target: EventTarget | null) => {
+    const view = getRef()?.getEditor()?.getView();
+    return target instanceof Node && view?.dom.contains(target) === true;
+  },
   snapshot: () => {
     const ref = getRef();
     const editor = ref?.getEditor();

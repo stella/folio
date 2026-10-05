@@ -6,14 +6,21 @@ export const canonicalBrowserTraceArbitrary = fc.array(fc.oneof(...commonActionA
   maxLength: 12,
 });
 
+export const CANONICAL_BROWSER_REDO_REPLAYS = [
+  { seed: 29, path: "2:2:0:0:0:2", kinds: ["backspace", "undo"] },
+  { seed: 47, path: "5:1:1", kinds: ["cut", "imeReplacement"] },
+  { seed: 431, path: "9:1:0:1", kinds: ["cut", "pasteListHtml"] },
+  { seed: 197, path: "1:1:2:2:2", kinds: ["typing", "pasteHtml"] },
+] as const;
+
 export const CANONICAL_BROWSER_HISTORY_REPLAYS = [
   { seed: 131, path: "8:1:0:0", kinds: ["backspace", "pasteWordHtml"] },
   { seed: 347, path: "0:0", kinds: ["enter"] },
   { seed: 29, path: "3:0", kinds: ["enter"] },
   { seed: 431, path: "5:2:4:6:6:6", kinds: ["typing", "historyBurst", "cut"] },
   { seed: 83, path: "1:4:1:1:1", kinds: ["backspace", "historyBurst"] },
-  { seed: 197, path: "1:1:2:2:2", kinds: ["typing", "pasteHtml"] },
   { seed: 557, path: "2:2:0:1", kinds: ["backspace", "pasteListHtml"] },
+  ...CANONICAL_BROWSER_REDO_REPLAYS,
 ] as const;
 
 export const CANONICAL_BROWSER_SAVE_REPLAYS = [

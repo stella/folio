@@ -16,6 +16,7 @@ import {
   canonicalOracleFailureRecord,
   captureCanonicalOracleFailure,
 } from "../tests/parity/canonicalOracleFailure";
+import type { CanonicalHistoryObservation } from "../tests/parity/canonicalHistoryObservation";
 
 const DIAGNOSTICS = {
   sourceReplayMismatch: { type: "sourceReplayMismatch", part: "word/document.xml" },
@@ -161,4 +162,49 @@ test("failure capture retains pending diagnostics and records an unavailable bro
   expect(unavailable.cause).toBe(cause);
   expect(unavailable.errorCapture).toEqual({ status: "unavailable", message: "Page closed" });
   expect(unavailable.observations).toEqual(observations);
+});
+
+test("history delivery evidence survives failure-record serialization", () => {
+  const before = {
+    version: 1,
+    focused: true,
+    composing: false,
+    canUndo: true,
+    canRedo: false,
+    selection: { anchor: 6, head: 6 },
+    canonicalSelection: { anchor: 6, head: 6 },
+  };
+  const history = {
+    before,
+    capture: { status: "complete" },
+    after: { ...before, version: 2, canUndo: false, canRedo: true },
+    keys: [
+      {
+        propagation: "capture",
+        key: "Z",
+        control: true,
+        meta: false,
+        shift: true,
+        defaultPrevented: false,
+        target: "other",
+        state: before,
+      },
+    ],
+  } as const satisfies CanonicalHistoryObservation;
+  const observations = [{ phase: PHASES.redo, errors: [], history }];
+  const failure = new CanonicalBrowserOracleError({
+    message: "History equality failed",
+    cause: new TypeError("History equality failed"),
+    observations,
+    errorCapture: { status: "complete" },
+  });
+  const marker = failureMarker({
+    test: "canonical browser history reporting",
+    seed: 197,
+    path: "1:1:2:2:2",
+    repro: "canonical seed 197",
+    failure,
+  });
+  const record = canonicalOracleFailureRecord({ marker, failure, flow: [] });
+  expect(JSON.parse(JSON.stringify(record)).observations).toEqual(observations);
 });
