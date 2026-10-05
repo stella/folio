@@ -29,6 +29,7 @@ const AREA_OUTPUT =
   /^\$\{\{ github\.event_name == 'merge_group' \|\| fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*) \}\}$/u;
 const GATE =
   /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'(?: && needs\.ci-plan\.outputs\.suite_depth == 'full')?$/u;
+const PR_SCOPED_JOBS = new Set(["property-areas", "browser-discovery"]);
 const PROPERTY_AREAS_CONDITION =
   "github.event_name == 'pull_request' && github.event.pull_request.draft != true && ";
 
@@ -517,6 +518,66 @@ describe("CI plan", () => {
     expect(scopes["build-api"]).toEqual({ area: "api_required" });
   });
 
+  test("browser discovery path scopes include future configs and playgrounds but skip docs", () => {
+    const policy: unknown = JSON.parse(
+      readFileSync(path.join(REPO_ROOT, ".github/ci-plan.json"), "utf8"),
+    );
+    if (!isRecord(policy) || !isRecord(policy["areas"])) throw new TypeError("Missing CI areas");
+    const scope = policy["areas"]["browser_discovery"];
+    if (!isRecord(scope) || !Array.isArray(scope["paths"]))
+      throw new TypeError("Missing discovery paths");
+    const patterns = scope["paths"].map((pattern) => {
+      if (typeof pattern !== "string") throw new TypeError("Invalid discovery pattern");
+      return pattern;
+    });
+    const fixtures = {
+      "tests/visual/**": "tests/visual/new.interactions.spec.ts",
+      "tests/parity/**": "tests/parity/new.spec.ts",
+      "**/playwright*.config.*": "new-package/playwright.future.config.mts",
+      "packages/playground*/**": "packages/playground-future/src/main.ts",
+      "packages/editor-web/e2e/**": "packages/editor-web/e2e/new.spec.ts",
+      "!**/*.md": "tests/visual/README.md",
+    };
+    expect(patterns.toSorted()).toEqual(Object.keys(fixtures).toSorted());
+    const selected = (file: string) =>
+      patterns.some((pattern) => !pattern.startsWith("!") && new Bun.Glob(pattern).match(file)) &&
+      !patterns.some(
+        (pattern) => pattern.startsWith("!") && new Bun.Glob(pattern.slice(1)).match(file),
+      );
+    for (const [pattern, file] of Object.entries(fixtures))
+      expect(selected(file)).toBe(!pattern.startsWith("!"));
+    expect(selected("playwright.config.ts")).toBe(true);
+    expect(selected("docs/browser-tests.md")).toBe(false);
+    expect(selected("packages/docx-core/src/model.ts")).toBe(false);
+  });
+
+  test("browser discovery runs on scoped PRs without changing merge-group execution", () => {
+    const steps = jobs["browser-discovery"]?.steps;
+    if (!Array.isArray(steps)) throw new TypeError("Missing browser discovery steps");
+    expect(jobs["browser-discovery"]?.if).toBe(
+      `${PROPERTY_AREAS_CONDITION}needs.ci-plan.outputs.browser_discovery_required == 'true'`,
+    );
+    expect(steps.filter((step) => isRecord(step) && typeof step["run"] === "string")).toEqual([
+      { run: "bun install --frozen-lockfile" },
+      {
+        name: "Discover every Node Playwright project without browsers",
+        run: "bun scripts/ci-browser-discovery.ts",
+      },
+    ]);
+    const resultSteps = jobs["ci-result"]?.steps;
+    if (!Array.isArray(resultSteps)) throw new TypeError("Missing CI result steps");
+    const evaluation = resultSteps.find(
+      (step) => isRecord(step) && step["name"] === "Evaluate CI outcome",
+    );
+    if (!isRecord(evaluation) || !isRecord(evaluation["env"]))
+      throw new TypeError("Missing CI result environment");
+    const scopes = JSON.parse(String(evaluation["env"]["JOB_SCOPES"]));
+    expect(scopes["browser-discovery"]).toEqual({
+      event: "pull_request",
+      area: "browser_discovery_required",
+    });
+  });
+
   test("every area is a plan output named after it, and every area output is an area", () => {
     const mapped = Object.entries(planOutputs).flatMap(([output, value]) => {
       const area = typeof value === "string" ? AREA_OUTPUT.exec(value)?.[1] : undefined;
@@ -532,13 +593,13 @@ describe("CI plan", () => {
       if (UNPLANNED_JOBS.has(id)) continue;
       expect([id, job.needs]).toEqual([id, PLAN_JOB]);
       const condition = job.if;
-      if (id === "property-areas") {
+      if (PR_SCOPED_JOBS.has(id)) {
         expect(
           typeof condition === "string" && condition.startsWith(PROPERTY_AREAS_CONDITION),
         ).toBe(true);
       }
       const areaGate =
-        id === "property-areas" && typeof condition === "string"
+        PR_SCOPED_JOBS.has(id) && typeof condition === "string"
           ? condition.slice(PROPERTY_AREAS_CONDITION.length)
           : condition;
       const gate = typeof areaGate === "string" ? GATE.exec(areaGate) : null;

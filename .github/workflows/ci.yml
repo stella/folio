@@ -104,6 +104,7 @@ jobs:
     outputs:
       suite_depth: ${{ github.event_name == 'merge_group' && 'full' || 'fast' }}
       trusted: ${{ steps.plan.outputs.trusted }}
+      browser_discovery_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).browser_discovery }}
       api_required: ${{ github.event_name == 'merge_group' || steps.api-plan.outputs.api_required == 'true' }}
       code_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).code }}
       typecheck_budget_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).typecheck_budget }}
@@ -133,6 +134,23 @@ jobs:
         uses: stella/.github/.github/actions/ci-plan@37bfa04a893d1ae2b9d28379cf68e8360781c8bc # v1.8.0
         with:
           policy-file: .github/ci-plan.json
+
+  browser-discovery:
+    name: Browser test discovery
+    needs: ci-plan
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.ci-plan.outputs.browser_discovery_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Discover every Node Playwright project without browsers
+        run: bun scripts/ci-browser-discovery.ts
 
   property-areas:
     name: Properties of the changed areas (5x runs)
@@ -978,6 +996,7 @@ jobs:
       - lint
       - typecheck
       - build-api
+      - browser-discovery
       - validate-dist
       - tests-1
       - tests-2
@@ -1007,6 +1026,7 @@ jobs:
           JOB_SCOPES: >-
             {"changeset":{"event":"pull_request"},
             "property-areas":{"event":"pull_request","area":"code_required"},
+            "browser-discovery":{"event":"pull_request","area":"browser_discovery_required"},
             "docs-format":{"area":"code_required","value":"false"},
             "lint":{"area":"code_required"},
             "typecheck":{"area":"code_required"},
