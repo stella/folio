@@ -91,12 +91,16 @@ export default defineConfig({
   webServer: [
     {
       command: "bun --filter @stll/playground dev",
+      stdout: "pipe",
+      stderr: "pipe",
       url: `http://localhost:${reactPlaygroundPort}`,
       reuseExistingServer: true,
       timeout: 120_000,
     },
     {
       command: "bun --filter @stll/playground-vue dev",
+      stdout: "pipe",
+      stderr: "pipe",
       env: {
         FOLIO_PLAYGROUND_PORT: String(vuePlaygroundPort),
       },
