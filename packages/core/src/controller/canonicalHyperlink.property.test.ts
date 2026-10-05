@@ -275,3 +275,120 @@ test("tracked input addresses skip rendered deletions after bookmark atoms", () 
     { numRuns: 10 },
   );
 });
+
+test("generated collapsed removal covers every formatting segment of exactly one contiguous hyperlink", () => {
+  assertProperty(
+    fc.property(
+      fc.array(fc.constantFrom("ab", "😀x", "éz"), { minLength: 2, maxLength: 5 }),
+      fc.constantFrom("https://old.example/", "https://other.example/"),
+      (pieces, adjacentHref) => {
+        const children = pieces.map(
+          (text, index) =>
+            ({
+              type: "run",
+              formatting: { bold: index % 2 === 0 },
+              content: [{ type: "text", text }],
+            }) satisfies ParagraphContent,
+        );
+        const adjacent = {
+          type: "hyperlink",
+          href: adjacentHref,
+          tooltip: "Adjacent",
+          children: [{ type: "run", content: [{ type: "text", text: "neighbor" }] }],
+        } satisfies ParagraphContent;
+        const repeated = {
+          type: "hyperlink",
+          href: "https://old.example/",
+          children: [{ type: "run", content: [{ type: "text", text: "separate" }] }],
+        } satisfies ParagraphContent;
+        const document = {
+          package: {
+            document: {
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "12345678",
+                  content: [
+                    { type: "hyperlink", href: "https://old.example/", children },
+                    adjacent,
+                    { type: "run", content: [{ type: "text", text: " gap " }] },
+                    repeated,
+                  ],
+                },
+              ],
+            },
+          },
+        } satisfies Document;
+        const text = pieces.join("");
+        const offsets: number[] = [];
+        let offset = 0;
+        for (const unit of text) {
+          offset += unit.length;
+          if (offset < text.length) offsets.push(offset);
+        }
+        for (const cursor of offsets) {
+          const session = createCanonicalSession(document).unwrap();
+          const baseline = session.document;
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+            selection: TextSelection.create(session.projection.doc, 1 + cursor),
+          });
+          const selection = state.selection.toJSON();
+          const command = singletonManager.requireCommand("removeHyperlink")();
+          const intents = getCanonicalCommandIntents(command, state);
+          expect(intents).toEqual([{ type: "removeHyperlink", from: 1, to: 1 + text.length }]);
+          const prepared = prepareCanonicalCommands(
+            session,
+            state,
+            intents ?? panic("Missing hyperlink descriptor."),
+          ).unwrap();
+          state = publishCanonicalProjection({ session, state, commit: prepared }).unwrap().state;
+          const expected = {
+            package: {
+              document: {
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: "12345678",
+                    content: [
+                      ...children,
+                      adjacent,
+                      { type: "run", content: [{ type: "text", text: " gap " }] },
+                      repeated,
+                    ],
+                  },
+                ],
+              },
+            },
+          } satisfies Document;
+          expect(authored(session.document)).toEqual(authored(expected));
+          const after = session.document;
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: session.prepareUndo(state).unwrap(),
+          }).unwrap().state;
+          expect(session.document).toEqual(baseline);
+          expect(state.selection.toJSON()).toEqual(selection);
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: session.prepareRedo(state).unwrap(),
+          }).unwrap().state;
+          expect(session.document).toEqual(after);
+        }
+        const session = createCanonicalSession(document).unwrap();
+        const state = EditorState.create({
+          schema,
+          doc: session.projection.doc,
+          selection: TextSelection.create(session.projection.doc, 1 + text.length),
+        });
+        expect(
+          getCanonicalCommandIntents(singletonManager.requireCommand("removeHyperlink")(), state),
+        ).toEqual([]);
+      },
+    ),
+    { numRuns: 8 },
+  );
+});
