@@ -71,6 +71,7 @@ for (const seed of config.seeds) {
           | Awaited<ReturnType<NonNullable<typeof globalThis.__folioCanonical>["caseState"]>>
           | undefined;
         let status = "failed";
+        let failure: { type: string; message: string } | undefined;
         try {
           applied += await checkCanonicalBrowserHistory({
             page,
@@ -99,10 +100,25 @@ for (const seed of config.seeds) {
             },
           });
           status = "passed";
+        } catch (cause) {
+          failure = {
+            type: cause instanceof Error ? cause.name : typeof cause,
+            message: cause instanceof Error ? cause.message : String(cause),
+          };
+          throw cause;
         } finally {
           writeFileSync(
             `${outputDir}/case-${index}.json`,
-            JSON.stringify({ seed, index, status, actions, beforeLoad, cleanState, observations }),
+            JSON.stringify({
+              seed,
+              index,
+              status,
+              failure,
+              actions,
+              beforeLoad,
+              cleanState,
+              observations,
+            }),
           );
         }
         completed++;

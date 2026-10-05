@@ -58,6 +58,14 @@ for (const { seed, path, kinds } of replays) {
               actions,
               missing: createMissingOpBurndown(),
               observations,
+              cleanStart: async () => {
+                const state = await page.evaluate(() => globalThis.__folioCanonical?.caseState());
+                expect(state?.composing, "leaked native composition on document reload").toBe(
+                  false,
+                );
+                expect(state?.canUndo, "leaked canonical undo history").toBe(false);
+                expect(state?.canRedo, "leaked canonical redo history").toBe(false);
+              },
             });
             expect(applied).toBeGreaterThan(0);
           }

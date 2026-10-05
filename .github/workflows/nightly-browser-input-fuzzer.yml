@@ -58,7 +58,7 @@ jobs:
           if [ "$GITHUB_REF" = "refs/heads/main" ]; then
             bun test ./test/canonical-session.fuzz.ts 2>&1 | tee fuzz-artifacts/canonical/canonical-fuzz.log
           else
-            FOLIO_FUZZ_LANE=nightly FOLIO_FUZZ_SEEDS=11,29,47,83,131,197,263,347,431,557,1791183757 FOLIO_FUZZ_RUNS=20 bunx playwright test --project=browser-fuzzer tests/visual/canonical-browser-input-fuzz.interactions.spec.ts --workers=1 --output=fuzz-playwright/canonical 2>&1 | tee fuzz-artifacts/canonical/canonical-fuzz.log
+            bunx playwright test --project=interactions tests/visual/canonical-ime-lifecycle.interactions.spec.ts --workers=1 --output=fuzz-playwright/canonical 2>&1 | tee fuzz-artifacts/canonical/canonical-fuzz.log
           fi
         env:
           CI: "true"

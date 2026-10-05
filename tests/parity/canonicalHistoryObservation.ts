@@ -19,13 +19,52 @@ export type CanonicalHistoryKeyEvent = {
   state: CanonicalHistoryState;
 };
 
+type CanonicalNativeEventContext = {
+  propagation: "capture" | "bubble";
+  trusted: boolean;
+  defaultPrevented: boolean;
+  target: "editor" | "other";
+  state: CanonicalHistoryState;
+};
+
+export const CANONICAL_NATIVE_EVENT_TYPES = [
+  "compositionstart",
+  "compositionupdate",
+  "compositionend",
+  "beforeinput",
+  "input",
+] as const;
+type NativeEventType = (typeof CANONICAL_NATIVE_EVENT_TYPES)[number];
+
+export type CanonicalNativeEvent = CanonicalNativeEventContext &
+  (
+    | { type: Extract<NativeEventType, `composition${string}`>; data: string }
+    | {
+        type: Exclude<NativeEventType, `composition${string}`>;
+        data: string | null;
+        inputType: string;
+        composing: boolean;
+      }
+  );
+
+export type CanonicalImeDriverCall = {
+  operation: "start" | "update" | "commit" | "cancel";
+  text: string;
+  before: CanonicalHistoryState | null;
+  after: CanonicalHistoryState | null;
+};
+
 export type CanonicalHistoryObservation = {
   before: CanonicalHistoryState;
   after?: CanonicalHistoryState;
   keys: CanonicalHistoryKeyEvent[];
+  nativeEvents: CanonicalNativeEvent[];
+  driverCalls: CanonicalImeDriverCall[];
   capture: { status: "complete" } | { status: "unavailable"; message: string };
 };
 
 declare global {
   var __folioCanonicalHistoryKeys: CanonicalHistoryKeyEvent[] | undefined;
+  var __folioCanonicalNativeEvents: CanonicalNativeEvent[] | undefined;
+  var __folioCanonicalImeDriverCalls: CanonicalImeDriverCall[] | undefined;
 }

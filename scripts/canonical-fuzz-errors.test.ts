@@ -190,6 +190,36 @@ test("history delivery evidence survives failure-record serialization", () => {
         state: before,
       },
     ],
+    nativeEvents: [
+      {
+        type: "compositionend",
+        propagation: "bubble",
+        trusted: true,
+        defaultPrevented: false,
+        target: "editor",
+        data: "contract",
+        state: { ...before, composing: false },
+      },
+      {
+        type: "beforeinput",
+        propagation: "capture",
+        trusted: true,
+        defaultPrevented: false,
+        target: "editor",
+        inputType: "insertText",
+        composing: false,
+        data: "contract",
+        state: { ...before, composing: true },
+      },
+    ],
+    driverCalls: [
+      {
+        operation: "commit",
+        text: "contract",
+        before: { ...before, composing: true },
+        after: before,
+      },
+    ],
   } as const satisfies CanonicalHistoryObservation;
   const observations = [{ phase: PHASES.redo, errors: [], history }];
   const failure = new CanonicalBrowserOracleError({

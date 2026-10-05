@@ -46,6 +46,8 @@ const retainHistoryCapture = (
     case "complete":
       history.after = capture.after;
       history.keys.push(...capture.keys);
+      history.nativeEvents.push(...capture.nativeEvents);
+      history.driverCalls.push(...capture.driverCalls);
       return;
     case "unavailable":
       history.capture = { status: "unavailable", message: capture.message };

@@ -14,6 +14,24 @@ export const CANONICAL_BROWSER_REDO_REPLAYS = [
 ] as const;
 
 export const CANONICAL_BROWSER_HISTORY_REPLAYS = [
+  {
+    seed: 197,
+    path: "1",
+    kinds: [
+      "imeReplacement",
+      "pastePlain",
+      "pastePlain",
+      "pastePlain",
+      "pasteListHtml",
+      "typing",
+      "imeReplacement",
+      "undo",
+      "redo",
+      "pasteListHtml",
+      "historyBurst",
+      "pasteHtml",
+    ],
+  },
   { seed: 131, path: "8:1:0:0", kinds: ["backspace", "pasteWordHtml"] },
   { seed: 347, path: "0:0", kinds: ["enter"] },
   { seed: 29, path: "3:0", kinds: ["enter"] },

@@ -1,10 +1,13 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
+import { propertyTestTimeout } from "../test/property-testing";
 import fc from "fast-check";
 import {
   CANONICAL_BROWSER_HISTORY_REPLAYS,
   CANONICAL_BROWSER_SAVE_REPLAYS,
   canonicalBrowserTraceArbitrary,
 } from "../tests/visual/canonicalBrowserTrace";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 test("canonical browser regression paths still exercise each reported action sequence", () => {
   const replays = [...CANONICAL_BROWSER_HISTORY_REPLAYS, ...CANONICAL_BROWSER_SAVE_REPLAYS];
