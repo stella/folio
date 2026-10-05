@@ -3,7 +3,13 @@
     {
       "seed": 20261015,
       "path": "0:0:0:0:0:0",
-      "note": "Fresh watermark removal leaves legitimate owned empty headers; canonical session supported-story validation must admit this modeled owner result. Save interleaving must retain exact history.",
+      "note": "Removing a fresh coverage watermark must retain its last identified paragraph as a plain block, rather than producing an empty referenced story. Interleaved canonical saves preserve exact history.",
+      "date": "2026-10-05"
+    },
+    {
+      "seed": 20261015,
+      "path": "0",
+      "note": "Metadata-bearing sole coverage hosts must become exact plain identified paragraphs on removal. The numeric-spacing fixture also exposed parser spacingExplicit enrichment before removal; use the canonical style property for this retention dimension.",
       "date": "2026-10-05"
     }
   ]

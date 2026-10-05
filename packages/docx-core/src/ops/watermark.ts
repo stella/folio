@@ -339,6 +339,14 @@ export const setDocumentWatermarkWithCoverage = (
     ) {
       next.content = [...next.content];
       next.content.splice(hostIndex, 1);
+    } else if (
+      authority === "canonical" &&
+      change.kind === "remove" &&
+      next.content.length === 1 &&
+      host?.type === "paragraph" &&
+      host.paraId !== undefined
+    ) {
+      next.content = [{ type: "paragraph", paraId: host.paraId, content: [] }];
     }
     if (change.kind === "remove") {
       delete next.watermark;

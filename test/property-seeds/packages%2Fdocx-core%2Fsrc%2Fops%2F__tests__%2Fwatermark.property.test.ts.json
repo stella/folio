@@ -1,0 +1,10 @@
+{
+  "generated canonical watermark mounts resolve cloned references and inherit new coverage": [
+    {
+      "seed": 20261019,
+      "path": "1:0:1:1",
+      "date": "2026-10-05",
+      "note": "Restore mounted story snapshots exactly when their captured content differs from the authoritative referenced story; reference identity alone cannot authorize replacement."
+    }
+  ]
+}

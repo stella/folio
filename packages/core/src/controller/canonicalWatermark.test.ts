@@ -1,6 +1,7 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { validateDocxPackage } from "@stll/docx-core";
+import { DOCUMENT_OP_TYPES } from "@stll/docx-core/ops";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { parseDocx } from "../docx/parser";
@@ -21,7 +22,8 @@ test("generated watermark histories allocate distinct coverage and host identiti
       fc.boolean(),
       fc.array(fc.stringMatching(/^[A-Z]{1,12}$/u), { minLength: 1, maxLength: 5 }),
       fc.constantFrom("fresh", "parsed"),
-      async (headerCount, evenPages, texts, sourceKind) => {
+      fc.boolean(),
+      async (headerCount, evenPages, texts, sourceKind, hostFormatting) => {
         const document = {
           package: {
             document: {
@@ -87,6 +89,7 @@ test("generated watermark histories allocate distinct coverage and host identiti
         let state = EditorState.create({ doc: session.projection.doc });
         const before = session.document;
         let steps = 0;
+        const coverageIdentities = new Map<string, string>();
         for (const text of texts) {
           const operation = createCanonicalWatermarkOperation(session.document, {
             kind: "set",
@@ -95,8 +98,10 @@ test("generated watermark histories allocate distinct coverage and host identiti
           const allocated = [...operation.coverage, ...operation.hosts].map(({ paraId }) => paraId);
           expect(new Set(allocated).size).toBe(allocated.length);
           for (const id of allocated) expect(id).toMatch(/^[0-9A-F]{8}$/u);
-          for (const coverage of operation.coverage)
+          for (const coverage of operation.coverage) {
             expect(session.document.package.headers?.has(coverage.rId)).toBe(false);
+            coverageIdentities.set(coverage.rId, coverage.paraId);
+          }
           const prepared = session.prepareOperations(state, [operation]).unwrap();
           state = publishCanonicalProjection({ state, commit: prepared, session }).unwrap().state;
           steps += 1;
@@ -110,6 +115,28 @@ test("generated watermark histories allocate distinct coverage and host identiti
             });
             expect(header.content.at(header.watermarkBlockIndex ?? -1)?.type).toBe("paragraph");
           }
+          if (hostFormatting && operation.coverage.length > 0) {
+            const formatting = session
+              .prepareOperations(
+                state,
+                operation.coverage.map(({ rId, paraId }) => ({
+                  type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+                  story: { kind: "header", rId },
+                  blockId: paraId,
+                  patch: { styleId: "HeaderHost" },
+                })),
+              )
+              .unwrap();
+            state = publishCanonicalProjection({ state, commit: formatting, session }).unwrap()
+              .state;
+            steps += 1;
+            for (const { rId } of operation.coverage) {
+              const host = session.document.package.headers?.get(rId)?.content.at(0);
+              expect(host?.type === "paragraph" ? host.formatting?.styleId : undefined).toBe(
+                "HeaderHost",
+              );
+            }
+          }
           await assertSave();
           const removal = createCanonicalWatermarkOperation(session.document, {
             kind: "remove",
@@ -117,8 +144,17 @@ test("generated watermark histories allocate distinct coverage and host identiti
           const removed = session.prepareOperations(state, [removal]).unwrap();
           state = publishCanonicalProjection({ state, commit: removed, session }).unwrap().state;
           steps += 1;
-          for (const header of session.document.package.headers?.values() ?? [])
+          for (const header of session.document.package.headers?.values() ?? []) {
             expect(header.watermark).toBeUndefined();
+            expect(header.watermarkBlockIndex).toBeUndefined();
+          }
+          for (const [rId, paraId] of coverageIdentities) {
+            // Sole-host retention preserves only the allocated identity: no
+            // pPr, run, drawing, or other decoration survives removal.
+            expect(session.document.package.headers?.get(rId)?.content).toStrictEqual([
+              { type: "paragraph", paraId, content: [] },
+            ]);
+          }
           await assertSave();
         }
         const after = session.document;
@@ -141,8 +177,8 @@ test("generated watermark histories allocate distinct coverage and host identiti
       seed: 20261015,
       numRuns: 30,
       examples: [
-        [0, false, ["A"], "fresh"],
-        [2, true, ["A"], "parsed"],
+        [0, false, ["A"], "fresh", true],
+        [2, true, ["A"], "parsed", true],
       ],
     },
   );
