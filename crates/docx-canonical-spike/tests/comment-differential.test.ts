@@ -31,7 +31,7 @@ const types: typeof import("../target/comment-oracle/617c0f4703a6cf43adb7ecda343
   await import(commentOracleModule("ops/types.ts").href);
 
 const native = (document: unknown, operations: readonly DocumentOp[]): unknown => {
-  const process = spawnSync(
+  const result = spawnSync(
     process.env["RUST_SPIKE_NATIVE_BINARY"] ??
       fileURLToPath(new URL("../target/debug/canonical-spike", import.meta.url)),
     [],
@@ -40,9 +40,9 @@ const native = (document: unknown, operations: readonly DocumentOp[]): unknown =
       encoding: "utf8",
     },
   );
-  if (process.error) throw process.error;
-  expect(process.status, process.stderr).toBe(0);
-  const response: unknown = JSON.parse(process.stdout);
+  if (result.error) throw result.error;
+  expect(result.status, result.stderr).toBe(0);
+  const response: unknown = JSON.parse(result.stdout);
   return response;
 };
 

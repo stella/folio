@@ -21,25 +21,48 @@ import {
   transportScope,
 } from "./harness-codec";
 
-const nativeResponse = (encoded: unknown): unknown => {
+const parseNativeResponses = (output: string, expectedCount: number): unknown[] => {
+  const body = output.trimEnd();
+  const lines = body.length === 0 ? [] : body.split("\n");
+  expect(lines, "Native JSONL must return exactly one response per request.").toHaveLength(
+    expectedCount,
+  );
+  return lines.map((line): unknown => JSON.parse(line));
+};
+
+const nativeResponses = (encoded: readonly unknown[]): unknown[] => {
+  if (encoded.length === 0) return [];
+  const input = `${encoded.map((roundtrip) => JSON.stringify({ harness: { roundtrip } })).join("\n")}\n`;
   const result = spawnSync(
     process.env["RUST_SPIKE_NATIVE_BINARY"] ??
       fileURLToPath(new URL("../target/debug/canonical-spike", import.meta.url)),
     [],
-    { input: `${JSON.stringify({ harness: { roundtrip: encoded } })}\n`, encoding: "utf8" },
+    {
+      input,
+      encoding: "utf8",
+      // Roundtrip output is smaller than its request; leave room for error replies.
+      maxBuffer: Math.max(1024 * 1024, Buffer.byteLength(input) + encoded.length * 1024),
+    },
   );
   if (result.error) throw result.error;
   expect(result.status, result.stderr).toBe(0);
-  const response: unknown = JSON.parse(result.stdout);
-  return response;
+  return parseNativeResponses(result.stdout, encoded.length);
 };
 
-const nativeRoundtrip = (value: unknown): unknown => {
-  const response = nativeResponse(encodeTagged(value));
-  if (typeof response !== "object" || response === null || !("harness" in response))
-    throw new TypeError("Rust codec did not roundtrip the model.");
-  return decodeTagged(response.harness);
-};
+const nativeRoundtrips = (values: readonly unknown[]): unknown[] =>
+  nativeResponses(values.map(encodeTagged)).map((response, index) => {
+    if (typeof response !== "object" || response === null || !("harness" in response))
+      throw new TypeError(`Rust codec did not roundtrip model ${index}.`);
+    return decodeTagged(response.harness);
+  });
+const nativeRoundtrip = (value: unknown): unknown => nativeRoundtrips([value]).at(0);
+
+test("native JSONL response count and positional order remain exact", () => {
+  deepStrictEqual(parseNativeResponses('1\n{"harness":null}\n', 2), [1, { harness: null }]);
+  throws(() => parseNativeResponses("1\n", 2));
+  throws(() => parseNativeResponses("1\n2\n3\n", 2));
+  throws(() => parseNativeResponses("1\n\n2\n", 3), SyntaxError);
+});
 
 for (const [family, arbitrary] of [
   ["document", documentArbitrary],
@@ -47,16 +70,22 @@ for (const [family, arbitrary] of [
   ["capture", captureDocumentArbitrary],
 ] as const) {
   test(`tagged harness roundtrips existing ${family} arbitrary with exact own-field presence`, () => {
-    for (const seed of [20261005, 20261006, 327444275, -392419793])
-      for (const document of fc.sample(arbitrary, { seed, numRuns: 50 })) {
-        deepStrictEqual(
-          decodeTagged(JSON.parse(JSON.stringify(encodeTagged(document)))),
-          withoutCaptureSymbols(document),
-        );
-        const native = nativeRoundtrip(document);
-        deepStrictEqual(native, withoutCaptureSymbols(document));
-        deepStrictEqual(encodeTagged(native), encodeTagged(withoutCaptureSymbols(document)));
-      }
+    const documents = [20261005, 20261006, 327444275, -392419793].flatMap((seed) =>
+      fc.sample(arbitrary, { seed, numRuns: 50 }),
+    );
+    expect(documents).toHaveLength(200);
+    const native = nativeRoundtrips(documents);
+    for (const [index, document] of documents.entries()) {
+      deepStrictEqual(
+        decodeTagged(JSON.parse(JSON.stringify(encodeTagged(document)))),
+        withoutCaptureSymbols(document),
+      );
+      deepStrictEqual(native.at(index), withoutCaptureSymbols(document));
+      deepStrictEqual(
+        encodeTagged(native.at(index)),
+        encodeTagged(withoutCaptureSymbols(document)),
+      );
+    }
   });
 }
 const nullPrototypeCount = (value: unknown): number => {
@@ -89,6 +118,7 @@ test("TS codec preserves null prototypes in generated edit outputs, including CI
 });
 
 test("Rust codec preserves prototypes across generated edit outputs", () => {
+  const documents = [];
   for (const seed of [20261005, 20261006, 327444275, -392419793])
     for (const [document, generated] of fc.sample(fc.tuple(documentArbitrary, opSeedArbitrary), {
       seed,
@@ -96,10 +126,14 @@ test("Rust codec preserves prototypes across generated edit outputs", () => {
     })) {
       const result = applyDocumentOps(document, [opFor(document, generated)]);
       if (result.isErr()) continue;
-      const native = nativeRoundtrip(result.value.document);
-      deepStrictEqual(native, withoutCaptureSymbols(result.value.document));
-      deepStrictEqual(encodeTagged(native), encodeTagged(result.value.document));
+      documents.push(result.value.document);
     }
+  expect(documents.length).toBeGreaterThan(0);
+  const native = nativeRoundtrips(documents);
+  for (const [index, document] of documents.entries()) {
+    deepStrictEqual(native.at(index), withoutCaptureSymbols(document));
+    deepStrictEqual(encodeTagged(native.at(index)), encodeTagged(document));
+  }
 });
 
 test("null-prototype records retain prototype, special keys and owned undefined", () => {
@@ -164,14 +198,17 @@ test("tag-shaped authored records, Map order, binary, Date and undefined never c
 });
 test("Rust preserves Map entry order with undefined entries in every position", () => {
   const keys = ["z", "a", "m"];
+  const originals = [];
   for (let mask = 0; mask < 8; mask += 1) {
     const entries = keys.map(
       (key, index) =>
         [key, mask & (1 << index) ? undefined : index] satisfies [string, number | undefined],
     );
-    const original = new Map(entries);
-    deepStrictEqual(encodeTagged(nativeRoundtrip(original)), encodeTagged(original));
+    originals.push(new Map(entries));
   }
+  const native = nativeRoundtrips(originals);
+  for (const [index, original] of originals.entries())
+    deepStrictEqual(encodeTagged(native.at(index)), encodeTagged(original));
 });
 test("capture-symbol and shared-reference exclusions are counted", () => {
   const shared = { x: 1 };
@@ -344,12 +381,13 @@ const MALFORMED_CORPUS = [
 ] as const;
 
 test("the shared malformed corpus fails with exact errors in TS and Rust", () => {
-  for (const { name, value, message } of MALFORMED_CORPUS) {
+  const native = nativeResponses(MALFORMED_CORPUS.map(({ value }) => value));
+  for (const [index, { name, value, message }] of MALFORMED_CORPUS.entries()) {
     throws(
       () => decodeTagged(value),
       (error: unknown) => error instanceof HarnessCodecError && error.message === message,
       name,
     );
-    deepStrictEqual(nativeResponse(value), { status: "transportError", message }, name);
+    deepStrictEqual(native.at(index), { status: "transportError", message }, name);
   }
 });

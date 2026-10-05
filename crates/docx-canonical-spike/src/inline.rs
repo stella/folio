@@ -164,6 +164,23 @@ fn count(op: &Value, value: Option<&Value>, message: &str) -> Result<usize, Fail
         .ok_or_else(|| refused(op, "structureMismatch", message))
 }
 
+pub(crate) fn seam_depth(op: &Value) -> Result<usize, Failure> {
+    let action = if op["type"] == "splitInline" {
+        "split"
+    } else {
+        "join"
+    };
+    let message = format!(
+        "A {action} {} one level or more.",
+        if action == "split" { "cuts" } else { "merges" }
+    );
+    let depth = count(op, op.get("depth"), &message)?;
+    if depth == 0 {
+        return Err(refused(op, "structureMismatch", &message));
+    }
+    Ok(depth)
+}
+
 fn position(source: &Value, paragraph: &Value, offset: usize) -> Value {
     json!({"story":source["story"],"blockId":paragraph["paraId"],"offset":offset,"zeroWidthBefore":0})
 }
@@ -439,6 +456,55 @@ pub fn edit(paragraph: &Value, op: &Value) -> Result<(Value, Vec<Value>), Failur
         .ok_or_else(|| unsupported(op, "paragraphContentShape"))?;
     validate_plain(items, op, false)?;
     match op.get("type").and_then(Value::as_str) {
+        Some("splitInline" | "joinInline") => {
+            let depth = seam_depth(op)?;
+            let offset = coordinate(items, &op["at"], op).map_err(|failure| match failure {
+                Failure::Refused { reason, .. } => refused(
+                    op,
+                    &reason,
+                    &format!(
+                        "{} is not a position in {}.",
+                        op["at"]["offset"],
+                        op["at"]["blockId"].as_str().unwrap_or_default()
+                    ),
+                ),
+                failure => failure,
+            })?;
+            let across = spanning(items, &[offset], 0, 1);
+            let halves = partition(items, &[offset]);
+            let split = op["type"] == "splitInline";
+            let after = if split {
+                if depth > across {
+                    return Err(refused(
+                        op,
+                        "structureMismatch",
+                        &format!(
+                            "Fewer than {depth} records run across {offset} in {}.",
+                            op["at"]["blockId"].as_str().unwrap_or_default()
+                        ),
+                    ));
+                }
+                merge(&halves[0], &halves[1], across - depth, false)
+                    .expect("two pieces of the same cut record merge")
+            } else {
+                across
+                    .checked_add(depth)
+                    .and_then(|levels| merge(&halves[0], &halves[1], levels, false))
+                    .ok_or_else(|| {
+                        refused(
+                            op,
+                            "structureMismatch",
+                            &format!(
+                                "The records meeting at {offset} in {} cannot be merged.",
+                                op["at"]["blockId"].as_str().unwrap_or_default()
+                            ),
+                        )
+                    })?
+            };
+            let inverse = json!({"type":if split {"joinInline"} else {"splitInline"},
+                "at":position(&op["at"], paragraph, offset),"depth":depth});
+            Ok((with_content(paragraph, after), vec![inverse]))
+        }
         Some("insertText") => {
             let inserted = op.get("text").and_then(Value::as_str).ok_or_else(|| {
                 refused(op, "invalidOperation", "An insertion must name its text.")
@@ -598,6 +664,27 @@ mod tests {
                 let (changed, inverses) = edit(&original, &op).unwrap();
                 let (restored, _) = edit(&changed, &inverses[0]).unwrap();
                 assert_eq!(restored, original, "offset {offset}, props {props}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_available_scalar_split_restores_authored_records() {
+        let original = paragraph();
+        for offset in [0, 1, 3, 4, 5, 6, 7, 8] {
+            let across = spanning(content(&original), &[offset], 0, 1);
+            for depth in 1..=across {
+                let op = json!({"type":"splitInline","at":at(offset),"depth":depth});
+                let (changed, inverse) = edit(&original, &op).unwrap();
+                assert_eq!(
+                    inverse,
+                    vec![json!({"type":"joinInline","at":{
+                    "story":"main","blockId":"00000001","offset":offset,"zeroWidthBefore":0
+                },"depth":depth})]
+                );
+                let (restored, redo) = edit(&changed, &inverse[0]).unwrap();
+                assert_eq!(restored, original, "offset {offset}, depth {depth}");
+                assert_eq!(edit(&restored, &redo[0]).unwrap().0, changed);
             }
         }
     }

@@ -463,11 +463,19 @@ fn dispatch_one(document: &Value, op: &Value) -> Result<Applied, Failure> {
             | "insertText"
             | "deleteRange"
             | "insertContent"
+            | "splitInline"
+            | "joinInline"
             | "setRunProps"
     ) {
         return Err(Failure::unsupported(op, "operationKind"));
     }
-    let address = if matches!(kind, "insertText" | "insertContent") {
+    if matches!(kind, "splitInline" | "joinInline") {
+        crate::inline::seam_depth(op)?;
+    }
+    let address = if matches!(
+        kind,
+        "insertText" | "insertContent" | "splitInline" | "joinInline"
+    ) {
         op.get("at")
     } else if matches!(kind, "deleteRange" | "setRunProps") {
         op.get("from")
@@ -521,7 +529,9 @@ fn dispatch_one(document: &Value, op: &Value) -> Result<Applied, Failure> {
         {
             crate::tracked::edit(paragraph, op)?
         }
-        "insertText" | "deleteRange" | "insertContent" => crate::inline::edit(paragraph, op)?,
+        "insertText" | "deleteRange" | "insertContent" | "splitInline" | "joinInline" => {
+            crate::inline::edit(paragraph, op)?
+        }
         "setRunProps" => crate::run_props::edit(paragraph, op)?,
         _ => return Err(Failure::unsupported(op, "operationKind")),
     };

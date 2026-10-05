@@ -12,7 +12,7 @@ import {
 import { applyDocumentOps } from "../../../packages/docx-core/src/ops/apply";
 import { DOCUMENT_OP_TYPES } from "../../../packages/docx-core/src/ops/types";
 import { normalizeForOps } from "../../../packages/docx-core/src/ops/contract";
-import type { Document } from "../../../packages/docx-core/src/model/document";
+import type { Document, Paragraph } from "../../../packages/docx-core/src/model/document";
 import type { DocumentOp } from "../../../packages/docx-core/src/ops/types";
 import {
   allocateEditorIntentIds,
@@ -303,39 +303,120 @@ test("tracked scalar insertions and deletions match TS provenance and both repla
     }
 });
 
-test("replaceText uses the existing intent compiler and compares its atomic primitive batch", () => {
+const replacementContents = [
+  [{ type: "run", content: [{ type: "text", text: "a😀bc" }] }],
+  [
+    {
+      type: "run",
+      preservedAttributes: [{ name: "rsidR", value: "1234ABCD" }],
+      content: [
+        { type: "text", text: "a😀" },
+        { type: "text", text: "b" },
+      ],
+    },
+    { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "c" }] },
+  ],
+] satisfies Paragraph["content"][];
+
+for (const [fixture, content] of replacementContents.entries())
+  test(`replaceText compiler scalar spans and atomic inverse closure, fixture ${fixture}`, () => {
+    const document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content,
+            },
+          ],
+        },
+      },
+    } satisfies Document;
+    const position = (offset: number) => ({ story: "main", blockId: "00000001", offset }) as const;
+    const boundaries = [0];
+    let offset = 0;
+    for (const run of content)
+      for (const leaf of run.content)
+        for (const scalar of leaf.text) {
+          offset += scalar.length;
+          boundaries.push(offset);
+        }
+    for (const from of boundaries)
+      for (const to of boundaries.filter((end) => end >= from))
+        for (const text of ["", "ž😀"]) {
+          const intent = {
+            type: "replaceText",
+            from: position(from),
+            to: position(to),
+            text,
+          } as const;
+          const allocation = allocateEditorIntentIds(document, intent);
+          const compiled = compileEditorIntent(document, {
+            intent,
+            mode: { type: "editing", newIds: allocation.newIds },
+          }).unwrap();
+          assertNativeSequence(document, compiled.ops);
+        }
+  });
+
+test("plain inline splits and joins compare both seam depths and exact refusals", () => {
   const document = {
     package: {
       document: {
         content: [
           {
             type: "paragraph",
-            paraId: "00000001",
-            content: [{ type: "run", content: [{ type: "text", text: "a😀bc" }] }],
+            paraId: "2F48B967",
+            content: [
+              {
+                type: "run",
+                content: [
+                  { type: "text", text: "a😀" },
+                  { type: "text", text: "bc" },
+                ],
+              },
+            ],
           },
         ],
       },
     },
   } satisfies Document;
-  const position = (offset: number) => ({ story: "main", blockId: "00000001", offset }) as const;
-  for (const [from, to] of [
-    [0, 1],
-    [1, 3],
-    [3, 5],
-  ] as const) {
-    const intent = {
-      type: "replaceText",
-      from: position(from),
-      to: position(to),
-      text: "ž😀",
-    } as const;
-    const allocation = allocateEditorIntentIds(document, intent);
-    const compiled = compileEditorIntent(document, {
-      intent,
-      mode: { type: "editing", newIds: allocation.newIds },
-    }).unwrap();
-    assertNativeSequence(document, compiled.ops);
-  }
+  const at = (offset: number) => ({ story: "main", blockId: "2F48B967", offset }) as const;
+  const exercised = new Set<number>();
+  for (const offset of [1, 3, 4])
+    for (const depth of [1, 2]) {
+      const op = { type: DOCUMENT_OP_TYPES.SPLIT_INLINE, at: at(offset), depth } as const;
+      const expected = applyDocumentOps(document, [op]);
+      if (expected.isOk()) {
+        exercised.add(depth);
+        assertNativeSequence(document, [op]);
+      } else {
+        expect(native({ document, ops: [op] })).toEqual({
+          status: "refused",
+          opType: expected.error.opType,
+          reason: expected.error.reason,
+          message: expected.error.message,
+        });
+      }
+    }
+  expect([...exercised].sort()).toEqual([1, 2]);
+  for (const type of [DOCUMENT_OP_TYPES.SPLIT_INLINE, DOCUMENT_OP_TYPES.JOIN_INLINE])
+    for (const offset of [0, 1, 2, 3, 5])
+      for (const depth of [0, 1, 2, 3]) {
+        const op = { type, at: at(offset), depth } as const;
+        const expected = applyDocumentOps(document, [op]);
+        if (expected.isOk()) {
+          assertNativeSequence(document, [op]);
+          continue;
+        }
+        expect(native({ document, ops: [op] })).toEqual({
+          status: "refused",
+          opType: expected.error.opType,
+          reason: expected.error.reason,
+          message: expected.error.message,
+        });
+      }
 });
 
 test("copied wrapper identities never silently duplicate package identities", () => {
