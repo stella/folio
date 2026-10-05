@@ -14,7 +14,7 @@ import { closeHistory } from "prosemirror-history";
 const { createApp, defineComponent, h, ref, shallowRef, nextTick } = await import("vue");
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { validateDocxPackage } from "../../../docx-core/src/validate/docx";
+import { validateDocxPackage } from "@stll/docx-core";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { CanonicalSessionError } from "@stll/folio-core/controller/canonicalSession";

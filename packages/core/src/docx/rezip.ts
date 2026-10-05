@@ -1983,14 +1983,16 @@ async function ensureCommentsContentType(zip: JSZip, compressionLevel: number): 
   }
 
   let ctXml = await ctFile.async("text");
-  if (ctXml.includes("/word/comments.xml")) {
+  if (ctXml.toLowerCase().includes("/word/comments.xml")) {
     return;
   }
 
+  const commentsPartPath =
+    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.name ?? "word/comments.xml";
   // Insert before closing </Types>
   ctXml = ctXml.replace(
     "</Types>",
-    `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
+    `<Override PartName="/${commentsPartPath}" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
   );
   zip.file("[Content_Types].xml", ctXml, {
     compression: "DEFLATE",
@@ -2010,16 +2012,18 @@ async function ensureCommentsRelationship(zip: JSZip, compressionLevel: number):
   }
 
   let relsXml = await relsFile.async("text");
-  if (relsXml.includes("comments.xml")) {
+  if (relsXml.toLowerCase().includes("comments.xml")) {
     return;
   }
 
+  const commentsPartPath =
+    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.name ?? "word/comments.xml";
   // Generate a unique rId
   const newRId = `rId${findMaxRId(relsXml) + 1}`;
 
   relsXml = relsXml.replace(
     "</Relationships>",
-    `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.comments}" Target="comments.xml"/></Relationships>`,
+    `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.comments}" Target="${commentsPartPath.slice("word/".length)}"/></Relationships>`,
   );
   zip.file(relsPath, relsXml, {
     compression: "DEFLATE",
