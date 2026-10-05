@@ -5,6 +5,15 @@ import {
   CANONICAL_GAP,
 } from "../../packages/core/src/types/canonicalCapabilities";
 
+/** Legacy PM execution still owns these sources when canonical sessions refuse them. */
+export const PUBLIC_OPERATION_SOURCE_GAPS = Object.entries(CANONICAL_CAPABILITIES)
+  .filter(
+    ([, capability]) =>
+      capability.owner === "document-operations" &&
+      capability.defaultSessionMutation === "pm-public-operations",
+  )
+  .map(([gap]) => gap);
+
 export type CanonicalSource = { file: string; source: string };
 
 const gapNames = new Map(Object.entries(CANONICAL_GAP));
@@ -290,13 +299,7 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
         const mutation = mutationGap(node, file, imports);
         if (mutation) markerFor(node, mutation);
         if (mutation === CANONICAL_GAP.documentOperations) {
-          for (const gap of [
-            CANONICAL_GAP.publicComments,
-            CANONICAL_GAP.publicSuggestedMode,
-            CANONICAL_GAP.publicTableProjection,
-            CANONICAL_GAP.publicUnsupportedInline,
-          ])
-            markerFor(node, gap);
+          for (const gap of PUBLIC_OPERATION_SOURCE_GAPS) markerFor(node, gap);
         }
         if (ts.isIfStatement(node) && node.expression.getText() === "intents === undefined")
           markerFor(node, CANONICAL_GAP.commands);

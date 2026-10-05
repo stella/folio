@@ -23,17 +23,23 @@ export const CANONICAL_GAP = {
   publicTableProjection: "publicOps.tableProjection",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   publicHeadlessSession: "publicOps.headlessSession",
+  publicSecondaryStories: "publicOps.secondaryStories",
 } as const;
 
 export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
 
 type CanonicalCapability = {
-  owner: "controller" | "adapters" | "prosemirror" | "document-operations" | "ai-edits";
   kind: "routing" | "refusal" | "mutation-source";
   adapters: readonly ("react" | "vue")[];
   summary: string;
   remainingCommands?: { registry: "extension-commands" };
-};
+} & (
+  | {
+      owner: "document-operations";
+      defaultSessionMutation: "pm-public-operations" | "pm-headless-reviewer" | "canonical";
+    }
+  | { owner: "controller" | "adapters" | "prosemirror" | "ai-edits" }
+);
 
 export const CANONICAL_CAPABILITIES = {
   [CANONICAL_GAP.authorityRouting]: {
@@ -136,36 +142,52 @@ export const CANONICAL_CAPABILITIES = {
   },
   [CANONICAL_GAP.documentOperations]: {
     owner: "document-operations",
+    defaultSessionMutation: "pm-public-operations",
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary: "Public document operations still execute against a held PM view.",
   },
   [CANONICAL_GAP.publicComments]: {
     owner: "document-operations",
-    kind: "mutation-source",
+    defaultSessionMutation: "pm-public-operations",
+    kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Public comment operations still use the PM executor.",
+    summary:
+      "Public comment operations refuse in canonical sessions; legacy sessions retain PM comments.",
   },
   [CANONICAL_GAP.publicSuggestedMode]: {
     owner: "document-operations",
-    kind: "mutation-source",
+    defaultSessionMutation: "pm-public-operations",
+    kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Public suggested-mode receipts still use the PM executor.",
+    summary:
+      "Public suggested mode refuses in canonical sessions until pending suggestions use the journal.",
   },
   [CANONICAL_GAP.publicTableProjection]: {
     owner: "document-operations",
-    kind: "mutation-source",
+    defaultSessionMutation: "pm-public-operations",
+    kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Public table operations still depend on PM projection geometry.",
+    summary:
+      "Public table operations refuse while canonical projections require paragraph stories.",
   },
   [CANONICAL_GAP.publicUnsupportedInline]: {
     owner: "document-operations",
-    kind: "mutation-source",
+    defaultSessionMutation: "pm-public-operations",
+    kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Public inline payloads still require canonical compiler coverage.",
+    summary: "Unsupported public payloads refuse with a typed compiler capability gap.",
+  },
+  [CANONICAL_GAP.publicSecondaryStories]: {
+    owner: "document-operations",
+    defaultSessionMutation: "pm-public-operations",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary: "Public secondary-story batches refuse until canonical story routing is available.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",
+    defaultSessionMutation: "pm-headless-reviewer",
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
