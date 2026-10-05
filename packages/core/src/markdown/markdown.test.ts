@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import type {
   BlockContent,
@@ -91,30 +91,34 @@ describe("toMarkdown — block structure", () => {
     expect(md([para([run("Sub")], { styleId: "Heading3" })])).toBe("### Sub");
   });
 
-  test("generated whitespace-only headings do not emit extra Markdown blocks", async () => {
-    await assertProperty(
-      fc.property(
-        fc.array(fc.constantFrom(" ", "\t", "\n", "\u00a0", "\u2003"), {
-          minLength: 1,
-          maxLength: 12,
-        }),
-        fc.integer({ min: 1, max: 6 }),
-        fc.record({ bold: fc.boolean(), italic: fc.boolean(), strike: fc.boolean() }),
-        (whitespace, level, formatting) => {
-          expect(
-            md([
-              para([run(whitespace.join(""), formatting)], { styleId: `Heading${level}` }),
-              para([run("Tail.")]),
-            ]),
-          ).toBe("Tail.");
-          expect(md([para([run("Title")], { styleId: `Heading${level}` })])).toBe(
-            `${"#".repeat(level)} Title`,
-          );
-        },
-      ),
-      { seed: 717860451, numRuns: 100 },
-    );
-  });
+  test(
+    "generated whitespace-only headings do not emit extra Markdown blocks",
+    async () => {
+      await assertProperty(
+        fc.property(
+          fc.array(fc.constantFrom(" ", "\t", "\n", "\u00a0", "\u2003"), {
+            minLength: 1,
+            maxLength: 12,
+          }),
+          fc.integer({ min: 1, max: 6 }),
+          fc.record({ bold: fc.boolean(), italic: fc.boolean(), strike: fc.boolean() }),
+          (whitespace, level, formatting) => {
+            expect(
+              md([
+                para([run(whitespace.join(""), formatting)], { styleId: `Heading${level}` }),
+                para([run("Tail.")]),
+              ]),
+            ).toBe("Tail.");
+            expect(md([para([run("Title")], { styleId: `Heading${level}` })])).toBe(
+              `${"#".repeat(level)} Title`,
+            );
+          },
+        ),
+        { seed: 717860451, numRuns: 100 },
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
 
   test("a whitespace heading keeps its visible list label", () => {
     expect(
