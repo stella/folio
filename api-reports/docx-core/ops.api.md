@@ -310,7 +310,7 @@ export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP
 export const documentStories: (document: Document_2) => OpStory[];
 
 // @public
-export type EditorIntent = {
+export type EditorIntent = HyperlinkEditorIntent | {
     type: "table";
     operation: TableIntentOperation;
 } | {
