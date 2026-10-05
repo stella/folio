@@ -1,0 +1,32 @@
+{
+  "generated canonical histories save the model and preserve every block outside cumulative touched ids": [
+    {
+      "seed": 20261004,
+      "path": "3:0:0",
+      "note": "Selective split/join and resource-only histories must exercise the untouched-block byte oracle, including imported styles and the shared paragraph XML helper.",
+      "date": "2026-10-05"
+    }
+  ],
+  "generated canonical ${kind} replacements refuse save rather than lose resources": [
+    {
+      "seed": 1768538885,
+      "path": "0:0",
+      "note": "Resource replacement generators must use production-valid media bytes retained by the parser, not an invalid three-byte PNG.",
+      "date": "2026-10-05"
+    },
+    {
+      "seed": 1724085513,
+      "path": "0:0",
+      "note": "All resource replacement kinds must seed valid modeled media so the refusal and undo save oracles execute.",
+      "date": "2026-10-05"
+    }
+  ],
+  "generated browser-shaped paragraph splits save strict XML through history replay": [
+    {
+      "seed": 20261023,
+      "path": "0",
+      "note": "Retained paragraph splits through undo/redo must validate strict package XML: re-wrapping self-bound canonical replay paragraphs duplicated xmlns and compatibility attributes. Previous save generator only rejoined splits and checked permissive parsing.",
+      "date": "2026-10-05"
+    }
+  ]
+}

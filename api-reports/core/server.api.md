@@ -184,7 +184,7 @@ export type DocumentPreset = {
 };
 
 // @public
-export type DocumentPropertiesOptions = SaveDiagnosticOptions & {
+export type DocumentPropertiesOptions = SaveDiagnosticOptions & DocumentBodyAuthorityOptions & {
     creator?: string;
     application?: string;
 };
