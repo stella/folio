@@ -70,9 +70,10 @@ for (const { adapter, port } of [
     paragraph.paraId = "12345678";
     const source = await createDocx(sourceDocument);
     await page.goto(`http://localhost:${port}/?session=canonical`, { waitUntil: "networkidle" });
-    // A painted page can precede the playground boot and canonical owner adoption.
+    // Boot exposes the bridge before the initial document has canonical paragraph identities.
+    // Loading the supported fixture establishes the owner; snapshot readiness follows load.
     await page.waitForSelector(".layout-page");
-    await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
+    await page.waitForFunction(() => globalThis.__folioCanonical != null);
     await page.evaluate(() => {
       globalThis.__folioCanonicalFuzzErrors = [];
     });
