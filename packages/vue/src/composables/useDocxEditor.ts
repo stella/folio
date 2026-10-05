@@ -48,7 +48,10 @@ import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import { prepareCanonicalDocxInput } from "@stll/folio-core/docx/canonicalSessionInput";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
-import { repackWithCanonicalStoryRemovals } from "@stll/folio-core/docx/canonicalStoryRepack";
+import {
+  CanonicalSaveDiagnosticError,
+  serializeCanonicalSave,
+} from "@stll/folio-core/docx/canonicalSave";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { createHeaderFooterEditorManager } from "@stll/folio-core/controller/headerFooterEditorManager";
 import type {
@@ -867,8 +870,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       return;
     }
     try {
+      const canonical = manager.api.getCanonicalDocument();
+      if (!canonical && isCanonicalSession()) return;
       const updated =
-        manager.api.getCanonicalDocument() ??
+        canonical ??
         // canonical-gap: pm-save-projection
         noteFollower.reconcile(fromProseDoc(view.state.doc, base), view.state.doc);
       docModel.value = updated;
@@ -1279,20 +1284,45 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   type SerializedDocxResult = {
     buffer: ArrayBuffer;
     document: Document;
+    version?: number;
   };
 
   async function serializeCurrentDocx(
     serializationOptions?: FolioGetDocxOptions,
   ): Promise<SerializedDocxResult | null> {
-    // A write-back still pending may owe the notes a restore or a deletion.
-    if (docChangeTimer !== null) {
-      flushDocumentChangeNotification();
-    }
     const view = editorView.value;
     const currentDocument = docModel.value;
     if (!view || !currentDocument) {
       return null;
     }
+    try {
+      const snapshot = manager.api.captureCanonicalSave();
+      if (snapshot) {
+        const result = await serializeCanonicalSave({
+          snapshot,
+          options: serializationOptions,
+          featureFlags: toValue(featureFlags),
+        });
+        for (const diagnostic of result.diagnostics) {
+          if (!serializationOptions?.onDiagnostic)
+            onError?.(
+              new CanonicalSaveDiagnosticError({
+                gap: CANONICAL_GAP.save,
+                diagnostic,
+                message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
+              }),
+            );
+        }
+        if (result.tripwireResult) onSelectiveSaveTripwire?.(result.tripwireResult);
+        return result;
+      }
+    } catch (error) {
+      onError?.(error instanceof Error ? error : new Error(String(error)));
+      return null;
+    }
+    if (isCanonicalSession()) return null;
+    // Legacy write-back can still owe the notes a restore or a deletion.
+    if (docChangeTimer !== null) flushDocumentChangeNotification();
     const base = noteEditorManager.snapshotDocument(
       headerFooterManager.snapshotDocument(currentDocument),
     );
@@ -1302,9 +1332,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // read from the same snapshot. A later `view.state` read could pick up an
     // edit that landed mid-save and diff against the wrong baseline.
     const state = view.state;
-    const canonical = manager.api.getCanonicalDocument();
     // canonical-gap: pm-save-projection
-    const updatedDoc = withoutUnreferencedNotes(canonical ?? fromProseDoc(state.doc, base));
+    const updatedDoc = withoutUnreferencedNotes(fromProseDoc(state.doc, base));
 
     const { resolveSelectiveSaveFlags } = await import("@stll/folio-core/docx/selectiveSaveFlags");
     const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
@@ -1338,16 +1367,11 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // or that deletion accepted) is one the repack must be told about, or it
     // refuses the smaller package.
     const repackFull = () =>
-      canonical
-        ? repackWithCanonicalStoryRemovals({
-            document: updatedDoc,
-            repack: () => repackDocx(updatedDoc),
-          })
-        : repackWithEditorSectionRemovals({
-            state,
-            document: updatedDoc,
-            repack: () => repackDocx(updatedDoc),
-          });
+      repackWithEditorSectionRemovals({
+        state,
+        document: updatedDoc,
+        repack: () => repackDocx(updatedDoc),
+      });
 
     if (!buffer) {
       // No original buffer means a from-scratch document — build one via createDocx.
@@ -1394,7 +1418,11 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // refresh the story managers, and clear the document dirty signal only
     // after serialization succeeds. The ref API owns comment-dirty reset and
     // the host's onSave callback.
-    if (editorView.value === savedView && savedView?.state.doc === savedState?.doc) {
+    if (
+      editorView.value === savedView &&
+      savedView?.state.doc === savedState?.doc &&
+      (result.version === undefined || manager.api.isCanonicalSaveCurrent(result.version))
+    ) {
       docModel.value = result.document;
       syncSecondaryStoryEditors();
       isDirty.value = false;
@@ -1408,8 +1436,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   function getDocument(): Document | null {
     const canonical = manager.api.getCanonicalDocument();
     if (canonical) return canonical;
-    if (usesCanonicalSession(toValue(experimentalSession), CANONICAL_GAP.authorityRouting))
-      return null;
+    if (isCanonicalSession()) return null;
     const document = docModel.value;
     if (!document) return null;
     return cloneForHost(

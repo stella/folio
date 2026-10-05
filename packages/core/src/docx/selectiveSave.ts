@@ -26,6 +26,7 @@ import {
   hasUnmaterializedInlineResources,
   hasUnmaterializedHyperlinkBindings,
   applyUpdatesToZip,
+  planAddedStyles,
   findMaxRId,
   updateCoreProperties,
   collectHeaderFooterUpdates,
@@ -53,7 +54,10 @@ import {
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
 import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
-import { serializeDocument } from "./serializer/documentSerializer";
+import {
+  serializeDocument,
+  type DocumentBodyAuthorityOptions,
+} from "./serializer/documentSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { readRootNamespaceBindings } from "./serializer/partNamespaces";
@@ -308,20 +312,21 @@ async function patchNumberingPart(
   return true;
 }
 
-export type SelectiveSaveOptions = SaveDiagnosticOptions & {
-  /** Changed paragraph IDs to selectively patch */
-  changedParaIds: Set<string>;
-  /** Whether paragraph membership, order, or block structure changed. */
-  structuralChange: boolean;
-  /** Whether any changes affected paragraphs without paraId */
-  hasUntrackedChanges: boolean;
-  /**
-   * Maximum allowed `originalBuffer.byteLength` for the selective path. Above
-   * this size the function returns null and the caller falls back to full
-   * repack. Defaults to {@link DEFAULT_SELECTIVE_SAVE_MAX_BYTES}.
-   */
-  maxBytes?: number;
-};
+export type SelectiveSaveOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & {
+    /** Changed paragraph IDs to selectively patch */
+    changedParaIds: Set<string>;
+    /** Whether paragraph membership, order, or block structure changed. */
+    structuralChange: boolean;
+    /** Whether any changes affected paragraphs without paraId */
+    hasUntrackedChanges: boolean;
+    /**
+     * Maximum allowed `originalBuffer.byteLength` for the selective path. Above
+     * this size the function returns null and the caller falls back to full
+     * repack. Defaults to {@link DEFAULT_SELECTIVE_SAVE_MAX_BYTES}.
+     */
+    maxBytes?: number;
+  };
 
 /**
  * Attempt a selective save — patch only changed paragraphs in document.xml.
@@ -477,7 +482,11 @@ export async function attemptSelectiveSave(
       // when the source part is asked, and the save bails to a full repack on
       // every edit. What a changed id names is a body paragraph exactly when
       // the body serializes it.
-      const serializedDocXml = serializeDocument(doc, readRootNamespaceBindings(originalDocXml));
+      const serializedDocXml = serializeDocument(doc, readRootNamespaceBindings(originalDocXml), {
+        xml: originalDocXml,
+        bodyAuthority: options.bodyAuthority,
+        onDiagnostic: options.onDiagnostic,
+      });
       const bodyParaIds = collectParaIds(serializedDocXml);
       const originalBodyParaIds = structuralChange ? collectParaIds(originalDocXml) : undefined;
 
@@ -594,6 +603,24 @@ export async function attemptSelectiveSave(
     // comments/header updates above); a no-op when numbering is unchanged.
     if (!(await patchNumberingPart(zip, doc, updates))) {
       return null;
+    }
+
+    // Package resource operations may add styles without touching any body block.
+    // Share the full writer's append plan, preserving every existing definition.
+    const styles = await planAddedStyles(doc, zip);
+    switch (styles.type) {
+      case "unchanged":
+        break;
+      case "patch":
+        updates.set(styles.path, styles.xml);
+        break;
+      case "materialize":
+        options.onDiagnostic?.({ type: "selectiveSaveRefused", part: "word/styles.xml" });
+        return null;
+      default: {
+        const exhaustive: never = styles;
+        return exhaustive;
+      }
     }
 
     // Serialize modified headers/footers
