@@ -109,19 +109,20 @@ const effectiveBindings = (element: XmlElement): Map<string, string> => {
   return bindings;
 };
 
-type GeneratedFragmentOptions = {
+type MaterializeReplayFragmentOptions = {
   xml: string;
   element: XmlElement;
   sourceNamespace: string;
   generatedRoot?: XmlElement;
 };
 
-const generatedFragment = ({
+/** Bind a replay fragment once, retaining existing local declarations and compatibility tokens. */
+export const materializeReplayFragment = ({
   xml,
   element,
   sourceNamespace,
   generatedRoot,
-}: GeneratedFragmentOptions): string | null => {
+}: MaterializeReplayFragmentOptions): string | null => {
   const strict = TRANSITIONAL_NAMESPACE_BY_STRICT_URI.has(sourceNamespace);
   const tokens = [...xml.matchAll(XML_TOKEN)];
   const first = tokens.at(0);
@@ -314,7 +315,7 @@ const replayBlocks = (
         continue;
       }
     }
-    const fragment = generatedFragment({
+    const fragment = materializeReplayFragment({
       xml: serializedXml.slice(replacement.start, replacement.end),
       element: replacement.element,
       sourceNamespace: getNamespaceUri(source.root) ?? "",
@@ -569,7 +570,7 @@ const replayCellContent = ({
       return false;
     const range = getXmlSourceRange(sourceProperty);
     if (!range) return false;
-    const propertyXml = generatedFragment({
+    const propertyXml = materializeReplayFragment({
       xml: sourceXml.slice(range.start, range.end),
       element: sourceProperty,
       sourceNamespace: getNamespaceUri(sourceCell) ?? "",
@@ -695,7 +696,7 @@ export const buildDocumentBlockReplay = ({
     if (!containerRange || (old && !oldRange) || (next && !nextRange)) return null;
     const replacement =
       next && nextRange
-        ? generatedFragment({
+        ? materializeReplayFragment({
             xml: serializedXml.slice(nextRange.start, nextRange.end),
             element: next,
             sourceNamespace: getNamespaceUri(sourceContainer) ?? "",

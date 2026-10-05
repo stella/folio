@@ -5,13 +5,14 @@ import { assertProperty, propertyTestTimeout } from "../../../../test/property-t
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 import JSZip from "jszip";
-import { EditorState } from "prosemirror-state";
+import { EditorState, TextSelection } from "prosemirror-state";
 import { DOCUMENT_OP_TYPES, OP_STORIES, packageResourcesOpOf } from "@stll/docx-core/ops";
 import { createCanonicalSession } from "./canonicalSession";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { schema } from "../prosemirror/schema";
 import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
 import { parseDocx } from "../docx/parser";
+import { validateDocxPackage } from "@stll/docx-core";
 import { createDocx } from "../docx/rezip";
 import { createSimpleDocument } from "../docx/serializer/documentSerializer";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
@@ -21,6 +22,8 @@ import type { SaveDiagnostic } from "../docx/saveDiagnostics";
 import { assertExactModel } from "../../../../test/exactModel";
 import type { Style } from "../types/document";
 import { canonicalSaveParagraphXml } from "../../../../test/canonicalSaveSequence";
+import { shapeArrayBuffer } from "../__tests__/documentShapes";
+import { ensureParaIds } from "../docx/ensureParaIds";
 
 const IDS = ["11111111", "22222222", "33333333"] as const;
 const SOURCE_BLOCKS = IDS.map(
@@ -116,6 +119,7 @@ test("generated canonical histories save the model and preserve every block outs
             snapshot: resourceSnapshot,
             options: { mode },
           });
+          expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({ valid: true });
           const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
           for (const style of addedStyles)
             expect(reopened.package.styles?.styles).toContainEqual(style);
@@ -211,6 +215,7 @@ test("generated canonical histories save the model and preserve every block outs
         }
         for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
           const saved = await serializeCanonicalSave({ snapshot, options: { mode } });
+          expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({ valid: true });
           const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
           for (const style of addedStyles)
             expect(reopened.package.styles?.styles).toContainEqual(style);
@@ -235,6 +240,92 @@ test("generated canonical histories save the model and preserve every block outs
       },
     ),
     { seed: 20261004, numRuns: 12 },
+  );
+});
+
+// Browser Enter and multi-block paste introduce paragraphs whose replay fragments
+// already carry local namespace declarations; permissive parsing misses duplicates.
+const STRUCTURAL_SAVE_SHAPES = [
+  "empty",
+  "plain-markdown",
+  "single-bullet-list",
+  "image",
+  "notes",
+] as const;
+const STRUCTURAL_SAVE_MODES = ["editing", "suggesting"] as const;
+
+test("generated browser-shaped paragraph splits save strict XML through history replay", async () => {
+  await assertProperty(
+    fc.asyncProperty(fc.integer({ min: 0, max: 100 }), async (percentage) => {
+      const exercisedShapes = new Set<string>();
+      const exercisedModes = new Set<string>();
+      for (const shape of STRUCTURAL_SAVE_SHAPES) {
+        const source =
+          shape === "empty"
+            ? (
+                await ensureParaIds(await createDocx(createSimpleDocument([{ text: "" }])))
+              ).docx.slice().buffer
+            : await shapeArrayBuffer(shape);
+        for (const mode of STRUCTURAL_SAVE_MODES) {
+          exercisedShapes.add(shape);
+          exercisedModes.add(mode);
+          const session = createCanonicalSession(
+            await parseDocx(source, { preloadFonts: false }),
+          ).unwrap();
+          session.setMode(
+            mode === "editing"
+              ? { type: "editing" }
+              : { type: "suggesting", author: "Canonical save" },
+          );
+          let state = EditorState.create({ schema, doc: session.projection.doc });
+          const first = state.doc.firstChild;
+          if (!first || !first.isTextblock)
+            return panic("Browser save shapes must begin with a paragraph");
+          const position = 1 + Math.floor((first.content.size * percentage) / 100);
+          state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position)));
+          const baseline = session.captureSaveSnapshot();
+          const split = session.prepareSplit(state).unwrap();
+          state = state.apply(split.transaction);
+          split.publish().unwrap();
+          const expected = session.captureSaveSnapshot();
+          const undo = session.prepareUndo(state).unwrap();
+          state = state.apply(undo.transaction);
+          undo.publish().unwrap();
+          assertExactModel(session.captureSaveSnapshot().document, baseline.document);
+          const redo = session.prepareRedo(state).unwrap();
+          state = state.apply(redo.transaction);
+          redo.publish().unwrap();
+          assertExactModel(session.captureSaveSnapshot().document, expected.document);
+          for (const serializationMode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
+            const saved = await serializeCanonicalSave({
+              snapshot: session.captureSaveSnapshot(),
+              featureFlags: { selectiveSave: true },
+              options: { mode: serializationMode },
+            });
+            expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({
+              valid: true,
+            });
+            const touched = new Set(expected.changedBlockIds);
+            for (const block of baseline.document.package.document.content) {
+              if (block.type !== "paragraph" || !block.paraId || touched.has(block.paraId))
+                continue;
+              expect(await canonicalSaveParagraphXml(saved.buffer, block.paraId)).toBe(
+                await canonicalSaveParagraphXml(source, block.paraId),
+              );
+            }
+            expect(
+              describePackageDifferences(
+                expected.document,
+                await parseDocx(saved.buffer, { preloadFonts: false }),
+              ),
+            ).toEqual({ messages: [], omitted: 0 });
+          }
+        }
+      }
+      expect([...exercisedShapes].sort()).toEqual([...STRUCTURAL_SAVE_SHAPES].sort());
+      expect([...exercisedModes].sort()).toEqual([...STRUCTURAL_SAVE_MODES].sort());
+    }),
+    { seed: 20261023, numRuns: 2, examples: [[0], [100]] },
   );
 });
 
