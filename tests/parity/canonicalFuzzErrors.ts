@@ -2,6 +2,8 @@
 import { CanonicalSaveDiagnosticError } from "../../packages/core/src/docx/canonicalSave";
 import type { SaveDiagnostic } from "../../packages/core/src/docx/saveDiagnostics";
 import type { BrowserInputAction } from "../visual/browserInputTrace";
+import { CANONICAL_GAP } from "../../packages/core/src/types/canonicalCapabilities";
+import { CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS } from "../../test/canonicalSaveDiagnostics";
 
 export type CanonicalFuzzPhase =
   | { type: "load" | "finalSave" | "reload" }
@@ -24,6 +26,18 @@ export type CanonicalFuzzError = CanonicalFuzzErrorDetails & {
 export type CanonicalFuzzObservation = {
   phase: CanonicalFuzzPhase;
   errors: CanonicalFuzzError[];
+};
+
+/** The adapter reports a successful full-save fallback through its error channel. */
+export const isCanonicalSaveFallback = (error: CanonicalFuzzError) => {
+  if (error.status !== "saveDiagnostic") return false;
+  const disposition = CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS[error.diagnostic.type];
+  return (
+    disposition.status === "permitted" &&
+    error.gap === CANONICAL_GAP.save &&
+    error.diagnostic.part === disposition.diagnostic.part &&
+    (error.phase?.type === "save" || error.phase?.type === "finalSave")
+  );
 };
 
 declare global {

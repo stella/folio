@@ -1,0 +1,10 @@
+{
+  "generated pasted lists preserve save/reopen fidelity through full-save fallbacks and history": [
+    {
+      "seed": 1529073804,
+      "path": "0:0:0",
+      "note": "List slices must use the production list attrs and closed edges from numberPastedHtmlLists; package relationship creation is validated separately from authored body fidelity.",
+      "date": "2026-10-05"
+    }
+  ]
+}
