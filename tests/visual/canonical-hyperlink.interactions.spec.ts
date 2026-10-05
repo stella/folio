@@ -69,8 +69,10 @@ for (const { adapter, port } of [
     }
     paragraph.paraId = "12345678";
     const source = await createDocx(sourceDocument);
-    await page.goto(`http://localhost:${port}/?session=canonical`);
+    await page.goto(`http://localhost:${port}/?session=canonical`, { waitUntil: "networkidle" });
+    // A painted page can precede the playground boot and canonical owner adoption.
     await page.waitForSelector(".layout-page");
+    await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
     await page.evaluate(() => {
       globalThis.__folioCanonicalFuzzErrors = [];
     });
@@ -80,7 +82,15 @@ for (const { adapter, port } of [
         [...new Uint8Array(source)],
       ),
     ).toBe(true);
-    await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
+    await page.waitForFunction(() => {
+      const current = globalThis.__folioCanonical?.snapshot();
+      return (
+        current?.active &&
+        current.projectionMatchesCanonical &&
+        current.canUndo === false &&
+        current.text === "Alpha😀Beta"
+      );
+    });
     expect(await page.evaluate(() => globalThis.__folioCanonical?.setMode("editing"))).toBe(true);
 
     await select({ page, from: 1, to: 6 });
