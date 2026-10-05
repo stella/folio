@@ -1,5 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { panic } from "better-result";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -32,6 +33,12 @@ const openSource = async () => {
   return parseDocx(await zip.generateAsync({ type: "arraybuffer" }), { preloadFonts: false });
 };
 
+const stylesXmlOf = async (buffer: ArrayBuffer) => {
+  const file = (await JSZip.loadAsync(buffer)).file("word/styles.xml");
+  if (!file) return panic("The generated source or saved package is missing its styles part");
+  return file.async("text");
+};
+
 test("generated canonical histories save the model and preserve every block outside cumulative touched ids", async () => {
   await assertProperty(
     fc.asyncProperty(
@@ -43,25 +50,36 @@ test("generated canonical histories save the model and preserve every block outs
         }),
         { minLength: 1, maxLength: 8 },
       ),
-      async (edits) => {
+      fc.record({
+        styleCount: fc.integer({ min: 1, max: 3 }),
+        styleType: fc.constantFrom("paragraph", "character"),
+      }),
+      async (edits, { styleCount, styleType }) => {
         const session = createCanonicalSession(await openSource()).unwrap();
         let state = EditorState.create({ schema, doc: session.projection.doc });
         expect(session.captureSaveSnapshot().changedBlockIds).toEqual([]);
         // Package resource commits retain body ids and conservatively mark package save work.
         const resourceBaseline = session.captureSaveSnapshot();
-        const addedStyle = {
-          styleId: "CanonicalGeneratedResource",
-          type: "paragraph",
-          name: `Resource ${edits.at(0)?.text ?? "x"}`,
-          pPr: { keepNext: true },
-        } satisfies Style;
+        const addedStyles = Array.from(
+          { length: styleCount },
+          (_, index) =>
+            ({
+              styleId: `CanonicalGeneratedResource${index}`,
+              type: styleType,
+              name: `Resource ${edits.at(0)?.text ?? "x"} ${index}`,
+              pPr: { keepNext: true },
+            }) satisfies Style,
+        );
+        const sourceBuffer = resourceBaseline.document.originalBuffer;
+        if (!sourceBuffer) return panic("The generated canonical source is missing its baseline");
+        const sourceStylesXml = await stylesXmlOf(sourceBuffer);
         const withResources = {
           ...session.document,
           package: {
             ...session.document.package,
             styles: {
               ...session.document.package.styles,
-              styles: [...(session.document.package.styles?.styles ?? []), addedStyle],
+              styles: [...(session.document.package.styles?.styles ?? []), ...addedStyles],
             },
           },
         };
@@ -73,7 +91,8 @@ test("generated canonical histories save the model and preserve every block outs
           resourceBaseline.changedBlockIds,
         );
         expect(session.captureSaveSnapshot().structure).toBe("changed");
-        expect(session.document.package.styles?.styles).toContainEqual(addedStyle);
+        for (const style of addedStyles)
+          expect(session.document.package.styles?.styles).toContainEqual(style);
         const resourceUndo = session.prepareUndo(state).unwrap();
         state = state.apply(resourceUndo.transaction);
         resourceUndo.publish().unwrap();
@@ -96,7 +115,14 @@ test("generated canonical histories save the model and preserve every block outs
             options: { mode },
           });
           const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
-          expect(reopened.package.styles?.styles).toContainEqual(addedStyle);
+          for (const style of addedStyles)
+            expect(reopened.package.styles?.styles).toContainEqual(style);
+          const savedStylesXml = await stylesXmlOf(saved.buffer);
+          expect(
+            savedStylesXml.startsWith(
+              sourceStylesXml.slice(0, sourceStylesXml.lastIndexOf("</w:styles>")),
+            ),
+          ).toBe(true);
           expect(describePackageDifferences(resourceSnapshot.document, reopened)).toEqual({
             messages: [],
             omitted: 0,
@@ -184,7 +210,8 @@ test("generated canonical histories save the model and preserve every block outs
         for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
           const saved = await serializeCanonicalSave({ snapshot, options: { mode } });
           const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
-          expect(reopened.package.styles?.styles).toContainEqual(addedStyle);
+          for (const style of addedStyles)
+            expect(reopened.package.styles?.styles).toContainEqual(style);
           expect(describePackageDifferences(snapshot.document, reopened)).toEqual({
             messages: [],
             omitted: 0,

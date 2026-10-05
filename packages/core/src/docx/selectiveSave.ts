@@ -26,6 +26,7 @@ import {
   hasUnmaterializedInlineResources,
   hasUnmaterializedHyperlinkBindings,
   applyUpdatesToZip,
+  planAddedStyles,
   findMaxRId,
   updateCoreProperties,
   collectHeaderFooterUpdates,
@@ -602,6 +603,24 @@ export async function attemptSelectiveSave(
     // comments/header updates above); a no-op when numbering is unchanged.
     if (!(await patchNumberingPart(zip, doc, updates))) {
       return null;
+    }
+
+    // Package resource operations may add styles without touching any body block.
+    // Share the full writer's append plan, preserving every existing definition.
+    const styles = await planAddedStyles(doc, zip);
+    switch (styles.type) {
+      case "unchanged":
+        break;
+      case "patch":
+        updates.set(styles.path, styles.xml);
+        break;
+      case "materialize":
+        options.onDiagnostic?.({ type: "selectiveSaveRefused", part: "word/styles.xml" });
+        return null;
+      default: {
+        const exhaustive: never = styles;
+        return exhaustive;
+      }
     }
 
     // Serialize modified headers/footers

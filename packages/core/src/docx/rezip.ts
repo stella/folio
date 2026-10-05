@@ -3090,15 +3090,16 @@ const styleDefinitionsToSerialize = (doc: Document): StyleDefinitions | undefine
   return missing.length === 0 ? styles : { ...styles, styles: [...styles.styles, ...missing] };
 };
 
-async function serializeAddedStylesIntoZip(
-  doc: Document,
-  originalZip: JSZip,
-  newZip: JSZip,
-  compressionLevel: number,
-): Promise<void> {
+type AddedStylesPlan =
+  | { type: "unchanged" }
+  | { type: "materialize"; styles: StyleDefinitions }
+  | { type: "patch"; path: string; xml: string };
+
+/** One append-only style owner for full repack and selective overlays. */
+export async function planAddedStyles(doc: Document, originalZip: JSZip): Promise<AddedStylesPlan> {
   const styles = doc.package.styles;
   if (!styles || styles.styles.length === 0) {
-    return;
+    return { type: "unchanged" };
   }
   const file = findNotePartEntry(originalZip, STYLES_PART_PATH);
   const originalXml = file ? await file.async("text") : null;
@@ -3114,17 +3115,7 @@ async function serializeAddedStylesIntoZip(
       ? originalXml.lastIndexOf(`</${rootName}>`)
       : -1;
   if (file === null || originalXml === null || rootClose < 0) {
-    // No usable styles part: write the whole model serialization so every
-    // style `document.xml` references resolves, and wire the part up.
-    await materializeNewNotePart({
-      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
-      newZip,
-      partPath: STYLES_PART_PATH,
-      relationshipType: RELATIONSHIP_TYPES.styles,
-      serializedPart: serializeStylesXml(styles),
-      compressionLevel,
-    });
-    return;
+    return { type: "materialize", styles };
   }
   // The part's ids and the ids already appended in this pass: two model styles
   // sharing an id would otherwise both be written, and a duplicate `w:styleId`
@@ -3139,7 +3130,7 @@ async function serializeAddedStylesIntoZip(
     added.push(style);
   }
   if (added.length === 0) {
-    return;
+    return { type: "unchanged" };
   }
   // The serializer writes `w:`; a part spelled otherwise gets each appended
   // style with its own namespace declarations, so the prefixes resolve.
@@ -3152,10 +3143,40 @@ async function serializeAddedStylesIntoZip(
       )
       .join("") +
     originalXml.slice(rootClose);
-  newZip.file(file.name, patched, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
-  });
+  return { type: "patch", path: file.name, xml: patched };
+}
+
+async function serializeAddedStylesIntoZip(
+  doc: Document,
+  originalZip: JSZip,
+  newZip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
+  const plan = await planAddedStyles(doc, originalZip);
+  switch (plan.type) {
+    case "unchanged":
+      return;
+    case "materialize":
+      await materializeNewNotePart({
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
+        newZip,
+        partPath: STYLES_PART_PATH,
+        relationshipType: RELATIONSHIP_TYPES.styles,
+        serializedPart: serializeStylesXml(plan.styles),
+        compressionLevel,
+      });
+      return;
+    case "patch":
+      newZip.file(plan.path, plan.xml, {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      });
+      return;
+    default: {
+      const exhaustive: never = plan;
+      return exhaustive;
+    }
+  }
 }
 
 type PatchNotePartIntoZipOptions = {

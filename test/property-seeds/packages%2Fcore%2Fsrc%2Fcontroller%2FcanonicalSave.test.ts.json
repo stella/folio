@@ -3,7 +3,7 @@
     {
       "seed": 20261004,
       "path": "3:0:0",
-      "note": "Selective split/join histories must exercise the untouched-block byte oracle, including its shared paragraph XML helper.",
+      "note": "Selective split/join and resource-only histories must exercise the untouched-block byte oracle, including imported styles and the shared paragraph XML helper.",
       "date": "2026-10-05"
     }
   ]
