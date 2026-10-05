@@ -73,16 +73,24 @@ const legacySingleParagraphCases = legacyPasteCases
   .map(({ shape, placement }) => ({ shape, placement, operation: singleParagraphPaste }));
 test.each(
   [...legacyPasteCases, ...legacySingleParagraphCases].map(
-    (input) => [`${input.shape.id} / ${input.operation.id}`, input] as const,
+    (input) =>
+      [
+        `${LEGACY_LIST_PASTE_READBACK_GAP.shapes.some((id) => id === input.shape.id) ? "EXPECTED FAILURE" : "strict"} / ${input.shape.id} / ${input.operation.id}`,
+        input,
+      ] as const,
   ),
 )(
-  "EXPECTED FAILURE legacy cross-paragraph list paste readback: %s",
+  "explicit legacy cross-paragraph list paste readback: %s",
   async (_label, { shape, operation, placement }) => {
     const result = await runLegacyConformanceCase({ shape, operation, placement });
     expect(result).not.toBeNull();
     const violations = result?.violations ?? [];
-    expect(violations.length).toBeGreaterThan(0);
     const key = { shape: shape.id, operation: operation.id, placement };
+    if (!LEGACY_LIST_PASTE_READBACK_GAP.shapes.some((id) => id === shape.id)) {
+      expect(violations).toEqual([]);
+      return;
+    }
+    expect(violations.length).toBeGreaterThan(0);
     expect(
       violations.filter(
         ({ kind, mode }) => !gapCovers(LEGACY_LIST_PASTE_READBACK_GAP, key, kind, mode),

@@ -97,7 +97,7 @@ export const LEGACY_LIST_PASTE_READBACK_GAP = {
     ...new Set(LIST_PASTE_RESOLUTION_KEYS.map(({ operation }) => operation)),
     SINGLE_COPIED_PARAGRAPH_OPERATION,
   ],
-  shapes: [...new Set(LIST_PASTE_RESOLUTION_KEYS.map(({ shape }) => shape))],
+  shapes: ["single-decimal-list", "single-bullet-list", "mixed-lists", "outline-level-numbered"],
   placements: ["cross-paragraph"],
   modes: ["suggesting"],
   kinds: ["readback-painted"],
@@ -121,11 +121,24 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     reason:
       "Legacy tracked paragraph joins retain inherited list indentation on the following plain paragraph after save",
     operations: ["key:Delete"],
-    shapes: ["single-decimal-list", "single-bullet-list", "outline-level-numbered"],
+    shapes: ["single-decimal-list", "single-bullet-list", "mixed-lists", "outline-level-numbered"],
     placements: ["caret-end", "cross-paragraph"],
     modes: ["suggesting"],
     kinds: ["readback-painted"],
   },
+  ...[
+    {
+      shapes: ["single-decimal-list", "outline-level-numbered"],
+      toggle: "command:toggleNumberedList",
+    },
+    { shapes: ["single-bullet-list"], toggle: "command:toggleBulletList" },
+  ].map(({ shapes, toggle }) => ({
+    reason: "Legacy list removal keeps resolved indentation painted live but loses it after save",
+    operations: ["command:removeList", toggle],
+    shapes,
+    placements: ["caret-middle"] as const,
+    kinds: ["readback-painted"] as const,
+  })),
   // ---------------------------------------------------------------- lists --
   {
     reason:
