@@ -1,4 +1,5 @@
 import { Result, panic } from "better-result";
+import { sanitizeExternalUrl } from "../markdown/href";
 import type { Document, Hyperlink, ParagraphContent, Run } from "../model/document";
 import { applyDocumentOps } from "./apply";
 import type { EditorIntentMode } from "./editorIntent";
@@ -143,8 +144,18 @@ type CompileHyperlinkIntentOptions = {
 /** Wrapper edits compile to exact-inverse content ops, never to a projection snapshot. */
 export const compileHyperlinkIntent = (
   document: Document,
-  { intent, mode, compileEmptyReplacement }: CompileHyperlinkIntentOptions,
+  { intent: sourceIntent, mode, compileEmptyReplacement }: CompileHyperlinkIntentOptions,
 ): Result<{ ops: DocumentOp[]; selection: TextPosition }, DocumentOpRefusal> => {
+  let intent = sourceIntent;
+  if (intent.type !== "removeHyperlink" && intent.href !== "" && !intent.href.startsWith("#")) {
+    const href = sanitizeExternalUrl(intent.href);
+    if (href === undefined)
+      return refuse(
+        "Hyperlink targets must use a supported URL scheme.",
+        DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
+      );
+    intent = { ...intent, href };
+  }
   const selected = selectedParagraphRuns(document, intent.from, intent.to);
   if (selected.isErr()) return Result.err(selected.error);
   const locations = selected.value.flat();
