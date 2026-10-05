@@ -1,0 +1,16 @@
+{
+  "every marker kind, in every wrapper, in every balance, opens and re-saves": [
+    {
+      "seed": 1717209936,
+      "path": "1:0:0:1",
+      "note": "Default model saves must normalize current modeled content rather than replaying the captured body source.",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": -684148002,
+      "path": "0:0:0:1",
+      "note": "Default model saves must normalize current modeled content rather than replaying the captured body source.",
+      "date": "2026-10-04"
+    }
+  ]
+}

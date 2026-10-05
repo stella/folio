@@ -77,6 +77,12 @@
       "path": "0",
       "note": "Retain the parsed-control regression seed after the numbering fixture expansion invalidated its historical shrink path (CI replay executed zero cases).; Sequence controls retain parsed paragraph-property captures across clone and composed inverse Historical shrink path 0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0 is replaced by explicit root class coverage after the combined operation alphabet and package-generator cutover; this does not recover the old shrunk input.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1138888773,
+      "path": "0:0:0:0:0:0:0:0:0:0",
+      "note": "Default model saves must not consult canonical body replay captures.",
+      "date": "2026-10-04"
     }
   ],
   "join package inverses retain authored stories": [
