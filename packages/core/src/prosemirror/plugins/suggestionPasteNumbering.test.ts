@@ -2,9 +2,15 @@ import { expect, test } from "bun:test";
 import { panic } from "better-result";
 
 import {
+  runConformanceCase,
   runLegacyConformanceCase,
   type ConformanceOperation,
 } from "../../__tests__/editorCommandConformance";
+import {
+  gapCovers,
+  LEGACY_LIST_PASTE_READBACK_GAP,
+  SINGLE_COPIED_PARAGRAPH_OPERATION,
+} from "../../__tests__/editorCommandConformance.known";
 import { textblocks } from "../../__tests__/editorHarness";
 import { LIST_PASTE_RESOLUTION_CASES } from "../../__tests__/editorCommandConformance.listPaste";
 
@@ -20,7 +26,7 @@ test.each(
 )(
   "tracked list paste resolves like direct paste: %s",
   async (_label, { shape, operation, placement }) => {
-    const result = await runLegacyConformanceCase({
+    const result = await runConformanceCase({
       shape: shape,
       operation: operation,
       placement,
@@ -33,7 +39,7 @@ test.each(
 // A single copied paragraph has no inserted internal break to carry the
 // replaced paragraph's properties: the first-part change must restore them.
 const singleParagraphPaste = {
-  id: "paste:single-copied-paragraph",
+  id: SINGLE_COPIED_PARAGRAPH_OPERATION,
   placements: [],
   run: ({ view, focus }) => {
     const { node, pos } =
@@ -49,7 +55,7 @@ test.each(
     ({ shape, placement }) => [`${shape.id} / ${placement}`, { shape, placement }] as const,
   ),
 )("one copied paragraph restores its properties: %s", async (_label, { shape, placement }) => {
-  const result = await runLegacyConformanceCase({
+  const result = await runConformanceCase({
     shape: shape,
     operation: singleParagraphPaste,
     placement,
@@ -57,3 +63,32 @@ test.each(
   expect(result).not.toBeNull();
   expect(result?.violations).toEqual([]);
 });
+
+// These exact legacy replays must keep failing; the standing authority above is canonical.
+const legacyPasteCases = LIST_PASTE_RESOLUTION_CASES.filter(
+  ({ placement }) => placement === "cross-paragraph",
+);
+const legacySingleParagraphCases = legacyPasteCases
+  .filter(({ operation }) => operation.id === "paste:copied-blocks")
+  .map(({ shape, placement }) => ({ shape, placement, operation: singleParagraphPaste }));
+test.each(
+  [...legacyPasteCases, ...legacySingleParagraphCases].map(
+    (input) => [`${input.shape.id} / ${input.operation.id}`, input] as const,
+  ),
+)(
+  "EXPECTED FAILURE legacy cross-paragraph list paste readback: %s",
+  async (_label, { shape, operation, placement }) => {
+    const result = await runLegacyConformanceCase({ shape, operation, placement });
+    expect(result).not.toBeNull();
+    const violations = result?.violations ?? [];
+    expect(violations.length).toBeGreaterThan(0);
+    const key = { shape: shape.id, operation: operation.id, placement };
+    expect(
+      violations.filter(
+        ({ kind, mode }) => !gapCovers(LEGACY_LIST_PASTE_READBACK_GAP, key, kind, mode),
+      ),
+    ).toEqual([]);
+    for (const violation of violations)
+      expect(violation.detail).toMatch(/indentLeft: ∅ ≠ 720; indentFirstLine: ∅ ≠ -360/u);
+  },
+);

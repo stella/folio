@@ -74,9 +74,9 @@ const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
 
 // The reported #1404 image/node cases, independent of full-tier placement expansion.
 export const LEGACY_NODE_REPLACEMENTS = [
-  { operation: "command:insertHyperlink", status: "expectedFailure", kind: "reject-mismatch" },
-  { operation: "command:insertFootnote", status: "expectedFailure", kind: "reject-mismatch" },
-  { operation: "command:insertEndnote", status: "expectedFailure", kind: "reject-mismatch" },
+  { operation: "command:insertHyperlink", status: "strict" },
+  { operation: "command:insertFootnote", status: "strict" },
+  { operation: "command:insertEndnote", status: "strict" },
   { operation: "key:Shift-Enter", status: "strict" },
   { operation: "type:text", status: "strict" },
   { operation: "type:text(mid)", status: "strict" },
@@ -89,18 +89,43 @@ export const LEGACY_NODE_REPLACEMENTS = [
   | { operation: string; status: "expectedFailure"; kind: ViolationKind }
 )[];
 
+export const SINGLE_COPIED_PARAGRAPH_OPERATION = "paste:single-copied-paragraph";
+export const LEGACY_LIST_PASTE_READBACK_GAP = {
+  reason:
+    "Legacy tracked cross-paragraph paste retains inherited list indentation on the following plain paragraph after save",
+  operations: [
+    ...new Set(LIST_PASTE_RESOLUTION_KEYS.map(({ operation }) => operation)),
+    SINGLE_COPIED_PARAGRAPH_OPERATION,
+  ],
+  shapes: [...new Set(LIST_PASTE_RESOLUTION_KEYS.map(({ shape }) => shape))],
+  placements: ["cross-paragraph"],
+  modes: ["suggesting"],
+  kinds: ["readback-painted"],
+} as const satisfies KnownConformanceGap;
+
 export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
-  ...LEGACY_NODE_REPLACEMENTS.filter((row) => row.status === "expectedFailure").map(
-    ({ operation, kind }): KnownConformanceGap => ({
-      issue: 1404,
-      reason: `Legacy suggesting node replacement loses the selected image: ${operation}`,
-      operations: [operation],
-      shapes: ["image"],
-      placements: ["node"],
-      modes: ["suggesting"],
-      kinds: [kind],
-    }),
-  ),
+  LEGACY_LIST_PASTE_READBACK_GAP,
+  {
+    reason:
+      "Legacy style changes materialize inherited list indentation as direct properties on save",
+    operations: [
+      "command:applyStyle(Heading1)",
+      "command:applyStyle(Heading2)",
+      "command:clearStyle",
+    ],
+    shapes: ["single-decimal-list", "single-bullet-list", "outline-level-numbered"],
+    placements: ["caret-middle"],
+    kinds: ["readback-blocks"],
+  },
+  {
+    reason:
+      "Legacy tracked paragraph joins retain inherited list indentation on the following plain paragraph after save",
+    operations: ["key:Delete"],
+    shapes: ["single-decimal-list", "single-bullet-list", "outline-level-numbered"],
+    placements: ["caret-end", "cross-paragraph"],
+    modes: ["suggesting"],
+    kinds: ["readback-painted"],
+  },
   // ---------------------------------------------------------------- lists --
   {
     reason:
