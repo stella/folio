@@ -19,11 +19,21 @@ import {
 import {
   createCanonicalSession,
   publishCanonicalProjection,
+  deletionRange,
+  isCanonicalJoinBoundary,
+  canonicalSelectionRange,
+  type CanonicalSession,
+  type CanonicalCommit,
+  CanonicalSessionError,
 } from "../packages/core/src/controller/canonicalSession";
 import { EditorState as PMEditorState } from "prosemirror-state";
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
+import { prepareCanonicalCommands } from "../packages/core/src/controller/canonicalStructure";
 import { getCanonicalCommandIntents } from "../packages/core/src/prosemirror/canonicalCommands";
-import { canonicalClipboardStoryPartRefusal } from "../packages/core/src/controller/canonicalClipboard";
+import {
+  prepareCanonicalPaste,
+  canonicalClipboardStoryPartRefusal,
+} from "../packages/core/src/controller/canonicalClipboard";
 import { proseDocToBlocks } from "../packages/core/src/prosemirror/conversion/fromProseDoc";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import { serializeCanonicalSave } from "../packages/core/src/docx/canonicalSave";
@@ -67,6 +77,7 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     refusalRows.push(...rows);
     const before = {
       document: manager.api.getCanonicalDocument(),
+      save: manager.api.captureCanonicalSave(),
       state: editorView.state,
       canUndo: manager.api.canUndo(),
       canRedo: manager.api.canRedo(),
@@ -84,7 +95,11 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
         const after = manager.api.getCanonicalDocument();
         if (!after || !before.document) panic("Refusal lost canonical authority");
         assertExactModel(after, before.document);
+        const saved = manager.api.captureCanonicalSave();
         if (
+          saved?.version !== before.save?.version ||
+          saved?.structure !== before.save?.structure ||
+          JSON.stringify(saved?.changedBlockIds) !== JSON.stringify(before.save?.changedBlockIds) ||
           !editorView.state.doc.eq(before.state.doc) ||
           !editorView.state.selection.eq(before.state.selection) ||
           manager.api.canUndo() !== before.canUndo ||
@@ -98,8 +113,6 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
       expectedRows = [];
     }
   };
-  const withRefusalRow = <T>(row: HarnessRefusalRow | undefined, action: () => T) =>
-    withRefusalRows(row ? [row] : [], action);
   const manager = createHiddenEditorManager({
     getHost: () => host,
     getDocument: () => source,
@@ -176,6 +189,25 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     rememberCanonicalSave(
       manager.api.captureCanonicalSave() ?? panic("Canonical save snapshot unavailable."),
     );
+  // Preview the production planner on an isolated model; generic dispatch refusals stay strict.
+  const preparationRows = (
+    prepare: (session: CanonicalSession) => Result<CanonicalCommit, CanonicalSessionError>,
+  ): HarnessRefusalRow[] => {
+    const current = manager.api.getCanonicalDocument() ?? panic("Canonical authority unavailable");
+    const session = createCanonicalSession(current).unwrap();
+    session.setMode(
+      mode === "suggesting" ? { type: "suggesting", author: HARNESS_AUTHOR } : { type: "editing" },
+    );
+    const prepared = prepare(session);
+    if (prepared.isOk() || prepared.error.reason === "noChange") return [];
+    const { gap, message } = prepared.error;
+    if (
+      gap !== CANONICAL_GAP.trackedHyperlinkResolution &&
+      gap !== CANONICAL_GAP.storyContentProjection
+    )
+      return [];
+    return [{ id: gap, gap, message }];
+  };
   const execute = (command: Command) => {
     const count = refusals.length;
     const intents = getCanonicalCommandIntents(command, editorView.state);
@@ -190,18 +222,12 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
             message,
           }))
         : [];
-    if (
-      mode === "suggesting" &&
-      intents?.some(
-        ({ type }) =>
-          type === "setHyperlink" || type === "removeHyperlink" || type === "insertHyperlink",
-      )
-    )
-      rows.push({
-        id: "tracked-hyperlink-resolution",
-        gap: CANONICAL_GAP.trackedHyperlinkResolution,
-        message: "Hyperlink suggestions require serializable wrapper review provenance.",
-      });
+    if (intents !== undefined)
+      rows.push(
+        ...preparationRows((session) =>
+          prepareCanonicalCommands(session, editorView.state, intents),
+        ),
+      );
     return withRefusalRows(rows, () => {
       const applied = executeEditorCommand(editorView, command);
       return refusals.length === count && applied;
@@ -237,7 +263,37 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
               message: "Only plain character deletion is available in this session.",
             }
           : undefined;
-      withRefusalRow(row, () => editorView.dom.dispatchEvent(event));
+      const rows = row
+        ? [row]
+        : preparationRows((session) => {
+            if (
+              fields.key === "Enter" &&
+              !fields.shiftKey &&
+              !fields.ctrlKey &&
+              !fields.metaKey &&
+              !fields.altKey
+            )
+              return session.prepareSplit(editorView.state);
+            if (fields.key !== "Backspace" && fields.key !== "Delete")
+              return Result.err(
+                new CanonicalSessionError({
+                  gap: CANONICAL_GAP.dispatch,
+                  reason: "noChange",
+                  message: "No native preparation",
+                }),
+              );
+            const direction = fields.key === "Backspace" ? "backward" : "forward";
+            if (isCanonicalJoinBoundary(editorView.state, direction))
+              return session.prepareJoin(editorView.state, direction);
+            const range = deletionRange(editorView.state, direction);
+            if (range.isErr()) return range;
+            return session.prepareReplace(editorView.state, {
+              ...range.value,
+              text: "",
+              semantic: direction === "backward" ? "deleteBackward" : "deleteForward",
+            });
+          });
+      withRefusalRows(rows, () => editorView.dom.dispatchEvent(event));
       return event.defaultPrevented;
     },
     typeText: (text: string) => {
@@ -288,7 +344,12 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
           break;
         }
       }
-      withRefusalRow(row, () =>
+      const rows = row
+        ? [row]
+        : preparationRows((session) =>
+            prepareCanonicalPaste({ session, state: editorView.state, slice }),
+          );
+      withRefusalRows(rows, () =>
         editorView.someProp("handlePaste", (handler) => handler(editorView, event, slice)),
       );
     },
@@ -298,7 +359,13 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
         cancelable: true,
         clipboardData: new DataTransfer(),
       });
-      editorView.dom.dispatchEvent(event);
+      const rows = preparationRows((session) =>
+        session.prepareReplace(editorView.state, {
+          ...canonicalSelectionRange(editorView.state),
+          text: "",
+        }),
+      );
+      withRefusalRows(rows, () => editorView.dom.dispatchEvent(event));
       return event.defaultPrevented;
     },
   };

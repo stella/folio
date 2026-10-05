@@ -47,7 +47,7 @@ test(
               if (result.isErr())
                 expect(result.error).toMatchObject({
                   name: "CanonicalSessionError",
-                  gap: CANONICAL_GAP.dispatch,
+                  gap: CANONICAL_GAP.storyContentProjection,
                   reason: "refused",
                   message: "The paragraph cannot be projected as plain text.",
                 });

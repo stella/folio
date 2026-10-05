@@ -4,6 +4,7 @@ export const CANONICAL_GAP = {
   commands: "command-descriptors",
   suggesting: "adapter-suggesting",
   trackedHyperlinkResolution: "tracked-hyperlink-resolution",
+  storyContentProjection: "story-content-projection",
   comments: "comment-model-edits",
   modelEdits: "direct-model-edits",
   sectionProperties: "section-properties",
@@ -63,7 +64,15 @@ export const CANONICAL_CAPABILITIES = {
     owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Hyperlink suggestions require serializable wrapper review provenance.",
+    summary:
+      "Hyperlink suggestions and edits intersecting review identities require serializable wrapper review provenance.",
+  },
+  [CANONICAL_GAP.storyContentProjection]: {
+    owner: "controller",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary:
+      "Unsupported inline, field and review content cannot be projected after canonical edits.",
   },
   [CANONICAL_GAP.suggesting]: {
     owner: "adapters",

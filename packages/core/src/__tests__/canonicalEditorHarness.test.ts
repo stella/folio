@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { documentStories, OP_STORIES, storyBody } from "@stll/docx-core/ops";
 import type { Document } from "@stll/docx-core/model";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
+import { singletonManager } from "../prosemirror/schema";
 import { Fragment, Slice } from "prosemirror-model";
 import { AllSelection, NodeSelection } from "prosemirror-state";
 
@@ -11,7 +12,7 @@ import {
 } from "../../../../test/canonical-refusal-rows";
 import { assertExactModel } from "../../../../test/exactModel";
 import { createEmptyDocument } from "../utils/createDocument";
-import { modelMarkdown, parseShapeDocument } from "./editorHarness";
+import { modelMarkdown, parseShapeDocument, placeSelection } from "./editorHarness";
 import { documentShape, shapeArrayBuffer } from "./documentShapes";
 import { PASTED_LIST, PASTED_TABLE } from "./editorCommandConformance";
 import { CANONICAL_CAPABILITIES, CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -284,3 +285,115 @@ for (const mode of ["editing", "suggesting"] as const) {
     });
   }
 }
+
+const REVIEW_HYPERLINK_COMMANDS = [
+  {
+    id: "set",
+    placement: "word",
+    create: () => singletonManager.requireCommand("setHyperlink")("https://example.org/"),
+  },
+  {
+    id: "remove",
+    placement: "word",
+    create: () => singletonManager.requireCommand("removeHyperlink")(),
+  },
+  {
+    id: "insert",
+    placement: "caret-middle",
+    create: () =>
+      singletonManager.requireCommand("insertHyperlink")("a link", "https://example.org/"),
+  },
+] as const;
+const REVIEW_HYPERLINK_CASES = ["comments", "tracked-changes"].flatMap((shape) =>
+  (["editing", "suggesting"] as const).flatMap((mode) =>
+    REVIEW_HYPERLINK_COMMANDS.map((command) => ({ shape, mode, command })),
+  ),
+);
+test.each(REVIEW_HYPERLINK_CASES)(
+  "$shape $command.id hyperlink refusal preserves the complete session in $mode",
+  async ({ shape, mode, command }) => {
+    const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer(shape)));
+    const driver = createCanonicalEditorHarness(source, mode);
+    try {
+      const placed = placeSelection(driver.state, documentShape(shape).focus, command.placement);
+      if (!placed) throw new TypeError("Review refusal fixture lost selection");
+      driver.dispatch(driver.state.tr.setSelection(placed.selection));
+      const before = driver.snapshot();
+      const state = driver.state;
+      expect(driver.execute(command.create())).toBe(false);
+      expect(driver.refusals).toEqual([
+        {
+          gap: CANONICAL_GAP.trackedHyperlinkResolution,
+          row: CANONICAL_GAP.trackedHyperlinkResolution,
+          expectation: "declared",
+          message:
+            mode === "suggesting"
+              ? "Hyperlink suggestions require serializable wrapper review provenance."
+              : "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
+        },
+      ]);
+      assertExactModel(driver.snapshot(), before);
+      expect(driver.state).toBe(state);
+      expect(driver.history.canUndo()).toBe(false);
+      expect(driver.history.canRedo()).toBe(false);
+    } finally {
+      driver.dispose();
+    }
+  },
+);
+const STORY_PROJECTION_CASES = [
+  { shape: "comments", mode: "editing", input: "enter", placement: "paragraph" },
+  { shape: "comments", mode: "editing", input: "cut", placement: "paragraph" },
+  { shape: "fields-links-bookmarks", mode: "suggesting", input: "enter", placement: "paragraph" },
+  { shape: "fields-links-bookmarks", mode: "suggesting", input: "paste", placement: "caret-end" },
+  {
+    shape: "fields-links-bookmarks",
+    mode: "suggesting",
+    input: "delete",
+    placement: "cross-paragraph",
+  },
+  { shape: "fields-links-bookmarks", mode: "suggesting", input: "cut", placement: "paragraph" },
+  {
+    shape: "fields-links-bookmarks",
+    mode: "suggesting",
+    input: "cut",
+    placement: "cross-paragraph",
+  },
+] as const;
+test.each(STORY_PROJECTION_CASES)(
+  "$shape $input/$placement projection refusal is exact and atomic in $mode",
+  async ({ shape, mode, input, placement }) => {
+    const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer(shape)));
+    const driver = createCanonicalEditorHarness(source, mode);
+    try {
+      const placed = placeSelection(driver.state, documentShape(shape).focus, placement);
+      if (!placed) throw new TypeError("Story refusal fixture lost selection");
+      driver.dispatch(driver.state.tr.setSelection(placed.selection));
+      const before = driver.snapshot();
+      const state = driver.state;
+      if (input === "paste") {
+        const selected = placeSelection(driver.state, documentShape(shape).focus, "paragraph");
+        if (!selected) throw new TypeError("Copied field fixture lost its paragraph");
+        driver.paste(driver.state.doc.slice(selected.selection.from, selected.selection.to));
+      } else if (input === "cut") driver.cut();
+      else driver.pressKey(input === "enter" ? "Enter" : "Delete");
+      expect(driver.refusals).toEqual([
+        {
+          gap: CANONICAL_GAP.storyContentProjection,
+          row: CANONICAL_GAP.storyContentProjection,
+          expectation: "declared",
+          message:
+            shape === "comments"
+              ? "The paragraph cannot be projected as plain text."
+              : "The operations produce unsupported canonical story content.",
+        },
+      ]);
+      assertExactModel(driver.snapshot(), before);
+      expect(driver.state).toBe(state);
+      expect(driver.history.canUndo()).toBe(false);
+      expect(driver.history.canRedo()).toBe(false);
+    } finally {
+      driver.dispose();
+    }
+  },
+);

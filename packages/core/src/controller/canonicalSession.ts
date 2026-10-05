@@ -14,6 +14,7 @@ import {
   applyDocumentOps,
   combineEdits,
   DOCUMENT_OP_TYPES,
+  DOCUMENT_OP_REFUSAL_REASONS,
   editorParagraphGroups,
   type AppliedDocumentOp,
   type EditorIntentMode,
@@ -507,7 +508,7 @@ const project = ({
           const atom = node.nodeAt(renderedSize);
           if (!atom?.isAtom) {
             failure = new CanonicalSessionError({
-              gap: CANONICAL_GAP.dispatch,
+              gap: CANONICAL_GAP.storyContentProjection,
               reason: "refused",
               message: "The paragraph cannot be projected as plain text.",
             });
@@ -549,7 +550,7 @@ const project = ({
             const atom = node.nodeAt(renderedSize);
             if (!atom?.isAtom) {
               failure = new CanonicalSessionError({
-                gap: CANONICAL_GAP.dispatch,
+                gap: CANONICAL_GAP.storyContentProjection,
                 reason: "refused",
                 message: "The paragraph cannot be projected as plain text.",
               });
@@ -573,7 +574,7 @@ const project = ({
       node.content.size !== renderedSize
     ) {
       failure = new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
+        gap: CANONICAL_GAP.storyContentProjection,
         reason: "refused",
         message: "The paragraph cannot be projected as plain text.",
       });
@@ -1204,7 +1205,22 @@ class CanonicalSession {
         mode: this.intentMode(document, intent),
         firstBlockId: this.nextBlockId,
       });
-      if (compiled.isErr()) return refuse(compiled.error.message);
+      if (compiled.isErr()) {
+        if (
+          compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
+          (intent.type === "setHyperlink" ||
+            intent.type === "removeHyperlink" ||
+            intent.type === "insertHyperlink")
+        )
+          return Result.err(
+            new CanonicalSessionError({
+              gap: CANONICAL_GAP.trackedHyperlinkResolution,
+              reason: "refused",
+              message: compiled.error.message,
+            }),
+          );
+        return refuse(compiled.error.message);
+      }
       const applied = applyDocumentOps(document, compiled.value.ops);
       if (applied.isErr()) return refuse(applied.error.message);
       document = applied.value.document;
@@ -1531,7 +1547,13 @@ class CanonicalSession {
       previous: this.currentDocument,
     });
     if (!supportsSeed(applied.value.document, changed))
-      return refuse("The operations produce unsupported canonical story content.");
+      return Result.err(
+        new CanonicalSessionError({
+          gap: CANONICAL_GAP.storyContentProjection,
+          reason: "refused",
+          message: "The operations produce unsupported canonical story content.",
+        }),
+      );
     preservePropertySources({
       target: applied.value.document,
       source: this.currentDocument,
