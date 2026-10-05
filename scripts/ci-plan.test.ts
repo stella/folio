@@ -106,7 +106,8 @@ describe("CI plan", () => {
         ([, job]) =>
           job.if === "needs.ci-plan.outputs.code_required == 'true'" ||
           job.if ===
-            "needs.ci-plan.outputs.code_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'",
+            "needs.ci-plan.outputs.code_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'" ||
+          job.if === "needs.ci-plan.outputs.api_required == 'true'",
       )
       .map(([id]) => id);
     expect(Object.keys(runContract).toSorted()).toEqual(splitJobs.toSorted());
@@ -487,6 +488,35 @@ describe("CI plan", () => {
     });
   }
 
+  test("published API preflight is selected before queue entry and evaluated by CI result", () => {
+    expect(planOutputs["api_required"]).toBe(
+      "${{ github.event_name == 'merge_group' || steps.api-plan.outputs.api_required == 'true' }}",
+    );
+    expect(jobs["build-api"]?.if).toBe("needs.ci-plan.outputs.api_required == 'true'");
+    const steps = jobs[PLAN_JOB]?.steps;
+    if (!Array.isArray(steps)) throw new TypeError("Missing planner steps");
+    const selector = steps.find((step) => isRecord(step) && step["id"] === "api-plan");
+    expect(selector).toEqual({
+      name: "Select published API preflight",
+      id: "api-plan",
+      if: "github.event_name == 'pull_request'",
+      run: 'bun scripts/ci-api-plan.ts --base "$API_BASE" --head "$API_HEAD"',
+      env: {
+        API_BASE: "${{ github.event.pull_request.base.sha }}",
+        API_HEAD: "${{ github.event.pull_request.head.sha }}",
+      },
+    });
+    const resultSteps = jobs["ci-result"]?.steps;
+    if (!Array.isArray(resultSteps)) throw new TypeError("Missing CI result steps");
+    const evaluation = resultSteps.find(
+      (step) => isRecord(step) && step["name"] === "Evaluate CI outcome",
+    );
+    if (!isRecord(evaluation) || !isRecord(evaluation["env"]))
+      throw new TypeError("Missing CI result environment");
+    const scopes = JSON.parse(String(evaluation["env"]["JOB_SCOPES"]));
+    expect(scopes["build-api"]).toEqual({ area: "api_required" });
+  });
+
   test("every area is a plan output named after it, and every area output is an area", () => {
     const mapped = Object.entries(planOutputs).flatMap(([output, value]) => {
       const area = typeof value === "string" ? AREA_OUTPUT.exec(value)?.[1] : undefined;
@@ -518,6 +548,8 @@ describe("CI plan", () => {
       if (gate?.[2] === "true") gated.add(output);
     }
     // No area is planned for nothing.
-    expect([...gated].toSorted()).toEqual(areas.map((area) => `${area}_required`).toSorted());
+    expect([...gated].toSorted()).toEqual(
+      [...areas.map((area) => `${area}_required`), "api_required"].toSorted(),
+    );
   });
 });
