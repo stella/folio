@@ -53,6 +53,7 @@ import {
   getParagraphPropertySource,
   paragraphPropertySourceMatchesEmission,
   paragraphFormattingWithAuthoredIndentation,
+  paragraphPropertySourceMatchesAuthoredIndentation,
 } from "../paragraphPropertySource";
 import { fieldStateAttributes } from "../fieldState";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
@@ -456,7 +457,10 @@ const serializeParagraphFormattingWithOptions = (
     sectionPropertiesXml,
     ...propertyChangesXml,
   ].some((xml) => xml.includes(`${DATE_UTC_ATTRIBUTE}=`));
-  const verifiedSource = verifiedParagraphPropertySource(modeledFormatting, propertySource);
+  const verifiedSource =
+    sourceParagraph && !paragraphPropertySourceMatchesAuthoredIndentation(sourceParagraph)
+      ? null
+      : verifiedParagraphPropertySource(modeledFormatting, propertySource);
   if (
     verifiedSource !== null &&
     (!composedChildrenUseDateUtc || !sourceShadowsDateUtcPrefix(verifiedSource))

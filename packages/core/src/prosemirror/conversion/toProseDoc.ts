@@ -744,12 +744,14 @@ function convertParagraph(
     styleResolver,
     tableParagraphOverlay,
   );
-  attrs._originalFormatting = directFormatting;
+  if (directFormatting === undefined) Reflect.deleteProperty(attrs, "_originalFormatting");
+  else attrs._originalFormatting = directFormatting;
   const numPr = mergeParagraphNumbering(
     attrs.numPrFromStyle ?? undefined,
     attrs.numPr ?? undefined,
   );
-  if (numPr?.kind === "none") Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+  if (numPr?.kind === "none" || (context.numbering !== undefined && numPr === undefined))
+    Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   else if (context.numbering !== undefined && numPr?.kind === "reference") {
     const rendering = resolveCachedListRendering(
       paragraph.listRendering,
@@ -1407,7 +1409,7 @@ function paragraphFormattingToAttrs(
   styleResolver: StyleEngine | null,
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
 ): ParagraphFormattingProjection {
-  const formatting = paragraph.formatting;
+  const formatting = paragraphFormattingWithAuthoredIndentation(paragraph);
   const styleId = formatting?.styleId;
   const styleName = styleId ? styleResolver?.getStyle(styleId)?.name : undefined;
   const tableOfContentsLevel = tableOfContentsStyleLevel({

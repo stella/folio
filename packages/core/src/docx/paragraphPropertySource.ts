@@ -286,7 +286,12 @@ export const paragraphFormattingWithAuthoredIndentation = (
     directFormattingBySource.set(source, direct);
   }
   const result = { ...paragraph.formatting };
+  const baseline = source[paragraphPropertySourceIndentationBaseline];
+  const firstLineChanged =
+    paragraph.formatting?.indentFirstLine !== baseline.indentFirstLine ||
+    paragraph.formatting?.hangingIndent !== baseline.hangingIndent;
   for (const key of INDENTATION_FIELDS) {
+    if ((key === "indentFirstLine" || key === "hangingIndent") && firstLineChanged) continue;
     if (paragraph.formatting?.[key] !== source[paragraphPropertySourceIndentationBaseline][key])
       continue;
     Reflect.deleteProperty(result, key);
@@ -294,6 +299,27 @@ export const paragraphFormattingWithAuthoredIndentation = (
     if (value !== undefined) Object.assign(result, { [key]: value });
   }
   return Object.keys(result).length === 0 ? undefined : result;
+};
+
+/** Equal effective values must not replay a capture that lacks newly authored indentation. */
+export const paragraphPropertySourceMatchesAuthoredIndentation = (
+  paragraph: Paragraph,
+): boolean => {
+  const source = getParagraphPropertySource(paragraph);
+  if (source === undefined) return true;
+  const authored = paragraphFormattingWithAuthoredIndentation(paragraph);
+  const original = directFormattingBySource.get(source)?.formatting;
+  const indentationEmission = (formatting: ParagraphFormatting | undefined) => {
+    const indentation: ParagraphFormatting = {};
+    for (const key of INDENTATION_FIELDS) {
+      const value = formatting?.[key];
+      if (value !== undefined) Object.assign(indentation, { [key]: value });
+    }
+    return modelParagraphFormattingEmission(indentation);
+  };
+  return (
+    canonicalJson(indentationEmission(authored)) === canonicalJson(indentationEmission(original))
+  );
 };
 
 export const paragraphPropertySourceMatchesEmission = (

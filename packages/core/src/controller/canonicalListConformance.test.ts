@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { singletonManager } from "../prosemirror/schema";
+import { shapeArrayBuffer, documentShape } from "../__tests__/documentShapes";
 import JSZip from "jszip";
 
 import {
@@ -11,6 +13,7 @@ import {
   summarizeEffectiveParagraphs,
   summarizeState,
   parseShapeDocument,
+  placeSelection,
 } from "../__tests__/editorHarness";
 import { createEmptyDocument } from "../utils/createDocument";
 import { createDocx } from "../docx/rezip";
@@ -214,7 +217,6 @@ test.each(INAPPLICABLE_CASES)(
 test.each(["editing", "suggesting"] as const)(
   "unrelated list formatting preserves authored indentation after save in %s",
   async (mode) => {
-    const { shapeArrayBuffer } = await import("../__tests__/documentShapes");
     const source = await parseShapeDocument(
       new Uint8Array(await shapeArrayBuffer("single-decimal-list")),
     );
@@ -234,6 +236,77 @@ test.each(["editing", "suggesting"] as const)(
         expect(back.summary).toEqual(live);
         expect(back.effective).toEqual(summarizeEffectiveParagraphs(driver.state));
       }
+    } finally {
+      driver.dispose();
+    }
+  },
+);
+
+const PROVENANCE_COMMANDS = [
+  { id: "hanging", create: () => singletonManager.requireCommand("setIndentFirstLine")(360, true) },
+  {
+    id: "first-line",
+    create: () => singletonManager.requireCommand("setIndentFirstLine")(360, false),
+  },
+  { id: "level-up", create: () => singletonManager.requireCommand("increaseListLevel")() },
+  { id: "level-down", create: () => singletonManager.requireCommand("decreaseListLevel")() },
+  { id: "remove-list", create: () => singletonManager.requireCommand("removeList")() },
+  { id: "style", create: () => singletonManager.requireCommand("applyStyle")("Heading2") },
+  { id: "clear-style", create: () => singletonManager.requireCommand("clearStyle")() },
+];
+const PROVENANCE_CASES = (["editing", "suggesting"] as const).flatMap((mode) =>
+  ["single-decimal-list", "single-bullet-list", "outline-level-numbered"].flatMap((shape) =>
+    PROVENANCE_COMMANDS.map((command) => ({ mode, shape, id: command.id, create: command.create })),
+  ),
+);
+
+test.each(PROVENANCE_CASES)(
+  "$shape $id preserves direct and effective indentation after save in $mode",
+  async ({ mode, shape, create, id }) => {
+    const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer(shape)));
+    const driver = createCanonicalEditorHarness(source, mode);
+    try {
+      let position: number | undefined;
+      driver.state.doc.forEach((node, offset) => {
+        if (node.attrs.numPr?.kind === "reference") position = offset + 1;
+      });
+      if (position === undefined) throw new TypeError("Provenance fixture lacks a numbered item.");
+      driver.history.setSelection(position, position);
+      if (id === "clear-style") {
+        expect(driver.execute(singletonManager.requireCommand("applyStyle")("Heading2"))).toBe(
+          true,
+        );
+      }
+      expect(driver.execute(create())).toBe(true);
+      const back = await readBack((await saveCanonicalHarnessDocument(driver.snapshot())).bytes);
+      expect(back.summary).toEqual(summarizeState(driver.state));
+      expect(back.effective).toEqual(summarizeEffectiveParagraphs(driver.state));
+    } finally {
+      driver.dispose();
+    }
+  },
+);
+
+const JOIN_CASES = (["editing", "suggesting"] as const).flatMap((mode) =>
+  ["mixed-lists", "style-numbered-headings"].map((shape) => ({ mode, shape })),
+);
+
+test.each(JOIN_CASES)(
+  "$shape joined paragraphs derive their list from current numbering in $mode",
+  async ({ mode, shape }) => {
+    const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer(shape)));
+    const driver = createCanonicalEditorHarness(source, mode);
+    try {
+      const selected = placeSelection(driver.state, documentShape(shape).focus, "cross-paragraph");
+      if (!selected) throw new TypeError("List join fixture has no cross-paragraph selection.");
+      driver.dispatch(driver.state.tr.setSelection(selected.selection));
+      driver.cut();
+      expect(driver.refusals).toEqual([]);
+      const model = driver.snapshot();
+      const back = await readBack((await saveCanonicalHarnessDocument(model)).bytes);
+      expect(back.summary).toEqual(summarizeState(driver.state));
+      expect(back.effective).toEqual(summarizeEffectiveParagraphs(driver.state));
+      expect(back.markdown).toBe(modelMarkdown(model));
     } finally {
       driver.dispose();
     }

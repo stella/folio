@@ -58,7 +58,7 @@ export function renderParagraphBlock(
   const numPrFromStyle = inherited ?? para.formatting?.numPrFromStyle;
   const numPr = mergeParagraphNumbering(numPrFromStyle, para.formatting?.numPr);
   let list = para.listRendering;
-  if (numPr?.kind === "none") {
+  if (numPr?.kind === "none" || (pkg?.numbering !== undefined && numPr === undefined)) {
     list = undefined;
   } else if (pkg?.numbering !== undefined && numPr?.kind === "reference") {
     list =
