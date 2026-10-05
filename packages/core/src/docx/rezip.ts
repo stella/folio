@@ -948,7 +948,7 @@ export const publishCanonicalImageResources = async ({
           ? undefined
           : document.package.media?.get(allocatedMediaPath);
       const newlyAllocated =
-        allocated !== undefined &&
+        allocated?.type === RELATIONSHIP_TYPES.image &&
         (baseline.type !== "captured" ||
           canonicalJson(allocated) !== canonicalJson(baseline.resourceRelationships?.get(id)));
       const identifiesAllocated =
@@ -959,8 +959,7 @@ export const publishCanonicalImageResources = async ({
           (allocated?.targetMode === "External"
             ? image.src === allocated.target
             : image.src === allocatedMedia?.dataUrl));
-      const desired =
-        identifiesAllocated && allocated?.type === RELATIONSHIP_TYPES.image ? allocated : source;
+      const desired = identifiesAllocated ? allocated : source;
       if (desired?.type !== RELATIONSHIP_TYPES.image)
         return refuse("unresolved", "A canonical inline picture has no owning image relationship.");
       const desiredRelsPath = desired === allocated ? "word/_rels/document.xml.rels" : relsPath;
