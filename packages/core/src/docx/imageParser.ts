@@ -663,6 +663,20 @@ export function resolveImageData(
   };
 }
 
+type ImageDerivedFactsOptions = {
+  id: string | undefined;
+  pictureNames: NonNullable<Image["pictureNames"]>;
+  imageData: ReturnType<typeof resolveImageData>;
+};
+
+/** Facts the parser obtains from exported drawing markup and image relationships. */
+export const imageDerivedFactsOf = ({ id, pictureNames, imageData }: ImageDerivedFactsOptions) => ({
+  ...(id ? { id } : {}),
+  ...(Object.keys(pictureNames).length > 0 ? { pictureNames } : {}),
+  ...(imageData.mimeType ? { mimeType: imageData.mimeType } : {}),
+  ...(imageData.filename ? { filename: imageData.filename } : {}),
+});
+
 // ============================================================================
 // MAIN PARSING FUNCTIONS
 // ============================================================================
@@ -723,9 +737,7 @@ function parseInline(
   };
 
   // Add optional properties
-  if (props.id) {
-    image.id = props.id;
-  }
+  Object.assign(image, imageDerivedFactsOf({ id: props.id, pictureNames, imageData }));
   if (props.name !== undefined) {
     image.docPrName = props.name;
   }
@@ -734,9 +746,6 @@ function parseInline(
   }
   if (props.title !== undefined) {
     image.title = props.title;
-  }
-  if (Object.keys(pictureNames).length > 0) {
-    image.pictureNames = pictureNames;
   }
   if (props.decorative !== undefined) {
     image.decorative = props.decorative;
@@ -750,12 +759,6 @@ function parseInline(
   const safeSrc = sanitizeImageSrc(imageData.src);
   if (safeSrc) {
     image.src = safeSrc;
-  }
-  if (imageData.mimeType) {
-    image.mimeType = imageData.mimeType;
-  }
-  if (imageData.filename) {
-    image.filename = imageData.filename;
   }
   if (padding) {
     image.padding = padding;
@@ -880,9 +883,7 @@ function parseAnchor(
   };
 
   // Add optional properties
-  if (props.id) {
-    image.id = props.id;
-  }
+  Object.assign(image, imageDerivedFactsOf({ id: props.id, pictureNames, imageData }));
   if (props.name !== undefined) {
     image.docPrName = props.name;
   }
@@ -891,9 +892,6 @@ function parseAnchor(
   }
   if (props.title !== undefined) {
     image.title = props.title;
-  }
-  if (Object.keys(pictureNames).length > 0) {
-    image.pictureNames = pictureNames;
   }
   if (props.decorative !== undefined) {
     image.decorative = props.decorative;
@@ -907,12 +905,6 @@ function parseAnchor(
   const safeSrc = sanitizeImageSrc(imageData.src);
   if (safeSrc) {
     image.src = safeSrc;
-  }
-  if (imageData.mimeType) {
-    image.mimeType = imageData.mimeType;
-  }
-  if (imageData.filename) {
-    image.filename = imageData.filename;
   }
   if (position) {
     image.position = position;

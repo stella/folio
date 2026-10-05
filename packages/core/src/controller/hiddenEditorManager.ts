@@ -1346,6 +1346,12 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     getDocumentContext: () => (editorSession.type === "refused" ? null : deps.getDocumentContext()),
     getCanonicalComments: () =>
       editorSession.type === "canonical" ? editorSession.session.getCommittedComments() : null,
+    isCanonicalSaveCurrent: (version) =>
+      editorSession.type === "canonical" &&
+      !editorSession.session.isComposing &&
+      editorSession.session.version === version,
+    captureCanonicalSave: () =>
+      editorSession.type === "canonical" ? editorSession.session.captureSaveSnapshot() : null,
     getCanonicalDocument: () =>
       editorSession.type === "canonical" ? editorSession.session.document : null,
     setCanonicalMode: (mode) => {

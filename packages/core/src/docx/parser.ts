@@ -66,6 +66,7 @@ import { parseHeader, parseFooter } from "./headerFooterParser";
 import {
   assignHeaderFooterVerbatimXml,
   captureHeaderFooterPackageBaselines,
+  captureDocumentSourceBaseline,
   canReplayHeaderFooterVerbatim,
   refreshHeaderFooterVerbatimFingerprint,
 } from "./headerFooterVerbatim";
@@ -885,6 +886,7 @@ export async function parseDocxWithPreviewBudget(
 
     onProgress("Complete", 100);
     captureHeaderFooterPackageBaselines(document);
+    if (raw.documentXml) captureDocumentSourceBaseline(document, raw.documentXml);
     return document;
   } catch (error) {
     if (error instanceof DocxEncryptionError) {
