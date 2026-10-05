@@ -3,7 +3,8 @@ import { defineConfig } from "@playwright/test";
 const reactPlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
 const vuePlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
 
-export default defineConfig({
+const managedConfig = defineConfig({
+  globalSetup: "./tests/parity/previewSetup.ts",
   testDir: "./tests/visual",
   // A stray test.only must fail CI instead of silently running one test.
   forbidOnly: !!process.env["CI"],
@@ -88,7 +89,8 @@ export default defineConfig({
   // an existing server: it could be a dev server that reloads on dependency discovery.
   webServer: [
     {
-      command: "bun --filter @stll/playground build && bun --filter @stll/playground preview",
+      command:
+        "bun scripts/playground-build.ts packages/playground && bun --filter @stll/playground preview",
       stdout: "pipe",
       stderr: "pipe",
       url: `http://localhost:${reactPlaygroundPort}`,
@@ -97,7 +99,7 @@ export default defineConfig({
     },
     {
       command:
-        "bun --filter @stll/playground-vue build && bun --filter @stll/playground-vue preview",
+        "bun scripts/playground-build.ts packages/playground-vue && bun --filter @stll/playground-vue preview",
       env: {
         FOLIO_PLAYGROUND_PORT: String(vuePlaygroundPort),
       },
@@ -108,4 +110,17 @@ export default defineConfig({
       timeout: 120_000,
     },
   ],
+});
+
+export const PLAYGROUND_SERVERS = managedConfig.webServer;
+
+const serverMode = process.env["FOLIO_PLAYGROUND_SERVER_MODE"] ?? "managed-preview";
+if (serverMode !== "managed-preview" && serverMode !== "existing-preview") {
+  throw new TypeError(`Unknown playground server mode: ${serverMode}`);
+}
+export const PLAYGROUND_SERVER_MODE = serverMode;
+
+export default defineConfig({
+  ...managedConfig,
+  webServer: serverMode === "managed-preview" ? PLAYGROUND_SERVERS : [],
 });

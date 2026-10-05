@@ -1,17 +1,23 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs/promises";
-import config from "../../playwright.config";
+import config, { PLAYGROUND_SERVERS, PLAYGROUND_SERVER_MODE } from "../../playwright.config";
 import reactPlayground from "../../packages/playground/package.json";
 import vuePlayground from "../../packages/playground-vue/package.json";
 
-const servers = config.webServer;
+const servers = PLAYGROUND_SERVERS;
 if (!Array.isArray(servers)) throw new TypeError("Expected both playground servers.");
 
 test("browser harness owns a fresh preview for both playground packages", () => {
+  expect(config.webServer).toEqual(PLAYGROUND_SERVER_MODE === "existing-preview" ? [] : servers);
   const packages = [reactPlayground, vuePlayground];
   expect(servers).toHaveLength(packages.length);
   expect(servers.map(({ command }) => command).sort()).toEqual(
-    packages.map(({ name }) => `bun --filter ${name} build && bun --filter ${name} preview`).sort(),
+    packages
+      .map(
+        ({ name }) =>
+          `bun scripts/playground-build.ts packages/${name.replace("@stll/", "")} && bun --filter ${name} preview`,
+      )
+      .sort(),
   );
   for (const server of servers) expect(server.reuseExistingServer).toBe(false);
 });
