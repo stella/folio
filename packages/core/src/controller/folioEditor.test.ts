@@ -70,6 +70,7 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
       calls.push({ method: "getDocument", args: [] });
       return sentinelDocument;
     },
+    getCanonicalComments: () => null,
     getCanonicalDocument: () => null,
     setCanonicalMode: () => false,
     resolveCanonicalRevisions: () => false,

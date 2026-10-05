@@ -1351,6 +1351,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
   const api = createHiddenEditorApi({
     getView: () => view,
     getDocumentContext: () => (editorSession.type === "refused" ? null : deps.getDocumentContext()),
+    getCanonicalComments: () =>
+      editorSession.type === "canonical" ? editorSession.session.getCommittedComments() : null,
     getCanonicalDocument: () =>
       editorSession.type === "canonical" ? editorSession.session.document : null,
     setCanonicalMode: (mode) => {

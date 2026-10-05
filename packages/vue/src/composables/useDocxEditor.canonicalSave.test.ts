@@ -357,6 +357,27 @@ test("Vue canonical comment projection follows controlled edits, undo, callbacks
     expect(controlledComments.value).toEqual(undone);
     expect(changes.at(-1)).toEqual(undone);
 
+    const view = adapter.editorView.value ?? panic("Expected Vue canonical view");
+    const committedDoc = view.state.doc;
+    view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    expect(adapter.editor.getCanonicalDocument).toThrow(
+      "Composition must finish before taking a snapshot.",
+    );
+    // Every selection tick recomputes the comment projection while IME blocks snapshots.
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
+    stateTick.value += 1;
+    controlledComments.value = [...undone];
+    await nextTick();
+    expect(management.comments.value).toEqual(undone);
+    expect(adapter.editor.getCanonicalDocument).toThrow(
+      "Composition must finish before taking a snapshot.",
+    );
+    view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    await nextTick();
+    expect(view.state.doc.eq(committedDoc)).toBe(true);
+    expect(adapter.editor.getCanonicalDocument()?.package.document.comments).toEqual(undone);
+
     const saved = await adapter.save();
     if (!saved) panic("Expected saved canonical comments");
     const reopened = await parseDocx(await saved.arrayBuffer(), {

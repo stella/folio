@@ -1064,9 +1064,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     size: 4,
     color: { rgb: "000000" },
   });
-  const canonicalDocument = pagedEditorRef.current?.getEditor().getCanonicalDocument() ?? null;
+  const canonicalComments = pagedEditorRef.current?.getEditor().getCanonicalComments() ?? null;
   const canonicalCommentsSnapshotRef = useRef<string | null>(
-    canonicalDocument ? JSON.stringify(canonicalDocument.package.document.comments ?? []) : null,
+    canonicalComments === null ? null : JSON.stringify(canonicalComments),
   );
 
   const {
@@ -1094,17 +1094,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     visibleComments,
     syncCommentHighlightStyles,
   } = useFolioComments({
-    doc: canonicalDocument ? null : history.state,
+    doc: canonicalComments === null ? history.state : null,
     autoOpenReviewSidebar,
     anchorPositions,
     editorContentRef,
     commentsProp,
     onCommentsChange,
   });
-  const comments = canonicalDocument?.package.document.comments ?? legacyComments;
-  const canonicalCommentsSerialized = canonicalDocument
-    ? JSON.stringify(canonicalDocument.package.document.comments ?? [])
-    : null;
+  const comments = canonicalComments ?? legacyComments;
+  const canonicalCommentsSerialized =
+    canonicalComments === null ? null : JSON.stringify(canonicalComments);
   const commentDraftMode = usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
     ? "canonical"
     : "prosemirror";
@@ -1636,26 +1635,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   useEffect(() => {
     if (commentsProp === undefined) return;
-    const currentCanonicalDocument = getCanonicalApi()?.getCanonicalDocument();
-    if (!currentCanonicalDocument) return;
-    if (
-      JSON.stringify(currentCanonicalDocument.package.document.comments ?? []) ===
-      JSON.stringify(legacyComments)
-    ) {
+    if (canonicalComments === null) return;
+    if (JSON.stringify(canonicalComments) === JSON.stringify(legacyComments)) {
       return;
     }
     applyCanonicalComment({ type: "replace", comments: legacyComments });
-  }, [
-    applyCanonicalComment,
-    commentsProp,
-    getCanonicalApi,
-    legacyComments,
-    canonicalDocument !== null,
-  ]);
+  }, [applyCanonicalComment, commentsProp, legacyComments, canonicalCommentsSerialized]);
 
   useEffect(() => {
-    if (!canonicalDocument) return;
-    const nextComments = canonicalDocument.package.document.comments ?? [];
+    if (canonicalComments === null) return;
+    const nextComments = canonicalComments;
     const serialized = JSON.stringify(nextComments);
     if (canonicalCommentsSnapshotRef.current === null) {
       canonicalCommentsSnapshotRef.current = serialized;
