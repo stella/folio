@@ -633,6 +633,7 @@ export async function attemptSelectiveSave(
     for (const [path, xml] of await collectHeaderFooterUpdates(doc, {
       sourceZip: zip,
       onDiagnostic: options.onDiagnostic,
+      bodyAuthority: options.bodyAuthority,
     })) {
       updates.set(path, xml);
     }

@@ -1540,6 +1540,7 @@ const finishRepack = async ({
     zip: outputZip,
     compressionLevel,
     onDiagnostic,
+    bodyAuthority,
   });
 
   await serializeNotesToZip({
@@ -1755,6 +1756,7 @@ export async function repackDocxFromRaw(
     zip: newZip,
     compressionLevel,
     onDiagnostic: options.onDiagnostic,
+    bodyAuthority: options.bodyAuthority,
   });
   await serializeHeaderFooterSettingsIntoZip(exportDocument, newZip, compressionLevel);
 
@@ -2797,11 +2799,12 @@ async function rebindWatermarkRelIds({
  * `sourceZip` supplies each part as it stands before the save so the rebuilt
  * root can keep any prefix binding only the source document declared.
  */
-type CollectHeaderFooterUpdatesOptions = SaveDiagnosticOptions & { sourceZip: JSZip };
+type CollectHeaderFooterUpdatesOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & { sourceZip: JSZip };
 
 export async function collectHeaderFooterUpdates(
   doc: Document,
-  { sourceZip, onDiagnostic }: CollectHeaderFooterUpdatesOptions,
+  { sourceZip, onDiagnostic, bodyAuthority }: CollectHeaderFooterUpdatesOptions,
 ): Promise<Map<string, string>> {
   const updates = new Map<string, string>();
   const rels = doc.package.relationships;
@@ -2837,6 +2840,7 @@ export async function collectHeaderFooterUpdates(
             bindings,
             onDiagnostic,
             originalBuffer: doc.originalBuffer,
+            watermarkHostAuthority: bodyAuthority,
           }),
         );
       }
@@ -2849,21 +2853,24 @@ export async function collectHeaderFooterUpdates(
 /**
  * Serialize modified headers and footers into the ZIP
  */
-type SerializeHeadersFootersOptions = SaveDiagnosticOptions & {
-  doc: Document;
-  zip: JSZip;
-  compressionLevel: number;
-};
+type SerializeHeadersFootersOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & {
+    doc: Document;
+    zip: JSZip;
+    compressionLevel: number;
+  };
 async function serializeHeadersFootersToZip({
   doc,
   zip,
   compressionLevel,
   onDiagnostic,
+  bodyAuthority,
 }: SerializeHeadersFootersOptions): Promise<void> {
   const compressionOptions = { level: compressionLevel };
   for (const [filename, xml] of await collectHeaderFooterUpdates(doc, {
     sourceZip: zip,
     onDiagnostic,
+    bodyAuthority,
   })) {
     zip.file(filename, xml, { compression: "DEFLATE", compressionOptions });
   }

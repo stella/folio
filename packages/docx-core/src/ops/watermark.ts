@@ -330,8 +330,9 @@ export const setDocumentWatermarkWithCoverage = (
         ? next.content.at(hostIndex)
         : undefined;
     const host = authority === "canonical" ? watermarkHost(header) : rawHost;
+    // Canonical referenced stories retain a last identified paragraph after decoration removal.
     if (
-      (authority === "legacy" || change.kind === "remove") &&
+      (authority === "legacy" || (change.kind === "remove" && next.content.length > 1)) &&
       hostIndex !== undefined &&
       host?.type === "paragraph" &&
       isEmptyWatermarkHostParagraph(host)

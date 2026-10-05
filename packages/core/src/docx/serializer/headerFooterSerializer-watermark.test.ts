@@ -278,19 +278,19 @@ describe("serializeHeaderFooter — watermark replay", () => {
       content: [
         {
           type: "paragraph",
-          paraId: "A1B2C3D4",
+          paraId: "21B2C3D4",
           content: [{ type: "run", content: [{ type: "text", text: "before" }] }],
         },
         {
           type: "paragraph",
-          paraId: "E5F6A7B8",
+          paraId: "65F6A7B8",
           textId: "10293847",
           formatting: { styleId: "ChangedHeader" },
           content: [],
         },
         {
           type: "paragraph",
-          paraId: "C9D0E1F2",
+          paraId: "49D0E1F2",
           content: [{ type: "run", content: [{ type: "text", text: "after" }] }],
         },
       ],
@@ -312,9 +312,9 @@ describe("serializeHeaderFooter — watermark replay", () => {
       "paragraph",
     ]);
     expect(reopened.content.map((block) => block.type === "paragraph" && block.paraId)).toEqual([
-      "A1B2C3D4",
-      "E5F6A7B8",
-      "C9D0E1F2",
+      "21B2C3D4",
+      "65F6A7B8",
+      "49D0E1F2",
     ]);
     expect(reopened.content.at(1)).toMatchObject({
       type: "paragraph",

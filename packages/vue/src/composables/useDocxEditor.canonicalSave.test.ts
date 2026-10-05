@@ -22,6 +22,7 @@ import { CanonicalDocxInputError } from "@stll/folio-core/docx/canonicalSessionI
 import { createEmptyHeaderFooter } from "@stll/folio-core/utils/headerFooter";
 import type { Comment } from "@stll/folio-core/types/content";
 import { getDocumentWatermark, type Watermark } from "@stll/folio-core/watermark";
+import { normalizeCanonicalWatermark } from "../../../docx-core/src/model/watermarkDefaults";
 
 const { isMacPlatform } = await import("@stll/folio-core/managers/editorShortcuts");
 import {
@@ -570,6 +571,19 @@ test("Vue canonical stories share history and save headers, first-page footer, n
     expect(adapter.editor.redo()).toBe(true);
     expect(adapter.getDocument()?.package.document.finalSectionProperties?.marginLeft).toBe(720);
 
+    const assertWatermarkSave = async () => {
+      const canonical = adapter.getDocument() ?? panic("Expected canonical watermark model");
+      for (const selective of [false, true]) {
+        const saved = await adapter.save({ selective });
+        if (!saved) panic("Expected saved canonical watermark");
+        const buffer = await saved.arrayBuffer();
+        expect(await validateDocxPackage(new Uint8Array(buffer))).toEqual({ valid: true });
+        expectCanonicalWatermarkRoundTrip(
+          canonical,
+          await parseDocx(buffer, { preloadFonts: false, detectVariables: false }),
+        );
+      }
+    };
     const textWatermark = {
       kind: "text",
       text: "DRAFT",
@@ -592,7 +606,9 @@ test("Vue canonical stories share history and save headers, first-page footer, n
       getDocumentWatermark(adapter.getDocument() ?? panic("Expected canonical document")),
     ).toEqual(textWatermark);
 
-    const pictureWatermark = {
+    await assertWatermarkSave();
+
+    const pictureRequest = {
       kind: "picture",
       imageRId: "rIdExternalWatermark",
       imageTarget: "https://example.test/watermark.png",
@@ -601,8 +617,9 @@ test("Vue canonical stories share history and save headers, first-page footer, n
       widthPt: 249,
       heightPt: 124.2,
     } satisfies Watermark;
+    const pictureWatermark = normalizeCanonicalWatermark(pictureRequest);
     expect(
-      adapter.editor.applyCanonicalWatermark({ kind: "set", watermark: pictureWatermark })?.status,
+      adapter.editor.applyCanonicalWatermark({ kind: "set", watermark: pictureRequest })?.status,
     ).toBe("applied");
     expect(
       getDocumentWatermark(adapter.getDocument() ?? panic("Expected canonical document")),
@@ -614,13 +631,7 @@ test("Vue canonical stories share history and save headers, first-page footer, n
     expect(adapter.editor.redo()).toBe(true);
     const pictureCanonical = adapter.getDocument() ?? panic("Expected canonical document");
     expect(getDocumentWatermark(pictureCanonical)).toEqual(pictureWatermark);
-    const pictureSaved = await adapter.save();
-    if (!pictureSaved) panic("Expected saved canonical picture watermark");
-    const reopenedPicture = await parseDocx(await pictureSaved.arrayBuffer(), {
-      preloadFonts: false,
-      detectVariables: false,
-    });
-    expectCanonicalWatermarkRoundTrip(pictureCanonical, reopenedPicture);
+    await assertWatermarkSave();
 
     expect(adapter.editor.applyCanonicalWatermark({ kind: "remove" })?.status).toBe("applied");
     expect(
@@ -630,44 +641,49 @@ test("Vue canonical stories share history and save headers, first-page footer, n
     expect(
       getDocumentWatermark(adapter.getDocument() ?? panic("Expected canonical document")),
     ).toEqual(pictureWatermark);
+    await assertWatermarkSave();
     expect(adapter.editor.redo()).toBe(true);
     const canonical = adapter.getDocument() ?? panic("Expected canonical document");
     expect(getDocumentWatermark(canonical)).toBeUndefined();
-    const saved = await adapter.save();
-    if (!saved) panic("Expected canonical story save");
-    const reopened = await parseDocx(await saved.arrayBuffer(), {
-      preloadFonts: false,
-      detectVariables: false,
-    });
-    expectCanonicalWatermarkRoundTrip(canonical, reopened);
-    expect(reopened.package.document.finalSectionProperties).toEqual(
-      canonical.package.document.finalSectionProperties,
-    );
-    expect([...(reopened.package.headers?.keys() ?? [])].sort()).toEqual(
-      [...(canonical.package.headers?.keys() ?? [])].sort(),
-    );
-    expect([...(reopened.package.footers?.keys() ?? [])].sort()).toEqual(
-      [...(canonical.package.footers?.keys() ?? [])].sort(),
-    );
-    for (const [identity, part] of canonical.package.headers ?? []) {
-      expect(canonicalReviewBlocks(reopened.package.headers?.get(identity)?.content ?? [])).toEqual(
-        canonicalReviewBlocks(part.content),
+    for (const selective of [false, true]) {
+      const saved = await adapter.save({ selective });
+      if (!saved) panic("Expected canonical story save");
+      const buffer = await saved.arrayBuffer();
+      expect(await validateDocxPackage(new Uint8Array(buffer))).toEqual({ valid: true });
+      const reopened = await parseDocx(buffer, {
+        preloadFonts: false,
+        detectVariables: false,
+      });
+      expectCanonicalWatermarkRoundTrip(canonical, reopened);
+      expect(reopened.package.document.finalSectionProperties).toEqual(
+        canonical.package.document.finalSectionProperties,
       );
-    }
-    for (const [identity, part] of canonical.package.footers ?? []) {
-      expect(canonicalReviewBlocks(reopened.package.footers?.get(identity)?.content ?? [])).toEqual(
-        canonicalReviewBlocks(part.content),
+      expect([...(reopened.package.headers?.keys() ?? [])].sort()).toEqual(
+        [...(canonical.package.headers?.keys() ?? [])].sort(),
       );
-    }
-    expect((reopened.package.footnotes ?? []).map(({ id }) => id)).toEqual(
-      (canonical.package.footnotes ?? []).map(({ id }) => id),
-    );
-    for (const part of canonical.package.footnotes ?? []) {
-      expect(
-        canonicalReviewBlocks(
-          reopened.package.footnotes?.find(({ id }) => id === part.id)?.content ?? [],
-        ),
-      ).toEqual(canonicalReviewBlocks(part.content));
+      expect([...(reopened.package.footers?.keys() ?? [])].sort()).toEqual(
+        [...(canonical.package.footers?.keys() ?? [])].sort(),
+      );
+      for (const [identity, part] of canonical.package.headers ?? []) {
+        expect(
+          canonicalReviewBlocks(reopened.package.headers?.get(identity)?.content ?? []),
+        ).toEqual(canonicalReviewBlocks(part.content));
+      }
+      for (const [identity, part] of canonical.package.footers ?? []) {
+        expect(
+          canonicalReviewBlocks(reopened.package.footers?.get(identity)?.content ?? []),
+        ).toEqual(canonicalReviewBlocks(part.content));
+      }
+      expect((reopened.package.footnotes ?? []).map(({ id }) => id)).toEqual(
+        (canonical.package.footnotes ?? []).map(({ id }) => id),
+      );
+      for (const part of canonical.package.footnotes ?? []) {
+        expect(
+          canonicalReviewBlocks(
+            reopened.package.footnotes?.find(({ id }) => id === part.id)?.content ?? [],
+          ),
+        ).toEqual(canonicalReviewBlocks(part.content));
+      }
     }
     expect(adapter.isDirty.value).toBe(false);
     expect(
@@ -675,6 +691,7 @@ test("Vue canonical stories share history and save headers, first-page footer, n
         removeCanonicalHeaderFooterOperations({ document: canonical, position: "header", rId }),
       ),
     ).toBe(true);
+    const headerRemovedCanonical = adapter.getDocument() ?? panic("Expected removed header model");
     const withoutHeader = await adapter.save();
     if (!withoutHeader) panic("Expected saved header removal");
     const removed = await parseDocx(await withoutHeader.arrayBuffer(), {
@@ -682,8 +699,10 @@ test("Vue canonical stories share history and save headers, first-page footer, n
       detectVariables: false,
     });
     expect(removed.package.headers?.has(rId) ?? false).toBe(false);
-    expect(removed.package.document.finalSectionProperties?.headerReferences ?? []).toEqual([]);
-    expect(errors).toHaveLength(2);
+    expect(removed.package.document.finalSectionProperties?.headerReferences ?? []).toEqual(
+      headerRemovedCanonical.package.document.finalSectionProperties?.headerReferences ?? [],
+    );
+    expect(errors).toHaveLength(5);
     for (const error of errors) {
       expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
       if (!(error instanceof CanonicalSaveDiagnosticError)) panic("Expected typed save diagnostic");

@@ -18,6 +18,7 @@ import type { Document } from "@stll/folio-core/types/document";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { CanonicalCommentResult } from "@stll/folio-core/types/canonicalComments";
 import { getDocumentWatermark, type Watermark } from "@stll/folio-core/watermark";
+import { normalizeCanonicalWatermark } from "../../../docx-core/src/model/watermarkDefaults";
 import {
   createCanonicalHeaderFooterOperation,
   DOCUMENT_OP_TYPES,
@@ -203,6 +204,23 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
     const api = editor.current?.getEditor() ?? panic("Expected editor API");
     const getWatermark = () =>
       getDocumentWatermark(editor.current?.getDocument() ?? panic("Expected canonical document"));
+    const assertWatermarkSave = async () => {
+      const watermarkDocument =
+        editor.current?.getDocument() ?? panic("Expected canonical watermark model");
+      for (const selective of [false, true]) {
+        await act(async () => {
+          const watermarkBuffer = await editor.current?.save({ selective });
+          if (!watermarkBuffer) panic("Expected saved canonical watermark");
+          expect(await validateDocxPackage(new Uint8Array(watermarkBuffer))).toEqual({
+            valid: true,
+          });
+          expectCanonicalWatermarkRoundTrip(
+            watermarkDocument,
+            await parseDocx(watermarkBuffer, { preloadFonts: false, detectVariables: false }),
+          );
+        });
+      }
+    };
     const textWatermark = {
       kind: "text",
       text: "DRAFT",
@@ -224,8 +242,9 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
       expect(editor.current?.redo()).toBe(true);
     });
     expect(getWatermark()).toEqual(textWatermark);
+    await assertWatermarkSave();
 
-    const pictureWatermark = {
+    const pictureRequest = {
       kind: "picture",
       imageRId: "rIdExternalWatermark",
       imageTarget: "https://example.test/watermark.png",
@@ -234,10 +253,11 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
       widthPt: 249,
       heightPt: 124.2,
     } satisfies Watermark;
+    const pictureWatermark = normalizeCanonicalWatermark(pictureRequest);
     await act(async () => {
-      expect(
-        api.applyCanonicalWatermark({ kind: "set", watermark: pictureWatermark })?.status,
-      ).toBe("applied");
+      expect(api.applyCanonicalWatermark({ kind: "set", watermark: pictureRequest })?.status).toBe(
+        "applied",
+      );
     });
     expect(getWatermark()).toEqual(pictureWatermark);
     await act(async () => {
@@ -247,18 +267,8 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
     await act(async () => {
       expect(editor.current?.redo()).toBe(true);
     });
-    const pictureCanonical = editor.current?.getDocument() ?? panic("Expected picture watermark");
     expect(getWatermark()).toEqual(pictureWatermark);
-    let pictureSaved: ArrayBuffer | null | undefined;
-    await act(async () => {
-      pictureSaved = await editor.current?.save();
-    });
-    if (!pictureSaved) panic("Expected saved canonical picture watermark");
-    const reopenedPicture = await parseDocx(pictureSaved, {
-      preloadFonts: false,
-      detectVariables: false,
-    });
-    expectCanonicalWatermarkRoundTrip(pictureCanonical, reopenedPicture);
+    await assertWatermarkSave();
 
     await act(async () => {
       expect(api.applyCanonicalWatermark({ kind: "remove" })?.status).toBe("applied");
@@ -268,21 +278,12 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
       expect(editor.current?.undo()).toBe(true);
     });
     expect(getWatermark()).toEqual(pictureWatermark);
+    await assertWatermarkSave();
     await act(async () => {
       expect(editor.current?.redo()).toBe(true);
     });
-    const removedCanonical = editor.current?.getDocument() ?? panic("Expected removed watermark");
     expect(getWatermark()).toBeUndefined();
-    let removedSaved: ArrayBuffer | null | undefined;
-    await act(async () => {
-      removedSaved = await editor.current?.save();
-    });
-    if (!removedSaved) panic("Expected saved canonical watermark removal");
-    const reopenedRemoved = await parseDocx(removedSaved, {
-      preloadFonts: false,
-      detectVariables: false,
-    });
-    expectCanonicalWatermarkRoundTrip(removedCanonical, reopenedRemoved);
+    await assertWatermarkSave();
   } finally {
     await act(async () => root.unmount());
     dialogs.mockRestore();
