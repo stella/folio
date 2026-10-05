@@ -1,3 +1,4 @@
+import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import { mapTocSelection } from "./canonicalTocSelection";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
@@ -76,6 +77,57 @@ const operationChangesPackage = (op: DocumentOp): boolean => {
       if ("story" in op) return !sameStory(op.story, OP_STORIES.MAIN);
       if ("at" in op) return !sameStory(op.at.story, OP_STORIES.MAIN);
       if ("from" in op) return !sameStory(op.from.story, OP_STORIES.MAIN);
+      const unreachable: never = op;
+      return unreachable;
+    }
+  }
+};
+
+const operationChangesStructure = (op: DocumentOp): boolean => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
+    case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
+    case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+    case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+    case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
+    case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+    case DOCUMENT_OP_TYPES.INSERT_ROW:
+    case DOCUMENT_OP_TYPES.DELETE_ROW:
+    case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
+    case DOCUMENT_OP_TYPES.INSERT_COLUMN:
+    case DOCUMENT_OP_TYPES.DELETE_COLUMN:
+    case DOCUMENT_OP_TYPES.MERGE_CELLS:
+    case DOCUMENT_OP_TYPES.SPLIT_CELL:
+    case DOCUMENT_OP_TYPES.SET_TABLE:
+    case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
+      return true;
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+    case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
+    case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+    case DOCUMENT_OP_TYPES.JOIN_INLINE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
+    case DOCUMENT_OP_TYPES.REPLACE_INLINE:
+    case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
+    case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
+    case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
+    case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+      return false;
+    default: {
       const unreachable: never = op;
       return unreachable;
     }
@@ -720,7 +772,10 @@ const storyProjectionKey = (story: Exclude<OpStory, typeof OP_STORIES.MAIN>): st
 class CanonicalSession {
   private currentDocument: Document;
   private currentProjection: CanonicalProjection;
+  private readonly sourceBlockIds: ReadonlySet<string>;
   private currentVersion = 0;
+  private readonly saveTouched = new Set<string>();
+  private saveStructure: CanonicalSaveSnapshot["structure"] = "stable";
   private readonly allocateIntentIds = createEditorIntentIdAllocator();
   private mode: CanonicalSessionMode = { type: "editing" };
   private readonly allocatedBlockIds = new Set<string>();
@@ -737,6 +792,7 @@ class CanonicalSession {
   constructor({ document, projection, styles }: CanonicalSessionSeedOptions) {
     this.currentDocument = document;
     this.currentProjection = projection;
+    this.sourceBlockIds = new Set(packageParagraphIds(document.package));
     for (const blockId of packageParagraphIds(document.package))
       this.allocatedBlockIds.add(blockId.toUpperCase());
     this.advanceBlockId();
@@ -864,6 +920,28 @@ class CanonicalSession {
       });
     return this.currentDocument;
   }
+  captureSaveSnapshot(): CanonicalSaveSnapshot {
+    if (this.isComposing)
+      throw new CanonicalSessionError({
+        gap: CANONICAL_GAP.save,
+        reason: "refused",
+        message: "Composition must finish before saving the canonical document.",
+      });
+    const retainedBlockIdKeys = new Set(
+      [...this.sourceBlockIds, ...packageParagraphIds(this.currentDocument.package)].map(
+        (blockId) => blockId.toUpperCase(),
+      ),
+    );
+    return {
+      document: cloneDocumentWithParagraphPropertySources(this.currentDocument),
+      version: this.currentVersion,
+      changedBlockIds: [...this.saveTouched].filter((blockId) =>
+        retainedBlockIdKeys.has(blockId.toUpperCase()),
+      ),
+      structure: this.saveStructure,
+    };
+  }
+
   get projection(): CanonicalProjection {
     return this.currentProjection;
   }
@@ -1518,6 +1596,22 @@ class CanonicalSession {
         this.currentSelection = selection;
         this.currentDocument = applied.value.document;
         this.currentProjection = bodyProjection.value;
+        // Save changes are cumulative against originalBuffer, including undo/redo.
+        // They are published with the model, never with a staged projection.
+        for (const ids of [
+          applied.value.touched.modified,
+          applied.value.touched.inserted,
+          applied.value.touched.removed,
+        ]) {
+          for (const id of ids) this.saveTouched.add(id);
+        }
+        if (
+          applied.value.touched.inserted.length > 0 ||
+          applied.value.touched.removed.length > 0 ||
+          ops.some(operationChangesPackage) ||
+          ops.some(operationChangesStructure)
+        )
+          this.saveStructure = "changed";
         this.currentVersion = baseVersion + 1;
         onPublish(applied.value.inverse, this.currentVersion);
         return Result.ok(undefined);
