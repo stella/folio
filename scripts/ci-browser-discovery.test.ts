@@ -230,6 +230,12 @@ describe("no-browser discovery preflight", () => {
     );
   }, 20_000);
 
+  test("the repository's real browser import graphs load in Node for every tracked config", () => {
+    const results = checkBrowserDiscovery({ log: () => {} });
+    expect(results.map(({ config }) => config)).toEqual(trackedBrowserConfigs());
+    expect(results.every(({ tests }) => tests > 0)).toBe(true);
+  }, 20_000);
+
   test("the command line refuses filtering arguments", () => {
     const result = Bun.spawnSync(
       [

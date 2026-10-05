@@ -5,6 +5,8 @@ const vuePlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 42
 
 export default defineConfig({
   testDir: "./tests/visual",
+  // Bun unit tests share helper directories; browser projects discover only specs.
+  testMatch: /\.spec\.ts$/u,
   // A stray test.only must fail CI instead of silently running one test.
   forbidOnly: !!process.env["CI"],
   timeout: 30_000,
