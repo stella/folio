@@ -23,6 +23,12 @@
       "path": "10:0:0:0:0:0:0:2:2:7",
       "note": "Replay the generated container precondition that refused as stale after composing the accepted operation sequence.",
       "date": "2026-10-04"
+    },
+    {
+      "seed": 231829227,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Default model saves must not consult canonical body replay captures.",
+      "date": "2026-10-04"
     }
   ]
 }

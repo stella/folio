@@ -24,7 +24,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseDocx } from "./parser";
 import { createDocx, repackDocx } from "./rezip";
@@ -183,7 +183,7 @@ const occurrences = (xml: string, needle: string): number => xml.split(needle).l
 
 describe("an unbalanced inline range marker never refuses the document", () => {
   test("every marker kind, in every wrapper, in every balance, opens and re-saves", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(
         fc.constantFrom(...MARKER_KINDS),
         fc.constantFrom(...HOST_NAMES),
@@ -226,7 +226,7 @@ describe("an unbalanced inline range marker never refuses the document", () => {
           }
         },
       ),
-      propertyConfig({ numRuns: 60 }),
+      { numRuns: 60 },
     );
   });
 

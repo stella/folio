@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { XMLValidator } from "fast-xml-parser";
 import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
 import { getChildElements, parseXmlDocument } from "./xmlParser";
 
@@ -25,6 +26,7 @@ test("all deletion subsets and insertion gaps retain surviving source bytes and 
       });
       expect(result).not.toBeNull();
       if (result === null) continue;
+      expect(XMLValidator.validate(result)).toBe(true);
       expect(ids(result)).toEqual(desired.map((id) => id.toString(16).padStart(8, "0")));
       for (const id of survivors) expect(result).toContain(paragraph(id));
       expect(result.match(/<!-- untouched gap -->/gu)?.length).toBe(3);
@@ -138,4 +140,35 @@ test("refuses ranges whose endpoints in separate tables enclose a body insertion
       changedIds: new Set(["00000003"]),
     }),
   ).toBeNull();
+});
+
+test("structural splices preserve valid locally bound replay paragraphs at every insertion gap", () => {
+  const namespace = "http://schemas.microsoft.com/office/word/2010/wordml";
+  const mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+  const word = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const original = wrap([1, 2, 3].map((id) => paragraph(id)).join("<!-- gap -->"));
+  for (const alias of ["mc", "compat"]) {
+    for (let gap = 0; gap <= 3; gap++) {
+      const desired = [1, 2, 3].toSpliced(gap, 0, 4);
+      const localParagraph = (id: number) =>
+        paragraph(id).replace(
+          "<w:p ",
+          `<w:p xmlns:w="${word}" xmlns:id="${namespace}" xmlns:${alias}="${mc}" ${alias}:Ignorable="id" `,
+        );
+      const serializedXml = wrap(desired.map(localParagraph).join(""));
+      expect(XMLValidator.validate(serializedXml)).toBe(true);
+      const result = buildStructuralDocumentPatch({
+        originalXml: original,
+        serializedXml,
+        changedIds: new Set(["00000002"]),
+      });
+      expect(result).not.toBeNull();
+      if (result === null) continue;
+      expect(XMLValidator.validate(result)).toBe(true);
+      expect(ids(result)).toEqual(desired.map((id) => id.toString(16).padStart(8, "0")));
+      expect(result).toContain(paragraph(1));
+      expect(result).toContain(paragraph(3));
+      expect(result).toContain(`${alias}:Ignorable="id"`);
+    }
+  }
 });

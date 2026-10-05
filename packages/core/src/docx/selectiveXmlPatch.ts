@@ -64,7 +64,7 @@ export function findParagraphOffsets(
   // Pattern matches <w:p followed by whitespace or >, then any attrs, then the paraId.
   // This covers all attribute orderings since [^>]* matches any attributes before paraId.
   const escaped = escapeRegExp(paraId);
-  const pattern = new RegExp(`<w:p[\\s][^>]*w14:paraId="${escaped}"`, "gu");
+  const pattern = new RegExp(`<w:p[\\s][^>]*w14:paraId\\s*=\\s*(["'])${escaped}\\1`, "gu");
 
   const matches: number[] = [];
   let match: RegExpExecArray | null;
@@ -300,7 +300,8 @@ export function scanParagraphs(xml: string): ScannedParagraph[] {
       break;
     }
     const openTag = xml.slice(tagStart, tagEnd + 1);
-    const paraId = /\bw14:paraId="(?<id>[^"]+)"/u.exec(openTag)?.groups?.["id"];
+    const paraId = /\bw14:paraId\s*=\s*(?<quote>["'])(?<id>[^"']+)\k<quote>/u.exec(openTag)
+      ?.groups?.["id"];
     const container: ParagraphContainer = {
       inFallback: depth.fallback > 0,
       inAlternateContent: depth.alternateContent > 0,
@@ -346,7 +347,7 @@ export function countParagraphElements(xml: string): number {
  */
 export function collectParaIds(xml: string): Map<string, number> {
   const ids = new Map<string, number>();
-  const pattern = /w14:paraId="(?<id>[^"]+)"/gu;
+  const pattern = /w14:paraId\s*=\s*(?<quote>["'])(?<id>[^"']+)\k<quote>/gu;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(xml)) !== null) {
     // SAFETY: named group always present when regex matches
@@ -362,7 +363,7 @@ export type PatchValidationResult = {
 };
 
 /** Paragraph ids folio writes and this module may have to remove again. */
-const MINTED_PARA_ID_ATTRIBUTE = /\sw14:(?:para|text)Id="[^"]*"/gu;
+const MINTED_PARA_ID_ATTRIBUTE = /\sw14:(paraId|textId)="[^"]*"/gu;
 
 /**
  * The replacement for a paragraph whose source open tag carries no paraId.
@@ -384,9 +385,10 @@ const withoutMintedIds = (paragraphXml: string, sourceOpenTag: string): string =
   }
   const openTag = paragraphXml
     .slice(0, tagEnd + 1)
-    .replace(MINTED_PARA_ID_ATTRIBUTE, (attribute) =>
-      sourceOpenTag.includes(attribute.trim()) ? attribute : "",
-    );
+    .replace(MINTED_PARA_ID_ATTRIBUTE, (attribute, name: string) => {
+      const sourceAttribute = new RegExp(`\\bw14:${name}\\s*=\\s*(["'])[^"']*\\1`, "u");
+      return sourceAttribute.test(sourceOpenTag) ? attribute : "";
+    });
   return openTag + paragraphXml.slice(tagEnd + 1);
 };
 
