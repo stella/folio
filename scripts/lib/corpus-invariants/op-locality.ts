@@ -552,34 +552,44 @@ const addressedStory = (op: DocumentOp) => {
   return undefined;
 };
 
-type OwnsStoryContentOptions = { op: DocumentOp; story: OpStory; original: Document };
-const ownsStoryContent = ({ op, story, original }: OwnsStoryContentOptions): boolean => {
-  if (isCommentOp(op)) return commentStories(op, original).some((owned) => sameStory(owned, story));
+type StoryOwnershipOptions = { op: DocumentOp; story: OpStory; original: Document };
+const storyOwnership = ({
+  op,
+  story,
+  original,
+}: StoryOwnershipOptions): "content" | "fields" | "none" => {
+  if (isCommentOp(op))
+    return commentStories(op, original).some((owned) => sameStory(owned, story))
+      ? "content"
+      : "none";
   if (op.type === DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK)
-    return (
-      story !== OP_STORIES.MAIN &&
+    return story !== OP_STORIES.MAIN &&
       story.kind === "header" &&
       op.coverage.some(({ rId }) => rId === story.rId)
-    );
+      ? "content"
+      : "none";
+
   const addressed = addressedStory(op);
-  if (addressed !== undefined && sameStory(addressed, story)) return true;
+  if (addressed !== undefined && sameStory(addressed, story)) return "content";
   const lifecycle = lifecycleOwnership(op);
   if (lifecycle !== undefined) {
-    if (lifecycle.story !== undefined && sameStory(lifecycle.story, story)) return true;
-    if (lifecycle.sectionIndex !== undefined && story === OP_STORIES.MAIN) return true;
+    if (lifecycle.story !== undefined && sameStory(lifecycle.story, story)) return "content";
+    if (lifecycle.sectionIndex !== undefined && story === OP_STORIES.MAIN) return "fields";
   }
-  if (op.type !== DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS) return false;
-  if (story === OP_STORIES.MAIN)
-    return op.parts.body?.content !== undefined || op.parts.sections !== undefined;
+  if (op.type !== DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS) return "none";
+  if (story === OP_STORIES.MAIN) {
+    if (op.parts.body?.content !== undefined) return "content";
+    return op.parts.sections !== undefined ? "fields" : "none";
+  }
   switch (story.kind) {
     case "header":
-      return op.parts.headers !== undefined;
+      return op.parts.headers !== undefined ? "content" : "none";
     case "footer":
-      return op.parts.footers !== undefined;
+      return op.parts.footers !== undefined ? "content" : "none";
     case "footnote":
-      return op.parts.footnotes !== undefined;
+      return op.parts.footnotes !== undefined ? "content" : "none";
     case "endnote":
-      return op.parts.endnotes !== undefined;
+      return op.parts.endnotes !== undefined ? "content" : "none";
     default: {
       const unreachable: never = story;
       return unreachable;
@@ -621,7 +631,7 @@ export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): stri
     for (const story of documentStories(document)) {
       if (
         op.type !== DOCUMENT_OP_TYPES.SET_DOCUMENT_WATERMARK &&
-        ownsStoryContent({ op, story, original: before })
+        storyOwnership({ op, story, original: before }) !== "none"
       )
         continue;
       if (
@@ -675,8 +685,7 @@ export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): stri
   });
   // Section-field ownership does not grant ownership of the paragraph carrying it.
   const ownsMainContent =
-    ownsStoryContent({ op, story: OP_STORIES.MAIN, original: before }) ||
-    (op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS && op.parts.body?.content !== undefined);
+    storyOwnership({ op, story: OP_STORIES.MAIN, original: before }) === "content";
   const projectedTouched = new Set(touched);
   if (!ownsMainContent)
     for (const document of [before, edit.document])

@@ -679,6 +679,11 @@ class CanonicalSession {
     this.rememberSources(document);
   }
 
+  /** Render only the committed comment projection while provisional IME blocks document snapshots. */
+  getCommittedComments() {
+    return structuredClone(this.currentDocument.package.document.comments ?? []);
+  }
+
   setMode(mode: CanonicalSessionMode): void {
     if (
       this.mode.type !== mode.type ||

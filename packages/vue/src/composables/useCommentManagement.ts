@@ -110,8 +110,7 @@ export function useCommentManagement(
   const isControlled = computed(() => options.commentsProp() !== undefined);
   const canonicalComments = computed(() => {
     void options.canonicalTick?.value;
-    const canonical = options.editor?.getCanonicalDocument();
-    return canonical ? (canonical.package.document.comments ?? []) : null;
+    return options.editor?.getCanonicalComments() ?? null;
   });
   const comments = computed<Comment[]>(
     () =>
@@ -140,7 +139,7 @@ export function useCommentManagement(
     [() => canonicalComments.value !== null, () => options.commentsProp()],
     ([ready, requested]) => {
       if (!ready || requested === undefined) return;
-      const current = options.editor?.getCanonicalDocument()?.package.document.comments ?? [];
+      const current = canonicalComments.value ?? [];
       if (JSON.stringify(current) === JSON.stringify(requested)) return;
       options.editor?.applyCanonicalComment({
         type: "replace",
@@ -183,7 +182,7 @@ export function useCommentManagement(
     // `commentsDirtyRef` on document reset). Cleared unconditionally so a
     // controlled host's swap resets the flag too.
     clearCommentsDirty();
-    if (options.editor?.getCanonicalDocument()) return;
+    if (canonicalComments.value !== null) return;
     if (isControlled.value) return;
     const bodyComments = options.getDocument()?.package.document.comments;
     seedCommentAllocator(allocator, bodyComments, options.editorView.value);
@@ -250,7 +249,7 @@ export function useCommentManagement(
   function resolveChangeById(revisionId: number, accept: boolean): void {
     const view = options.editorView.value;
     if (!view) return;
-    if (options.editor?.getCanonicalDocument()) {
+    if (canonicalComments.value !== null && options.editor) {
       options.editor.resolveCanonicalRevisions([revisionId], accept ? "accept" : "reject");
       return;
     }

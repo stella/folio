@@ -229,7 +229,17 @@ test("body-field and section-field ownership cannot conceal paragraph edits in t
     expected: { body: { background: { themeTint: "AA" } } },
     parts: { body: { background: null } },
   });
-  for (const step of [section, restoreSection, restoreBackground]) {
+  const createHeader = stepFor(
+    {
+      type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+      sectionIndex: 0,
+      story: { kind: "header", rId: "rIdNewHeader" },
+      referenceType: "default",
+      content: [paragraph("00000006")],
+    },
+    before,
+  );
+  for (const step of [section, restoreSection, restoreBackground, createHeader]) {
     expect(localityStepFailures(step)).toEqual([]);
     const changed = structuredClone(step.edit.document);
     const target = changed.package.document.content.at(0);
@@ -359,7 +369,17 @@ test("watermark ownership preserves existing story content and unrelated section
       if (story.kind === "header") return changed.package.headers?.get(story.rId)?.content;
       return changed.package.footers?.get(story.rId)?.content;
     })();
-    const target = content?.at(0);
+    const originalContent = (() => {
+      if (story === "main") return before.package.document.content;
+      if (story.kind === "header") return before.package.headers?.get(story.rId)?.content;
+      return before.package.footers?.get(story.rId)?.content;
+    })();
+    const original = originalContent?.at(0);
+    if (original?.type !== "paragraph" || !original.paraId)
+      throw new Error("Expected existing locality target");
+    const target = content?.find(
+      (block) => block.type === "paragraph" && block.paraId === original.paraId,
+    );
     if (target?.type !== "paragraph" || !target.paraId) throw new Error("Expected locality target");
     target.content = [{ type: "run", content: [{ type: "text", text: "Unowned" }] }];
     const corrupted = {
