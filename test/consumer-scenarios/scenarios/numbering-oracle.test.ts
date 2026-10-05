@@ -356,9 +356,61 @@ test("direct heading insertion beside a newly authored bullet keeps its direct n
   assert.equal(second.applied.length, 1);
 });
 
-test("suggested collision regression preserves the anchor's pending direct numbering", async () => {
-  await runFlow(1873083933, 16, "collisions", { generation: "targeted" });
-});
+test(
+  "suggested collision numbering survives host persistence and tracked DOCX save",
+  { timeout: 30_000 },
+  async () => {
+    let checked = false;
+    await runFlow(1873083933, 16, "collisions", {
+      generation: "targeted",
+      checks: [
+        {
+          name: "numbered proposal persistence",
+          check: async ({ flow, index, saved }) => {
+            if (index !== 14) return;
+            checked = true;
+            const text = "Delivery payment clause.";
+            const expected = { numId: 2, level: 0 };
+            const inserted = rowsOf(flow.reviewer).find((row) => row.text === text);
+            assert.ok(inserted);
+            assert.deepEqual(inserted.listReference, expected);
+            const records = flow.reviewer.exportPendingSuggestions();
+            const proposal = records.find(
+              ({ operation }) =>
+                (operation.type === "insertAfterBlock" || operation.type === "insertBeforeBlock") &&
+                operation.text === text,
+            );
+            assert.ok(proposal);
+            const { bytes } = await saved();
+            const reopened = await openReviewer(bytes);
+            // Proposals are host-owned, outside DOCX until explicitly accepted.
+            assert.ok(!rowsOf(reopened).some((row) => row.text === text));
+            const loaded = reopened.loadPendingSuggestions(JSON.parse(JSON.stringify(records)));
+            assert.deepEqual(
+              loaded,
+              records.map(({ suggestionId }) => ({ status: "restaged", suggestionId })),
+            );
+            const restored = rowsOf(reopened).find((row) => row.text === text);
+            assert.ok(restored);
+            assert.deepEqual(restored.listReference, expected);
+            assert.equal(reopened.acceptSuggestion(proposal.suggestionId), true);
+            const tracked = await openReviewer(new Uint8Array(await reopened.toBuffer()));
+            const persisted = rowsOf(tracked).find((row) => row.text === text);
+            assert.ok(persisted);
+            assert.deepEqual(persisted.listReference, expected);
+            assert.ok(tracked.getChanges().some((change) => change.text.includes(text)));
+            tracked.acceptAll();
+            const accepted = await openReviewer(new Uint8Array(await tracked.toBuffer()));
+            const authored = rowsOf(accepted).find((row) => row.text === text);
+            assert.ok(authored);
+            assert.deepEqual(authored.listReference, expected);
+          },
+        },
+      ],
+    });
+    assert.equal(checked, true, "The generated seed must reach its reported insertion");
+  },
+);
 
 test("a pending inserted anchor has complete live numbering provenance", async () => {
   const reviewer = await openReviewer(await directNumberedDocument());
