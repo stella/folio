@@ -15,7 +15,7 @@ import { fromMarkdown } from "@stll/folio-core/markdown";
 import { schema } from "@stll/folio-core/prosemirror/schema";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { assertExactModel } from "../../../../test/exactModel";
-import type { Comment } from "@stll/folio-core/types/content";
+import type { Comment, DrawingContent } from "@stll/folio-core/types/content";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
@@ -31,7 +31,14 @@ const createErrorObserver = () => {
   return { errors, onError: (error: Error) => errors.push(error) };
 };
 
-const SHAPES = ["header-footer", "mixed-lists", "single-decimal-list", "image"] as const;
+const SHAPES = [
+  "header-footer",
+  "mixed-lists",
+  "single-decimal-list",
+  "image",
+  "image-leading",
+  "image-trailing",
+] as const;
 const MODES = ["editing", "suggesting"] as const;
 const COMPLETIONS = ["cancel", "commit"] as const;
 
@@ -82,6 +89,16 @@ const createShapeBuffer = async (shape: (typeof SHAPES)[number]) => {
       footerReferences: [{ type: "default", rId: "rIdFooter1" }],
     };
   } else {
+    const drawing = {
+      type: "drawing",
+      image: {
+        type: "image",
+        src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+        mimeType: "image/png",
+        size: { width: 9_525, height: 9_525 },
+        wrap: { type: "inline" },
+      },
+    } satisfies DrawingContent;
     document.package.document.content = [
       {
         type: "paragraph",
@@ -89,18 +106,13 @@ const createShapeBuffer = async (shape: (typeof SHAPES)[number]) => {
           {
             type: "run",
             content: [
-              { type: "text", text: "Text before the picture" },
-              {
-                type: "drawing",
-                image: {
-                  type: "image",
-                  src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
-                  mimeType: "image/png",
-                  size: { width: 9_525, height: 9_525 },
-                  wrap: { type: "inline" },
-                },
-              },
-              { type: "text", text: " and after it." },
+              ...(shape === "image-leading"
+                ? []
+                : [{ type: "text" as const, text: "Text before the picture" }]),
+              drawing,
+              ...(shape === "image-trailing"
+                ? []
+                : [{ type: "text" as const, text: " and after it." }]),
             ],
           },
         ],
@@ -148,8 +160,18 @@ for (const shape of SHAPES) {
               ? { type: "editing" as const }
               : { type: "suggesting" as const, author: "Composition author" };
           expect(api.setCanonicalMode(sessionMode)).toBe(true);
+          let from: number | undefined;
+          view.state.doc.descendants((node, pos) => {
+            if (from === undefined && node.isText && node.nodeSize >= 3) from = pos;
+          });
+          const compositionFrom = from ?? panic("Expected a text span beside the picture");
+          const compositionTo = compositionFrom + 3;
           await act(async () => {
-            view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 4)));
+            view.dispatch(
+              view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, compositionFrom, compositionTo),
+              ),
+            );
           });
           const baseline = api.getCanonicalDocument() ?? panic("Expected committed model");
           const baselineProjection = view.state.doc;
@@ -160,8 +182,8 @@ for (const shape of SHAPES) {
           if (completion === "commit") {
             expected
               .prepareReplace(expectedState, {
-                from: 1,
-                to: 4,
+                from: compositionFrom,
+                to: compositionTo,
                 text: "alpha",
                 semantic: "composition",
               })
@@ -171,7 +193,11 @@ for (const shape of SHAPES) {
           }
           await act(async () => {
             view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
-            view.dispatch(view.state.tr.insertText("alpha", 1, 4).setMeta("composition", 1));
+            view.dispatch(
+              view.state.tr
+                .insertText("alpha", compositionFrom, compositionTo)
+                .setMeta("composition", 1),
+            );
           });
           expect(api.getCanonicalDocument).toThrow(
             "Composition must finish before taking a snapshot.",
@@ -179,7 +205,11 @@ for (const shape of SHAPES) {
           // Selection notifications and a controlled-prop render must read only
           // published comments, while public snapshots retain their refusal.
           await act(async () => {
-            view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 2)));
+            view.dispatch(
+              view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, compositionFrom, compositionFrom + 1),
+              ),
+            );
           });
           controls.comments = [...controls.comments];
           controls.showToolbar = true;
@@ -195,7 +225,11 @@ for (const shape of SHAPES) {
               // final flush; PM swallows synthetic Escape while composing.
               view.dispatch(
                 view.state.tr
-                  .insertText(baselineProjection.textBetween(1, 4), 1, 6)
+                  .insertText(
+                    baselineProjection.textBetween(compositionFrom, compositionTo),
+                    compositionFrom,
+                    compositionFrom + "alpha".length,
+                  )
                   .setMeta("composition", 1),
               );
               expect(view.state.doc.eq(baselineProjection)).toBe(true);
