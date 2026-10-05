@@ -1,9 +1,10 @@
 import { defineConfig } from "@playwright/test";
+import { PLAYGROUND_HOSTS } from "./tests/parity/playgroundHosts";
 
-const reactPlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
-const vuePlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+const vuePlaygroundPort = new URL(PLAYGROUND_HOSTS.vue).port;
 
 export default defineConfig({
+  globalSetup: "./tests/parity/playgroundSetup.ts",
   testDir: "./tests/visual",
   // A stray test.only must fail CI instead of silently running one test.
   forbidOnly: !!process.env["CI"],
@@ -16,7 +17,7 @@ export default defineConfig({
     },
   },
   use: {
-    baseURL: `http://localhost:${reactPlaygroundPort}`,
+    baseURL: PLAYGROUND_HOSTS.react,
     browserName: "chromium",
     viewport: { width: 1280, height: 900 },
     // Consistent rendering across machines
@@ -91,16 +92,20 @@ export default defineConfig({
   webServer: [
     {
       command: "bun --filter @stll/playground dev",
-      url: `http://localhost:${reactPlaygroundPort}`,
+      stdout: "pipe",
+      stderr: "pipe",
+      url: PLAYGROUND_HOSTS.react,
       reuseExistingServer: true,
       timeout: 120_000,
     },
     {
       command: "bun --filter @stll/playground-vue dev",
+      stdout: "pipe",
+      stderr: "pipe",
       env: {
         FOLIO_PLAYGROUND_PORT: String(vuePlaygroundPort),
       },
-      url: `http://localhost:${vuePlaygroundPort}`,
+      url: PLAYGROUND_HOSTS.vue,
       reuseExistingServer: true,
       timeout: 120_000,
     },
