@@ -2,6 +2,7 @@ import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
+import { BROWSER_FUZZ_BUDGET, checkWithBoundedShrink } from "../../test/bounded-async-fuzz";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import {
@@ -636,7 +637,7 @@ const config = parseBrowserInputTraceConfig(
   process.env["FOLIO_FUZZ_LANE"] === "nightly" ? "nightly" : "pullRequest",
 );
 const replayPath = process.env["PROPERTY_TEST_PATH"];
-test.setTimeout(600_000);
+test.setTimeout(BROWSER_FUZZ_BUDGET.testMs);
 
 test("browser generator covers every declared suggestion input kind", () => {
   expect(new Set(browserSuggestionActionKinds)).toEqual(new Set(SUGGESTION_INPUT_KINDS));
@@ -716,10 +717,11 @@ const resolveCanonicalSaved = async ({
 for (const seed of config.seeds) {
   test(`seed ${seed}: browser input preserves readers, fresh render, and suggesting equivalence`, async ({
     page,
-  }) => {
+  }, info) => {
     reportFuzzHealth({ status: "started", completed: 0 });
-    const verdict = await fc.check(
-      fc.asyncProperty(INPUT_TRACE, async (trace) => {
+    const { verdict } = await checkWithBoundedShrink({
+      arbitrary: INPUT_TRACE,
+      evaluate: async (trace) => {
         checkFreshRender(trace);
         const source = await shapeArrayBuffer(trace.shape);
         const baseline = project(await FolioDocxReviewer.fromBuffer(source));
@@ -764,14 +766,32 @@ for (const seed of config.seeds) {
         if (JSON.stringify(edited.blocks) !== JSON.stringify(baseline)) {
           expect(suggested.changes.length).toBeGreaterThan(0);
         }
-      }),
-      {
-        seed,
-        numRuns: config.runs,
-        endOnFailure: false,
-        ...(replayPath ? { path: replayPath } : {}),
       },
-    );
+      seed,
+      numRuns: config.runs,
+      discoveryMs: BROWSER_FUZZ_BUDGET.discoveryMs,
+      shrinkMs: BROWSER_FUZZ_BUDGET.shrinkMs,
+      ...(replayPath ? { path: replayPath } : {}),
+      onFirstFailure: async ({ seed: originalSeed, path, value: trace, error: failure }) => {
+        const marker = failureMarker({
+          test: "browser input preserves readers, fresh render, and suggesting equivalence",
+          seed: originalSeed,
+          path,
+          repro: `FOLIO_FUZZ_SEEDS=${originalSeed} FOLIO_FUZZ_RUNS=${config.runs} PROPERTY_TEST_PATH=${path} bunx playwright test --project=browser-fuzzer tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1`,
+          failure,
+          flow: `${trace.shape}: ${trace.actions.map(({ kind }) => kind).join(" → ")}`,
+        });
+        logFailureMarker(marker);
+        const artifact = writeFailureRecord(
+          "fuzz-artifacts/browser/original",
+          failureRecord(marker, failure, { flow: trace }),
+        );
+        await info.attach("browser-original-failure", {
+          path: artifact,
+          contentType: "application/json",
+        });
+      },
+    });
     const health = classifyFuzzRun(verdict);
     reportFuzzHealth(health);
     if (health.status === "infrastructure") {
