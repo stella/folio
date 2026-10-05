@@ -74,12 +74,15 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     authorizedNativeState = null;
     const pending = state;
     if (pending.type === "committed") return;
+    const unchanged = pending.baseline.doc.eq(view.state.doc);
     const input =
-      commit && pending.type === "provisional" ? replacement(pending.baseline, view.state) : null;
+      commit && pending.type === "provisional" && !unchanged
+        ? replacement(pending.baseline, view.state)
+        : null;
     state = { type: "committed" };
     if (!view.isDestroyed) view.updateState(pending.baseline);
     options.end();
-    if (!commit || view.isDestroyed || pending.type === "refused") return;
+    if (!commit || view.isDestroyed || pending.type === "refused" || unchanged) return;
     if (input?.from === input?.to && input?.text === "") return;
     if (!input) {
       options.refuse(

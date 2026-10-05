@@ -462,7 +462,20 @@ test.each(["body", "story"] as const)(
       manager.ensureView();
       const view = manager.getView();
       if (!view) panic("Expected canonical view");
+      const comment = manager.api.applyCanonicalComment({
+        type: "create",
+        text: "Committed comment",
+        author: "Reviewer",
+        anchor: { kind: "selection", story: OP_STORIES.MAIN, from: 1, to: 1 },
+      });
+      expect(comment?.status).toBe("applied");
       const initial = manager.api.getCanonicalDocument();
+      const comments = manager.api.getCanonicalComments();
+      expect(comments).toHaveLength(1);
+      const exposed = comments?.at(0);
+      if (!exposed) panic("Expected committed comment projection");
+      exposed.content = [];
+      expect(manager.api.getCanonicalComments()?.at(0)?.content).not.toEqual([]);
       for (const synchronizer of synchronizers) synchronizer.sync();
       if (owner === "body") {
         view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
@@ -472,6 +485,7 @@ test.each(["body", "story"] as const)(
       for (const read of [manager.api.getDocument, manager.api.getCanonicalDocument])
         expect(read).toThrow("Composition must finish before taking a snapshot.");
       expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).toBeNull();
+      expect(manager.api.getCanonicalComments()).toEqual(initial?.package.document.comments);
       for (const synchronizer of synchronizers) expect(() => synchronizer.sync()).not.toThrow();
       // Synchronization cannot clear the shared pending boundary.
       expect(manager.api.getCanonicalDocument).toThrow();

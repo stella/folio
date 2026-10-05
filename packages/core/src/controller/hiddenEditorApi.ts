@@ -19,6 +19,7 @@ import type { EditorView } from "prosemirror-view";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document } from "../types/document";
+import type { Comment } from "../types/content";
 import type {
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
@@ -52,6 +53,7 @@ export type HiddenEditorApi = {
   /** Get the current Document from PM state */
   getDocument: () => Document | null;
   /** Canonical snapshot, or null in the default session. */
+  getCanonicalComments: () => Comment[] | null;
   getCanonicalDocument: () => Document | null;
   /** Set the explicit mode for an active canonical session. */
   setCanonicalMode: (mode: CanonicalSessionMode) => boolean;
@@ -106,6 +108,7 @@ export type HiddenEditorApi = {
 export type HiddenEditorApiDeps = {
   getView: () => EditorView | null;
   getDocumentContext: () => Document | null;
+  getCanonicalComments?: () => Comment[] | null;
   getCanonicalDocument?: () => Document | null;
   setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
   resolveCanonicalRevisions?: HiddenEditorApi["resolveCanonicalRevisions"];
@@ -181,6 +184,7 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
     resolveCanonicalRevisions: (revisionIds, resolution) =>
       !deps.isDestroying() && (deps.resolveCanonicalRevisions?.(revisionIds, resolution) ?? false),
 
+    getCanonicalComments: () => deps.getCanonicalComments?.() ?? null,
     getCanonicalDocument: () => {
       const canonical = deps.getCanonicalDocument?.();
       return canonical ? cloneDocumentWithParagraphPropertySources(canonical) : null;
