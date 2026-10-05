@@ -770,7 +770,7 @@ describe("a merge into blocks the batch deletes", () => {
     expect(accepted.at(-1)).toBe(blockText(last - 1));
   });
 
-  test("deleting the last block carries its predecessor's properties from before the batch set them", async () => {
+  test("deleting the last block carries its predecessor's admissible batch properties", async () => {
     const generated: GeneratedOperation[] = [
       { kind: "setBlockParagraphProperties", block: 2 },
       { kind: "deleteBlock", block: 3 },
@@ -788,7 +788,8 @@ describe("a merge past a break retired by the same batch", () => {
     ["left", "left", "center", "left"],
     ["right", "left", "center", "right"],
     ["center", "right", "left", "center"],
-  ] as const;
+    ["both", "both", "both", "both"],
+  ] as const satisfies readonly (readonly ParagraphFormatting["alignment"][])[];
   const orders = [
     [0, 1, 2],
     [0, 2, 1],

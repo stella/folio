@@ -30,7 +30,6 @@ import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "../prosemirror/commands/propertyChangeScope";
-import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import {
   paragraphNumberingReference,
@@ -2796,17 +2795,9 @@ const withRetiredFinalParagraphs = ({
       // Accepted, the removed break leaves the emptied carrier, which ends
       // the container: it takes this paragraph's properties as part of the
       // same change, so the words that stay read as they did.
-      // What this batch set on the paragraph came after the break went, as
-      // one operation at a time does it: the carried properties are the
-      // ones it had before the batch changed them.
-      const beforeBatch = resolveParagraphChangeAttrs({
-        node: previous,
-        mode: "reject",
-        boundaryCovered: true,
-        revisionSet: batchRevisionIds,
-        styleResolver,
-        numbering,
-      });
+      // Retirement completes the batch after admissible predecessor edits.
+      // Carry their current properties before deleting the owning mark so
+      // accepting the batch preserves the pending document's presentation.
       const mergedProperties = mergedPropertyTargets.some(({ position: target, mappedFrom }) => {
         const mapped = tr.mapping.slice(mappedFrom).mapResult(target);
         return !mapped.deleted && mapped.pos === at;
@@ -2818,9 +2809,7 @@ const withRetiredFinalParagraphs = ({
         carryParagraphProperties({
           tr,
           position: at,
-          source: beforeBatch
-            ? previous.type.create(beforeBatch, previous.content, previous.marks)
-            : previous,
+          source: previous,
           styleResolver,
           numbering,
           revision: { id: revisionId, author, date, ...revisionExtras },
