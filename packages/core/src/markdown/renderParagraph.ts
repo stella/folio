@@ -13,6 +13,9 @@
  */
 
 import { isQuoteStyle, resolveHeadingLevel } from "../docx/builtInStyles";
+import { mergeParagraphNumbering } from "../docx/numberingReference";
+import { getCachedNumberingMap } from "../docx/numberingParser";
+import { resolveCachedListRendering, resolveListRenderingDefinition } from "../docx/listRendering";
 import { listLabelAttrsFromRendering } from "../prosemirror/listLabels";
 import type { ParagraphAttrs } from "../prosemirror/schema/nodes";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
@@ -50,7 +53,23 @@ export function renderParagraphBlock(
 ): RenderedParagraph {
   // Every paragraph advances the list counter, whatever it renders as: the
   // items after a numbered heading continue from its number.
-  const label = ctx.nextListLabel(listLabelAttrs(para));
+  const inherited = ctx.styleEngine.resolveParagraphStyle(para.formatting?.styleId)
+    .paragraphFormatting?.numPr;
+  const numPrFromStyle = inherited ?? para.formatting?.numPrFromStyle;
+  const numPr = mergeParagraphNumbering(numPrFromStyle, para.formatting?.numPr);
+  let list = para.listRendering;
+  if (numPr?.kind === "none") {
+    list = undefined;
+  } else if (pkg?.numbering !== undefined && numPr?.kind === "reference") {
+    list =
+      resolveCachedListRendering(
+        para.listRendering,
+        resolveListRenderingDefinition(numPr, getCachedNumberingMap(pkg.numbering)),
+      ) ?? undefined;
+  }
+  const label = ctx.nextListLabel(
+    list ? listLabelAttrsFromRendering(list, numPrFromStyle) : UNNUMBERED,
+  );
   const inline = renderParagraphInline(ctx, pkg, para.content, para.paraId);
   const styleId = para.formatting?.styleId;
 
@@ -71,8 +90,8 @@ export function renderParagraphBlock(
     };
   }
 
-  if (para.listRendering && label !== undefined) {
-    return { markdown: renderListItem(ctx, para.listRendering, label, inline), isListItem: true };
+  if (list && label !== undefined) {
+    return { markdown: renderListItem(ctx, list, label, inline), isListItem: true };
   }
 
   ctx.listIndentWidths = [];
@@ -99,16 +118,6 @@ function markdownHeadingLevel(ctx: RenderContext, para: Paragraph): number | und
 }
 
 const UNNUMBERED: ParagraphAttrs = Object.freeze({});
-
-/**
- * The attrs the page's list counter reads, projected from the paragraph the
- * way the editor projects them (`toProseDoc`). A paragraph without a list
- * rendering counts as unnumbered.
- */
-function listLabelAttrs(para: Paragraph): ParagraphAttrs {
-  const list = para.listRendering;
-  return list ? listLabelAttrsFromRendering(list, para.formatting?.numPrFromStyle) : UNNUMBERED;
-}
 
 /**
  * A plain paragraph whose visible text begins with markdown block syntax (e.g.

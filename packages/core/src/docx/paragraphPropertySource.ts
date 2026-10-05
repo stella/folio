@@ -6,6 +6,7 @@ import type {
   BlockContent,
   Document,
   Paragraph,
+  ParagraphFormatting,
   ParagraphContent,
   RunContent,
   TableCell,
@@ -14,6 +15,8 @@ import {
   modelParagraphFormattingEmission,
   type ModeledParagraphFormattingEmission,
 } from "../internal/paragraphFormattingSerialization";
+import { parseParagraphProperties } from "./paragraphProperties";
+import { parseXmlDocument } from "./xmlParser";
 import { canonicalJson } from "../utils/canonicalJson";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 import {
@@ -27,9 +30,22 @@ const paragraphPropertySourceEmissionFingerprint = Symbol(
   "paragraphPropertySourceEmissionFingerprint",
 );
 
+const paragraphPropertySourceIndentationBaseline = Symbol(
+  "paragraphPropertySourceIndentationBaseline",
+);
+const INDENTATION_FIELDS = [
+  "indentLeft",
+  "indentRight",
+  "indentFirstLine",
+  "hangingIndent",
+] as const;
+
 type ParagraphPropertySource = Readonly<{
   xml: string;
   [paragraphPropertySourceEmissionFingerprint]: string;
+  [paragraphPropertySourceIndentationBaseline]: Readonly<
+    Pick<ParagraphFormatting, (typeof INDENTATION_FIELDS)[number]>
+  >;
 }>;
 
 const paragraphPropertyCapture = Symbol("paragraphPropertyCapture");
@@ -75,6 +91,12 @@ const ownedParagraphPropertySource = (
 ): ParagraphPropertySource => {
   return Object.freeze({
     xml,
+    [paragraphPropertySourceIndentationBaseline]: Object.freeze({
+      indentLeft: paragraph.formatting?.indentLeft,
+      indentRight: paragraph.formatting?.indentRight,
+      indentFirstLine: paragraph.formatting?.indentFirstLine,
+      hangingIndent: paragraph.formatting?.hangingIndent,
+    }),
     [paragraphPropertySourceEmissionFingerprint]: paragraphFormattingEmissionFingerprint(
       modelParagraphFormattingEmission(paragraph.formatting),
     ),
@@ -246,6 +268,33 @@ export const assignParagraphPropertySource = (paragraph: Paragraph, xml: string)
 export const getParagraphPropertySource = (
   paragraph: Paragraph,
 ): ParagraphPropertySource | undefined => captureForParagraph(paragraph)?.source;
+
+const directFormattingBySource = new WeakMap<
+  ParagraphPropertySource,
+  { formatting: ParagraphFormatting | undefined }
+>();
+
+/** Read authored indentation while preserving edits to the parsed effective values. */
+export const paragraphFormattingWithAuthoredIndentation = (
+  paragraph: Paragraph,
+): ParagraphFormatting | undefined => {
+  const source = getParagraphPropertySource(paragraph);
+  if (source === undefined) return paragraph.formatting;
+  let direct = directFormattingBySource.get(source);
+  if (direct === undefined) {
+    direct = { formatting: parseParagraphProperties(parseXmlDocument(source.xml), null) };
+    directFormattingBySource.set(source, direct);
+  }
+  const result = { ...paragraph.formatting };
+  for (const key of INDENTATION_FIELDS) {
+    if (paragraph.formatting?.[key] !== source[paragraphPropertySourceIndentationBaseline][key])
+      continue;
+    Reflect.deleteProperty(result, key);
+    const value = direct.formatting?.[key];
+    if (value !== undefined) Object.assign(result, { [key]: value });
+  }
+  return Object.keys(result).length === 0 ? undefined : result;
+};
 
 export const paragraphPropertySourceMatchesEmission = (
   source: ParagraphPropertySource,

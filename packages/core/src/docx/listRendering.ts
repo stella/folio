@@ -1,5 +1,6 @@
-import type { ListRendering } from "../../types/document";
-import { canonicalJson } from "../../utils/canonicalJson";
+import { computeListRendering, type NumberingMap } from "./numberingParser";
+import type { ListRendering } from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
 
 // Paragraph counters and folded fields do not belong to the numbering definition.
 const RENDERING_FIELDS = {
@@ -44,4 +45,40 @@ export const listRenderingDefinitionsMatch = (
     if (canonicalJson(before) !== canonicalJson(after)) return false;
   }
   return true;
+};
+
+export type ListRenderingDefinition = {
+  rendering: ListRendering | null;
+  nextSlotOffset: number | undefined;
+};
+
+/** Resolve numbering facts independently of any paragraph's cached counters. */
+export const resolveListRenderingDefinition = (
+  numPr: { numId: number; ilvl?: number },
+  numbering: NumberingMap | undefined,
+): ListRenderingDefinition => {
+  const nextLevel = numbering?.getLevel(numPr.numId, (numPr.ilvl ?? 0) + 1);
+  return {
+    rendering: numbering === undefined ? null : computeListRendering(numPr, numbering),
+    nextSlotOffset:
+      nextLevel?.pPr?.hangingIndent === true &&
+      nextLevel.pPr.indentFirstLine !== undefined &&
+      nextLevel.pPr.indentFirstLine < 0
+        ? -nextLevel.pPr.indentFirstLine
+        : undefined,
+  };
+};
+
+/** Keep content-derived counter/folded-field facts only while their definition is current. */
+export const resolveCachedListRendering = (
+  cached: ListRendering | undefined,
+  { rendering, nextSlotOffset }: ListRenderingDefinition,
+): ListRendering | null => {
+  if (rendering === null) return null;
+  return cached !== undefined &&
+    listRenderingDefinitionsMatch(cached, rendering) &&
+    (cached.markerSecondSlotOffsetTwips === undefined ||
+      cached.markerSecondSlotOffsetTwips === nextSlotOffset)
+    ? cached
+    : rendering;
 };

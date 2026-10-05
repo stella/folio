@@ -74,20 +74,23 @@ const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
 
 // The reported #1404 image/node cases, independent of full-tier placement expansion.
 export const LEGACY_NODE_REPLACEMENTS = [
-  { operation: "command:insertHyperlink", kind: "reject-mismatch" },
-  { operation: "command:insertFootnote", kind: "reject-mismatch" },
-  { operation: "command:insertEndnote", kind: "reject-mismatch" },
-  { operation: "key:Shift-Enter", kind: "reject-mismatch" },
-  { operation: "type:text", kind: "accept-mismatch" },
-  { operation: "type:text(mid)", kind: "accept-mismatch" },
-  { operation: "type:number-marker", kind: "accept-mismatch" },
-  { operation: "paste:plain", kind: "reject-mismatch" },
-  { operation: "paste:table", kind: "reject-mismatch" },
-  { operation: "paste:list", kind: "reject-mismatch" },
-] as const satisfies readonly { operation: string; kind: ViolationKind }[];
+  { operation: "command:insertHyperlink", status: "expectedFailure", kind: "reject-mismatch" },
+  { operation: "command:insertFootnote", status: "expectedFailure", kind: "reject-mismatch" },
+  { operation: "command:insertEndnote", status: "expectedFailure", kind: "reject-mismatch" },
+  { operation: "key:Shift-Enter", status: "strict" },
+  { operation: "type:text", status: "strict" },
+  { operation: "type:text(mid)", status: "strict" },
+  { operation: "type:number-marker", status: "strict" },
+  { operation: "paste:plain", status: "strict" },
+  { operation: "paste:table", status: "strict" },
+  { operation: "paste:list", status: "strict" },
+] as const satisfies readonly (
+  | { operation: string; status: "strict" }
+  | { operation: string; status: "expectedFailure"; kind: ViolationKind }
+)[];
 
 export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
-  ...LEGACY_NODE_REPLACEMENTS.map(
+  ...LEGACY_NODE_REPLACEMENTS.filter(({ status }) => status === "expectedFailure").map(
     ({ operation, kind }): KnownConformanceGap => ({
       issue: 1404,
       reason: `Legacy suggesting node replacement loses the selected image: ${operation}`,

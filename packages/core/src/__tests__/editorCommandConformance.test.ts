@@ -175,9 +175,15 @@ describe("editor command conformance", () => {
       expect(result.authority).toBe("canonical");
       expect(result.violations.map(describeViolation)).toEqual([]);
       // Legacy evidence has its own authority and cannot excuse a canonical violation.
-      const legacy = KNOWN_CONFORMANCE_GAPS.some((gap) => gapApplies(gap, key))
-        ? await runLegacyConformanceCase({ shape, operation, placement: key.placement })
-        : null;
+      const legacy =
+        KNOWN_CONFORMANCE_GAPS.some((gap) => gapApplies(gap, key)) ||
+        (key.shape === "image" &&
+          key.placement === "node" &&
+          LEGACY_NODE_REPLACEMENTS.some(
+            ({ operation: operationId }) => operationId === key.operation,
+          ))
+          ? await runLegacyConformanceCase({ shape, operation, placement: key.placement })
+          : null;
       for (const gap of KNOWN_CONFORMANCE_GAPS) {
         if (gapApplies(gap, key)) {
           const usage = gapUsage.get(gap);

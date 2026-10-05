@@ -183,7 +183,11 @@ export function listLevelIndentAttrPatch(
   if (stated?.indentLeft === undefined && level.pPr.indentLeft !== undefined) {
     patch.indentLeft = level.pPr.indentLeft;
   }
-  if (stated?.indentFirstLine === undefined && numberingLevelHasMarkerSlot(level)) {
+  if (
+    stated?.indentFirstLine === undefined &&
+    stated?.hangingIndent === undefined &&
+    numberingLevelHasMarkerSlot(level)
+  ) {
     if (level.pPr.indentFirstLine !== undefined) {
       patch.indentFirstLine = level.pPr.indentFirstLine;
     }

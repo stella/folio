@@ -37,16 +37,14 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
   const refusals: HarnessRefusal[] = [];
   const refusalRows: HarnessRefusalRow[] = [];
   let acceptedTransactions = 0;
-  let expectedRow: HarnessRefusalRow | undefined;
+  let expectedRows: readonly HarnessRefusalRow[] = [];
   const activationRow = canonicalActivationRefusalRow(source);
   const activationSource = cloneDocumentWithParagraphPropertySources(source);
   if (activationRow) validateHarnessRefusalRows([activationRow]);
-  const withRefusalRow = <T>(row: HarnessRefusalRow | undefined, action: () => T) => {
-    expectedRow = row;
-    if (row) {
-      validateHarnessRefusalRows([row]);
-      refusalRows.push(row);
-    }
+  const withRefusalRows = <T>(rows: readonly HarnessRefusalRow[], action: () => T) => {
+    expectedRows = rows;
+    validateHarnessRefusalRows(rows);
+    refusalRows.push(...rows);
     const before = {
       document: manager.api.getCanonicalDocument(),
       state: editorView.state,
@@ -57,8 +55,11 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     };
     try {
       const result = action();
-      if (row && row.id !== "missing-command-descriptor" && refusals.length === before.refusals)
-        panic(`Canonical refusal row must become strict: ${row.id}`);
+      if (
+        rows.some(({ id }) => id !== "missing-command-descriptor") &&
+        refusals.length === before.refusals
+      )
+        panic(`Canonical refusal rows must become strict: ${rows.map(({ id }) => id).join(", ")}`);
       if (refusals.length > before.refusals) {
         const after = manager.api.getCanonicalDocument();
         if (!after || !before.document) panic("Refusal lost canonical authority");
@@ -74,9 +75,11 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
       }
       return result;
     } finally {
-      expectedRow = undefined;
+      expectedRows = [];
     }
   };
+  const withRefusalRow = <T>(row: HarnessRefusalRow | undefined, action: () => T) =>
+    withRefusalRows(row ? [row] : [], action);
   const manager = createHiddenEditorManager({
     getHost: () => host,
     getDocument: () => source,
@@ -102,7 +105,9 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     onEditorViewDestroy: () => {},
     onRemoteSelectionsChange: () => {},
     onSessionRefusal: (message, gap) => {
-      const row = expectedRow;
+      const row = expectedRows.find(
+        (candidate) => candidate.gap === gap && candidate.message === message,
+      );
       refusals.push({
         gap,
         message,
@@ -144,15 +149,18 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     manager.api.getCanonicalDocument() ?? panic("Canonical snapshot unavailable.");
   const execute = (command: Command) => {
     const count = refusals.length;
-    const row =
+    const rows =
       getCanonicalCommandIntents(command, editorView.state) === undefined
-        ? {
+        ? [
+            "A plugin attempted an unclassified canonical document mutation.",
+            "Unclassified native text is unavailable in this session.",
+          ].map((message) => ({
             id: "missing-command-descriptor",
             gap: CANONICAL_GAP.dispatch,
-            message: "A plugin attempted an unclassified canonical document mutation.",
-          }
-        : undefined;
-    return withRefusalRow(row, () => {
+            message,
+          }))
+        : [];
+    return withRefusalRows(rows, () => {
       const applied = executeEditorCommand(editorView, command);
       return refusals.length === count && applied;
     });

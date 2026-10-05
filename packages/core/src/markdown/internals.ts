@@ -6,6 +6,7 @@
  * PR #595, trimmed to the sync continuous path.
  */
 
+import { createStyleEngine } from "../style-engine";
 import { createBuiltInStyleIndex } from "../docx/builtInStyles";
 import { createListLabelCounter } from "../prosemirror/listLabels";
 import type { StyleDefinitions } from "../types/document";
@@ -30,6 +31,7 @@ export function newContext(
   styles?: StyleDefinitions | undefined,
 ): RenderContext {
   return {
+    styleEngine: createStyleEngine(styles),
     builtInStyles: createBuiltInStyleIndex(styles?.styles ?? [], styles?.docDefaults),
     opts: {
       annotations: opts.annotations ?? "html",

@@ -29,7 +29,6 @@ import type {
   Document,
   Paragraph,
   ParagraphFormatting,
-  ListRendering,
   PreservedAttribute,
   PreservedBlock,
   PreservedInline,
@@ -68,7 +67,13 @@ import type {
 } from "../../types/document";
 import { resolveTableLook, type ResolvedTableLook } from "../../docx/tableLook";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
-import { listRenderingDefinitionsMatch } from "./listRenderingDefinition";
+import {
+  resolveCachedListRendering,
+  resolveListRenderingDefinition,
+  type ListRenderingDefinition,
+} from "../../docx/listRendering";
+import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
+import { listLevelIndentAttrPatch } from "../styles/resolvedStyleAttrs";
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inlineWrapperContent";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
@@ -85,6 +90,7 @@ import {
   getDocumentParagraphPropertySourceContract,
   recreateProseNodeWithParagraphPropertySource,
   transportTableCellsWithParagraphPropertySources,
+  paragraphFormattingWithAuthoredIndentation,
 } from "../../docx/paragraphPropertySource";
 import {
   buildPageBreakRunSourceDescendantIndex,
@@ -138,11 +144,7 @@ import type {
   TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
-import {
-  computeListRendering,
-  getCachedNumberingMap,
-  type NumberingMap,
-} from "../../docx/numberingParser";
+import { getCachedNumberingMap, type NumberingMap } from "../../docx/numberingParser";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { planEmptyRanges } from "../emptyRangeAnchor";
@@ -696,10 +698,7 @@ function convertBlockCustomXml(
   );
 }
 
-type ResolvedListRendering = {
-  rendering: ListRendering | null;
-  nextSlotOffset: number | undefined;
-};
+type ResolvedListRendering = ListRenderingDefinition;
 
 const resolveListRendering = (
   numPr: { numId: number; ilvl?: number },
@@ -708,18 +707,7 @@ const resolveListRendering = (
   const key = `${numPr.numId}:${numPr.ilvl ?? 0}`;
   const cached = context.listRenderings.get(key);
   if (cached !== undefined) return cached;
-  const numbering = context.numbering;
-  const rendering = numbering === undefined ? null : computeListRendering(numPr, numbering);
-  const nextLevel = numbering?.getLevel(numPr.numId, (numPr.ilvl ?? 0) + 1);
-  const resolved = {
-    rendering,
-    nextSlotOffset:
-      nextLevel?.pPr?.hangingIndent === true &&
-      nextLevel.pPr.indentFirstLine !== undefined &&
-      nextLevel.pPr.indentFirstLine < 0
-        ? -nextLevel.pPr.indentFirstLine
-        : undefined,
-  };
+  const resolved = resolveListRenderingDefinition(numPr, context.numbering);
   context.listRenderings.set(key, resolved);
   return resolved;
 };
@@ -750,32 +738,48 @@ function convertParagraph(
     nextRunIdentityId: () => runIdentityId++,
     createMark: context.createMark,
   };
+  const directFormatting = paragraphFormattingWithAuthoredIndentation(paragraph);
   const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
     paragraph,
     styleResolver,
     tableParagraphOverlay,
   );
+  attrs._originalFormatting = directFormatting ?? null;
   const numPr = mergeParagraphNumbering(
     attrs.numPrFromStyle ?? undefined,
     attrs.numPr ?? undefined,
   );
   if (numPr?.kind === "none") Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   else if (context.numbering !== undefined && numPr?.kind === "reference") {
-    const { rendering, nextSlotOffset } = resolveListRendering(numPr, context);
-    if (rendering !== null) {
-      const cached = paragraph.listRendering;
-      // Parsed markers include paragraph counters and folded LISTNUM text that
-      // the definition-only computation cannot reconstruct. Preserve them only
-      // while their reference and every rendering definition field still match.
-      const cacheMatches =
-        cached !== undefined &&
-        listRenderingDefinitionsMatch(cached, rendering) &&
-        (cached.markerSecondSlotOffsetTwips === undefined ||
-          cached.markerSecondSlotOffsetTwips === nextSlotOffset);
-      // Matching cached attrs were already projected by paragraphFormattingToAttrs.
-      if (!cacheMatches)
-        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS, listRenderingAttrPatch(rendering));
-    } else Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+    const rendering = resolveCachedListRendering(
+      paragraph.listRendering,
+      resolveListRendering(numPr, context),
+    );
+    Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+    if (rendering !== null) Object.assign(attrs, listRenderingAttrPatch(rendering));
+    if (attrs.numPr?.kind === "reference") {
+      const inheritedIndent = listLevelIndentAttrPatch(
+        paragraphIndentationFromFormatting(
+          attrs.numPrFromStyle == null
+            ? directFormatting
+            : { ...attrs._resolvedFormatting, ...directFormatting },
+        ),
+        { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 },
+        context.numbering,
+      );
+      Object.assign(attrs, inheritedIndent);
+      const resolvedFormatting = { ...attrs._resolvedFormatting };
+      if (typeof inheritedIndent.indentLeft === "number") {
+        resolvedFormatting.indentLeft = inheritedIndent.indentLeft;
+      }
+      if (typeof inheritedIndent.indentFirstLine === "number") {
+        resolvedFormatting.indentFirstLine = inheritedIndent.indentFirstLine;
+      }
+      if (typeof inheritedIndent.hangingIndent === "boolean") {
+        resolvedFormatting.hangingIndent = inheritedIndent.hangingIndent;
+      }
+      attrs._resolvedFormatting = resolvedFormatting;
+    }
   }
   reportParagraphPageBreakProjection({
     paragraph,

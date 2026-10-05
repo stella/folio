@@ -19,6 +19,11 @@ const refuse = (message: string) =>
     new CanonicalSessionError({ gap: CANONICAL_GAP.commands, message, reason: "refused" }),
   );
 
+const noChange = (message: string) =>
+  Result.err(
+    new CanonicalSessionError({ gap: CANONICAL_GAP.commands, message, reason: "noChange" }),
+  );
+
 const selectedParagraphs = (session: CanonicalSession, state: EditorState) => {
   const ids = new Set<string>();
   state.doc.nodesBetween(state.selection.from, state.selection.to, (node) => {
@@ -182,7 +187,7 @@ export const prepareCanonicalCommands = (
             offset: 0,
           } as const;
           const level = (numPr.ilvl ?? 0) + (command.direction === "increase" ? 1 : -1);
-          if (level > 8) return refuse("The list is already at its deepest level.");
+          if (level > 8) return noChange("The list is already at its deepest level.");
           intents.push({
             type: "formatParagraph",
             at,
@@ -201,7 +206,7 @@ export const prepareCanonicalCommands = (
         const numPr = source?.formatting?.numPr;
         const definitions = session.document.package.numbering;
         if (source === undefined || numPr?.kind !== "reference" || definitions === undefined)
-          return refuse("Numbering changes require a list paragraph.");
+          return noChange("Numbering changes require a list paragraph.");
         const body = session.document.package.document.content;
         const index = body.findIndex((item) => item === source);
         const affected = body
@@ -229,7 +234,7 @@ export const prepareCanonicalCommands = (
                 ) === bullet,
             );
           if (earlier?.type !== "paragraph" || earlier.formatting?.numPr?.kind !== "reference")
-            return refuse("There is no preceding compatible list.");
+            return noChange("There is no preceding compatible list.");
           targetId = earlier.formatting.numPr.numId;
           target = { type: "existing", numId: targetId };
         } else {
