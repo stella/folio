@@ -46,6 +46,7 @@ import {
   toProseDoc,
   headerFooterToProseDoc,
   footnoteToProseDoc,
+  collectPairedBookmarkIds,
 } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, StyleDefinitions } from "../types/document";
 
@@ -174,16 +175,16 @@ class CanonicalProjection {
     if (address.isErr()) return address;
     const paragraph = this.paragraph(address.value.blockId);
     if (paragraph === undefined) panic("Input lost its paragraph.");
-    let offset = address.value.offset;
+    let destination = position;
     paragraph.node.forEach((node, start) => {
       if (
         node.marks.some((mark) => mark.type.name === "deletion") &&
-        offset > start &&
-        offset < start + node.nodeSize
+        position > paragraph.start + start &&
+        position < paragraph.start + start + node.nodeSize
       )
-        offset = start + node.nodeSize;
+        destination = paragraph.start + start + node.nodeSize;
     });
-    return Result.ok({ ...address.value, offset });
+    return destination === position ? address : this.addressAt(destination);
   }
 
   positionAt(address: TextPosition): Result<number, CanonicalSessionError> {
@@ -302,6 +303,22 @@ const supportsTextContent = (content: Paragraph["content"]): boolean => {
   const valid = (value: unknown): boolean => {
     if (typeof value !== "object" || value === null) return true;
     if (Array.isArray(value)) return value.every(valid);
+    if (
+      "type" in value &&
+      (value.type === "insertion" || value.type === "deletion") &&
+      "resolutionJoins" in value &&
+      value.resolutionJoins !== undefined &&
+      "content" in value &&
+      Array.isArray(value.content) &&
+      value.content.some(
+        (child: unknown) =>
+          typeof child === "object" &&
+          child !== null &&
+          "type" in child &&
+          child.type === "hyperlink",
+      )
+    )
+      return false;
     if ("type" in value && value.type === "renderedPageBreak") return false;
     if (
       "type" in value &&
@@ -373,6 +390,7 @@ const project = ({
       }),
   });
   if (converted.isErr()) return converted;
+  const pairedBookmarkIds = collectPairedBookmarkIds(body.content);
   const paragraphs: ParagraphAddress[] = [];
   let failure: CanonicalSessionError | undefined;
   converted.value.forEach((node, offset, index) => {
@@ -389,34 +407,90 @@ const project = ({
     let renderedText = "";
     let renderedSize = 0;
     const boundaries: number[][] = [[0]];
-    node.descendants((child) => {
-      if (child.isText) {
-        const value = child.text ?? "";
-        if (child.marks.some(({ type }) => type.name === "footnoteRef")) {
+    const appendContent = (
+      content: Paragraph["content"],
+      bookmarkMode: "paired" | "all" = "paired",
+    ): void => {
+      for (const run of content) {
+        if (run.type === "bookmarkStart" || run.type === "bookmarkEnd") {
+          if (bookmarkMode === "all" || pairedBookmarkIds.has(run.id)) renderedSize += 1;
+          const gaps = boundaries.at(-1) ?? panic("Missing canonical bookmark gap");
+          gaps.push(renderedSize);
+          continue;
+        }
+        if (run.type === "hyperlink") {
+          if (run.children.length === 0) {
+            const gaps = boundaries.at(-1) ?? panic("Missing canonical empty hyperlink gap");
+            gaps.push(renderedSize);
+          }
+          appendContent(run.children, "all");
+          continue;
+        }
+        if (
+          run.type === "insertion" ||
+          run.type === "deletion" ||
+          run.type === "moveFrom" ||
+          run.type === "moveTo" ||
+          run.type === "inlineSdt" ||
+          run.type === "inlineWrapper"
+        ) {
+          appendContent(run.content, "all");
+          continue;
+        }
+        if (
+          run.type === "commentRangeStart" ||
+          run.type === "commentRangeEnd" ||
+          run.type === "moveFromRangeStart" ||
+          run.type === "moveFromRangeEnd" ||
+          run.type === "moveToRangeStart" ||
+          run.type === "moveToRangeEnd"
+        ) {
+          const gaps = boundaries.at(-1) ?? panic("Missing canonical range gap");
+          gaps.push(renderedSize);
+          continue;
+        }
+        if (run.type !== "run") {
+          const atom = node.nodeAt(renderedSize);
+          if (!atom?.isAtom) panic("Canonical source atom lost its projection");
           text += "\uFFFC";
-          renderedSize += value.length;
+          renderedText += atom.textContent;
+          renderedSize += atom.nodeSize;
           boundaries.push([renderedSize]);
-        } else {
-          for (const unit of value.split("")) {
-            text += unit;
+          continue;
+        }
+        for (const child of run.content) {
+          if (child.type === "text") {
+            for (const unit of child.text.split("")) {
+              text += unit;
+              renderedText += unit;
+              renderedSize += 1;
+              boundaries.push([renderedSize]);
+            }
+          } else if (child.type === "footnoteRef" || child.type === "endnoteRef") {
+            text += "\uFFFC";
+            renderedText += String(child.id);
+            renderedSize += String(child.id).length;
+            boundaries.push([renderedSize]);
+          } else if (child.type === "tab" || child.type === "break") {
+            text += "\uFFFC";
             renderedSize += 1;
+            boundaries.push([renderedSize]);
+          } else if (child.type === "noteMarker") {
+            renderedSize += 1;
+            const gaps = boundaries.at(-1) ?? panic("Missing canonical note gap");
+            gaps.push(renderedSize);
+          } else {
+            const atom = node.nodeAt(renderedSize);
+            if (!atom?.isAtom) panic("Canonical run atom lost its projection");
+            text += "\uFFFC";
+            renderedText += atom.textContent;
+            renderedSize += atom.nodeSize;
             boundaries.push([renderedSize]);
           }
         }
-        renderedText += value;
-        return false;
       }
-      if (!child.isLeaf) return true;
-      renderedSize += child.nodeSize;
-      if (child.type.name === "noteMarker") {
-        const gaps = boundaries.at(-1) ?? panic("Missing canonical note gap");
-        gaps.push(renderedSize);
-      } else {
-        text += "\uFFFC";
-        boundaries.push([renderedSize]);
-      }
-      return false;
-    });
+    };
+    appendContent(source.content);
     if (
       node.type.name !== "paragraph" ||
       node.attrs["paraId"] !== source.paraId ||
@@ -442,6 +516,9 @@ const project = ({
 
 const intentStory = (intent: EditorIntent): OpStory => {
   switch (intent.type) {
+    case "setHyperlink":
+    case "removeHyperlink":
+    case "insertHyperlink":
     case "replaceFragment":
     case "moveFragment":
     case "replaceText":
@@ -751,6 +828,9 @@ class CanonicalSession {
       case "setList":
       case "formatParagraph":
         return false;
+      case "setHyperlink":
+      case "removeHyperlink":
+      case "insertHyperlink":
       case "replaceFragment":
       case "moveFragment":
         return true;
@@ -1005,6 +1085,20 @@ class CanonicalSession {
       edits.push(imported.value);
     }
     for (const intent of intents) {
+      if (
+        this.mode.type === "suggesting" &&
+        (intent.type === "setHyperlink" ||
+          intent.type === "removeHyperlink" ||
+          intent.type === "insertHyperlink")
+      ) {
+        return Result.err(
+          new CanonicalSessionError({
+            gap: CANONICAL_GAP.trackedHyperlinkResolution,
+            reason: "refused",
+            message: "Hyperlink suggestions require serializable wrapper review provenance.",
+          }),
+        );
+      }
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
@@ -1017,6 +1111,8 @@ class CanonicalSession {
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
       if (
+        intent.type !== "setHyperlink" &&
+        intent.type !== "removeHyperlink" &&
         intent.type !== "formatRun" &&
         intent.type !== "formatParagraph" &&
         intent.type !== "setList"

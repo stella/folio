@@ -113,6 +113,16 @@ export const prepareCanonicalCommands = (
   const paragraphs = selectedParagraphs(session, state);
   for (const command of commands) {
     switch (command.type) {
+      case "setHyperlink":
+      case "removeHyperlink":
+      case "insertHyperlink": {
+        const from = session.projection.addressAt(command.from);
+        if (from.isErr()) return from;
+        const to = session.projection.addressAt(command.to);
+        if (to.isErr()) return to;
+        intents.push({ ...command, from: from.value, to: to.value });
+        break;
+      }
       case "insertBreak": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;

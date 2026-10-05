@@ -1434,18 +1434,39 @@ describe("canonical tracked input", () => {
           for (const resolution of ["accept", "reject"] as const) {
             const resolved = createCanonicalSession(suggested).unwrap();
             let state = stateFor(resolved);
-            state = accept(
-              state,
-              resolved.prepareResolve(state, { revisionIds: [...revisions], resolution }).unwrap(),
-            );
+            const before = {
+              document: resolved.document,
+              projection: resolved.projection,
+              selection: resolved.selection,
+              version: resolved.version,
+              canUndo: resolved.canUndo,
+              canRedo: resolved.canRedo,
+            };
+            const prepared = resolved.prepareResolve(state, {
+              revisionIds: [...revisions],
+              resolution,
+            });
+            if (revisions.size === 0) {
+              expect(prepared.isErr()).toBe(true);
+              if (prepared.isOk()) panic("Empty review unexpectedly committed");
+              expect(prepared.error.reason).toBe("noChange");
+              expect(resolved.document).toBe(before.document);
+              expect(resolved.projection).toBe(before.projection);
+              expect(resolved.selection).toEqual(before.selection);
+              expect(resolved.version).toBe(before.version);
+              expect(resolved.canUndo).toBe(before.canUndo);
+              expect(resolved.canRedo).toBe(before.canRedo);
+            } else state = accept(state, prepared.unwrap());
             const expected = resolution === "accept" ? direct.document : snapshots.at(0);
             if (expected === undefined) panic("The resolution oracle lost its baseline.");
             expect(canonicalReviewBlocks(resolved.document.package.document.content)).toEqual(
               canonicalReviewBlocks(expected.package.document.content),
             );
-            state = accept(state, resolved.prepareUndo(state).unwrap());
-            expect(resolved.document).toStrictEqual(suggested);
-            state = accept(state, resolved.prepareRedo(state).unwrap());
+            if (revisions.size > 0) {
+              state = accept(state, resolved.prepareUndo(state).unwrap());
+              expect(resolved.document).toStrictEqual(suggested);
+              state = accept(state, resolved.prepareRedo(state).unwrap());
+            }
             expect(state.doc.eq(resolved.projection.doc)).toBe(true);
           }
           for (let index = snapshots.length - 2; index >= 0; index -= 1) {

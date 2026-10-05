@@ -291,7 +291,7 @@ type BookmarkBoundaryCount = {
  * Each endpoint is converted at its own structural position, so a range may
  * start outside a hyperlink and end inside it (or the inverse).
  */
-const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<number> => {
+export const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<number> => {
   const counts = new Map<number, BookmarkBoundaryCount>();
   let position = 0;
   const countBoundary = (id: number, type: "start" | "end"): void => {
