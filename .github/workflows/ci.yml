@@ -785,7 +785,7 @@ jobs:
       # Behaviour specs only (assert document content + editor state). The
       # screenshot baselines (rendering.spec) and perf budgets
       # (editing-performance.spec) are env-specific, so they are not run here;
-      # the `interactions` Playwright project starts the playground dev server
+      # the `interactions` Playwright project builds and starts static previews
       # via the config's webServer.
       - name: Run interaction specs
         run: bun run test:interactions

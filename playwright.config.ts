@@ -84,24 +84,27 @@ export default defineConfig({
       testIgnore: /(?:cross-host|host-api)-flow\.spec\.ts/u,
     },
   ],
-  // Start both playground dev servers automatically (reused if already running).
-  // The React server backs the visual/interaction suites; the Vue server backs
-  // the parity project. Both boot for any run — `reuseExistingServer` keeps a
-  // manually-started dev server in place.
+  // Build fresh workspace sources before serving static previews. Never reuse
+  // an existing server: it could be a dev server that reloads on dependency discovery.
   webServer: [
     {
-      command: "bun --filter @stll/playground dev",
+      command: "bun --filter @stll/playground build && bun --filter @stll/playground preview",
+      stdout: "pipe",
+      stderr: "pipe",
       url: `http://localhost:${reactPlaygroundPort}`,
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command: "bun --filter @stll/playground-vue dev",
+      command:
+        "bun --filter @stll/playground-vue build && bun --filter @stll/playground-vue preview",
       env: {
         FOLIO_PLAYGROUND_PORT: String(vuePlaygroundPort),
       },
+      stdout: "pipe",
+      stderr: "pipe",
       url: `http://localhost:${vuePlaygroundPort}`,
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 120_000,
     },
   ],
