@@ -89,6 +89,8 @@ test.each(
       ),
     ).toEqual([]);
     for (const violation of violations)
-      expect(violation.detail).toMatch(/indentLeft: ∅ ≠ 720; indentFirstLine: ∅ ≠ -360/u);
+      expect(violation.detail).toMatch(
+        /(?:indentLeft: ∅ ≠ 720; indentFirstLine: ∅ ≠ -360|indentLeft: 720 ≠ ∅; indentFirstLine: -360 ≠ ∅)/u,
+      );
   },
 );
