@@ -210,10 +210,8 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
               const rId = section.properties.headerReferences?.find(
                 ({ type }) => type === variant,
               )?.rId;
-              return [
-                variant,
-                (rId === undefined ? undefined : pkg.headers?.get(rId)) ?? part,
-              ] as const;
+              const owned = rId === undefined ? undefined : pkg.headers?.get(rId);
+              return [variant, owned && structurallyEqual(owned, part) ? owned : part] as const;
             }),
           );
       }
@@ -225,10 +223,8 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
               const rId = section.properties.footerReferences?.find(
                 ({ type }) => type === variant,
               )?.rId;
-              return [
-                variant,
-                (rId === undefined ? undefined : pkg.footers?.get(rId)) ?? part,
-              ] as const;
+              const owned = rId === undefined ? undefined : pkg.footers?.get(rId);
+              return [variant, owned && structurallyEqual(owned, part) ? owned : part] as const;
             }),
           );
       }

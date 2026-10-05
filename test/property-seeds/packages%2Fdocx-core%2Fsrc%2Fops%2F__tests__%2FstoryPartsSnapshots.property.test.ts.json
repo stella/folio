@@ -1,0 +1,10 @@
+{
+  "generated narrow story restores preserve differing mounted snapshots and reuse equivalent parts": [
+    {
+      "seed": 20261019,
+      "path": "0:0:0",
+      "date": "2026-10-05",
+      "note": "Restoring a section-mounted snapshot must retain differing content and source metadata instead of substituting the part resolved by its relationship id."
+    }
+  ]
+}
