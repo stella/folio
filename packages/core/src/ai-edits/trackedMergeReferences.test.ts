@@ -46,7 +46,12 @@ test(
     await fc.assert(
       fc.asyncProperty(propertiesArbitrary, fc.boolean(), async (properties, atomic) => {
         for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
-          for (const saved of [false, true]) {
+          for (const [saved, structure] of [
+            [false, "merge"],
+            [true, "merge"],
+            [false, "delete-final"],
+            [true, "delete-final"],
+          ] as const) {
             let reviewer = await open("# Heading\n\nBody clause.");
             const first = reviewer.getContent().at(0);
             if (!first) throw new Error("Missing heading");
@@ -55,7 +60,13 @@ test(
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
               mode: "tracked-changes",
               operations: [
-                { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
+                structure === "merge"
+                  ? { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " }
+                  : {
+                      id: "delete",
+                      type: "deleteBlock",
+                      blockId: reviewer.getContent().at(1)?.id ?? "",
+                    },
               ],
             });
             if (saved) reviewer = await reopen(reviewer);
