@@ -5,6 +5,7 @@
 // React or `paged-editor/*` dependency so it stays portable across hosts.
 
 import { panic } from "better-result";
+import type { FolioGetDocxOptions } from "../types/docxSerialization";
 import type { EditorState } from "prosemirror-state";
 
 import type { Layout } from "../layout-engine/types";
@@ -26,17 +27,8 @@ export type FolioEditorDeps = {
   emitter: FolioEditorEmitter;
 };
 
-export const FOLIO_DOCX_SERIALIZATION_MODE = Object.freeze({
-  full: "full",
-  preferSelective: "prefer-selective",
-} as const);
-
-export type FolioDocxSerializationMode =
-  (typeof FOLIO_DOCX_SERIALIZATION_MODE)[keyof typeof FOLIO_DOCX_SERIALIZATION_MODE];
-
-export type FolioGetDocxOptions = {
-  mode?: FolioDocxSerializationMode;
-};
+export { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
+export type { FolioDocxSerializationMode, FolioGetDocxOptions } from "../types/docxSerialization";
 
 /**
  * Document lifecycle operations supplied by a host integration.
@@ -116,6 +108,9 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       deps.getEditorApi()?.getCanonicalStoryProjection(story) ?? null,
     replaceCanonicalStoryText: (options) =>
       deps.getEditorApi()?.replaceCanonicalStoryText(options) ?? false,
+    isCanonicalSaveCurrent: (version) =>
+      deps.getEditorApi()?.isCanonicalSaveCurrent(version) ?? false,
+    captureCanonicalSave: () => deps.getEditorApi()?.captureCanonicalSave() ?? null,
     applyCanonicalDocumentOperations: (options) =>
       deps.getEditorApi()?.applyCanonicalDocumentOperations(options) ?? null,
     undoCanonicalDocumentOperations: (handle) =>

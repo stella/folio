@@ -72,6 +72,8 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
     },
     getCanonicalComments: () => null,
     getCanonicalDocument: () => null,
+    captureCanonicalSave: () => null,
+    isCanonicalSaveCurrent: () => false,
     setCanonicalMode: () => false,
     resolveCanonicalRevisions: () => false,
     updateCanonicalInputLifecycle: (action) => {

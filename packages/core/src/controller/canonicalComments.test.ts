@@ -2,6 +2,9 @@ import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 import { freshCommentId } from "@stll/docx-core/ops";
+import { validateDocxPackage } from "@stll/docx-core";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
+import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { canonicalCommentBody, compileCanonicalComments } from "./canonicalComments";
 import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
@@ -63,7 +66,29 @@ const setup = (document = seed()) => {
   return { session, apply, history, create };
 };
 
-test("generated point/range comment histories preserve exact undo, projection and modeled save", async () => {
+const assertCanonicalCommentSave = async (session: ReturnType<typeof setup>["session"]) => {
+  const snapshot = session.captureSaveSnapshot();
+  for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
+    const saved = await serializeCanonicalSave({
+      snapshot,
+      featureFlags: { selectiveSave: true },
+      options: { mode },
+    });
+    expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({ valid: true });
+    const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+    // The package oracle includes root/reply status and body range/reference
+    // anchors, rather than only the visible comment text.
+    expect(
+      describePackageDifferences(snapshot.document, reopened),
+      `Canonical comment save mode: ${mode}`,
+    ).toEqual({
+      messages: [],
+      omitted: 0,
+    });
+  }
+};
+
+test("generated point/range comment histories preserve exact undo, projection and canonical snapshot save", async () => {
   await assertProperty(
     fc.asyncProperty(
       fc.array(fc.stringMatching(/^[a-z]{1,12}$/u), { minLength: 1, maxLength: 6 }),
@@ -108,11 +133,7 @@ test("generated point/range comment histories preserve exact undo, projection an
           editor.apply({ type: "resolve", id, status: "resolved" });
           steps += 1;
           const committed = cloneDocumentWithParagraphPropertySources(editor.session.document);
-          const reopened = await parseDocx(
-            await createDocx(cloneDocumentWithParagraphPropertySources(committed)),
-          );
-          const differences = describePackageDifferences(committed, reopened);
-          expect(differences).toEqual({ messages: [], omitted: 0 });
+          await assertCanonicalCommentSave(editor.session);
           editor.apply({ type: "delete", id });
           expect(
             editor.session.document.package.document.comments?.some(
@@ -121,22 +142,18 @@ test("generated point/range comment histories preserve exact undo, projection an
           ).toBe(false);
           editor.history("undo");
           expect(editor.session.document).toEqual(committed);
+          await assertCanonicalCommentSave(editor.session);
           editor.history("redo");
-          const deleted = cloneDocumentWithParagraphPropertySources(editor.session.document);
-          const reopenedDeleted = await parseDocx(
-            await createDocx(cloneDocumentWithParagraphPropertySources(deleted)),
-          );
-          expect(describePackageDifferences(deleted, reopenedDeleted)).toEqual({
-            messages: [],
-            omitted: 0,
-          });
+          await assertCanonicalCommentSave(editor.session);
           steps += 1;
         }
         const final = editor.session.document;
         for (let index = 0; index < steps; index += 1) editor.history("undo");
         expect(editor.session.document).toEqual(original);
+        await assertCanonicalCommentSave(editor.session);
         for (let index = 0; index < steps; index += 1) editor.history("redo");
         expect(editor.session.document).toEqual(final);
+        await assertCanonicalCommentSave(editor.session);
         expect(editor.session.projection.doc.textContent).toBe("A😀éB");
       },
     ),
@@ -231,9 +248,5 @@ test("creating then deleting a canonical thread saves an owned empty comments pa
   const editor = setup(await parseDocx(await createDocx(seed())));
   const id = editor.create("temporary", "range");
   editor.apply({ type: "delete", id });
-  const committed = cloneDocumentWithParagraphPropertySources(editor.session.document);
-  const reopened = await parseDocx(
-    await createDocx(cloneDocumentWithParagraphPropertySources(committed)),
-  );
-  expect(describePackageDifferences(committed, reopened)).toEqual({ messages: [], omitted: 0 });
+  await assertCanonicalCommentSave(editor.session);
 });

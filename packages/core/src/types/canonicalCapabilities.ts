@@ -11,6 +11,7 @@ export const CANONICAL_GAP = {
   collaboration: "collaboration-session",
   dispatch: "unclassified-transactions",
   save: "pm-save-projection",
+  resourceReplacement: "canonical-resource-replacement",
   history: "pm-history",
   suggestionPlugin: "pm-suggestion-plugin",
   paragraphTracker: "pm-paragraph-tracker",
@@ -112,6 +113,13 @@ export const CANONICAL_CAPABILITIES = {
     kind: "routing",
     adapters: ["react", "vue"],
     summary: "Legacy save and read paths reconstruct documents from PM.",
+  },
+  [CANONICAL_GAP.resourceReplacement]: {
+    owner: "controller",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary:
+      "Canonical save refuses existing style, style-default, and media replacements the package writers cannot express.",
   },
   [CANONICAL_GAP.history]: {
     owner: "prosemirror",
