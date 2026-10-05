@@ -1587,6 +1587,7 @@ export type FolioDocumentOperationIssue = {
   code: FolioAIEditSkippedOperation["reason"];
   retryable: boolean;
   recovery: FolioDocumentOperationRecovery;
+  canonicalRefusal?: FolioAIEditSkippedOperation["canonicalRefusal"];
   /** The skip's detail, when it has one; see {@link FolioAIEditSkippedOperation.message}. */
   message?: string;
 };
@@ -1765,7 +1766,7 @@ export const getFolioDocumentOperationIssues = (
   operations.forEach(({ id }, index) => {
     indexById.set(id, index);
   });
-  return skipped.map(({ id, reason, message }) => {
+  return skipped.map(({ id, reason, message, canonicalRefusal }) => {
     const operationIndex = indexById.get(id) ?? -1;
     return {
       operationId: id,
@@ -1787,6 +1788,7 @@ export const getFolioDocumentOperationIssues = (
         // unsaveable result; only a changed operation can succeed.
         reason !== "invalidResult",
       recovery: recoveryByReason[reason],
+      ...(canonicalRefusal === undefined ? {} : { canonicalRefusal }),
       ...(message !== undefined && { message }),
     };
   });
@@ -1952,7 +1954,7 @@ type GetFolioDocumentOperationReceiptsForStoryOptions = {
   story: FolioDocumentOperationStory;
 };
 
-const getFolioDocumentOperationReceiptsForStory = ({
+export const getFolioDocumentOperationReceiptsForStory = ({
   operations,
   applied,
   story,
@@ -2098,6 +2100,7 @@ export const applyFolioDocumentOperations = ({
     // canonical-gap: publicOps.suggestedMode
     // canonical-gap: publicOps.tableProjection
     // canonical-gap: publicOps.unsupportedInline
+    // canonical-gap: publicOps.secondaryStories
     // canonical-gap: pm-document-operations
     const outcome = applyFolioAIEditOperations({
       ...common,
