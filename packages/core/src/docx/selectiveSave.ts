@@ -51,6 +51,7 @@ import {
 import {
   type CommentPartPlan,
   planCommentParts,
+  hasOwnedCommentsPart,
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
@@ -425,6 +426,7 @@ export async function attemptSelectiveSave(
 
   const comments = doc.package.document.comments ?? [];
   const hasComments = comments.length > 0;
+  const ownsCommentsPart = hasOwnedCommentsPart(doc);
   // One plan, both parts: the order they are written in and the paraId each
   // comment is threaded by are decided once, keyed by `w:id`. Planned here
   // rather than beside `word/comments.xml` because `commentsExtended.xml` is
@@ -548,7 +550,7 @@ export async function attemptSelectiveSave(
     // entries linger in the saved file (the rezip baseline copies the
     // previous part as-is) and round-trip back as phantom threads.
     const sourceCommentsFile = zip.file("word/comments.xml");
-    if (hasComments || sourceCommentsFile) {
+    if (hasComments || ownsCommentsPart || sourceCommentsFile) {
       const sourceCommentsXml = sourceCommentsFile
         ? await sourceCommentsFile.async("text")
         : undefined;
@@ -560,7 +562,7 @@ export async function attemptSelectiveSave(
         updates.set("word/comments.xml", commentsXml);
       }
     }
-    if (hasComments) {
+    if (hasComments || ownsCommentsPart) {
       // Ensure [Content_Types].xml has an Override for comments.xml
       const ctFile = zip.file("[Content_Types].xml");
       if (ctFile) {

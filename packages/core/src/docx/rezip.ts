@@ -42,7 +42,7 @@ import {
   escapeXmlText,
   validateDocxPackage,
 } from "@stll/docx-core";
-import { COMMENT_PART_RELATIONSHIPS, mintRelationshipId } from "@stll/docx-core/model";
+import { mintRelationshipId } from "@stll/docx-core/model";
 import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
 import { canonicalJson } from "../utils/canonicalJson";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -98,6 +98,7 @@ import {
 import {
   type CommentPartPlan,
   planCommentParts,
+  hasOwnedCommentsPart,
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
@@ -391,9 +392,7 @@ async function serializeCommentsToZip(
     // A non-empty source part with an empty current model is different: the
     // user removed the last comment, so it must still be overwritten below to
     // prevent the old thread from reappearing.
-    const ownsCommentsPart = [...(doc.package.relationships?.values() ?? [])].some(
-      ({ type }) => type === COMMENT_PART_RELATIONSHIPS.comments.type,
-    );
+    const ownsCommentsPart = hasOwnedCommentsPart(doc);
     if (
       sourceCommentsXml === undefined ? !ownsCommentsPart : !hasCommentEntries(sourceCommentsXml)
     ) {
