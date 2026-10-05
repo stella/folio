@@ -90,7 +90,7 @@ export const LEGACY_NODE_REPLACEMENTS = [
 )[];
 
 export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
-  ...LEGACY_NODE_REPLACEMENTS.filter(({ status }) => status === "expectedFailure").map(
+  ...LEGACY_NODE_REPLACEMENTS.filter((row) => row.status === "expectedFailure").map(
     ({ operation, kind }): KnownConformanceGap => ({
       issue: 1404,
       reason: `Legacy suggesting node replacement loses the selected image: ${operation}`,

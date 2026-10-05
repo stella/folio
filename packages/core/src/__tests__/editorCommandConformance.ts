@@ -34,6 +34,7 @@ import {
 } from "../../../../test/canonicalEditorHarness";
 import { assertValidFolioDocumentModel } from "../docx/modelValidation";
 import { repackDocx } from "../docx/rezip";
+import { repackWithCanonicalStoryRemovals } from "../docx/canonicalStoryRepack";
 
 import { Fragment, Slice } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
@@ -978,7 +979,12 @@ const saveRunState = async (state: EditorState, base: Document, authority: Harne
   assertValidFolioDocumentModel(base, "Canonical conformance snapshot is invalid");
   return {
     model: base,
-    bytes: new Uint8Array(await repackDocx(base, { updateModifiedDate: false })),
+    bytes: new Uint8Array(
+      await repackWithCanonicalStoryRemovals({
+        document: base,
+        repack: () => repackDocx(base, { updateModifiedDate: false }),
+      }),
+    ),
   };
 };
 

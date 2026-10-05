@@ -23,6 +23,8 @@ import {
 import { EditorState as PMEditorState } from "prosemirror-state";
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
 import { getCanonicalCommandIntents } from "../packages/core/src/prosemirror/canonicalCommands";
+import { canonicalClipboardStoryPartRefusal } from "../packages/core/src/controller/canonicalClipboard";
+import { proseDocToBlocks } from "../packages/core/src/prosemirror/conversion/fromProseDoc";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import type { Document } from "../packages/core/src/types/document";
 import { keyboardEventFor, type EditorMode } from "../packages/core/src/__tests__/editorHarness";
@@ -149,8 +151,9 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     manager.api.getCanonicalDocument() ?? panic("Canonical snapshot unavailable.");
   const execute = (command: Command) => {
     const count = refusals.length;
+    const intents = getCanonicalCommandIntents(command, editorView.state);
     const rows =
-      getCanonicalCommandIntents(command, editorView.state) === undefined
+      intents === undefined
         ? [
             "A plugin attempted an unclassified canonical document mutation.",
             "Unclassified native text is unavailable in this session.",
@@ -160,6 +163,18 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
             message,
           }))
         : [];
+    if (
+      mode === "suggesting" &&
+      intents?.some(
+        ({ type }) =>
+          type === "setHyperlink" || type === "removeHyperlink" || type === "insertHyperlink",
+      )
+    )
+      rows.push({
+        id: "tracked-hyperlink-resolution",
+        gap: CANONICAL_GAP.trackedHyperlinkResolution,
+        message: "Hyperlink suggestions require serializable wrapper review provenance.",
+      });
     return withRefusalRows(rows, () => {
       const applied = executeEditorCommand(editorView, command);
       return refusals.length === count && applied;
@@ -230,6 +245,22 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
           gap: CANONICAL_GAP.dispatch,
           message: "Clipboard tables and embedded blocks require canonical table editing.",
         };
+      if (row === undefined) {
+        const paragraphType = editorView.state.schema.nodes["paragraph"];
+        if (paragraphType === undefined) panic("Canonical clipboard schema lost paragraphs");
+        const content = inlineOnly ? paragraphType.create(null, slice.content) : slice.content;
+        const blocks = proseDocToBlocks(
+          editorView.state.schema.topNodeType.create(null, content),
+          [],
+        );
+        for (const block of blocks) {
+          if (block.type !== "paragraph") continue;
+          const refusal = canonicalClipboardStoryPartRefusal(block);
+          if (refusal === undefined) continue;
+          row = { id: "clipboard-story-parts", gap: refusal.gap, message: refusal.message };
+          break;
+        }
+      }
       withRefusalRow(row, () =>
         editorView.someProp("handlePaste", (handler) => handler(editorView, event, slice)),
       );

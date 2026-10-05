@@ -241,6 +241,31 @@ const importNumbering = ({
   });
 };
 
+/** Imported comments and notes require copying their source story parts. */
+export const canonicalClipboardStoryPartRefusal = (
+  paragraph: Paragraph,
+): CanonicalSessionError | undefined => {
+  let requiresStory = false;
+  visitInlineContentSlots(paragraph, ({ item }) => {
+    if (
+      item.type === "commentRangeStart" ||
+      item.type === "commentRangeEnd" ||
+      item.type === "commentReference"
+    )
+      requiresStory = true;
+  });
+  visitParagraphRuns(paragraph, (run) => {
+    if (run.content.some((item) => item.type === "footnoteRef" || item.type === "endnoteRef"))
+      requiresStory = true;
+  });
+  if (!requiresStory) return undefined;
+  return new CanonicalSessionError({
+    gap: CANONICAL_GAP.dispatch,
+    reason: "refused",
+    message: "Clipboard comments and note references require importing their source story parts.",
+  });
+};
+
 /** Clipboard slices are input payloads; their paragraph identities and private captures are not owners. */
 type PrepareCanonicalPasteOptions = {
   session: CanonicalSession;
@@ -420,23 +445,8 @@ export const prepareCanonicalPaste = ({
   // retain their relationship only when its resolved source belongs to this package.
   for (const paragraph of paragraphs) {
     if (moveTarget === undefined) {
-      let requiresStory = false;
-      visitInlineContentSlots(paragraph, ({ item }) => {
-        if (
-          item.type === "commentRangeStart" ||
-          item.type === "commentRangeEnd" ||
-          item.type === "commentReference"
-        )
-          requiresStory = true;
-      });
-      visitParagraphRuns(paragraph, (run) => {
-        if (run.content.some((item) => item.type === "footnoteRef" || item.type === "endnoteRef"))
-          requiresStory = true;
-      });
-      if (requiresStory)
-        return refuse(
-          "Clipboard comments and note references require importing their source story parts.",
-        );
+      const storyPartRefusal = canonicalClipboardStoryPartRefusal(paragraph);
+      if (storyPartRefusal !== undefined) return Result.err(storyPartRefusal);
       const links: Extract<Paragraph["content"][number], { type: "hyperlink" }>[] = [];
       visitInlineContentSlots(paragraph, ({ item }) => {
         if (item.type === "hyperlink") links.push(item);

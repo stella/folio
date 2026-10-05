@@ -14,6 +14,8 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { modelMarkdown, parseShapeDocument } from "./editorHarness";
 import { documentShape, shapeArrayBuffer } from "./documentShapes";
 import { PASTED_LIST, PASTED_TABLE } from "./editorCommandConformance";
+import { repackDocx } from "../docx/rezip";
+import { repackWithCanonicalStoryRemovals } from "../docx/canonicalStoryRepack";
 import { CANONICAL_CAPABILITIES, CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
   createCanonicalEditorHarness,
@@ -239,3 +241,48 @@ test.each(["editing", "suggesting"] as const)(
     }
   },
 );
+
+for (const mode of ["editing", "suggesting"] as const) {
+  for (const shape of ["notes", "comments", "image"] as const) {
+    test(`copied ${shape} blocks use the resource preflight and saved canonical authority in ${mode}`, async () => {
+      const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer(shape)));
+      const driver = createCanonicalEditorHarness(source, mode);
+      try {
+        const slice = new Slice(driver.state.doc.content, 0, 0);
+        const last = driver.state.doc.lastChild;
+        if (last === null) throw new TypeError("Copied-block fixture has no final paragraph");
+        const end = driver.state.doc.content.size - 1;
+        driver.history.setSelection(end, end);
+        const before = driver.snapshot();
+        const state = driver.state;
+        driver.paste(slice);
+        if (shape !== "image") {
+          expect(driver.refusals).toHaveLength(1);
+          expect(driver.refusals.at(0)).toMatchObject({
+            expectation: "declared",
+            row: "clipboard-story-parts",
+          });
+          assertExactModel(driver.snapshot(), before);
+          expect(driver.state).toBe(state);
+          expect(driver.history.canUndo()).toBe(false);
+          expect(driver.history.canRedo()).toBe(false);
+          return;
+        }
+        expect(driver.refusals).toEqual([]);
+        const edited = driver.snapshot();
+        const bytes = await repackWithCanonicalStoryRemovals({
+          document: edited,
+          repack: () => repackDocx(edited, { updateModifiedDate: false }),
+        });
+        const reopened = await parseShapeDocument(new Uint8Array(bytes));
+        expect(modelMarkdown(reopened)).toBe(modelMarkdown(edited));
+        expect(driver.history.undo()).toBe(true);
+        assertExactModel(driver.snapshot(), before);
+        expect(driver.history.redo()).toBe(true);
+        assertExactModel(driver.snapshot(), edited);
+      } finally {
+        driver.dispose();
+      }
+    });
+  }
+}
