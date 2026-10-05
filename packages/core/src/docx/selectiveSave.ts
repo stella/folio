@@ -27,6 +27,7 @@ import {
   hasUnmaterializedHyperlinkBindings,
   applyUpdatesToZip,
   planAddedStyles,
+  publishCanonicalImageResources,
   findMaxRId,
   updateCoreProperties,
   collectHeaderFooterUpdates,
@@ -462,6 +463,9 @@ export async function attemptSelectiveSave(
         if (xml !== sourceParts.get(path)) zip.file(path, xml);
       }
     }
+
+    if (options.bodyAuthority === "canonical")
+      await publishCanonicalImageResources({ document: doc, zip, compressionLevel: 6 });
 
     const updates = new Map<string, string>();
 

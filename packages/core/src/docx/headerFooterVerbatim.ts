@@ -32,6 +32,7 @@ const contentBaselines = new WeakMap<
       xml: string;
       body: Document["package"]["document"];
       resourceStyles: Document["package"]["styles"];
+      resourceRelationships: Document["package"]["relationships"];
       resourceMedia: ReadonlyMap<string, { data: ArrayBuffer; mimeType: string }>;
     }
 >();
@@ -242,6 +243,7 @@ export const captureDocumentSourceBaseline = (document: Document, xml: string): 
     xml,
     body,
     resourceStyles: structuredClone(document.package.styles),
+    resourceRelationships: structuredClone(document.package.relationships),
     resourceMedia: new Map(
       [...(document.package.media ?? [])].map(([path, media]) => [
         path,
@@ -272,6 +274,7 @@ export const getDocumentSourceBaseline = (
       xml: string;
       fingerprint: string;
       resourceStyles: Document["package"]["styles"];
+      resourceRelationships: Document["package"]["relationships"];
       resourceMedia: ReadonlyMap<string, { data: ArrayBuffer; mimeType: string }>;
     } => {
   const body = document.package.document;
@@ -296,6 +299,7 @@ export const getDocumentSourceBaseline = (
     xml: baseline.xml,
     fingerprint,
     resourceStyles: baseline.resourceStyles,
+    resourceRelationships: baseline.resourceRelationships,
     resourceMedia: baseline.resourceMedia,
   };
 };

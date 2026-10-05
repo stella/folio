@@ -43,6 +43,9 @@ import {
   validateDocxPackage,
 } from "@stll/docx-core";
 import { mintRelationshipId } from "@stll/docx-core/model";
+import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
+import { canonicalJson } from "../utils/canonicalJson";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
 import JSZip from "jszip";
 
@@ -876,6 +879,168 @@ const materializeEmbeddedMedia = async ({
   await registerImageExtensions(zip, extensions, compressionLevel);
 };
 
+export class CanonicalImageRelationshipRefusalError extends TaggedError(
+  "CanonicalImageRelationshipRefusalError",
+)<{
+  message: string;
+  gap: typeof CANONICAL_GAP.save;
+  part: string;
+  relationshipId: string;
+  reason: "conflict" | "unresolved" | "missingMedia" | "unsafeTarget";
+}> {}
+
+type PublishCanonicalImageResourcesOptions = {
+  document: Document;
+  zip: JSZip;
+  compressionLevel: number;
+};
+
+/** Publish allocated pictures into each owning story without rebinding canonical ids. */
+export const publishCanonicalImageResources = async ({
+  document,
+  zip,
+  compressionLevel,
+}: PublishCanonicalImageResourcesOptions): Promise<void> => {
+  const baseline = getDocumentSourceBaseline(document);
+  for (const { relsPath, blocks } of collectDocxParts(document, zip)) {
+    const images: Image[] = [];
+    visitBlockTreeRecords(blocks, (record) => {
+      if (record.type !== "paragraph") return BLOCK_TREE_DESCENT.descend;
+      visitParagraphRuns(record, (run) => {
+        for (const content of run.content) {
+          if (content.type === "drawing" && content.image.rId !== undefined)
+            images.push(content.image);
+        }
+      });
+      return BLOCK_TREE_DESCENT.descend;
+    });
+    if (images.length === 0) continue;
+    // oxlint-disable-next-line no-await-in-loop -- each story owns an independent relationship table
+    let xml = await readRelsOrStub(zip, relsPath);
+    const local = parseRelationships(xml);
+    const partPath = relsPath.replace("/_rels/", "/").replace(/\.rels$/u, "");
+    let changed = false;
+    for (const image of images) {
+      const id = image.rId;
+      if (id === undefined) continue;
+      const refuse = (
+        reason: CanonicalImageRelationshipRefusalError["reason"],
+        message: string,
+      ): never => {
+        throw new CanonicalImageRelationshipRefusalError({
+          message,
+          gap: CANONICAL_GAP.save,
+          part: relsPath,
+          relationshipId: id,
+          reason,
+        });
+      };
+      const source = local.get(id);
+      const allocated = document.package.relationships?.get(id);
+      // Newly allocated root resources can be published into any story. Existing
+      // secondary bindings retain their own identity when root ids happen to repeat.
+      const allocatedMediaPath =
+        allocated?.targetMode === "External" || allocated?.type !== RELATIONSHIP_TYPES.image
+          ? undefined
+          : resolveRelativePath("word/_rels/document.xml.rels", allocated.target);
+      const allocatedMedia =
+        allocatedMediaPath === undefined
+          ? undefined
+          : document.package.media?.get(allocatedMediaPath);
+      const newlyAllocated =
+        allocated !== undefined &&
+        (baseline.type !== "captured" ||
+          canonicalJson(allocated) !== canonicalJson(baseline.resourceRelationships?.get(id)));
+      const identifiesAllocated =
+        relsPath === "word/_rels/document.xml.rels" ||
+        newlyAllocated ||
+        (source === undefined &&
+          image.src !== undefined &&
+          (allocated?.targetMode === "External"
+            ? image.src === allocated.target
+            : image.src === allocatedMedia?.dataUrl));
+      const desired =
+        identifiesAllocated && allocated?.type === RELATIONSHIP_TYPES.image ? allocated : source;
+      if (desired?.type !== RELATIONSHIP_TYPES.image)
+        return refuse("unresolved", "A canonical inline picture has no owning image relationship.");
+      const desiredRelsPath = desired === allocated ? "word/_rels/document.xml.rels" : relsPath;
+      const absolute =
+        desired.targetMode === "External"
+          ? undefined
+          : resolveRelativePath(desiredRelsPath, desired.target);
+      if (desired.targetMode === "External" && !isAllowedExternalWatermarkImageUrl(desired.target))
+        return refuse("unsafeTarget", "A canonical inline picture has an unsafe external target.");
+      if (absolute !== undefined && isUnsafePackagePath(absolute))
+        return refuse("unsafeTarget", "A canonical inline picture has an unsafe media target.");
+      if (source) {
+        const sourceAbsolute =
+          source.targetMode === "External"
+            ? undefined
+            : resolveRelativePath(relsPath, source.target);
+        if (
+          source.type !== RELATIONSHIP_TYPES.image ||
+          (source.targetMode === "External") !== (desired.targetMode === "External") ||
+          (absolute === undefined ? source.target !== desired.target : sourceAbsolute !== absolute)
+        )
+          return refuse(
+            "conflict",
+            "A canonical inline picture relationship conflicts with its owning source binding.",
+          );
+      }
+      if (absolute !== undefined && !findZipEntryCaseInsensitive(zip, absolute.toLowerCase())) {
+        const media = document.package.media?.get(absolute);
+        if (!media)
+          return refuse("missingMedia", "A canonical inline picture is missing its media bytes.");
+        if (isUnsafePackagePath(media.path) || media.path !== absolute)
+          return refuse(
+            "unsafeTarget",
+            "A canonical inline picture media path does not match its relationship.",
+          );
+        zip.file(absolute, media.data, {
+          compression: "DEFLATE",
+          compressionOptions: { level: compressionLevel },
+        });
+        const extension = absolute.split(".").at(-1)?.toLowerCase();
+        if (!extension || !/^[a-z0-9]+$/u.test(extension))
+          return refuse("unsafeTarget", "A canonical inline picture media extension is invalid.");
+        // oxlint-disable-next-line no-await-in-loop -- shared content types advance with each materialized picture
+        await registerImageExtensions(zip, new Set([extension]), compressionLevel);
+      }
+      if (source) continue;
+      const root = parseXmlDocument(xml);
+      const strict =
+        root !== null &&
+        getChildElements(root).some((element) =>
+          getAttribute(element, null, "Type")?.startsWith(
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/",
+          ),
+        );
+      const type = strict
+        ? "http://purl.oclc.org/ooxml/officeDocument/relationships/image"
+        : RELATIONSHIP_TYPES.image;
+      const target =
+        absolute === undefined ? desired.target : relativeTargetForPart(partPath, absolute);
+      xml = appendCanonicalRelationship({
+        xml,
+        partPath: relsPath,
+        relationshipXml: `<Relationship Id="${escapeXmlAttribute(id)}" Type="${type}" Target="${escapeXmlAttribute(target)}"${desired.targetMode === "External" ? ' TargetMode="External"' : ""}/>`,
+      });
+      local.set(id, {
+        id,
+        type: RELATIONSHIP_TYPES.image,
+        target,
+        ...(desired.targetMode === "External" ? { targetMode: "External" } : {}),
+      });
+      changed = true;
+    }
+    if (changed)
+      zip.file(relsPath, xml, {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      });
+  }
+};
+
 // ============================================================================
 // NEW HYPERLINK HANDLING
 // ============================================================================
@@ -1326,6 +1491,8 @@ const finishRepack = async ({
   );
   await materializeEmbeddedMedia({ document, zip: outputZip, compressionLevel });
 
+  if (bodyAuthority === "canonical")
+    await publishCanonicalImageResources({ document, zip: outputZip, compressionLevel });
   const parts = collectDocxParts(document, outputZip);
   normalizeExportDrawingIds(document);
   await processNewImages(parts, outputZip, compressionLevel);
@@ -1531,6 +1698,12 @@ export async function repackDocxFromRaw(
   exportDocument = await materializeNewHeaderFooterParts(exportDocument, newZip, compressionLevel);
   await materializeEmbeddedMedia({ document: exportDocument, zip: newZip, compressionLevel });
 
+  if (options.bodyAuthority === "canonical")
+    await publishCanonicalImageResources({
+      document: exportDocument,
+      zip: newZip,
+      compressionLevel,
+    });
   const parts = collectDocxParts(exportDocument, newZip);
   normalizeExportDrawingIds(exportDocument);
   await processNewImages(parts, newZip, compressionLevel);
@@ -2352,53 +2525,43 @@ export function hasModelDrivenPictureWatermark(doc: Document): boolean {
  * media target, or mint a new one. Media bytes are materialized before this step. Raw watermark XML
  * changes only when its image relationship must be rebound.
  */
-const PACKAGE_RELATIONSHIPS_NAMESPACE =
-  "http://schemas.openxmlformats.org/package/2006/relationships";
-type AppendCanonicalWatermarkRelationshipOptions = {
+type AppendCanonicalRelationshipOptions = {
   xml: string;
   relationshipXml: string;
   partPath: string;
 };
-const appendCanonicalWatermarkRelationship = ({
+const appendCanonicalRelationship = ({
   xml,
   relationshipXml,
   partPath,
-}: AppendCanonicalWatermarkRelationshipOptions): string => {
+}: AppendCanonicalRelationshipOptions): string => {
   const parsed = parseStreamingXmlWithSourceRanges(xml);
   if (parsed.status !== "parsed")
-    throw new DocxPackageFidelityError(
-      `Cannot read canonical watermark relationships in ${partPath}`,
-    );
+    throw new DocxPackageFidelityError(`Cannot read canonical relationships in ${partPath}`);
   const root = getChildElements(parsed.value).find(
     (element) =>
       getLocalName(element.name ?? "") === "Relationships" &&
-      getNamespaceUri(element) === PACKAGE_RELATIONSHIPS_NAMESPACE,
+      getNamespaceUri(element) === PACKAGE_RELATIONSHIPS_NAMESPACE_URI,
   );
   const range = root ? getXmlSourceRange(root) : undefined;
   if (!root?.name || !range)
-    throw new DocxPackageFidelityError(
-      `Cannot find canonical watermark relationship root in ${partPath}`,
-    );
+    throw new DocxPackageFidelityError(`Cannot find canonical relationship root in ${partPath}`);
   const sourceRoot = xml.slice(range.start, range.end);
   const bound = relationshipXml.replace(
     "<Relationship ",
-    `<Relationship xmlns="${PACKAGE_RELATIONSHIPS_NAMESPACE}" `,
+    `<Relationship xmlns="${PACKAGE_RELATIONSHIPS_NAMESPACE_URI}" `,
   );
   const selfClosing = sourceRoot.endsWith("/>");
   const close = xml.lastIndexOf("</", range.end);
   if (!selfClosing && close < range.start)
-    throw new DocxPackageFidelityError(
-      `Cannot extend canonical watermark relationships in ${partPath}`,
-    );
+    throw new DocxPackageFidelityError(`Cannot extend canonical relationships in ${partPath}`);
   const result = spliceXml(xml, [
     selfClosing
       ? { start: range.end - 2, end: range.end, newXml: ">" + bound + `</${root.name}>` }
       : { start: close, end: close, newXml: bound },
   ]);
   if (result === null)
-    throw new DocxPackageFidelityError(
-      `Cannot splice canonical watermark relationships in ${partPath}`,
-    );
+    throw new DocxPackageFidelityError(`Cannot splice canonical relationships in ${partPath}`);
   return result;
 };
 
@@ -2576,7 +2739,7 @@ async function rebindWatermarkRelIds({
           : `<Relationship Id="${escapeXmlAttribute(watermark.imageRId)}" Type="${RELATIONSHIP_TYPES.image}" Target="${escapeXmlAttribute(relativeTargetForPart(partPath, canonical.absolute))}"/>`;
       relsXmlByPath.set(
         relsPath,
-        appendCanonicalWatermarkRelationship({
+        appendCanonicalRelationship({
           xml: relsXml,
           relationshipXml: relXml,
           partPath: relsPath,
@@ -3437,12 +3600,13 @@ export function isDocxBuffer(buffer: ArrayBuffer): boolean {
  * ignored for a document that carries a source package, which keeps the
  * properties that package already states.
  */
-export type DocumentPropertiesOptions = SaveDiagnosticOptions & {
-  /** `dc:creator` in `docProps/core.xml`. Omitted when absent. */
-  creator?: string;
-  /** `Application` in `docProps/app.xml`. Omitted, with `AppVersion`, when absent. */
-  application?: string;
-};
+export type DocumentPropertiesOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & {
+    /** `dc:creator` in `docProps/core.xml`. Omitted when absent. */
+    creator?: string;
+    /** `Application` in `docProps/app.xml`. Omitted, with `AppVersion`, when absent. */
+    application?: string;
+  };
 
 /**
  * The application version a newly created package states.
@@ -3574,6 +3738,7 @@ export async function createDocx(
       compressionLevel: 6,
       updateModifiedDate: true,
       onDiagnostic: properties.onDiagnostic,
+      bodyAuthority: properties.bodyAuthority,
     });
   }
 
@@ -3587,6 +3752,7 @@ export async function createDocx(
     compressionLevel: 6,
     updateModifiedDate: true,
     onDiagnostic: properties.onDiagnostic,
+    bodyAuthority: properties.bodyAuthority,
   });
 }
 

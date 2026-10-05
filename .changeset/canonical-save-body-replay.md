@@ -4,4 +4,4 @@
 "@stll/folio-vue": patch
 ---
 
-Save canonical sessions from committed model changes and preserve untouched body source XML with typed fallback diagnostics.
+Save canonical sessions from committed model changes, preserve untouched body XML and allocated picture resources, and report fidelity fallbacks or unsupported package replacements with typed diagnostics.
