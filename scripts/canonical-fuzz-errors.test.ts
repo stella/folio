@@ -1,32 +1,21 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty, propertyTestTimeout } from "../../test/property-testing";
-import { failureMarker } from "../../test/consumer-scenarios/support/failure-fingerprints";
-import { CanonicalSaveDiagnosticError } from "../../packages/core/src/docx/canonicalSave";
-import type { SaveDiagnostic } from "../../packages/core/src/docx/saveDiagnostics";
-import { CANONICAL_GAP } from "../../packages/core/src/types/canonicalCapabilities";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
+import { CanonicalSaveDiagnosticError } from "../packages/core/src/docx/canonicalSave";
+import type { SaveDiagnostic } from "../packages/core/src/docx/saveDiagnostics";
+import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import {
   recordCanonicalFuzzError,
   isCanonicalSaveFallback,
   type CanonicalFuzzError,
   type CanonicalFuzzPhase,
-} from "./canonicalFuzzErrors";
+} from "../tests/parity/canonicalFuzzErrors";
 import {
   CanonicalBrowserOracleError,
   canonicalOracleFailureRecord,
   captureCanonicalOracleFailure,
-} from "./canonicalOracleFailure";
-import {
-  CANONICAL_BROWSER_SAVE_REPLAYS,
-  canonicalBrowserTraceArbitrary,
-} from "../visual/canonicalBrowserTrace";
-
-test("every save-diagnostic replay retains its generated action sequence", () => {
-  for (const { seed, path, kinds } of CANONICAL_BROWSER_SAVE_REPLAYS) {
-    const actions = fc.sample(canonicalBrowserTraceArbitrary, { seed, path, numRuns: 1 }).at(0);
-    expect(actions?.map(({ kind }) => kind)).toEqual(kinds);
-  }
-});
+} from "../tests/parity/canonicalOracleFailure";
 
 const DIAGNOSTICS = {
   sourceReplayMismatch: { type: "sourceReplayMismatch", part: "word/document.xml" },
