@@ -1076,10 +1076,10 @@ class CanonicalSession {
       ops.push(...compiled.value.ops);
       if (intent.type === "generateTOC") {
         const mapping = { at: intent.at, after: compiled.value.selection, ops: compiled.value.ops };
-        postSelection = {
+        postSelection = Object.assign({}, postSelection, {
           anchor: mapTocSelection(postSelection.anchor, mapping),
           head: mapTocSelection(postSelection.head, mapping),
-        };
+        });
       } else if (
         intent.type !== "setHyperlink" &&
         intent.type !== "removeHyperlink" &&
