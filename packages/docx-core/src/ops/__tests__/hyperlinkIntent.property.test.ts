@@ -6,6 +6,7 @@ import type { Document, Hyperlink, ParagraphContent, Run } from "../../model/doc
 import { allocateEditorIntentIds, compileEditorIntent } from "../editorIntent";
 import type { HyperlinkEditorIntent } from "../hyperlinkIntent";
 import { applyDocumentOps } from "../apply";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { OP_STORIES } from "../types";
 import { paragraphVisibleText } from "../editorIntent";
 
@@ -251,5 +252,56 @@ test("hyperlink boundaries refuse invalid gaps without changing authored content
         expect(compiled.error.reason).toBe(invalid === 3 ? "splitsSurrogatePair" : "invalidOffset");
       expect(document).toStrictEqual(original());
     }
+  }
+});
+
+test("direct hyperlink intent targets follow the shared external URL policy atomically", () => {
+  assertProperty(
+    fc.property(
+      fc.constantFrom("custom+folio:", "ftp://", "file:///"),
+      fc.constantFrom("example.org/document", "record42"),
+      (scheme, target) => {
+        for (const factory of Object.values(factories)) {
+          const base = factory({ from: 0, to: 1 });
+          if (base.type === "removeHyperlink") continue;
+          const document = original();
+          const compiled = compileEditorIntent(document, {
+            intent: { ...base, href: `${scheme}${target}` },
+            mode: { type: "editing" },
+          });
+          expect(compiled.isErr()).toBe(true);
+          if (compiled.isErr())
+            expect(compiled.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION);
+          expect(document).toStrictEqual(original());
+        }
+      },
+    ),
+    { numRuns: 24 },
+  );
+});
+
+test.each([
+  { input: " HTTPS://EXAMPLE.ORG/document ", target: { href: "https://example.org/document" } },
+  { input: "mailto:clerk@example.org", target: { href: "mailto:clerk@example.org" } },
+  { input: "tel:+420123456789", target: { href: "tel:+420123456789" } },
+  { input: "#café東京", target: { anchor: "café東京" } },
+  { input: "", target: {} },
+])("direct hyperlink intents preserve supported target $input", ({ input, target }) => {
+  for (const factory of Object.values(factories)) {
+    const base = factory({ from: 0, to: 1 });
+    if (base.type === "removeHyperlink") continue;
+    const document = original();
+    const compiled = compileEditorIntent(document, {
+      intent: { ...base, href: input },
+      mode: { type: "editing" },
+    }).unwrap();
+    const applied = applyDocumentOps(document, compiled.ops).unwrap();
+    const paragraph = applied.document.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Hyperlink target fixture lost its paragraph");
+    const link = paragraph.content.find((item) => item.type === "hyperlink");
+    expect(link).toMatchObject({ type: "hyperlink", ...target });
+    expect(applyDocumentOps(applied.document, applied.inverse).unwrap().document).toStrictEqual(
+      document,
+    );
   }
 });
