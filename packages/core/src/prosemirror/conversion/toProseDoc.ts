@@ -750,7 +750,12 @@ function convertParagraph(
     attrs.numPrFromStyle ?? undefined,
     attrs.numPr ?? undefined,
   );
-  if (numPr?.kind === "none" || (context.numbering !== undefined && numPr === undefined))
+  if (
+    numPr?.kind === "none" ||
+    (paragraph.listRendering !== undefined &&
+      context.numbering !== undefined &&
+      numPr === undefined)
+  )
     Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   else if (context.numbering !== undefined && numPr?.kind === "reference") {
     const rendering = resolveCachedListRendering(
