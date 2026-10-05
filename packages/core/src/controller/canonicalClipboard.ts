@@ -24,6 +24,7 @@ import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
   CanonicalSessionError,
   canonicalSelectionRange,
+  type CanonicalCommit,
   type CanonicalSession,
 } from "./canonicalSession";
 import {
@@ -287,7 +288,8 @@ export const prepareCanonicalPaste = ({
   pasteTarget,
   sourceDocument,
   moveSource,
-}: PrepareCanonicalPasteOptions) => {
+}: PrepareCanonicalPasteOptions): Result<CanonicalCommit, CanonicalSessionError> => {
+  // Declared: the inferred union of Ok/Err branches is emitted in a nondeterministic order.
   if (session.isComposing) return refuse("Composition must finish before using the clipboard.");
   if (slice.content.size === 0)
     return Result.err(
