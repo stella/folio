@@ -11,6 +11,9 @@ import { panic } from "better-result";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { resolveCanonicalReviewRange } from "./canonicalReview";
 import { createEmptyDocument } from "../utils/createDocument";
+import { createDocx } from "../docx/rezip";
+import { parseDocx } from "../docx/parser";
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { EditorState, Plugin } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
@@ -244,6 +247,98 @@ test("canonical manager refuses transaction bypasses and shares one input journa
     expect(manager.api.getDocument()).toEqual(accepted);
   } finally {
     manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("canonical keyboard history restores deletion and identical replacement selections", async () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  try {
+    for (const gesture of ["backspace", "cut", "identicalReplacement"] as const) {
+      const source = await parseDocx(
+        (
+          await prepareCanonicalDocxInput(
+            new Uint8Array(
+              await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" })),
+            ),
+          )
+        ).unwrap(),
+        { preloadFonts: false, detectVariables: false },
+      );
+      const reasons: string[] = [];
+      const { deps } = makeDeps({
+        getHost: () => host,
+        getDocument: () => source,
+        getDocumentContext: () => source,
+        getExperimentalSession: () => "canonical",
+        onSessionRefusal: (reason) => reasons.push(reason),
+      });
+      const manager = createHiddenEditorManager(deps);
+      try {
+        manager.ensureView();
+        expect(reasons).toEqual([]);
+        const view = manager.getView() ?? panic("Missing canonical view");
+        manager.api.setSelection(1, 6);
+        manager.api.focus();
+        const before = manager.api.getCanonicalDocument();
+        const preSelection = view.state.selection.toJSON();
+        if (gesture === "backspace") {
+          view.dom.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }),
+          );
+        } else if (gesture === "cut") {
+          view.dom.dispatchEvent(
+            new ClipboardEvent("cut", {
+              clipboardData: new DataTransfer(),
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        } else {
+          view.dom.dispatchEvent(
+            new InputEvent("beforeinput", {
+              inputType: "insertText",
+              data: "alpha",
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        }
+        const after = manager.api.getCanonicalDocument();
+        const postSelection = view.state.selection.toJSON();
+        expect(reasons).toEqual([]);
+        expect(manager.api.canUndo()).toBe(true);
+        view.dom.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "z",
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        expect(manager.api.getCanonicalDocument()).toEqual(before);
+        expect(view.state.selection.toJSON()).toEqual(preSelection);
+        expect(manager.api.canRedo()).toBe(true);
+        view.dom.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Z",
+            ctrlKey: true,
+            shiftKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        expect(reasons).toEqual([]);
+        expect(manager.api.getCanonicalDocument()).toEqual(after);
+        expect(view.state.selection.toJSON()).toEqual(postSelection);
+      } finally {
+        manager.destroyView();
+      }
+    }
+  } finally {
     host.remove();
     GlobalRegistrator.unregister();
   }
