@@ -1,0 +1,33 @@
+[package]
+name = "docx-canonical-spike"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+license = "Apache-2.0"
+description = "Isolated experimental canonical document operation engine"
+
+# Standalone experiment; never part of published package builds.
+[workspace]
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = []
+wasm = ["dep:wasm-bindgen"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+wasm-bindgen = { version = "=0.2.126", optional = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+panic = "abort"
+strip = "symbols"

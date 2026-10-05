@@ -1,0 +1,64 @@
+name: Rust canonical spike
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - crates/docx-canonical-spike/**
+      - .github/workflows/rust-canonical-spike.yml
+permissions:
+  contents: read
+concurrency:
+  group: rust-canonical-spike-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  differential-and-benchmark:
+    if: github.head_ref == 'spike/rust-canonical-core' || github.ref == 'refs/heads/spike/rust-canonical-core'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: rustup show active-toolchain && rustup target add wasm32-unknown-unknown
+      - run: cargo fmt --manifest-path crates/docx-canonical-spike/Cargo.toml --check
+      - run: git fetch --depth=1 origin 617c0f4703a6cf43adb7ecda34366c29b93cc60f
+      - run: bun install --frozen-lockfile
+      - run: bun crates/docx-canonical-spike/tests/prepare-comment-oracle.ts
+      - run: nice -n 10 cargo install wasm-bindgen-cli --version 0.2.126 --locked
+      - run: bunx playwright install --with-deps chromium
+      - name: Build and validate isolated native and browser arms
+        run: bun crates/docx-canonical-spike/bench/prepare.ts
+        env:
+          RUST_SPIKE_PROGRESS_DIR: ${{ runner.temp }}/rust-spike
+      - name: Full generator coverage and mismatch evidence
+        run: bun crates/docx-canonical-spike/tests/differential-report.ts
+        env:
+          RUST_SPIKE_PROGRESS_DIR: ${{ runner.temp }}/rust-spike
+      - name: Generated comparison
+        run: bun test crates/docx-canonical-spike/tests/native-differential.test.ts crates/docx-canonical-spike/tests/harness-codec.test.ts crates/docx-canonical-spike/tests/comment-differential.test.ts packages/core/src/__tests__/batchOverlapGenerators.test.ts
+      - name: Harness and generated binding types
+        run: bun scripts/tsc-native.ts --noEmit -p crates/docx-canonical-spike/tsconfig.json
+      - name: Portable kernel gate
+        run: nice -n 10 bun run check:docx-kernel
+      - name: Verify browser fixtures without taking measurements
+        run: bun crates/docx-canonical-spike/bench/run.ts
+        env:
+          RUST_SPIKE_BENCH_MODE: validate
+          RUST_SPIKE_PROGRESS_DIR: ${{ runner.temp }}/rust-spike
+      - name: Interleaved measurements on the same runner
+        run: bun crates/docx-canonical-spike/bench/run.ts
+        env:
+          RUST_SPIKE_BENCH_MODE: ci
+          RUST_SPIKE_PROGRESS_DIR: ${{ runner.temp }}/rust-spike
+      - name: Summarize measured samples
+        run: bun crates/docx-canonical-spike/bench/summarize.ts "$RUST_SPIKE_PROGRESS_DIR/ci-measurements.jsonl"
+        env:
+          RUST_SPIKE_PROGRESS_DIR: ${{ runner.temp }}/rust-spike
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: rust-canonical-spike-evidence
+          path: ${{ runner.temp }}/rust-spike

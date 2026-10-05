@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "/wasm/docx_canonical_spike.js": ["./target/wasm-bindgen-release/docx_canonical_spike.d.ts"]
+    }
+  },
+  "include": ["bench/**/*.ts", "tests/**/*.ts"]
+}
