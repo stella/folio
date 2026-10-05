@@ -446,6 +446,7 @@ const project = ({
   const paragraphs: ParagraphAddress[] = [];
   let failure: CanonicalSessionError | undefined;
   converted.value.forEach((node, offset, index) => {
+    if (failure !== undefined) return;
     const source = body.content.at(index);
     if (source?.type !== "paragraph" || source.paraId === undefined) {
       failure = new CanonicalSessionError({
@@ -464,6 +465,7 @@ const project = ({
       bookmarkMode: "paired" | "all" = "paired",
     ): void => {
       for (const run of content) {
+        if (failure !== undefined) return;
         if (run.type === "bookmarkStart" || run.type === "bookmarkEnd") {
           if (bookmarkMode === "all" || pairedBookmarkIds.has(run.id)) renderedSize += 1;
           const gaps = boundaries.at(-1) ?? panic("Missing canonical bookmark gap");
@@ -503,7 +505,14 @@ const project = ({
         }
         if (run.type !== "run") {
           const atom = node.nodeAt(renderedSize);
-          if (!atom?.isAtom) panic("Canonical source atom lost its projection");
+          if (!atom?.isAtom) {
+            failure = new CanonicalSessionError({
+              gap: CANONICAL_GAP.dispatch,
+              reason: "refused",
+              message: "The paragraph cannot be projected as plain text.",
+            });
+            return;
+          }
           text += "\uFFFC";
           renderedText += atom.textContent;
           renderedSize += atom.nodeSize;
@@ -518,6 +527,11 @@ const project = ({
               renderedSize += 1;
               boundaries.push([renderedSize]);
             }
+          } else if (child.type === "softHyphen" || child.type === "noBreakHyphen") {
+            text += "\uFFFC";
+            renderedText += child.type === "softHyphen" ? "\u00ad" : "\u2011";
+            renderedSize += 1;
+            boundaries.push([renderedSize]);
           } else if (child.type === "footnoteRef" || child.type === "endnoteRef") {
             text += "\uFFFC";
             renderedText += String(child.id);
@@ -533,7 +547,14 @@ const project = ({
             gaps.push(renderedSize);
           } else {
             const atom = node.nodeAt(renderedSize);
-            if (!atom?.isAtom) panic("Canonical run atom lost its projection");
+            if (!atom?.isAtom) {
+              failure = new CanonicalSessionError({
+                gap: CANONICAL_GAP.dispatch,
+                reason: "refused",
+                message: "The paragraph cannot be projected as plain text.",
+              });
+              return;
+            }
             text += "\uFFFC";
             renderedText += atom.textContent;
             renderedSize += atom.nodeSize;
@@ -543,6 +564,7 @@ const project = ({
       }
     };
     appendContent(source.content);
+    if (failure !== undefined) return;
     if (
       node.type.name !== "paragraph" ||
       node.attrs["paraId"] !== source.paraId ||
