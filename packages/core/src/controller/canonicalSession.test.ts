@@ -1434,15 +1434,29 @@ describe("canonical tracked input", () => {
           for (const resolution of ["accept", "reject"] as const) {
             const resolved = createCanonicalSession(suggested).unwrap();
             let state = stateFor(resolved);
-            state = accept(
-              state,
-              resolved.prepareResolve(state, { revisionIds: [...revisions], resolution }).unwrap(),
-            );
+            const beforeResolution = resolved.document;
+            const beforeState = state;
+            const beforeVersion = resolved.version;
+            const prepared = resolved.prepareResolve(state, {
+              revisionIds: [...revisions],
+              resolution,
+            });
+            if (prepared.isErr()) {
+              // Same-author insertions can all be cancelled before review begins.
+              expect(prepared.error.reason).toBe("noChange");
+              expect(revisions.size).toBe(0);
+              expect(resolved.document).toBe(beforeResolution);
+              expect(state).toBe(beforeState);
+              expect(resolved.version).toBe(beforeVersion);
+              expect(resolved.canUndo).toBe(false);
+              expect(resolved.canRedo).toBe(false);
+            } else state = accept(state, prepared.value);
             const expected = resolution === "accept" ? direct.document : snapshots.at(0);
             if (expected === undefined) panic("The resolution oracle lost its baseline.");
             expect(canonicalReviewBlocks(resolved.document.package.document.content)).toEqual(
               canonicalReviewBlocks(expected.package.document.content),
             );
+            if (prepared.isErr()) continue;
             state = accept(state, resolved.prepareUndo(state).unwrap());
             expect(resolved.document).toStrictEqual(suggested);
             state = accept(state, resolved.prepareRedo(state).unwrap());
