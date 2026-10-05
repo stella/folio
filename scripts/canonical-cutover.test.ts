@@ -8,6 +8,7 @@ import {
 } from "../packages/core/src/types/canonicalCapabilities";
 import {
   inspectCanonicalSources,
+  PUBLIC_OPERATION_SOURCE_GAPS,
   checkCanonicalBaseline,
   canonicalCutoverDocs,
 } from "./lib/canonical-cutover";
@@ -221,8 +222,9 @@ describe("canonical cutover guard", () => {
     expect([...new Set([...mutationFixtures.map(({ gap }) => gap), ...publicGaps])].sort()).toEqual(
       mutationSources.map(([id]) => id).sort(),
     );
-    const markers = publicGaps.map((gap) => `// canonical-gap: ${gap}`).join("\n");
-    for (const removed of publicGaps) {
+    const sourceGaps = [...new Set([...publicGaps, ...PUBLIC_OPERATION_SOURCE_GAPS])];
+    const markers = sourceGaps.map((gap) => `// canonical-gap: ${gap}`).join("\n");
+    for (const removed of sourceGaps) {
       const fixture =
         markers
           .split("\n")

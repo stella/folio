@@ -3317,6 +3317,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           };
         }
 
+        const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations({
+          snapshot,
+          batch,
+          author: operationAuthor,
+        });
+        if (canonical) return canonical;
         const existingUndoEntry = documentOperationUndoEntriesRef.current.at(-1);
         if (
           existingUndoEntry &&
@@ -3379,6 +3385,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         return result;
       },
       undoDocumentOperations: (undoHandle): FolioDocumentOperationUndoResult => {
+        const canonical = getCanonicalApi()?.undoCanonicalDocumentOperations(undoHandle);
+        if (canonical) return canonical;
         const entries = documentOperationUndoEntriesRef.current;
         const entryIndex = entries.findIndex(
           (entry) =>
@@ -3433,6 +3441,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             })),
           };
         }
+
+        const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations({
+          snapshot,
+          batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
+          author: operationAuthor,
+        });
+        if (canonical) return canonical;
 
         const createdComments: Comment[] = [];
         const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
@@ -3690,6 +3705,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           apply: (record, snapshot) => {
             const view = pagedEditorRef.current?.getView();
             if (!view) return { applied: [], skipped: [] };
+            const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations({
+              snapshot,
+              batch: {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                operations: [record.operation],
+                mode: "suggested",
+              },
+              author: record.author,
+            });
+            if (canonical) return canonical;
             const createdComments: Comment[] = [];
             const result = applyFolioDocumentOperations({
               view,
