@@ -1,3 +1,4 @@
+import type {} from "./browserTestBridge";
 import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
 import { expect, test, type Page } from "@playwright/test";
@@ -42,7 +43,6 @@ declare global {
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const INPUT_TRACE = browserInputTraceArbitrary();
-const PAINTED_TARGET_MODULE = `/@fs${new URL("./browserPaintedTargets.ts", import.meta.url).pathname}`;
 
 type Block = {
   kind: string;
@@ -105,14 +105,12 @@ const load = async (page: Page, bytes: ArrayBuffer, baseline: Block[], suggestin
 };
 
 const selectTableTarget = async (page: Page) => {
-  const target = await page.evaluate(async (moduleUrl) => {
-    const { resolvePaintedTableTarget }: typeof import("./browserPaintedTargets") = await import(
-      moduleUrl
-    );
+  const target = await page.evaluate(() => {
+    const bridge = globalThis.__folioBrowserTestBridge;
     const ref = globalThis.__folioPlayground?.getEditorRef();
-    if (!ref) throw new Error("browser editor unavailable");
-    return resolvePaintedTableTarget(ref);
-  }, PAINTED_TARGET_MODULE);
+    if (!bridge || !ref) throw new Error("bundled browser editor bridge unavailable");
+    return bridge.resolvePaintedTableTarget(ref);
+  });
   if (target.type === "absent") return false;
   await page.mouse.move(target.from.x, target.from.y);
   await page.mouse.down();
@@ -144,17 +142,12 @@ const selectTableTarget = async (page: Page) => {
 
 const selectTarget = async (page: Page, target: BrowserDragTarget) => {
   if (target === "table") return selectTableTarget(page);
-  const painted = await page.evaluate(
-    async ({ moduleUrl, wanted }) => {
-      const { resolvePaintedDragTarget }: typeof import("./browserPaintedTargets") = await import(
-        moduleUrl
-      );
-      const ref = globalThis.__folioPlayground?.getEditorRef();
-      if (!ref) throw new Error("browser editor unavailable");
-      return resolvePaintedDragTarget(ref, wanted);
-    },
-    { moduleUrl: PAINTED_TARGET_MODULE, wanted: target },
-  );
+  const painted = await page.evaluate((wanted) => {
+    const bridge = globalThis.__folioBrowserTestBridge;
+    const ref = globalThis.__folioPlayground?.getEditorRef();
+    if (!bridge || !ref) throw new Error("bundled browser editor bridge unavailable");
+    return bridge.resolvePaintedDragTarget(ref, wanted);
+  }, target);
   if (painted.type === "absent") return false;
   const { positions } = painted;
   expect(positions.to).toBeGreaterThan(positions.from);

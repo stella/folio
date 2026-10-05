@@ -13,7 +13,7 @@ import { createInterleavingSuggest } from "./interleavingBridge";
 // server-barrel or node: import must fail before the browser waits for a global.
 test("interleaving bridge bundles without Node-only dependencies", async () => {
   const result = await Bun.build({
-    entrypoints: [path.join(import.meta.dir, "interleavingBridge.ts")],
+    entrypoints: [path.join(import.meta.dir, "browserTestBridge.ts")],
     target: "browser",
     write: false,
   });
