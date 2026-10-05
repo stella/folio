@@ -52,6 +52,7 @@ import { CONTAINER_CHILDREN } from "../containerChildren.gen";
 import {
   getParagraphPropertySource,
   paragraphPropertySourceMatchesEmission,
+  paragraphFormattingWithAuthoredIndentation,
 } from "../paragraphPropertySource";
 import { fieldStateAttributes } from "../fieldState";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
@@ -100,6 +101,7 @@ type SerializeParagraphFormattingOptions = {
   propertyChanges?: ParagraphPropertyChange[] | undefined;
   paragraphMarkChange?: ParagraphMarkChange | undefined;
   propertySource?: ParagraphPropertySource | undefined;
+  sourceParagraph?: Paragraph | undefined;
   sectionProperties?: SectionProperties | undefined;
 };
 
@@ -429,6 +431,7 @@ const serializeParagraphFormattingWithOptions = (
     propertyChanges,
     paragraphMarkChange,
     propertySource,
+    sourceParagraph,
     sectionProperties,
   }: SerializeParagraphFormattingOptions = {},
 ): string => {
@@ -468,7 +471,9 @@ const serializeParagraphFormattingWithOptions = (
   }
 
   return serializeParagraphPropertySet({
-    formatting,
+    formatting: sourceParagraph
+      ? paragraphFormattingWithAuthoredIndentation(sourceParagraph)
+      : formatting,
     markPropertiesPrefixXml: paragraphMarkXml,
     sectionPropertiesXml,
     propertyChangesXml,
@@ -1168,6 +1173,7 @@ export function serializeParagraph(paragraph: Paragraph): string {
       propertyChanges: paragraph.propertyChanges,
       paragraphMarkChange: paragraph.pPrMark,
       propertySource: getParagraphPropertySource(paragraph),
+      sourceParagraph: paragraph,
       sectionProperties: paragraph.sectionProperties,
     }),
   );

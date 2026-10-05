@@ -1,8 +1,17 @@
 import { expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import { createCanonicalEditorHarness } from "../../../../test/canonicalEditorHarness";
-import { modelMarkdown, readBack, summarizeEffectiveParagraphs } from "../__tests__/editorHarness";
+import {
+  createCanonicalEditorHarness,
+  saveCanonicalHarnessDocument,
+} from "../../../../test/canonicalEditorHarness";
+import {
+  modelMarkdown,
+  readBack,
+  summarizeEffectiveParagraphs,
+  summarizeState,
+  parseShapeDocument,
+} from "../__tests__/editorHarness";
 import { createEmptyDocument } from "../utils/createDocument";
 import { createDocx } from "../docx/rezip";
 import { findChildByNamespaceUri, parseXmlDocument } from "../docx/xmlParser";
@@ -195,6 +204,36 @@ test.each(INAPPLICABLE_CASES)(
       expect(driver.state.selection.toJSON()).toEqual(selection);
       expect(driver.history.canUndo()).toBe(false);
       expect(driver.history.canRedo()).toBe(false);
+    } finally {
+      driver.dispose();
+    }
+  },
+);
+
+// The original list oracle compared effective layout but omitted reviewer direct formatting.
+test.each(["editing", "suggesting"] as const)(
+  "unrelated list formatting preserves authored indentation after save in %s",
+  async (mode) => {
+    const { shapeArrayBuffer } = await import("../__tests__/documentShapes");
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer("single-decimal-list")),
+    );
+    const driver = createCanonicalEditorHarness(source, mode);
+    try {
+      const positions: number[] = [];
+      driver.state.doc.forEach((node, offset) => {
+        if (node.attrs.numPr?.kind === "reference") positions.push(offset + 1);
+      });
+      for (const position of positions) {
+        driver.history.setSelection(position, position);
+        expect(driver.execute(driver.commandManager.requireCommand("setAlignment")("center"))).toBe(
+          true,
+        );
+        const live = summarizeState(driver.state);
+        const back = await readBack((await saveCanonicalHarnessDocument(driver.snapshot())).bytes);
+        expect(back.summary).toEqual(live);
+        expect(back.effective).toEqual(summarizeEffectiveParagraphs(driver.state));
+      }
     } finally {
       driver.dispose();
     }

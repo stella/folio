@@ -51,6 +51,7 @@ import {
   copyDocumentParagraphPropertySources,
   copyParagraphPropertyCapture,
   copyParagraphPropertySource,
+  paragraphFormattingWithAuthoredIndentation,
   decodeTableCellParagraphSourcePayload,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
@@ -417,6 +418,15 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
 
   const baseFormatting = baseParagraph.formatting;
   if (!baseFormatting) {
+    return;
+  }
+  if (
+    canonicalJson(modelParagraphFormattingEmission(paragraph.formatting)) ===
+    canonicalJson(
+      modelParagraphFormattingEmission(paragraphFormattingWithAuthoredIndentation(baseParagraph)),
+    )
+  ) {
+    paragraph.formatting = { ...baseFormatting };
     return;
   }
   const { numPr, numPrFromStyle } = baseFormatting;

@@ -1078,7 +1078,8 @@ const FIXTURES: readonly Pinned[] = [
   {
     path: "tests/visual/fixtures/sample.docx",
     projection: {
-      digest: "f618317f5853f08dd3c58310f3fc8475ba14c8675e4c35368f2f9767592959e2",
+      // List-level indentation is resolved provenance, not authored paragraph formatting.
+      digest: "e356df8a8c8776368a27085d45e3aa813adcafb7ce2f01ef0f6436a5d7449271",
       length: 90_446,
     },
     saved: { file: "sample.document.xml" },

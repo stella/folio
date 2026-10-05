@@ -744,7 +744,7 @@ function convertParagraph(
     styleResolver,
     tableParagraphOverlay,
   );
-  attrs._originalFormatting = directFormatting ?? null;
+  attrs._originalFormatting = directFormatting;
   const numPr = mergeParagraphNumbering(
     attrs.numPrFromStyle ?? undefined,
     attrs.numPr ?? undefined,
@@ -778,7 +778,9 @@ function convertParagraph(
       if (typeof inheritedIndent.hangingIndent === "boolean") {
         resolvedFormatting.hangingIndent = inheritedIndent.hangingIndent;
       }
-      attrs._resolvedFormatting = resolvedFormatting;
+      if (Object.keys(resolvedFormatting).length > 0) {
+        attrs._resolvedFormatting = resolvedFormatting;
+      }
     }
   }
   reportParagraphPageBreakProjection({
