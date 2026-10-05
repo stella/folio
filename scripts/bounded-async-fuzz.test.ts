@@ -1,6 +1,9 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
 import { BROWSER_FUZZ_BUDGET, checkWithBoundedShrink } from "../test/bounded-async-fuzz";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 test("browser fuzz budgets leave time for setup and durable reporting", () => {
   expect(BROWSER_FUZZ_BUDGET.discoveryMs + BROWSER_FUZZ_BUDGET.shrinkMs).toBeLessThan(
@@ -68,11 +71,11 @@ test("a replay mismatch is a harness failure after retaining the original findin
 
 test("non-root initial paths preserve discovery and minimized replay witnesses", async () => {
   const arbitrary = fc.array(fc.integer(), { minLength: 1, maxLength: 8 });
-  const seed = 347;
   const baseline = await fc.check(
     fc.asyncProperty(arbitrary, async () => false),
-    { seed, numRuns: 1 },
+    propertyConfig({ seed: 347, numRuns: 1 }),
   );
+  const seed = baseline.seed;
   if (baseline.counterexamplePath === null) throw new TypeError("Missing generated replay path");
   const result = await checkWithBoundedShrink({
     arbitrary,
