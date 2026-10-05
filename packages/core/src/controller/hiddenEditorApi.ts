@@ -19,6 +19,12 @@ import type { EditorView } from "prosemirror-view";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document } from "../types/document";
+import type {
+  FolioDocumentOperationResult,
+  FolioDocumentOperationUndoHandle,
+  FolioDocumentOperationUndoResult,
+} from "../document-operations";
+import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
 import type { CanonicalSessionMode } from "./canonicalSession";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
 
@@ -61,6 +67,12 @@ export type HiddenEditorApi = {
   getCanonicalStorySelection: (story: OpStory) => { anchor: number; head: number } | null;
   getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
   replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
+  applyCanonicalDocumentOperations: (
+    options: CanonicalPublicOperationOptions,
+  ) => FolioDocumentOperationResult | null;
+  undoCanonicalDocumentOperations: (
+    handle: FolioDocumentOperationUndoHandle,
+  ) => FolioDocumentOperationUndoResult | null;
   /** Focus the hidden editor */
   focus: () => void;
   /** Blur the hidden editor */
@@ -105,6 +117,8 @@ export type HiddenEditorApiDeps = {
     | "replaceCanonicalStoryText"
     | "applyCanonicalStoryHistory"
     | "getCanonicalStorySelection"
+    | "applyCanonicalDocumentOperations"
+    | "undoCanonicalDocumentOperations"
   >;
   isDestroying: () => boolean;
   ensureView: () => void;
@@ -191,6 +205,11 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       deps.canonicalOperations?.getCanonicalStoryProjection(story) ?? null,
     replaceCanonicalStoryText: (options) =>
       deps.canonicalOperations?.replaceCanonicalStoryText(options) ?? false,
+
+    applyCanonicalDocumentOperations: (options) =>
+      deps.canonicalOperations?.applyCanonicalDocumentOperations(options) ?? null,
+    undoCanonicalDocumentOperations: (handle) =>
+      deps.canonicalOperations?.undoCanonicalDocumentOperations(handle) ?? null,
 
     focus: () => {
       const view = deps.getView();
