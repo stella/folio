@@ -420,14 +420,26 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
   if (!baseFormatting) {
     return;
   }
-  if (
-    canonicalJson(modelParagraphFormattingEmission(paragraph.formatting)) ===
-    canonicalJson(
-      modelParagraphFormattingEmission(paragraphFormattingWithAuthoredIndentation(baseParagraph)),
-    )
-  ) {
-    paragraph.formatting = { ...baseFormatting };
-    return;
+  const hasIndentation =
+    baseFormatting.indentLeft !== undefined ||
+    baseFormatting.indentRight !== undefined ||
+    baseFormatting.indentFirstLine !== undefined ||
+    baseFormatting.hangingIndent !== undefined;
+  if (hasIndentation) {
+    const authored = paragraphFormattingWithAuthoredIndentation(baseParagraph);
+    const inheritedIndentation =
+      authored?.indentLeft !== baseFormatting.indentLeft ||
+      authored?.indentRight !== baseFormatting.indentRight ||
+      authored?.indentFirstLine !== baseFormatting.indentFirstLine ||
+      authored?.hangingIndent !== baseFormatting.hangingIndent;
+    if (
+      inheritedIndentation &&
+      canonicalJson(modelParagraphFormattingEmission(paragraph.formatting)) ===
+        canonicalJson(modelParagraphFormattingEmission(authored))
+    ) {
+      paragraph.formatting = { ...baseFormatting };
+      return;
+    }
   }
   const { numPr, numPrFromStyle } = baseFormatting;
   if (!numPr || !numPrFromStyle || !isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)) {
