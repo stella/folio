@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs/promises";
 import config, { PLAYGROUND_SERVERS, PLAYGROUND_SERVER_MODE } from "../../playwright.config";
-import reactPlayground from "../../packages/playground/package.json";
-import vuePlayground from "../../packages/playground-vue/package.json";
+import reactPlayground from "../../packages/playground/package.json" with { type: "json" };
+import vuePlayground from "../../packages/playground-vue/package.json" with { type: "json" };
 
 const servers = PLAYGROUND_SERVERS;
 if (!Array.isArray(servers)) throw new TypeError("Expected both playground servers.");
