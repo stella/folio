@@ -73,6 +73,14 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     // untouched inline atoms remain part of the exact reconstruction below.
     const before = previous.textBetween(0, previous.size, "", "\uFFFC");
     const after = next.content.textBetween(0, next.content.size, "", "\uFFFC");
+    // Node diffs also report mark-only changes (a native rewrite can drop run
+    // identity). Narrow to the text change so the reconstruction refuses them
+    // instead of committing a same-text replacement.
+    while (from < oldEnd && from < newEnd && before[from] === after[from]) from++;
+    while (oldEnd > from && newEnd > from && before[oldEnd - 1] === after[newEnd - 1]) {
+      oldEnd--;
+      newEnd--;
+    }
     while (splitsSurrogatePair(before, from) || splitsSurrogatePair(after, from)) from--;
     while (splitsSurrogatePair(before, oldEnd) || splitsSurrogatePair(after, newEnd)) {
       oldEnd++;
