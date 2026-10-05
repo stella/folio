@@ -14,8 +14,7 @@ import { closeHistory } from "prosemirror-history";
 const { createApp, defineComponent, h, ref, shallowRef, nextTick } = await import("vue");
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { validateDocxPackage } from "@stll/docx-core";
-import { createDocx } from "@stll/folio-core/docx/rezip";
+import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { CanonicalSessionError } from "@stll/folio-core/controller/canonicalSession";
 import { CanonicalDocxInputError } from "@stll/folio-core/docx/canonicalSessionInput";
@@ -401,7 +400,7 @@ test("Vue canonical comment projection follows controlled edits, undo, callbacks
       const saved = await adapter.save({ selective });
       if (!saved) panic("Expected saved canonical comments");
       const buffer = await saved.arrayBuffer();
-      expect(await validateDocxPackage(new Uint8Array(buffer))).toEqual({ valid: true });
+      expect((await validateDocx(buffer)).valid).toBe(true);
       const reopened = await parseDocx(buffer, { preloadFonts: false, detectVariables: false });
       expect(reopened.package.document.comments).toEqual(undone);
       expect(describePackageDifferences(expected, reopened)).toEqual({ messages: [], omitted: 0 });

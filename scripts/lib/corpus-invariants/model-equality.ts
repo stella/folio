@@ -101,6 +101,12 @@ const normalizeValue = (value: unknown): unknown => {
   return value;
 };
 
+const normalizeInternalPartTarget = (target: string): string => {
+  const fragment = target.indexOf("#");
+  if (fragment < 0) return target.toLowerCase();
+  return target.slice(0, fragment).toLowerCase() + target.slice(fragment);
+};
+
 export const normalizeDocumentPackage = (document: Document): unknown => {
   if (
     typeof document !== "object" ||
@@ -111,7 +117,19 @@ export const normalizeDocumentPackage = (document: Document): unknown => {
     !Object.hasOwn(document.package, "document")
   )
     panic("Model equality requires Document inputs containing a document package.");
-  return normalizeValue(document.package);
+  const relationships = document.package.relationships;
+  if (!relationships) return normalizeValue(document.package);
+  // Internal targets identify OPC parts, whose names compare without casing.
+  // External URLs and authored text retain their exact spelling.
+  const normalizedRelationships = new Map(relationships);
+  for (const [id, relationship] of relationships) {
+    if (relationship.targetMode === "External") continue;
+    normalizedRelationships.set(id, {
+      ...relationship,
+      target: normalizeInternalPartTarget(relationship.target),
+    });
+  }
+  return normalizeValue({ ...document.package, relationships: normalizedRelationships });
 };
 
 /**

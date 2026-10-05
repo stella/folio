@@ -11,8 +11,7 @@ import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { validateDocxPackage } from "@stll/docx-core";
-import { createDocx } from "@stll/folio-core/docx/rezip";
+import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import type { Document } from "@stll/folio-core/types/document";
 import type { Comment } from "@stll/folio-core/types/content";
@@ -25,7 +24,6 @@ import {
 import * as headerFooterHook from "./hooks/useHeaderFooterEditor";
 import { reviewDifferences } from "../../../../test/reviewDifferences";
 import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
-import { CANONICAL_GAP } from "@stll/folio-core/types/canonicalCapabilities";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
 import {
@@ -267,7 +265,7 @@ test("canonical comments publish controlled updates, undo, and save from the pac
       await act(async () => {
         const saved = await editor.current?.save({ selective });
         if (!saved) panic("Expected saved canonical comments");
-        expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
+        expect((await validateDocx(saved)).valid).toBe(true);
         const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
         expect(reopened.package.document.comments).toEqual(undoneComments);
         expect(describePackageDifferences(expected, reopened)).toEqual({
@@ -277,13 +275,7 @@ test("canonical comments publish controlled updates, undo, and save from the pac
       });
       if (!selective) expect(errors).toEqual([]);
     }
-    expect(errors).toHaveLength(1);
-    for (const error of errors) {
-      expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
-      if (!(error instanceof CanonicalSaveDiagnosticError)) panic("Expected typed save diagnostic");
-      expect(error.gap).toBe(CANONICAL_GAP.save);
-      expect(error.diagnostic).toEqual({ type: "selectiveSaveRefused", part: "word/document.xml" });
-    }
+    expect(errors).toEqual([]);
   } finally {
     await act(async () => root.unmount());
     container.remove();

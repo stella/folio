@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Document } from "@stll/folio-core/types/document";
+import { RELATIONSHIP_TYPES } from "@stll/folio-core/docx/relsParser";
 
 import {
   describeChange,
@@ -40,6 +41,44 @@ describe("describePackageDifferences", () => {
 
   test("two identical packages differ in nothing", () => {
     expect(messagesBetween([{ text: "a" }], [{ text: "a" }])).toEqual([]);
+  });
+
+  test("internal OPC target casing is equivalent while different parts and URLs remain distinct", () => {
+    const withTarget = (target: string, targetMode: "Internal" | "External"): Document => ({
+      package: {
+        document: { content: [] },
+        relationships: new Map([
+          ["rId1", { id: "rId1", type: RELATIONSHIP_TYPES.comments, target, targetMode }],
+        ]),
+      },
+    });
+    for (const target of ["comments.xml", "Comments.xml", "COMMENTS.XML"]) {
+      expect(
+        describePackageDifferences(
+          withTarget("comments.xml", "Internal"),
+          withTarget(target, "Internal"),
+        ),
+      ).toEqual({ messages: [], omitted: 0 });
+    }
+    expect(
+      describePackageDifferences(
+        withTarget("comments.xml", "Internal"),
+        withTarget("other.xml", "Internal"),
+      ).messages,
+    ).not.toEqual([]);
+    expect(
+      describePackageDifferences(
+        withTarget("https://example.test/A", "External"),
+        withTarget("https://example.test/a", "External"),
+      ).messages,
+    ).not.toEqual([]);
+    expect(
+      describePackageDifferences(
+        withTarget("comments.xml#A", "Internal"),
+        withTarget("comments.xml#a", "Internal"),
+      ).messages,
+    ).not.toEqual([]);
+    expect(messagesBetween([{ text: "A" }], [{ text: "a" }])).not.toEqual([]);
   });
 
   test("a changed field is reported with its path and both values", () => {

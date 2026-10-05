@@ -108,6 +108,7 @@ const openCommentSource = async (path: (typeof COMMENTS_SOURCE_PATHS)[number]) =
 
 const assertCanonicalCommentSave = async (session: ReturnType<typeof setup>["session"]) => {
   const snapshot = session.captureSaveSnapshot();
+  expect(snapshot.structure).toBe("stable");
   for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
     const saved = await serializeCanonicalSave({
       snapshot,
@@ -139,6 +140,7 @@ test("generated point/range comment histories preserve exact undo, projection an
         const editor = setup(source.document);
         const original = editor.session.document;
         editor.apply({ type: "delete", id: source.id });
+        expect(editor.session.captureSaveSnapshot().structure).toBe("stable");
         const deletion = await serializeCanonicalSave({
           snapshot: editor.session.captureSaveSnapshot(),
           featureFlags: { selectiveSave: true },

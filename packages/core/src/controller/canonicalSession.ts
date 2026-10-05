@@ -117,6 +117,7 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
+      return true;
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
@@ -1519,13 +1520,7 @@ class CanonicalSession {
         ]) {
           for (const id of ids) this.saveTouched.add(id);
         }
-        if (
-          applied.value.touched.inserted.length > 0 ||
-          applied.value.touched.removed.length > 0 ||
-          ops.some(operationChangesPackage) ||
-          ops.some(operationChangesStructure)
-        )
-          this.saveStructure = "changed";
+        if (ops.some(operationChangesStructure)) this.saveStructure = "changed";
         this.currentVersion = baseVersion + 1;
         onPublish(applied.value.inverse, this.currentVersion);
         return Result.ok(undefined);
