@@ -442,6 +442,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         })),
       };
     }
+    const canonical = opts.editor.applyCanonicalDocumentOperations({
+      snapshot,
+      batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
+      author: operationAuthor,
+    });
+    if (canonical) return canonical;
     const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
     // Through the document-operation applier, like the batch path, so a
     // result the save-time check refuses never reaches the editor.
@@ -548,6 +554,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           undoHandle: null,
         };
       }
+      const canonical = opts.editor.applyCanonicalDocumentOperations({
+        snapshot,
+        batch,
+        author: operationAuthor,
+      });
+      if (canonical) return canonical;
       const existingUndoEntry = documentOperationUndoEntries.at(-1);
       if (
         existingUndoEntry &&
@@ -602,6 +614,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       return result;
     },
     undoDocumentOperations: (undoHandle): FolioDocumentOperationUndoResult => {
+      const canonical = opts.editor.undoCanonicalDocumentOperations(undoHandle);
+      if (canonical) return canonical;
       const entryIndex = documentOperationUndoEntries.findIndex(
         (entry) =>
           entry.undoHandle.type === undoHandle.type && entry.undoHandle.id === undoHandle.id,
