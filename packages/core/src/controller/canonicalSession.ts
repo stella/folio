@@ -130,6 +130,11 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+    case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+    case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+    case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+    case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
       return false;
     default: {
       const unreachable: never = op;

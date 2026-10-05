@@ -1454,7 +1454,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         }
         return {
           status: "applied",
-          comments: session.document.package.document.comments ?? [],
+          comments: session.getCommittedComments(),
           ...(compiled.value.commentId === undefined
             ? {}
             : { commentId: compiled.value.commentId }),

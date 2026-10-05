@@ -10,8 +10,10 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import { IntlProvider } from "use-intl";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { createCanonicalSession } from "@stll/folio-core/controller/canonicalSession";
+import { createDocx } from "@stll/folio-core/docx/rezip";
+import { fromMarkdown } from "@stll/folio-core/markdown";
 import { schema } from "@stll/folio-core/prosemirror/schema";
-import { shapeArrayBuffer } from "../../../core/src/__tests__/documentShapes";
+import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { assertExactModel } from "../../../../test/exactModel";
 import type { Comment } from "@stll/folio-core/types/content";
 import { DocxEditor } from "./DocxEditor";
@@ -33,6 +35,81 @@ const SHAPES = ["header-footer", "mixed-lists", "single-decimal-list", "image"] 
 const MODES = ["editing", "suggesting"] as const;
 const COMPLETIONS = ["cancel", "commit"] as const;
 
+const createShapeBuffer = async (shape: (typeof SHAPES)[number]) => {
+  if (shape === "mixed-lists" || shape === "single-decimal-list") {
+    const markdown =
+      shape === "mixed-lists"
+        ? "Intro paragraph.\n\n1. Alpha\n2. Beta\n\nPlain text.\n\n- Gamma\n- Delta\n\nTail."
+        : "Intro paragraph.\n\n1. Alpha\n2. Beta\n\nPlain text.\n\nTail.";
+    return createDocx(fromMarkdown(markdown));
+  }
+
+  const document = createEmptyDocument({ initialText: "Body paragraph under a header." });
+  if (shape === "header-footer") {
+    document.package.headers = new Map([
+      [
+        "rIdHeader1",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "run", content: [{ type: "text", text: "Header text" }] }],
+            },
+          ],
+        },
+      ],
+    ]);
+    document.package.footers = new Map([
+      [
+        "rIdFooter1",
+        {
+          type: "footer",
+          hdrFtrType: "default",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "run", content: [{ type: "text", text: "Footer text" }] }],
+            },
+          ],
+        },
+      ],
+    ]);
+    document.package.document.finalSectionProperties = {
+      ...document.package.document.finalSectionProperties,
+      headerReferences: [{ type: "default", rId: "rIdHeader1" }],
+      footerReferences: [{ type: "default", rId: "rIdFooter1" }],
+    };
+  } else {
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "run",
+            content: [
+              { type: "text", text: "Text before the picture" },
+              {
+                type: "drawing",
+                image: {
+                  type: "image",
+                  src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+                  mimeType: "image/png",
+                  size: { width: 9_525, height: 9_525 },
+                  wrap: { type: "inline" },
+                },
+              },
+              { type: "text", text: " and after it." },
+            ],
+          },
+        ],
+      },
+    ];
+  }
+  return createDocx(document);
+};
+
 for (const shape of SHAPES) {
   for (const mode of MODES) {
     for (const completion of COMPLETIONS) {
@@ -41,7 +118,7 @@ for (const shape of SHAPES) {
         document.body.append(container);
         const root = createRoot(container);
         const editor = createRef<DocxEditorRef>();
-        const bytes = await shapeArrayBuffer(shape);
+        const bytes = await createShapeBuffer(shape);
         const messages = getFolioMessages("en");
         const observer = createErrorObserver();
         const controls: { comments: Comment[]; showToolbar: boolean } = {
