@@ -20,5 +20,13 @@
       "note": "All resource replacement kinds must seed valid modeled media so the refusal and undo save oracles execute.",
       "date": "2026-10-05"
     }
+  ],
+  "generated browser-shaped paragraph splits save strict XML through history replay": [
+    {
+      "seed": 20261023,
+      "path": "0",
+      "note": "Retained paragraph splits through undo/redo must validate strict package XML: re-wrapping self-bound canonical replay paragraphs duplicated xmlns and compatibility attributes. Previous save generator only rejoined splits and checked permissive parsing.",
+      "date": "2026-10-05"
+    }
   ]
 }
