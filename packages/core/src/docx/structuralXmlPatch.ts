@@ -3,7 +3,7 @@ import { canonicalJson } from "../utils/canonicalJson";
 import { parseDocumentBody } from "./documentParser";
 import { paraIdAttribute } from "./paraIdAttribute";
 import { spliceSupportsRootNamespaces, spliceXml, type XmlSplice } from "./selectiveXmlPatch";
-import { readRootNamespaceBindings, serializePartElement } from "./serializer/partNamespaces";
+import { materializeReplayFragment } from "./storyBlockReplay";
 import {
   getChildElements,
   getLocalName,
@@ -126,28 +126,6 @@ const paragraphIds = (root: XmlElement): Set<string> | null => {
   return ids;
 };
 
-type ParagraphFragmentOptions = {
-  xml: string;
-  block: BodyBlock;
-  bindings: ReadonlyMap<string, string>;
-};
-
-/** Bind fragment prefixes locally: the source root may use entirely different aliases. */
-const paragraphFragment = ({ xml, block, bindings }: ParagraphFragmentOptions): string => {
-  const fragment = xml.slice(block.start, block.end);
-  const openEnd = fragment.indexOf(">");
-  const name = block.element.name ?? "w:p";
-  const selfClosing = fragment[openEnd - 1] === "/";
-  return serializePartElement({
-    partPath: "word/document.xml",
-    rootName: name,
-    rootAttributes: fragment.slice(name.length + 1, selfClosing ? openEnd - 1 : openEnd).trim(),
-    baselinePrefixes: [],
-    sourceBindings: bindings,
-    body: selfClosing ? "" : fragment.slice(openEnd + 1, fragment.lastIndexOf("</")),
-  });
-};
-
 type StructuralPatchOptions = {
   originalXml: string;
   serializedXml: string;
@@ -221,9 +199,13 @@ export const buildStructuralDocumentPatch = ({
   const survivingAfter = [...after.keys()].filter((key) => before.has(key));
   if (canonicalJson(survivingBefore) !== canonicalJson(survivingAfter)) return null;
 
-  const bindings = readRootNamespaceBindings(serializedXml);
   const fragmentFor = (block: BodyBlock) =>
-    paragraphFragment({ xml: serializedXml, block, bindings });
+    materializeReplayFragment({
+      xml: serializedXml.slice(block.start, block.end),
+      element: block.element,
+      sourceNamespace: getNamespaceUri(source.root) ?? "",
+      generatedRoot: current.root,
+    });
   const splices: XmlSplice[] = [];
   for (const [key, block] of before) {
     if (!after.has(key)) splices.push({ start: block.start, end: block.end, newXml: "" });
@@ -234,7 +216,9 @@ export const buildStructuralDocumentPatch = ({
     if (!original) {
       const id = paraIdAttribute(block.element)?.toUpperCase();
       if (!id || allSourceIds.has(id)) return null;
-      pending.push(fragmentFor(block));
+      const fragment = fragmentFor(block);
+      if (fragment === null) return null;
+      pending.push(fragment);
       continue;
     }
     const id = paraIdAttribute(block.element)?.toUpperCase();
@@ -242,6 +226,7 @@ export const buildStructuralDocumentPatch = ({
       id !== undefined && changed.has(id)
         ? fragmentFor(block)
         : originalXml.slice(original.start, original.end);
+    if (replacement === null) return null;
     if (pending.length > 0 || replacement !== originalXml.slice(original.start, original.end)) {
       splices.push({
         start: original.start,

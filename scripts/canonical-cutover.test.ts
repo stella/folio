@@ -278,6 +278,29 @@ describe("canonical cutover guard", () => {
     expect(checkCanonicalBaseline({}, { "removed.ts": 1 })).toHaveLength(1);
   });
 
+  test("canonical save ownership rejects PM-derived signals and manufactured snapshots", () => {
+    expect(
+      inspectCanonicalSources([
+        {
+          file: "packages/core/src/docx/canonicalSave.ts",
+          source: "const ids = getChangedParagraphIds(state);",
+        },
+      ]).failures,
+    ).toContain(
+      "packages/core/src/docx/canonicalSave.ts: canonical serialization cannot derive authority from PM",
+    );
+    expect(
+      failuresOf("serializeCanonicalSave({ snapshot: { document: fromProseDoc(pm) } });"),
+    ).toContain(
+      "packages/react/src/fixture.tsx: canonical serialization requires a controller save snapshot",
+    );
+    expect(
+      failuresOf(
+        "const snapshot = editor.captureCanonicalSave(); serializeCanonicalSave({ snapshot });",
+      ),
+    ).toEqual([]);
+  });
+
   test("documentation derives its ids and sites from the same ledger", () => {
     const inspected = inspectCanonicalSources([source(selectors)]);
     const docs = canonicalCutoverDocs(inspected);

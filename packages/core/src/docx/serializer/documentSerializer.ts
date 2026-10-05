@@ -1,3 +1,6 @@
+import type { SaveDiagnosticOptions } from "../saveDiagnostics";
+import { getDocumentSourceBaseline } from "../headerFooterVerbatim";
+import { buildDocumentBlockReplay, canReplayDocumentSource } from "../storyBlockReplay";
 /**
  * Document Serializer - Serialize complete document.xml
  *
@@ -149,6 +152,10 @@ export function serializeDocumentBody(body: DocumentBody): string {
   return parts.join("");
 }
 
+// A cached validation is keyed by the private captured body, whose fingerprint
+// getDocumentSourceBaseline verifies before this cache can be consulted.
+const replayableDocumentSources = new WeakMap<DocumentBody, string>();
+
 /**
  * Serialize a complete Document to valid document.xml
  *
@@ -157,18 +164,43 @@ export function serializeDocumentBody(body: DocumentBody): string {
  *   prefix only the source document bound keeps its URI
  * @returns Complete XML string for document.xml
  */
+export type DocumentBodyAuthorityOptions = {
+  /** Canonical saves preserve trusted source blocks; default saves serialize the model. */
+  bodyAuthority?: "canonical" | "model" | undefined;
+};
+
 export function serializeDocument(
   doc: Document,
   sourceBindings?: ReadonlyMap<string, string>,
+  source?: SaveDiagnosticOptions & DocumentBodyAuthorityOptions & { xml?: string | undefined },
 ): string {
-  // Reset auto-incrementing image/shape ID counter for this serialization pass
+  // Reset for every pass, including complete source replay.
   resetAutoIdCounter();
+  const baseline =
+    source?.bodyAuthority === "canonical"
+      ? getDocumentSourceBaseline(doc)
+      : ({ type: "missing" } as const);
+  const sourceMatches =
+    baseline.type === "captured" && (source?.xml === undefined || source.xml === baseline.xml);
+  // Exact snapshots can replay the trusted part without generating or scanning XML.
+  // A different property order only misses this optimization; block replay still applies.
+  if (
+    baseline.type === "captured" &&
+    sourceMatches &&
+    JSON.stringify(doc.package.document) === baseline.fingerprint
+  ) {
+    if (replayableDocumentSources.get(baseline.body) === baseline.xml) return baseline.xml;
+    if (canReplayDocumentSource(baseline.xml, baseline.body)) {
+      replayableDocumentSources.set(baseline.body, baseline.xml);
+      return baseline.xml;
+    }
+  }
 
   const body =
     serializeDocumentBackground(doc.package.document.background) +
     `<w:body>${serializeDocumentBody(doc.package.document)}</w:body>`;
 
-  return (
+  const serializedXml =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     serializePartElement({
       partPath: "word/document.xml",
@@ -176,8 +208,19 @@ export function serializeDocument(
       baselinePrefixes: DOCUMENT_BASELINE_PREFIXES,
       sourceBindings,
       body,
-    })
-  );
+    });
+  if (baseline.type === "missing") return serializedXml;
+  if (baseline.type === "captured" && sourceMatches) {
+    const replay = buildDocumentBlockReplay({
+      sourceXml: baseline.xml,
+      baseline: baseline.body,
+      current: doc.package.document,
+      serializedXml,
+    });
+    if (replay !== null) return replay;
+  }
+  source?.onDiagnostic?.({ type: "sourceReplayMismatch", part: "word/document.xml" });
+  return serializedXml;
 }
 
 /**

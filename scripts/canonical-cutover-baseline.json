@@ -7,7 +7,7 @@
   "packages/react/src/components/hooks/useHeaderFooterEditor.ts": 3,
   "packages/react/src/paged-editor/PagedEditor.tsx": 15,
   "packages/vue/src/components/DocxEditor.vue": 5,
-  "packages/vue/src/composables/useDocxEditor.ts": 2,
+  "packages/vue/src/composables/useDocxEditor.ts": 1,
   "packages/vue/src/composables/useDocxEditorRefApi.ts": 4,
   "packages/vue/src/composables/usePagesPointer.ts": 4
 }
