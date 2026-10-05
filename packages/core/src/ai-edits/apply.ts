@@ -19,6 +19,7 @@ import {
 } from "../prosemirror/plugins/revisionIds";
 
 import type { NumberingMap } from "../docx/numberingParser";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { formattingEquals } from "../docx/runConsolidator";
 import {
   expectParagraphAttrs,
@@ -2361,6 +2362,13 @@ const isDeletedPPrMark = (value: unknown): boolean =>
   "kind" in value &&
   (value.kind === "del" || value.kind === "moveFrom");
 
+const pendingParagraphMarkPropertyRefusal = {
+  reason: "pendingParagraphMarkDeletion",
+  canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
+  message:
+    "Resolve the pending paragraph mark deletion before editing its properties, or provide mergedParagraphProperties on the merge operation for atomic intent.",
+} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
+
 const hasRevisionMarker = (value: unknown): boolean =>
   typeof value === "object" && value !== null && "revisionId" in value;
 
@@ -3673,6 +3681,9 @@ const applyFolioAIEditOperationsInternal = ({
       skipped.push({
         id: operation.id,
         reason: resolution.reason,
+        ...(resolution.canonicalRefusal !== undefined && {
+          canonicalRefusal: resolution.canonicalRefusal,
+        }),
         ...(resolution.message !== undefined && { message: resolution.message }),
       });
       continue;
@@ -5150,6 +5161,10 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         const blockPosition = mapped.pos;
+        if (isDeletedPPrMark(liveBlock.attrs["pPrMark"])) {
+          skipped.push({ id: item.operation.id, ...pendingParagraphMarkPropertyRefusal });
+          continue;
+        }
         const appliedProperties = applyBlockParagraphProperties({
           tr,
           position: blockPosition,
@@ -7446,6 +7461,9 @@ const resolveOperationTarget = ({
   }
 
   if (operation.type === "setBlockParagraphProperties") {
+    if (isDeletedPPrMark(blockNode.attrs["pPrMark"])) {
+      return { type: "skip", ...pendingParagraphMarkPropertyRefusal };
+    }
     return {
       type: "resolved",
       operation: { operation, from: blockFrom, to: blockTo, blockFrom, blockTo, blockNode },
@@ -7654,6 +7672,7 @@ type OperationResolutionSkip = {
   type: "skip";
   reason: FolioAIEditSkipReason;
   message?: string;
+  canonicalRefusal?: FolioAIEditSkippedOperation["canonicalRefusal"];
 };
 
 const resolveTextInCleanBlock = (

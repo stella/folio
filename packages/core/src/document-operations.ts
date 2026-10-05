@@ -1756,6 +1756,7 @@ const recoveryByReason = {
   missingNumbering: "refreshDocument",
   invalidResult: "refreshDocument",
   pendingDeletion: "resolveTrackedChange",
+  pendingParagraphMarkDeletion: "resolveTrackedChange",
 } as const satisfies Record<FolioAIEditSkippedOperation["reason"], FolioDocumentOperationRecovery>;
 
 export const getFolioDocumentOperationIssues = (
@@ -1779,6 +1780,7 @@ export const getFolioDocumentOperationIssues = (
         reason !== "pendingParagraphPropertyChange" &&
         reason !== "pendingRunPropertyChange" &&
         reason !== "pendingDeletion" &&
+        reason !== "pendingParagraphMarkDeletion" &&
         // The same values never fit the same target; only a changed operation
         // can succeed.
         reason !== "payloadDoesNotFit" &&
@@ -2100,6 +2102,7 @@ export const applyFolioDocumentOperations = ({
     // canonical-gap: publicOps.suggestedMode
     // canonical-gap: publicOps.tableProjection
     // canonical-gap: publicOps.unsupportedInline
+    // canonical-gap: publicOps.pendingParagraphMarkProperties
     // canonical-gap: publicOps.secondaryStories
     // canonical-gap: pm-document-operations
     const outcome = applyFolioAIEditOperations({
