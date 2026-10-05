@@ -20,6 +20,8 @@
 
 import assert from "node:assert/strict";
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
+import { sourceDocumentOf } from "@stll/folio-core/ai-edits/snapshot";
+import { readParagraphNumberingAttr } from "@stll/folio-core/prosemirror/numberingAttr";
 
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
@@ -77,6 +79,53 @@ const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
       throw new Error(`Unhandled numbering ${JSON.stringify(unhandled)}`);
     }
   }
+};
+
+/** Only effective equality makes numbering wholly style-supplied. */
+const directNumbering = (numPr: Numbering, numPrFromStyle: Numbering): Numbering => {
+  if (numPr === undefined || numPrFromStyle === undefined) return numPr;
+  if (numPr.kind !== numPrFromStyle.kind) return numPr;
+  switch (numPr.kind) {
+    case "none":
+      return undefined;
+    case "reference":
+      return numPrFromStyle.kind === "reference" &&
+        numPr.numId === numPrFromStyle.numId &&
+        (numPr.ilvl ?? 0) === (numPrFromStyle.ilvl ?? 0)
+        ? undefined
+        : numPr;
+    case "levelOnly":
+      return numPrFromStyle.kind === "levelOnly" && numPr.ilvl === numPrFromStyle.ilvl
+        ? undefined
+        : numPr;
+    default: {
+      const unhandled: never = numPr;
+      throw new Error(`Unhandled direct numbering ${JSON.stringify(unhandled)}`);
+    }
+  }
+};
+
+/** Capture the authored story, including proposals omitted from the saved model. */
+const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts => {
+  const facts = numberingFactsFromDocument(reviewer.toDocument());
+  const snapshot = reviewer.snapshotStory(story);
+  if (!snapshot) return facts;
+  const doc = sourceDocumentOf(snapshot);
+  for (const block of snapshot.blocks) {
+    if (block.kind === "diagnostic") continue;
+    const anchor = snapshot.anchors[block.id];
+    assert.ok(anchor, `Live block ${block.id} has no anchor`);
+    const node = doc.nodeAt(anchor.from);
+    assert.ok(node?.type.name === "paragraph", `Live block ${block.id} has no paragraph`);
+    facts.direct.set(
+      block.id,
+      directNumbering(
+        readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined,
+        readParagraphNumberingAttr(node.attrs["numPrFromStyle"]) ?? undefined,
+      ),
+    );
+  }
+  return facts;
 };
 
 /** Package definitions and direct provenance, never an effective reader sample. */
@@ -147,15 +196,7 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
           for (const content of block.content) visitInline(content);
           if (block.paraId === undefined) break;
           const { numPr, numPrFromStyle } = block.formatting ?? {};
-          let override: Numbering;
-          if (numPrFromStyle === undefined) override = numPr;
-          else if (
-            numPr?.kind === "reference" &&
-            numPrFromStyle.kind !== "none" &&
-            numPr.ilvl !== numPrFromStyle.ilvl
-          )
-            override = { kind: "levelOnly", ilvl: numPr.ilvl ?? 0 };
-          direct.set(block.paraId, override);
+          direct.set(block.paraId, directNumbering(numPr, numPrFromStyle));
           break;
         }
         case "table":
@@ -493,11 +534,9 @@ type RequestedNumbering = Numbering | typeof UNKNOWN_NUMBERING;
 /**
  * Whether the numbering source may lack the paragraph. The saved modes read
  * the accepted package, which no longer holds a paragraph that accepting
- * removes; suggested mode reads the document without its suggestions, which
- * does not hold a paragraph a pending suggestion adds.
+ * removes. Suggested mode captures every live paragraph, including proposals.
  */
 const outsideNumberingSource = (model: Model, id: string): boolean =>
-  model.mode === "suggested" ||
   model.rows.some((row) => row.outsidePreState === true && row.pre?.id === id);
 
 const requestedStyleNumbering = (
@@ -1389,9 +1428,7 @@ export type Pre = {
   /** The reviewer's own blocks, when `rows` are another view of them. */
   liveRows: Row[];
   /** Immutable pre-state; suggestions have not entered saved package bytes yet. */
-  numberingSource:
-    | { type: "package"; bytes: Uint8Array }
-    | { type: "live"; document: ParsedDocument };
+  numberingSource: { type: "package"; bytes: Uint8Array } | { type: "live"; facts: NumberingFacts };
   comments: Comment[];
   links: LinkSnapshot;
   liveComments: Comment[];
@@ -1490,7 +1527,7 @@ export const capture = async (
       rows,
       resolvedStory: "present",
       liveRows: rows,
-      numberingSource: { type: "live", document: reviewer.toDocument() },
+      numberingSource: { type: "live", facts: liveNumberingFacts(reviewer, story) },
       comments: liveComments,
       liveComments,
       links: captureLinks(reviewer),
@@ -1621,7 +1658,7 @@ export const assertRequestedOutcome = async (
         model.numberingFacts = await numberingFactsOf(pre.numberingSource.bytes);
         break;
       case "live":
-        model.numberingFacts = numberingFactsFromDocument(pre.numberingSource.document);
+        model.numberingFacts = pre.numberingSource.facts;
         break;
       default: {
         const unhandled: never = pre.numberingSource;
