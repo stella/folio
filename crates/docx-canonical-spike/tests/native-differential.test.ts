@@ -97,8 +97,9 @@ const orderedTagged = (value: Encoded): Encoded => {
   if (value === null || typeof value !== "object") return value;
   switch (value.tag) {
     case "object":
+    case "nullObject":
       return {
-        tag: "object",
+        tag: value.tag,
         entries: value.entries
           .map(([key, entry]) => [key, orderedTagged(entry)] satisfies [string, Encoded])
           .sort(([left], [right]) => left.localeCompare(right)),

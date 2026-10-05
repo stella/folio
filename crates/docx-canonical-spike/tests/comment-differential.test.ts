@@ -51,8 +51,9 @@ const orderedTagged = (encoded: Encoded): Encoded => {
   if (encoded === null || typeof encoded !== "object") return encoded;
   switch (encoded.tag) {
     case "object":
+    case "nullObject":
       return {
-        tag: "object",
+        tag: encoded.tag,
         entries: encoded.entries
           .map(([key, value]) => [key, orderedTagged(value)] satisfies [string, Encoded])
           .sort(([left], [right]) => {

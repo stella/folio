@@ -116,6 +116,10 @@ const compare = ({
 }: CompareOptions) => {
   // The native request is measured before TS can mutate an input. Its scope
   // and complete request remain evidence even when the native arm refuses.
+  writeFileSync(
+    resolve(progress, "differential-current-case.json"),
+    JSON.stringify({ family, seed, index, phase, opTypes: ops.map((op) => op.type), source }),
+  );
   const scope = transportScope(document);
   const request = {
     harness: { document: encodeTagged(document), ops: ops.map(captureDocumentOp) },

@@ -12,7 +12,7 @@ export type Encoded =
   | { tag: "date"; iso: string }
   | { tag: "uint8Array" | "arrayBuffer"; bytes: number[] }
   | { tag: "array"; items: Encoded[] }
-  | { tag: "object" | "map"; entries: [string, Encoded][] };
+  | { tag: "object" | "nullObject" | "map"; entries: [string, Encoded][] };
 
 const TAG_FIELDS = {
   undefined: ["tag"],
@@ -22,6 +22,7 @@ const TAG_FIELDS = {
   arrayBuffer: ["tag", "bytes"],
   array: ["tag", "items"],
   object: ["tag", "entries"],
+  nullObject: ["tag", "entries"],
   map: ["tag", "entries"],
 } as const satisfies Record<
   Exclude<Encoded, null | boolean | number | string>["tag"],
@@ -73,9 +74,12 @@ export const encodeTagged = (value: unknown): Encoded => {
         Object.hasOwn(value, index) ? encodeTagged(value[index]) : { tag: "hole" },
       ),
     };
-  if (typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype)
+  if (
+    typeof value === "object" &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
+  )
     return {
-      tag: "object",
+      tag: Object.getPrototypeOf(value) === null ? "nullObject" : "object",
       entries: Object.getOwnPropertyNames(value).map((key) => {
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (!descriptor || !("value" in descriptor))
@@ -149,6 +153,7 @@ export const decodeTagged = (value: unknown): unknown => {
       return result;
     }
     case "object":
+    case "nullObject":
     case "map": {
       if (!("entries" in value) || !Array.isArray(value.entries))
         throw new HarnessCodecError({ message: "Object and Map entries must be arrays." });
@@ -164,7 +169,10 @@ export const decodeTagged = (value: unknown): unknown => {
         keys.add(entry[0]);
         entries.push([entry[0], decodeTagged(entry[1])]);
       }
-      return value.tag === "map" ? new Map(entries) : Object.fromEntries(entries);
+      if (value.tag === "map") return new Map(entries);
+      const object = Object.fromEntries(entries);
+      if (value.tag === "nullObject") Object.setPrototypeOf(object, null);
+      return object;
     }
     default:
       throw new HarnessCodecError({ message: "A harness object needs a tag." });
@@ -179,8 +187,8 @@ export const withoutCaptureSymbols = (value: unknown): unknown => {
   if (value instanceof Map)
     return new Map([...value].map(([key, entry]) => [key, withoutCaptureSymbols(entry)]));
   if (Array.isArray(value)) return value.map(withoutCaptureSymbols);
-  if (typeof value === "object" && value !== null)
-    return Object.fromEntries(
+  if (typeof value === "object" && value !== null) {
+    const object = Object.fromEntries(
       Object.getOwnPropertyNames(value).map((key) => {
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (!descriptor || !("value" in descriptor))
@@ -190,6 +198,9 @@ export const withoutCaptureSymbols = (value: unknown): unknown => {
         return [key, withoutCaptureSymbols(descriptor.value)];
       }),
     );
+    Object.setPrototypeOf(object, Object.getPrototypeOf(value));
+    return object;
+  }
   return value;
 };
 

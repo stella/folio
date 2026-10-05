@@ -3,7 +3,12 @@ import { deepStrictEqual, throws } from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import fc from "fast-check";
-import { documentArbitrary } from "../../../packages/docx-core/src/ops/__tests__/documentArbitraries";
+import {
+  documentArbitrary,
+  opSeedArbitrary,
+  opFor,
+} from "../../../packages/docx-core/src/ops/__tests__/documentArbitraries";
+import { applyDocumentOps } from "../../../packages/docx-core/src/ops/apply";
 import {
   packageDocumentArbitrary,
   captureDocumentArbitrary,
@@ -54,6 +59,69 @@ for (const [family, arbitrary] of [
       }
   });
 }
+const nullPrototypeCount = (value: unknown): number => {
+  if (typeof value !== "object" || value === null) return 0;
+  if (value instanceof Date || value instanceof Uint8Array || value instanceof ArrayBuffer)
+    return 0;
+  if (value instanceof Map)
+    return [...value.values()].reduce((count, entry) => count + nullPrototypeCount(entry), 0);
+  return Object.values(value).reduce(
+    (count, entry) => count + nullPrototypeCount(entry),
+    Object.getPrototypeOf(value) === null ? 1 : 0,
+  );
+};
+
+test("TS codec preserves null prototypes in generated edit outputs, including CI seed 20261005", () => {
+  let nullObjects = 0;
+  for (const seed of [20261005, 20261006, 327444275, -392419793]) {
+    const draws = fc.sample(fc.tuple(documentArbitrary, opSeedArbitrary), { seed, numRuns: 80 });
+    for (const [document, generated] of draws) {
+      const result = applyDocumentOps(document, [opFor(document, generated)]);
+      if (result.isErr()) continue;
+      nullObjects += nullPrototypeCount(result.value.document);
+      const encoded = encodeTagged(result.value.document);
+      const decoded = decodeTagged(JSON.parse(JSON.stringify(encoded)));
+      deepStrictEqual(decoded, withoutCaptureSymbols(result.value.document));
+      deepStrictEqual(encodeTagged(decoded), encoded);
+    }
+  }
+  expect(nullObjects).toBeGreaterThan(0);
+});
+
+test("Rust codec preserves prototypes across generated edit outputs", () => {
+  for (const seed of [20261005, 20261006, 327444275, -392419793])
+    for (const [document, generated] of fc.sample(fc.tuple(documentArbitrary, opSeedArbitrary), {
+      seed,
+      numRuns: 80,
+    })) {
+      const result = applyDocumentOps(document, [opFor(document, generated)]);
+      if (result.isErr()) continue;
+      const native = nativeRoundtrip(result.value.document);
+      deepStrictEqual(native, withoutCaptureSymbols(result.value.document));
+      deepStrictEqual(encodeTagged(native), encodeTagged(result.value.document));
+    }
+});
+
+test("null-prototype records retain prototype, special keys and owned undefined", () => {
+  const record = Object.setPrototypeOf(
+    Object.fromEntries([
+      ["__proto__", { tag: "object", entries: "authored" }],
+      ["constructor", undefined],
+      ["toString", null],
+    ]),
+    null,
+  );
+  const original = { record, nested: new Map([["entry", [record]]]) };
+  const encoded = encodeTagged(original);
+  for (const decoded of [decodeTagged(encoded), nativeRoundtrip(original)]) {
+    deepStrictEqual(decoded, original);
+    deepStrictEqual(decoded, withoutCaptureSymbols(original));
+    deepStrictEqual(encodeTagged(decoded), encoded);
+  }
+  expect(encodeTagged(record)).not.toEqual(encodeTagged({ ...record }));
+  expect(Object.getPrototypeOf(withoutCaptureSymbols(record))).toBeNull();
+});
+
 test("tag-shaped authored records, Map order, binary, Date and undefined never collapse", () => {
   const mapValue = (value: null | undefined) => ({ value });
   const sparse: unknown[] = [];
@@ -124,6 +192,27 @@ test("nonenumerable owned undefined data remains an owned field and is counted",
 });
 
 const MALFORMED_CORPUS = [
+  {
+    name: "null object missing entries",
+    value: { tag: "nullObject" },
+    message: "Unexpected fields in the nullObject tag.",
+  },
+  {
+    name: "null object extra field",
+    value: { tag: "nullObject", entries: [], prototype: null },
+    message: "Unexpected fields in the nullObject tag.",
+  },
+  {
+    name: "duplicate null object key",
+    value: {
+      tag: "nullObject",
+      entries: [
+        ["x", 1],
+        ["x", 2],
+      ],
+    },
+    message: "Harness entries repeat an owned key.",
+  },
   { name: "raw array", value: [], message: "Raw arrays are not tagged harness values." },
   { name: "missing discriminator", value: {}, message: "A harness object needs a tag." },
   { name: "nonstring discriminator", value: { tag: 3 }, message: "A harness object needs a tag." },

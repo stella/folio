@@ -13,6 +13,7 @@ type Path = Vec<String>;
 #[derive(Clone, Debug, PartialEq)]
 enum Special {
     Map,
+    NullObject,
     Date,
     Undefined,
     Uint8Array,
@@ -157,7 +158,7 @@ fn decode_node(
         .as_str()
         .ok_or("A harness object needs a tag.")?;
     match tag {
-        "object" | "map" => {
+        "object" | "nullObject" | "map" => {
             fields(value, tag, &["entries"])?;
             let entries = value["entries"]
                 .as_array()
@@ -188,6 +189,9 @@ fn decode_node(
                 decoded.specials.insert(path.clone(), Special::Map);
             } else {
                 decoded.object_order.insert(path.clone(), order);
+                if tag == "nullObject" {
+                    decoded.specials.insert(path.clone(), Special::NullObject);
+                }
             }
             Ok(Some(Value::Object(object)))
         }
@@ -334,7 +338,14 @@ fn encode_node(value: &Value, path: &mut Path, decoded: &Decoded) -> Result<Valu
                 }
                 path.pop();
             }
-            Ok(json!({"tag":if is_map {"map"}else{"object"},"entries":entries}))
+            let tag = if is_map {
+                "map"
+            } else if decoded.specials.get(path) == Some(&Special::NullObject) {
+                "nullObject"
+            } else {
+                "object"
+            };
+            Ok(json!({"tag":tag,"entries":entries}))
         }
         Value::Array(items) => {
             let mut encoded = Vec::new();
@@ -348,6 +359,9 @@ fn encode_node(value: &Value, path: &mut Path, decoded: &Decoded) -> Result<Valu
         _ => {
             if decoded.specials.get(path) == Some(&Special::Map) {
                 return Err("A Map sidecar no longer points to an object.".into());
+            }
+            if decoded.specials.get(path) == Some(&Special::NullObject) {
+                return Err("A null-prototype sidecar no longer points to an object.".into());
             }
             Ok(value.clone())
         }
@@ -725,6 +739,19 @@ mod tests {
         let decoded = decode(&value).unwrap();
         assert!(decoded.value.get("missing").is_none());
         assert_eq!(decoded.value["null"], Value::Null);
+        assert_eq!(encode(&decoded).unwrap(), value);
+    }
+    #[test]
+    fn null_prototype_records_preserve_tag_special_keys_and_owned_undefined() {
+        let value = json!({"tag":"nullObject","entries":[
+            ["__proto__",{"tag":"nullObject","entries":[]}],
+            ["constructor",{"tag":"undefined"}],
+            ["toString",null],
+            ["map",{"tag":"map","entries":[["nested",{"tag":"nullObject","entries":[]}]]}]
+        ]});
+        let decoded = decode(&value).unwrap();
+        assert_eq!(decoded.specials.get(&vec![]), Some(&Special::NullObject));
+        assert!(decoded.value.get("constructor").is_none());
         assert_eq!(encode(&decoded).unwrap(), value);
     }
     #[test]
