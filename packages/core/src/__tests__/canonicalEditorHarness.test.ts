@@ -14,13 +14,12 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { modelMarkdown, parseShapeDocument } from "./editorHarness";
 import { documentShape, shapeArrayBuffer } from "./documentShapes";
 import { PASTED_LIST, PASTED_TABLE } from "./editorCommandConformance";
-import { repackDocx } from "../docx/rezip";
-import { repackWithCanonicalStoryRemovals } from "../docx/canonicalStoryRepack";
 import { CANONICAL_CAPABILITIES, CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
   createCanonicalEditorHarness,
   createCanonicalHarnessCase,
   resolveCanonicalHarnessDocument,
+  saveCanonicalHarnessDocument,
 } from "../../../../test/canonicalEditorHarness";
 
 const tableActivationSource = async (
@@ -270,11 +269,8 @@ for (const mode of ["editing", "suggesting"] as const) {
         }
         expect(driver.refusals).toEqual([]);
         const edited = driver.snapshot();
-        const bytes = await repackWithCanonicalStoryRemovals({
-          document: edited,
-          repack: () => repackDocx(edited, { updateModifiedDate: false }),
-        });
-        const reopened = await parseShapeDocument(new Uint8Array(bytes));
+        const saved = await saveCanonicalHarnessDocument(edited);
+        const reopened = await parseShapeDocument(saved.bytes);
         expect(modelMarkdown(reopened)).toBe(modelMarkdown(edited));
         expect(driver.history.undo()).toBe(true);
         assertExactModel(driver.snapshot(), before);

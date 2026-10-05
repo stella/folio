@@ -30,11 +30,10 @@ import { assertExactModel } from "../../../../test/exactModel";
 import {
   createCanonicalHarnessCase,
   resolveCanonicalHarnessDocument,
+  saveCanonicalHarnessDocument,
   type CanonicalEditorHarness,
 } from "../../../../test/canonicalEditorHarness";
 import { assertValidFolioDocumentModel } from "../docx/modelValidation";
-import { repackDocx } from "../docx/rezip";
-import { repackWithCanonicalStoryRemovals } from "../docx/canonicalStoryRepack";
 
 import { Fragment, Slice } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
@@ -974,18 +973,10 @@ const observe = (
   markdown: modelMarkdown(authority === "canonical" ? base : fromProseDoc(state.doc, base)),
 });
 
-const saveRunState = async (state: EditorState, base: Document, authority: HarnessAuthority) => {
+const saveRunState = (state: EditorState, base: Document, authority: HarnessAuthority) => {
   if (authority === "prosemirror") return saveHarnessState(state, base);
   assertValidFolioDocumentModel(base, "Canonical conformance snapshot is invalid");
-  return {
-    model: base,
-    bytes: new Uint8Array(
-      await repackWithCanonicalStoryRemovals({
-        document: base,
-        repack: () => repackDocx(base, { updateModifiedDate: false }),
-      }),
-    ),
-  };
+  return saveCanonicalHarnessDocument(base);
 };
 
 const observeReopened = async (

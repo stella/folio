@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import JSZip from "jszip";
+import { panic } from "better-result";
 
 import { createCanonicalEditorHarness } from "../../../../test/canonicalEditorHarness";
 import { shapeArrayBuffer } from "../__tests__/documentShapes";
 import { modelMarkdown, parseShapeDocument } from "../__tests__/editorHarness";
-import { repackDocx } from "../docx/rezip";
-import { repackWithCanonicalStoryRemovals } from "../docx/canonicalStoryRepack";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { parseRelationships, resolveRelativePath } from "../docx/relsParser";
 import { toMarkdownResult } from "../markdown";
 import { visitParagraphRuns } from "../docx/paragraphTraversal";
@@ -66,9 +66,12 @@ test.each(CASES)(
       const edited = driver.snapshot();
       expect(drawings(edited)).toHaveLength(2);
       if (resource !== "http") expect(modelMarkdown(edited)).not.toContain("data:image/");
-      const bytes = await repackWithCanonicalStoryRemovals({
-        document: edited,
-        repack: () => repackDocx(edited, { updateModifiedDate: false }),
+      const snapshot =
+        driver.history.captureCanonicalSave() ??
+        panic("Canonical image save snapshot unavailable.");
+      const { buffer: bytes } = await serializeCanonicalSave({
+        snapshot,
+        options: { mode: "full" },
       });
       const zip = await JSZip.loadAsync(bytes);
       const xml = await zip.file("word/document.xml")?.async("string");

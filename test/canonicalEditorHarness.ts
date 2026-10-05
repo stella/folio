@@ -26,10 +26,28 @@ import { getCanonicalCommandIntents } from "../packages/core/src/prosemirror/can
 import { canonicalClipboardStoryPartRefusal } from "../packages/core/src/controller/canonicalClipboard";
 import { proseDocToBlocks } from "../packages/core/src/prosemirror/conversion/fromProseDoc";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
+import { serializeCanonicalSave } from "../packages/core/src/docx/canonicalSave";
+import type { CanonicalSaveSnapshot } from "../packages/core/src/types/canonicalSave";
 import type { Document } from "../packages/core/src/types/document";
 import { keyboardEventFor, type EditorMode } from "../packages/core/src/__tests__/editorHarness";
 import { HARNESS_AUTHOR } from "../packages/core/src/__tests__/editorHarness";
 import { singletonManager } from "../packages/core/src/prosemirror/schema";
+
+const canonicalSaveSnapshots = new WeakMap<Document, CanonicalSaveSnapshot>();
+
+const rememberCanonicalSave = (snapshot: CanonicalSaveSnapshot): Document => {
+  canonicalSaveSnapshots.set(snapshot.document, snapshot);
+  return snapshot.document;
+};
+
+/** Serialize the committed snapshot through the same owner as the adapters. */
+export const saveCanonicalHarnessDocument = async (source: Document) => {
+  const snapshot =
+    canonicalSaveSnapshots.get(source) ??
+    createCanonicalSession(source).unwrap().captureSaveSnapshot();
+  const saved = await serializeCanonicalSave({ snapshot, options: { mode: "full" } });
+  return { model: saved.document, bytes: new Uint8Array(saved.buffer) };
+};
 
 /** A disposable driver over the production controller, with no PM mutation fallback. */
 export const createCanonicalEditorHarness = (source: Document, mode: EditorMode) => {
@@ -148,7 +166,9 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     panic("Canonical activation refusal row must become strict");
   }
   const snapshot = () =>
-    manager.api.getCanonicalDocument() ?? panic("Canonical snapshot unavailable.");
+    rememberCanonicalSave(
+      manager.api.captureCanonicalSave() ?? panic("Canonical save snapshot unavailable."),
+    );
   const execute = (command: Command) => {
     const count = refusals.length;
     const intents = getCanonicalCommandIntents(command, editorView.state);
@@ -308,8 +328,9 @@ export const resolveCanonicalHarnessDocument = (
   const session = createCanonicalSession(source).unwrap();
   const state = PMEditorState.create({ doc: session.projection.doc });
   const ids = storyRevisionIds(session.document);
-  if (ids.length === 0) return { model: session.document, state };
+  if (ids.length === 0)
+    return { model: rememberCanonicalSave(session.captureSaveSnapshot()), state };
   const commit = session.prepareResolve(state, { revisionIds: ids, resolution: decision }).unwrap();
   const published = publishCanonicalProjection({ state, session, commit }).unwrap();
-  return { model: session.document, state: published.state };
+  return { model: rememberCanonicalSave(session.captureSaveSnapshot()), state: published.state };
 };
