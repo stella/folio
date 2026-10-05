@@ -16,6 +16,15 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { EditorState } from "prosemirror-state";
 
+import {
+  BLOCK_COUNT,
+  blockText,
+  createBatchOverlapBatchArbitrary,
+  token,
+  type GeneratedOperation,
+  type Span,
+} from "../__tests__/batchOverlapGenerators";
+
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import {
@@ -171,30 +180,6 @@ describe("a row inserted in a batch that changes blocks around its table", () =>
 // ---------------------------------------------------------------------------
 // The class: every pair and random batches against the one-at-a-time oracle.
 // ---------------------------------------------------------------------------
-
-const BLOCK_COUNT = 4;
-const TOKEN_COUNT = 4;
-
-const token = (block: number, index: number): string => `t${String(block)}${String(index)}x`;
-const blockText = (block: number): string =>
-  Array.from({ length: TOKEN_COUNT }, (_, index) => token(block, index)).join(" ");
-
-type Span = { block: number; first: number; last: number };
-
-type GeneratedOperation =
-  | ({ kind: "replaceInBlock" | "replaceRange" | "formatRange" | "commentOnRange" } & Span)
-  | { kind: "splitBlock"; block: number; before: number }
-  | { kind: "mergeBlockWithNext"; block: number; separator?: string }
-  | {
-      kind:
-        | "commentOnBlock"
-        | "deleteBlock"
-        | "replaceBlock"
-        | "setBlockParagraphProperties"
-        | "insertAfterBlock"
-        | "insertBeforeBlock";
-      block: number;
-    };
 
 const INSERTIONS: ReadonlySet<GeneratedOperation["kind"]> = new Set([
   "insertAfterBlock",
@@ -824,52 +809,6 @@ describe("deleting the last paragraph right after a paragraph added before it", 
   );
 });
 
-const spanArbitrary = fc
-  .record({
-    block: fc.nat({ max: BLOCK_COUNT - 1 }),
-    first: fc.nat({ max: TOKEN_COUNT - 1 }),
-    length: fc.nat({ max: 1 }),
-  })
-  .map(({ block, first, length }) => ({
-    block,
-    first,
-    last: Math.min(TOKEN_COUNT - 1, first + length),
-  }));
-
-const operationArbitrary: fc.Arbitrary<GeneratedOperation> = fc.oneof(
-  fc
-    .tuple(
-      fc.constantFrom(
-        "replaceInBlock" as const,
-        "replaceRange" as const,
-        "formatRange" as const,
-        "commentOnRange" as const,
-      ),
-      spanArbitrary,
-    )
-    .map(([kind, { block, first, last }]) => ({ kind, block, first, last })),
-  fc
-    .record({
-      block: fc.nat({ max: BLOCK_COUNT - 1 }),
-      before: fc.integer({ min: 1, max: TOKEN_COUNT - 1 }),
-    })
-    .map(({ block, before }) => ({ kind: "splitBlock" as const, block, before })),
-  fc
-    .tuple(
-      fc.constantFrom(
-        "commentOnBlock" as const,
-        "deleteBlock" as const,
-        "replaceBlock" as const,
-        "setBlockParagraphProperties" as const,
-        "insertAfterBlock" as const,
-        "insertBeforeBlock" as const,
-      ),
-      fc.nat({ max: BLOCK_COUNT - 1 }),
-    )
-    .map(([kind, block]) => ({ kind, block })),
-  fc.nat({ max: BLOCK_COUNT - 2 }).map((block) => ({ kind: "mergeBlockWithNext" as const, block })),
-);
-
 describe("two paragraph-property operations on one block", () => {
   test.each(MODES)("refuse the later one and keep the earlier one's values (%s)", async (mode) => {
     const session = await freshSession();
@@ -897,7 +836,7 @@ describe("a random batch with overlapping, nested and duplicate targets", () => 
   test("refuses each conflict and applies the rest as one at a time would", async () => {
     await assertProperty(
       fc.asyncProperty(
-        fc.array(operationArbitrary, { minLength: 2, maxLength: 7 }),
+        createBatchOverlapBatchArbitrary(),
         fc.constantFrom(...MODES),
         async (generated, mode) => {
           expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
