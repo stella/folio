@@ -27,7 +27,7 @@ never silently projected away. Product wire schemas remain unchanged.
 
 S3 uses one Playwright Chromium for TypeScript and WASM, plus self-timed native
 Rust. All arms run on one machine with rotating interleaved repetitions; input
-parsing/output JSON and the browser WASM boundary are inside operation timings.
+parsing/output JSON, result decoding and the browser WASM boundary are inside operation timings.
 Native startup/IPC are excluded. Each fixture's forward, undo and redo are
 compared before timing. JSON model load and replay-save are measured separately;
 ZIP/XML parsing, DOCX serialization and pagination are not measured by those rows.
@@ -41,3 +41,11 @@ only after fixture verification. `bench/run.ts` accepts explicit `validate`,
 serialized, nice 10 and gated below load 5. Quiet measurements require one-minute
 load below 3 at start and before every sample, with no retry. CI records runner
 model/load for the relative cross-check. No WASI, workers or shared memory.
+
+Apply fixtures also measure resident TS/WASM/native arms: load outside samples,
+operation JSON in, inverse/touched/revisions and changed-block projection patch
+out. Browser resident models load once per fixture and undo outside samples to
+restore identical inputs. Native resident initialization is outside each sample;
+its process/IPC remain excluded. Patch decoding is timed; ProseMirror update,
+layout, rendering and paint are not. Whole-document round-trip arms remain
+separate. This does not measure end-to-end typing latency.

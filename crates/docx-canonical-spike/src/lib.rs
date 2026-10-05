@@ -9,6 +9,7 @@ pub mod inline;
 pub mod model;
 mod paragraphs;
 pub mod refusal;
+pub mod resident;
 mod run_props;
 mod tables;
 mod tracked;
@@ -84,5 +85,32 @@ impl JsonModel {
     pub fn save(&self) -> Result<String, wasm_bindgen::JsValue> {
         serde_json::to_string(&self.value)
             .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
+    }
+}
+
+/// Experimental resident core: operation JSON in, inverse and block patch out.
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub struct ResidentModel {
+    document: resident::ResidentDocument,
+}
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+impl ResidentModel {
+    #[wasm_bindgen::prelude::wasm_bindgen(constructor)]
+    pub fn new(document_json: &str) -> Result<ResidentModel, wasm_bindgen::JsValue> {
+        resident::ResidentDocument::load(document_json)
+            .map(|document| Self { document })
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+    }
+    pub fn apply(&mut self, ops_json: &str) -> Result<String, wasm_bindgen::JsValue> {
+        self.document
+            .apply_ops_json(ops_json)
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+    }
+    pub fn save(&self) -> Result<String, wasm_bindgen::JsValue> {
+        self.document
+            .save()
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
     }
 }

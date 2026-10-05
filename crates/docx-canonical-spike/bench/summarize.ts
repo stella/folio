@@ -15,7 +15,7 @@ const groups = new Map<
   }
 >();
 let runnerCount = 0;
-const fixtures = new Set<string>();
+const fixtures = new Map<string, readonly string[]>();
 for (const line of readFileSync(file, "utf8").trim().split("\n")) {
   const entry = JSON.parse(line);
   if (entry.type === "runner") {
@@ -27,7 +27,11 @@ for (const line of readFileSync(file, "utf8").trim().split("\n")) {
     )
       throw new TypeError("Measurements must contain exactly one identified runner/build.");
   }
-  if (entry.type === "fixture-verified") fixtures.add(JSON.stringify([entry.name, entry.pages]));
+  if (entry.type === "fixture-verified") {
+    if (!Array.isArray(entry.arms) || !entry.arms.every((arm: unknown) => typeof arm === "string"))
+      throw new TypeError("Fixture arm set is missing.");
+    fixtures.set(JSON.stringify([entry.name, entry.pages]), entry.arms);
+  }
   if (entry.type !== "sample" || entry.warmup) continue;
   if (runnerCount !== 1) throw new TypeError("Samples lack runner provenance.");
   const key = JSON.stringify([entry.name, entry.pages, entry.arm]);
@@ -53,15 +57,17 @@ const quantile = (values: number[], fraction: number) =>
     .sort((a, b) => a - b)
     .at(Math.ceil(values.length * fraction) - 1);
 if (runnerCount !== 1) throw new TypeError("Missing runner provenance.");
-for (const fixture of fixtures) {
+let expectedGroups = 0;
+for (const [fixture, arms] of fixtures) {
   const [name, pages] = JSON.parse(fixture);
-  for (const arm of ["typescript", "wasm", "native"]) {
+  expectedGroups += arms.length;
+  for (const arm of arms) {
     const group = groups.get(JSON.stringify([name, pages, arm]));
     if (!group || group.samples.length !== 50)
       throw new TypeError("Each verified fixture needs 50 retained samples for every arm.");
   }
 }
-if (groups.size !== fixtures.size * 3) throw new TypeError("Unexpected measurement groups.");
+if (groups.size !== expectedGroups) throw new TypeError("Unexpected measurement groups.");
 const rows = [...groups].map(([key, group]) => ({
   case: JSON.parse(key),
   count: group.samples.length,

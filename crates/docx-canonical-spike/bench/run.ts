@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
+import { projectionPatch } from "./resident-projection";
 import { sourceDigest } from "./artifacts";
 import { applyDocumentOps } from "../../../packages/docx-core/src/ops/apply";
 import type { Document, Paragraph, TableRow } from "../../../packages/docx-core/src/model/document";
@@ -277,6 +278,11 @@ try {
   await page.goto(server.url.href);
   await page.waitForFunction(() => Reflect.get(globalThis, "canonicalSpikeReady") === true);
   record({ type: "browser", version: browser.version() });
+  // Separate pages prevent retained resident models inflating whole-document WASM memory.
+  const residentPage = await browser.newPage();
+  await residentPage.goto(server.url.href);
+  await residentPage.waitForFunction(() => Reflect.get(globalThis, "canonicalSpikeReady") === true);
+
   for (const fixture of fixtures) {
     // Verify native output before taking any timing; unsupported cases fail the run.
     if (fixture.task === "apply") {
@@ -299,6 +305,45 @@ try {
           !isDeepStrictEqual(JSON.parse(nativeCheck.stdout), expected)
         )
           throw new TypeError(`Native fixture ${fixture.name} or inverse differs from TS.`);
+        const expectedResident = {
+          inverse: check.expected.inverse,
+          touched: check.expected.touched,
+          revisions: check.expected.revisions,
+          projectionPatch: projectionPatch(check.document, check.expected.document),
+        };
+        const residentNative = spawnSync(nativeBinary, [], {
+          input: `${JSON.stringify({ benchmark: { documentJson: JSON.stringify(check.document), opsJson: JSON.stringify(check.ops), task: "resident", verify: true } })}\n`,
+          encoding: "utf8",
+        });
+        if (residentNative.error) throw residentNative.error;
+        if (
+          residentNative.status !== 0 ||
+          !isDeepStrictEqual(
+            JSON.parse(residentNative.stdout),
+            JSON.parse(
+              JSON.stringify({
+                residentResult: expectedResident,
+                document: check.expected.document,
+              }),
+            ),
+          )
+        )
+          throw new TypeError(`Native resident fixture ${fixture.name} differs from TS.`);
+        const residentVerified = await page.evaluate(
+          (args) => {
+            const verify = Reflect.get(globalThis, "verifyCanonicalSpikeResident");
+            if (typeof verify !== "function")
+              throw new TypeError("Resident verification is unavailable.");
+            return verify(args);
+          },
+          {
+            documentJson: JSON.stringify(check.document),
+            opsJson: JSON.stringify(check.ops),
+            expectedJson: JSON.stringify(expected),
+          },
+        );
+        if (residentVerified !== true)
+          throw new TypeError(`WASM resident fixture ${fixture.name} differs from TS.`);
         for (const arm of ["typescript", "wasm"] as const) {
           const verified = await page.evaluate(
             (args) => {
@@ -354,10 +399,38 @@ try {
       name: fixture.name,
       pages: fixture.pages,
       inputBytes: new TextEncoder().encode(fixture.documentJson).byteLength,
+      arms:
+        fixture.task === "apply"
+          ? [
+              "typescript",
+              "wasm",
+              "native",
+              "typescript-resident",
+              "wasm-resident",
+              "native-resident",
+            ]
+          : ["typescript", "wasm", "native"],
     });
     if (validateOnly) continue;
+    if (fixture.task === "apply")
+      await residentPage.evaluate((documentJson) => {
+        const initialize = Reflect.get(globalThis, "initializeCanonicalSpikeResidents");
+        if (typeof initialize !== "function")
+          throw new TypeError("Resident initialization is unavailable.");
+        initialize(documentJson);
+      }, fixture.documentJson);
     for (let repetition = 0; repetition < 60; repetition += 1) {
-      const arms = ["typescript", "wasm", "native"] as const;
+      const arms =
+        fixture.task === "apply"
+          ? ([
+              "typescript",
+              "wasm",
+              "native",
+              "typescript-resident",
+              "wasm-resident",
+              "native-resident",
+            ] as const)
+          : (["typescript", "wasm", "native"] as const);
       // Rotation avoids assigning one arm systematically colder/earlier work.
       for (let index = 0; index < arms.length; index += 1) {
         const arm = arms.at((index + repetition) % arms.length);
@@ -376,12 +449,12 @@ try {
           throw new TypeError("Quiet-window load rose to 3 or above; stopping without retry.");
         }
         let sample: unknown;
-        if (arm === "native") {
+        if (arm === "native" || arm === "native-resident") {
           const result = spawnSync(
             "/usr/bin/time",
             [platform() === "darwin" ? "-l" : "-v", nativeBinary],
             {
-              input: `${JSON.stringify({ benchmark: { documentJson: fixture.documentJson, opsJson: fixture.opsJson, task: fixture.task, iterations: 1 } })}\n`,
+              input: `${JSON.stringify({ benchmark: { documentJson: fixture.documentJson, opsJson: fixture.opsJson, task: arm === "native-resident" ? "resident" : fixture.task, iterations: 1 } })}\n`,
               encoding: "utf8",
             },
           );
@@ -396,6 +469,16 @@ try {
             ...JSON.parse(result.stdout),
             peakRssBytes: Number(peak) * (platform() === "darwin" ? 1 : 1024),
           };
+        } else if (arm === "typescript-resident" || arm === "wasm-resident") {
+          sample = await residentPage.evaluate(
+            (args) => {
+              const run = Reflect.get(globalThis, "runCanonicalSpikeResidentSample");
+              if (typeof run !== "function")
+                throw new TypeError("Resident benchmark is unavailable.");
+              return run(args);
+            },
+            { arm: arm === "wasm-resident" ? "wasm" : "typescript", opsJson: fixture.opsJson },
+          );
         } else {
           sample = await page.evaluate(
             ({ arm: browserArm, documentJson, opsJson, task }) => {
@@ -424,9 +507,12 @@ try {
           warmup: repetition < 10,
           load1,
           sample,
-          browserMemory: await page.evaluate(
-            () => Reflect.get(performance, "memory")?.usedJSHeapSize ?? null,
-          ),
+          browserMemory:
+            arm === "native" || arm === "native-resident"
+              ? null
+              : await (arm.endsWith("-resident") ? residentPage : page).evaluate(
+                  () => Reflect.get(performance, "memory")?.usedJSHeapSize ?? null,
+                ),
           time: `${new Date().toLocaleString("sv-SE", { timeZone: "Europe/Prague" })} CEST`,
         });
       }
