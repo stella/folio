@@ -13,7 +13,7 @@ import fc from "fast-check";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
-import type { Document, Paragraph, Run, TextFormatting } from "../types/document";
+import type { Document, Paragraph, ParagraphContent, Run, TextFormatting } from "../types/document";
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
 
@@ -106,6 +106,51 @@ const roundTrip = (segments: readonly Segment[]) => {
 const textOf = (characters: readonly Character[]) => characters.map(({ char }) => char).join("");
 
 describe("markdown emphasis boundaries (properties)", () => {
+  test("clean revision boundaries preserve visible text without adding emphasis", () => {
+    const revisionSegment = fc.record({
+      segment: segmentOf(WORDS_AND_PUNCTUATION),
+      revision: fc.constantFrom("run", "insertion", "moveTo", "deletion", "moveFrom"),
+    });
+    fc.assert(
+      fc.property(fc.array(revisionSegment, { minLength: 1, maxLength: 6 }), (segments) => {
+        const visible = segments
+          .filter(({ revision }) => revision !== "deletion" && revision !== "moveFrom")
+          .map(({ segment }) => segment);
+        const source = documentOf(visible);
+        const expectedMarkdown = toMarkdown(source, CLEAN);
+        const paragraph = source.package.document.content.at(0);
+        if (paragraph?.type !== "paragraph") throw new Error("no source paragraph");
+        const before = charactersOf(paragraph);
+        const revised = segments.map(({ segment, revision }, index): ParagraphContent => {
+          const item = run(segment);
+          if (revision === "run") return item;
+          return {
+            type: revision,
+            info: { id: index, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+            content: [item],
+          };
+        });
+        paragraph.content = [
+          run({ text: "Start ", bold: false, italic: false, strike: false }),
+          ...revised,
+          run({ text: " end", bold: false, italic: false, strike: false }),
+        ];
+        const markdown = toMarkdown(source, CLEAN);
+        expect(markdown).toBe(expectedMarkdown);
+        const read = fromMarkdown(markdown).package.document.content.at(0);
+        if (read?.type !== "paragraph") throw new Error(`no paragraph read from ${markdown}`);
+        const after = charactersOf(read);
+        expect({ markdown, text: textOf(after) }).toEqual({ markdown, text: textOf(before) });
+        for (const [index, character] of after.entries()) {
+          for (const key of ["bold", "italic", "strike"] as const) {
+            if (character[key]) expect(before[index]?.[key]).toBe(true);
+          }
+        }
+      }),
+      propertyConfig({ numRuns: 300 }),
+    );
+  });
+
   test("emphasis on words and on either part of a word reads back as written", () => {
     // Words apart, each emphasized whole or in two parts. (Three differently
     // emphasized parts of one word can overlap in a way the reader cannot
