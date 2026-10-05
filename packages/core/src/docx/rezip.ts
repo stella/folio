@@ -254,7 +254,7 @@ const sectionCarrierParagraphs = (doc: Document): Paragraph[] => {
  * to `""` for a record holding settings it cannot write, so carrier uniqueness
  * alone does not prove the package states the sections the model holds.
  */
-const assertSectionCarriersMatchModel = ({
+export const assertSectionCarriersMatchModel = ({
   doc,
   serializedSectionCount,
 }: {
