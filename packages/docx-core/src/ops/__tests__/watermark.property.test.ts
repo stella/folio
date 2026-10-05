@@ -256,13 +256,14 @@ test("canonical picture watermark normalization omits internal target mode and r
 
     expect(normalized).toMatchObject({
       kind: "picture",
-      imageTargetExternal: expectedExternal,
       widthPt: 249,
-      heightPt: 124.2,
+      heightPt: 0.6 * 207,
       scale: 0.6,
     });
     if (expectedExternal === undefined) {
       expect(normalized && "imageTargetExternal" in normalized).toBe(false);
+    } else {
+      expect(normalized).toMatchObject({ imageTargetExternal: expectedExternal });
     }
   }
 
@@ -271,6 +272,7 @@ test("canonical picture watermark normalization omits internal target mode and r
       watermark: {
         kind: "picture",
         imageRId: "rIdWatermarkImage",
+        imageTarget: "media/watermark.png",
         widthPt: 415,
         heightPt: 208,
       },
@@ -280,6 +282,7 @@ test("canonical picture watermark normalization omits internal target mode and r
       watermark: {
         kind: "picture",
         imageRId: "rIdWatermarkImage",
+        imageTarget: "media/watermark.png",
         widthPt: 300,
         heightPt: 123,
       },
@@ -289,11 +292,12 @@ test("canonical picture watermark normalization omits internal target mode and r
       watermark: {
         kind: "picture",
         imageRId: "rIdWatermarkImage",
+        imageTarget: "media/watermark.png",
         scale: 0.6,
         widthPt: 300,
         heightPt: 123,
       },
-      expected: { widthPt: 249, heightPt: 124.2, scale: 0.6 },
+      expected: { widthPt: 249, heightPt: 0.6 * 207, scale: 0.6 },
     },
   ] satisfies readonly { watermark: Watermark; expected: Record<string, number> }[];
 
