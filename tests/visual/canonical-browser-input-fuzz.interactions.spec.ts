@@ -18,6 +18,7 @@ import { checkCanonicalBrowserHistory } from "./canonicalBrowserHistoryOracle";
 import { canonicalOracleFailureRecord } from "../parity/canonicalOracleFailure";
 import type {} from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
+import { isCanonicalInputTimer } from "../parity/canonicalTimerOwner";
 
 const config = parseBrowserInputTraceConfig(
   process.env,
@@ -92,9 +93,7 @@ for (const seed of config.seeds) {
               expect(cleanState.proseMirrorUndoDepth, "leaked PM undo history").toBe(0);
               expect(cleanState.proseMirrorRedoDepth, "leaked PM redo history").toBe(0);
               expect(
-                cleanState.pendingTimers.filter(({ stack }) =>
-                  /canonicalComposition|canonicalInput/.test(stack),
-                ),
+                cleanState.pendingTimers.filter(({ stack }) => isCanonicalInputTimer(stack)),
                 "leaked composition timer",
               ).toEqual([]);
             },
