@@ -1,9 +1,20 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs/promises";
 import config from "../../playwright.config";
+import reactPlayground from "../../packages/playground/package.json";
+import vuePlayground from "../../packages/playground-vue/package.json";
 
 const servers = config.webServer;
 if (!Array.isArray(servers)) throw new TypeError("Expected both playground servers.");
+
+test("browser harness owns a fresh preview for both playground packages", () => {
+  const packages = [reactPlayground, vuePlayground];
+  expect(servers).toHaveLength(packages.length);
+  expect(servers.map(({ command }) => command).sort()).toEqual(
+    packages.map(({ name }) => `bun --filter ${name} build && bun --filter ${name} preview`).sort(),
+  );
+  for (const server of servers) expect(server.reuseExistingServer).toBe(false);
+});
 
 for (const server of servers) {
   test(`built playground and fixture transport: ${server.url}`, async ({ page, request }) => {
@@ -29,6 +40,7 @@ for (const server of servers) {
 
     await page.goto(`${server.url}/?file=sample.docx`);
     await expect(page.locator(".paged-editor__pages").first()).toBeVisible();
+    await expect(page.locator(".paged-editor__pages").first()).toContainText(/\S/u);
     expect(await page.locator('script[src^="/assets/"]').count()).toBeGreaterThan(0);
   });
 }
