@@ -549,7 +549,8 @@ export async function attemptSelectiveSave(
     // even if the editor now has zero comments — otherwise the stale
     // entries linger in the saved file (the rezip baseline copies the
     // previous part as-is) and round-trip back as phantom threads.
-    const sourceCommentsFile = zip.file("word/comments.xml");
+    const sourceCommentsFile = findZipEntryCaseInsensitive(zip, "word/comments.xml");
+    const commentsPartPath = sourceCommentsFile?.name ?? "word/comments.xml";
     if (hasComments || ownsCommentsPart || sourceCommentsFile) {
       const sourceCommentsXml = sourceCommentsFile
         ? await sourceCommentsFile.async("text")
@@ -559,7 +560,7 @@ export async function attemptSelectiveSave(
         sourceCommentsXml === undefined ? undefined : readRootNamespaceBindings(sourceCommentsXml),
       );
       if (commentsXml !== sourceCommentsXml) {
-        updates.set("word/comments.xml", commentsXml);
+        updates.set(commentsPartPath, commentsXml);
       }
     }
     if (hasComments || ownsCommentsPart) {
@@ -567,12 +568,12 @@ export async function attemptSelectiveSave(
       const ctFile = zip.file("[Content_Types].xml");
       if (ctFile) {
         const ctXml = await ctFile.async("text");
-        if (!ctXml.includes("/word/comments.xml")) {
+        if (!ctXml.toLowerCase().includes("/word/comments.xml")) {
           updates.set(
             "[Content_Types].xml",
             ctXml.replace(
               "</Types>",
-              `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
+              `<Override PartName="/${commentsPartPath}" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
             ),
           );
         }
@@ -583,13 +584,13 @@ export async function attemptSelectiveSave(
       const relsFile = zip.file(relsPath);
       if (relsFile) {
         const relsXml = await relsFile.async("text");
-        if (!relsXml.includes("comments.xml")) {
+        if (!relsXml.toLowerCase().includes("comments.xml")) {
           const maxId = findMaxRId(relsXml);
           updates.set(
             relsPath,
             relsXml.replace(
               "</Relationships>",
-              `<Relationship Id="rId${maxId + 1}" Type="${RELATIONSHIP_TYPES.comments}" Target="comments.xml"/></Relationships>`,
+              `<Relationship Id="rId${maxId + 1}" Type="${RELATIONSHIP_TYPES.comments}" Target="${commentsPartPath.slice("word/".length)}"/></Relationships>`,
             ),
           );
         }

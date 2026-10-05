@@ -178,7 +178,7 @@ export const allocateCommentAnchorIds = (
     for (const id of idsIn(keys, space)) largest = Math.max(largest, id);
     return largest + 1;
   };
-  const firstRevision = firstIn(IDENTITY_SPACES.REVISION);
+  const firstRevision = Math.max(firstIn(IDENTITY_SPACES.REVISION), op.comment.id + 1);
   const firstControl = firstIn(IDENTITY_SPACES.CONTROL);
   const pool = (first: number, count: number): number[] =>
     Array.from({ length: count }, (_, index) => first + index);

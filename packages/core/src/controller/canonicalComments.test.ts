@@ -1,5 +1,6 @@
 import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
+import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
 import { freshCommentId } from "@stll/docx-core/ops";
 import { validateDocxPackage } from "@stll/docx-core";
@@ -66,6 +67,45 @@ const setup = (document = seed()) => {
   return { session, apply, history, create };
 };
 
+const COMMENTS_SOURCE_PATHS = [
+  "word/comments.xml",
+  "word/Comments.xml",
+  "word/COMMENTS.XML",
+] as const;
+
+const openCommentSource = async (path: (typeof COMMENTS_SOURCE_PATHS)[number]) => {
+  const source = setup();
+  const id = freshCommentId(source.session.document).unwrap();
+  const block = source.session.document.package.document.content.at(0);
+  if (block?.type !== "paragraph" || !block.paraId) throw new Error("Missing source paragraph");
+  source.apply({
+    type: "create",
+    comment: {
+      id,
+      author: "source",
+      content: canonicalCommentBody(source.session.document, "source"),
+    },
+    anchor: { kind: "point", at: { story: "main", blockId: block.paraId, offset: 1 } },
+  });
+  const zip = await JSZip.loadAsync(await createDocx(source.session.document));
+  const comments = await zip.file("word/comments.xml")?.async("text");
+  if (!comments) throw new Error("Missing source comments part");
+  expect(zip.file("word/commentsExtended.xml")).toBeNull();
+  zip.remove("word/comments.xml");
+  zip.file(path, comments);
+  const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+  const relationships = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  if (!contentTypes || !relationships) throw new Error("Missing source comment packaging");
+  zip.file("[Content_Types].xml", contentTypes.replace("/word/comments.xml", `/${path}`));
+  zip.file(
+    "word/_rels/document.xml.rels",
+    relationships.replace('Target="comments.xml"', `Target="${path.slice("word/".length)}"`),
+  );
+  const buffer = await zip.generateAsync({ type: "arraybuffer" });
+  expect(await validateDocxPackage(new Uint8Array(buffer))).toEqual({ valid: true });
+  return { document: await parseDocx(buffer, { preloadFonts: false }), id };
+};
+
 const assertCanonicalCommentSave = async (session: ReturnType<typeof setup>["session"]) => {
   const snapshot = session.captureSaveSnapshot();
   for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
@@ -93,11 +133,33 @@ test("generated point/range comment histories preserve exact undo, projection an
     fc.asyncProperty(
       fc.array(fc.stringMatching(/^[a-z]{1,12}$/u), { minLength: 1, maxLength: 6 }),
       fc.constantFrom("point", "range"),
-      async (texts, kind) => {
-        // Parsing the seed gives the model/transport oracle one shared baseline.
-        const editor = setup(await parseDocx(await createDocx(seed())));
+      fc.constantFrom(...COMMENTS_SOURCE_PATHS),
+      async (texts, kind, sourcePath) => {
+        const source = await openCommentSource(sourcePath);
+        const editor = setup(source.document);
         const original = editor.session.document;
-        let steps = 0;
+        editor.apply({ type: "delete", id: source.id });
+        const deletion = await serializeCanonicalSave({
+          snapshot: editor.session.captureSaveSnapshot(),
+          featureFlags: { selectiveSave: true },
+          options: { mode: FOLIO_DOCX_SERIALIZATION_MODE.preferSelective },
+        });
+        expect(deletion.diagnostics).toEqual([]);
+        expect(await validateDocxPackage(new Uint8Array(deletion.buffer))).toEqual({ valid: true });
+        const deletedZip = await JSZip.loadAsync(deletion.buffer);
+        expect(
+          Object.keys(deletedZip.files).filter(
+            (path) => path.toLowerCase() === "word/comments.xml",
+          ),
+        ).toEqual([sourcePath]);
+        expect(
+          describePackageDifferences(
+            editor.session.document,
+            await parseDocx(deletion.buffer, { preloadFonts: false }),
+          ),
+        ).toEqual({ messages: [], omitted: 0 });
+        await assertCanonicalCommentSave(editor.session);
+        let steps = 1;
         for (const text of texts) {
           const id = editor.create(text, kind);
           steps += 1;
@@ -157,7 +219,11 @@ test("generated point/range comment histories preserve exact undo, projection an
         expect(editor.session.projection.doc.textContent).toBe("A😀éB");
       },
     ),
-    { numRuns: 12, seed: 20261005 },
+    {
+      numRuns: 12,
+      seed: 20261005,
+      examples: COMMENTS_SOURCE_PATHS.map((path) => [["a"], "point" as const, path]),
+    },
   );
 });
 

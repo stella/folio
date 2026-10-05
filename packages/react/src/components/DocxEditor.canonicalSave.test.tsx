@@ -11,7 +11,7 @@ import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { validateDocxPackage } from "../../../docx-core/src/validate/docx";
+import { validateDocxPackage } from "@stll/docx-core";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import type { Document } from "@stll/folio-core/types/document";

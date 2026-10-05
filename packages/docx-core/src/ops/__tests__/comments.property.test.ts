@@ -487,7 +487,10 @@ test("generated tracked and controlled comment anchors allocate exact package-ow
     fc.property(
       fc.integer({ min: 1, max: 4 }),
       fc.constantFrom("point" as const, "range" as const),
-      (depth, kind) => {
+      fc.oneof(fc.integer({ min: 200, max: 300 }), fc.integer({ min: 500, max: 800 })),
+      fc.integer({ min: 1, max: 3 }),
+      fc.integer({ min: 0, max: 8 }),
+      (depth, kind, revisionBase, offset, commentIdGap) => {
         const document = seed("absent");
         const first = document.package.document.content.at(0);
         if (first?.type !== "paragraph") throw new Error("Missing paragraph");
@@ -495,7 +498,7 @@ test("generated tracked and controlled comment anchors allocate exact package-ow
           first.content = [
             {
               type: "insertion",
-              info: { id: 200 + index, author: "A", date: "2026-01-02T00:00:00Z" },
+              info: { id: revisionBase + index, author: "A", date: "2026-01-02T00:00:00Z" },
               content: first.content,
             },
           ];
@@ -506,26 +509,46 @@ test("generated tracked and controlled comment anchors allocate exact package-ow
             content: first.content,
           },
         ];
-        const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 2 };
+        const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset };
+        const rootId = freshCommentId(document).unwrap() + commentIdGap;
         const create: CommentOp = {
           type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
-          comment: comment(100, "00000010", "root"),
-          anchor: kind === "point" ? { kind, at } : { kind, from: at, to: { ...at, offset: 4 } },
+          comment: comment(rootId, "00000010", "root"),
+          anchor:
+            kind === "point" ? { kind, at } : { kind, from: at, to: { ...at, offset: offset + 1 } },
         };
         const newIds = allocateCommentAnchorIds(document, create).unwrap();
         expect(allocateCommentAnchorIds(document, create).unwrap()).toStrictEqual(newIds);
+        expect(newIds.revision?.length).toBeGreaterThan(0);
+        for (const id of newIds.revision ?? []) expect(id).toBeGreaterThan(rootId);
         let current = exact(document, { ...create, newIds });
+        const replyId = freshCommentId(current).unwrap();
         const reply = {
           type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
-          comment: comment(101, "00000011", "reply"),
-          anchor: { kind: "reply", parentId: 100 },
+          comment: comment(replyId, "00000011", "reply"),
+          anchor: { kind: "reply", parentId: rootId },
         } as const;
+        const replyIds = allocateCommentAnchorIds(current, reply).unwrap();
+        for (const id of replyIds.revision ?? []) expect(id).toBeGreaterThan(replyId);
         current = exact(current, {
           ...reply,
-          newIds: allocateCommentAnchorIds(current, reply).unwrap(),
+          newIds: replyIds,
+        });
+        const cutRevisionId = newIds.revision?.at(0);
+        if (cutRevisionId === undefined)
+          throw new Error("Tracked anchor must allocate a cut revision");
+        const revisionComment = {
+          type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+          comment: comment(freshCommentId(current).unwrap(), "00000012", "revision"),
+          anchor: { kind: "revision", story: OP_STORIES.MAIN, revisionId: cutRevisionId },
+        } as const;
+        current = exact(current, {
+          ...revisionComment,
+          newIds: allocateCommentAnchorIds(current, revisionComment).unwrap(),
         });
         expect(commentDocumentIssue(current)).toBeUndefined();
-        for (const id of newIds.revision ?? []) expect(id).toBeGreaterThan(200 + depth - 1);
+        for (const id of newIds.revision ?? [])
+          expect(id).toBeGreaterThan(revisionBase + depth - 1);
         for (const id of newIds.control ?? []) expect(id).toBeGreaterThan(400);
       },
     ),
