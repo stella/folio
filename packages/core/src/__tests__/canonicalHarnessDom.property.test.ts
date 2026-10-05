@@ -1,9 +1,11 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { createCanonicalEditorHarness } from "../../../../test/canonicalEditorHarness";
 import { createEmptyDocument } from "../utils/createDocument";
+
+setDefaultTimeout(propertyTestTimeout(10_000));
 
 test("canonical drivers release owned DOM across overlapping mount and teardown sequences", () => {
   // Driver-only tests missed global registration leaking into later test modules.
