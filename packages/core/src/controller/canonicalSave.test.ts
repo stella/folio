@@ -1,6 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { panic } from "better-result";
+import { panic, Result } from "better-result";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -15,6 +15,8 @@ import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { createSimpleDocument } from "../docx/serializer/documentSerializer";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
+import { CanonicalResourceSaveRefusalError } from "../docx/canonicalResourceSave";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { SaveDiagnostic } from "../docx/saveDiagnostics";
 import { assertExactModel } from "../../../../test/exactModel";
 import type { Style } from "../types/document";
@@ -278,3 +280,112 @@ test("captured canonical saves retain the exact version when a newer commit arri
   session.beginComposition();
   expect(() => session.captureSaveSnapshot()).toThrow("Composition must finish");
 });
+
+const RESOURCE_REPLACEMENT_KINDS = ["style", "docDefaults", "media"] as const;
+for (const kind of RESOURCE_REPLACEMENT_KINDS) {
+  test(`generated canonical ${kind} replacements refuse save rather than lose resources`, async () => {
+    await assertProperty(
+      fc.asyncProperty(fc.integer({ min: 3, max: 255 }), async (value) => {
+        const original = await openSource();
+        if (!original.originalBuffer) return panic("The generated source is missing its baseline");
+        const zip = await JSZip.loadAsync(original.originalBuffer);
+        const mediaPath = "word/media/canonical-resource.png";
+        zip.file(
+          mediaPath,
+          Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=",
+            "base64",
+          ),
+        );
+        const document = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+          preloadFonts: false,
+        });
+        const session = createCanonicalSession(document).unwrap();
+        let state = EditorState.create({ schema, doc: session.projection.doc });
+        const baseline = session.captureSaveSnapshot();
+        const styles = session.document.package.styles;
+        if (!styles) return panic("The generated source is missing styles");
+        const media = session.document.package.media?.get(mediaPath);
+        if (!media) return panic("The generated source is missing media");
+        const next = { ...session.document, package: { ...session.document.package } };
+        switch (kind) {
+          case "style":
+            next.package.styles = {
+              ...styles,
+              styles: styles.styles.map((style) => ({ ...style, name: `Replacement ${value}` })),
+            };
+            break;
+          case "docDefaults":
+            next.package.styles = {
+              ...styles,
+              docDefaults: {
+                ...styles.docDefaults,
+                pPr: { ...styles.docDefaults?.pPr, keepNext: true },
+              },
+            };
+            break;
+          case "media":
+            next.package.media = new Map(session.document.package.media);
+            next.package.media.set(mediaPath, { ...media, data: new Uint8Array([value]).buffer });
+            break;
+          default: {
+            const exhaustive: never = kind;
+            return exhaustive;
+          }
+        }
+        const commit = session
+          .prepareOperations(state, [
+            packageResourcesOpOf({ before: session.document, after: next }),
+          ])
+          .unwrap();
+        state = state.apply(commit.transaction);
+        commit.publish().unwrap();
+        const refusal = async () => {
+          for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
+            const diagnostics: SaveDiagnostic[] = [];
+            const saved = await Result.tryPromise({
+              try: () =>
+                serializeCanonicalSave({
+                  snapshot: session.captureSaveSnapshot(),
+                  options: { mode, onDiagnostic: (diagnostic) => diagnostics.push(diagnostic) },
+                }),
+              catch: (error: unknown) => error,
+            });
+            expect(saved.isErr()).toBe(true);
+            if (saved.isOk() || !(saved.error instanceof CanonicalResourceSaveRefusalError))
+              return panic("Resource replacement must produce the typed save refusal");
+            expect(saved.error.gap).toBe(CANONICAL_GAP.resourceReplacement);
+            expect(diagnostics).toEqual([
+              {
+                type: "canonicalResourceReplacement",
+                gap: CANONICAL_GAP.resourceReplacement,
+                part: kind === "media" ? mediaPath : "word/styles.xml",
+              },
+            ]);
+          }
+        };
+        await refusal();
+        const undo = session.prepareUndo(state).unwrap();
+        state = state.apply(undo.transaction);
+        undo.publish().unwrap();
+        assertExactModel(session.captureSaveSnapshot().document, baseline.document);
+        for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
+          const saved = await serializeCanonicalSave({
+            snapshot: session.captureSaveSnapshot(),
+            options: { mode },
+          });
+          expect(
+            describePackageDifferences(
+              baseline.document,
+              await parseDocx(saved.buffer, { preloadFonts: false }),
+            ),
+          ).toEqual({ messages: [], omitted: 0 });
+        }
+        const redo = session.prepareRedo(state).unwrap();
+        state = state.apply(redo.transaction);
+        redo.publish().unwrap();
+        await refusal();
+      }),
+    );
+  });
+}

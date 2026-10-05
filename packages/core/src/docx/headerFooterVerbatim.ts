@@ -31,6 +31,8 @@ const contentBaselines = new WeakMap<
       fingerprint: { type: "pending" } | { type: "captured"; value: string };
       xml: string;
       body: Document["package"]["document"];
+      resourceStyles: Document["package"]["styles"];
+      resourceMedia: ReadonlyMap<string, { data: ArrayBuffer; mimeType: string }>;
     }
 >();
 
@@ -239,6 +241,13 @@ export const captureDocumentSourceBaseline = (document: Document, xml: string): 
     fingerprint: { type: "pending" },
     xml,
     body,
+    resourceStyles: structuredClone(document.package.styles),
+    resourceMedia: new Map(
+      [...(document.package.media ?? [])].map(([path, media]) => [
+        path,
+        { data: media.data, mimeType: media.mimeType },
+      ]),
+    ),
   });
   Object.defineProperty(document.package.document, BASELINE_HANDLE, {
     value: handle,
@@ -262,6 +271,8 @@ export const getDocumentSourceBaseline = (
       body: Document["package"]["document"];
       xml: string;
       fingerprint: string;
+      resourceStyles: Document["package"]["styles"];
+      resourceMedia: ReadonlyMap<string, { data: ArrayBuffer; mimeType: string }>;
     } => {
   const body = document.package.document;
   const handle =
@@ -279,5 +290,12 @@ export const getDocumentSourceBaseline = (
   if (baseline.fingerprint.type === "pending")
     baseline.fingerprint = { type: "captured", value: fingerprint };
   if (baseline.fingerprint.value !== fingerprint) return { type: "mismatch" };
-  return { type: "captured", body: baseline.body, xml: baseline.xml, fingerprint };
+  return {
+    type: "captured",
+    body: baseline.body,
+    xml: baseline.xml,
+    fingerprint,
+    resourceStyles: baseline.resourceStyles,
+    resourceMedia: baseline.resourceMedia,
+  };
 };

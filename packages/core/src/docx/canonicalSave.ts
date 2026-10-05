@@ -1,3 +1,7 @@
+import {
+  canonicalResourceReplacementOf,
+  CanonicalResourceSaveRefusalError,
+} from "./canonicalResourceSave";
 import { Result, TaggedError } from "better-result";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
@@ -32,6 +36,22 @@ export const serializeCanonicalSave = async ({
   featureFlags,
 }: SerializeCanonicalSaveOptions) => {
   const document = withoutUnreferencedNotes(snapshot.document);
+  // Package-resource operations conservatively retain structural save work through undo.
+  const replacementPart =
+    snapshot.structure === "changed" ? canonicalResourceReplacementOf(document) : undefined;
+  if (replacementPart) {
+    const diagnostic = {
+      type: "canonicalResourceReplacement",
+      gap: CANONICAL_GAP.resourceReplacement,
+      part: replacementPart,
+    } as const satisfies SaveDiagnostic;
+    options?.onDiagnostic?.(diagnostic);
+    throw new CanonicalResourceSaveRefusalError({
+      message: "Canonical save cannot preserve this package resource replacement.",
+      gap: CANONICAL_GAP.resourceReplacement,
+      diagnostic,
+    });
+  }
   const baseline = document.originalBuffer;
   const flags = resolveSelectiveSaveFlags(featureFlags);
   const diagnostics: SaveDiagnostic[] = [];
