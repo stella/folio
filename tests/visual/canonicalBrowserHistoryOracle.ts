@@ -59,6 +59,7 @@ type CanonicalBrowserHistoryOptions = {
   actions: readonly BrowserInputAction[];
   missing: ReturnType<typeof createMissingOpBurndown>;
   observations?: CanonicalFuzzObservation[];
+  cleanStart?: () => Promise<void>;
 };
 
 type CanonicalBrowserHistoryRunOptions = CanonicalBrowserHistoryOptions & {
@@ -71,6 +72,7 @@ const runCanonicalBrowserHistory = async ({
   actions,
   missing,
   observations,
+  cleanStart,
 }: CanonicalBrowserHistoryRunOptions): Promise<number> => {
   await installCanonicalHistoryProbe(page);
   let observation: CanonicalFuzzObservation = { phase: { type: "load" }, errors: [] };
@@ -95,6 +97,7 @@ const runCanonicalBrowserHistory = async ({
   );
   expect(await collectErrors()).toEqual([]);
   expect(await page.evaluate(() => globalThis.__folioCanonical?.select(1, 6))).toBe(true);
+  await cleanStart?.();
   const baseline = await snapshot(page);
   expect(baseline.canUndo).toBe(false);
   expect(baseline.canRedo).toBe(false);
