@@ -7,6 +7,8 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const API_CONTROL_PATHS = new Set([
   "scripts/api-surface-budget.json",
   "scripts/api-surface-budget.ts",
+  "scripts/api-reports.ts",
+  "tsconfig.base.json",
   ".github/workflows/ci.yml",
   "scripts/ci-api-plan.ts",
   "scripts/ci-api-plan.test.ts",
@@ -104,8 +106,12 @@ export const apiRequiredForPaths = ({
     // Manifests can change workspace membership or publication status, including removal.
     if (file === "package.json" || file.endsWith("/package.json") || API_CONTROL_PATHS.has(file))
       return true;
+    if (file.startsWith("api-reports/") && file.endsWith(".api.md")) return true;
     return packages.some(
-      (directory) => file === `${directory}/src` || file.startsWith(`${directory}/src/`),
+      (directory) =>
+        file === `${directory}/src` ||
+        file.startsWith(`${directory}/src/`) ||
+        file === `${directory}/tsconfig.json`,
     );
   });
 };

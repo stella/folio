@@ -111,6 +111,23 @@ describe("manifest-derived published API scope", () => {
         ).toBe(true);
   });
 
+  test("every newly discovered published compiler config selects API checks", () => {
+    const repoRoot = fixture({
+      workspaces: ["modules/*"],
+      manifests: { "modules/first": { name: "first" } },
+    });
+    write(repoRoot, "modules/new-package/package.json", JSON.stringify({ name: "new-package" }));
+    const published = publishedPackagePaths(repoRoot);
+    expect(published).toContain("modules/new-package");
+    for (const directory of published)
+      expect(
+        apiRequiredForPaths({
+          changedPaths: [`${directory}/tsconfig.json`],
+          publishedPackagePaths: published,
+        }),
+      ).toBe(true);
+  });
+
   test("docs and private source edits do not select API; every API control does", () => {
     const repoRoot = fixture({
       workspaces: ["modules/*"],
@@ -127,6 +144,8 @@ describe("manifest-derived published API scope", () => {
       "modules/public/src-other/file.ts",
       "modules/private/src/index.ts",
       "outside/src/index.ts",
+      "modules/private/tsconfig.json",
+      "api-reports/README.md",
     ];
     expect(apiRequiredForPaths({ changedPaths: [], publishedPackagePaths: published })).toBe(false);
     for (const file of outside)
@@ -139,6 +158,9 @@ describe("manifest-derived published API scope", () => {
       "modules/private/package.json",
       "scripts/api-surface-budget.json",
       "scripts/api-surface-budget.ts",
+      "scripts/api-reports.ts",
+      "tsconfig.base.json",
+      "api-reports/new-package/nested/entry.api.md",
       ".github/workflows/ci.yml",
       "scripts/ci-api-plan.ts",
       "scripts/ci-api-plan.test.ts",
