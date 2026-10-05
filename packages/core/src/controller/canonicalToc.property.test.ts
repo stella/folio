@@ -128,6 +128,11 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
         for (let iteration = 0; iteration < 2; iteration += 1) {
           const before = session.document;
           const beforeSelection = state.selection.toJSON();
+          const {
+            anchor: _beforeAnchor,
+            head: _beforeHead,
+            ...selectionMetadata
+          } = session.projection.selectionAt(state).unwrap();
           const version = session.version;
           const command = singletonManager.requireCommand("generateTOC")({ title: "Contents" });
           command(state);
@@ -141,6 +146,12 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
           const prepared = prepareCanonicalCommands(session, state, intents).unwrap();
           state = publishCanonicalProjection({ session, state, commit: prepared }).unwrap().state;
           expect(state.doc.eq(session.projection.doc)).toBe(true);
+          const {
+            anchor: _afterAnchor,
+            head: _afterHead,
+            ...mappedSelectionMetadata
+          } = session.projection.selectionAt(state).unwrap();
+          expect(mappedSelectionMetadata).toEqual(selectionMetadata);
           expect(state.selection.empty).toBe(offset === 10);
           expect(
             state.selection.$from.parent.textBetween(
