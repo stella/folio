@@ -1,0 +1,10 @@
+{
+  "copied $resource image saves with exact $kind ownership in $mode": [
+    {
+      "seed": 20261022,
+      "path": "0",
+      "note": "Copied-picture save must exercise the source-relationship baseline and preserve publication of allocated owning ids for every story/resource/mode.",
+      "date": "2026-10-05"
+    }
+  ]
+}

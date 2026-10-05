@@ -87,7 +87,7 @@ export const serializeCanonicalSave = async ({
           document,
           repack: () => repackDocx(document, { onDiagnostic, bodyAuthority: "canonical" }),
         })
-      : createDocx(document);
+      : createDocx(document, { onDiagnostic, bodyAuthority: "canonical" });
   };
   let buffer = useSelective ? selectiveBuffer : null;
   let fullBuffer: ArrayBuffer | null = null;
