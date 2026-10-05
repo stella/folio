@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import fc from "fast-check";
 import { Result } from "better-result";
 import { createDocx } from "../../packages/core/src/docx/rezip";
@@ -58,8 +60,11 @@ for (const { seed, path, kinds } of replays) {
       },
       catch: (cause: unknown) => cause,
     });
+    const observationPath = info.outputPath("canonical-history-observations.json");
+    await mkdir(dirname(observationPath), { recursive: true });
+    await writeFile(observationPath, JSON.stringify({ seed, path, actions, observations }));
     await info.attach("canonical-history-observations", {
-      body: JSON.stringify({ seed, path, actions, observations }),
+      path: observationPath,
       contentType: "application/json",
     });
     if (outcome.isErr()) {
