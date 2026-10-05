@@ -4223,6 +4223,7 @@ function convertImage({
     // diagram beyond the shapes the parse already read.
     preview: image.preview,
     docPrName: image.docPrName,
+    pictureNames: image.pictureNames === undefined ? undefined : { ...image.pictureNames },
     alt: image.alt,
     title: image.title,
     width: widthPx,

@@ -22,6 +22,7 @@ import type {
   DrawingAnchor,
   DrawingRawXmlMode,
   ImageDocPrLink,
+  NonVisualDrawingNames,
   FieldType,
   Hyperlink,
   Run,
@@ -545,6 +546,7 @@ export type ImageAttrs = {
    */
   preview?: PreviewDescriptor;
   docPrName?: string;
+  pictureNames?: NonVisualDrawingNames;
   alt?: string;
   title?: string;
   /** Width in pixels (already converted from EMU) */
