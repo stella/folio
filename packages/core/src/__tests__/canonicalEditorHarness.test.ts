@@ -71,6 +71,7 @@ test.each(TABLE_ACTIVATION_CASES)(
       location,
     ]);
     const before = cloneDocumentWithParagraphPropertySources(source);
+    const ambientDom = typeof document;
     const hosts = globalThis.document?.body.childElementCount ?? 0;
     const result = createCanonicalHarnessCase(source, mode);
     expect(result.type).toBe("activationRefused");
@@ -85,7 +86,8 @@ test.each(TABLE_ACTIVATION_CASES)(
       row: "table-session-activation",
     });
     assertExactModel(source, before);
-    expect(document.body.childElementCount).toBe(hosts);
+    expect(globalThis.document?.body.childElementCount ?? 0).toBe(hosts);
+    expect(typeof document).toBe(ambientDom);
   },
 );
 

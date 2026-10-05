@@ -1,4 +1,4 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { acquireHarnessDom } from "./harnessDom";
 import { panic, Result } from "better-result";
 import type { Slice } from "prosemirror-model";
 import type { Command, Transaction } from "prosemirror-state";
@@ -51,7 +51,7 @@ export const saveCanonicalHarnessDocument = async (source: Document) => {
 
 /** A disposable driver over the production controller, with no PM mutation fallback. */
 export const createCanonicalEditorHarness = (source: Document, mode: EditorMode) => {
-  if (typeof document === "undefined") GlobalRegistrator.register();
+  const releaseDom = acquireHarnessDom();
   const host = document.createElement("div");
   document.body.append(host);
   const refusals: HarnessRefusal[] = [];
@@ -136,9 +136,16 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
       });
     },
   });
+  let disposed = false;
   const dispose = () => {
-    manager.destroyView();
-    host.remove();
+    if (disposed) return;
+    disposed = true;
+    try {
+      manager.destroyView();
+    } finally {
+      host.remove();
+      releaseDom();
+    }
   };
   manager.ensureView();
   const editorView = manager.getView();
