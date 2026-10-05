@@ -79,8 +79,8 @@ export function renderParagraphBlock(
     // A numbered heading (`1. Scope`, through its style's `w:numPr` or its
     // own) keeps its number; a bulleted one its glyph, as a heading has no
     // Markdown bullet syntax to borrow.
-    if (!inline) {
-      // Drop empty headings — `#` alone is just literal text.
+    if (!inline || (!inline.trim() && label === undefined)) {
+      // Whitespace without a visible list label carries no text block.
       return { markdown: "", isListItem: false };
     }
     const hashes = "#".repeat(Math.min(MAX_MARKDOWN_HEADING_LEVEL, headingLevel + 1));
