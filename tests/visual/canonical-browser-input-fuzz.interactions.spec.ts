@@ -7,7 +7,6 @@ import { createEmptyDocument } from "../../packages/core/src/utils/createDocumen
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import {
   failureMarker,
-  failureRecord,
   logFailureMarker,
   shellQuote,
   writeFailureRecord,
@@ -15,6 +14,7 @@ import {
 import { parseBrowserInputTraceConfig } from "./browserInputTrace";
 import { canonicalBrowserTraceArbitrary } from "./canonicalBrowserTrace";
 import { checkCanonicalBrowserHistory } from "./canonicalBrowserHistoryOracle";
+import { canonicalOracleFailureRecord } from "../parity/canonicalOracleFailure";
 import type {} from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
 
@@ -97,9 +97,10 @@ for (const seed of config.seeds) {
           flow: flow.map(({ kind }) => kind).join(" → "),
         });
         logFailureMarker(marker);
+        const record = canonicalOracleFailureRecord({ marker, failure, flow });
         const artifact = writeFailureRecord(
           process.env["FOLIO_FUZZ_FAILURES_DIR"] ?? "fuzz-artifacts/canonical/findings",
-          failureRecord(marker, failure, { flow }),
+          record,
         );
         await info.attach("canonical-failure-record", {
           path: artifact,
