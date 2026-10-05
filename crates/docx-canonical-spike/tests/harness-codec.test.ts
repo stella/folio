@@ -18,7 +18,8 @@ import {
 
 const nativeResponse = (encoded: unknown): unknown => {
   const result = spawnSync(
-    fileURLToPath(new URL("../target/debug/canonical-spike", import.meta.url)),
+    process.env["RUST_SPIKE_NATIVE_BINARY"] ??
+      fileURLToPath(new URL("../target/debug/canonical-spike", import.meta.url)),
     [],
     { input: `${JSON.stringify({ harness: { roundtrip: encoded } })}\n`, encoding: "utf8" },
   );

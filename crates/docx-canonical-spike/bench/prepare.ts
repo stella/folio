@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import { loadavg } from "node:os";
 import binaryen from "binaryen";
 import { sourceDigest } from "./artifacts";
+import { importPortable, exportPortable } from "./portable";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const manifest = resolve(root, "Cargo.toml");
@@ -18,17 +19,25 @@ const command = (binary: string, args: readonly string[]) => {
   if (result.error) throw result.error;
   if (result.status !== 0) throw new TypeError(`${binary} failed (${result.status}).`);
 };
-command("nice", ["-n", "10", "cargo", "test", "--manifest-path", manifest]);
-command("nice", [
-  "-n",
-  "10",
-  "cargo",
-  "build",
-  "--manifest-path",
-  manifest,
-  "--bin",
-  "canonical-spike",
-]);
+const mode = process.env["RUST_SPIKE_PREPARE_MODE"] ?? "full";
+if (mode !== "full" && mode !== "release-only") throw new TypeError("Unknown preparation mode.");
+const portableDirectory = process.env["RUST_SPIKE_PORTABLE_DIR"];
+if (mode === "release-only" && !portableDirectory)
+  throw new TypeError("Release-only preparation requires portable WASM.");
+if (portableDirectory) importPortable(root, portableDirectory);
+if (mode === "full") {
+  command("nice", ["-n", "10", "cargo", "test", "--manifest-path", manifest]);
+  command("nice", [
+    "-n",
+    "10",
+    "cargo",
+    "build",
+    "--manifest-path",
+    manifest,
+    "--bin",
+    "canonical-spike",
+  ]);
+}
 command("nice", [
   "-n",
   "10",
@@ -40,27 +49,29 @@ command("nice", [
   "--bin",
   "canonical-spike",
 ]);
-command("nice", [
-  "-n",
-  "10",
-  "cargo",
-  "build",
-  "--manifest-path",
-  manifest,
-  "--release",
-  "--target",
-  "wasm32-unknown-unknown",
-  "--features",
-  "wasm",
-  "--lib",
-]);
-command("wasm-bindgen", [
-  resolve(root, "target/wasm32-unknown-unknown/release/docx_canonical_spike.wasm"),
-  "--target",
-  "web",
-  "--out-dir",
-  resolve(root, "target/wasm-bindgen-release"),
-]);
+if (!portableDirectory) {
+  command("nice", [
+    "-n",
+    "10",
+    "cargo",
+    "build",
+    "--manifest-path",
+    manifest,
+    "--release",
+    "--target",
+    "wasm32-unknown-unknown",
+    "--features",
+    "wasm",
+    "--lib",
+  ]);
+  command("wasm-bindgen", [
+    resolve(root, "target/wasm32-unknown-unknown/release/docx_canonical_spike.wasm"),
+    "--target",
+    "web",
+    "--out-dir",
+    resolve(root, "target/wasm-bindgen-release"),
+  ]);
+}
 const wasmBytes = readFileSync(
   resolve(root, "target/wasm-bindgen-release/docx_canonical_spike_bg.wasm"),
 );
@@ -86,18 +97,21 @@ if (/\b(?:Worker|SharedArrayBuffer)\b/u.test(glue))
   throw new TypeError("Spike browser glue must stay single-threaded.");
 const browserOutput = resolve(root, "target/benchmark-browser");
 mkdirSync(browserOutput, { recursive: true });
-const built = await Bun.build({
-  entrypoints: [resolve(root, "bench/browser.ts")],
-  outdir: browserOutput,
-  target: "browser",
-  format: "esm",
-  minify: true,
-  external: ["/wasm/docx_canonical_spike.js"],
-});
-if (!built.success) throw new AggregateError(built.logs, "Browser benchmark bundle failed.");
+if (!portableDirectory) {
+  const built = await Bun.build({
+    entrypoints: [resolve(root, "bench/browser.ts")],
+    outdir: browserOutput,
+    target: "browser",
+    format: "esm",
+    minify: true,
+    external: ["/wasm/docx_canonical_spike.js"],
+  });
+  if (!built.success) throw new AggregateError(built.logs, "Browser benchmark bundle failed.");
+}
 const progress = process.env["RUST_SPIKE_PROGRESS_DIR"];
 if (!progress) throw new TypeError("RUST_SPIKE_PROGRESS_DIR is required.");
 mkdirSync(progress, { recursive: true });
+if (process.env["CI"]) exportPortable(root, resolve(progress, "portable-wasm"));
 const artifactPaths = [
   resolve(root, "target/release/canonical-spike"),
   resolve(root, "target/wasm-bindgen-release/docx_canonical_spike.js"),

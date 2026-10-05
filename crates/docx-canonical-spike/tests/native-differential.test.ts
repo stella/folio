@@ -21,7 +21,9 @@ import {
 import { captureDocumentOp } from "../../../packages/docx-core/src/ops/wire";
 import { decodeTagged, encodeTagged, withoutCaptureSymbols, type Encoded } from "./harness-codec";
 
-const binary = fileURLToPath(new URL("../target/debug/canonical-spike", import.meta.url));
+const binary =
+  process.env["RUST_SPIKE_NATIVE_BINARY"] ??
+  fileURLToPath(new URL("../target/debug/canonical-spike", import.meta.url));
 const paragraphPatchKind = GENERATED_OP_KINDS.indexOf(DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS);
 if (paragraphPatchKind < 0) throw new TypeError("Existing generator has no paragraph patch kind.");
 

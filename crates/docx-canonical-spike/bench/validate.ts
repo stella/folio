@@ -42,7 +42,11 @@ const commands = [
 for (const args of commands) {
   const result = spawnSync(process.execPath, args, {
     stdio: "inherit",
-    env: { ...process.env, RUST_SPIKE_BENCH_MODE: "validate" },
+    env: {
+      ...process.env,
+      RUST_SPIKE_BENCH_MODE: "validate",
+      RUST_SPIKE_NATIVE_BINARY: resolve(root, "target/release/canonical-spike"),
+    },
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new TypeError(`Artifact validation failed (${result.status}).`);

@@ -33,12 +33,18 @@ jobs:
         run: bun crates/docx-canonical-spike/bench/prepare.ts
         env:
           RUST_SPIKE_PROGRESS_DIR: ${{ runner.temp }}/rust-spike
+      - name: Upload portable release WASM and browser binding
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-canonical-spike-portable-wasm
+          path: ${{ runner.temp }}/rust-spike/portable-wasm
+          if-no-files-found: error
       - name: Full generator coverage and mismatch evidence
         run: bun crates/docx-canonical-spike/tests/differential-report.ts
         env:
           RUST_SPIKE_PROGRESS_DIR: ${{ runner.temp }}/rust-spike
       - name: Generated comparison
-        run: bun test crates/docx-canonical-spike/tests/native-differential.test.ts crates/docx-canonical-spike/tests/harness-codec.test.ts crates/docx-canonical-spike/tests/comment-differential.test.ts packages/core/src/__tests__/batchOverlapGenerators.test.ts
+        run: bun test crates/docx-canonical-spike/tests/portable.test.ts crates/docx-canonical-spike/tests/native-differential.test.ts crates/docx-canonical-spike/tests/harness-codec.test.ts crates/docx-canonical-spike/tests/comment-differential.test.ts packages/core/src/__tests__/batchOverlapGenerators.test.ts
       - name: Harness and generated binding types
         run: bun scripts/tsc-native.ts --noEmit -p crates/docx-canonical-spike/tsconfig.json
       - name: Portable kernel gate

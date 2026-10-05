@@ -32,7 +32,8 @@ const types: typeof import("../target/comment-oracle/617c0f4703a6cf43adb7ecda343
 
 const native = (document: unknown, operations: readonly DocumentOp[]): unknown => {
   const process = spawnSync(
-    fileURLToPath(new URL("../target/debug/canonical-spike", import.meta.url)),
+    process.env["RUST_SPIKE_NATIVE_BINARY"] ??
+      fileURLToPath(new URL("../target/debug/canonical-spike", import.meta.url)),
     [],
     {
       input: `${JSON.stringify({ harness: { document: encodeTagged(document), ops: operations.map((op) => wire.captureDocumentOp(op)) } })}\n`,
