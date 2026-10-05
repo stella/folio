@@ -89,7 +89,9 @@ export const encodeTagged = (value: unknown): Encoded => {
         return [key, encodeTagged(descriptor.value)] satisfies [string, Encoded];
       }),
     };
-  throw new HarnessCodecError({ message: "Unsupported model value in harness codec." });
+  throw new HarnessCodecError({
+    message: `Unsupported model value in harness codec (type ${typeof value}, prototype ${typeof value === "object" ? "custom" : "none"}).`,
+  });
 };
 
 export const decodeTagged = (value: unknown): unknown => {

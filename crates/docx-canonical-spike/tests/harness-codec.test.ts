@@ -122,6 +122,22 @@ test("null-prototype records retain prototype, special keys and owned undefined"
   expect(Object.getPrototypeOf(withoutCaptureSymbols(record))).toBeNull();
 });
 
+test("unsupported codec values report type and prototype without invoking accessors", () => {
+  const prototype = {};
+  Object.defineProperty(prototype, "constructor", {
+    get: () => {
+      throw new HarnessCodecError({ message: "Constructor accessor must not run." });
+    },
+  });
+  const value = Object.setPrototypeOf({}, prototype);
+  throws(
+    () => encodeTagged(value),
+    (error: unknown) =>
+      error instanceof HarnessCodecError &&
+      error.message === "Unsupported model value in harness codec (type object, prototype custom).",
+  );
+});
+
 test("tag-shaped authored records, Map order, binary, Date and undefined never collapse", () => {
   const mapValue = (value: null | undefined) => ({ value });
   const sparse: unknown[] = [];
