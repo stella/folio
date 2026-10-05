@@ -20,10 +20,8 @@ const command = (binary: string, args: readonly string[]) => {
   if (result.status !== 0) throw new TypeError(`${binary} failed (${result.status}).`);
 };
 const mode = process.env["RUST_SPIKE_PREPARE_MODE"] ?? "full";
-if (mode !== "full" && mode !== "release-only") throw new TypeError("Unknown preparation mode.");
+if (mode !== "full" && mode !== "release") throw new TypeError("Unknown preparation mode.");
 const portableDirectory = process.env["RUST_SPIKE_PORTABLE_DIR"];
-if (mode === "release-only" && !portableDirectory)
-  throw new TypeError("Release-only preparation requires portable WASM.");
 if (portableDirectory) importPortable(root, portableDirectory);
 if (mode === "full") {
   command("nice", ["-n", "10", "cargo", "test", "--manifest-path", manifest]);
