@@ -47,7 +47,7 @@ test("generated canonical histories save the model and preserve every block outs
         const session = createCanonicalSession(await openSource()).unwrap();
         let state = EditorState.create({ schema, doc: session.projection.doc });
         expect(session.captureSaveSnapshot().changedBlockIds).toEqual([]);
-        // Clipboard resource commits change package definitions, not body structure or touched ids.
+        // Package resource commits retain body ids and conservatively mark package save work.
         const resourceBaseline = session.captureSaveSnapshot();
         const addedStyle = {
           styleId: "CanonicalGeneratedResource",
@@ -72,7 +72,7 @@ test("generated canonical histories save the model and preserve every block outs
         expect(session.captureSaveSnapshot().changedBlockIds).toEqual(
           resourceBaseline.changedBlockIds,
         );
-        expect(session.captureSaveSnapshot().structure).toBe(resourceBaseline.structure);
+        expect(session.captureSaveSnapshot().structure).toBe("changed");
         expect(session.document.package.styles?.styles).toContainEqual(addedStyle);
         const resourceUndo = session.prepareUndo(state).unwrap();
         state = state.apply(resourceUndo.transaction);
@@ -81,14 +81,29 @@ test("generated canonical histories save the model and preserve every block outs
         expect(session.captureSaveSnapshot().changedBlockIds).toEqual(
           resourceBaseline.changedBlockIds,
         );
-        expect(session.captureSaveSnapshot().structure).toBe(resourceBaseline.structure);
+        expect(session.captureSaveSnapshot().structure).toBe("changed");
         const resourceRedo = session.prepareRedo(state).unwrap();
         state = state.apply(resourceRedo.transaction);
         resourceRedo.publish().unwrap();
         expect(session.captureSaveSnapshot().changedBlockIds).toEqual(
           resourceBaseline.changedBlockIds,
         );
-        expect(session.captureSaveSnapshot().structure).toBe(resourceBaseline.structure);
+        expect(session.captureSaveSnapshot().structure).toBe("changed");
+        const resourceSnapshot = session.captureSaveSnapshot();
+        for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
+          const saved = await serializeCanonicalSave({
+            snapshot: resourceSnapshot,
+            options: { mode },
+          });
+          const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+          expect(reopened.package.styles?.styles).toContainEqual(addedStyle);
+          expect(describePackageDifferences(resourceSnapshot.document, reopened)).toEqual({
+            messages: [],
+            omitted: 0,
+          });
+          for (const [index, id] of IDS.entries())
+            expect(await canonicalSaveParagraphXml(saved.buffer, id)).toBe(SOURCE_BLOCKS[index]);
+        }
         for (const { id, text, undo } of edits) {
           const prepared = session
             .prepareOperations(state, [
