@@ -28,6 +28,6 @@
     "esbuild": "0.28.1",
     "jszip": "3.10.2",
     "prosemirror-model": "^1.25.9",
-    "prosemirror-view": "^1.41.8"
+    "prosemirror-view": "^1.42.6"
   }
 }
