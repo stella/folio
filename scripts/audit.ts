@@ -64,8 +64,8 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
     expires: "2026-11-01",
   },
   {
-    // 2026-10-06: sprintf-js <=1.1.3 accepts unbounded precision specifiers.
-    // It reaches the tree only through development tooling
+    // 2026-10-06: GHSA-hp3w-g68c-fv3c covers sprintf-js <=1.1.3. It reaches
+    // the tree only through development tooling
     // (@microsoft/api-extractor -> @rushstack/ts-command-line, which pins
     // argparse ~1.0.9; argparse 1.0.10, the final 1.x release, requires
     // sprintf-js ~1.0.2). No published package depends on it, and argparse
