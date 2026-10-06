@@ -250,7 +250,8 @@ export const HyperlinkExtension = createMarkExtension({
       return { from: start, to: end };
     };
     const canonicalRemovalRange = (state: EditorState) => {
-      const { from, to, empty, $from } = state.selection;
+      const { empty, $from } = state.selection;
+      const { from, to } = canonicalSelectionRange(state);
       if (!empty) return { from, to };
       const linkMark = $from.marks().find((mark) => mark.type === documentHyperlinkType(state));
       if (!linkMark) return undefined;
