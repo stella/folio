@@ -99,11 +99,11 @@
     "prosemirror-model": "^1.25.10",
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
-    "prosemirror-view": "^1.42.0",
+    "prosemirror-view": "^1.42.6",
     "tailwindcss": "4.3.3",
     "vite": "8.1.5",
     "vite-plugin-dts": "^5.0.3",
-    "vue": "^3.5.39",
+    "vue": "^3.5.43",
     "vue-tsc": "^3.3.7"
   },
   "peerDependencies": {
@@ -111,7 +111,7 @@
     "prosemirror-model": "^1.19.4",
     "prosemirror-state": "^1.4.3",
     "prosemirror-tables": "^1.8.5",
-    "prosemirror-view": "^1.41.6",
+    "prosemirror-view": "^1.42.6",
     "vue": "^3.3.0"
   }
 }

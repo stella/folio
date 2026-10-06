@@ -78,7 +78,7 @@
     "prosemirror-model": "^1.25.9",
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
-    "prosemirror-view": "^1.41.8",
+    "prosemirror-view": "^1.42.6",
     "react-compiler-runtime": "^1.0.0",
     "yjs": "^13.6.31"
   },

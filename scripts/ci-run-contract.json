@@ -9,6 +9,10 @@
       "if": null
     },
     {
+      "run": "bun run check:lockfile-overrides",
+      "if": null
+    },
+    {
       "run": "bun run check:dedupe",
       "if": null
     },

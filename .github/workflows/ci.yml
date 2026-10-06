@@ -231,6 +231,9 @@ jobs:
       - name: Lockfile workspace-version check
         run: bun run check:lockfile-versions
 
+      - name: Lockfile override-range check
+        run: bun run check:lockfile-overrides
+
       - name: Lockfile deduplication check
         run: bun run check:dedupe
 
