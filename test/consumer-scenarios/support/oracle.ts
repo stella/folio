@@ -113,8 +113,9 @@ const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts =>
   const { anchors, blocks } = snapshot;
   for (const block of blocks) {
     if (block.kind === "diagnostic") continue;
-    assert.ok(anchors[block.id], `Live block ${block.id} has no anchor`);
-    const node = doc.nodeAt(anchors[block.id].from);
+    const anchor = anchors[block.id];
+    assert.ok(anchor, `Live block ${block.id} has no anchor`);
+    const node = doc.nodeAt(anchor.from);
     assert.ok(node?.type.name === "paragraph", `Live block ${block.id} has no paragraph`);
     facts.direct.set(
       block.id,
