@@ -19,21 +19,11 @@ import {
 import {
   createCanonicalSession,
   publishCanonicalProjection,
-  deletionRange,
-  isCanonicalJoinBoundary,
-  canonicalSelectionRange,
-  type CanonicalSession,
-  type CanonicalCommit,
-  CanonicalSessionError,
 } from "../packages/core/src/controller/canonicalSession";
 import { EditorState as PMEditorState } from "prosemirror-state";
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
-import { prepareCanonicalCommands } from "../packages/core/src/controller/canonicalStructure";
 import { getCanonicalCommandIntents } from "../packages/core/src/prosemirror/canonicalCommands";
-import {
-  prepareCanonicalPaste,
-  canonicalClipboardStoryPartRefusal,
-} from "../packages/core/src/controller/canonicalClipboard";
+import { canonicalClipboardStoryPartRefusal } from "../packages/core/src/controller/canonicalClipboard";
 import { proseDocToBlocks } from "../packages/core/src/prosemirror/conversion/fromProseDoc";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import { serializeCanonicalSave } from "../packages/core/src/docx/canonicalSave";
@@ -61,6 +51,7 @@ export const saveCanonicalHarnessDocument = async (source: Document) => {
 
 /** A disposable driver over the production controller, with no PM mutation fallback. */
 export const createCanonicalEditorHarness = (source: Document, mode: EditorMode) => {
+  let caseRefusalRows: readonly HarnessRefusalRow[] = [];
   const releaseDom = acquireHarnessDom();
   const host = document.createElement("div");
   document.body.append(host);
@@ -189,25 +180,6 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     rememberCanonicalSave(
       manager.api.captureCanonicalSave() ?? panic("Canonical save snapshot unavailable."),
     );
-  // Preview the production planner on an isolated model; generic dispatch refusals stay strict.
-  const preparationRows = (
-    prepare: (session: CanonicalSession) => Result<CanonicalCommit, CanonicalSessionError>,
-  ): HarnessRefusalRow[] => {
-    const current = manager.api.getCanonicalDocument() ?? panic("Canonical authority unavailable");
-    const session = createCanonicalSession(current).unwrap();
-    session.setMode(
-      mode === "suggesting" ? { type: "suggesting", author: HARNESS_AUTHOR } : { type: "editing" },
-    );
-    const prepared = prepare(session);
-    if (prepared.isOk() || prepared.error.reason === "noChange") return [];
-    const { gap, message } = prepared.error;
-    if (
-      gap !== CANONICAL_GAP.trackedHyperlinkResolution &&
-      gap !== CANONICAL_GAP.storyContentProjection
-    )
-      return [];
-    return [{ id: gap, gap, message }];
-  };
   const execute = (command: Command) => {
     const count = refusals.length;
     const intents = getCanonicalCommandIntents(command, editorView.state);
@@ -222,12 +194,7 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
             message,
           }))
         : [];
-    if (intents !== undefined)
-      rows.push(
-        ...preparationRows((session) =>
-          prepareCanonicalCommands(session, editorView.state, intents),
-        ),
-      );
+    rows.push(...caseRefusalRows);
     return withRefusalRows(rows, () => {
       const applied = executeEditorCommand(editorView, command);
       return refusals.length === count && applied;
@@ -240,6 +207,10 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
   return {
     authority: "canonical" as const,
     commandManager: singletonManager,
+    expectRefusals: (rows: readonly HarnessRefusalRow[]) => {
+      validateHarnessRefusalRows(rows);
+      caseRefusalRows = rows;
+    },
     get state() {
       return editorView.state;
     },
@@ -263,36 +234,7 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
               message: "Only plain character deletion is available in this session.",
             }
           : undefined;
-      const rows = row
-        ? [row]
-        : preparationRows((session) => {
-            if (
-              fields.key === "Enter" &&
-              !fields.shiftKey &&
-              !fields.ctrlKey &&
-              !fields.metaKey &&
-              !fields.altKey
-            )
-              return session.prepareSplit(editorView.state);
-            if (fields.key !== "Backspace" && fields.key !== "Delete")
-              return Result.err(
-                new CanonicalSessionError({
-                  gap: CANONICAL_GAP.dispatch,
-                  reason: "noChange",
-                  message: "No native preparation",
-                }),
-              );
-            const direction = fields.key === "Backspace" ? "backward" : "forward";
-            if (isCanonicalJoinBoundary(editorView.state, direction))
-              return session.prepareJoin(editorView.state, direction);
-            const range = deletionRange(editorView.state, direction);
-            if (range.isErr()) return range;
-            return session.prepareReplace(editorView.state, {
-              ...range.value,
-              text: "",
-              semantic: direction === "backward" ? "deleteBackward" : "deleteForward",
-            });
-          });
+      const rows = row ? [row] : caseRefusalRows;
       withRefusalRows(rows, () => editorView.dom.dispatchEvent(event));
       return event.defaultPrevented;
     },
@@ -344,11 +286,7 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
           break;
         }
       }
-      const rows = row
-        ? [row]
-        : preparationRows((session) =>
-            prepareCanonicalPaste({ session, state: editorView.state, slice }),
-          );
+      const rows = row ? [row] : caseRefusalRows;
       withRefusalRows(rows, () =>
         editorView.someProp("handlePaste", (handler) => handler(editorView, event, slice)),
       );
@@ -359,13 +297,7 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
         cancelable: true,
         clipboardData: new DataTransfer(),
       });
-      const rows = preparationRows((session) =>
-        session.prepareReplace(editorView.state, {
-          ...canonicalSelectionRange(editorView.state),
-          text: "",
-        }),
-      );
-      withRefusalRows(rows, () => editorView.dom.dispatchEvent(event));
+      withRefusalRows(caseRefusalRows, () => editorView.dom.dispatchEvent(event));
       return event.defaultPrevented;
     },
   };

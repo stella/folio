@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { panic } from "better-result";
+import { declareCanonicalRefusalCases } from "../../../../../test/canonical-conformance-refusals";
 
 import {
   runConformanceCase,
@@ -11,7 +12,7 @@ import {
   LEGACY_LIST_PASTE_READBACK_GAP,
   SINGLE_COPIED_PARAGRAPH_OPERATION,
 } from "../../__tests__/editorCommandConformance.known";
-import { textblocks } from "../../__tests__/editorHarness";
+import { EDITOR_MODES, textblocks } from "../../__tests__/editorHarness";
 import { LIST_PASTE_RESOLUTION_CASES } from "../../__tests__/editorCommandConformance.listPaste";
 
 // The matrix previously tolerated every paste resolution mismatch. Cross the
@@ -30,6 +31,9 @@ test.each(
       shape: shape,
       operation: operation,
       placement,
+      refusalCases: declareCanonicalRefusalCases(
+        EDITOR_MODES.map((mode) => ({ shape: shape.id, operation: operation.id, placement, mode })),
+      ),
     });
     expect(result).not.toBeNull();
     expect(result?.violations).toEqual([]);
@@ -59,6 +63,14 @@ test.each(
     shape: shape,
     operation: singleParagraphPaste,
     placement,
+    refusalCases: declareCanonicalRefusalCases(
+      EDITOR_MODES.map((mode) => ({
+        shape: shape.id,
+        operation: singleParagraphPaste.id,
+        placement,
+        mode,
+      })),
+    ),
   });
   expect(result).not.toBeNull();
   expect(result?.violations).toEqual([]);

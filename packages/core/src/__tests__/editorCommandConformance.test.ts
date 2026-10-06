@@ -24,6 +24,7 @@ import {
   summarizeFeatureCoverage,
 } from "../../../../test/consumer-scenarios/support/feature-coverage";
 
+import { declareCanonicalRefusalCases } from "../../../../test/canonical-conformance-refusals";
 import { DOCUMENT_SHAPES } from "./documentShapes";
 import {
   CONFORMANCE_OPERATIONS,
@@ -81,6 +82,12 @@ const CASES = [
       .map((key) => [caseId(key), key]),
   ).values(),
 ];
+
+const declaredRefusalCases = declareCanonicalRefusalCases(
+  CASES.flatMap((key) => EDITOR_MODES.map((mode) => ({ ...key, mode }))),
+);
+const exercisedRefusalCases = new Set<string>();
+const unavailableSelectionCases = new Set<string>();
 
 const gapUsage = new Map<KnownConformanceGap, { applied: number; covered: number }>(
   KNOWN_CONFORMANCE_GAPS.map((gap) => [gap, { applied: 0, covered: 0 }]),
@@ -153,7 +160,17 @@ describe("editor command conformance", () => {
       if (!shape || !operation) {
         throw new Error(`Unknown case ${caseId(key)}`);
       }
-      const result = await runConformanceCase({ shape, operation, placement: key.placement });
+      const result = await runConformanceCase({
+        shape,
+        operation,
+        placement: key.placement,
+        refusalCases: declaredRefusalCases,
+        observeRefusalCase: (id, observation) => {
+          if (!declaredRefusalCases.has(id)) throw new TypeError(`Undeclared refusal case ${id}`);
+          if (observation === "selectionUnavailable") unavailableSelectionCases.add(id);
+          else exercisedRefusalCases.add(id);
+        },
+      });
       if (!result) {
         return;
       }
@@ -234,6 +251,14 @@ describe("editor command conformance", () => {
         `${JSON.stringify(summarizeFeatureCoverage(featureCoverage), null, 2)}\n`,
       );
     }
+    expect([...exercisedRefusalCases, ...unavailableSelectionCases].toSorted()).toEqual(
+      [...declaredRefusalCases.keys()].toSorted(),
+    );
+    expect([...exercisedRefusalCases].toSorted()).toEqual(
+      [...declaredRefusalCases.keys()]
+        .filter((id) => !unavailableSelectionCases.has(id))
+        .toSorted(),
+    );
     const declaredInThisRun = SUGGESTION_INPUT_KINDS.filter((kind) => {
       const driver = SUGGESTION_INPUT_DRIVERS[kind];
       return (

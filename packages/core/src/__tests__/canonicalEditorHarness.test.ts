@@ -10,6 +10,10 @@ import {
   validateHarnessRefusalRows,
   harnessRefusalProblems,
 } from "../../../../test/canonical-refusal-rows";
+import {
+  canonicalConformanceRefusalRows,
+  STORY_PROJECTION_REFUSAL_CASES,
+} from "../../../../test/canonical-conformance-refusals";
 import { assertExactModel } from "../../../../test/exactModel";
 import { createEmptyDocument } from "../utils/createDocument";
 import { modelMarkdown, parseShapeDocument, placeSelection } from "./editorHarness";
@@ -289,16 +293,19 @@ for (const mode of ["editing", "suggesting"] as const) {
 const REVIEW_HYPERLINK_COMMANDS = [
   {
     id: "set",
+    operation: "command:setHyperlink",
     placement: "word",
     create: () => singletonManager.requireCommand("setHyperlink")("https://example.org/"),
   },
   {
     id: "remove",
+    operation: "command:removeHyperlink",
     placement: "word",
     create: () => singletonManager.requireCommand("removeHyperlink")(),
   },
   {
     id: "insert",
+    operation: "command:insertHyperlink",
     placement: "caret-middle",
     create: () =>
       singletonManager.requireCommand("insertHyperlink")("a link", "https://example.org/"),
@@ -320,6 +327,14 @@ test.each(REVIEW_HYPERLINK_CASES)(
       driver.dispatch(driver.state.tr.setSelection(placed.selection));
       const before = driver.snapshot();
       const state = driver.state;
+      driver.expectRefusals(
+        canonicalConformanceRefusalRows({
+          shape,
+          mode,
+          operation: command.operation,
+          placement: command.placement,
+        }),
+      );
       expect(driver.execute(command.create())).toBe(false);
       expect(driver.refusals).toEqual([
         {
@@ -341,28 +356,9 @@ test.each(REVIEW_HYPERLINK_CASES)(
     }
   },
 );
-const STORY_PROJECTION_CASES = [
-  { shape: "comments", mode: "editing", input: "enter", placement: "paragraph" },
-  { shape: "comments", mode: "editing", input: "cut", placement: "paragraph" },
-  { shape: "fields-links-bookmarks", mode: "suggesting", input: "enter", placement: "paragraph" },
-  { shape: "fields-links-bookmarks", mode: "suggesting", input: "paste", placement: "caret-end" },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    input: "delete",
-    placement: "cross-paragraph",
-  },
-  { shape: "fields-links-bookmarks", mode: "suggesting", input: "cut", placement: "paragraph" },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    input: "cut",
-    placement: "cross-paragraph",
-  },
-] as const;
-test.each(STORY_PROJECTION_CASES)(
-  "$shape $input/$placement projection refusal is exact and atomic in $mode",
-  async ({ shape, mode, input, placement }) => {
+test.each(STORY_PROJECTION_REFUSAL_CASES)(
+  "$shape $operation/$placement projection refusal is exact and atomic in $mode",
+  async ({ shape, mode, operation, placement }) => {
     const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer(shape)));
     const driver = createCanonicalEditorHarness(source, mode);
     try {
@@ -371,12 +367,13 @@ test.each(STORY_PROJECTION_CASES)(
       driver.dispatch(driver.state.tr.setSelection(placed.selection));
       const before = driver.snapshot();
       const state = driver.state;
-      if (input === "paste") {
+      driver.expectRefusals(canonicalConformanceRefusalRows({ shape, mode, operation, placement }));
+      if (operation === "paste:copied-blocks") {
         const selected = placeSelection(driver.state, documentShape(shape).focus, "paragraph");
         if (!selected) throw new TypeError("Copied field fixture lost its paragraph");
         driver.paste(driver.state.doc.slice(selected.selection.from, selected.selection.to));
-      } else if (input === "cut") driver.cut();
-      else driver.pressKey(input === "enter" ? "Enter" : "Delete");
+      } else if (operation === "host:cut") driver.cut();
+      else driver.pressKey(operation === "key:Enter" ? "Enter" : "Delete");
       expect(driver.refusals).toEqual([
         {
           gap: CANONICAL_GAP.storyContentProjection,

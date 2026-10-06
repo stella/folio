@@ -25,7 +25,9 @@ import { isDeepStrictEqual } from "node:util";
 import {
   harnessRefusalProblems,
   type HarnessRefusal,
+  type HarnessRefusalRow,
 } from "../../../../test/canonical-refusal-rows";
+import { canonicalRefusalCaseId } from "../../../../test/canonical-conformance-refusals";
 import { assertExactModel } from "../../../../test/exactModel";
 import {
   createCanonicalHarnessCase,
@@ -652,16 +654,23 @@ type ModeRun = {
   error?: unknown;
 };
 
-const runMode = (
-  loaded: LoadedShape,
-  shape: DocumentShape,
-  operation: ConformanceOperation,
-  placement: SelectionPlacement,
-  mode: EditorMode,
-  authority: HarnessAuthority,
-): ModeRun | null => {
-  if (authority === "canonical")
-    return runCanonicalMode({ loaded, shape, operation, placement, mode });
+type RefusalCaseObservation = "executed" | "activationRefused" | "selectionUnavailable";
+type CanonicalCaseContract = {
+  authority: "canonical";
+  refusalCases: ReadonlyMap<string, readonly HarnessRefusalRow[]>;
+  observeRefusalCase?: (id: string, observation: RefusalCaseObservation) => void;
+};
+type CaseAuthority = CanonicalCaseContract | { authority: "prosemirror" };
+type RunModeOptions = {
+  loaded: LoadedShape;
+  shape: DocumentShape;
+  operation: ConformanceOperation;
+  placement: SelectionPlacement;
+  mode: EditorMode;
+} & CaseAuthority;
+const runMode = (options: RunModeOptions): ModeRun | null => {
+  if (options.authority === "canonical") return runCanonicalMode(options);
+  const { loaded, shape, operation, placement, mode, authority } = options;
   const before = placeSelection(createHarnessState(loaded.base, mode), shape.focus, placement);
   if (!before) {
     return null;
@@ -717,6 +726,8 @@ type RunCanonicalModeOptions = {
   operation: ConformanceOperation;
   placement: SelectionPlacement;
   mode: EditorMode;
+  refusalCases: ReadonlyMap<string, readonly HarnessRefusalRow[]>;
+  observeRefusalCase?: (id: string, observation: RefusalCaseObservation) => void;
 };
 const runCanonicalMode = ({
   loaded,
@@ -724,9 +735,26 @@ const runCanonicalMode = ({
   operation,
   placement,
   mode,
+  refusalCases,
+  observeRefusalCase,
 }: RunCanonicalModeOptions): ModeRun | null => {
+  const refusalId = canonicalRefusalCaseId({
+    shape: shape.id,
+    operation: operation.id,
+    placement,
+    mode,
+  });
+  const expectedRows =
+    refusalCases.get(refusalId) ?? panic(`Undeclared canonical refusal case: ${refusalId}`);
   const created = createCanonicalHarnessCase(caseBase(loaded.base), mode);
   if (created.type === "activationRefused") {
+    if (
+      !expectedRows.some(
+        ({ gap, message }) => gap === created.refusal.gap && message === created.refusal.message,
+      )
+    )
+      panic(`Undeclared activation refusal: ${refusalId}`);
+    observeRefusalCase?.(refusalId, "activationRefused");
     const state = PMEditorState.create({ doc: toProseDoc(loaded.base) });
     return {
       authority: "canonical",
@@ -743,13 +771,18 @@ const runCanonicalMode = ({
   const driver = created.driver;
   try {
     const placed = placeSelection(driver.state, shape.focus, placement);
-    if (!placed) return null;
+    if (!placed) {
+      observeRefusalCase?.(refusalId, "selectionUnavailable");
+      return null;
+    }
     driver.dispatch(driver.state.tr.setSelection(placed.selection));
+    driver.expectRefusals(expectedRows);
     const before = driver.state;
     const beforeModel = driver.snapshot();
     const historyViolations: Violation[] = [];
     let verdict: boolean | undefined;
     try {
+      observeRefusalCase?.(refusalId, "executed");
       verdict = operation.run({ view: driver, base: caseBase(beforeModel), focus: shape.focus });
     } catch (error) {
       return {
@@ -1099,27 +1132,24 @@ type ConformanceCaseOptions = {
 };
 
 /** The standing lane always drives the canonical owner. */
-export const runConformanceCase = (options: ConformanceCaseOptions) =>
-  runCaseWithAuthority({ ...options, authority: "canonical" });
+export const runConformanceCase = (
+  options: ConformanceCaseOptions & Omit<CanonicalCaseContract, "authority">,
+) => runCaseWithAuthority({ ...options, authority: "canonical" });
 
 /** Explicit replay for legacy plugin regressions and pinned known failures. */
 export const runLegacyConformanceCase = (options: ConformanceCaseOptions) =>
   runCaseWithAuthority({ ...options, authority: "prosemirror" });
 
-type RunCaseWithAuthorityOptions = ConformanceCaseOptions & { authority: HarnessAuthority };
-const runCaseWithAuthority = async ({
-  shape,
-  operation,
-  placement,
-  authority,
-}: RunCaseWithAuthorityOptions): Promise<CaseResult | null> => {
+type RunCaseWithAuthorityOptions = ConformanceCaseOptions & CaseAuthority;
+const runCaseWithAuthority = async (
+  options: RunCaseWithAuthorityOptions,
+): Promise<CaseResult | null> => {
+  const { shape, operation, authority } = options;
   const loaded = await loadShape(shape);
   const runs: Partial<Record<EditorMode, ModeRun>> = {};
   for (const mode of EDITOR_MODES) {
-    const run = runMode(loaded, shape, operation, placement, mode, authority);
-    if (!run) {
-      return null;
-    }
+    const run = runMode({ ...options, loaded, mode });
+    if (!run) continue;
     runs[mode] = run;
   }
   const violations: Violation[] = Object.values(runs).flatMap((run) => run.historyViolations);

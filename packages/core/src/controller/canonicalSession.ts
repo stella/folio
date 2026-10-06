@@ -5,7 +5,6 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 import {
   AllSelection,
   NodeSelection,
-  Selection,
   TextSelection,
   type EditorState,
   type Transaction,
@@ -43,6 +42,7 @@ import {
   copyParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
+import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
 import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import {
   toProseDoc,
@@ -1796,12 +1796,6 @@ const visibleDeletionContext = (state: EditorState) => {
   });
   return { text, physicalGaps, visibleOffset };
 };
-
-/** Whole-document selection uses the first and last content gaps for authored operations. */
-export const canonicalSelectionRange = (state: EditorState) =>
-  state.selection instanceof AllSelection
-    ? { from: Selection.atStart(state.doc).from, to: Selection.atEnd(state.doc).to }
-    : { from: state.selection.from, to: state.selection.to };
 
 export const isCanonicalJoinBoundary = (
   state: EditorState,

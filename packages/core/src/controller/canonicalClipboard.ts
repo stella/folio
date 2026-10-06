@@ -12,6 +12,7 @@ import { visitInlineContentSlots, visitParagraphRuns } from "../docx/paragraphTr
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
+import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
 import type {
   Paragraph,
   Run,
@@ -23,7 +24,6 @@ import type {
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
   CanonicalSessionError,
-  canonicalSelectionRange,
   type CanonicalCommit,
   type CanonicalSession,
 } from "./canonicalSession";
