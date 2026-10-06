@@ -176,7 +176,7 @@ test("style inheritance folds independent numbering slots and cancellation", asy
 });
 
 test(
-  "pending numbering provenance stays strict across every editable story",
+  "pending numbering provenance survives insertion and restyling across every editable story",
   { timeout: 60_000 },
   async () => {
     const document = await parseDocx(toArrayBuffer(await storiesDocument()), {
@@ -192,11 +192,18 @@ test(
       document.package.numbering.nums.push({ numId, abstractNumId: numId });
     }
     assert.ok(document.package.styles);
-    document.package.styles.styles.push({
-      styleId: "OracleList",
-      type: "paragraph",
-      pPr: { numPr: { kind: "reference", numId: 900, ilvl: 0 } },
-    });
+    document.package.styles.styles.push(
+      {
+        styleId: "OracleList",
+        type: "paragraph",
+        pPr: { numPr: { kind: "reference", numId: 900, ilvl: 0 } },
+      },
+      {
+        styleId: "OracleOtherList",
+        type: "paragraph",
+        pPr: { numPr: { kind: "reference", numId: 901, ilvl: 0 } },
+      },
+    );
     const bytes = await packDocument(document);
     const stories = (await openReviewer(bytes)).listStories();
     assert.deepEqual(
@@ -210,7 +217,7 @@ test(
       },
       {
         properties: { numbering: { numId: 900, level: 1 } },
-        direct: { kind: "reference", numId: 900, ilvl: 1 },
+        direct: { kind: "levelOnly", ilvl: 1 },
       },
       { properties: { numbering: null }, direct: { kind: "none" } },
       { properties: { styleId: "Heading3" }, direct: undefined },
@@ -306,6 +313,52 @@ test(
                 ),
               ).join("\n"),
               /listLevel|numbering/u,
+            );
+          }
+          const beforeStyle = await capture(reviewer, "suggested", { story });
+          assert.equal(beforeStyle.numberingSource.type, "live");
+          if (beforeStyle.numberingSource.type !== "live")
+            throw new Error("Expected live provenance");
+          const styleModel = modelOf(beforeStyle.rows);
+          styleModel.numberingFacts = beforeStyle.numberingSource.facts;
+          styleModel.mode = "suggested";
+          const styleOperation = {
+            id: "restyle",
+            type: "setBlockParagraphProperties",
+            blockId: anchor.id,
+            properties: { styleId: "OracleOtherList" },
+          } as const;
+          expectOperation(styleModel, styleOperation);
+          const restyled = reviewer.applyDocumentOperationsToStory({
+            story,
+            batch: {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              operations: [styleOperation],
+              mode: "suggested",
+            },
+          });
+          assert.equal(restyled.applied.length, 1);
+          assert.deepEqual(restyled.issues, []);
+          assert.deepEqual(compareWithModel(styleModel, rowsOf(reviewer, story)), []);
+          const changed = rowsOf(reviewer, story).find((row) => row.id === anchor.id);
+          assert.ok(changed);
+          assert.deepEqual(
+            changed.listReference,
+            direct?.kind === "none" ? undefined : { numId: 901, level: direct?.ilvl ?? 0 },
+          );
+          if (direct?.kind === "levelOnly") {
+            assert.match(
+              compareWithModel(
+                styleModel,
+                rowsOf(reviewer, story).map((row) =>
+                  row.id === anchor.id
+                    ? Object.assign({}, row, {
+                        listReference: { numId: 900, level: direct.ilvl },
+                      })
+                    : row,
+                ),
+              ).join("\n"),
+              /numbering/u,
             );
           }
         }

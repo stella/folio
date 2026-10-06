@@ -81,7 +81,7 @@ const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
   }
 };
 
-/** Only effective equality makes numbering wholly style-supplied. */
+/** Keep only the numbering slots that differ from the style. */
 const directNumbering = (numPr: Numbering, numPrFromStyle: Numbering): Numbering => {
   if (numPr === undefined || numPrFromStyle === undefined) return numPr;
   if (numPr.kind !== numPrFromStyle.kind) return numPr;
@@ -89,11 +89,10 @@ const directNumbering = (numPr: Numbering, numPrFromStyle: Numbering): Numbering
     case "none":
       return undefined;
     case "reference":
-      return numPrFromStyle.kind === "reference" &&
-        numPr.numId === numPrFromStyle.numId &&
-        (numPr.ilvl ?? 0) === (numPrFromStyle.ilvl ?? 0)
+      if (numPrFromStyle.kind !== "reference" || numPr.numId !== numPrFromStyle.numId) return numPr;
+      return (numPr.ilvl ?? 0) === (numPrFromStyle.ilvl ?? 0)
         ? undefined
-        : numPr;
+        : { kind: "levelOnly", ilvl: numPr.ilvl ?? 0 };
     case "levelOnly":
       return numPrFromStyle.kind === "levelOnly" && numPr.ilvl === numPrFromStyle.ilvl
         ? undefined
