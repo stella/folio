@@ -14,13 +14,21 @@ type RegistryState = {
   stillRequiredByParent: boolean;
 };
 
+/**
+ * Why the vulnerable package stays in the tree, checked against the latest
+ * release of `parent`. `through` covers a parent that pins an intermediate
+ * dependency to a frozen release line which still requires the package.
+ */
+type Requirement =
+  | { type: "direct"; parent: string }
+  | { type: "through"; parent: string; dependency: string; range: string };
+
 type ExpiringIgnore = {
   advisory: string;
   packageName: string;
   /** Last vulnerable version; a newer published version is a fix. */
   vulnerableThrough: string;
-  /** Latest-release check of the package that pulls the vulnerable one in. */
-  parent: string;
+  requiredBy: Requirement;
   /** ISO date after which the ignore no longer applies. */
   expires: string;
 };
@@ -39,7 +47,7 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
     advisory: "GHSA-86w9-cpqp-85rv",
     packageName: "node-forge",
     vulnerableThrough: "1.4.0",
-    parent: "listhen",
+    requiredBy: { type: "direct", parent: "listhen" },
     expires: "2026-11-01",
   },
   {
@@ -52,7 +60,26 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
     advisory: "GHSA-vfj7-8cjw-p6xm",
     packageName: "braces",
     vulnerableThrough: "3.0.3",
-    parent: "micromatch",
+    requiredBy: { type: "direct", parent: "micromatch" },
+    expires: "2026-11-01",
+  },
+  {
+    // 2026-10-06: sprintf-js <=1.1.3 accepts unbounded precision specifiers.
+    // It reaches the tree only through development tooling
+    // (@microsoft/api-extractor -> @rushstack/ts-command-line, which pins
+    // argparse ~1.0.9; argparse 1.0.10, the final 1.x release, requires
+    // sprintf-js ~1.0.2). No published package depends on it, and argparse
+    // formats only its own help strings. No patched sprintf-js exists yet.
+    // Tracked in #1563.
+    advisory: "GHSA-hp3w-g68c-fv3c",
+    packageName: "sprintf-js",
+    vulnerableThrough: "1.1.3",
+    requiredBy: {
+      type: "through",
+      parent: "@rushstack/ts-command-line",
+      dependency: "argparse",
+      range: "~1.0.9",
+    },
     expires: "2026-11-01",
   },
 ];
@@ -85,12 +112,28 @@ export const staleIgnoreReason = (
     return `${ignore.advisory}: ${ignore.packageName}@${state.latestVersion} is published; update it and remove the ignore.`;
   }
   if (!state.stillRequiredByParent) {
-    return `${ignore.advisory}: the latest ${ignore.parent} no longer requires ${ignore.packageName}; update it and remove the ignore.`;
+    return `${ignore.advisory}: the latest ${ignore.requiredBy.parent} no longer requires ${ignore.packageName}; update it and remove the ignore.`;
   }
   return undefined;
 };
 
 type Manifest = { version: string; dependencies?: Record<string, string> };
+
+/** Whether the parent's latest manifest still pulls the vulnerable package in. */
+export const isStillRequired = (ignore: ExpiringIgnore, parent: Manifest): boolean => {
+  const dependencies = parent.dependencies ?? {};
+  const { requiredBy } = ignore;
+  switch (requiredBy.type) {
+    case "direct":
+      return ignore.packageName in dependencies;
+    case "through":
+      return dependencies[requiredBy.dependency] === requiredBy.range;
+    default: {
+      const exhaustive: never = requiredBy;
+      return exhaustive;
+    }
+  }
+};
 
 const latestManifest = async (name: string): Promise<Manifest> => {
   const response = await fetch(`https://registry.npmjs.org/${name}/latest`);
@@ -106,13 +149,13 @@ const main = async (): Promise<number> => {
   for (const ignore of EXPIRING_IGNORES) {
     const [vulnerable, parent] = await Promise.all([
       latestManifest(ignore.packageName),
-      latestManifest(ignore.parent),
+      latestManifest(ignore.requiredBy.parent),
     ]);
     const reason = staleIgnoreReason(
       ignore,
       {
         latestVersion: vulnerable.version,
-        stillRequiredByParent: ignore.packageName in (parent.dependencies ?? {}),
+        stillRequiredByParent: isStillRequired(ignore, parent),
       },
       today,
     );
