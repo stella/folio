@@ -148,12 +148,23 @@ test("every range intent handles AllSelection and restores exact undo redo", () 
           const beforeSelection = state.selection.toJSON();
           const intents =
             getCanonicalCommandIntents(factory(), state) ?? panic("Missing range descriptor.");
+          // Positive control: the old derivation addresses document edges, not paragraph gaps.
+          const rawRange = { from: state.selection.from, to: state.selection.to };
+          expect(session.projection.addressAt(rawRange.from).isErr()).toBe(true);
+          expect(session.projection.addressAt(rawRange.to).isErr()).toBe(true);
           // Page breaks require a caret, so whole-document selection has no intent.
           if (name === "insertBreak") {
             expect(intents).toEqual([]);
             continue;
           }
           expect(intents.length).toBeGreaterThan(0);
+          const oldIntents = intents.map((intent) => ({ ...intent, ...rawRange }));
+          const oldPreparation = prepareCanonicalCommands(session, state, oldIntents);
+          expect(oldPreparation.isErr()).toBe(true);
+          if (oldPreparation.isOk()) panic("The old raw-selection derivation must refuse.");
+          expect(oldPreparation.error.reason).toBe("refused");
+          expect(session.document).toBe(before);
+          expect(state.selection.toJSON()).toEqual(beforeSelection);
           const prepared = prepareCanonicalCommands(session, state, intents).unwrap();
           state = publishCanonicalProjection({ session, state, commit: prepared }).unwrap().state;
           const after = session.document;
