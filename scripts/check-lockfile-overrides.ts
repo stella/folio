@@ -32,17 +32,17 @@ const INTENTIONAL_BREAKS: Readonly<Record<string, IntentionalBreak>> = {
   archiver: {
     dependent: "nitropack",
     range: "^7.0.1",
-    reason: "nuxt build tooling; archiver 8 resolves a dependency advisory",
+    reason: "archiver 8 resolves a dependency advisory",
   },
   "simple-git": {
     dependent: "@nuxt/devtools",
     range: "^3.36.0",
-    reason: "Nuxt dev server devtools only; simple-git 4 resolves dependency advisories",
+    reason: "simple-git 4 resolves dependency advisories",
   },
   tinypool: {
     dependent: "oxfmt",
     range: "2.1.0",
-    reason: "formatter tooling; tinypool 2.2.0 resolves dependency advisories",
+    reason: "tinypool 2.2.0 resolves dependency advisories",
   },
   valibot: {
     dependent: "@stll/conditions",

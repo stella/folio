@@ -64,13 +64,8 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
     expires: "2026-11-01",
   },
   {
-    // 2026-10-06: GHSA-hp3w-g68c-fv3c covers sprintf-js <=1.1.3. It reaches
-    // the tree only through development tooling
-    // (@microsoft/api-extractor -> @rushstack/ts-command-line, which pins
-    // argparse ~1.0.9; argparse 1.0.10, the final 1.x release, requires
-    // sprintf-js ~1.0.2). No published package depends on it, and argparse
-    // formats only its own help strings. No patched sprintf-js exists yet.
-    // Tracked in #1563.
+    // 2026-10-06: no patched sprintf-js is published. It arrives through
+    // @rushstack/ts-command-line's argparse ~1.0.9 pin. Tracked in #1563.
     advisory: "GHSA-hp3w-g68c-fv3c",
     packageName: "sprintf-js",
     vulnerableThrough: "1.1.3",
