@@ -1,6 +1,7 @@
 import type { ParagraphPropsPatch, RunPropsPatch } from "@stll/docx-core/ops";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
+import { canonicalSelectionRange } from "./canonicalSelectionRange";
 
 /** Command meaning before canonical positions are resolved by the session. */
 export type CanonicalCommandIntent =
@@ -39,7 +40,7 @@ export const getCanonicalCommandIntents = (command: Command, state: EditorState)
   descriptors.get(command)?.(state);
 
 export const canonicalRunFormatting = (state: EditorState, patch: RunPropsPatch) =>
-  [{ type: "formatRun", from: state.selection.from, to: state.selection.to, patch }] as const;
+  [{ type: "formatRun", ...canonicalSelectionRange(state), patch }] as const;
 
 const canonicalParagraphFormatting = (
   state: EditorState,
