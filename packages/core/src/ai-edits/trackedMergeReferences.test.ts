@@ -7,6 +7,7 @@ import { createDocx } from "../docx/rezip";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
+  type FolioDocumentOperation,
 } from "../document-operations";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
@@ -34,6 +35,40 @@ const refusedProperty = {
   reason: "pendingParagraphMarkDeletion",
   canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
 } as const;
+
+type PropertyEditsOptions = {
+  blockId: string;
+  text: string;
+  properties: { styleId: string; alignment: (typeof FOLIO_PARAGRAPH_ALIGNMENT_VALUES)[number] };
+};
+
+// Every operation that edits paragraph properties: a patch, and a style-only
+// replaceBlock (the paragraph's own text under another style).
+const propertyEdits = ({ blockId, text, properties }: PropertyEditsOptions) => {
+  const patches = [properties, { styleId: "Heading1" }, { styleId: "Heading2" }];
+  const restyles = [...new Set([properties.styleId, "Heading2"])].filter(
+    (styleId) => styleId !== "Heading1",
+  );
+  return [
+    ...patches.map(
+      (patch): FolioDocumentOperation => ({
+        id: "properties",
+        type: "setBlockParagraphProperties",
+        blockId,
+        properties: patch,
+      }),
+    ),
+    ...restyles.map(
+      (restyle): FolioDocumentOperation => ({
+        id: "properties",
+        type: "replaceBlock",
+        blockId,
+        text,
+        styleId: restyle,
+      }),
+    ),
+  ];
+};
 
 const propertiesArbitrary = fc.record({
   styleId: fc.integer({ min: 1, max: 6 }).map((level) => `Heading${level}`),
@@ -70,21 +105,20 @@ test(
               ],
             });
             if (saved) reviewer = await reopen(reviewer);
-            for (const patch of [properties, { styleId: "Heading1" }, { styleId: "Heading2" }]) {
+            const current = reviewer.getContent().find(({ id }) => id === first.id);
+            if (!current) throw new Error("Missing pending paragraph");
+            for (const edit of propertyEdits({
+              blockId: first.id,
+              text: current.text,
+              properties,
+            })) {
               const before = reviewer.state.doc.toJSON();
               const changes = reviewer.getChanges();
               const result = reviewer.applyDocumentOperations({
                 version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
                 mode,
                 atomic,
-                operations: [
-                  {
-                    id: "properties",
-                    type: "setBlockParagraphProperties",
-                    blockId: first.id,
-                    properties: patch,
-                  },
-                ],
+                operations: [edit],
               });
               expect(result.applied).toEqual([]);
               expect(result.skipped.at(0)).toMatchObject({ id: "properties", ...refusedProperty });
@@ -102,30 +136,33 @@ test(
           }
         }
         // The runtime guard also sees a mark created earlier within this batch.
-        const reviewer = await open("# Heading\n\nBody clause.");
-        const first = reviewer.getContent().at(0);
-        if (!first) throw new Error("Missing heading");
-        const original = reviewer.getContent();
-        const result = reviewer.applyDocumentOperations({
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          atomic,
-          operations: [
-            { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
-            {
-              id: "properties",
-              type: "setBlockParagraphProperties",
-              blockId: first.id,
-              properties,
-            },
-          ],
-        });
-        expect(result.skipped.find(({ id }) => id === "properties")).toMatchObject(refusedProperty);
-        if (atomic) expect(reviewer.getContent()).toEqual(original);
-        else {
-          expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);
-          reviewer.acceptAll();
-          expect(reviewer.getContent().at(0)?.styleId).toBe("Heading1");
+        const heading = (await open("# Heading\n\nBody clause.")).getContent().at(0);
+        if (!heading) throw new Error("Missing heading");
+        for (const edit of propertyEdits({
+          blockId: heading.id,
+          text: heading.text,
+          properties,
+        })) {
+          const reviewer = await open("# Heading\n\nBody clause.");
+          const original = reviewer.getContent();
+          const result = reviewer.applyDocumentOperations({
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            atomic,
+            operations: [
+              { id: "merge", type: "mergeBlockWithNext", blockId: heading.id, separator: " " },
+              edit,
+            ],
+          });
+          expect(result.skipped.find(({ id }) => id === "properties")).toMatchObject(
+            refusedProperty,
+          );
+          if (atomic) expect(reviewer.getContent()).toEqual(original);
+          else {
+            expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);
+            reviewer.acceptAll();
+            expect(reviewer.getContent().at(0)?.styleId).toBe("Heading1");
+          }
         }
       }),
       propertyConfig({ seed: 1873084145, numRuns: 12 }),

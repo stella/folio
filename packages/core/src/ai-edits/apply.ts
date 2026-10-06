@@ -4247,6 +4247,15 @@ const applyFolioAIEditOperationsInternal = ({
           panic("Resolved replaceBlock operation lost its impact discriminator");
         }
         const { changesStyle, changesText } = REPLACE_BLOCK_IMPACT[item.replaceBlockImpact];
+        // A merge earlier in the batch can delete this paragraph's mark after
+        // resolution; acceptance would discard the style edit.
+        if (
+          changesStyle &&
+          isDeletedPPrMark(tr.doc.nodeAt(tr.mapping.map(item.blockFrom, -1))?.attrs["pPrMark"])
+        ) {
+          skipped.push({ id: item.operation.id, ...pendingParagraphMarkPropertyRefusal });
+          continue;
+        }
         const revisionIdDelete = operationRevisionSeed;
         const revisionIdInsert = changesText ? operationRevisionSeed + 1 : operationRevisionSeed;
         const revisionIdBackgroundSeed = changesText
@@ -7532,6 +7541,9 @@ const resolveOperationTarget = ({
       operation.type === "replaceBlock" &&
       operation.styleId !== undefined &&
       operation.styleId !== (expectParagraphAttrs(blockNode).styleId ?? null);
+    if (replaceChangesStyle && isDeletedPPrMark(blockNode.attrs["pPrMark"])) {
+      return { type: "skip", ...pendingParagraphMarkPropertyRefusal };
+    }
     // Field results have atomic text spans that the replacement planner can
     // preserve or replace whole. Other structural boundaries need their own edit.
     if (
