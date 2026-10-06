@@ -33,7 +33,7 @@ test("live interleaving edits retain tracked mode, guarded targets and distinct 
   const ids: string[] = [];
   const suggest = createInterleavingSuggest({
     createAIEditSnapshot: () => createFolioAIEditSnapshot(view.state.doc),
-    applyDocumentOperations: ({ snapshot, batch, mode, author }) => {
+    applyDocumentOperations: ({ snapshot, batch, author }) => {
       const operation = batch.operations.at(0);
       if (!operation || operation.type !== "insertAfterBlock") {
         throw new Error("Missing interleaving insertion");
@@ -41,7 +41,6 @@ test("live interleaving edits retain tracked mode, guarded targets and distinct 
       ids.push(operation.id);
       expect(batch.version).toBe(1);
       expect(batch.mode).toBe("tracked-changes");
-      expect(mode).toBe("tracked-changes");
       expect(operation.precondition?.blockTextHash).toBe(
         snapshot.anchors[operation.blockId]?.textHash,
       );
