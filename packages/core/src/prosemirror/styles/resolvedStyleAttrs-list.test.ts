@@ -1,7 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
 import { createNumberingMap, parseNumbering } from "../../docx/numberingParser";
-import { listAttrsFromResolvedStyle, listLevelAttrPatch } from "./resolvedStyleAttrs";
+import {
+  listAttrsFromResolvedStyle,
+  listLevelAttrPatch,
+  listLevelIndentRemovalPatch,
+} from "./resolvedStyleAttrs";
+import { paragraphNumberingAttr } from "../numberingAttr";
+import {
+  directParagraphIndentation,
+  paragraphIndentationFromFormatting,
+  type ParagraphIndentationAttrs,
+} from "../paragraphIndentation";
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 const MC = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
@@ -117,10 +127,145 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
   });
 
   test("clears the hanging slot when a list command targets a markerless level", () => {
-    const attrs = listLevelAttrPatch({}, { numId: 3, ilvl: 0 }, map);
+    const attrs = listLevelAttrPatch({}, { numId: 3, ilvl: 0 }, { numbering: map });
 
     expect(attrs["indentLeft"]).toBe(700);
     expect(attrs["indentFirstLine"]).toBeNull();
     expect(attrs["hangingIndent"]).toBeNull();
   });
+});
+
+const INDENTATION_SOURCES = [
+  { kind: "inherited", direct: undefined },
+  { kind: "zero", direct: { indentLeft: 0, indentFirstLine: 0, hangingIndent: false } },
+  { kind: "first-line", direct: { indentLeft: 901, indentFirstLine: 120, hangingIndent: false } },
+  { kind: "hanging", direct: { indentLeft: 902, indentFirstLine: -240, hangingIndent: true } },
+  { kind: "right-only", direct: { indentRight: 123 } },
+] as const;
+const LEVELS = Array.from({ length: 9 }, (_, level) => level);
+const LEVEL_PROVENANCE_CASES = INDENTATION_SOURCES.flatMap((source) =>
+  LEVELS.flatMap((from) => LEVELS.map((to) => ({ source, from, to }))),
+);
+const LEVEL_NUMBERING = parseNumbering(
+  `<w:numbering ${W}><w:abstractNum w:abstractNumId="1">${LEVELS.map(
+    (level) =>
+      `<w:lvl w:ilvl="${String(level)}"><w:start w:val="1"/><w:numFmt w:val="decimal"/>` +
+      `<w:lvlText w:val="%${String(level + 1)}."/>` +
+      `<w:pPr><w:ind w:left="${String(720 * (level + 1))}" w:hanging="360"/></w:pPr></w:lvl>`,
+  ).join("")}</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num></w:numbering>`,
+);
+const LEVEL_MAP = createNumberingMap(LEVEL_NUMBERING.definitions);
+
+// The initial oracle covered level-zero assignment but not changes between
+// levels: stale resolved indentation made a derived level edit look authored.
+test.each(LEVEL_PROVENANCE_CASES)(
+  "$source.kind indentation keeps its ownership across level $from -> $to",
+  ({ source, from, to }) => {
+    const direct = paragraphIndentationFromFormatting(source.direct);
+    const inherited = { indentLeft: 720 * (from + 1), indentFirstLine: -360, hangingIndent: true };
+    const attrs = {
+      numPr: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: from }),
+      ...inherited,
+      ...direct,
+      _originalFormatting: { numPr: { kind: "reference", numId: 1, ilvl: from }, ...direct },
+      _resolvedFormatting: { ...inherited, alignment: "center", indentRight: 456 },
+      indentRight: direct?.indentRight ?? 456,
+    } satisfies ParagraphIndentationAttrs;
+    expect(directParagraphIndentation(attrs)).toEqual(direct);
+    const changed = {
+      ...attrs,
+      ...listLevelAttrPatch(attrs, { numId: 1, ilvl: to }, { numbering: LEVEL_MAP }),
+    };
+    expect(changed.numPr).toEqual({ kind: "reference", numId: 1, ilvl: to });
+    expect(changed.indentLeft).toBe(direct?.indentLeft ?? 720 * (to + 1));
+    expect(changed.indentFirstLine).toBe(direct?.indentFirstLine ?? -360);
+    expect(changed.hangingIndent).toBe(direct?.hangingIndent ?? true);
+    expect(changed._resolvedFormatting?.alignment).toBe("center");
+    expect(changed._resolvedFormatting?.indentRight).toBe(456);
+    expect(directParagraphIndentation(changed)).toEqual(direct);
+    const restored = {
+      ...changed,
+      ...listLevelAttrPatch(changed, { numId: 1, ilvl: from }, { numbering: LEVEL_MAP }),
+    };
+    expect(directParagraphIndentation(restored)).toEqual(direct);
+    expect(restored.indentLeft).toBe(attrs.indentLeft);
+    expect(restored.indentFirstLine).toBe(attrs.indentFirstLine);
+    const styleFormatting = { indentLeft: 100, indentFirstLine: 20, hangingIndent: false };
+    const removed = {
+      ...changed,
+      ...listLevelIndentRemovalPatch(changed, { numbering: LEVEL_MAP, styleFormatting }),
+      numPr: paragraphNumberingAttr({ kind: "none" }),
+    };
+    expect(removed.indentLeft).toBe(direct?.indentLeft ?? 100);
+    expect(removed.indentFirstLine).toBe(direct?.indentFirstLine ?? 20);
+    expect(removed.hangingIndent).toBe(direct?.hangingIndent ?? false);
+    expect(directParagraphIndentation(removed)).toEqual(direct);
+  },
+);
+
+test("an authored attr edit equal to the next level stays authored", () => {
+  const attrs = {
+    numPr: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 }),
+    indentLeft: 1440,
+    indentFirstLine: -360,
+    hangingIndent: true,
+    _originalFormatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+    _resolvedFormatting: { indentLeft: 720, indentFirstLine: -360, hangingIndent: true },
+  } satisfies ParagraphIndentationAttrs;
+  expect(directParagraphIndentation(attrs)).toEqual({ indentLeft: 1440 });
+  const changed = {
+    ...attrs,
+    ...listLevelAttrPatch(attrs, { numId: 1, ilvl: 1 }, { numbering: LEVEL_MAP }),
+  };
+  expect(changed._resolvedFormatting?.indentLeft).toBe(1440);
+  expect(directParagraphIndentation(changed)).toEqual({ indentLeft: 1440 });
+});
+
+test("a level without indentation restores the resolved style baseline", () => {
+  const attrs = {
+    numPr: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 }),
+    indentLeft: 720,
+    indentFirstLine: -360,
+    hangingIndent: true,
+    _originalFormatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+    _resolvedFormatting: { indentLeft: 720, indentFirstLine: -360, hangingIndent: true },
+  } satisfies ParagraphIndentationAttrs;
+  const changed = {
+    ...attrs,
+    ...listLevelAttrPatch(
+      attrs,
+      { numId: 2, ilvl: 0 },
+      {
+        numbering: LEVEL_MAP,
+        styleFormatting: { indentLeft: 100, indentFirstLine: 20, hangingIndent: false },
+      },
+    ),
+  };
+  expect(changed.indentLeft).toBe(100);
+  expect(changed.indentFirstLine).toBe(20);
+  expect(changed.hangingIndent).toBe(false);
+  expect(directParagraphIndentation(changed)).toBeUndefined();
+});
+
+test.each(LEVELS)("style-owned indentation wins over list level %s", (ilvl) => {
+  const numPr = paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 });
+  const styleFormatting = { indentLeft: 100, indentFirstLine: 0, hangingIndent: false };
+  const attrs = {
+    numPr,
+    numPrFromStyle: numPr,
+    ...styleFormatting,
+    _originalFormatting: { styleId: "IndentedList" },
+    _resolvedFormatting: { ...styleFormatting, spaceBefore: 123 },
+  };
+  const changed = {
+    ...attrs,
+    ...listLevelAttrPatch(attrs, { numId: 1, ilvl }, { numbering: LEVEL_MAP, styleFormatting }),
+  };
+  expect(changed.indentLeft).toBe(100);
+  expect(changed.indentFirstLine).toBe(0);
+  expect(changed.hangingIndent).toBe(false);
+  expect(changed._resolvedFormatting?.spaceBefore).toBe(123);
+  expect(directParagraphIndentation(changed)).toBeUndefined();
+  const removed = listLevelIndentRemovalPatch(changed, { numbering: LEVEL_MAP, styleFormatting });
+  expect(removed._resolvedFormatting?.spaceBefore).toBe(123);
 });

@@ -163,6 +163,7 @@ export type ImageAttrs = {
     src: string;
     preview?: import__stll_docx_core_model.PreviewDescriptor;
     docPrName?: string;
+    pictureNames?: import__stll_docx_core_model.NonVisualDrawingNames;
     alt?: string;
     title?: string;
     width?: number;

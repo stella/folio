@@ -86,6 +86,7 @@ import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import {
   listAttrsFromNumbering,
   listLevelAttrPatch,
+  listLevelIndentRemovalPatch,
 } from "../prosemirror/styles/resolvedStyleAttrs";
 import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
@@ -636,10 +637,10 @@ const paragraphPropertiesPatch = ({
   );
   const resolvedSpacingFromStyle = paragraphSpacingFromFormatting(resolvedFormattingFromStyle);
   const patch: Record<string, unknown> = {};
-  let originalFormatting =
-    attrs._originalFormatting === undefined || attrs._originalFormatting === null
-      ? undefined
-      : { ...attrs._originalFormatting };
+  let originalFormatting = withDirectParagraphIndentation(
+    attrs._originalFormatting,
+    currentDirectIndentation,
+  );
   let originalFormattingChanged = false;
   const nextStyleId = properties.styleId;
   const styleChanged = nextStyleId !== undefined && (attrs.styleId ?? null) !== nextStyleId;
@@ -712,6 +713,13 @@ const paragraphPropertiesPatch = ({
     : attrs.numPrFromStyle;
   if (properties.numbering !== undefined) {
     if (properties.numbering === null) {
+      Object.assign(
+        patch,
+        listLevelIndentRemovalPatch(attrs, {
+          numbering,
+          styleFormatting: resolvedFormattingFromStyle,
+        }),
+      );
       patch["numPr"] = removedNumberingAttr(numPrFromStyle);
       Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
     } else {
@@ -721,7 +729,7 @@ const paragraphPropertiesPatch = ({
         listLevelAttrPatch(
           attrs,
           { numId: listReference.numId, ilvl: listReference.level },
-          numbering,
+          { numbering, styleFormatting: resolvedFormattingFromStyle },
         ),
       );
       if (properties.listLevel === null) {
@@ -735,6 +743,13 @@ const paragraphPropertiesPatch = ({
     }
   } else if (properties.listLevel !== undefined) {
     if (properties.listLevel === null) {
+      Object.assign(
+        patch,
+        listLevelIndentRemovalPatch(attrs, {
+          numbering,
+          styleFormatting: resolvedFormattingFromStyle,
+        }),
+      );
       patch["numPr"] = removedNumberingAttr(numPrFromStyle);
       Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
     } else {
@@ -748,7 +763,14 @@ const paragraphPropertiesPatch = ({
       } else {
         Object.assign(
           patch,
-          listLevelAttrPatch(attrs, { numId, ilvl: properties.listLevel }, numbering),
+          listLevelAttrPatch(
+            attrs,
+            { numId, ilvl: properties.listLevel },
+            {
+              numbering,
+              styleFormatting: resolvedFormattingFromStyle,
+            },
+          ),
         );
       }
     }
@@ -800,6 +822,51 @@ const paragraphPropertiesPatch = ({
   if (originalFormattingChanged) {
     patch["_originalFormatting"] =
       originalFormatting && Object.keys(originalFormatting).length > 0 ? originalFormatting : null;
+  }
+  if (
+    styleChanged ||
+    properties.numbering !== undefined ||
+    properties.listLevel !== undefined ||
+    properties.indentation !== undefined
+  ) {
+    const nextNumbering =
+      patch["numPr"] === undefined ? attrs.numPr : readParagraphNumberingAttr(patch["numPr"]);
+    if (nextNumbering?.kind === "reference") {
+      const direct =
+        properties.indentation === undefined
+          ? currentDirectIndentation
+          : (properties.indentation ?? undefined);
+      Object.assign(
+        patch,
+        listLevelAttrPatch(
+          {
+            numPr: nextNumbering,
+            numPrFromStyle,
+            listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances,
+            _originalFormatting: withDirectParagraphIndentation(originalFormatting, direct),
+            _resolvedFormatting: withDirectParagraphIndentation(
+              styleChanged
+                ? styleResolvedParagraphFormatting(resolvedFormattingFromStyle)
+                : attrs._resolvedFormatting,
+              resolvedIndentationFromStyle,
+            ),
+            indentLeft: direct?.indentLeft ?? resolvedFormattingFromStyle?.indentLeft ?? null,
+            indentRight: direct?.indentRight ?? resolvedFormattingFromStyle?.indentRight ?? null,
+            indentFirstLine:
+              direct?.indentFirstLine ?? resolvedFormattingFromStyle?.indentFirstLine ?? null,
+            hangingIndent:
+              direct?.hangingIndent ?? resolvedFormattingFromStyle?.hangingIndent ?? false,
+          },
+          { numId: nextNumbering.numId, ilvl: nextNumbering.ilvl ?? 0 },
+          {
+            numbering,
+            styleFormatting: resolvedFormattingFromStyle,
+          },
+        ),
+      );
+      // Projection uses zero for an absent ilvl, while provenance preserves absence.
+      patch["numPr"] = nextNumbering;
+    }
   }
   return Object.keys(patch).length > 0 ? patch : null;
 };
@@ -3274,6 +3341,13 @@ const buildInsertedParagraphs = ({
     const listLevel = operation.listLevel;
     if (formatsParagraph) {
       if (explicitNumbering === null) {
+        Object.assign(
+          attrs,
+          listLevelIndentRemovalPatch(
+            operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
+            { numbering, styleFormatting: formattingFromStyle },
+          ),
+        );
         attrs["numPr"] = removedNumberingAttr(readParagraphNumberingAttr(attrs["numPrFromStyle"]));
         Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
       } else if (explicitNumbering !== undefined) {
@@ -3282,7 +3356,7 @@ const buildInsertedParagraphs = ({
           listLevelAttrPatch(
             operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
             { numId: explicitNumbering.numId, ilvl: explicitNumbering.level },
-            numbering,
+            { numbering, styleFormatting: formattingFromStyle },
           ),
         );
         if (listLevel === null) {
@@ -3295,6 +3369,13 @@ const buildInsertedParagraphs = ({
           attrs["numPrFromStyle"] = null;
         }
       } else if (listLevel === null) {
+        Object.assign(
+          attrs,
+          listLevelIndentRemovalPatch(
+            operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
+            { numbering, styleFormatting: formattingFromStyle },
+          ),
+        );
         attrs["numPr"] = removedNumberingAttr(readParagraphNumberingAttr(attrs["numPrFromStyle"]));
         Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
       } else if (typeof listLevel === "number") {
@@ -3310,7 +3391,7 @@ const buildInsertedParagraphs = ({
             listLevelAttrPatch(
               operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
               { numId, ilvl: listLevel },
-              numbering,
+              { numbering, styleFormatting: formattingFromStyle },
             ),
           );
         }
@@ -3413,9 +3494,7 @@ const buildInsertedParagraphs = ({
       if (operation.spacing !== undefined) {
         originalFormatting = withDirectParagraphSpacing(originalFormatting, directSpacing);
       }
-      if (operation.indentation !== undefined) {
-        originalFormatting = withDirectParagraphIndentation(originalFormatting, directIndentation);
-      }
+      originalFormatting = withDirectParagraphIndentation(originalFormatting, directIndentation);
       if (operation.styleId !== undefined || operation.spacing !== undefined) {
         Object.assign(
           attrs,
@@ -3438,6 +3517,37 @@ const buildInsertedParagraphs = ({
         originalFormatting && Object.keys(originalFormatting).length > 0
           ? originalFormatting
           : null;
+      const finalNumbering = readParagraphNumberingAttr(attrs["numPr"]);
+      if (finalNumbering?.kind === "reference") {
+        Object.assign(
+          attrs,
+          listLevelAttrPatch(
+            {
+              numPr: finalNumbering,
+              numPrFromStyle: readParagraphNumberingAttr(attrs["numPrFromStyle"]),
+              listImplicitChildLevelAdvances:
+                operation.inheritFormatting === false
+                  ? undefined
+                  : expectParagraphAttrs(item.blockNode).listImplicitChildLevelAdvances,
+              _originalFormatting: originalFormatting,
+              _resolvedFormatting: styleResolvedParagraphFormatting(formattingFromStyle),
+              indentLeft: directIndentation?.indentLeft ?? formattingFromStyle?.indentLeft ?? null,
+              indentRight:
+                directIndentation?.indentRight ?? formattingFromStyle?.indentRight ?? null,
+              indentFirstLine:
+                directIndentation?.indentFirstLine ?? formattingFromStyle?.indentFirstLine ?? null,
+              hangingIndent:
+                directIndentation?.hangingIndent ?? formattingFromStyle?.hangingIndent ?? false,
+            },
+            { numId: finalNumbering.numId, ilvl: finalNumbering.ilvl ?? 0 },
+            {
+              numbering,
+              styleFormatting: formattingFromStyle,
+            },
+          ),
+        );
+        attrs["numPr"] = finalNumbering;
+      }
     }
     if (
       formatsParagraph &&

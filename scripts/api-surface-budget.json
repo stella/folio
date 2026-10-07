@@ -1,21 +1,21 @@
 {
   "docx-core": {
-    "reportBytes": 119000,
-    "reportLines": 3754,
-    "declarationBytes": 287616,
-    "declarationLines": 6172
+    "reportBytes": 123983,
+    "reportLines": 3921,
+    "declarationBytes": 295505,
+    "declarationLines": 6369
   },
   "core": {
-    "reportBytes": 343872,
-    "reportLines": 11057,
-    "declarationBytes": 2584219,
-    "declarationLines": 51392
+    "reportBytes": 344820,
+    "reportLines": 11076,
+    "declarationBytes": 2624006,
+    "declarationLines": 52157
   },
   "react": {
     "reportBytes": 57073,
     "reportLines": 1661,
-    "declarationBytes": 90412,
-    "declarationLines": 1809
+    "declarationBytes": 90467,
+    "declarationLines": 1810
   },
   "agents": {
     "reportBytes": 13003,

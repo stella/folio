@@ -181,6 +181,83 @@ test.each(["inherited", "explicit", "edited"] as const)(
   },
 );
 
+const LEVEL_CHANGE_CASES = (["editing", "suggesting"] as const).flatMap((mode) =>
+  (["inherited", "zero", "explicit"] as const).flatMap((kind) =>
+    Array.from({ length: 9 }, (_, targetLevel) => ({ mode, kind, targetLevel })),
+  ),
+);
+
+// Level-zero assignment alone missed derived indentation becoming authored
+// after a level change. Exercise every supported level and revision mode.
+test.each(LEVEL_CHANGE_CASES)(
+  "$kind list level $targetLevel preserves direct indentation in $mode through acceptance and save",
+  async ({ mode, kind, targetLevel }) => {
+    const source = fromMarkdown("1. List item");
+    const paragraph = source.package.document.content.at(0);
+    const definition = source.package.numbering?.abstractNums.at(0);
+    const template = definition?.levels.at(0);
+    const numPr = paragraph?.type === "paragraph" ? paragraph.formatting?.numPr : undefined;
+    if (paragraph?.type !== "paragraph" || !definition || !template || numPr?.kind !== "reference")
+      throw new TypeError("Level-change fixture lacks its numbered paragraph.");
+    definition.levels = Array.from({ length: 9 }, (_, ilvl) => ({
+      ...template,
+      ilvl,
+      lvlText: `%${String(ilvl + 1)}.`,
+      pPr: { indentLeft: 720 * (ilvl + 1), indentFirstLine: -360, hangingIndent: true },
+    }));
+    const initialLevel = targetLevel === 0 ? 1 : 0;
+    const expectedDirect =
+      kind === "inherited"
+        ? undefined
+        : { indentLeft: kind === "zero" ? 0 : 901, indentFirstLine: 0, hangingIndent: false };
+    paragraph.paraId = "12345678";
+    paragraph.formatting = {
+      numPr: paragraphNumberingReference({ numId: numPr.numId, ilvl: initialLevel }),
+      ...expectedDirect,
+    };
+    // Reopen to obtain production authored-vs-derived source captures.
+    const parsed = await parseDocx(await createDocx(source), { preloadFonts: false });
+    const driver = createCanonicalEditorHarness(parsed, mode);
+    const assertParagraph = () => {
+      const live = driver.state.doc.firstChild;
+      if (live === null) throw new TypeError("Level-change fixture lost its paragraph.");
+      const attrs = expectParagraphAttrs(live);
+      expect(attrs.numPr).toEqual({ kind: "reference", numId: numPr.numId, ilvl: targetLevel });
+      expect(directParagraphIndentation(attrs)).toEqual(expectedDirect);
+      expect(attrs.indentLeft).toBe(expectedDirect?.indentLeft ?? 720 * (targetLevel + 1));
+      expect(attrs.indentFirstLine).toBe(expectedDirect?.indentFirstLine ?? -360);
+      expect(attrs.hangingIndent).toBe(expectedDirect?.hangingIndent ?? true);
+    };
+    try {
+      driver.history.setSelection(3, 3);
+      const command = targetLevel === 0 ? "decreaseListLevel" : "increaseListLevel";
+      for (let step = 0; step < Math.abs(targetLevel - initialLevel); step++) {
+        expect(driver.execute(driver.commandManager.requireCommand(command)())).toBe(true);
+      }
+      expect(driver.refusals).toEqual([]);
+      assertParagraph();
+      if (mode === "suggesting") {
+        expect(driver.resolve("accept")).toBe(true);
+        assertParagraph();
+      }
+      const reopened = await parseDocx(await createDocx(driver.snapshot()), {
+        preloadFonts: false,
+      });
+      const reopenedNode = toProseDoc(reopened).firstChild;
+      if (reopenedNode === null)
+        throw new TypeError("Saved level-change fixture lost its paragraph.");
+      expect(directParagraphIndentation(expectParagraphAttrs(reopenedNode))).toEqual(
+        expectedDirect,
+      );
+      expect(summarizeEffectiveParagraphs(createHarnessState(reopened, "editing"))).toEqual(
+        summarizeEffectiveParagraphs(driver.state),
+      );
+    } finally {
+      driver.dispose();
+    }
+  },
+);
+
 const INAPPLICABLE_CASES = (["editing", "suggesting"] as const).flatMap((mode) =>
   (
     ["restartNumbering", "continueNumbering", "increaseListLevel", "decreaseListLevel"] as const

@@ -21,9 +21,16 @@ import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { paragraphNumberingAttr } from "../numberingAttr";
-import type { DirectParagraphIndentation } from "../paragraphIndentation";
+import {
+  directParagraphIndentation,
+  withDirectParagraphIndentation,
+  paragraphIndentationFromFormatting,
+  type DirectParagraphIndentation,
+  type ParagraphIndentationAttrs,
+} from "../paragraphIndentation";
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
+import type { ParagraphFormatting } from "../../types/document";
 
 type ResolvedStyleIdentity = {
   styleId: string;
@@ -204,50 +211,86 @@ export function listLevelIndentAttrPatch(
  * style gives, while an indentation of its own stays. The inverse of
  * {@link listLevelIndentAttrPatch}.
  */
+type ListLevelProvenanceContext = {
+  numbering: NumberingMap | null | undefined;
+  styleFormatting?: ParagraphFormatting | undefined;
+};
+
 export function listLevelIndentRemovalPatch(
-  attrs: Readonly<ParagraphAttrs>,
-  numbering: NumberingMap | null | undefined,
+  attrs: ParagraphIndentationAttrs,
+  { styleFormatting }: ListLevelProvenanceContext,
 ): ParagraphAttrsPatch {
   if (attrs.numPr?.kind !== "reference") {
     return {};
   }
-  const level = numbering?.getLevel(attrs.numPr.numId, attrs.numPr.ilvl ?? 0);
-  if (!level?.pPr) {
-    return {};
-  }
-  // Numbering a style supplied takes the style's own indentation with it.
-  const fromStyle = attrs.numPrFromStyle != null;
-  const resolved = fromStyle ? undefined : attrs._resolvedFormatting;
-  const patch: ParagraphAttrsPatch = {};
-  if (level.pPr.indentLeft !== undefined && attrs.indentLeft === level.pPr.indentLeft) {
-    patch.indentLeft = resolved?.indentLeft ?? null;
-  }
-  if (
-    level.pPr.indentFirstLine !== undefined &&
-    attrs.indentFirstLine === level.pPr.indentFirstLine &&
-    attrs.hangingIndent === (level.pPr.hangingIndent ?? false)
-  ) {
-    patch.indentFirstLine = resolved?.indentFirstLine ?? null;
-    patch.hangingIndent = resolved?.hangingIndent ?? false;
-  }
-  return patch;
+  const direct = directParagraphIndentation(attrs);
+  const resolved = {
+    ...withDirectParagraphIndentation(
+      attrs._resolvedFormatting,
+      paragraphIndentationFromFormatting(styleFormatting),
+    ),
+  };
+  // The rendered list level is part of _resolvedFormatting while numbered;
+  // restore the style's baseline, rather than retaining that list indentation.
+  return {
+    indentLeft: direct?.indentLeft ?? styleFormatting?.indentLeft ?? null,
+    indentRight: direct?.indentRight ?? styleFormatting?.indentRight ?? null,
+    indentFirstLine: direct?.indentFirstLine ?? styleFormatting?.indentFirstLine ?? null,
+    hangingIndent:
+      direct?.indentFirstLine !== undefined || direct?.hangingIndent !== undefined
+        ? (direct.hangingIndent ?? false)
+        : (styleFormatting?.hangingIndent ?? false),
+    _resolvedFormatting: Object.keys(resolved).length > 0 ? resolved : null,
+    _originalFormatting: withDirectParagraphIndentation(attrs._originalFormatting, direct) ?? null,
+  };
 }
 
 /** Recompute every level-dependent attr when a paragraph changes list level. */
 export function listLevelAttrPatch(
-  attrs: { listImplicitChildLevelAdvances?: number | null },
+  attrs: ParagraphIndentationAttrs & {
+    listImplicitChildLevelAdvances?: number | null;
+    numPrFromStyle?: ParagraphAttrs["numPrFromStyle"] | null;
+  },
   numPr: { numId: number; ilvl: number },
-  numbering: NumberingMap | null | undefined,
+  { numbering, styleFormatting }: ListLevelProvenanceContext,
 ): ParagraphAttrsPatch {
-  const level = numbering?.getLevel(numPr.numId, numPr.ilvl);
-  const hasMarkerSlot = level ? numberingLevelHasMarkerSlot(level) : false;
+  // Read the authored cluster against the old level before replacing its
+  // derived values. Otherwise a level change becomes a direct w:ind edit.
+  const direct = directParagraphIndentation(attrs);
+  const resolved = { ...attrs._resolvedFormatting };
+  Reflect.deleteProperty(resolved, "indentLeft");
+  Reflect.deleteProperty(resolved, "indentFirstLine");
+  Reflect.deleteProperty(resolved, "hangingIndent");
+  if (styleFormatting?.indentLeft !== undefined) resolved.indentLeft = styleFormatting.indentLeft;
+  if (styleFormatting?.indentFirstLine !== undefined)
+    resolved.indentFirstLine = styleFormatting.indentFirstLine;
+  if (styleFormatting?.hangingIndent !== undefined)
+    resolved.hangingIndent = styleFormatting.hangingIndent;
+  const levelIndent = listLevelIndentAttrPatch(
+    attrs.numPrFromStyle == null ? undefined : paragraphIndentationFromFormatting(styleFormatting),
+    numPr,
+    numbering,
+  );
+  if (typeof levelIndent.indentLeft === "number") resolved.indentLeft = levelIndent.indentLeft;
+  if (typeof levelIndent.indentFirstLine === "number")
+    resolved.indentFirstLine = levelIndent.indentFirstLine;
+  if (typeof levelIndent.hangingIndent === "boolean")
+    resolved.hangingIndent = levelIndent.hangingIndent;
+  const hasDirectFirstLine =
+    direct?.indentFirstLine !== undefined || direct?.hangingIndent !== undefined;
   return {
     ...listAttrsFromNumbering(numPr, numbering),
     // Inline LISTNUM fields still belong to this paragraph after a level
     // change; their relative child-level advance moves with it.
     listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances ?? null,
-    indentLeft: level?.pPr?.indentLeft ?? null,
-    indentFirstLine: hasMarkerSlot ? (level?.pPr?.indentFirstLine ?? null) : null,
-    hangingIndent: hasMarkerSlot ? (level?.pPr?.hangingIndent ?? null) : null,
+    indentLeft: direct?.indentLeft ?? resolved.indentLeft ?? null,
+    indentFirstLine: hasDirectFirstLine
+      ? (direct?.indentFirstLine ?? null)
+      : (resolved.indentFirstLine ?? null),
+    hangingIndent: hasDirectFirstLine
+      ? (direct?.hangingIndent ?? false)
+      : (resolved.hangingIndent ?? null),
+    _resolvedFormatting: Object.keys(resolved).length > 0 ? resolved : null,
+    _originalFormatting: withDirectParagraphIndentation(attrs._originalFormatting, direct) ?? null,
   };
 }
