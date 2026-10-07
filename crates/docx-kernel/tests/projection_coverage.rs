@@ -1693,14 +1693,6 @@ struct SourceParagraph {
     mark: Option<Tracked>,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum BlockContainer {
-    Body,
-    Cell,
-    Sdt,
-    CustomXml,
-}
-
 struct Model {
     view: RevisionView,
     oracle: Oracle,
@@ -1733,7 +1725,7 @@ impl Model {
             shapes: BTreeSet::new(),
             next_table: 0,
         };
-        model.blocks(&document.blocks, None, BlockContainer::Body);
+        model.blocks(&document.blocks, None);
         if document.section_change {
             model.snapshot(RevisionFactKind::SectionPropertiesChange, Site::Section);
         }
@@ -1783,22 +1775,15 @@ impl Model {
         paragraph.utf16 += u32::try_from(text.encode_utf16().count()).unwrap();
     }
 
-    fn blocks(
-        &mut self,
-        blocks: &[Block],
-        cell: Option<(usize, usize)>,
-        container: BlockContainer,
-    ) {
+    fn blocks(&mut self, blocks: &[Block], cell: Option<(usize, usize)>) {
         for block in blocks {
             match block {
                 Block::Paragraph(paragraph) => self.paragraph(paragraph, cell),
                 Block::Table(table) => self.table(table),
-                Block::Sdt(children) => self.blocks(children, cell, BlockContainer::Sdt),
-                Block::CustomXml(children) => {
-                    self.blocks(children, cell, BlockContainer::CustomXml);
-                }
-                Block::Bookmark(_, children) => {
-                    self.blocks(children, cell, container);
+                Block::Sdt(children)
+                | Block::CustomXml(children)
+                | Block::Bookmark(_, children) => {
+                    self.blocks(children, cell);
                 }
                 Block::Comment(id, children) => {
                     let start = SourcePoint {
@@ -1806,7 +1791,7 @@ impl Model {
                         utf8: 0,
                         utf16: 0,
                     };
-                    self.blocks(children, cell, container);
+                    self.blocks(children, cell);
                     self.comments.insert(*id, Some((start, self.here())));
                 }
             }
@@ -1849,7 +1834,7 @@ impl Model {
                     Site::TableStructure,
                 );
             }
-            self.blocks(cell, Some((ordinal, column)), BlockContainer::Cell);
+            self.blocks(cell, Some((ordinal, column)));
         }
     }
 
@@ -1947,12 +1932,11 @@ impl Model {
             }
             Inline::Hyperlink(_, children)
             | Inline::SimpleField(_, children)
-            | Inline::ComplexField(_, children) => {
-                for child in children {
-                    self.inline(child, hidden);
-                }
-            }
-            Inline::Sdt(children) | Inline::SmartTag(children) | Inline::CustomXml(children) => {
+            | Inline::ComplexField(_, children)
+            | Inline::Bookmark(_, children)
+            | Inline::Sdt(children)
+            | Inline::SmartTag(children)
+            | Inline::CustomXml(children) => {
                 for child in children {
                     self.inline(child, hidden);
                 }
@@ -1963,11 +1947,6 @@ impl Model {
                     self.inline(child, hidden);
                 }
                 self.comments.insert(*id, Some((start, self.here())));
-            }
-            Inline::Bookmark(_, children) => {
-                for child in children {
-                    self.inline(child, hidden);
-                }
             }
             Inline::ProofErr => {}
             Inline::Textbox(blocks) => self.textbox_blocks(blocks),
@@ -2812,10 +2791,10 @@ proptest! {
             let (xml, comments) = write_document(&probed_document, &ids);
             let marker = format!(r#"<w:bookmarkEnd w:id="{PROBE_ID}"/>"#);
             let missing_name = format!("missing-{PROBE_ID}");
-            let reference = format!(
+            let reference_xml = format!(
                 r#"{marker}<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> REF {missing_name} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>"#,
             );
-            let xml = xml.replace(&marker, &reference);
+            let xml = xml.replace(&marker, &reference_xml);
             let visible_marker = format!(r#"<w:bookmarkEnd w:id="{visible_probe_id}"/>"#);
             let visible_reference = format!(
                 r#"{visible_marker}<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> REF {missing_name} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>"#,
@@ -2826,16 +2805,16 @@ proptest! {
                 prop_assert!(false, "hidden bookmark changed the bookmark family's Known status");
                 continue;
             };
-            let probes = bookmarks.iter().filter(|bookmark| bookmark.bookmark_id == u32::try_from(PROBE_ID).unwrap()).collect::<Vec<_>>();
-            prop_assert_eq!(probes.len(), 1, "the hidden bookmark has one collapsed span");
-            prop_assert_eq!(probes[0].span.start_utf8, probes[0].span.end_utf8);
+            let bookmark_probes = bookmarks.iter().filter(|bookmark| bookmark.bookmark_id == u32::try_from(PROBE_ID).unwrap()).collect::<Vec<_>>();
+            prop_assert_eq!(bookmark_probes.len(), 1, "the hidden bookmark has one collapsed span");
+            prop_assert_eq!(bookmark_probes[0].span.start_utf8, bookmark_probes[0].span.end_utf8);
             bookmarks.retain(|bookmark| ![u32::try_from(PROBE_ID).unwrap(), u32::try_from(visible_probe_id).unwrap()].contains(&bookmark.bookmark_id));
             let StructuralFactSet::Known(references) = &mut probed.document.structural_facts.internal_references else {
                 prop_assert!(false, "missing target changed the reference family's Known status");
                 continue;
             };
-            let probes = references.iter().filter(|reference| reference.reference_id == missing_name).collect::<Vec<_>>();
-            prop_assert_eq!(probes.len(), 1, "only the visible missing-target reference preserves its source");
+            let reference_count = references.iter().filter(|reference| reference.reference_id == missing_name).count();
+            prop_assert_eq!(reference_count, 1, "only the visible missing-target reference preserves its source");
             references.retain(|reference| reference.reference_id != missing_name);
             let ReviewFactSet::Known(revisions) = &mut probed.review_facts.revisions else {
                 prop_assert!(false, "hidden annotations changed the revision family's Known status");
@@ -2970,21 +2949,21 @@ fn paragraph_joins_keep_bookmark_facts() {
     let suffix = r#"<w:bookmarkStart w:id="0" w:name="b"/><w:r><w:t>b</w:t></w:r><w:bookmarkEnd w:id="0"/><w:hyperlink w:anchor="b"/><w:fldSimple w:instr="REF b"/>"#;
     let projection = single(
         &format!(
-            r#"<w:p><w:pPr><w:rPr><w:del {TRACKED}/></w:rPr></w:pPr><w:r><w:t>é😀</w:t></w:r></w:p><w:p>{suffix}</w:p>"#
+            r"<w:p><w:pPr><w:rPr><w:del {TRACKED}/></w:rPr></w:pPr><w:r><w:t>é😀</w:t></w:r></w:p><w:p>{suffix}</w:p>"
         ),
         RevisionView::Current,
     );
-    let reference = single(
+    let equivalent = single(
         &format!(r"<w:p><w:r><w:t>é😀</w:t></w:r>{suffix}</w:p>"),
         RevisionView::Current,
     );
     assert_eq!(
         projection.document.structural_facts.bookmarks,
-        reference.document.structural_facts.bookmarks
+        equivalent.document.structural_facts.bookmarks
     );
     assert_eq!(
         projection.document.structural_facts.internal_references,
-        reference.document.structural_facts.internal_references
+        equivalent.document.structural_facts.internal_references
     );
     let StructuralFactSet::Known(bookmarks) = &projection.document.structural_facts.bookmarks
     else {
