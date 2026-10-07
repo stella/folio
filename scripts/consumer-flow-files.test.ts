@@ -77,6 +77,23 @@ describe("flow files", () => {
     ]);
     expect(flowShape(shaped)).toBe("insertAfterBlock+replaceRange > save and reopen > core batch");
   });
+
+  test("core batch atomicity is pinned and validated independently of operations", () => {
+    for (const action of ["core batch", "story batch"] as const) {
+      for (const atomic of [false, true]) {
+        const pinned = flow([{ action, seed: 1, atomic }]);
+        expect(parseFlowFile(JSON.parse(JSON.stringify(pinned)))).toEqual(pinned);
+        expect(flowId(pinned)).not.toBe(flowId(flow([{ action, seed: 1, atomic: !atomic }])));
+      }
+    }
+    for (const step of [
+      { action: "core batch", seed: 1, atomic: "false" },
+      { action: "suggest_changes", seed: 1, atomic: false },
+      { action: "accept all", seed: 1, atomic: true },
+    ]) {
+      expect(() => parseFlowFile({ ...flow([]), steps: [step] })).toThrow(/atomic/u);
+    }
+  });
 });
 
 describe("shrinking", () => {
