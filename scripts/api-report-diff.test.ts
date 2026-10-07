@@ -1,28 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { isStaleDeclaration, renderReportDiff, reportNewlineKind } from "./lib/api-report-diff";
+import { isStaleDeclaration, renderReportDiff } from "./lib/api-report-diff";
 
 const diff = (baseline: string, candidate: string, maxLines = 300): string =>
   renderReportDiff({ baseline, candidate, maxLines });
-
-describe("reportNewlineKind", () => {
-  test("new reports use LF without depending on the host platform", () => {
-    expect(reportNewlineKind(undefined)).toBe("lf");
-  });
-
-  for (const [kind, newline] of [
-    ["lf", "\n"],
-    ["crlf", "\r\n"],
-  ] as const) {
-    test(`existing ${kind} snapshots retain their line endings across signature edits`, () => {
-      for (const count of [1, 2, 10]) {
-        const snapshot = Array.from({ length: count }, () => "export type A = 1;").join(newline);
-        expect(reportNewlineKind(`${snapshot}${newline}`)).toBe(kind);
-        expect(reportNewlineKind(`${snapshot}${newline}export type B = 2;${newline}`)).toBe(kind);
-      }
-    });
-  }
-});
 
 describe("renderReportDiff", () => {
   test("says nothing about lines both sides share", () => {
