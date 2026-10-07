@@ -486,10 +486,13 @@ const project = ({
           run.type === "deletion" ||
           run.type === "moveFrom" ||
           run.type === "moveTo" ||
-          run.type === "inlineSdt" ||
-          run.type === "inlineWrapper"
+          run.type === "inlineSdt"
         ) {
           appendContent(run.content, "all");
+          continue;
+        }
+        if (run.type === "inlineWrapper") {
+          appendContent(run.content, bookmarkMode);
           continue;
         }
         if (
