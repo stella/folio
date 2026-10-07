@@ -402,11 +402,35 @@ fn document() -> impl Strategy<Value = Document> {
                 section_change,
             };
             sanitize_document(&mut document);
-            if let Some(Block::Paragraph(paragraph)) = document.blocks.last_mut() {
-                paragraph.mark = terminal_mark;
+            for index in 0..document.blocks.len() {
+                let eligible = index + 1 == document.blocks.len()
+                    || matches!(document.blocks.get(index + 1), Some(Block::Paragraph(_)));
+                if eligible && let Block::Paragraph(paragraph) = &mut document.blocks[index] {
+                    paragraph.mark = terminal_mark;
+                }
             }
             document
         })
+}
+
+/// Property snapshots are generated for the current view.
+fn current_property_document() -> impl Strategy<Value = Document> {
+    (document(), any::<bool>(), any::<bool>(), any::<bool>()).prop_map(
+        |(mut document, paragraph_change, mark_change, run_change)| {
+            map_paragraphs(&mut document.blocks, &mut |paragraph| {
+                paragraph.property_change = paragraph_change;
+                paragraph.mark_property_change = mark_change;
+            });
+            visit_inline_lists(&mut document.blocks, &mut |inlines| {
+                for inline in inlines {
+                    if let Inline::Run(run) = inline {
+                        run.property_change = run_change;
+                    }
+                }
+            });
+            document
+        },
+    )
 }
 
 /// Scopes placements to the suite, then numbers comment
@@ -417,21 +441,30 @@ fn sanitize_document(document: &mut Document) {
     number_blocks(&mut document.blocks, &mut ids);
 }
 
-/// Paragraph marks are generated on the final direct body paragraph.
+/// Paragraph marks occur on direct body paragraphs followed by a paragraph,
+/// or on the final direct body paragraph.
 fn scope_document(document: &mut Document) {
-    let terminal_mark = document.blocks.last().and_then(|block| match block {
-        Block::Paragraph(paragraph) => paragraph.mark,
-        _ => None,
-    });
+    let marks = document
+        .blocks
+        .iter()
+        .map(|block| match block {
+            Block::Paragraph(paragraph) => paragraph.mark,
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     document.section_change = false;
-    sanitize_blocks(&mut document.blocks, false);
+    sanitize_blocks(&mut document.blocks);
     end_with_paragraph(&mut document.blocks);
-    if let Some(Block::Paragraph(paragraph)) = document.blocks.last_mut() {
-        paragraph.mark = terminal_mark;
+    for index in 0..document.blocks.len() {
+        let eligible = index + 1 == document.blocks.len()
+            || matches!(document.blocks.get(index + 1), Some(Block::Paragraph(_)));
+        if eligible && let Block::Paragraph(paragraph) = &mut document.blocks[index] {
+            paragraph.mark = marks.get(index).copied().flatten();
+        }
     }
 }
 
-fn sanitize_blocks(blocks: &mut Vec<Block>, inside_wrapper: bool) {
+fn sanitize_blocks(blocks: &mut Vec<Block>) {
     let mut output = Vec::with_capacity(blocks.len());
     for mut block in std::mem::take(blocks) {
         match &mut block {
@@ -443,20 +476,16 @@ fn sanitize_blocks(blocks: &mut Vec<Block>, inside_wrapper: bool) {
             }
             Block::Table(table) => {
                 for cell in &mut table.cells {
-                    sanitize_blocks(cell, inside_wrapper);
+                    sanitize_blocks(cell);
                     output.append(cell);
                 }
                 continue;
             }
-            Block::Sdt(children) | Block::CustomXml(children) => sanitize_blocks(children, true),
+            Block::Sdt(children) | Block::CustomXml(children) => sanitize_blocks(children),
             Block::Bookmark(_, children) => {
-                sanitize_blocks(children, inside_wrapper);
-                if inside_wrapper {
-                    output.append(children);
-                    continue;
-                }
+                sanitize_blocks(children);
             }
-            Block::Comment(_, children) => sanitize_blocks(children, inside_wrapper),
+            Block::Comment(_, children) => sanitize_blocks(children),
         }
         output.push(block);
     }
@@ -487,15 +516,15 @@ fn sanitize_inlines(inlines: &mut Vec<Inline>, scope: InlineScope) {
             Inline::Revision(revision) => {
                 sanitize_inlines(&mut revision.children, InlineScope::Revision);
             }
-            Inline::Hyperlink(_, children)
-            | Inline::SimpleField(_, children)
-            | Inline::ComplexField(_, children)
-            | Inline::Bookmark(_, children) => {
+            Inline::Hyperlink(_, children) | Inline::SimpleField(_, children) => {
                 sanitize_inlines(children, scope);
                 if scope.inside_revision() {
                     output.append(children);
                     continue;
                 }
+            }
+            Inline::ComplexField(_, children) | Inline::Bookmark(_, children) => {
+                sanitize_inlines(children, scope)
             }
             Inline::Sdt(children) | Inline::SmartTag(children) | Inline::CustomXml(children) => {
                 let child_scope = if scope.inside_revision() {
@@ -970,6 +999,7 @@ enum Element {
     CellProperties,
     SectionProperties,
     Sdt,
+    SdtContent,
     CustomXml,
     SmartTag,
     Hyperlink,
@@ -1009,7 +1039,7 @@ enum Element {
 }
 
 impl Element {
-    const ALL: [Self; 46] = [
+    const ALL: [Self; 47] = [
         Self::Paragraph,
         Self::ParagraphProperties,
         Self::Table,
@@ -1020,6 +1050,7 @@ impl Element {
         Self::CellProperties,
         Self::SectionProperties,
         Self::Sdt,
+        Self::SdtContent,
         Self::CustomXml,
         Self::SmartTag,
         Self::Hyperlink,
@@ -1070,6 +1101,7 @@ impl Element {
             Self::CellProperties => "tcPr",
             Self::SectionProperties => "sectPr",
             Self::Sdt => "sdt",
+            Self::SdtContent => "sdtContent",
             Self::CustomXml => "customXml",
             Self::SmartTag => "smartTag",
             Self::Hyperlink => "hyperlink",
@@ -1143,9 +1175,11 @@ impl Element {
         let union = |parts: &[&[Context]]| parts.concat();
         match self {
             Self::Paragraph | Self::Table => block.to_vec(),
-            Self::Sdt | Self::CustomXml | Self::CommentRangeStart | Self::CommentRangeEnd => {
-                union(&[&block, &run_content])
-            }
+            Self::Sdt
+            | Self::SdtContent
+            | Self::CustomXml
+            | Self::CommentRangeStart
+            | Self::CommentRangeEnd => union(&[&block, &run_content]),
             Self::BookmarkStart | Self::BookmarkEnd => {
                 union(&[&block, &run_content, &[C::Table, C::TableRow]])
             }
@@ -1291,7 +1325,6 @@ const UNGENERATED_DISPATCH: &[&str] = &[
 const DEFAULT_ARM: &[Element] = &[
     Element::TableProperties,
     Element::SectionProperties,
-    Element::CustomXml,
     Element::SmartTag,
     Element::ProofErr,
 ];
@@ -1525,6 +1558,8 @@ const EXCLUDED_ROWS: &[(Element, Context)] = &[
     (Element::Table, Context::Textbox),
     (Element::Sdt, Context::TableCell),
     (Element::Sdt, Context::Textbox),
+    (Element::SdtContent, Context::TableCell),
+    (Element::SdtContent, Context::Textbox),
     (Element::CustomXml, Context::TableCell),
     (Element::CustomXml, Context::Textbox),
     (Element::CommentRangeStart, Context::TableCell),
@@ -1532,42 +1567,17 @@ const EXCLUDED_ROWS: &[(Element, Context)] = &[
     (Element::CommentRangeEnd, Context::TableCell),
     (Element::CommentRangeEnd, Context::Textbox),
     (Element::BookmarkStart, Context::TableCell),
-    (Element::BookmarkStart, Context::BlockSdt),
-    (Element::BookmarkStart, Context::BlockCustomXml),
     (Element::BookmarkStart, Context::Textbox),
-    (Element::BookmarkStart, Context::Insertion),
-    (Element::BookmarkStart, Context::Deletion),
-    (Element::BookmarkStart, Context::MoveFrom),
-    (Element::BookmarkStart, Context::MoveTo),
     (Element::BookmarkStart, Context::Table),
     (Element::BookmarkStart, Context::TableRow),
     (Element::BookmarkEnd, Context::TableCell),
-    (Element::BookmarkEnd, Context::BlockSdt),
-    (Element::BookmarkEnd, Context::BlockCustomXml),
     (Element::BookmarkEnd, Context::Textbox),
-    (Element::BookmarkEnd, Context::Insertion),
-    (Element::BookmarkEnd, Context::Deletion),
-    (Element::BookmarkEnd, Context::MoveFrom),
-    (Element::BookmarkEnd, Context::MoveTo),
     (Element::BookmarkEnd, Context::Table),
     (Element::BookmarkEnd, Context::TableRow),
-    (Element::ComplexField, Context::Insertion),
-    (Element::ComplexField, Context::Deletion),
-    (Element::ComplexField, Context::MoveFrom),
-    (Element::ComplexField, Context::MoveTo),
     (Element::Insertion, Context::TableRowProperties),
     (Element::Deletion, Context::TableRowProperties),
     (Element::DeletedInstruction, Context::Run),
     (Element::Textbox, Context::Run),
-    (Element::RunPropertiesChange, Context::RunProperties),
-    (
-        Element::RunPropertiesChange,
-        Context::ParagraphMarkProperties,
-    ),
-    (
-        Element::ParagraphPropertiesChange,
-        Context::ParagraphProperties,
-    ),
     (Element::TableProperties, Context::Table),
     (Element::Row, Context::Table),
     (Element::TablePropertiesChange, Context::TableProperties),
@@ -1606,7 +1616,7 @@ fn expected_rows() -> BTreeSet<(Element, Context)> {
 #[test]
 fn generator_reaches_every_context_row() {
     let mut runner = TestRunner::deterministic();
-    let strategy = document();
+    let strategy = prop_oneof![document().boxed(), current_property_document().boxed()];
     let mut observed = BTreeSet::new();
     for _ in 0..RECEIPT_CASES {
         let document = strategy.new_tree(&mut runner).unwrap().current();
@@ -1720,12 +1730,26 @@ impl Model {
         if document.section_change {
             model.snapshot(RevisionFactKind::SectionPropertiesChange, Site::Section);
         }
-        let formatting = model
-            .paragraphs
-            .iter()
-            .map(|paragraph| paragraph.formatting.clone())
-            .collect();
         let (texts, origins) = model.joined();
+        let mut formatting: Vec<Vec<TextFormattingSpan>> = vec![Vec::new(); texts.len()];
+        for (source, &(destination, _, offset)) in model.paragraphs.iter().zip(&origins) {
+            for span in &source.formatting {
+                let shifted = TextFormattingSpan {
+                    start_utf16: span.start_utf16 + offset,
+                    end_utf16: span.end_utf16 + offset,
+                    style: span.style,
+                };
+                let spans = &mut formatting[destination];
+                if let Some(previous) = spans.last_mut()
+                    && previous.end_utf16 == shifted.start_utf16
+                    && previous.style == shifted.style
+                {
+                    previous.end_utf16 = shifted.end_utf16;
+                } else {
+                    spans.push(shifted);
+                }
+            }
+        }
         Expected {
             texts,
             formatting,
@@ -1841,17 +1865,27 @@ impl Model {
             self.site(mark.kind(), Site::Inline);
             self.revisions.len() - 1
         });
-        if paragraph.mark_property_change {
+        let start = self.here();
+        let mark_snapshot = paragraph.mark_property_change.then(|| {
             self.snapshot(RevisionFactKind::RunPropertiesChange, Site::PropertyChange);
-        }
-        if paragraph.property_change {
+            self.revisions.len() - 1
+        });
+        let paragraph_snapshot = paragraph.property_change.then(|| {
             self.snapshot(
                 RevisionFactKind::ParagraphPropertiesChange,
                 Site::PropertyChange,
             );
-        }
+            self.revisions.len() - 1
+        });
         for inline in &paragraph.inlines {
             self.inline(inline, false);
+        }
+        let end = self.here();
+        if let Some(index) = mark_snapshot {
+            self.revisions[index].located = Some((end, end, RevisionPayload::FormattingOnly));
+        }
+        if let Some(index) = paragraph_snapshot {
+            self.revisions[index].located = Some((start, end, RevisionPayload::FormattingOnly));
         }
         if let Some(index) = mark_index {
             let mark = self.here();
@@ -1860,9 +1894,11 @@ impl Model {
     }
 
     fn run(&mut self, run: Run, hidden: bool) {
-        if run.property_change {
+        let start = self.here();
+        let snapshot = run.property_change.then(|| {
             self.snapshot(RevisionFactKind::RunPropertiesChange, Site::PropertyChange);
-        }
+            self.revisions.len() - 1
+        });
         let text = match run.content {
             RunContent::Text(text) => text,
             RunContent::Tab => "\t",
@@ -1885,6 +1921,10 @@ impl Model {
                     style: TextStyle::Bold,
                 });
             }
+        }
+        if let Some(index) = snapshot {
+            self.revisions[index].located =
+                Some((start, self.here(), RevisionPayload::FormattingOnly));
         }
     }
 
@@ -2114,7 +2154,21 @@ fn check_projected_facts(
     view: RevisionView,
     projection: &DocumentPackageProjection,
 ) -> Result<(), String> {
-    require_scoped_placements(document)?;
+    let mut placements = document.clone();
+    if view == RevisionView::Current {
+        map_paragraphs(&mut placements.blocks, &mut |paragraph| {
+            paragraph.property_change = false;
+            paragraph.mark_property_change = false;
+        });
+        visit_inline_lists(&mut placements.blocks, &mut |inlines| {
+            for inline in inlines {
+                if let Inline::Run(run) = inline {
+                    run.property_change = false;
+                }
+            }
+        });
+    }
+    require_scoped_placements(&placements)?;
     let expected = Model::build(document, view);
     let fail = |message: String| -> Result<(), String> { Err(format!("{view:?}: {message}")) };
 
@@ -2233,6 +2287,12 @@ fn check_projected_facts(
 
 proptest! {
     #![proptest_config(config(96))]
+
+    #[test]
+    fn generated_current_property_documents_match_the_model(document in current_property_document()) {
+        let checked = check_projection(&document, RevisionView::Current);
+        prop_assert!(checked.is_ok(), "{}", checked.unwrap_err());
+    }
 
     /// Every generated fact stays known and matches the model.
     #[test]
@@ -2566,11 +2626,7 @@ fn assert_known_facts_agree(
 
 fn valid_in_revision(inline: &Inline) -> bool {
     match inline {
-        Inline::Hyperlink(..)
-        | Inline::SimpleField(..)
-        | Inline::ComplexField(..)
-        | Inline::Bookmark(..)
-        | Inline::Textbox(_) => false,
+        Inline::Hyperlink(..) | Inline::SimpleField(..) | Inline::Textbox(_) => false,
         Inline::Revision(revision) => revision.children.iter().all(valid_in_revision),
         Inline::Comment(_, children)
         | Inline::Sdt(children)
@@ -2656,6 +2712,74 @@ proptest! {
             }
             probed.document.structural_facts.bookmarks =
                 base.document.structural_facts.bookmarks.clone();
+            prop_assert_eq!(&base, &probed);
+        }
+    }
+
+    #[test]
+    fn unresolvable_items_preserve_unrelated_known_facts(
+        document in document(),
+        target in any::<usize>(),
+        position in any::<usize>(),
+    ) {
+        let ids = comment_ids(&document);
+        for view in VIEWS {
+            let base = project(&document, &ids, view);
+            let mut probed_document = document.clone();
+            insert_probe(
+                &mut probed_document,
+                target,
+                position,
+                &Inline::Revision(Revision {
+                    kind: match view {
+                        RevisionView::Current => Tracked::Deletion,
+                        RevisionView::Original => Tracked::Insertion,
+                    },
+                    author: Author::Probe,
+                    children: vec![Inline::Bookmark(PROBE_ID, Vec::new())],
+                }),
+            );
+            let visible_probe_id = PROBE_ID + 1;
+            let mut inserted = false;
+            map_paragraphs(&mut probed_document.blocks, &mut |paragraph| {
+                if !inserted {
+                    paragraph.inlines.push(Inline::Bookmark(visible_probe_id, Vec::new()));
+                    inserted = true;
+                }
+            });
+            let (xml, comments) = write_document(&probed_document, &ids);
+            let marker = format!(r#"<w:bookmarkEnd w:id="{PROBE_ID}"/>"#);
+            let missing_name = format!("missing-{PROBE_ID}");
+            let reference_xml = format!(
+                r#"{marker}<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> REF {missing_name} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>"#,
+            );
+            let xml = xml.replace(&marker, &reference_xml);
+            let visible_marker = format!(r#"<w:bookmarkEnd w:id="{visible_probe_id}"/>"#);
+            let visible_reference = format!(
+                r#"{visible_marker}<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> REF {missing_name} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>"#,
+            );
+            let xml = xml.replace(&visible_marker, &visible_reference);
+            let mut probed = project_xml(&xml, &comments, view);
+            let StructuralFactSet::Known(bookmarks) = &mut probed.document.structural_facts.bookmarks else {
+                prop_assert!(false, "hidden bookmark changed the bookmark family's Known status");
+                continue;
+            };
+            let bookmark_probes = bookmarks.iter().filter(|bookmark| bookmark.bookmark_id == u32::try_from(PROBE_ID).unwrap()).collect::<Vec<_>>();
+            prop_assert_eq!(bookmark_probes.len(), 1, "the hidden bookmark has one collapsed span");
+            prop_assert_eq!(bookmark_probes[0].span.start_utf8, bookmark_probes[0].span.end_utf8);
+            bookmarks.retain(|bookmark| ![u32::try_from(PROBE_ID).unwrap(), u32::try_from(visible_probe_id).unwrap()].contains(&bookmark.bookmark_id));
+            let StructuralFactSet::Known(references) = &mut probed.document.structural_facts.internal_references else {
+                prop_assert!(false, "missing target changed the reference family's Known status");
+                continue;
+            };
+            let reference_count = references.iter().filter(|reference| reference.reference_id == missing_name).count();
+            prop_assert_eq!(reference_count, 1, "only the visible missing-target reference preserves its source");
+            references.retain(|reference| reference.reference_id != missing_name);
+            let ReviewFactSet::Known(revisions) = &mut probed.review_facts.revisions else {
+                prop_assert!(false, "hidden annotations changed the revision family's Known status");
+                continue;
+            };
+            revisions.retain(|revision| revision.author != PROBE_AUTHOR);
             prop_assert_eq!(&base, &probed);
         }
     }
@@ -2790,3 +2914,145 @@ fn endnote_references_materialize_like_footnote_references() {
         assert_eq!(projection.document.paragraphs[0].text, "a\u{0002}\u{0002}z");
     }
 }
+
+#[test]
+fn property_change_revisions_are_located() {
+    let projection = single(
+        &format!(
+            r#"<w:p><w:pPr><w:pPrChange {TRACKED}><w:pPr/></w:pPrChange></w:pPr><w:r><w:rPr><w:b/><w:rPrChange w:id="2" w:author="A"><w:rPr/></w:rPrChange></w:rPr><w:t>ab</w:t></w:r></w:p>"#
+        ),
+        RevisionView::Current,
+    );
+    for revision in known_revisions(&projection) {
+        assert!(
+            matches!(revision.content, ReviewDetail::Known(_)),
+            "{:?} has no location",
+            revision.kind
+        );
+    }
+}
+
+#[test]
+fn paragraph_joins_keep_bookmark_facts() {
+    let suffix = r#"<w:bookmarkStart w:id="0" w:name="b"/><w:r><w:t>b</w:t></w:r><w:bookmarkEnd w:id="0"/><w:hyperlink w:anchor="b"/><w:fldSimple w:instr="REF b"/>"#;
+    let projection = single(
+        &format!(
+            r"<w:p><w:pPr><w:rPr><w:del {TRACKED}/></w:rPr></w:pPr><w:r><w:t>é😀</w:t></w:r></w:p><w:p>{suffix}</w:p>"
+        ),
+        RevisionView::Current,
+    );
+    let equivalent = single(
+        &format!(r"<w:p><w:r><w:t>é😀</w:t></w:r>{suffix}</w:p>"),
+        RevisionView::Current,
+    );
+    assert_eq!(
+        projection.document.structural_facts.bookmarks,
+        equivalent.document.structural_facts.bookmarks
+    );
+    assert_eq!(
+        projection.document.structural_facts.internal_references,
+        equivalent.document.structural_facts.internal_references
+    );
+    let StructuralFactSet::Known(bookmarks) = &projection.document.structural_facts.bookmarks
+    else {
+        panic!("joined bookmark facts must be Known");
+    };
+    assert_eq!(bookmarks.len(), 1);
+    assert_eq!(bookmarks[0].paragraph_ordinal, 0);
+    assert_eq!(
+        (bookmarks[0].span.start_utf8, bookmarks[0].span.end_utf8),
+        (6, 7)
+    );
+    assert_eq!(
+        (bookmarks[0].span.start_utf16, bookmarks[0].span.end_utf16),
+        (3, 4)
+    );
+    let StructuralFactSet::Known(references) =
+        &projection.document.structural_facts.internal_references
+    else {
+        panic!("joined reference facts must be Known");
+    };
+    assert_eq!(references.len(), 3, "two sources and one target");
+    assert!(
+        references
+            .iter()
+            .all(|reference| reference.paragraph_ordinal == 0)
+    );
+}
+
+#[test]
+fn bookmarks_in_hidden_content_keep_bookmark_facts() {
+    let projection = single(
+        &format!(
+            r#"<w:p><w:r><w:t>a</w:t></w:r><w:del {TRACKED}><w:bookmarkStart w:id="0" w:name="b"/><w:r><w:delText>b</w:delText></w:r><w:bookmarkEnd w:id="0"/></w:del></w:p>"#
+        ),
+        RevisionView::Current,
+    );
+    assert!(
+        matches!(
+            projection.document.structural_facts.bookmarks,
+            StructuralFactSet::Known(_)
+        ),
+        "{:?}",
+        projection.document.structural_facts.bookmarks
+    );
+}
+
+#[test]
+fn bookmarks_in_block_content_controls_keep_bookmark_facts() {
+    let content = r#"<w:bookmarkStart w:id="0" w:name="b"/><w:p><w:r><w:t>a</w:t></w:r></w:p><w:bookmarkEnd w:id="0"/>"#;
+    for body in [
+        format!("<w:sdt><w:sdtContent>{content}</w:sdtContent></w:sdt>"),
+        format!("<w:customXml>{content}</w:customXml>"),
+    ] {
+        let projection = single(&body, RevisionView::Current);
+        let reference = single(content, RevisionView::Current);
+        assert_eq!(
+            projection.document.structural_facts.bookmarks,
+            reference.document.structural_facts.bookmarks
+        );
+        assert!(matches!(
+            projection.document.structural_facts.bookmarks,
+            StructuralFactSet::Known(_)
+        ));
+    }
+}
+
+#[test]
+fn references_in_hidden_content_keep_internal_references() {
+    let projection = single(
+        &format!(
+            r#"<w:p><w:bookmarkStart w:id="0" w:name="b"/><w:r><w:t>a</w:t></w:r><w:bookmarkEnd w:id="0"/><w:del {TRACKED}><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:delInstrText> REF b \h </w:delInstrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:del></w:p>"#
+        ),
+        RevisionView::Current,
+    );
+    assert!(
+        matches!(
+            projection.document.structural_facts.internal_references,
+            StructuralFactSet::Known(_)
+        ),
+        "{:?}",
+        projection.document.structural_facts.internal_references
+    );
+}
+
+#[test]
+fn paragraph_joins_coalesce_formatting_spans() {
+    let projection = single(
+        &format!(
+            r"<w:p><w:pPr><w:rPr><w:del {TRACKED}/></w:rPr></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>a</w:t></w:r></w:p><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>b</w:t></w:r></w:p>"
+        ),
+        RevisionView::Current,
+    );
+    assert_eq!(
+        projection.document.paragraphs[0].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 2,
+            style: TextStyle::Bold,
+        }],
+        "a joined paragraph reports what an unjoined paragraph with the same runs reports"
+    );
+}
+
+const TRACKED: &str = r#"w:id="1" w:author="A""#;

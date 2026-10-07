@@ -1,11 +1,12 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
+use std::collections::BTreeSet;
 use std::io::{Cursor, Write};
 
 use proptest::prelude::{prop_assert_eq, proptest};
 use stella_docx_kernel::{
     DocxLimits, InternalParagraphId, ProjectionOptions, ReviewDetail, ReviewFactLimits,
-    ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionPayload, RevisionView,
+    ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionPayload, RevisionView,
     project_docx_with_review_facts,
 };
 use zip::ZipWriter;
@@ -38,6 +39,14 @@ proptest! {
             let ReviewFactSet::Known(revisions) = projection.review_facts.revisions else {
                 panic!("bounded revisions must stay known");
             };
+            let property_ids = revisions.iter()
+                .filter(|revision| matches!(revision.kind,
+                    RevisionFactKind::RunPropertiesChange | RevisionFactKind::ParagraphPropertiesChange))
+                .map(|revision| revision.revision_id.as_deref())
+                .collect::<Vec<_>>();
+            prop_assert_eq!(property_ids.len(), 3, "every property owner has one revision");
+            prop_assert_eq!(property_ids.into_iter().collect::<BTreeSet<_>>(),
+                BTreeSet::from([Some("paragraph"), Some("mark"), Some("run")]));
             let hidden = matches!((deleted, view), (true, RevisionView::Current) | (false, RevisionView::Original));
             let visible_run = if hidden { "" } else { run_text };
             let paragraph = format!("{prefix}{visible_run}{suffix}");
