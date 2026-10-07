@@ -18,7 +18,12 @@ type CompositionOptions = {
 
 type CompositionState =
   | { type: "committed" }
-  | { type: "provisional" | "refused"; baseline: EditorState; phase: "active" | "ended" };
+  | {
+      type: "provisional" | "refused";
+      baseline: EditorState;
+      view: EditorView;
+      phase: "active" | "ended";
+    };
 
 /** Native IME owns the provisional view; the captured canonical projection stays unchanged. */
 export const createCanonicalComposition = (options: CompositionOptions) => {
@@ -77,7 +82,12 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     const input =
       commit && pending.type === "provisional" ? replacement(pending.baseline, view.state) : null;
     state = { type: "committed" };
-    if (!view.isDestroyed) view.updateState(pending.baseline);
+    if (!view.isDestroyed) {
+      // Recovery may finish without a native end event (for example a refused
+      // final beforeinput). Let PM end its own lifecycle before restoring DOM.
+      if (view.composing) view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+      view.updateState(pending.baseline);
+    }
     options.end();
     if (!commit || view.isDestroyed || pending.type === "refused") return;
     if (input?.from === input?.to && input?.text === "") return;
@@ -105,11 +115,11 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     start: (view: EditorView) => {
       if (state.type !== "committed") return;
       if (!options.begin()) return;
-      state = { type: "provisional", baseline: view.state, phase: "active" };
+      state = { type: "provisional", baseline: view.state, view, phase: "active" };
     },
     ended: (view: EditorView) => {
       if (state.type === "committed") return;
-      state = { type: state.type, baseline: state.baseline, phase: "ended" };
+      state = { type: state.type, baseline: state.baseline, view: state.view, phase: "ended" };
       schedule(view);
     },
     authorizeNative: (view: EditorView) => {
@@ -125,10 +135,11 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     recover: (view: EditorView) => finish(view, true),
     cancel: (view: EditorView) => finish(view, false),
     reset: () => {
-      clearTimer();
-      authorizedNativeState = null;
-      if (state.type !== "committed") options.end();
-      state = { type: "committed" };
+      if (state.type !== "committed") finish(state.view, false);
+      else {
+        clearTimer();
+        authorizedNativeState = null;
+      }
     },
     accept: (view: EditorView, transaction: Transaction) => {
       if (state.type === "committed") return false;
@@ -155,14 +166,14 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       });
       if (applied.isErr()) {
         view.updateState(state.baseline);
-        state = { type: "refused", baseline: state.baseline, phase: state.phase };
+        state = { type: "refused", baseline: state.baseline, view: state.view, phase: state.phase };
         options.refuse(applied.error.message);
         return true;
       }
       // Validate the entire proposal against one plain replacement, including plugin output.
       if (!replacement(state.baseline, applied.value.state)) {
         view.updateState(state.baseline);
-        state = { type: "refused", baseline: state.baseline, phase: state.phase };
+        state = { type: "refused", baseline: state.baseline, view: state.view, phase: state.phase };
         options.refuse(
           "Composition changed unsupported content; the canonical document was restored.",
         );

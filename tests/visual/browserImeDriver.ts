@@ -17,6 +17,8 @@ export const runBrowserImeLifecycle = async (
   switch (action.completion) {
     case "commit":
       await driver.commit(last);
+      // A refused commit may prevent Chromium from delivering compositionend.
+      await driver.cancel();
       return;
     case "cancel":
       await driver.cancel();

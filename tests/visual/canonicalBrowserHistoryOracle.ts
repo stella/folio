@@ -14,6 +14,7 @@ const snapshot = async (page: Page) => {
   await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
   const current = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
   expect(current?.active).toBe(true);
+  expect(current?.composing, "native composition must end before canonical snapshots").toBe(false);
   expect(current?.projectionMatchesCanonical).toBe(true);
   expect(current?.projectionJSON).toEqual(current?.canonicalProjectionJSON);
   if (!current?.document) throw new TypeError("Canonical document unavailable");
@@ -40,6 +41,10 @@ export const checkCanonicalBrowserHistory = async ({
   actions,
   missing,
 }: CanonicalBrowserHistoryOptions): Promise<number> => {
+  expect(
+    await page.evaluate(() => globalThis.__folioCanonical?.snapshot().composing),
+    "case must start outside native composition",
+  ).toBe(false);
   expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
     true,
   );

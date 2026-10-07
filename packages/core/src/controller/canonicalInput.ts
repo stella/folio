@@ -153,6 +153,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       return true;
     },
     handleKeyDown: (view: EditorView, event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) return false;
       beginGesture();
       if (composition.active) {
         if (event.key === "Escape") {
@@ -272,6 +273,18 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       return true;
     },
     handleDOMEvents: {
+      keydown: (view: EditorView, event: KeyboardEvent) => {
+        if (
+          !composition.active ||
+          event.isComposing ||
+          event.keyCode === 229 ||
+          event.key !== "Escape"
+        )
+          return false;
+        event.preventDefault();
+        composition.cancel(view);
+        return true;
+      },
       compositionstart: (view: EditorView) => {
         beginGesture();
         composition.start(view);

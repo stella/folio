@@ -85,6 +85,7 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     );
     return {
       active: canonical !== null && canonical !== undefined,
+      composing: editor?.getView()?.composing ?? null,
       document: ref?.getDocument() ?? null,
       projectionJSON: state?.doc.toJSON() ?? null,
       canonicalProjectionJSON: canonicalProjection?.toJSON() ?? null,

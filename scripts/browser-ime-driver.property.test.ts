@@ -6,7 +6,7 @@ import { runBrowserImeLifecycle } from "../tests/visual/browserImeDriver";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
 
-test("generated IME lifecycles deliver every update and exactly their declared completion", async () => {
+test("generated IME lifecycles deliver every update and terminate native composition", async () => {
   await assertProperty(
     fc.asyncProperty(browserImeActionArbitrary, async (action) => {
       const events: { kind: "update" | "commit" | "cancel"; text?: string }[] = [];
@@ -24,11 +24,12 @@ test("generated IME lifecycles deliver every update and exactly their declared c
         },
         action,
       );
-      expect(events.slice(0, -1)).toEqual(action.updates.map((text) => ({ kind: "update", text })));
-      expect(events.at(-1)).toEqual(
+      const expected = action.updates.map((text) => ({ kind: "update", text }));
+      expect(events.slice(0, action.updates.length)).toEqual(expected);
+      expect(events.slice(action.updates.length)).toEqual(
         action.completion === "commit"
-          ? { kind: "commit", text: action.updates.at(-1) }
-          : { kind: "cancel" },
+          ? [{ kind: "commit", text: action.updates.at(-1) }, { kind: "cancel" }]
+          : [{ kind: "cancel" }],
       );
     }),
     { numRuns: 100 },
