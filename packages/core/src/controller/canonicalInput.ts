@@ -321,10 +321,20 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         }
         // A new, non-composition event recovers an IME missing compositionend.
         if (composition.active) {
-          const refusedNativeCommit = composition.status === "refused" && view.composing;
-          composition.recover(view);
+          const nativeFinal =
+            view.composing &&
+            (event.inputType === "insertText" || event.inputType === "insertReplacementText");
+          const recovered = composition.recover(view);
           proposal = { type: "idle" };
-          if (refusedNativeCommit) {
+          // Recovery already handled the native proposal. Its matching final
+          // payload must not become a second typing edit after PM exits IME.
+          if (
+            nativeFinal &&
+            (recovered.type === "refused" ||
+              (recovered.type === "committed" &&
+                recovered.text !== null &&
+                recovered.text === event.data))
+          ) {
             event.preventDefault();
             return true;
           }

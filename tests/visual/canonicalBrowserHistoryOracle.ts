@@ -45,6 +45,20 @@ type CanonicalBrowserHistoryRunOptions = CanonicalBrowserHistoryOptions & {
   observations: CanonicalFuzzObservation[];
 };
 
+/** Establish the first loaded owner once, outside the per-case reset barrier. */
+export const initializeCanonicalBrowserHistory = async (page: Page, source: number[]) => {
+  expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
+    true,
+  );
+  await expect
+    .poll(
+      async () =>
+        typeof (await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing())),
+      { message: "canonical fixture must create its initial view" },
+    )
+    .toBe("boolean");
+};
+
 const runCanonicalBrowserHistory = async ({
   page,
   source,
@@ -66,8 +80,8 @@ const runCanonicalBrowserHistory = async ({
   };
   await assertCanonicalInputTimersSettled(page);
   await beginPhase({ type: "load" });
-  // The first case starts with a lazy view. Create it without loading or
-  // resetting an existing owner, so this check still detects cross-case leaks.
+  // Bootstrap happens outside the oracle. Ensure without reloading here so
+  // the strict pre-load barrier still detects cross-case lifecycle failures.
   expect(await page.evaluate(() => globalThis.__folioCanonical?.ensureView())).toBe(true);
   await expect
     .poll(

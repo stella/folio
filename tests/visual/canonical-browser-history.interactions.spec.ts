@@ -4,7 +4,10 @@ import fc from "fast-check";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
-import { checkCanonicalBrowserHistory } from "./canonicalBrowserHistoryOracle";
+import {
+  checkCanonicalBrowserHistory,
+  initializeCanonicalBrowserHistory,
+} from "./canonicalBrowserHistoryOracle";
 import { runBrowserImeLifecycle } from "./browserImeDriver";
 import {
   CANONICAL_BROWSER_HISTORY_REPLAYS,
@@ -59,7 +62,7 @@ test("refused native IME commit ends composition before driver cancellation", as
               }),
             );
             const marked = document.createElement("strong");
-            marked.textContent = paragraph.textContent;
+            marked.textContent = "契約";
             paragraph.replaceChildren(marked);
             editor.dispatchEvent(
               new InputEvent("input", {
@@ -70,11 +73,17 @@ test("refused native IME commit ends composition before driver cancellation", as
               }),
             );
           });
-          await page.waitForFunction(() =>
-            globalThis.__folioCanonicalFuzzErrors?.some((error) =>
-              error.message.includes("Composition changed unsupported content"),
-            ),
-          );
+          await expect
+            .poll(
+              () =>
+                page.evaluate(() =>
+                  globalThis.__folioCanonicalFuzzErrors?.some((error) =>
+                    error.message.includes("Composition changed unsupported content"),
+                  ),
+                ),
+              { message: "marked native composition must be refused before the final commit" },
+            )
+            .toBe(true);
           // A full snapshot is unavailable while canonical composition remains active.
           expect(await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing())).toBe(
             true,
@@ -115,7 +124,7 @@ test("refused native IME commit ends composition before driver cancellation", as
     );
     expect(cancelled).toBe(true);
   } finally {
-    await cdp.detach();
+    if (!page.isClosed()) await cdp.detach();
   }
 });
 
@@ -126,6 +135,7 @@ test("canonical history checks a lazy first view and rejects composition before 
   await page.waitForSelector(".layout-page");
   expect(await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing())).toBe(null);
   const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
+  await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
   const options = {
     page,
     source: [...new Uint8Array(source)],
@@ -162,6 +172,7 @@ for (const { seed, path, kinds } of [
       globalThis.__folioCanonicalFuzzErrors = [];
     });
     const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
+    await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
     // Repeat identical package input to exercise adoption of a fresh owner.
     for (let load = 0; load < 2; load++) {
       const applied = await checkCanonicalBrowserHistory({

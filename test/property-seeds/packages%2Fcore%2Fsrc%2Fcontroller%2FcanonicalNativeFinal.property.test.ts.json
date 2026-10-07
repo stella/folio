@@ -1,0 +1,22 @@
+{
+  "native final text is committed exactly once or refused without a journal change": [
+    {
+      "seed": 1255698489,
+      "path": "0",
+      "note": "Exercise the native final through a real canonical journal with production-shaped paragraph identifiers.",
+      "date": "2026-10-07"
+    },
+    {
+      "seed": 1255698489,
+      "path": "4",
+      "note": "Native replacement sharing the original prefix must commit and undo once.",
+      "date": "2026-10-07"
+    },
+    {
+      "seed": 1255698489,
+      "path": "13:1",
+      "note": "Equal native replacement leaves the real canonical journal empty.",
+      "date": "2026-10-07"
+    }
+  ]
+}

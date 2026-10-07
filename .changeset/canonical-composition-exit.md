@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-End native composition when canonical input commits, cancels, recovers or resets.
+End native composition on canonical lifecycle exits and consume matching native finals once.
