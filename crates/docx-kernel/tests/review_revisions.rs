@@ -109,14 +109,14 @@ fn paragraph_mark_revisions_are_located_at_the_mark_in_each_view() {
         (
             "moveFrom",
             RevisionFactKind::MoveFrom,
-            &["A😀", "B"][..],
+            &["A😀B"][..],
             &["A😀", "B"][..],
         ),
         (
             "moveTo",
             RevisionFactKind::MoveTo,
             &["A😀", "B"][..],
-            &["A😀", "B"][..],
+            &["A😀B"][..],
         ),
     ] {
         let document = format!(
@@ -242,13 +242,10 @@ impl Tracked {
         }
     }
 
-    /// Only tracked insertions and deletions of a paragraph mark join
-    /// paragraphs in a view.
+    /// A paragraph mark the view hides joins its paragraph to the next one;
+    /// Moved marks behave like deleted and inserted ones.
     const fn removes_paragraph_break_in(self, view: RevisionView) -> bool {
-        matches!(
-            (self, view),
-            (Self::Deletion, RevisionView::Current) | (Self::Insertion, RevisionView::Original)
-        )
+        self.hidden_in(view)
     }
 }
 
