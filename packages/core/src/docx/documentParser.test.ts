@@ -1,7 +1,8 @@
+import { getDocumentText } from "./storyPlainText";
 import { describe, expect, test } from "bun:test";
 
 import type { Paragraph, Run } from "../types/document";
-import { getDocumentText, parseDocumentBody } from "./documentParser";
+import { parseDocumentBody } from "./documentParser";
 import { parseNumbering } from "./numberingParser";
 import { serializeDocumentBody } from "./serializer/documentSerializer";
 
