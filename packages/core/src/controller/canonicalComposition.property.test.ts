@@ -27,7 +27,16 @@ test("every canonical composition exit ends native composition and admits DOM re
       fc.array(fc.constantFrom("契", "😀", "مرحبا", "café"), { minLength: 1, maxLength: 4 }),
       fc.boolean(),
       async (parts, refused) => {
-        for (const exit of ["commit", "recover", "cancel", "reset", "blur", "mousedown"] as const) {
+        for (const exit of [
+          "commit",
+          "refusedFinal",
+          "recover",
+          "cancel",
+          "reset",
+          "blur",
+          "mousedown",
+        ] as const) {
+          if (exit === "refusedFinal" && !refused) continue;
           const text = parts.join("");
           let replacements = 0;
           let ends = 0;
@@ -93,6 +102,18 @@ test("every canonical composition exit ends native composition and admits DOM re
                 view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
                 await new Promise<void>((resolve) => setTimeout(resolve, 40));
                 break;
+              case "refusedFinal": {
+                // Chromium's refused commit need not deliver compositionend.
+                const final = new InputEvent("beforeinput", {
+                  inputType: "insertText",
+                  data: text,
+                  bubbles: true,
+                  cancelable: true,
+                });
+                view.dom.dispatchEvent(final);
+                expect(final.defaultPrevented).toBe(true);
+                break;
+              }
               case "recover":
                 boundary.handleDOMEvents.beforeinput(
                   view,

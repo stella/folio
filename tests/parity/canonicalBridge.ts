@@ -26,6 +26,7 @@ type CanonicalPlaygroundRef = {
 
 /** Private interaction-test bridge shared by both playgrounds. */
 export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null) => ({
+  nativeComposing: () => getRef()?.getEditor()?.getView()?.composing ?? null,
   ensureView: () => {
     const ref = getRef();
     if (!ref) return false;

@@ -44,12 +44,15 @@ export const checkCanonicalBrowserHistory = async ({
   // The first case starts with a lazy view. Create it without loading or
   // resetting an existing owner, so this check still detects cross-case leaks.
   expect(await page.evaluate(() => globalThis.__folioCanonical?.ensureView())).toBe(true);
-  await page.waitForFunction(() => {
-    const composing = globalThis.__folioCanonical?.snapshot().composing;
-    return composing !== undefined && composing !== null;
-  });
+  await expect
+    .poll(
+      async () =>
+        typeof (await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing())),
+      { message: "canonical view must exist after initialization" },
+    )
+    .toBe("boolean");
   expect(
-    await page.evaluate(() => globalThis.__folioCanonical?.snapshot().composing),
+    await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
     "case must start outside native composition",
   ).toBe(false);
   expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
