@@ -134,7 +134,7 @@ jobs:
           fetch-depth: 0 # need history to compute the merge base with the target branch
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -162,7 +162,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -183,16 +183,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -203,6 +196,9 @@ jobs:
       # byte-preserving --write mode; CI keeps it in check-only mode.
       - name: Lockfile workspace-version check
         run: bun run check:lockfile-versions
+
+      - name: Lockfile override-range check
+        run: bun run check:lockfile-overrides
 
       - name: Lockfile deduplication check
         run: bun run check:dedupe
@@ -373,16 +369,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -400,16 +389,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -451,16 +433,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -480,16 +455,9 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -528,16 +496,9 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -576,16 +537,9 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -624,16 +578,9 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -671,7 +618,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -693,7 +640,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -728,7 +675,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -823,7 +770,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -878,7 +825,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -916,7 +863,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -978,7 +925,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 

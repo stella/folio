@@ -654,6 +654,21 @@ type CommentSlot = {
   comment?: Comment | undefined;
 };
 
+/** Clean revisions have no inline boundary; group their runs with surrounding runs. */
+const cleanRevisionContent = (content: readonly ParagraphContent[]): ParagraphContent[] =>
+  content.flatMap((item) => {
+    switch (item.type) {
+      case "insertion":
+      case "moveTo":
+        return cleanRevisionContent(item.content);
+      case "deletion":
+      case "moveFrom":
+        return [];
+      default:
+        return [item];
+    }
+  });
+
 /**
  * Render the full inline content of a paragraph, tracking comment-range
  * boundaries to apply the configured wrapper.
@@ -670,7 +685,9 @@ export function renderParagraphInline(
   const openComments: CommentSlot[] = [];
   // Markers that write nothing are left out, so the runs on either side of
   // one meet as they do on the line.
-  const items = content.filter(
+  const visibleContent =
+    ctx.opts.trackedChanges === "clean" ? cleanRevisionContent(content) : content;
+  const items = visibleContent.filter(
     (item) =>
       !SILENT_MARKERS.has(item.type) &&
       !(ctx.opts.comments === "strip" && COMMENT_MARKERS.has(item.type)),
