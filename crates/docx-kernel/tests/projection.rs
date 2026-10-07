@@ -986,7 +986,7 @@ fn resolves_markup_compatibility_inside_the_styles_part() {
 }
 
 #[test]
-fn reports_numbering_and_math_formatting_hierarchies_as_incomplete() {
+fn keeps_numbering_label_formatting_separate_and_math_formatting_incomplete() {
     let numbered_document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>A</w:t></w:r></w:p></w:body></w:document>"#;
     let numbering = br#"<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:rPr><w:b/></w:rPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num></w:numbering>"#;
     let numbered = project_docx(
@@ -1001,11 +1001,11 @@ fn reports_numbering_and_math_formatting_hierarchies_as_incomplete() {
         DocxLimits::default(),
         allocate,
     )
-    .expect("numbering-level formatting should preserve best-known spans");
+    .expect("numbering-label formatting should preserve body spans");
     assert!(numbered.paragraphs[0].formatting.is_empty());
     assert_eq!(
         numbered.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+        FormattingProjectionStatus::Complete
     );
 
     let math_document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body><w:p><m:oMath><m:r><w:rPr><w:b/></w:rPr><m:t>A</m:t></m:r></m:oMath></w:p></w:body></w:document>"#;
@@ -1992,11 +1992,11 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
     );
     assert_eq!(
         unknown_style.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+        FormattingProjectionStatus::Complete
     );
     assert_eq!(
         unknown_style.structural_facts.outline_levels,
-        StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles)
+        StructuralFactSet::Known(Vec::new())
     );
 }
 
@@ -2095,16 +2095,15 @@ fn paragraph_alignment_resolves_based_on_chains_through_cycles_and_missing_style
       <w:style w:type="paragraph" w:styleId="CycleA"><w:basedOn w:val="CycleB"/><w:pPr><w:jc w:val="left"/></w:pPr></w:style>
       <w:style w:type="paragraph" w:styleId="CycleB"><w:basedOn w:val="CycleA"/></w:style>
     </w:styles>"#;
-    // An unresolvable initial style projects no alignment: Word falls back to
-    // Normal there, so `w:docDefaults` would report a value the document never
-    // resolves to.
+    // Missing style definitions preserve document-default alignment;
+    // cyclic inheritance remains unresolved.
     assert_eq!(
         alignments(document, styles),
         [
             Some(style_alignment(Align::Center)),
             Some(style_alignment(Align::Right)),
             None,
-            None,
+            Some(style_alignment(Align::Justify)),
         ]
     );
 }

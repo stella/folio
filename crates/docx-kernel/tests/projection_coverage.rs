@@ -812,7 +812,8 @@ impl Markup {
     }
 
     fn table(&mut self, table: &Table) {
-        self.xml.push_str("<w:tbl><w:tblPr>");
+        self.xml
+            .push_str(r#"<w:tbl><w:tblPr><w:tblStyle w:val="MissingTableStyle"/>"#);
         if table.property_changes.table {
             self.change("tblPrChange", "<w:tblPr/>");
         }
@@ -997,6 +998,7 @@ enum Element {
     ParagraphProperties,
     Table,
     TableProperties,
+    TableStyle,
     TableGrid,
     Row,
     RowProperties,
@@ -1045,11 +1047,12 @@ enum Element {
 }
 
 impl Element {
-    const ALL: [Self; 49] = [
+    const ALL: [Self; 50] = [
         Self::Paragraph,
         Self::ParagraphProperties,
         Self::Table,
         Self::TableProperties,
+        Self::TableStyle,
         Self::TableGrid,
         Self::Row,
         Self::RowProperties,
@@ -1103,6 +1106,7 @@ impl Element {
             Self::ParagraphProperties => "pPr",
             Self::Table => "tbl",
             Self::TableProperties => "tblPr",
+            Self::TableStyle => "tblStyle",
             Self::TableGrid => "tblGrid",
             Self::Row => "tr",
             Self::RowProperties => "trPr",
@@ -1223,7 +1227,7 @@ impl Element {
             Self::ParagraphProperties => vec![C::Paragraph],
             Self::ParagraphPropertiesChange => vec![C::ParagraphProperties],
             Self::TableProperties | Self::TableGrid | Self::Row => vec![C::Table],
-            Self::TablePropertiesChange => vec![C::TableProperties],
+            Self::TableStyle | Self::TablePropertiesChange => vec![C::TableProperties],
             Self::TableGridChange => vec![C::TableGrid],
             Self::RowProperties | Self::Cell => vec![C::TableRow],
             Self::TableRowPropertiesChange => vec![C::TableRowProperties],
