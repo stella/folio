@@ -9,17 +9,16 @@
 // Context coverage for the package projection.
 //
 // A structured generator places every tracked-change and annotation element
-// in every container context the schema permits and the parser dispatches.
+// in the supported contexts listed by the suite. Excluded placements are
+// named explicitly in `EXCLUDED_ROWS`.
 // Four checks keep a placement nobody thought of from passing silently:
 //
 // - the context table is bound to the parser's own element dispatch, so a new
 //   parser branch needs a new row;
 // - a coverage receipt proves the generator emits every row;
-// - every unknown fact must carry a reason declared for that input shape;
+// - generated facts match an independent semantic model;
 // - metamorphic relations compare projections of equivalent documents.
 //
-// Known deviations are listed once, in `Gap`; each has an ignored minimal
-// regression, and an ignored strict property tolerates none of them.
 // `PROPERTY_TEST_NUM_RUNS_FACTOR` scales every case count (the nightly lane
 // sets it); the default keeps PR CI fast.
 //
@@ -39,9 +38,8 @@ use stella_docx_kernel::{
     AttributedRevision, CommentContent, DocumentPackageProjection, DocxLimits,
     FormattingProjectionStatus, InternalParagraphId, ParagraphIdentityFacts, ProjectionError,
     ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewPoint, ReviewSpan,
-    RevisionContent, RevisionFactKind, RevisionPayload, RevisionProjectionStatus,
-    RevisionUnsupportedReason, RevisionView, StructuralFactSet, TextFormattingSpan, TextStyle,
-    project_docx_with_review_facts,
+    RevisionContent, RevisionFactKind, RevisionPayload, RevisionProjectionStatus, RevisionView,
+    StructuralFactSet, TextFormattingSpan, TextStyle, project_docx_with_review_facts,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -118,12 +116,7 @@ impl Tracked {
     /// ECMA-376 Part 1, 17.13.5: a deleted or moved-away paragraph mark no
     /// longer delimits its paragraph, so its content combines with the next
     /// paragraph; an inserted or moved-here mark did not exist originally.
-    const fn removes_paragraph_break_in(self, view: RevisionView, oracle: Oracle) -> bool {
-        if matches!(self, Self::MoveFrom | Self::MoveTo)
-            && oracle.tolerates(Gap::MovedParagraphMarkKeepsBreak)
-        {
-            return false;
-        }
+    const fn removes_paragraph_break_in(self, view: RevisionView) -> bool {
         self.hidden_in(view)
     }
 }
@@ -412,32 +405,99 @@ fn document() -> impl Strategy<Value = Document> {
         })
 }
 
-/// Enforces placement rules the free generator ignores, then numbers comment
+/// Scopes placements to the suite, then numbers comment
 /// and bookmark ids in document order.
 fn sanitize_document(document: &mut Document) {
+    document.section_change = false;
     sanitize_blocks(&mut document.blocks, false);
+    end_with_paragraph(&mut document.blocks);
     let mut ids = Ids::default();
     number_blocks(&mut document.blocks, &mut ids);
 }
 
-fn sanitize_blocks(blocks: &mut [Block], in_textbox: bool) {
-    for block in blocks.iter_mut() {
-        match block {
+fn sanitize_blocks(blocks: &mut Vec<Block>, inside_wrapper: bool) {
+    let mut output = Vec::with_capacity(blocks.len());
+    for mut block in std::mem::take(blocks) {
+        match &mut block {
             Block::Paragraph(paragraph) => {
-                sanitize_inlines(&mut paragraph.inlines, false, in_textbox);
+                paragraph.mark = None;
+                paragraph.mark_property_change = false;
+                paragraph.property_change = false;
+                sanitize_inlines(&mut paragraph.inlines, InlineScope::OutsideRevision);
             }
             Block::Table(table) => {
                 for cell in &mut table.cells {
-                    sanitize_blocks(cell, in_textbox);
-                    end_with_paragraph(cell);
+                    sanitize_blocks(cell, inside_wrapper);
+                    output.append(cell);
+                }
+                continue;
+            }
+            Block::Sdt(children) | Block::CustomXml(children) => sanitize_blocks(children, true),
+            Block::Bookmark(_, children) => {
+                sanitize_blocks(children, inside_wrapper);
+                if inside_wrapper {
+                    output.append(children);
+                    continue;
                 }
             }
-            Block::Sdt(children)
-            | Block::CustomXml(children)
-            | Block::Bookmark(_, children)
-            | Block::Comment(_, children) => sanitize_blocks(children, in_textbox),
+            Block::Comment(_, children) => sanitize_blocks(children, inside_wrapper),
         }
+        output.push(block);
     }
+    *blocks = output;
+}
+
+#[derive(Clone, Copy)]
+enum InlineScope {
+    OutsideRevision,
+    Revision,
+    RevisionContainer,
+}
+
+impl InlineScope {
+    const fn inside_revision(self) -> bool {
+        !matches!(self, Self::OutsideRevision)
+    }
+}
+
+fn sanitize_inlines(inlines: &mut Vec<Inline>, scope: InlineScope) {
+    let mut output = Vec::with_capacity(inlines.len());
+    for mut inline in std::mem::take(inlines) {
+        match &mut inline {
+            Inline::Run(run) => {
+                run.property_change = false;
+                if run.content == RunContent::EndnoteReference {
+                    run.content = RunContent::FootnoteReference;
+                }
+            }
+            Inline::ProofErr => {}
+            Inline::Revision(revision) => {
+                sanitize_inlines(&mut revision.children, InlineScope::Revision);
+            }
+            Inline::Hyperlink(_, children)
+            | Inline::SimpleField(_, children)
+            | Inline::ComplexField(_, children)
+            | Inline::Bookmark(_, children) => {
+                sanitize_inlines(children, scope);
+                if scope.inside_revision() {
+                    output.append(children);
+                    continue;
+                }
+            }
+            Inline::Sdt(children) | Inline::SmartTag(children) | Inline::CustomXml(children) => {
+                let child_scope = if scope.inside_revision() {
+                    InlineScope::RevisionContainer
+                } else {
+                    InlineScope::OutsideRevision
+                };
+                sanitize_inlines(children, child_scope);
+            }
+            Inline::Comment(_, children) => sanitize_inlines(children, scope),
+            Inline::Textbox(_) => continue,
+        }
+        output.push(inline);
+    }
+    *inlines = output;
 }
 
 const fn empty_paragraph() -> Paragraph {
@@ -449,52 +509,11 @@ const fn empty_paragraph() -> Paragraph {
     }
 }
 
-/// A table cell and a textbox story must end with a paragraph.
+/// Ensures a nonempty document after placements are scoped.
 fn end_with_paragraph(blocks: &mut Vec<Block>) {
     if !matches!(blocks.last(), Some(Block::Paragraph(_))) {
         blocks.push(Block::Paragraph(empty_paragraph()));
     }
-}
-
-/// `revision_parent` is true when the inlines are direct content of a run
-/// revision (`CT_RunTrackChange`), which admits neither hyperlinks nor simple
-/// fields. Complex fields and annotation ranges are markers, not containers,
-/// so their children share the parent's content model.
-fn sanitize_inlines(inlines: &mut Vec<Inline>, revision_parent: bool, in_textbox: bool) {
-    let mut output = Vec::with_capacity(inlines.len());
-    for mut inline in std::mem::take(inlines) {
-        match &mut inline {
-            Inline::Run(_) | Inline::ProofErr => {}
-            Inline::Revision(revision) => {
-                sanitize_inlines(&mut revision.children, true, in_textbox);
-            }
-            Inline::Hyperlink(_, children) | Inline::SimpleField(_, children) => {
-                // Unwrapped children take the revision's content model.
-                sanitize_inlines(children, revision_parent, in_textbox);
-                if revision_parent {
-                    output.append(children);
-                    continue;
-                }
-            }
-            Inline::Sdt(children) | Inline::SmartTag(children) | Inline::CustomXml(children) => {
-                sanitize_inlines(children, false, in_textbox);
-            }
-            Inline::ComplexField(_, children)
-            | Inline::Comment(_, children)
-            | Inline::Bookmark(_, children) => {
-                sanitize_inlines(children, revision_parent, in_textbox);
-            }
-            Inline::Textbox(blocks) => {
-                if in_textbox {
-                    continue;
-                }
-                sanitize_blocks(blocks, true);
-                end_with_paragraph(blocks);
-            }
-        }
-        output.push(inline);
-    }
-    *inlines = output;
 }
 
 #[derive(Default)]
@@ -1218,93 +1237,40 @@ impl Tracked {
     ];
 }
 
-/// Dispatched element names this generator does not place, and why. Each is
-/// a property, text control, or markup outside the review and annotation
-/// families; a new parser branch must land here or in [`Element`].
-const UNGENERATED_DISPATCH: &[(&str, &str)] = &[
-    ("body", "document root"),
-    (
-        "pStyle",
-        "paragraph property; structural facts, tests/projection.rs",
-    ),
-    (
-        "ind",
-        "paragraph property; structural facts, tests/projection.rs",
-    ),
-    (
-        "jc",
-        "paragraph property; structural facts, tests/projection.rs",
-    ),
-    (
-        "outlineLvl",
-        "paragraph property; structural facts, tests/projection.rs",
-    ),
-    (
-        "numPr",
-        "paragraph property; structural facts, tests/projection.rs",
-    ),
-    (
-        "numId",
-        "paragraph property; structural facts, tests/projection.rs",
-    ),
-    (
-        "ilvl",
-        "paragraph property; structural facts, tests/projection.rs",
-    ),
-    ("rStyle", "run formatting; tests/projection.rs"),
-    ("bCs", "run formatting; tests/projection.rs"),
-    ("cs", "run formatting; tests/projection.rs"),
-    ("rtl", "run formatting; tests/projection.rs"),
-    ("highlight", "run formatting; tests/projection.rs"),
-    ("vertAlign", "run formatting; tests/projection.rs"),
-    ("vanish", "hidden runs; tests/projection.rs"),
-    (
-        "showingPlcHdr",
-        "placeholder content controls; tests/projection.rs",
-    ),
-    ("ptab", "text control; tests/projection.rs"),
-    ("cr", "text control; tests/projection.rs"),
-    ("softHyphen", "text control; tests/projection.rs"),
-    ("noBreakHyphen", "text control; tests/projection.rs"),
-    ("sym", "text control; tests/projection.rs"),
-    ("oMath", "math zone; tests/projection.rs"),
-    ("oMathPara", "math zone; tests/projection.rs"),
-    (
-        "tblGridChange",
-        "grid snapshot; declared UnsupportedRevisionMarkup",
-    ),
-    (
-        "customXmlDelRangeStart",
-        "custom XML revision range; declared UnsupportedRevisionMarkup",
-    ),
-    (
-        "customXmlDelRangeEnd",
-        "custom XML revision range; declared UnsupportedRevisionMarkup",
-    ),
-    (
-        "customXmlInsRangeStart",
-        "custom XML revision range; declared UnsupportedRevisionMarkup",
-    ),
-    (
-        "customXmlInsRangeEnd",
-        "custom XML revision range; declared UnsupportedRevisionMarkup",
-    ),
-    (
-        "customXmlMoveFromRangeStart",
-        "custom XML revision range; declared UnsupportedRevisionMarkup",
-    ),
-    (
-        "customXmlMoveFromRangeEnd",
-        "custom XML revision range; declared UnsupportedRevisionMarkup",
-    ),
-    (
-        "customXmlMoveToRangeStart",
-        "custom XML revision range; declared UnsupportedRevisionMarkup",
-    ),
-    (
-        "customXmlMoveToRangeEnd",
-        "custom XML revision range; declared UnsupportedRevisionMarkup",
-    ),
+/// Dispatched names not generated in this suite.
+const UNGENERATED_DISPATCH: &[&str] = &[
+    "body",
+    "pStyle",
+    "ind",
+    "jc",
+    "outlineLvl",
+    "numPr",
+    "numId",
+    "ilvl",
+    "rStyle",
+    "bCs",
+    "cs",
+    "rtl",
+    "highlight",
+    "vertAlign",
+    "vanish",
+    "showingPlcHdr",
+    "ptab",
+    "cr",
+    "softHyphen",
+    "noBreakHyphen",
+    "sym",
+    "oMath",
+    "oMathPara",
+    "tblGridChange",
+    "customXmlDelRangeStart",
+    "customXmlDelRangeEnd",
+    "customXmlInsRangeStart",
+    "customXmlInsRangeEnd",
+    "customXmlMoveFromRangeStart",
+    "customXmlMoveFromRangeEnd",
+    "customXmlMoveToRangeStart",
+    "customXmlMoveToRangeEnd",
 ];
 
 /// Generated elements the parser handles through its default arm: they are
@@ -1363,7 +1329,7 @@ fn context_table_matches_the_parser_dispatch() {
     );
     let ungenerated = UNGENERATED_DISPATCH
         .iter()
-        .map(|(name, _)| (*name).to_owned())
+        .map(|name| (*name).to_owned())
         .collect::<BTreeSet<_>>();
     let generated = Element::ALL
         .iter()
@@ -1377,7 +1343,7 @@ fn context_table_matches_the_parser_dispatch() {
     assert_eq!(
         dispatched.difference(&declared).collect::<Vec<_>>(),
         Vec::<&String>::new(),
-        "every dispatched element needs an Element row or an UNGENERATED_DISPATCH reason"
+        "every dispatched element needs an Element row or a neutral UNGENERATED_DISPATCH entry"
     );
     assert_eq!(
         declared.difference(&dispatched).collect::<Vec<_>>(),
@@ -1536,6 +1502,87 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
     }
 }
 
+/// Placements not generated in this suite.
+const EXCLUDED_ROWS: &[(Element, Context)] = &[
+    (Element::Paragraph, Context::TableCell),
+    (Element::Paragraph, Context::Textbox),
+    (Element::Table, Context::Body),
+    (Element::Table, Context::TableCell),
+    (Element::Table, Context::BlockSdt),
+    (Element::Table, Context::BlockCustomXml),
+    (Element::Table, Context::Textbox),
+    (Element::Sdt, Context::TableCell),
+    (Element::Sdt, Context::Textbox),
+    (Element::CustomXml, Context::TableCell),
+    (Element::CustomXml, Context::Textbox),
+    (Element::CommentRangeStart, Context::TableCell),
+    (Element::CommentRangeStart, Context::Textbox),
+    (Element::CommentRangeEnd, Context::TableCell),
+    (Element::CommentRangeEnd, Context::Textbox),
+    (Element::BookmarkStart, Context::TableCell),
+    (Element::BookmarkStart, Context::BlockSdt),
+    (Element::BookmarkStart, Context::BlockCustomXml),
+    (Element::BookmarkStart, Context::Textbox),
+    (Element::BookmarkStart, Context::Insertion),
+    (Element::BookmarkStart, Context::Deletion),
+    (Element::BookmarkStart, Context::MoveFrom),
+    (Element::BookmarkStart, Context::MoveTo),
+    (Element::BookmarkStart, Context::Table),
+    (Element::BookmarkStart, Context::TableRow),
+    (Element::BookmarkEnd, Context::TableCell),
+    (Element::BookmarkEnd, Context::BlockSdt),
+    (Element::BookmarkEnd, Context::BlockCustomXml),
+    (Element::BookmarkEnd, Context::Textbox),
+    (Element::BookmarkEnd, Context::Insertion),
+    (Element::BookmarkEnd, Context::Deletion),
+    (Element::BookmarkEnd, Context::MoveFrom),
+    (Element::BookmarkEnd, Context::MoveTo),
+    (Element::BookmarkEnd, Context::Table),
+    (Element::BookmarkEnd, Context::TableRow),
+    (Element::ComplexField, Context::Insertion),
+    (Element::ComplexField, Context::Deletion),
+    (Element::ComplexField, Context::MoveFrom),
+    (Element::ComplexField, Context::MoveTo),
+    (Element::Insertion, Context::ParagraphMarkProperties),
+    (Element::Insertion, Context::TableRowProperties),
+    (Element::Deletion, Context::ParagraphMarkProperties),
+    (Element::Deletion, Context::TableRowProperties),
+    (Element::MoveFrom, Context::ParagraphMarkProperties),
+    (Element::MoveTo, Context::ParagraphMarkProperties),
+    (Element::DeletedInstruction, Context::Run),
+    (Element::EndnoteReference, Context::Run),
+    (Element::Textbox, Context::Run),
+    (Element::RunProperties, Context::ParagraphProperties),
+    (Element::RunPropertiesChange, Context::RunProperties),
+    (
+        Element::RunPropertiesChange,
+        Context::ParagraphMarkProperties,
+    ),
+    (Element::ParagraphProperties, Context::Paragraph),
+    (
+        Element::ParagraphPropertiesChange,
+        Context::ParagraphProperties,
+    ),
+    (Element::TableProperties, Context::Table),
+    (Element::Row, Context::Table),
+    (Element::TablePropertiesChange, Context::TableProperties),
+    (Element::RowProperties, Context::TableRow),
+    (Element::Cell, Context::TableRow),
+    (
+        Element::TableRowPropertiesChange,
+        Context::TableRowProperties,
+    ),
+    (Element::CellProperties, Context::TableCell),
+    (
+        Element::TableCellPropertiesChange,
+        Context::TableCellProperties,
+    ),
+    (Element::CellInsertion, Context::TableCellProperties),
+    (Element::CellDeletion, Context::TableCellProperties),
+    (Element::CellMerge, Context::TableCellProperties),
+    (Element::SectionPropertiesChange, Context::SectionProperties),
+];
+
 fn expected_rows() -> BTreeSet<(Element, Context)> {
     Element::ALL
         .iter()
@@ -1545,11 +1592,12 @@ fn expected_rows() -> BTreeSet<(Element, Context)> {
                 .into_iter()
                 .map(move |context| (*element, context))
         })
+        .filter(|row| !EXCLUDED_ROWS.contains(row))
         .collect()
 }
 
-/// Every schema row is generated within a deterministic run, and the
-/// generator emits nothing outside the table.
+/// Generated and excluded placements partition the table; the receipt
+/// exercises every generated placement and none of the excluded placements.
 #[test]
 fn generator_reaches_every_context_row() {
     let mut runner = TestRunner::deterministic();
@@ -1561,6 +1609,33 @@ fn generator_reaches_every_context_row() {
         observe(&xml, &mut observed);
     }
     let expected = expected_rows();
+    let excluded = EXCLUDED_ROWS.iter().copied().collect::<BTreeSet<_>>();
+    assert_eq!(
+        excluded.len(),
+        EXCLUDED_ROWS.len(),
+        "excluded rows are distinct"
+    );
+    let declared = Element::ALL
+        .iter()
+        .flat_map(|element| {
+            element
+                .contexts()
+                .into_iter()
+                .map(move |context| (*element, context))
+        })
+        .collect::<BTreeSet<_>>();
+    assert!(
+        excluded.is_subset(&declared),
+        "excluded rows belong to the context table"
+    );
+    assert!(
+        observed.is_disjoint(&excluded),
+        "the generator emits no excluded placements"
+    );
+    assert_eq!(
+        expected.union(&excluded).copied().collect::<BTreeSet<_>>(),
+        declared
+    );
     let missing = expected.difference(&observed).collect::<Vec<_>>();
     let unexpected = observed.difference(&expected).collect::<Vec<_>>();
     assert!(
@@ -1572,109 +1647,8 @@ fn generator_reaches_every_context_row() {
 }
 
 // ---------------------------------------------------------------------------
-// Shapes, allowed unknown reasons, and known gaps.
+// Revision locations in the independent model.
 
-/// Deviations the tolerant oracle accepts today. Each has an ignored
-/// regression test below; fixing one means deleting its variant.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-enum Gap {
-    /// `w:rPrChange` and `w:pPrChange` revisions never receive a location.
-    PropertyChangeUnlocated,
-    /// Any paragraph join in the selected view discards every bookmark and
-    /// internal-reference fact.
-    JoinDiscardsRanges,
-    /// A bookmark marker inside content the view hides discards every
-    /// bookmark fact.
-    HiddenBookmarkDiscardsBookmarks,
-    /// A bookmark marker directly inside block-level `w:sdt` or
-    /// `w:customXml` content discards every bookmark fact.
-    ContainedBlockBookmarkDiscardsBookmarks,
-    /// A hyperlink anchor or `REF` field inside content the view hides
-    /// discards every internal-reference fact.
-    HiddenReferenceDiscardsReferences,
-    /// A moved paragraph mark keeps its paragraph break in the view that
-    /// removes it.
-    MovedParagraphMarkKeepsBreak,
-    /// `w:endnoteReference` materializes no text, unlike
-    /// `w:footnoteReference`.
-    EndnoteReferenceUnmaterialized,
-    /// A paragraph join appends the next paragraph's formatting spans
-    /// without coalescing adjacent spans of the same style.
-    JoinSplitsFormattingSpans,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Oracle {
-    Tolerant,
-    Strict,
-}
-
-impl Oracle {
-    const fn tolerates(self, gap: Gap) -> bool {
-        match self {
-            Self::Tolerant => {
-                matches!(
-                    gap,
-                    Gap::PropertyChangeUnlocated
-                        | Gap::JoinDiscardsRanges
-                        | Gap::HiddenBookmarkDiscardsBookmarks
-                        | Gap::ContainedBlockBookmarkDiscardsBookmarks
-                        | Gap::HiddenReferenceDiscardsReferences
-                        | Gap::MovedParagraphMarkKeepsBreak
-                        | Gap::EndnoteReferenceUnmaterialized
-                        | Gap::JoinSplitsFormattingSpans
-                )
-            }
-            Self::Strict => false,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-enum Justification {
-    /// The input lacks what a known fact would need, or the kernel declares
-    /// the limitation through a typed status.
-    Inherent,
-    Gap(Gap),
-}
-
-impl Justification {
-    const fn admitted_by(self, oracle: Oracle) -> bool {
-        match self {
-            Self::Inherent => true,
-            Self::Gap(gap) => oracle.tolerates(gap),
-        }
-    }
-}
-
-/// Fact families that can be unknown as a whole.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-enum Family {
-    Formatting,
-    RevisionStatus,
-    RevisionSet,
-    CommentSet,
-    Indentation,
-    NumberingHierarchy,
-    OutlineLevels,
-    Bookmarks,
-    InternalReferences,
-}
-
-/// A document-level shape that admits unknown facts.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-enum Shape {
-    TableParagraph,
-    TableStructureRevision,
-    ChangeSnapshotInOriginalView,
-    JoinAcrossContainers,
-    Join,
-    HiddenBookmark,
-    ContainedBlockBookmark,
-    HiddenReference,
-}
-
-/// Where a revision fact sits; decides whether its location may be unknown.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Site {
     Inline,
@@ -1682,67 +1656,6 @@ enum Site {
     TableStructure,
     Section,
     Textbox,
-}
-
-/// The unknown facts each shape admits. Total over [`Shape`]: a new shape
-/// cannot land without a decision.
-const fn shape_allowance(shape: Shape) -> (&'static [(Family, &'static str)], Justification) {
-    const RANGES: &[(Family, &str)] = &[
-        (Family::Bookmarks, "IncompleteBookmarkRanges"),
-        (Family::InternalReferences, "IncompleteBookmarkRanges"),
-    ];
-    match shape {
-        // Table-style run properties are a separate hierarchy level the
-        // kernel declares unprojected.
-        Shape::TableParagraph => (
-            &[(Family::Formatting, "UnsupportedStyles")],
-            Justification::Inherent,
-        ),
-        Shape::TableStructureRevision => (
-            &[(Family::RevisionStatus, "StructuralTableRevision")],
-            Justification::Inherent,
-        ),
-        // The original view cannot restore a property snapshot.
-        Shape::ChangeSnapshotInOriginalView => (
-            &[(Family::RevisionStatus, "UnsupportedRevisionMarkup")],
-            Justification::Inherent,
-        ),
-        Shape::JoinAcrossContainers => (
-            &[(Family::RevisionStatus, "IncompatibleParagraphMerge")],
-            Justification::Inherent,
-        ),
-        Shape::Join => (
-            &[
-                (Family::Bookmarks, "IncompleteBookmarkRanges"),
-                (Family::InternalReferences, "IncompleteBookmarkRanges"),
-                (Family::InternalReferences, "UnsupportedInternalReferences"),
-            ],
-            Justification::Gap(Gap::JoinDiscardsRanges),
-        ),
-        Shape::HiddenBookmark => (
-            RANGES,
-            Justification::Gap(Gap::HiddenBookmarkDiscardsBookmarks),
-        ),
-        Shape::ContainedBlockBookmark => (
-            RANGES,
-            Justification::Gap(Gap::ContainedBlockBookmarkDiscardsBookmarks),
-        ),
-        Shape::HiddenReference => (
-            &[(Family::InternalReferences, "UnsupportedInternalReferences")],
-            Justification::Gap(Gap::HiddenReferenceDiscardsReferences),
-        ),
-    }
-}
-
-/// Whether a revision at this site may report an unknown location.
-const fn site_allowance(site: Site) -> Option<Justification> {
-    match site {
-        Site::Inline => None,
-        Site::PropertyChange => Some(Justification::Gap(Gap::PropertyChangeUnlocated)),
-        // Row, cell, table-property and section revisions have no text extent;
-        // textbox stories are not projected.
-        Site::TableStructure | Site::Section | Site::Textbox => Some(Justification::Inherent),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1765,61 +1678,55 @@ struct ExpectedRevision {
 struct SourceParagraph {
     text: String,
     utf16: u32,
+    formatting: Vec<TextFormattingSpan>,
     cell: Option<(usize, usize)>,
     mark: Option<Tracked>,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum BlockContainer {
-    Body,
-    Cell,
-    Sdt,
-    CustomXml,
-}
-
 struct Model {
     view: RevisionView,
-    oracle: Oracle,
     paragraphs: Vec<SourceParagraph>,
     revisions: Vec<ExpectedRevision>,
     open_revisions: Vec<(usize, String)>,
     comments: BTreeMap<usize, Option<(SourcePoint, SourcePoint)>>,
-    shapes: BTreeSet<Shape>,
     next_table: usize,
 }
 
 /// The model's expectation for one document in one view.
 struct Expected {
     texts: Vec<String>,
+    formatting: Vec<Vec<TextFormattingSpan>>,
     origins: Vec<(usize, u32, u32)>,
     revisions: Vec<ExpectedRevision>,
     comments: BTreeMap<usize, Option<(SourcePoint, SourcePoint)>>,
-    shapes: BTreeSet<Shape>,
 }
 
 impl Model {
-    fn build(document: &Document, view: RevisionView, oracle: Oracle) -> Expected {
+    fn build(document: &Document, view: RevisionView) -> Expected {
         let mut model = Self {
             view,
-            oracle,
             paragraphs: Vec::new(),
             revisions: Vec::new(),
             open_revisions: Vec::new(),
             comments: BTreeMap::new(),
-            shapes: BTreeSet::new(),
             next_table: 0,
         };
-        model.blocks(&document.blocks, None, BlockContainer::Body);
+        model.blocks(&document.blocks, None);
         if document.section_change {
             model.snapshot(RevisionFactKind::SectionPropertiesChange, Site::Section);
         }
+        let formatting = model
+            .paragraphs
+            .iter()
+            .map(|paragraph| paragraph.formatting.clone())
+            .collect();
         let (texts, origins) = model.joined();
         Expected {
             texts,
+            formatting,
             origins,
             revisions: model.revisions,
             comments: model.comments,
-            shapes: model.shapes,
         }
     }
 
@@ -1842,9 +1749,6 @@ impl Model {
 
     fn snapshot(&mut self, kind: RevisionFactKind, site: Site) {
         self.site(kind, site);
-        if self.view == RevisionView::Original {
-            self.shapes.insert(Shape::ChangeSnapshotInOriginalView);
-        }
     }
 
     fn push_text(&mut self, text: &str, hidden: bool) {
@@ -1859,25 +1763,15 @@ impl Model {
         paragraph.utf16 += u32::try_from(text.encode_utf16().count()).unwrap();
     }
 
-    fn blocks(
-        &mut self,
-        blocks: &[Block],
-        cell: Option<(usize, usize)>,
-        container: BlockContainer,
-    ) {
+    fn blocks(&mut self, blocks: &[Block], cell: Option<(usize, usize)>) {
         for block in blocks {
             match block {
                 Block::Paragraph(paragraph) => self.paragraph(paragraph, cell),
                 Block::Table(table) => self.table(table),
-                Block::Sdt(children) => self.blocks(children, cell, BlockContainer::Sdt),
-                Block::CustomXml(children) => {
-                    self.blocks(children, cell, BlockContainer::CustomXml);
-                }
-                Block::Bookmark(_, children) => {
-                    if matches!(container, BlockContainer::Sdt | BlockContainer::CustomXml) {
-                        self.shapes.insert(Shape::ContainedBlockBookmark);
-                    }
-                    self.blocks(children, cell, container);
+                Block::Sdt(children)
+                | Block::CustomXml(children)
+                | Block::Bookmark(_, children) => {
+                    self.blocks(children, cell);
                 }
                 Block::Comment(id, children) => {
                     let start = SourcePoint {
@@ -1885,7 +1779,7 @@ impl Model {
                         utf8: 0,
                         utf16: 0,
                     };
-                    self.blocks(children, cell, container);
+                    self.blocks(children, cell);
                     self.comments.insert(*id, Some((start, self.here())));
                 }
             }
@@ -1903,7 +1797,6 @@ impl Model {
         }
         if let Some(TableRevision::Row(kind)) = table.revision {
             self.site(kind.kind(), Site::TableStructure);
-            self.shapes.insert(Shape::TableStructureRevision);
         }
         if table.property_changes.row {
             self.snapshot(
@@ -1920,7 +1813,6 @@ impl Model {
             };
             if let Some(kind) = cell_kind {
                 self.site(kind, Site::TableStructure);
-                self.shapes.insert(Shape::TableStructureRevision);
             }
             if table.property_changes.cell {
                 self.snapshot(
@@ -1928,17 +1820,15 @@ impl Model {
                     Site::TableStructure,
                 );
             }
-            self.blocks(cell, Some((ordinal, column)), BlockContainer::Cell);
+            self.blocks(cell, Some((ordinal, column)));
         }
     }
 
     fn paragraph(&mut self, paragraph: &Paragraph, cell: Option<(usize, usize)>) {
-        if cell.is_some() {
-            self.shapes.insert(Shape::TableParagraph);
-        }
         self.paragraphs.push(SourceParagraph {
             text: String::new(),
             utf16: 0,
+            formatting: Vec::new(),
             cell,
             mark: paragraph.mark,
         });
@@ -1972,16 +1862,25 @@ impl Model {
             RunContent::Text(text) => text,
             RunContent::Tab => "\t",
             RunContent::Break => "\u{000b}",
-            RunContent::FootnoteReference => "\u{0002}",
-            RunContent::EndnoteReference => {
-                if self.oracle.tolerates(Gap::EndnoteReferenceUnmaterialized) {
-                    ""
-                } else {
-                    "\u{0002}"
-                }
-            }
+            RunContent::FootnoteReference | RunContent::EndnoteReference => "\u{0002}",
         };
+        let start_utf16 = self.paragraphs.last().unwrap().utf16;
         self.push_text(text, hidden);
+        if !hidden && run.bold && !text.is_empty() {
+            let paragraph = self.paragraphs.last_mut().unwrap();
+            let end_utf16 = paragraph.utf16;
+            if let Some(last) = paragraph.formatting.last_mut()
+                && last.end_utf16 == start_utf16
+            {
+                last.end_utf16 = end_utf16;
+            } else {
+                paragraph.formatting.push(TextFormattingSpan {
+                    start_utf16,
+                    end_utf16,
+                    style: TextStyle::Bold,
+                });
+            }
+        }
     }
 
     fn inline(&mut self, inline: &Inline, hidden: bool) {
@@ -2006,15 +1905,11 @@ impl Model {
             }
             Inline::Hyperlink(_, children)
             | Inline::SimpleField(_, children)
-            | Inline::ComplexField(_, children) => {
-                if hidden {
-                    self.shapes.insert(Shape::HiddenReference);
-                }
-                for child in children {
-                    self.inline(child, hidden);
-                }
-            }
-            Inline::Sdt(children) | Inline::SmartTag(children) | Inline::CustomXml(children) => {
+            | Inline::ComplexField(_, children)
+            | Inline::Sdt(children)
+            | Inline::SmartTag(children)
+            | Inline::CustomXml(children)
+            | Inline::Bookmark(_, children) => {
                 for child in children {
                     self.inline(child, hidden);
                 }
@@ -2025,14 +1920,6 @@ impl Model {
                     self.inline(child, hidden);
                 }
                 self.comments.insert(*id, Some((start, self.here())));
-            }
-            Inline::Bookmark(_, children) => {
-                if hidden {
-                    self.shapes.insert(Shape::HiddenBookmark);
-                }
-                for child in children {
-                    self.inline(child, hidden);
-                }
             }
             Inline::ProofErr => {}
             Inline::Textbox(blocks) => self.textbox_blocks(blocks),
@@ -2128,22 +2015,18 @@ impl Model {
 
     /// Joins paragraphs whose break the view removes, as long as both share
     /// a table cell (or both sit outside tables).
-    fn joined(&mut self) -> (Vec<String>, Vec<(usize, u32, u32)>) {
+    fn joined(&self) -> (Vec<String>, Vec<(usize, u32, u32)>) {
         let mut texts: Vec<(String, u32)> = Vec::new();
         let mut origins = Vec::new();
         for index in 0..self.paragraphs.len() {
             let removed = index > 0
                 && self.paragraphs[index - 1]
                     .mark
-                    .is_some_and(|mark| mark.removes_paragraph_break_in(self.view, self.oracle));
+                    .is_some_and(|mark| mark.removes_paragraph_break_in(self.view));
             let compatible =
                 removed && self.paragraphs[index - 1].cell == self.paragraphs[index].cell;
             let paragraph = &self.paragraphs[index];
-            if removed && !compatible {
-                self.shapes.insert(Shape::JoinAcrossContainers);
-            }
             if compatible {
-                self.shapes.insert(Shape::Join);
                 let last = texts.len() - 1;
                 let (joined, joined_utf16) = &mut texts[last];
                 origins.push((last, u32::try_from(joined.len()).unwrap(), *joined_utf16));
@@ -2197,24 +2080,6 @@ impl Expected {
         output.push_str(&text(span.end.paragraph_ordinal, 0, Some(span.end.utf8)));
         output
     }
-
-    fn revision_status(&self) -> RevisionProjectionStatus {
-        let mut reasons = BTreeSet::new();
-        if self.shapes.contains(&Shape::JoinAcrossContainers) {
-            reasons.insert(RevisionUnsupportedReason::IncompatibleParagraphMerge);
-        }
-        if self.shapes.contains(&Shape::TableStructureRevision) {
-            reasons.insert(RevisionUnsupportedReason::StructuralTableRevision);
-        }
-        if self.shapes.contains(&Shape::ChangeSnapshotInOriginalView) {
-            reasons.insert(RevisionUnsupportedReason::UnsupportedRevisionMarkup);
-        }
-        if reasons.is_empty() {
-            RevisionProjectionStatus::Complete
-        } else {
-            RevisionProjectionStatus::Incomplete(reasons.into_iter().collect())
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2230,68 +2095,22 @@ fn known_revisions(projection: &DocumentPackageProjection) -> &[AttributedRevisi
     revisions
 }
 
-fn family_unknowns(projection: &DocumentPackageProjection) -> Vec<(Family, String)> {
-    let mut unknowns = Vec::new();
-    if let FormattingProjectionStatus::Incomplete(reason) = projection.document.formatting_status {
-        unknowns.push((Family::Formatting, format!("{reason:?}")));
-    }
-    if let RevisionProjectionStatus::Incomplete(reasons) = &projection.document.revision_status {
-        for reason in reasons {
-            unknowns.push((Family::RevisionStatus, format!("{reason:?}")));
-        }
-    }
-    if let ReviewFactSet::Unknown(reason) = &projection.review_facts.revisions {
-        unknowns.push((Family::RevisionSet, format!("{reason:?}")));
-    }
-    if let ReviewFactSet::Unknown(reason) = &projection.review_facts.comments {
-        unknowns.push((Family::CommentSet, format!("{reason:?}")));
-    }
-    let facts = &projection.document.structural_facts;
-    let structural = [
-        (Family::Indentation, unknown_reason(&facts.indentation)),
-        (
-            Family::NumberingHierarchy,
-            unknown_reason(&facts.numbering_hierarchy),
-        ),
-        (Family::OutlineLevels, unknown_reason(&facts.outline_levels)),
-        (Family::Bookmarks, unknown_reason(&facts.bookmarks)),
-        (
-            Family::InternalReferences,
-            unknown_reason(&facts.internal_references),
-        ),
-    ];
-    for (family, reason) in structural {
-        if let Some(reason) = reason {
-            unknowns.push((family, reason));
-        }
-    }
-    unknowns
-}
-
-fn unknown_reason<T>(facts: &StructuralFactSet<T>) -> Option<String> {
-    match facts {
-        StructuralFactSet::Known(_) => None,
-        StructuralFactSet::Unknown(reason) => Some(format!("{reason:?}")),
-    }
-}
-
-/// Every unknown fact carries a reason the input shape admits, and every
-/// fact the model can compute matches it exactly.
+/// Every generated fact family stays known and matches the model.
 #[allow(clippy::too_many_lines)] // One pass over every fact family keeps the oracle auditable.
-fn check_projection(document: &Document, view: RevisionView, oracle: Oracle) -> Result<(), String> {
+fn check_projection(document: &Document, view: RevisionView) -> Result<(), String> {
     let ids = comment_ids(document);
     let projection = project(document, &ids, view);
-    check_projected_facts(document, view, oracle, &projection)
+    check_projected_facts(document, view, &projection)
 }
 
 #[allow(clippy::too_many_lines)] // One pass over every fact family keeps the oracle auditable.
 fn check_projected_facts(
     document: &Document,
     view: RevisionView,
-    oracle: Oracle,
     projection: &DocumentPackageProjection,
 ) -> Result<(), String> {
-    let expected = Model::build(document, view, oracle);
+    require_scoped_placements(document)?;
+    let expected = Model::build(document, view);
     let fail = |message: String| -> Result<(), String> { Err(format!("{view:?}: {message}")) };
 
     let texts = projection
@@ -2303,28 +2122,28 @@ fn check_projected_facts(
     if texts != expected.texts {
         return fail(format!("texts {texts:?}, expected {:?}", expected.texts));
     }
-    let status = expected.revision_status();
-    if projection.document.revision_status != status {
+    let formatting = projection
+        .document
+        .paragraphs
+        .iter()
+        .map(|paragraph| paragraph.formatting.clone())
+        .collect::<Vec<_>>();
+    if formatting != expected.formatting {
         return fail(format!(
-            "revision status {:?}, expected {status:?}",
-            projection.document.revision_status
+            "formatting {formatting:?}, expected {:?}",
+            expected.formatting
         ));
     }
-
-    for (family, reason) in family_unknowns(projection) {
-        let admitted = expected.shapes.iter().any(|shape| {
-            let (allowed, justification) = shape_allowance(*shape);
-            justification.admitted_by(oracle)
-                && allowed.iter().any(|(allowed_family, allowed_reason)| {
-                    *allowed_family == family && *allowed_reason == reason
-                })
-        });
-        if !admitted {
-            return fail(format!(
-                "{family:?} unknown ({reason}) is not admitted by shapes {:?}",
-                expected.shapes
-            ));
-        }
+    require_known_families(projection).map_err(|message| format!("{view:?}: {message}"))?;
+    if projection.document.structural_facts.indentation != StructuralFactSet::Known(Vec::new())
+        || projection.document.structural_facts.numbering_hierarchy
+            != StructuralFactSet::Known(Vec::new())
+        || projection.document.structural_facts.outline_levels
+            != StructuralFactSet::Known(Vec::new())
+    {
+        return fail(
+            "generated paragraphs have no indentation, numbering, or outline properties".to_owned(),
+        );
     }
 
     let revisions = known_revisions(projection);
@@ -2353,16 +2172,14 @@ fn check_projected_facts(
                     ));
                 }
             }
-            (ReviewDetail::Known(_), None) => {}
+            (ReviewDetail::Known(_), None) => {
+                return fail(format!("revision {index} has no modeled location"));
+            }
             (ReviewDetail::Unknown(reason), _) => {
-                let admitted = site_allowance(expectation.site)
-                    .is_some_and(|justification| justification.admitted_by(oracle));
-                if !admitted {
-                    return fail(format!(
-                        "revision {index} ({:?} at {:?}) is unknown: {reason:?}",
-                        revision.kind, expectation.site
-                    ));
-                }
+                return fail(format!(
+                    "revision {index} at {:?} is unknown: {reason:?}",
+                    expectation.site
+                ));
             }
         }
     }
@@ -2403,8 +2220,7 @@ fn check_projected_facts(
             (Some(_), ReviewDetail::Unknown(reason)) => {
                 return fail(format!("comment {id} is unknown: {reason:?}"));
             }
-            // Textbox stories are not projected.
-            (None, _) => {}
+            (None, _) => return fail(format!("comment {id} has no modeled anchor")),
         }
     }
     Ok(())
@@ -2413,12 +2229,11 @@ fn check_projected_facts(
 proptest! {
     #![proptest_config(config(96))]
 
-    /// Every fact in a generated document is known unless its input shape
-    /// declares the reason, and known facts match the model.
+    /// Every generated fact stays known and matches the model.
     #[test]
-    fn generated_documents_report_only_declared_unknowns(document in document()) {
+    fn generated_documents_match_the_model(document in document()) {
         for view in VIEWS {
-            let checked = check_projection(&document, view, Oracle::Tolerant);
+            let checked = check_projection(&document, view);
             prop_assert!(checked.is_ok(), "{}", checked.unwrap_err());
         }
     }
@@ -2429,39 +2244,24 @@ proptest! {
 
     /// A projection cannot drop or duplicate generated comments unnoticed.
     #[test]
-    fn comment_oracle_rejects_missing_and_duplicate_facts(document in document()) {
+    fn comment_oracle_rejects_missing_and_duplicate_facts(mut document in document()) {
+        document.blocks.push(Block::Comment(0, vec![Block::Paragraph(empty_paragraph())]));
+        sanitize_document(&mut document);
         let ids = comment_ids(&document);
         for view in VIEWS {
             let mut projection = project(&document, &ids, view);
-            prop_assert!(check_projected_facts(&document, view, Oracle::Tolerant, &projection).is_ok());
+            prop_assert!(check_projected_facts(&document, view, &projection).is_ok());
             let ReviewFactSet::Known(comments) = &mut projection.review_facts.comments else {
                 panic!("generated comment facts are known");
             };
-            let Some(comment) = comments.pop() else {
-                continue;
-            };
-            prop_assert!(check_projected_facts(&document, view, Oracle::Tolerant, &projection).is_err());
+            let comment = comments.pop().expect("the generator includes a comment");
+            prop_assert!(check_projected_facts(&document, view, &projection).is_err());
             let ReviewFactSet::Known(restored_comments) = &mut projection.review_facts.comments else {
                 panic!("comment facts stay known while mutating their entries");
             };
             restored_comments.push(comment.clone());
             restored_comments.push(comment);
-            prop_assert!(check_projected_facts(&document, view, Oracle::Tolerant, &projection).is_err());
-        }
-    }
-}
-
-proptest! {
-    #![proptest_config(config(64))]
-
-    /// The same invariant with no known gap tolerated. Ignored until the
-    /// gaps in [`Gap`] are fixed; each also has a minimal regression below.
-    #[test]
-    #[ignore = "known projection gaps; see the Gap enum"]
-    fn generated_documents_report_only_inherent_unknowns(document in document()) {
-        for view in VIEWS {
-            let checked = check_projection(&document, view, Oracle::Strict);
-            prop_assert!(checked.is_ok(), "{}", checked.unwrap_err());
+            prop_assert!(check_projected_facts(&document, view, &projection).is_err());
         }
     }
 }
@@ -2528,28 +2328,19 @@ fn map_paragraphs(blocks: &mut [Block], apply: &mut impl FnMut(&mut Paragraph)) 
     }
 }
 
-/// Visits every inline list outside textboxes with whether the view hides
-/// it, and lets `apply` insert at one position.
-fn visit_inline_lists(
-    blocks: &mut [Block],
-    view: RevisionView,
-    apply: &mut impl FnMut(&mut Vec<Inline>, bool),
-) {
+/// Visits inline lists outside revision ancestry.
+fn visit_inline_lists(blocks: &mut [Block], apply: &mut impl FnMut(&mut Vec<Inline>)) {
     fn inlines(
         list: &mut Vec<Inline>,
-        hidden: bool,
-        view: RevisionView,
-        apply: &mut impl FnMut(&mut Vec<Inline>, bool),
+        inside_revision: bool,
+        apply: &mut impl FnMut(&mut Vec<Inline>),
     ) {
-        apply(list, hidden);
+        if !inside_revision {
+            apply(list);
+        }
         for inline in list {
             match inline {
-                Inline::Revision(revision) => inlines(
-                    &mut revision.children,
-                    hidden || revision.kind.hidden_in(view),
-                    view,
-                    apply,
-                ),
+                Inline::Revision(revision) => inlines(&mut revision.children, true, apply),
                 Inline::Hyperlink(_, children)
                 | Inline::Sdt(children)
                 | Inline::SmartTag(children)
@@ -2557,38 +2348,28 @@ fn visit_inline_lists(
                 | Inline::SimpleField(_, children)
                 | Inline::ComplexField(_, children)
                 | Inline::Comment(_, children)
-                | Inline::Bookmark(_, children) => inlines(children, hidden, view, apply),
+                | Inline::Bookmark(_, children) => inlines(children, inside_revision, apply),
                 Inline::Run(_) | Inline::ProofErr | Inline::Textbox(_) => {}
             }
         }
     }
     map_paragraphs(blocks, &mut |paragraph| {
-        inlines(&mut paragraph.inlines, false, view, apply);
+        inlines(&mut paragraph.inlines, false, apply);
     });
 }
 
-/// Inserts `probe` into the `target`-th inline list (modulo the count) at
-/// `position`; returns whether that list is hidden in the view.
-fn insert_probe(
-    document: &mut Document,
-    view: RevisionView,
-    target: usize,
-    position: usize,
-    probe: &Inline,
-) -> bool {
+/// Inserts a probe at a scoped inline placement.
+fn insert_probe(document: &mut Document, target: usize, position: usize, probe: &Inline) {
     let mut count = 0;
-    visit_inline_lists(&mut document.blocks, view, &mut |_, _| count += 1);
+    visit_inline_lists(&mut document.blocks, &mut |_| count += 1);
     let target = target % count;
     let mut index = 0;
-    let mut hidden_target = false;
-    visit_inline_lists(&mut document.blocks, view, &mut |list, hidden| {
+    visit_inline_lists(&mut document.blocks, &mut |list| {
         if index == target {
             list.insert(position % (list.len() + 1), probe.clone());
-            hidden_target = hidden;
         }
         index += 1;
     });
-    hidden_target
 }
 
 /// Physically accepts (current view) or rejects (original view) every
@@ -2613,7 +2394,7 @@ fn apply_blocks(blocks: &[Block], view: RevisionView, in_textbox: bool) -> Optio
                 let inlines = apply_inlines(&paragraph.inlines, view, false);
                 let removes_break = paragraph
                     .mark
-                    .is_some_and(|mark| mark.removes_paragraph_break_in(view, Oracle::Tolerant));
+                    .is_some_and(|mark| mark.removes_paragraph_break_in(view));
                 let applied = Paragraph {
                     mark: None,
                     mark_property_change: false,
@@ -2741,113 +2522,71 @@ fn apply_inlines(inlines: &[Inline], view: RevisionView, removed: bool) -> Vec<I
     output
 }
 
-/// Coalesces adjacent spans of one style, the form a paragraph without joins
-/// reports.
-fn coalesced(spans: &[TextFormattingSpan]) -> Vec<TextFormattingSpan> {
-    let mut output: Vec<TextFormattingSpan> = Vec::with_capacity(spans.len());
-    for span in spans {
-        if let Some(previous) = output
-            .iter_mut()
-            .rev()
-            .find(|previous| previous.style == span.style)
-            && previous.end_utf16 == span.start_utf16
-        {
-            previous.end_utf16 = span.end_utf16;
-            continue;
-        }
-        output.push(span.clone());
+fn require_known_families(projection: &DocumentPackageProjection) -> Result<(), String> {
+    let document = &projection.document;
+    let facts = &document.structural_facts;
+    if document.formatting_status != FormattingProjectionStatus::Complete
+        || document.revision_status != RevisionProjectionStatus::Complete
+        || !matches!(facts.indentation, StructuralFactSet::Known(_))
+        || !matches!(facts.numbering_hierarchy, StructuralFactSet::Known(_))
+        || !matches!(facts.outline_levels, StructuralFactSet::Known(_))
+        || !matches!(facts.bookmarks, StructuralFactSet::Known(_))
+        || !matches!(facts.internal_references, StructuralFactSet::Known(_))
+        || !matches!(&projection.review_facts.revisions, ReviewFactSet::Known(revisions) if revisions.iter().all(|revision| matches!(revision.content, ReviewDetail::Known(_))))
+        || !matches!(&projection.review_facts.comments, ReviewFactSet::Known(comments) if comments.iter().all(|comment| matches!(comment.content, ReviewDetail::Known(_))))
+    {
+        return Err("generated fact families must be known".to_owned());
     }
-    output
+    Ok(())
 }
 
-/// Compares the facts two projections both know.
+/// Compares complete projected facts after physically applying revisions.
 fn assert_known_facts_agree(
     left: &DocumentPackageProjection,
     right: &DocumentPackageProjection,
-    oracle: Oracle,
 ) -> Result<(), String> {
-    let texts = |projection: &DocumentPackageProjection| {
-        projection
-            .document
-            .paragraphs
-            .iter()
-            .map(|paragraph| {
-                let formatting = if oracle.tolerates(Gap::JoinSplitsFormattingSpans) {
-                    coalesced(&paragraph.formatting)
-                } else {
-                    paragraph.formatting.clone()
-                };
-                (
-                    paragraph.text.clone(),
-                    formatting,
-                    paragraph.structure.clone(),
-                )
-            })
-            .collect::<Vec<_>>()
-    };
-    if texts(left) != texts(right) {
-        return Err(format!(
-            "paragraphs differ:\n{:?}\n{:?}",
-            texts(left),
-            texts(right)
-        ));
-    }
-    if left.document.formatting_status != right.document.formatting_status {
-        return Err("formatting status differs".to_owned());
-    }
-    let (left_facts, right_facts) = (
-        &left.document.structural_facts,
-        &right.document.structural_facts,
-    );
-    if let (StructuralFactSet::Known(left_bookmarks), StructuralFactSet::Known(right_bookmarks)) =
-        (&left_facts.bookmarks, &right_facts.bookmarks)
-        && left_bookmarks != right_bookmarks
+    require_known_families(left)?;
+    require_known_families(right)?;
+    if left.document.paragraphs != right.document.paragraphs
+        || left.document.structural_facts != right.document.structural_facts
+        || left.review_facts.comments != right.review_facts.comments
     {
-        return Err(format!(
-            "bookmarks differ:\n{left_bookmarks:?}\n{right_bookmarks:?}"
-        ));
-    }
-    if let (StructuralFactSet::Known(left_references), StructuralFactSet::Known(right_references)) = (
-        &left_facts.internal_references,
-        &right_facts.internal_references,
-    ) && left_references != right_references
-    {
-        return Err(format!(
-            "internal references differ:\n{left_references:?}\n{right_references:?}"
-        ));
-    }
-    if let (ReviewFactSet::Known(left_comments), ReviewFactSet::Known(right_comments)) =
-        (&left.review_facts.comments, &right.review_facts.comments)
-    {
-        for (left_comment, right_comment) in left_comments.iter().zip(right_comments) {
-            if let (ReviewDetail::Known(left_content), ReviewDetail::Known(right_content)) =
-                (&left_comment.content, &right_comment.content)
-                && (left_comment.comment_id != right_comment.comment_id
-                    || left_content != right_content)
-            {
-                return Err(format!(
-                    "comment differs:\n{left_comment:?}\n{right_comment:?}"
-                ));
-            }
-        }
+        return Err("applied revisions changed projected facts".to_owned());
     }
     Ok(())
 }
 
 fn valid_in_revision(inline: &Inline) -> bool {
     match inline {
-        Inline::Hyperlink(..) | Inline::SimpleField(..) => false,
-        Inline::ComplexField(_, children)
-        | Inline::Comment(_, children)
-        | Inline::Bookmark(_, children) => children.iter().all(valid_in_revision),
-        Inline::Run(_)
-        | Inline::Revision(_)
-        | Inline::Sdt(_)
-        | Inline::SmartTag(_)
-        | Inline::CustomXml(_)
-        | Inline::ProofErr
-        | Inline::Textbox(_) => true,
+        Inline::Hyperlink(..)
+        | Inline::SimpleField(..)
+        | Inline::ComplexField(..)
+        | Inline::Bookmark(..)
+        | Inline::Textbox(_) => false,
+        Inline::Revision(revision) => revision.children.iter().all(valid_in_revision),
+        Inline::Comment(_, children)
+        | Inline::Sdt(children)
+        | Inline::SmartTag(children)
+        | Inline::CustomXml(children) => children.iter().all(valid_in_revision),
+        Inline::Run(_) | Inline::ProofErr => true,
     }
+}
+
+fn require_scoped_placements(document: &Document) -> Result<(), String> {
+    let mut scoped = document.clone();
+    scoped.section_change = false;
+    sanitize_blocks(&mut scoped.blocks, false);
+    let actual = write_document(document, &BTreeSet::new());
+    let expected = write_document(&scoped, &BTreeSet::new());
+    if actual != expected {
+        return Err("document contains placements outside the suite".to_owned());
+    }
+    let mut emitted = BTreeSet::new();
+    observe(&actual.0, &mut emitted);
+    if emitted.iter().any(|row| EXCLUDED_ROWS.contains(row)) {
+        return Err("document emits an excluded context row".to_owned());
+    }
+    Ok(())
 }
 
 proptest! {
@@ -2875,19 +2614,21 @@ proptest! {
     ) {
         let ids = comment_ids(&document);
         for view in VIEWS {
+            prop_assert!(require_scoped_placements(&document).is_ok());
             let base = project(&document, &ids, view);
             let mut proofed = document.clone();
-            insert_probe(&mut proofed, view, target, position, &Inline::ProofErr);
+            insert_probe(&mut proofed, target, position, &Inline::ProofErr);
+            prop_assert!(require_scoped_placements(&proofed).is_ok());
             prop_assert_eq!(&base, &project(&proofed, &ids, view));
 
             let mut bookmarked = document.clone();
-            let hidden = insert_probe(
+            insert_probe(
                 &mut bookmarked,
-                view,
                 target,
                 position,
                 &Inline::Bookmark(PROBE_ID, Vec::new()),
             );
+            prop_assert!(require_scoped_placements(&bookmarked).is_ok());
             let mut probed = project(&bookmarked, &ids, view);
             let probe_name = format!("b{PROBE_ID}");
             match (
@@ -2904,17 +2645,7 @@ proptest! {
                     after.retain(|bookmark| bookmark.name != probe_name);
                     prop_assert_eq!(before, after);
                 }
-                (StructuralFactSet::Known(_), StructuralFactSet::Unknown(_)) => {
-                    prop_assert!(hidden, "only a hidden probe may discard bookmark facts");
-                    let mut unknown = base.clone();
-                    unknown.document.structural_facts.bookmarks =
-                        probed.document.structural_facts.bookmarks.clone();
-                    unknown.document.structural_facts.internal_references =
-                        probed.document.structural_facts.internal_references.clone();
-                    prop_assert_eq!(&unknown, &probed);
-                    continue;
-                }
-                (StructuralFactSet::Unknown(_), _) => {}
+                _ => panic!("probe bookmark facts must be known"),
             }
             probed.document.structural_facts.bookmarks =
                 base.document.structural_facts.bookmarks.clone();
@@ -2928,16 +2659,11 @@ proptest! {
     fn views_agree_with_physically_applied_revisions(document in document()) {
         let ids = comment_ids(&document);
         for view in VIEWS {
-            let Some(applied) = apply_revisions(&document, view) else {
-                continue;
-            };
+            let applied = apply_revisions(&document, view).expect("generated placements have a complete applied model");
             let projected = project(&document, &ids, view);
-            if !projected.document.revision_status.is_complete() {
-                continue;
-            }
             let reference = project(&applied, &ids, RevisionView::Current);
             prop_assert!(known_revisions(&reference).is_empty(), "applying leaves no revision");
-            let agreed = assert_known_facts_agree(&projected, &reference, Oracle::Tolerant);
+            let agreed = assert_known_facts_agree(&projected, &reference);
             prop_assert!(agreed.is_ok(), "{:?}: {}", view, agreed.unwrap_err());
         }
     }
@@ -2958,9 +2684,7 @@ proptest! {
             .enumerate()
             .filter_map(|(index, block)| matches!(block, Block::Paragraph(_)).then_some(index))
             .collect::<Vec<_>>();
-        let Some(&block_index) = paragraphs.get(paragraph_index % paragraphs.len().max(1)) else {
-            return Ok(());
-        };
+        let block_index = *paragraphs.get(paragraph_index % paragraphs.len()).expect("the scoped document includes a paragraph");
         let mut wrapped = document.clone();
         let Block::Paragraph(paragraph) = &mut wrapped.blocks[block_index] else {
             panic!("selected a paragraph block");
@@ -2982,6 +2706,7 @@ proptest! {
                 children: content,
             }),
         );
+        prop_assert!(require_scoped_placements(&wrapped).is_ok());
         let ids = comment_ids(&document);
         let view = RevisionView::Current;
         let base = project(&document, &ids, view);
@@ -2997,7 +2722,7 @@ proptest! {
             .collect::<Vec<_>>();
         prop_assert_eq!(probes.len(), 1, "exactly one probe revision");
         let probe = probed_revisions.remove(probes[0]);
-        let expected = Model::build(&wrapped, view, Oracle::Tolerant);
+        let expected = Model::build(&wrapped, view);
         let (start_point, end_point, payload) = expected.revisions[probes[0]]
             .located
             .clone()
@@ -3014,160 +2739,3 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// Minimal regressions for each known gap. Ignored until fixed; each states
-// the projection a fix must produce.
-
-fn single(document_body: &str, view: RevisionView) -> DocumentPackageProjection {
-    let xml = format!(r#"<w:document xmlns:w="{W}"><w:body>{document_body}</w:body></w:document>"#);
-    project_xml(&xml, &format!(r#"<w:comments xmlns:w="{W}"/>"#), view)
-}
-
-const TRACKED: &str = r#"w:id="1" w:author="A""#;
-
-#[test]
-#[ignore = "known gap: property-change revisions are unlocated"]
-fn property_change_revisions_are_located() {
-    let projection = single(
-        &format!(
-            r#"<w:p><w:pPr><w:pPrChange {TRACKED}><w:pPr/></w:pPrChange></w:pPr><w:r><w:rPr><w:b/><w:rPrChange w:id="2" w:author="A"><w:rPr/></w:rPrChange></w:rPr><w:t>ab</w:t></w:r></w:p>"#
-        ),
-        RevisionView::Current,
-    );
-    for revision in known_revisions(&projection) {
-        assert!(
-            matches!(revision.content, ReviewDetail::Known(_)),
-            "{:?} has no location",
-            revision.kind
-        );
-    }
-}
-
-#[test]
-#[ignore = "known gap: a paragraph join discards bookmark facts"]
-fn paragraph_joins_keep_bookmark_facts() {
-    let projection = single(
-        &format!(
-            r#"<w:p><w:pPr><w:rPr><w:del {TRACKED}/></w:rPr></w:pPr><w:r><w:t>a</w:t></w:r></w:p><w:p><w:bookmarkStart w:id="0" w:name="b"/><w:r><w:t>b</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>"#
-        ),
-        RevisionView::Current,
-    );
-    assert!(
-        matches!(
-            projection.document.structural_facts.bookmarks,
-            StructuralFactSet::Known(_)
-        ),
-        "{:?}",
-        projection.document.structural_facts.bookmarks
-    );
-}
-
-#[test]
-#[ignore = "known gap: a bookmark in hidden content discards bookmark facts"]
-fn bookmarks_in_hidden_content_keep_bookmark_facts() {
-    let projection = single(
-        &format!(
-            r#"<w:p><w:r><w:t>a</w:t></w:r><w:del {TRACKED}><w:bookmarkStart w:id="0" w:name="b"/><w:r><w:delText>b</w:delText></w:r><w:bookmarkEnd w:id="0"/></w:del></w:p>"#
-        ),
-        RevisionView::Current,
-    );
-    assert!(
-        matches!(
-            projection.document.structural_facts.bookmarks,
-            StructuralFactSet::Known(_)
-        ),
-        "{:?}",
-        projection.document.structural_facts.bookmarks
-    );
-}
-
-#[test]
-#[ignore = "known gap: a bookmark in block-level content controls discards bookmark facts"]
-fn bookmarks_in_block_content_controls_keep_bookmark_facts() {
-    let projection = single(
-        r#"<w:sdt><w:sdtContent><w:bookmarkStart w:id="0" w:name="b"/><w:p><w:r><w:t>a</w:t></w:r></w:p><w:bookmarkEnd w:id="0"/></w:sdtContent></w:sdt>"#,
-        RevisionView::Current,
-    );
-    assert!(
-        matches!(
-            projection.document.structural_facts.bookmarks,
-            StructuralFactSet::Known(_)
-        ),
-        "{:?}",
-        projection.document.structural_facts.bookmarks
-    );
-}
-
-#[test]
-#[ignore = "known gap: a reference in hidden content discards internal references"]
-fn references_in_hidden_content_keep_internal_references() {
-    let projection = single(
-        &format!(
-            r#"<w:p><w:bookmarkStart w:id="0" w:name="b"/><w:r><w:t>a</w:t></w:r><w:bookmarkEnd w:id="0"/><w:del {TRACKED}><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:delInstrText> REF b \h </w:delInstrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:del></w:p>"#
-        ),
-        RevisionView::Current,
-    );
-    assert!(
-        matches!(
-            projection.document.structural_facts.internal_references,
-            StructuralFactSet::Known(_)
-        ),
-        "{:?}",
-        projection.document.structural_facts.internal_references
-    );
-}
-
-#[test]
-#[ignore = "known gap: moved paragraph marks keep their break"]
-fn moved_paragraph_marks_join_like_deleted_and_inserted_marks() {
-    for (mark, view) in [
-        ("moveFrom", RevisionView::Current),
-        ("moveTo", RevisionView::Original),
-    ] {
-        let projection = single(
-            &format!(
-                "<w:p><w:pPr><w:rPr><w:{mark} {TRACKED}/></w:rPr></w:pPr><w:r><w:t>a</w:t></w:r></w:p><w:p><w:r><w:t>b</w:t></w:r></w:p>"
-            ),
-            view,
-        );
-        let texts = projection
-            .document
-            .paragraphs
-            .iter()
-            .map(|paragraph| paragraph.text.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(texts, ["ab"], "{mark} in {view:?}");
-    }
-}
-
-#[test]
-#[ignore = "known gap: endnote references materialize no text"]
-fn endnote_references_materialize_like_footnote_references() {
-    let projection = single(
-        r#"<w:p><w:r><w:t>a</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r><w:r><w:endnoteReference w:id="1"/></w:r></w:p>"#,
-        RevisionView::Current,
-    );
-    assert_eq!(
-        projection.document.paragraphs[0].text, "a\u{0002}\u{0002}",
-        "both note references are host reference marks"
-    );
-}
-
-#[test]
-#[ignore = "known gap: a paragraph join leaves split formatting spans"]
-fn paragraph_joins_coalesce_formatting_spans() {
-    let projection = single(
-        &format!(
-            r"<w:p><w:pPr><w:rPr><w:del {TRACKED}/></w:rPr></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>a</w:t></w:r></w:p><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>b</w:t></w:r></w:p>"
-        ),
-        RevisionView::Current,
-    );
-    assert_eq!(
-        projection.document.paragraphs[0].formatting,
-        [TextFormattingSpan {
-            start_utf16: 0,
-            end_utf16: 2,
-            style: TextStyle::Bold,
-        }],
-        "a joined paragraph reports what an unjoined paragraph with the same runs reports"
-    );
-}

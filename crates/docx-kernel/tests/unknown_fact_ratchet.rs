@@ -6,10 +6,8 @@
 )]
 // Unknown-fact ratchet over the repository's committed DOCX packages.
 //
-// Unknown facts are typed and allowed, so a projection that silently stops
-// knowing something still passes every example test. This test counts unknown
-// facts per (view, family, reason) across every committed package and compares
-// the counts with `unknown-fact-baseline.tsv`. A count may only fall: a rise
+// Count typed unknown facts per (view, family, reason) across every committed
+// package and compare with `unknown-fact-baseline.tsv`. A count may only fall: a rise
 // fails, and a fall fails until the baseline is lowered with
 // `UPDATE_UNKNOWN_FACT_BASELINE=1 cargo test -p stella-docx-kernel --test unknown_fact_ratchet`.
 

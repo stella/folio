@@ -94,7 +94,7 @@ jobs:
 
       # The context-coverage generator scales its case counts by the same
       # multiplier as the TypeScript properties; PR CI runs the factor-1
-      # budget. The ignored strict variants document known gaps and stay out.
+      # budget across the generated placements.
       - name: Projection coverage properties
         run: cargo test -p stella-docx-kernel --test projection_coverage
         env:
