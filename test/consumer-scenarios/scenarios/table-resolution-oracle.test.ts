@@ -1,8 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { compareWithModel, expectOperation, modelOf, type Row } from "../support/oracle.ts";
+import {
+  assertRequestedOutcome,
+  capture,
+  compareComments,
+  compareWithModel,
+  expectOperation,
+  modelOf,
+  type Row,
+} from "../support/oracle.ts";
 import { sequentialGroups } from "../support/metamorphic.ts";
+import { FIXTURES, openReviewer } from "../support/documents.ts";
+import { coreBatch, GENERATORS, supports } from "../support/operations.ts";
+import { createRandom } from "../support/random.ts";
 
 type CellLocation = { rowIndex: number; column: number; columnSpan?: number; tableIndex?: number };
 
@@ -26,6 +37,186 @@ const row = (
 });
 
 describe("table operation source coordinates", () => {
+  test("seed 201 removes table-owned text and comments without removing an outside join", async () => {
+    const reviewer = await openReviewer(await FIXTURES.tables());
+    const random = createRandom(201);
+    for (const type of Object.keys(GENERATORS)) {
+      if (!supports(type, "tracked-changes")) continue;
+      const operation = GENERATORS[type]?.(reviewer.getContent(), random);
+      if (!operation) continue;
+      const pre = await capture(reviewer, "tracked-changes");
+      const result = reviewer.applyDocumentOperations(
+        coreBatch([{ ...operation, id: `op-${type}` }], "tracked-changes") as never,
+      );
+      if (type !== "deleteTable") continue;
+      assert.equal(result.applied.length, 1);
+      const acceptedIds = new Set(pre.rows.map(({ id }) => id));
+      const outside = pre.liveRows.filter(
+        ({ id, text, table }) => !acceptedIds.has(id) && text.length > 0 && table === undefined,
+      );
+      assert.equal(outside.length, 1, "the pinned generator must reach the outside join");
+      assert.ok(pre.comments.length >= 2, "the pinned generator must reach table comments");
+      await assertRequestedOutcome(
+        reviewer,
+        pre,
+        { applied: [operation] },
+        "table ownership seed 201",
+      );
+      return;
+    }
+    assert.fail("seed 201 did not reach deleteTable");
+  });
+
+  test("table removals retain outside join sources and remove only owned cell comments", () => {
+    for (let width = 2; width <= 4; width++) {
+      for (let sourceCount = 0; sourceCount <= 3; sourceCount++) {
+        for (const type of ["deleteTable", "deleteTableRow", "deleteTableColumn"] as const) {
+          const outside = Array.from(
+            { length: sourceCount },
+            (_, index): Row => ({
+              id: `outside-${index}`,
+              text: "Shared ",
+              kind: "paragraph",
+            }),
+          );
+          const cells = Array.from({ length: width * 2 }, (_, index) =>
+            row(
+              `r${Math.floor(index / width)}c${index % width}`,
+              index === 0 ? "Shared" : `Cell ${index}`,
+              { rowIndex: Math.floor(index / width), column: index % width },
+            ),
+          );
+          const first = cells.at(0);
+          assert.ok(first);
+          const tail: Row = { id: "tail", text: "Following paragraph.", kind: "paragraph" };
+          const prefix = outside.map(({ text }) => text).join("");
+          const accepted = [{ ...first, text: prefix + first.text }, ...cells.slice(1), tail];
+          const model = modelOf(accepted, [...outside, ...cells, tail]);
+          model.mode = "tracked-changes";
+          // Either the joined destination or a sibling cell may anchor the removal.
+          const anchor = type === "deleteTable" ? cells.at(-1) : first;
+          assert.ok(anchor);
+          expectOperation(model, { type, blockId: anchor.id });
+          const keptCells = cells.filter((cell) => {
+            assert.ok(cell.table);
+            switch (type) {
+              case "deleteTable":
+                return false;
+              case "deleteTableRow":
+                return cell.table.rowIndex !== 0;
+              case "deleteTableColumn":
+                return cell.table.gridColumnIndex !== 0;
+              default: {
+                const exhaustive: never = type;
+                return exhaustive;
+              }
+            }
+          });
+          const following = [...keptCells, tail];
+          const next = following.at(0);
+          assert.ok(next);
+          const expected = [{ ...next, text: prefix + next.text }, ...following.slice(1)];
+          assert.deepEqual(
+            compareWithModel(model, expected),
+            [],
+            `${type}, width ${width}, sources ${sourceCount}`,
+          );
+          if (sourceCount > 0) {
+            assert.ok(
+              compareWithModel(model, following).some((problem) =>
+                problem.startsWith("block texts differ"),
+              ),
+            );
+          }
+          const cellComment = { id: 1, text: "Cell comment", anchor: "Shared", blockId: first.id };
+          const sourceComment = {
+            id: 2,
+            text: "Outside comment",
+            anchor: "Shared",
+            blockId: first.id,
+          };
+          const outsideFirst = outside.at(0);
+          const before = outsideFirst ? [cellComment, sourceComment] : [cellComment];
+          const liveBefore = outsideFirst
+            ? [cellComment, { ...sourceComment, blockId: outsideFirst.id }]
+            : before;
+          const after = outsideFirst ? [{ ...sourceComment, blockId: next.id }] : [];
+          assert.deepEqual(
+            compareComments(model, before, after, liveBefore, "tracked-changes"),
+            [],
+          );
+          assert.ok(
+            compareComments(
+              model,
+              before,
+              [...after, cellComment],
+              liveBefore,
+              "tracked-changes",
+            ).some((problem) => problem.includes("outlived the block")),
+          );
+        }
+      }
+    }
+  });
+
+  test("successive column removals carry an outside join across each removed destination", () => {
+    const outside: Row = { id: "outside", text: "Prefix ", kind: "paragraph" };
+    const cells = Array.from({ length: 3 }, (_, column) =>
+      row(`c${column}`, `Cell ${column}`, { rowIndex: 0, column }),
+    );
+    const first = cells.at(0);
+    const last = cells.at(-1);
+    assert.ok(first && last);
+    const model = modelOf(
+      [{ ...first, text: outside.text + first.text }, ...cells.slice(1)],
+      [outside, ...cells],
+    );
+    for (const blockId of ["c0", "c1"])
+      expectOperation(model, { type: "deleteTableColumn", blockId });
+    assert.deepEqual(compareWithModel(model, [{ ...last, text: outside.text + last.text }]), []);
+  });
+
+  test("removing a final table retains the outside paragraph when no later destination exists", () => {
+    for (let sourceCount = 1; sourceCount <= 3; sourceCount++) {
+      const sources = Array.from(
+        { length: sourceCount },
+        (_, index): Row => ({
+          id: `outside-${index}`,
+          text: `Source ${index}. `,
+          kind: "paragraph",
+        }),
+      );
+      const cell = row("cell", "Owned cell", { rowIndex: 0, column: 0 });
+      const prefix = sources.map(({ text }) => text).join("");
+      const model = modelOf([{ ...cell, text: prefix + cell.text }], [...sources, cell]);
+      expectOperation(model, { type: "deleteTable", blockId: cell.id });
+      assert.deepEqual(
+        compareWithModel(model, [{ id: "retained", text: prefix, kind: "paragraph" }]),
+        [],
+      );
+    }
+  });
+
+  test("ownership reconstruction uses pre-state facts after earlier modeled edits", () => {
+    const source: Row = { id: "outside", text: "Prefix ", kind: "paragraph" };
+    const cell = row("cell", "Owned cell", { rowIndex: 0, column: 0 });
+    const tail: Row = { id: "tail", text: "Tail.", kind: "paragraph" };
+    const model = modelOf([{ ...cell, text: source.text + cell.text }, tail], [source, cell, tail]);
+    expectOperation(model, {
+      type: "replaceInBlock",
+      blockId: tail.id,
+      find: "Tail",
+      replace: "Updated tail",
+    });
+    expectOperation(model, { type: "deleteTable", blockId: cell.id });
+    assert.deepEqual(compareWithModel(model, [{ ...tail, text: "Prefix Updated tail." }]), []);
+    const malformed = modelOf([{ ...cell, text: "Unowned text" }, tail], [source, cell, tail]);
+    assert.throws(
+      () => expectOperation(malformed, { type: "deleteTable", blockId: cell.id }),
+      /does not reconstruct/u,
+    );
+  });
+
   test("replays row payloads before columns in source-grid execution order", () => {
     for (let width = 3; width <= 5; width += 1) {
       const rows = Array.from({ length: 2 }, (_, rowIndex) => {
