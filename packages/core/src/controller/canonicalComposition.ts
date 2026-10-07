@@ -1,7 +1,7 @@
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { Result } from "better-result";
 
-import type { EditorState, Transaction } from "prosemirror-state";
+import { EditorState, TextSelection, type Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { CanonicalSessionError } from "./canonicalSession";
@@ -148,7 +148,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     // including when the accepted minimal diff retains non-inclusive metadata.
     const committedText = selectedText(pending.baseline, view.state);
     const proposed = view.state;
-    const selected = input ? selectedReplacement(pending.baseline, proposed) : null;
+    const from = pending.baseline.selection.from;
     completed = { type: "none" };
     state = { type: "committed" };
     if (!view.isDestroyed) {
@@ -167,15 +167,21 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       return { type: "refused", text: committedText };
     }
     if (input.from !== input.to || input.text !== "") options.replace(input);
-    if (selected && !view.isDestroyed && view.state.doc.eq(proposed.doc)) {
+    if (
+      committedText !== null &&
+      !view.isDestroyed &&
+      view.state.doc.textContent === proposed.doc.textContent &&
+      from + committedText.length <= view.state.doc.content.size &&
+      view.state.doc.textBetween(from, from + committedText.length, "", "") === committedText
+    ) {
       completed = {
         type: "completed",
         receipt: {
           view,
           state: view.state,
-          from: selected.from,
-          to: selected.from + selected.text.length,
-          text: selected.text,
+          from,
+          to: from + committedText.length,
+          text: committedText,
         },
       };
     }
@@ -274,12 +280,25 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
         completed = { type: "none" };
         if (view.isDestroyed || final.receipt.state !== view.state) return false;
         const applied = applyNative(view, transaction);
-        const expected = final.receipt.state.tr.insertText(
-          final.text,
-          final.receipt.from,
-          final.receipt.to,
-        );
-        if (applied.isErr() || !expected.doc.eq(applied.value.state.doc)) {
+        const baseline = EditorState.create({
+          schema: final.receipt.state.schema,
+          doc: final.receipt.state.doc,
+          selection: TextSelection.create(
+            final.receipt.state.doc,
+            final.receipt.from,
+            final.receipt.to,
+          ),
+        });
+        const input = applied.isOk() ? replacement(baseline, applied.value.state) : null;
+        // A final can arrive as the full replacement or its minimal native diff.
+        // The captured range and full payload must match in either form.
+        if (
+          applied.isErr() ||
+          !input ||
+          input.from < final.receipt.from ||
+          input.to > final.receipt.to ||
+          selectedText(baseline, applied.value.state) !== final.text
+        ) {
           view.updateState(final.receipt.state);
           options.refuse(
             applied.isErr()
@@ -297,7 +316,17 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
             compositionPhase: "correction",
           });
         if (!view.isDestroyed) view.updateState(view.state);
-        if (!view.isDestroyed && view.state.doc.eq(expected.doc)) {
+        if (
+          !view.isDestroyed &&
+          view.state.doc.textContent === applied.value.state.doc.textContent &&
+          final.receipt.from + final.text.length <= view.state.doc.content.size &&
+          view.state.doc.textBetween(
+            final.receipt.from,
+            final.receipt.from + final.text.length,
+            "",
+            "",
+          ) === final.text
+        ) {
           completed = {
             type: "completed",
             receipt: {

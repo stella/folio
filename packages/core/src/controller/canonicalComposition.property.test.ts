@@ -20,7 +20,12 @@ beforeAll(() => GlobalRegistrator.register());
 afterAll(() => GlobalRegistrator.unregister());
 
 const createLateFinalRig = () => {
-  const session = createCanonicalSession(createEmptyDocument({ initialText: "alpha" })).unwrap();
+  const source = createEmptyDocument({ initialText: "alpha" });
+  const paragraph = source.package.document.content.at(0);
+  if (!paragraph || paragraph.type !== "paragraph") throw new TypeError("Missing seed paragraph");
+  paragraph.paraId = "12345678";
+  paragraph.textId = "87654321";
+  const session = createCanonicalSession(source).unwrap();
   const refusals: CanonicalSessionError[] = [];
   const boundary = createCanonicalInputBoundary({
     beginComposition: () => session.beginComposition().isOk(),
