@@ -281,6 +281,45 @@ test("fake-clock completion receipts admit only final input from the unchanged o
   }
 });
 
+test("fake-clock state changes after final authorization consume the stale receipt", () => {
+  jest.useFakeTimers();
+  try {
+    for (const delay of [26, 250, 2500]) {
+      const rig = createLateFinalRig();
+      try {
+        rig.start("契");
+        jest.advanceTimersByTime(delay);
+        const event = new InputEvent("beforeinput", {
+          inputType: "insertFromComposition",
+          data: "契約",
+          cancelable: true,
+        });
+        expect(rig.boundary.handleDOMEvents.beforeinput(rig.view, event)).toBe(false);
+        rig.view.updateState(
+          rig.view.state.apply(
+            rig.view.state.tr.setSelection(TextSelection.create(rig.view.state.doc, 1)),
+          ),
+        );
+        const version = rig.session.version;
+        const document = rig.session.document;
+        rig.view.dispatch(rig.view.state.tr.insertText("約", 2));
+        expect(rig.refusals).toHaveLength(1);
+        expect(rig.refusals.at(-1)?.reason).toBe("refused");
+        expect(rig.view.state.doc.textContent).toBe("契");
+        // Without consuming stale authorization, text input remains native forever.
+        expect(rig.boundary.handleTextInput(rig.view, 1, 1, "x")).toBe(true);
+        expect(rig.refusals).toHaveLength(2);
+        expect(rig.session.version).toBe(version);
+        expect(rig.session.document).toBe(document);
+      } finally {
+        rig.destroy();
+      }
+    }
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
 test("fake-clock late final cannot authorize marks or another replacement range", () => {
   jest.useFakeTimers();
   try {

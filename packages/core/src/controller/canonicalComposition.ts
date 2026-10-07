@@ -270,13 +270,9 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     accept: (view: EditorView, transaction: Transaction) => {
       if (state.type === "committed") {
         const final = completed;
-        if (
-          final.type !== "authorized" ||
-          final.receipt.view !== view ||
-          final.receipt.state !== view.state
-        )
-          return false;
+        if (final.type !== "authorized" || final.receipt.view !== view) return false;
         completed = { type: "none" };
+        if (view.isDestroyed || final.receipt.state !== view.state) return false;
         const applied = applyNative(view, transaction);
         const expected = final.receipt.state.tr.insertText(
           final.text,
