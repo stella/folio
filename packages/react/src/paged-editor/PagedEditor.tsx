@@ -1,3 +1,4 @@
+import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
 import {
   CANONICAL_GAP,
   usesCanonicalSession,
@@ -76,7 +77,7 @@ import {
   waitForInitialLayoutFonts,
   watchLayoutFontLoads,
 } from "@stll/folio-core/controller/fontReadiness";
-import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
+
 import {
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
