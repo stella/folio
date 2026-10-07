@@ -176,6 +176,121 @@ describe("table operation source coordinates", () => {
     assert.deepEqual(compareWithModel(model, [{ ...last, text: outside.text + last.text }]), []);
   });
 
+  test("column removal then table removal carries the outside prefix exactly once", () => {
+    const outside: Row = { id: "12345678", text: "Prefix ", kind: "paragraph" };
+    const first = row("23456789", "Cell one", { rowIndex: 0, column: 0 });
+    const second = row("34567890", "Cell two", { rowIndex: 0, column: 1 });
+    const tail: Row = { id: "45678901", text: "Tail.", kind: "paragraph" };
+    const model = modelOf(
+      [{ ...first, text: outside.text + first.text }, second, tail],
+      [outside, first, second, tail],
+    );
+    const firstModelRow = model.rows.at(0);
+    assert.ok(firstModelRow);
+    assert.equal(model.pendingJoins.get(firstModelRow)?.sources.at(0)?.id, outside.id);
+    expectOperation(model, { type: "deleteTableColumn", blockId: first.id });
+    assert.deepEqual(compareWithModel(model, [{ ...second, text: "Prefix Cell two" }, tail]), []);
+    expectOperation(model, { type: "deleteTable", blockId: second.id });
+    assert.deepEqual(compareWithModel(model, [{ ...tail, text: "Prefix Tail." }]), []);
+    assert.ok(compareWithModel(model, [{ ...tail, text: "Prefix Prefix Tail." }]).length > 0);
+  });
+
+  test("multi-operation table removals consume each outside join contribution once", () => {
+    const sequences = [
+      ["deleteTableColumn"],
+      ["deleteTableRow"],
+      ["deleteTableColumn", "deleteTableRow"],
+      ["deleteTableRow", "deleteTableColumn"],
+      ["deleteTableColumn", "deleteTableColumn"],
+      ["deleteTableRow", "deleteTableRow"],
+    ] as const;
+    for (let width = 3; width <= 5; width++) {
+      for (let height = 3; height <= 5; height++) {
+        for (let sourceCount = 1; sourceCount <= 3; sourceCount++) {
+          for (const sequence of sequences) {
+            const sources = Array.from(
+              { length: sourceCount },
+              (_, index): Row => ({
+                id: `outside-${index}`,
+                text: `Source ${index}. `,
+                kind: "paragraph",
+              }),
+            );
+            const outsideSource = sources.at(0);
+            assert.ok(outsideSource);
+            const prefix = sources.map(({ text }) => text).join("");
+            const cells = Array.from({ length: width * height }, (_, index) =>
+              row(`r${Math.floor(index / width)}c${index % width}`, `Cell ${index}`, {
+                rowIndex: Math.floor(index / width),
+                column: index % width,
+              }),
+            );
+            const first = cells.at(0);
+            assert.ok(first);
+            const tail: Row = { id: "tail", text: "Tail.", kind: "paragraph" };
+            const model = modelOf(
+              [{ ...first, text: prefix + first.text }, ...cells.slice(1), tail],
+              [...sources, ...cells, tail],
+            );
+            let kept = cells;
+            for (const type of sequence) {
+              const anchor = kept.at(0);
+              assert.ok(anchor?.table);
+              expectOperation(model, { type, blockId: anchor.id });
+              const location = anchor.table;
+              kept = kept.filter(({ table }) =>
+                type === "deleteTableColumn"
+                  ? table?.gridColumnIndex !== location.gridColumnIndex
+                  : table?.rowIndex !== location.rowIndex,
+              );
+              const next = kept.at(0);
+              assert.ok(next);
+              assert.deepEqual(
+                compareWithModel(model, [
+                  { ...next, text: prefix + next.text },
+                  ...kept.slice(1),
+                  tail,
+                ]),
+                [],
+              );
+            }
+            const anchor = kept.at(0);
+            assert.ok(anchor);
+            expectOperation(model, { type: "deleteTable", blockId: anchor.id });
+            assert.deepEqual(compareWithModel(model, [{ ...tail, text: prefix + tail.text }]), []);
+            assert.equal(model.pendingJoins.size, 0);
+            assert.deepEqual(
+              [...model.preservedJoinPrefixes.keys()],
+              [model.rows.find(({ pre }) => pre?.id === tail.id)],
+            );
+            const cellComments = cells.map(({ id, text }, index) => ({
+              id: index + 1,
+              text: "Cell comment",
+              anchor: text,
+              blockId: id,
+            }));
+            const outsideComment = {
+              id: cells.length + 1,
+              text: "Outside comment",
+              anchor: prefix,
+              blockId: first.id,
+            };
+            assert.deepEqual(
+              compareComments(
+                model,
+                [...cellComments, outsideComment],
+                [{ ...outsideComment, blockId: tail.id }],
+                [...cellComments, { ...outsideComment, blockId: outsideSource.id }],
+                "tracked-changes",
+              ),
+              [],
+            );
+          }
+        }
+      }
+    }
+  });
+
   test("removing a final table retains the outside paragraph when no later destination exists", () => {
     for (let sourceCount = 1; sourceCount <= 3; sourceCount++) {
       const sources = Array.from(

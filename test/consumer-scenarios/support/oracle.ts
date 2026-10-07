@@ -492,13 +492,17 @@ const tableRows = (model: Model, tableIndex: number): ModelRow[] =>
 
 /** Table removal owns live cells, including comments, rather than joined outside text. */
 const removeTableRows = (model: Model, removedRows: readonly ModelRow[]): void => {
+  const newlyRemoved = removedRows.filter((row) => !row.removed);
   for (const row of removedRows) {
     row.removed = true;
     if (row.pre) model.deletedBlockIds.add(row.pre.id);
   }
-  for (const survivor of removedRows) {
+  for (const survivor of newlyRemoved) {
     let prefix = model.preservedJoinPrefixes.get(survivor)?.replace ?? "";
     const ownership = model.pendingJoins.get(survivor);
+    // Ownership transfers once; later region removals can include this row again.
+    model.preservedJoinPrefixes.delete(survivor);
+    model.pendingJoins.delete(survivor);
     if (ownership) {
       const { sources, destination } = ownership;
       const joinedText = sources.map(({ text }) => text).join("") + destination.text;
