@@ -193,6 +193,25 @@ describe("DOCX projection TypeScript binding", () => {
     expect(projection[2]).toEqual(expectedReviewFacts);
   });
 
+  test("locates a tracked paragraph mark at the paragraph join", async () => {
+    const archive = new JSZip();
+    archive.file(
+      "word/document.xml",
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:rPr><w:del w:id="3" w:author="Lin"/></w:rPr></w:pPr><w:r><w:t>A</w:t></w:r></w:p><w:p><w:r><w:t>B</w:t></w:r></w:p></w:body></w:document>`,
+    );
+
+    const projection = await projectCompressedDocxWithReviewFacts(
+      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+    );
+
+    expect(projection[1][1].map((paragraph) => paragraph[1])).toEqual(["AB"]);
+    const expectedRevisions = [
+      "known",
+      [["deletion", "Lin", null, "3", "known", 0, 1, 1, 0, 1, 1, "", "paragraph-mark"]],
+    ] as const satisfies DocxReviewFactsWire[1];
+    expect(projection[2][1]).toEqual(expectedRevisions);
+  });
+
   test("materializes footnote markers consistently in paragraphs and comment references", async () => {
     const archive = new JSZip();
     archive.file(
