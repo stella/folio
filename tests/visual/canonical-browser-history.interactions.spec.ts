@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./canonicalTimerProbe";
 import fc from "fast-check";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
