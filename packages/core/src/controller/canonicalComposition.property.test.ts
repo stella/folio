@@ -123,6 +123,20 @@ test("every canonical composition exit ends native composition and admits DOM re
             expect(ends).toBe(1);
             expect(refusals).toBe(refused ? 1 : 0);
             expect(replacements).toBe(!refused && exit !== "cancel" && exit !== "reset" ? 1 : 0);
+            // Native IME keys also bypass extension shortcuts after recovery.
+            for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+              const nativeKey = new KeyboardEvent("keydown", {
+                ...init,
+                key: "z",
+                ctrlKey: true,
+                shiftKey: true,
+                bubbles: true,
+                cancelable: true,
+              });
+              view.dom.dispatchEvent(nativeKey);
+              expect(nativeKey.defaultPrevented).toBe(false);
+              expect(redos).toBe(0);
+            }
             const redo = new KeyboardEvent("keydown", {
               key: "z",
               ctrlKey: true,

@@ -274,13 +274,10 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
     },
     handleDOMEvents: {
       keydown: (view: EditorView, event: KeyboardEvent) => {
-        if (
-          !composition.active ||
-          event.isComposing ||
-          event.keyCode === 229 ||
-          event.key !== "Escape"
-        )
-          return false;
+        // Mark native IME keys handled without preventing their browser default;
+        // they must not fall through to PM or extension keyboard shortcuts.
+        if (event.isComposing || event.keyCode === 229) return true;
+        if (!composition.active || event.key !== "Escape") return false;
         event.preventDefault();
         composition.cancel(view);
         return true;
