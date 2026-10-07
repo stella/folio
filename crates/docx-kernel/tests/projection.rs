@@ -184,12 +184,11 @@ fn exposes_incomplete_revision_capabilities_instead_of_guessing() {
         allocate,
     )
     .unwrap();
-    assert_eq!(
-        original.revision_status,
-        RevisionProjectionStatus::Incomplete(vec![
-            RevisionUnsupportedReason::UnsupportedRevisionMarkup
-        ])
-    );
+    assert_eq!(original.revision_status, RevisionProjectionStatus::Complete);
+    let StructuralFactSet::Known(prior_indentation) = original.structural_facts.indentation else {
+        panic!("previous indentation should be known");
+    };
+    assert_eq!(prior_indentation[0].value.left_twips, Some(1440));
 
     let structural_table_revision = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl><w:tr>
       <w:trPr><w:del w:id="2"/></w:trPr><w:tc><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc>
