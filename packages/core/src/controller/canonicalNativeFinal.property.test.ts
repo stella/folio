@@ -221,75 +221,81 @@ test.each(["provisional-active", "provisional-ended", "refused-ended"] as const)
   },
 );
 
-test("same-payload typing after native end is always a separate gesture", () => {
-  jest.useFakeTimers();
-  try {
-    assertProperty(
-      fc.property(fc.constantFrom("契", "😀", "مرحبا", "alphabet"), (text) => {
-        for (const delay of [0, 24, 25, 26]) {
-          for (const ending of ["nativeEnd", "consumedFinal"] as const) {
-            const rig = createRig();
-            try {
-              const original = rig.session.document;
-              rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
-              rig.view.dispatch(rig.view.state.tr.insertText(text, 1, 6).setMeta("composition", 1));
-              if (ending === "nativeEnd") {
-                rig.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
-              } else {
-                const final = new InputEvent("beforeinput", {
-                  bubbles: true,
-                  cancelable: true,
-                  inputType: "insertText",
-                  data: text,
-                });
-                rig.view.dom.dispatchEvent(final);
-                expect(final.defaultPrevented).toBe(true);
-                expect(rig.session.version).toBe(1);
+test(
+  "same-payload typing after native end is always a separate gesture",
+  () => {
+    jest.useFakeTimers();
+    try {
+      assertProperty(
+        fc.property(fc.constantFrom("契", "😀", "مرحبا", "alphabet"), (text) => {
+          for (const delay of [0, 24, 25, 26]) {
+            for (const ending of ["nativeEnd", "consumedFinal"] as const) {
+              const rig = createRig();
+              try {
+                const original = rig.session.document;
+                rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+                rig.view.dispatch(
+                  rig.view.state.tr.insertText(text, 1, 6).setMeta("composition", 1),
+                );
+                if (ending === "nativeEnd") {
+                  rig.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+                } else {
+                  const final = new InputEvent("beforeinput", {
+                    bubbles: true,
+                    cancelable: true,
+                    inputType: "insertText",
+                    data: text,
+                  });
+                  rig.view.dom.dispatchEvent(final);
+                  expect(final.defaultPrevented).toBe(true);
+                  expect(rig.session.version).toBe(1);
+                }
+                expect(rig.view.composing).toBe(false);
+                jest.advanceTimersByTime(delay);
+                rig.view.dom.dispatchEvent(
+                  new InputEvent("beforeinput", {
+                    bubbles: true,
+                    cancelable: true,
+                    inputType: "insertText",
+                    data: text,
+                  }),
+                );
+                expect(rig.refusals).toEqual([]);
+                expect(rig.view.state.doc.textContent).toBe(text + text);
+                expect(rig.session.version).toBe(2);
+                expect(rig.session.projection.doc.eq(rig.view.state.doc)).toBe(true);
+                const typingUndo = rig.session.prepareUndo(rig.view.state).unwrap();
+                rig.view.updateState(
+                  publishCanonicalProjection({
+                    session: rig.session,
+                    state: rig.view.state,
+                    commit: typingUndo,
+                  }).unwrap().state,
+                );
+                expect(rig.view.state.doc.textContent).toBe(text);
+                expect(rig.session.canUndo).toBe(true);
+                const compositionUndo = rig.session.prepareUndo(rig.view.state).unwrap();
+                rig.view.updateState(
+                  publishCanonicalProjection({
+                    session: rig.session,
+                    state: rig.view.state,
+                    commit: compositionUndo,
+                  }).unwrap().state,
+                );
+                expect(rig.session.document).toEqual(original);
+                expect(rig.view.state.doc.textContent).toBe("alpha");
+                expect(rig.session.canUndo).toBe(false);
+              } finally {
+                rig.destroy();
               }
-              expect(rig.view.composing).toBe(false);
-              jest.advanceTimersByTime(delay);
-              rig.view.dom.dispatchEvent(
-                new InputEvent("beforeinput", {
-                  bubbles: true,
-                  cancelable: true,
-                  inputType: "insertText",
-                  data: text,
-                }),
-              );
-              expect(rig.refusals).toEqual([]);
-              expect(rig.view.state.doc.textContent).toBe(text + text);
-              expect(rig.session.version).toBe(2);
-              expect(rig.session.projection.doc.eq(rig.view.state.doc)).toBe(true);
-              const typingUndo = rig.session.prepareUndo(rig.view.state).unwrap();
-              rig.view.updateState(
-                publishCanonicalProjection({
-                  session: rig.session,
-                  state: rig.view.state,
-                  commit: typingUndo,
-                }).unwrap().state,
-              );
-              expect(rig.view.state.doc.textContent).toBe(text);
-              expect(rig.session.canUndo).toBe(true);
-              const compositionUndo = rig.session.prepareUndo(rig.view.state).unwrap();
-              rig.view.updateState(
-                publishCanonicalProjection({
-                  session: rig.session,
-                  state: rig.view.state,
-                  commit: compositionUndo,
-                }).unwrap().state,
-              );
-              expect(rig.session.document).toEqual(original);
-              expect(rig.view.state.doc.textContent).toBe("alpha");
-              expect(rig.session.canUndo).toBe(false);
-            } finally {
-              rig.destroy();
             }
           }
-        }
-      }),
-      { numRuns: 16 },
-    );
-  } finally {
-    jest.useRealTimers();
-  }
-});
+        }),
+        { numRuns: 16 },
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  },
+  propertyTestTimeout(5_000),
+);
