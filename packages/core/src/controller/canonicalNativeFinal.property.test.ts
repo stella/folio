@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, jest, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import fc from "fast-check";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
@@ -23,6 +23,7 @@ const createRig = (refusal: "marks" | "plugin" = "marks") => {
   const boundary = createCanonicalInputBoundary({
     beginComposition: () => session.beginComposition().isOk(),
     endComposition: () => session.endComposition(),
+    breakUndoGroup: () => session.breakUndoGroup(),
     replace: (input) => {
       const commit = session.prepareReplace(view.state, input).unwrap();
       view.updateState(
@@ -76,91 +77,107 @@ const createRig = (refusal: "marks" | "plugin" = "marks") => {
 test(
   "native final text is committed exactly once or refused without a journal change",
   () => {
-    assertProperty(
-      fc.property(
-        fc.constantFrom("契", "😀", "مرحبا", "alpha", "alphabet", "alpine"),
-        fc.constantFrom("provisional", "refused", "empty"),
-        (text, phase) => {
-          for (const ended of [false, true]) {
-            for (const mutation of ["selection", "diff"] as const) {
-              const refusals =
-                phase === "refused" ? (["marks", "plugin"] as const) : (["marks"] as const);
-              for (const refusal of refusals) {
-                const rig = createRig(refusal);
-                try {
-                  const document = rig.session.document;
-                  const baseline = rig.view.state;
-                  expect(
-                    baseline.doc.nodeAt(1)?.marks.some((mark) => mark.type.name === "runIdentity"),
-                  ).toBe(true);
-                  rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
-                  if (phase !== "empty") {
-                    const provisional =
-                      mutation === "diff" && text.startsWith("alpha")
-                        ? rig.view.state.tr
-                            .insertText(text.slice(5), 6, 6)
-                            .setMeta("composition", 1)
-                        : rig.view.state.tr.insertText(text, 1, 6).setMeta("composition", 1);
-                    if (phase === "refused" && refusal === "marks")
-                      provisional.addMark(1, 1 + text.length, schema.mark("bold"));
-                    if (phase === "provisional" && mutation === "diff" && text === "alphabet") {
-                      expect(
-                        provisional.doc
-                          .nodeAt(1)
-                          ?.marks.some((mark) => mark.type.name === "runIdentity"),
-                      ).toBe(true);
-                      expect(baseline.tr.insertText(text, 1, 6).doc.eq(provisional.doc)).toBe(
-                        false,
+    jest.useFakeTimers();
+    try {
+      assertProperty(
+        fc.property(
+          fc.constantFrom("契", "😀", "مرحبا", "alpha", "alphabet", "alpine"),
+          fc.constantFrom("provisional", "refused", "empty"),
+          (text, phase) => {
+            for (const ended of [false, true]) {
+              for (const mutation of ["selection", "diff"] as const) {
+                const refusals =
+                  phase === "refused" ? (["marks", "plugin"] as const) : (["marks"] as const);
+                for (const refusal of refusals) {
+                  const rig = createRig(refusal);
+                  try {
+                    const document = rig.session.document;
+                    const baseline = rig.view.state;
+                    expect(
+                      baseline.doc
+                        .nodeAt(1)
+                        ?.marks.some((mark) => mark.type.name === "runIdentity"),
+                    ).toBe(true);
+                    rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+                    if (phase !== "empty") {
+                      const provisional =
+                        mutation === "diff" && text.startsWith("alpha")
+                          ? rig.view.state.tr
+                              .insertText(text.slice(5), 6, 6)
+                              .setMeta("composition", 1)
+                          : rig.view.state.tr.insertText(text, 1, 6).setMeta("composition", 1);
+                      if (phase === "refused" && refusal === "marks")
+                        provisional.addMark(1, 1 + text.length, schema.mark("bold"));
+                      if (phase === "provisional" && mutation === "diff" && text === "alphabet") {
+                        expect(
+                          provisional.doc
+                            .nodeAt(1)
+                            ?.marks.some((mark) => mark.type.name === "runIdentity"),
+                        ).toBe(true);
+                        expect(baseline.tr.insertText(text, 1, 6).doc.eq(provisional.doc)).toBe(
+                          false,
+                        );
+                      }
+                      rig.view.dispatch(provisional);
+                    }
+                    expect(rig.view.composing).toBe(true);
+                    if (ended) {
+                      rig.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+                      expect(rig.view.composing).toBe(false);
+                      expect(rig.boundary.isComposing).toBe(true);
+                    }
+                    const final = new InputEvent("beforeinput", {
+                      bubbles: true,
+                      cancelable: true,
+                      inputType: ended ? "insertFromComposition" : "insertText",
+                      data: text,
+                    });
+                    // Exercise both native end orderings before the delayed finish;
+                    // no cleanup cancel precedes the final input.
+                    rig.view.dom.dispatchEvent(final);
+                    expect(final.defaultPrevented).toBe(!ended);
+                    if (ended) {
+                      const to = phase === "provisional" ? 1 + text.length : 6;
+                      rig.view.dispatch(
+                        rig.view.state.tr.insertText(text, 1, to).setMeta("composition", 2),
+                      );
+                      jest.advanceTimersByTime(26);
+                    }
+                    expect(rig.view.composing).toBe(false);
+                    expect(rig.boundary.isComposing).toBe(false);
+                    expect(rig.refusals).toHaveLength(phase === "refused" ? 1 : 0);
+                    expect(rig.view.state.doc.textContent).toBe(
+                      phase === "refused" ? "alpha" : text,
+                    );
+                    const edited = phase !== "refused" && text !== "alpha";
+                    expect(rig.session.version).toBe(edited ? 1 : 0);
+                    expect(rig.session.projection.doc.eq(rig.view.state.doc)).toBe(true);
+                    if (edited) {
+                      const undo = rig.session.prepareUndo(rig.view.state).unwrap();
+                      rig.view.updateState(
+                        publishCanonicalProjection({
+                          session: rig.session,
+                          state: rig.view.state,
+                          commit: undo,
+                        }).unwrap().state,
                       );
                     }
-                    rig.view.dispatch(provisional);
+                    expect(rig.session.document).toEqual(document);
+                    expect(rig.view.state.doc.eq(baseline.doc)).toBe(true);
+                    expect(rig.session.canUndo).toBe(false);
+                  } finally {
+                    rig.destroy();
                   }
-                  expect(rig.view.composing).toBe(true);
-                  if (ended) {
-                    rig.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
-                    expect(rig.view.composing).toBe(false);
-                    expect(rig.boundary.isComposing).toBe(true);
-                  }
-                  const final = new InputEvent("beforeinput", {
-                    bubbles: true,
-                    cancelable: true,
-                    inputType: "insertText",
-                    data: text,
-                  });
-                  // Exercise both native end orderings before the delayed finish;
-                  // no cleanup cancel precedes the final input.
-                  rig.view.dom.dispatchEvent(final);
-                  expect(final.defaultPrevented).toBe(true);
-                  expect(rig.view.composing).toBe(false);
-                  expect(rig.boundary.isComposing).toBe(false);
-                  expect(rig.refusals).toHaveLength(phase === "refused" ? 1 : 0);
-                  expect(rig.view.state.doc.textContent).toBe(phase === "refused" ? "alpha" : text);
-                  const edited = phase !== "refused" && text !== "alpha";
-                  expect(rig.session.version).toBe(edited ? 1 : 0);
-                  expect(rig.session.projection.doc.eq(rig.view.state.doc)).toBe(true);
-                  if (edited) {
-                    const undo = rig.session.prepareUndo(rig.view.state).unwrap();
-                    rig.view.updateState(
-                      publishCanonicalProjection({
-                        session: rig.session,
-                        state: rig.view.state,
-                        commit: undo,
-                      }).unwrap().state,
-                    );
-                  }
-                  expect(rig.session.document).toEqual(document);
-                  expect(rig.view.state.doc.eq(baseline.doc)).toBe(true);
-                  expect(rig.session.canUndo).toBe(false);
-                } finally {
-                  rig.destroy();
                 }
               }
             }
-          }
-        },
-      ),
-      { numRuns: 36 },
-    );
+          },
+        ),
+        { numRuns: 36 },
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   },
   propertyTestTimeout(5_000),
 );
@@ -203,3 +220,76 @@ test.each(["provisional-active", "provisional-ended", "refused-ended"] as const)
     }
   },
 );
+
+test("same-payload typing after native end is always a separate gesture", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(fc.constantFrom("契", "😀", "مرحبا", "alphabet"), (text) => {
+        for (const delay of [0, 24, 25, 26]) {
+          for (const ending of ["nativeEnd", "consumedFinal"] as const) {
+            const rig = createRig();
+            try {
+              const original = rig.session.document;
+              rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+              rig.view.dispatch(rig.view.state.tr.insertText(text, 1, 6).setMeta("composition", 1));
+              if (ending === "nativeEnd") {
+                rig.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+              } else {
+                const final = new InputEvent("beforeinput", {
+                  bubbles: true,
+                  cancelable: true,
+                  inputType: "insertText",
+                  data: text,
+                });
+                rig.view.dom.dispatchEvent(final);
+                expect(final.defaultPrevented).toBe(true);
+                expect(rig.session.version).toBe(1);
+              }
+              expect(rig.view.composing).toBe(false);
+              jest.advanceTimersByTime(delay);
+              rig.view.dom.dispatchEvent(
+                new InputEvent("beforeinput", {
+                  bubbles: true,
+                  cancelable: true,
+                  inputType: "insertText",
+                  data: text,
+                }),
+              );
+              expect(rig.refusals).toEqual([]);
+              expect(rig.view.state.doc.textContent).toBe(text + text);
+              expect(rig.session.version).toBe(2);
+              expect(rig.session.projection.doc.eq(rig.view.state.doc)).toBe(true);
+              const typingUndo = rig.session.prepareUndo(rig.view.state).unwrap();
+              rig.view.updateState(
+                publishCanonicalProjection({
+                  session: rig.session,
+                  state: rig.view.state,
+                  commit: typingUndo,
+                }).unwrap().state,
+              );
+              expect(rig.view.state.doc.textContent).toBe(text);
+              expect(rig.session.canUndo).toBe(true);
+              const compositionUndo = rig.session.prepareUndo(rig.view.state).unwrap();
+              rig.view.updateState(
+                publishCanonicalProjection({
+                  session: rig.session,
+                  state: rig.view.state,
+                  commit: compositionUndo,
+                }).unwrap().state,
+              );
+              expect(rig.session.document).toEqual(original);
+              expect(rig.view.state.doc.textContent).toBe("alpha");
+              expect(rig.session.canUndo).toBe(false);
+            } finally {
+              rig.destroy();
+            }
+          }
+        }
+      }),
+      { numRuns: 16 },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});

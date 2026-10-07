@@ -321,13 +321,16 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         }
         // A new, non-composition event recovers an IME missing compositionend.
         if (composition.active) {
+          // A plain input after native compositionend belongs to typing,
+          // even when its text equals the preceding composition payload.
           const nativeFinal =
-            event.inputType === "insertText" || event.inputType === "insertReplacementText";
+            view.composing &&
+            (event.inputType === "insertText" || event.inputType === "insertReplacementText");
           const nativeStillComposing = view.composing;
           const recovered = composition.recover(view);
           proposal = { type: "idle" };
-          // Recovery already handled the native proposal. Its matching final
-          // payload must not become a second typing edit after PM exits IME.
+          // Missing-end recovery terminates the captured gesture once. Only
+          // its still-native final may be consumed; subsequent typing is separate.
           if (
             nativeFinal &&
             ((recovered.type === "refused" && nativeStillComposing) ||

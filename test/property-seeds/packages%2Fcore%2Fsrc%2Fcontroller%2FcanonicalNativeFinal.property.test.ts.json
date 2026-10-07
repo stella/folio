@@ -18,5 +18,13 @@
       "note": "Equal native replacement leaves the real canonical journal empty.",
       "date": "2026-10-07"
     }
+  ],
+  "same-payload typing after native end is always a separate gesture": [
+    {
+      "seed": -1144041901,
+      "path": "0:0",
+      "note": "Ordinary same-text typing after native end must remain separate at every finish boundary; fails without the native-lifecycle discriminator.",
+      "date": "2026-10-07"
+    }
   ]
 }
