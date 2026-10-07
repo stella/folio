@@ -1,6 +1,6 @@
 # Folio DOCX for VS Code
 
-<!-- Demo GIF: opening a .docx, typing, switching to tracked changes, saving. -->
+![Folio DOCX in VS Code: a .docx open as pages, and an agent-mode prompt that changes the governing law as a tracked change](https://raw.githubusercontent.com/stella/folio/main/plugins/vscode/media/demo.gif)
 
 Open a `.docx` file in VS Code and it opens as pages you can type into.
 Save writes back to the same file.
