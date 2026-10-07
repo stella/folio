@@ -1,0 +1,255 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 201,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-replaceInBlock",
+          "type": "replaceInBlock",
+          "blockId": "79D25458",
+          "find": "are",
+          "replace": "amended",
+          "precondition": {
+            "blockTextHash": "h9s8pvs"
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-replaceRange",
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "4698C578",
+            "startOffset": 0,
+            "endOffset": 8,
+            "selectedTextHash": "h8syeus"
+          },
+          "replace": "updated"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-formatRange",
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "31617F9A",
+            "startOffset": 0,
+            "endOffset": 4,
+            "selectedTextHash": "hyjvdp2"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-commentOnRange",
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "5CFDAD72",
+            "startOffset": 0,
+            "endOffset": 9,
+            "selectedTextHash": "ho5az99"
+          },
+          "comment": {
+            "text": "Clause period delivery supplier notice agreement warranty invoice."
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-insertAfterBlock",
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Agreement goods term buyer schedule notice written notice.",
+          "alignment": "right"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-insertBeforeBlock",
+          "type": "insertBeforeBlock",
+          "blockId": "7B806329",
+          "text": "Delivery schedule payment payment."
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-replaceBlock",
+          "type": "replaceBlock",
+          "blockId": "17340089",
+          "text": "Delivery agreement supplier invoice party period."
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-deleteBlock",
+          "type": "deleteBlock",
+          "blockId": "79D25458"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-splitBlock",
+          "type": "splitBlock",
+          "blockId": "6FFB97E7",
+          "offset": 10
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-mergeBlockWithNext",
+          "type": "mergeBlockWithNext",
+          "blockId": "425BB368",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "alignment": null
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-setBlockParagraphProperties",
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": {
+            "alignment": null
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-commentOnBlock",
+          "type": "commentOnBlock",
+          "blockId": "5CFDAD72",
+          "quote": "Milestone",
+          "comment": {
+            "text": "Delivery clause delivery term period delivery."
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-insertTable",
+          "type": "insertTable",
+          "blockId": "412DDC7F",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-insertTableRow",
+          "type": "insertTableRow",
+          "blockId": "7956AFCA",
+          "position": "after",
+          "cellTexts": ["Row cell 1", "Row cell 2"]
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-deleteTableRow",
+          "type": "deleteTableRow",
+          "blockId": "1BF99289"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-insertTableColumn",
+          "type": "insertTableColumn",
+          "blockId": "5B7407EF",
+          "position": "after"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 201,
+      "operations": [
+        {
+          "id": "op-deleteTable",
+          "type": "deleteTable",
+          "blockId": "0C0A0460"
+        }
+      ]
+    }
+  ],
+  "origin": "recorded operation matrix seed 201",
+  "title": "pending paragraph deletions and table removal retain the accepted clean Markdown text"
+}

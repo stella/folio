@@ -15,6 +15,7 @@
 
 import { panic } from "better-result";
 
+import { projectAcceptedBlocks } from "../internal/acceptedBlockProjection";
 import type { BlockContent } from "../types/document";
 import { ALT_CHUNK_READER_DIAGNOSTIC, isAltChunkMarkup } from "./altChunk";
 import {
@@ -25,7 +26,7 @@ import {
 import { getParagraphText } from "./paragraphParser";
 
 /** One entry per block, so callers can join or count lines as they need. */
-export const collectBlockTexts = (blocks: readonly BlockContent[]): string[] => {
+const collectResolvedBlockTexts = (blocks: readonly BlockContent[]): string[] => {
   const texts: string[] = [];
   for (const block of blocks) {
     switch (block.type) {
@@ -39,13 +40,13 @@ export const collectBlockTexts = (blocks: readonly BlockContent[]): string[] => 
             continue;
           }
           texts.push(
-            row.cells.map((cell) => collectBlockTexts(cell.content).join("\n")).join("\t"),
+            row.cells.map((cell) => collectResolvedBlockTexts(cell.content).join("\n")).join("\t"),
           );
         }
         break;
       case "blockSdt":
       case "blockCustomXml":
-        texts.push(...collectBlockTexts(block.content));
+        texts.push(...collectResolvedBlockTexts(block.content));
         break;
       case "preservedBlock":
         if (isAltChunkMarkup(block.xml)) {
@@ -71,6 +72,16 @@ export const collectBlockTexts = (blocks: readonly BlockContent[]): string[] => 
         panic(`Unsupported block in plain-text extraction: ${JSON.stringify(unsupported)}`);
       }
     }
+  }
+  return texts;
+};
+
+/** One entry per accepted block; deleted breaks and table structure resolve together. */
+export const collectBlockTexts = (blocks: readonly BlockContent[]): string[] => {
+  const projection = projectAcceptedBlocks(blocks, undefined);
+  const texts = collectResolvedBlockTexts(projection?.blocks ?? blocks);
+  if (projection?.completeness === "partial") {
+    texts.push("[Unresolved tracked structural changes]");
   }
   return texts;
 };
