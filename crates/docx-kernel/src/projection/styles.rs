@@ -7,7 +7,7 @@ use crate::projection::compatibility::{CompatibilityAction, MarkupCompatibility}
 use crate::projection::namespaces::OoxmlNamespace;
 use crate::projection::structure::{
     ParagraphAlignmentSetting, ParagraphAlignmentValue, ParagraphIndentation, ParagraphProperties,
-    StyleDefinition, StyleKind, StyleSheet, TextProperties,
+    StyleDefinition, StyleKind, StyleSheet, TableStyleFormatting, TextProperties,
 };
 
 const MAXIMUM_OUTLINE_LEVEL: u8 = 9;
@@ -17,6 +17,7 @@ const MAXIMUM_WORD_STYLE_ID_CHARACTERS: usize = 253;
 enum PropertiesOwner {
     DocumentDefaults,
     Style,
+    ConditionalStyle,
     Other,
 }
 
@@ -31,6 +32,13 @@ enum Frame {
     RunProperties(PropertiesOwner),
     NumberingProperties(PropertiesOwner),
     Style,
+    TableConditional,
+}
+
+#[derive(Default)]
+struct ConditionalStyleBuilder {
+    properties: ParagraphProperties,
+    text_properties: TextProperties,
 }
 
 struct StyleBuilder {
@@ -38,6 +46,8 @@ struct StyleBuilder {
     based_on: Option<String>,
     properties: ParagraphProperties,
     text_properties: TextProperties,
+    table_formatting: TableStyleFormatting,
+    conditional: Option<ConditionalStyleBuilder>,
     is_default: bool,
     kind: Option<StyleKind>,
 }
@@ -174,12 +184,37 @@ fn start(
         }
         b"pPr"
             if matches!(state.frames.last(), Some(Frame::Style))
+                && state.current_style.as_ref().is_some_and(|style| {
+                    matches!(style.kind, Some(StyleKind::Paragraph | StyleKind::Table))
+                }) =>
+        {
+            Frame::ParagraphProperties(PropertiesOwner::Style)
+        }
+        b"tblStylePr"
+            if matches!(state.frames.last(), Some(Frame::Style))
                 && state
                     .current_style
                     .as_ref()
-                    .is_some_and(|style| style.kind == Some(StyleKind::Paragraph)) =>
+                    .is_some_and(|style| style.kind == Some(StyleKind::Table)) =>
         {
-            Frame::ParagraphProperties(PropertiesOwner::Style)
+            let style = state
+                .current_style
+                .as_mut()
+                .ok_or(ProjectionError::InvalidStylesXml)?;
+            if style
+                .conditional
+                .replace(ConditionalStyleBuilder::default())
+                .is_some()
+            {
+                return Err(ProjectionError::InvalidStylesXml);
+            }
+            Frame::TableConditional
+        }
+        b"pPr" if matches!(state.frames.last(), Some(Frame::TableConditional)) => {
+            Frame::ParagraphProperties(PropertiesOwner::ConditionalStyle)
+        }
+        b"rPr" if matches!(state.frames.last(), Some(Frame::TableConditional)) => {
+            Frame::RunProperties(PropertiesOwner::ConditionalStyle)
         }
         b"rPr" if matches!(state.frames.last(), Some(Frame::RunPropertiesDefault)) => {
             Frame::RunProperties(PropertiesOwner::DocumentDefaults)
@@ -220,10 +255,13 @@ fn start_style_definition(
         based_on: None,
         properties: ParagraphProperties::default(),
         text_properties: TextProperties::default(),
+        table_formatting: TableStyleFormatting::Base,
+        conditional: None,
         is_default,
         kind: match (id_supported, style_type.as_deref()) {
             (true, Some("character")) => Some(StyleKind::Character),
             (true, Some("paragraph")) => Some(StyleKind::Paragraph),
+            (true, Some("table")) => Some(StyleKind::Table),
             _ => None,
         },
     });
@@ -305,13 +343,29 @@ fn end(state: &mut StyleParserState) -> Result<(), ProjectionError> {
         .frames
         .pop()
         .ok_or(ProjectionError::InvalidStylesXml)?;
+    if matches!(frame, Frame::TableConditional) {
+        let style = state
+            .current_style
+            .as_mut()
+            .ok_or(ProjectionError::InvalidStylesXml)?;
+        let conditional = style
+            .conditional
+            .take()
+            .ok_or(ProjectionError::InvalidStylesXml)?;
+        if conditional.properties != ParagraphProperties::default()
+            || conditional.text_properties != TextProperties::default()
+        {
+            style.table_formatting = TableStyleFormatting::Conditional;
+        }
+        return Ok(());
+    }
     if matches!(frame, Frame::Style) {
         let style = state
             .current_style
             .take()
             .ok_or(ProjectionError::InvalidStylesXml)?;
         if let Some(kind) = style.kind {
-            let ignored_by_word = matches!(
+            let is_reserved_style = matches!(
                 style.id.as_str(),
                 "NoList" | "DefaultParagraphFont" | "TableNormal"
             );
@@ -331,18 +385,23 @@ fn end(state: &mut StyleParserState) -> Result<(), ProjectionError> {
                 .insert(
                     style.id,
                     StyleDefinition {
-                        based_on: (!ignored_by_word).then_some(style.based_on).flatten(),
-                        properties: if ignored_by_word {
+                        based_on: (!is_reserved_style).then_some(style.based_on).flatten(),
+                        properties: if is_reserved_style {
                             ParagraphProperties::default()
                         } else {
                             style.properties
                         },
-                        text_properties: if ignored_by_word {
+                        text_properties: if is_reserved_style {
                             TextProperties::default()
                         } else {
                             style.text_properties
                         },
                         kind,
+                        table_formatting: if is_reserved_style {
+                            TableStyleFormatting::Base
+                        } else {
+                            style.table_formatting
+                        },
                     },
                 )
                 .is_some()
@@ -433,6 +492,10 @@ fn properties_mut<'a>(
     match owner {
         PropertiesOwner::DocumentDefaults => Some(&mut sheet.document_defaults),
         PropertiesOwner::Style => current_style.as_mut().map(|style| &mut style.properties),
+        PropertiesOwner::ConditionalStyle => current_style
+            .as_mut()
+            .and_then(|style| style.conditional.as_mut())
+            .map(|conditional| &mut conditional.properties),
         PropertiesOwner::Other => None,
     }
 }
@@ -447,6 +510,10 @@ fn text_properties_mut<'a>(
         PropertiesOwner::Style => current_style
             .as_mut()
             .map(|style| &mut style.text_properties),
+        PropertiesOwner::ConditionalStyle => current_style
+            .as_mut()
+            .and_then(|style| style.conditional.as_mut())
+            .map(|conditional| &mut conditional.text_properties),
         PropertiesOwner::Other => None,
     }
 }

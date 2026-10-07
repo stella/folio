@@ -14,7 +14,7 @@ use crate::projection::review::{
 };
 use crate::projection::structure::{
     ParagraphProperties, RawBookmarkRange, RawInternalReference, StructuralFactUnknownReason,
-    StyleSheet, TextProperties,
+    StyleSheet, TextProperties, TextStyleInput,
 };
 use crate::projection::styles::{
     parse_alignment, parse_indentation, parse_level_attribute, parse_outline_level_attribute,
@@ -250,11 +250,11 @@ impl ParagraphBuilder {
         if let Some(resolved) = self.resolved_text_base {
             return resolved;
         }
-        let resolved = styles.resolve_text(
-            self.properties.style_id.as_deref(),
-            None,
-            TextProperties::default(),
-        );
+        let resolved = styles.resolve_text(TextStyleInput {
+            paragraph: &self.properties,
+            character_style_id: None,
+            direct: TextProperties::default(),
+        });
         self.resolved_text_base = Some(resolved);
         resolved
     }
@@ -444,6 +444,7 @@ struct ContainerReview {
 struct TableFrame {
     ordinal: usize,
     next_row: usize,
+    style_id: Option<String>,
     review: ContainerReview,
 }
 
@@ -1028,6 +1029,7 @@ impl ProjectionState {
                 Frame::Table(TableFrame {
                     ordinal,
                     next_row: 0,
+                    style_id: None,
                     review: ContainerReview {
                         paragraph_start: self.paragraphs.len(),
                         property_review: None,
@@ -1102,7 +1104,21 @@ impl ProjectionState {
                     utf16_len: 0,
                     formatting: Vec::new(),
                     structure,
-                    properties: ParagraphProperties::default(),
+                    properties: ParagraphProperties {
+                        table_style_id: self
+                            .frames
+                            .iter()
+                            .rev()
+                            .find_map(|frame| {
+                                if let Frame::Table(table) = frame {
+                                    Some(table.style_id.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .flatten(),
+                        ..ParagraphProperties::default()
+                    },
                     resolved_text_base: None,
                     paragraph_mark_revision: None,
                     paragraph_review_indices: Vec::new(),
@@ -1132,6 +1148,12 @@ impl ProjectionState {
             }
             b"sdtContent" | b"customXml" => Frame::BlockContent,
             b"pPr" => Frame::ParagraphProperties,
+            b"tblStyle" if matches!(self.frames.last(), Some(Frame::TableProperties)) => {
+                if let Some(table) = enclosing_table(&mut self.frames) {
+                    table.style_id = word_style_id(attribute(reader, element, b"val")?);
+                }
+                Frame::Other
+            }
             b"tblPr" => Frame::TableProperties,
             b"tblGrid" => Frame::TableGrid,
             b"trPr" => Frame::TableRowProperties,
@@ -1415,11 +1437,11 @@ impl ProjectionState {
                             {
                                 paragraph.resolve_text_base(styles)
                             } else {
-                                styles.resolve_text(
-                                    paragraph.properties.style_id.as_deref(),
-                                    run.character_style_id.as_deref(),
-                                    run.direct_styles,
-                                )
+                                styles.resolve_text(TextStyleInput {
+                                    paragraph: &paragraph.properties,
+                                    character_style_id: run.character_style_id.as_deref(),
+                                    direct: run.direct_styles,
+                                })
                             };
                             resolved.unwrap_or_else(|()| {
                                 self.formatting_status = FormattingProjectionStatus::Incomplete(
@@ -1516,26 +1538,6 @@ impl ProjectionState {
             .take()
             .ok_or(ProjectionError::InvalidDocumentXml)?;
         if styles.is_ok_and(|styles| paragraph.resolve_text_base(styles).is_err()) {
-            self.formatting_status =
-                FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles);
-        }
-        if styles.is_ok_and(|styles| {
-            styles
-                .paragraph_uses_numbering(&paragraph.properties)
-                .unwrap_or(false)
-        }) {
-            // Numbering-level run properties are another formatting
-            // hierarchy level. Retain known spans, but do not present
-            // them as authoritative until that level is projected.
-            self.formatting_status =
-                FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles);
-        }
-        if paragraph.structure.is_some()
-            && self.formatting_status == FormattingProjectionStatus::Complete
-        {
-            // Table-style run properties are a distinct style-hierarchy level.
-            // Until that level is projected, retain best-known spans but do not
-            // claim that they are authoritative effective formatting.
             self.formatting_status =
                 FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles);
         }
