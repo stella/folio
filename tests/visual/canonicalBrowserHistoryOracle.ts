@@ -4,6 +4,7 @@ import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx"
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import { BROWSER_INPUT_ACTION_DISPOSITIONS, type BrowserInputAction } from "./browserInputTrace";
 import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
+import { assertCanonicalInputTimersSettled } from "./canonicalTimerProbe";
 import type {} from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
 
@@ -40,6 +41,7 @@ export const checkCanonicalBrowserHistory = async ({
   actions,
   missing,
 }: CanonicalBrowserHistoryOptions): Promise<number> => {
+  await assertCanonicalInputTimersSettled(page);
   expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
     true,
   );
