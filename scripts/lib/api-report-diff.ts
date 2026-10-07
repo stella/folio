@@ -5,6 +5,10 @@
 // failures now say what actually differs, so a red CI run can be read without
 // reproducing the environment locally.
 
+/** Preserve existing snapshot line endings; new reports use LF. */
+export const reportNewlineKind = (snapshot: string | undefined) =>
+  snapshot?.includes("\r\n") ? "crlf" : "lf";
+
 /** Longest common subsequence over lines, as the indices that pair up. */
 const commonSubsequence = (
   left: readonly string[],

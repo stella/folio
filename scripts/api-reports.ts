@@ -31,7 +31,7 @@ import {
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { isStaleDeclaration, renderReportDiff } from "./lib/api-report-diff";
+import { isStaleDeclaration, renderReportDiff, reportNewlineKind } from "./lib/api-report-diff";
 import { PUBLISHED_PACKAGES, type PublishedPackage } from "./lib/published-packages";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
@@ -147,8 +147,12 @@ type BuildConfigOptions = {
 
 const buildConfig = ({ pkg, entry, reportDir, tempDir }: BuildConfigOptions): ExtractorConfig => {
   const packageJsonFullPath = path.join(pkg.root, "package.json");
+  const snapshotPath = path.join(reportDir, `${entry.slug}.api.md`);
   return ExtractorConfig.prepare({
     configObject: {
+      newlineKind: reportNewlineKind(
+        existsSync(snapshotPath) ? readFileSync(snapshotPath, "utf8") : undefined,
+      ),
       mainEntryPointFilePath: path.join(pkg.root, entry.dts),
       apiReport: {
         enabled: true,
