@@ -938,6 +938,7 @@ enum Element {
     CellProperties,
     SectionProperties,
     Sdt,
+    SdtContent,
     CustomXml,
     SmartTag,
     Hyperlink,
@@ -977,7 +978,7 @@ enum Element {
 }
 
 impl Element {
-    const ALL: [Self; 46] = [
+    const ALL: [Self; 47] = [
         Self::Paragraph,
         Self::ParagraphProperties,
         Self::Table,
@@ -988,6 +989,7 @@ impl Element {
         Self::CellProperties,
         Self::SectionProperties,
         Self::Sdt,
+        Self::SdtContent,
         Self::CustomXml,
         Self::SmartTag,
         Self::Hyperlink,
@@ -1038,6 +1040,7 @@ impl Element {
             Self::CellProperties => "tcPr",
             Self::SectionProperties => "sectPr",
             Self::Sdt => "sdt",
+            Self::SdtContent => "sdtContent",
             Self::CustomXml => "customXml",
             Self::SmartTag => "smartTag",
             Self::Hyperlink => "hyperlink",
@@ -1111,9 +1114,11 @@ impl Element {
         let union = |parts: &[&[Context]]| parts.concat();
         match self {
             Self::Paragraph | Self::Table => block.to_vec(),
-            Self::Sdt | Self::CustomXml | Self::CommentRangeStart | Self::CommentRangeEnd => {
-                union(&[&block, &run_content])
-            }
+            Self::Sdt
+            | Self::SdtContent
+            | Self::CustomXml
+            | Self::CommentRangeStart
+            | Self::CommentRangeEnd => union(&[&block, &run_content]),
             Self::BookmarkStart | Self::BookmarkEnd => {
                 union(&[&block, &run_content, &[C::Table, C::TableRow]])
             }
@@ -1312,7 +1317,6 @@ const UNGENERATED_DISPATCH: &[(&str, &str)] = &[
 const DEFAULT_ARM: &[Element] = &[
     Element::TableProperties,
     Element::SectionProperties,
-    Element::CustomXml,
     Element::SmartTag,
     Element::EndnoteReference,
     Element::ProofErr,
@@ -1578,29 +1582,12 @@ fn generator_reaches_every_context_row() {
 /// regression test below; fixing one means deleting its variant.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Gap {
-    /// `w:rPrChange` and `w:pPrChange` revisions never receive a location.
-    PropertyChangeUnlocated,
-    /// Any paragraph join in the selected view discards every bookmark and
-    /// internal-reference fact.
-    JoinDiscardsRanges,
-    /// A bookmark marker inside content the view hides discards every
-    /// bookmark fact.
-    HiddenBookmarkDiscardsBookmarks,
-    /// A bookmark marker directly inside block-level `w:sdt` or
-    /// `w:customXml` content discards every bookmark fact.
-    ContainedBlockBookmarkDiscardsBookmarks,
-    /// A hyperlink anchor or `REF` field inside content the view hides
-    /// discards every internal-reference fact.
-    HiddenReferenceDiscardsReferences,
     /// A moved paragraph mark keeps its paragraph break in the view that
     /// removes it.
     MovedParagraphMarkKeepsBreak,
     /// `w:endnoteReference` materializes no text, unlike
     /// `w:footnoteReference`.
     EndnoteReferenceUnmaterialized,
-    /// A paragraph join appends the next paragraph's formatting spans
-    /// without coalescing adjacent spans of the same style.
-    JoinSplitsFormattingSpans,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1615,34 +1602,10 @@ impl Oracle {
             Self::Tolerant => {
                 matches!(
                     gap,
-                    Gap::PropertyChangeUnlocated
-                        | Gap::JoinDiscardsRanges
-                        | Gap::HiddenBookmarkDiscardsBookmarks
-                        | Gap::ContainedBlockBookmarkDiscardsBookmarks
-                        | Gap::HiddenReferenceDiscardsReferences
-                        | Gap::MovedParagraphMarkKeepsBreak
-                        | Gap::EndnoteReferenceUnmaterialized
-                        | Gap::JoinSplitsFormattingSpans
+                    Gap::MovedParagraphMarkKeepsBreak | Gap::EndnoteReferenceUnmaterialized
                 )
             }
             Self::Strict => false,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-enum Justification {
-    /// The input lacks what a known fact would need, or the kernel declares
-    /// the limitation through a typed status.
-    Inherent,
-    Gap(Gap),
-}
-
-impl Justification {
-    const fn admitted_by(self, oracle: Oracle) -> bool {
-        match self {
-            Self::Inherent => true,
-            Self::Gap(gap) => oracle.tolerates(gap),
         }
     }
 }
@@ -1668,10 +1631,6 @@ enum Shape {
     TableStructureRevision,
     ChangeSnapshotInOriginalView,
     JoinAcrossContainers,
-    Join,
-    HiddenBookmark,
-    ContainedBlockBookmark,
-    HiddenReference,
 }
 
 /// Where a revision fact sits; decides whether its location may be unknown.
@@ -1686,62 +1645,27 @@ enum Site {
 
 /// The unknown facts each shape admits. Total over [`Shape`]: a new shape
 /// cannot land without a decision.
-const fn shape_allowance(shape: Shape) -> (&'static [(Family, &'static str)], Justification) {
-    const RANGES: &[(Family, &str)] = &[
-        (Family::Bookmarks, "IncompleteBookmarkRanges"),
-        (Family::InternalReferences, "IncompleteBookmarkRanges"),
-    ];
+const fn shape_allowance(shape: Shape) -> &'static [(Family, &'static str)] {
     match shape {
         // Table-style run properties are a separate hierarchy level the
         // kernel declares unprojected.
-        Shape::TableParagraph => (
-            &[(Family::Formatting, "UnsupportedStyles")],
-            Justification::Inherent,
-        ),
-        Shape::TableStructureRevision => (
-            &[(Family::RevisionStatus, "StructuralTableRevision")],
-            Justification::Inherent,
-        ),
+        Shape::TableParagraph => &[(Family::Formatting, "UnsupportedStyles")],
+        Shape::TableStructureRevision => &[(Family::RevisionStatus, "StructuralTableRevision")],
         // The original view cannot restore a property snapshot.
-        Shape::ChangeSnapshotInOriginalView => (
-            &[(Family::RevisionStatus, "UnsupportedRevisionMarkup")],
-            Justification::Inherent,
-        ),
-        Shape::JoinAcrossContainers => (
-            &[(Family::RevisionStatus, "IncompatibleParagraphMerge")],
-            Justification::Inherent,
-        ),
-        Shape::Join => (
-            &[
-                (Family::Bookmarks, "IncompleteBookmarkRanges"),
-                (Family::InternalReferences, "IncompleteBookmarkRanges"),
-                (Family::InternalReferences, "UnsupportedInternalReferences"),
-            ],
-            Justification::Gap(Gap::JoinDiscardsRanges),
-        ),
-        Shape::HiddenBookmark => (
-            RANGES,
-            Justification::Gap(Gap::HiddenBookmarkDiscardsBookmarks),
-        ),
-        Shape::ContainedBlockBookmark => (
-            RANGES,
-            Justification::Gap(Gap::ContainedBlockBookmarkDiscardsBookmarks),
-        ),
-        Shape::HiddenReference => (
-            &[(Family::InternalReferences, "UnsupportedInternalReferences")],
-            Justification::Gap(Gap::HiddenReferenceDiscardsReferences),
-        ),
+        Shape::ChangeSnapshotInOriginalView => {
+            &[(Family::RevisionStatus, "UnsupportedRevisionMarkup")]
+        }
+        Shape::JoinAcrossContainers => &[(Family::RevisionStatus, "IncompatibleParagraphMerge")],
     }
 }
 
 /// Whether a revision at this site may report an unknown location.
-const fn site_allowance(site: Site) -> Option<Justification> {
+const fn site_allows_unknown(site: Site) -> bool {
     match site {
-        Site::Inline => None,
-        Site::PropertyChange => Some(Justification::Gap(Gap::PropertyChangeUnlocated)),
+        Site::Inline | Site::PropertyChange => false,
         // Row, cell, table-property and section revisions have no text extent;
         // textbox stories are not projected.
-        Site::TableStructure | Site::Section | Site::Textbox => Some(Justification::Inherent),
+        Site::TableStructure | Site::Section | Site::Textbox => true,
     }
 }
 
@@ -1874,9 +1798,6 @@ impl Model {
                     self.blocks(children, cell, BlockContainer::CustomXml);
                 }
                 Block::Bookmark(_, children) => {
-                    if matches!(container, BlockContainer::Sdt | BlockContainer::CustomXml) {
-                        self.shapes.insert(Shape::ContainedBlockBookmark);
-                    }
                     self.blocks(children, cell, container);
                 }
                 Block::Comment(id, children) => {
@@ -1946,17 +1867,31 @@ impl Model {
             self.site(mark.kind(), Site::Inline);
             self.revisions.len() - 1
         });
-        if paragraph.mark_property_change {
+        let mark_snapshot = paragraph.mark_property_change.then(|| {
             self.snapshot(RevisionFactKind::RunPropertiesChange, Site::PropertyChange);
-        }
-        if paragraph.property_change {
+            self.revisions.len() - 1
+        });
+        let paragraph_start = self.here();
+        let paragraph_snapshot = paragraph.property_change.then(|| {
             self.snapshot(
                 RevisionFactKind::ParagraphPropertiesChange,
                 Site::PropertyChange,
             );
-        }
+            self.revisions.len() - 1
+        });
         for inline in &paragraph.inlines {
             self.inline(inline, false);
+        }
+        if let Some(index) = paragraph_snapshot {
+            self.revisions[index].located = Some((
+                paragraph_start,
+                self.here(),
+                RevisionPayload::FormattingOnly,
+            ));
+        }
+        if let Some(index) = mark_snapshot {
+            let mark = self.here();
+            self.revisions[index].located = Some((mark, mark, RevisionPayload::FormattingOnly));
         }
         if let Some(index) = mark_index {
             let mark = self.here();
@@ -1965,9 +1900,11 @@ impl Model {
     }
 
     fn run(&mut self, run: Run, hidden: bool) {
-        if run.property_change {
+        let start = self.here();
+        let snapshot = run.property_change.then(|| {
             self.snapshot(RevisionFactKind::RunPropertiesChange, Site::PropertyChange);
-        }
+            self.revisions.len() - 1
+        });
         let text = match run.content {
             RunContent::Text(text) => text,
             RunContent::Tab => "\t",
@@ -1982,6 +1919,10 @@ impl Model {
             }
         };
         self.push_text(text, hidden);
+        if let Some(index) = snapshot {
+            self.revisions[index].located =
+                Some((start, self.here(), RevisionPayload::FormattingOnly));
+        }
     }
 
     fn inline(&mut self, inline: &Inline, hidden: bool) {
@@ -2007,9 +1948,6 @@ impl Model {
             Inline::Hyperlink(_, children)
             | Inline::SimpleField(_, children)
             | Inline::ComplexField(_, children) => {
-                if hidden {
-                    self.shapes.insert(Shape::HiddenReference);
-                }
                 for child in children {
                     self.inline(child, hidden);
                 }
@@ -2027,9 +1965,6 @@ impl Model {
                 self.comments.insert(*id, Some((start, self.here())));
             }
             Inline::Bookmark(_, children) => {
-                if hidden {
-                    self.shapes.insert(Shape::HiddenBookmark);
-                }
                 for child in children {
                     self.inline(child, hidden);
                 }
@@ -2143,7 +2078,6 @@ impl Model {
                 self.shapes.insert(Shape::JoinAcrossContainers);
             }
             if compatible {
-                self.shapes.insert(Shape::Join);
                 let last = texts.len() - 1;
                 let (joined, joined_utf16) = &mut texts[last];
                 origins.push((last, u32::try_from(joined.len()).unwrap(), *joined_utf16));
@@ -2303,9 +2237,9 @@ fn check_projection(document: &Document, view: RevisionView, oracle: Oracle) -> 
 
     for (family, reason) in family_unknowns(&projection) {
         let admitted = expected.shapes.iter().any(|shape| {
-            let (allowed, justification) = shape_allowance(*shape);
-            justification.admitted_by(oracle)
-                && allowed.iter().any(|(allowed_family, allowed_reason)| {
+            shape_allowance(*shape)
+                .iter()
+                .any(|(allowed_family, allowed_reason)| {
                     *allowed_family == family && *allowed_reason == reason
                 })
         });
@@ -2345,8 +2279,7 @@ fn check_projection(document: &Document, view: RevisionView, oracle: Oracle) -> 
             }
             (ReviewDetail::Known(_), None) => {}
             (ReviewDetail::Unknown(reason), _) => {
-                let admitted = site_allowance(expectation.site)
-                    .is_some_and(|justification| justification.admitted_by(oracle));
+                let admitted = site_allows_unknown(expectation.site);
                 if !admitted {
                     return fail(format!(
                         "revision {index} ({:?} at {:?}) is unknown: {reason:?}",
@@ -2693,30 +2626,10 @@ fn apply_inlines(inlines: &[Inline], view: RevisionView, removed: bool) -> Vec<I
     output
 }
 
-/// Coalesces adjacent spans of one style, the form a paragraph without joins
-/// reports.
-fn coalesced(spans: &[TextFormattingSpan]) -> Vec<TextFormattingSpan> {
-    let mut output: Vec<TextFormattingSpan> = Vec::with_capacity(spans.len());
-    for span in spans {
-        if let Some(previous) = output
-            .iter_mut()
-            .rev()
-            .find(|previous| previous.style == span.style)
-            && previous.end_utf16 == span.start_utf16
-        {
-            previous.end_utf16 = span.end_utf16;
-            continue;
-        }
-        output.push(span.clone());
-    }
-    output
-}
-
 /// Compares the facts two projections both know.
 fn assert_known_facts_agree(
     left: &DocumentPackageProjection,
     right: &DocumentPackageProjection,
-    oracle: Oracle,
 ) -> Result<(), String> {
     let texts = |projection: &DocumentPackageProjection| {
         projection
@@ -2724,14 +2637,9 @@ fn assert_known_facts_agree(
             .paragraphs
             .iter()
             .map(|paragraph| {
-                let formatting = if oracle.tolerates(Gap::JoinSplitsFormattingSpans) {
-                    coalesced(&paragraph.formatting)
-                } else {
-                    paragraph.formatting.clone()
-                };
                 (
                     paragraph.text.clone(),
-                    formatting,
+                    paragraph.formatting.clone(),
                     paragraph.structure.clone(),
                 )
             })
@@ -2833,7 +2741,7 @@ proptest! {
             prop_assert_eq!(&base, &project(&proofed, &ids, view));
 
             let mut bookmarked = document.clone();
-            let hidden = insert_probe(
+            insert_probe(
                 &mut bookmarked,
                 view,
                 target,
@@ -2856,20 +2764,84 @@ proptest! {
                     after.retain(|bookmark| bookmark.name != probe_name);
                     prop_assert_eq!(before, after);
                 }
-                (StructuralFactSet::Known(_), StructuralFactSet::Unknown(_)) => {
-                    prop_assert!(hidden, "only a hidden probe may discard bookmark facts");
-                    let mut unknown = base.clone();
-                    unknown.document.structural_facts.bookmarks =
-                        probed.document.structural_facts.bookmarks.clone();
-                    unknown.document.structural_facts.internal_references =
-                        probed.document.structural_facts.internal_references.clone();
-                    prop_assert_eq!(&unknown, &probed);
-                    continue;
+                (StructuralFactSet::Known(_), StructuralFactSet::Unknown(reason)) => {
+                    prop_assert!(false, "probe changed Known bookmark facts to {reason:?}");
                 }
                 (StructuralFactSet::Unknown(_), _) => {}
             }
             probed.document.structural_facts.bookmarks =
                 base.document.structural_facts.bookmarks.clone();
+            prop_assert_eq!(&base, &probed);
+        }
+    }
+
+    /// Hidden annotations and a reference without a target cannot change
+    /// any unrelated fact or its Known status.
+    #[test]
+    fn unresolvable_items_preserve_unrelated_known_facts(
+        document in document(),
+        target in any::<usize>(),
+        position in any::<usize>(),
+    ) {
+        let ids = comment_ids(&document);
+        for view in VIEWS {
+            let base = project(&document, &ids, view);
+            let mut probed_document = document.clone();
+            insert_probe(
+                &mut probed_document,
+                view,
+                target,
+                position,
+                &Inline::Revision(Revision {
+                    kind: match view {
+                        RevisionView::Current => Tracked::Deletion,
+                        RevisionView::Original => Tracked::Insertion,
+                    },
+                    author: Author::Probe,
+                    children: vec![Inline::Bookmark(PROBE_ID, Vec::new())],
+                }),
+            );
+            let visible_probe_id = PROBE_ID + 1;
+            let mut inserted = false;
+            map_paragraphs(&mut probed_document.blocks, &mut |paragraph| {
+                if !inserted {
+                    paragraph.inlines.push(Inline::Bookmark(visible_probe_id, Vec::new()));
+                    inserted = true;
+                }
+            });
+            let (xml, comments) = write_document(&probed_document, &ids);
+            let marker = format!(r#"<w:bookmarkEnd w:id="{PROBE_ID}"/>"#);
+            let missing_name = format!("missing-{PROBE_ID}");
+            let reference = format!(
+                r#"{marker}<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> REF {missing_name} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>"#,
+            );
+            let xml = xml.replace(&marker, &reference);
+            let visible_marker = format!(r#"<w:bookmarkEnd w:id="{visible_probe_id}"/>"#);
+            let visible_reference = format!(
+                r#"{visible_marker}<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> REF {missing_name} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>"#,
+            );
+            let xml = xml.replace(&visible_marker, &visible_reference);
+            let mut probed = project_xml(&xml, &comments, view);
+            let StructuralFactSet::Known(bookmarks) = &mut probed.document.structural_facts.bookmarks else {
+                prop_assert!(false, "hidden bookmark changed the bookmark family's Known status");
+                continue;
+            };
+            let probes = bookmarks.iter().filter(|bookmark| bookmark.bookmark_id == u32::try_from(PROBE_ID).unwrap()).collect::<Vec<_>>();
+            prop_assert_eq!(probes.len(), 1, "the hidden bookmark has one collapsed span");
+            prop_assert_eq!(probes[0].span.start_utf8, probes[0].span.end_utf8);
+            bookmarks.retain(|bookmark| ![u32::try_from(PROBE_ID).unwrap(), u32::try_from(visible_probe_id).unwrap()].contains(&bookmark.bookmark_id));
+            let StructuralFactSet::Known(references) = &mut probed.document.structural_facts.internal_references else {
+                prop_assert!(false, "missing target changed the reference family's Known status");
+                continue;
+            };
+            let probes = references.iter().filter(|reference| reference.reference_id == missing_name).collect::<Vec<_>>();
+            prop_assert_eq!(probes.len(), 1, "only the visible missing-target reference preserves its source");
+            references.retain(|reference| reference.reference_id != missing_name);
+            let ReviewFactSet::Known(revisions) = &mut probed.review_facts.revisions else {
+                prop_assert!(false, "hidden annotations changed the revision family's Known status");
+                continue;
+            };
+            revisions.retain(|revision| revision.author != PROBE_AUTHOR);
             prop_assert_eq!(&base, &probed);
         }
     }
@@ -2889,7 +2861,7 @@ proptest! {
             }
             let reference = project(&applied, &ids, RevisionView::Current);
             prop_assert!(known_revisions(&reference).is_empty(), "applying leaves no revision");
-            let agreed = assert_known_facts_agree(&projected, &reference, Oracle::Tolerant);
+            let agreed = assert_known_facts_agree(&projected, &reference);
             prop_assert!(agreed.is_ok(), "{:?}: {}", view, agreed.unwrap_err());
         }
     }
@@ -2977,7 +2949,6 @@ fn single(document_body: &str, view: RevisionView) -> DocumentPackageProjection 
 const TRACKED: &str = r#"w:id="1" w:author="A""#;
 
 #[test]
-#[ignore = "known gap: property-change revisions are unlocated"]
 fn property_change_revisions_are_located() {
     let projection = single(
         &format!(
@@ -2995,26 +2966,54 @@ fn property_change_revisions_are_located() {
 }
 
 #[test]
-#[ignore = "known gap: a paragraph join discards bookmark facts"]
 fn paragraph_joins_keep_bookmark_facts() {
+    let suffix = r#"<w:bookmarkStart w:id="0" w:name="b"/><w:r><w:t>b</w:t></w:r><w:bookmarkEnd w:id="0"/><w:hyperlink w:anchor="b"/><w:fldSimple w:instr="REF b"/>"#;
     let projection = single(
         &format!(
-            r#"<w:p><w:pPr><w:rPr><w:del {TRACKED}/></w:rPr></w:pPr><w:r><w:t>a</w:t></w:r></w:p><w:p><w:bookmarkStart w:id="0" w:name="b"/><w:r><w:t>b</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>"#
+            r#"<w:p><w:pPr><w:rPr><w:del {TRACKED}/></w:rPr></w:pPr><w:r><w:t>é😀</w:t></w:r></w:p><w:p>{suffix}</w:p>"#
         ),
         RevisionView::Current,
     );
+    let reference = single(
+        &format!(r"<w:p><w:r><w:t>é😀</w:t></w:r>{suffix}</w:p>"),
+        RevisionView::Current,
+    );
+    assert_eq!(
+        projection.document.structural_facts.bookmarks,
+        reference.document.structural_facts.bookmarks
+    );
+    assert_eq!(
+        projection.document.structural_facts.internal_references,
+        reference.document.structural_facts.internal_references
+    );
+    let StructuralFactSet::Known(bookmarks) = &projection.document.structural_facts.bookmarks
+    else {
+        panic!("joined bookmark facts must be Known");
+    };
+    assert_eq!(bookmarks.len(), 1);
+    assert_eq!(bookmarks[0].paragraph_ordinal, 0);
+    assert_eq!(
+        (bookmarks[0].span.start_utf8, bookmarks[0].span.end_utf8),
+        (6, 7)
+    );
+    assert_eq!(
+        (bookmarks[0].span.start_utf16, bookmarks[0].span.end_utf16),
+        (3, 4)
+    );
+    let StructuralFactSet::Known(references) =
+        &projection.document.structural_facts.internal_references
+    else {
+        panic!("joined reference facts must be Known");
+    };
+    assert_eq!(references.len(), 3, "two sources and one target");
     assert!(
-        matches!(
-            projection.document.structural_facts.bookmarks,
-            StructuralFactSet::Known(_)
-        ),
-        "{:?}",
-        projection.document.structural_facts.bookmarks
+        references
+            .iter()
+            .all(|reference| reference.paragraph_ordinal == 0)
     );
 }
 
 #[test]
-#[ignore = "known gap: a bookmark in hidden content discards bookmark facts"]
 fn bookmarks_in_hidden_content_keep_bookmark_facts() {
     let projection = single(
         &format!(
@@ -3033,24 +3032,26 @@ fn bookmarks_in_hidden_content_keep_bookmark_facts() {
 }
 
 #[test]
-#[ignore = "known gap: a bookmark in block-level content controls discards bookmark facts"]
 fn bookmarks_in_block_content_controls_keep_bookmark_facts() {
-    let projection = single(
-        r#"<w:sdt><w:sdtContent><w:bookmarkStart w:id="0" w:name="b"/><w:p><w:r><w:t>a</w:t></w:r></w:p><w:bookmarkEnd w:id="0"/></w:sdtContent></w:sdt>"#,
-        RevisionView::Current,
-    );
-    assert!(
-        matches!(
+    let content = r#"<w:bookmarkStart w:id="0" w:name="b"/><w:p><w:r><w:t>a</w:t></w:r></w:p><w:bookmarkEnd w:id="0"/>"#;
+    for body in [
+        format!("<w:sdt><w:sdtContent>{content}</w:sdtContent></w:sdt>"),
+        format!("<w:customXml>{content}</w:customXml>"),
+    ] {
+        let projection = single(&body, RevisionView::Current);
+        let reference = single(content, RevisionView::Current);
+        assert_eq!(
+            projection.document.structural_facts.bookmarks,
+            reference.document.structural_facts.bookmarks
+        );
+        assert!(matches!(
             projection.document.structural_facts.bookmarks,
             StructuralFactSet::Known(_)
-        ),
-        "{:?}",
-        projection.document.structural_facts.bookmarks
-    );
+        ));
+    }
 }
 
 #[test]
-#[ignore = "known gap: a reference in hidden content discards internal references"]
 fn references_in_hidden_content_keep_internal_references() {
     let projection = single(
         &format!(
@@ -3105,7 +3106,6 @@ fn endnote_references_materialize_like_footnote_references() {
 }
 
 #[test]
-#[ignore = "known gap: a paragraph join leaves split formatting spans"]
 fn paragraph_joins_coalesce_formatting_spans() {
     let projection = single(
         &format!(
