@@ -2,40 +2,6 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
-import { canonicalTimerOwner, isCanonicalInputTimer } from "../tests/parity/canonicalTimerOwner";
-
-const captured = (owner: string, caller: string) =>
-  `Error\n    at window.setTimeout (<anonymous>:10:39)\n    at ${owner}\n    at ${caller}`;
-const root = "http://localhost:4200/@fs/work/folio/packages";
-const input = `Object.handleKeyDown (${root}/core/src/controller/canonicalInput.ts:119:33)`;
-
-test("a layout timer called through canonical history belongs to the layout", () => {
-  const owner = `${root}/react/src/paged-editor/PagedEditor.tsx:1339:50`;
-  const stack = captured(owner, input);
-  expect(canonicalTimerOwner(stack)).toBe(`at ${owner}`);
-  expect(isCanonicalInputTimer(stack)).toBe(false);
-});
-
-test("composition and input timers are recognized by their own frame", () => {
-  for (const module of ["canonicalComposition", "canonicalInput"]) {
-    expect(
-      isCanonicalInputTimer(
-        captured(`schedule (${root}/core/src/controller/${module}.ts:98:13)`, input),
-      ),
-    ).toBe(true);
-  }
-});
-
-test("an unrelated same-named module does not own canonical input", () => {
-  expect(isCanonicalInputTimer(captured(`${root}/react/src/canonicalInput.ts:1:1`, input))).toBe(
-    false,
-  );
-});
-
-test("missing owner capture fails instead of declaring a clean state", () => {
-  for (const stack of ["unavailable", "Error\n    at window.setTimeout (<anonymous>:10:39)"])
-    expect(() => isCanonicalInputTimer(stack)).toThrow("Timer capture has no owner frame");
-});
 
 const rootDir = resolve(import.meta.dir, "..");
 const probeFile = resolve(rootDir, "tests/visual/canonicalTimerProbe.ts");
@@ -128,4 +94,36 @@ test("every timer oracle consumer installs the probe before navigation", () => {
   }
   expect(consumers).toBeGreaterThan(0);
   expect(problems).toEqual([]);
+});
+
+const rawTimerReferences = (source: string) => {
+  const parsed = ts.createSourceFile("canonical.ts", source, ts.ScriptTarget.Latest, true);
+  let references = 0;
+  const visit = (node: ts.Node) => {
+    if (ts.isIdentifier(node) && node.text === "setTimeout" && !ts.isTypeQueryNode(node.parent))
+      references++;
+    if (ts.isStringLiteral(node) && node.text === "setTimeout") references++;
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  return references;
+};
+
+test("canonical controller timers use the tagged owner helper", () => {
+  const controllerDir = resolve(rootDir, "packages/core/src/controller");
+  const files = [...new Bun.Glob("canonical*.ts").scanSync({ cwd: controllerDir })].filter(
+    (file) => !file.endsWith(".test.ts") && file !== "canonicalInputTimer.ts",
+  );
+  expect(files.length).toBeGreaterThan(0);
+  for (const file of files)
+    expect(rawTimerReferences(readFileSync(resolve(controllerDir, file), "utf8"))).toBe(0);
+  for (const schedule of [
+    "setTimeout(callback, 25)",
+    "window.setTimeout(callback, 25)",
+    'window["setTimeout"](callback, 25)',
+    'import { setTimeout as schedule } from "node:timers"',
+    "const { setTimeout: schedule } = globalThis",
+  ])
+    expect(rawTimerReferences(schedule)).toBeGreaterThan(0);
+  expect(rawTimerReferences("let timer: ReturnType<typeof setTimeout>;")).toBe(0);
 });
