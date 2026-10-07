@@ -65,50 +65,62 @@ test(
         fc.constantFrom("契", "😀", "مرحبا", "alpha", "alphabet", "alpine"),
         fc.constantFrom("provisional", "refused", "empty"),
         (text, phase) => {
-          const rig = createRig();
-          try {
-            const document = rig.session.document;
-            const baseline = rig.view.state;
-            rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
-            if (phase !== "empty") {
-              const provisional = rig.view.state.tr
-                .insertText(text, 1, 6)
-                .setMeta("composition", 1);
-              if (phase === "refused") provisional.addMark(1, 1 + text.length, schema.mark("bold"));
-              rig.view.dispatch(provisional);
+          for (const ended of [false, true]) {
+            for (const mutation of ["selection", "diff"] as const) {
+              const rig = createRig();
+              try {
+                const document = rig.session.document;
+                const baseline = rig.view.state;
+                rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+                if (phase !== "empty") {
+                  const provisional =
+                    mutation === "diff" && text.startsWith("alpha")
+                      ? rig.view.state.tr.insertText(text.slice(5), 6, 6).setMeta("composition", 1)
+                      : rig.view.state.tr.insertText(text, 1, 6).setMeta("composition", 1);
+                  if (phase === "refused")
+                    provisional.addMark(1, 1 + text.length, schema.mark("bold"));
+                  rig.view.dispatch(provisional);
+                }
+                expect(rig.view.composing).toBe(true);
+                if (ended) {
+                  rig.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+                  expect(rig.view.composing).toBe(false);
+                  expect(rig.boundary.isComposing).toBe(true);
+                }
+                const final = new InputEvent("beforeinput", {
+                  bubbles: true,
+                  cancelable: true,
+                  inputType: "insertText",
+                  data: text,
+                });
+                // Exercise both native end orderings before the delayed finish;
+                // no cleanup cancel precedes the final input.
+                rig.view.dom.dispatchEvent(final);
+                expect(final.defaultPrevented).toBe(true);
+                expect(rig.view.composing).toBe(false);
+                expect(rig.boundary.isComposing).toBe(false);
+                expect(rig.refusals).toHaveLength(phase === "refused" ? 1 : 0);
+                expect(rig.view.state.doc.textContent).toBe(phase === "refused" ? "alpha" : text);
+                const edited = phase !== "refused" && text !== "alpha";
+                expect(rig.session.version).toBe(edited ? 1 : 0);
+                expect(rig.session.projection.doc.eq(rig.view.state.doc)).toBe(true);
+                if (edited) {
+                  const undo = rig.session.prepareUndo(rig.view.state).unwrap();
+                  rig.view.updateState(
+                    publishCanonicalProjection({
+                      session: rig.session,
+                      state: rig.view.state,
+                      commit: undo,
+                    }).unwrap().state,
+                  );
+                }
+                expect(rig.session.document).toEqual(document);
+                expect(rig.view.state.doc.eq(baseline.doc)).toBe(true);
+                expect(rig.session.canUndo).toBe(false);
+              } finally {
+                rig.destroy();
+              }
             }
-            expect(rig.view.composing).toBe(true);
-            const final = new InputEvent("beforeinput", {
-              bubbles: true,
-              cancelable: true,
-              inputType: "insertText",
-              data: text,
-            });
-            // No compositionend or cleanup cancel precedes this final input.
-            rig.view.dom.dispatchEvent(final);
-            expect(final.defaultPrevented).toBe(true);
-            expect(rig.view.composing).toBe(false);
-            expect(rig.boundary.isComposing).toBe(false);
-            expect(rig.refusals).toHaveLength(phase === "refused" ? 1 : 0);
-            expect(rig.view.state.doc.textContent).toBe(phase === "refused" ? "alpha" : text);
-            const edited = phase !== "refused" && text !== "alpha";
-            expect(rig.session.version).toBe(edited ? 1 : 0);
-            expect(rig.session.projection.doc.eq(rig.view.state.doc)).toBe(true);
-            if (edited) {
-              const undo = rig.session.prepareUndo(rig.view.state).unwrap();
-              rig.view.updateState(
-                publishCanonicalProjection({
-                  session: rig.session,
-                  state: rig.view.state,
-                  commit: undo,
-                }).unwrap().state,
-              );
-            }
-            expect(rig.session.document).toEqual(document);
-            expect(rig.view.state.doc.eq(baseline.doc)).toBe(true);
-            expect(rig.session.canUndo).toBe(false);
-          } finally {
-            rig.destroy();
           }
         },
       ),

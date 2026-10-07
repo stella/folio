@@ -103,7 +103,15 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       commit && pending.type === "provisional" ? replacement(pending.baseline, view.state) : null;
     // A final beforeinput carries the whole selected replacement, even when
     // the native observer produced a smaller diff with a shared prefix/suffix.
-    const committedText = selectedReplacement(pending.baseline, view.state)?.text ?? null;
+    const { from, to } = pending.baseline.selection;
+    const size = view.state.doc.content.size - pending.baseline.doc.content.size + to - from;
+    const text =
+      size >= 0 && from + size <= view.state.doc.content.size
+        ? view.state.doc.textBetween(from, from + size, "", "")
+        : null;
+    // Acceptance is validated by replacement(); payload identity depends on text,
+    // including when the accepted minimal diff retains non-inclusive metadata.
+    const committedText = text !== null && text.length === size ? text : null;
     state = { type: "committed" };
     if (!view.isDestroyed) {
       // Recovery may finish without a native end event (for example a refused

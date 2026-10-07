@@ -322,8 +322,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         // A new, non-composition event recovers an IME missing compositionend.
         if (composition.active) {
           const nativeFinal =
-            view.composing &&
-            (event.inputType === "insertText" || event.inputType === "insertReplacementText");
+            event.inputType === "insertText" || event.inputType === "insertReplacementText";
           const recovered = composition.recover(view);
           proposal = { type: "idle" };
           // Recovery already handled the native proposal. Its matching final
