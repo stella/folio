@@ -15,7 +15,7 @@ import {
   canonicalBrowserTraceArbitrary,
 } from "./canonicalBrowserTrace";
 
-test("refused native IME commit ends composition before driver cancellation", async ({ page }) => {
+test("refused native IME commit ends composition before driver completion", async ({ page }) => {
   await page.goto("/?session=canonical");
   await page.waitForSelector(".layout-page");
   const source = await createDocx(createEmptyDocument({ initialText: "alpha" }));
@@ -39,7 +39,7 @@ test("refused native IME commit ends composition before driver cancellation", as
     });
   });
   const cdp = await page.context().newCDPSession(page);
-  let cancelled = false;
+  let finished = false;
   try {
     await runBrowserImeLifecycle(
       {
@@ -49,7 +49,8 @@ test("refused native IME commit ends composition before driver cancellation", as
             selectionStart: text.length,
             selectionEnd: text.length,
           });
-          // An unsupported marked native proposal is refused while IME remains active.
+          // Multiple differently marked text runs avoid PM's single-text insertion
+          // shortcut, which intentionally ignores parsed marks during native typing.
           await page.locator(".ProseMirror").evaluate((editor) => {
             const paragraph = editor.querySelector("p");
             if (!paragraph) throw new TypeError("Composition paragraph unavailable");
@@ -63,7 +64,7 @@ test("refused native IME commit ends composition before driver cancellation", as
             );
             const marked = document.createElement("strong");
             marked.textContent = "契約";
-            paragraph.replaceChildren(marked);
+            paragraph.replaceChildren(document.createTextNode("甲"), marked);
             editor.dispatchEvent(
               new InputEvent("input", {
                 bubbles: true,
@@ -94,14 +95,14 @@ test("refused native IME commit ends composition before driver cancellation", as
         },
         commit: async (text) => {
           await cdp.send("Input.insertText", { text });
-          expect(cancelled).toBe(false);
+          expect(finished).toBe(false);
           expect(await page.locator(".ProseMirror").getAttribute("data-final-prevented")).toBe(
             "true",
           );
           expect(await page.locator(".ProseMirror").getAttribute("data-native-end-delivered")).toBe(
             null,
           );
-          // This assertion precedes cancel: removing product composition exit makes it fail.
+          // This assertion precedes driver completion: removing product composition exit makes it fail.
           expect(await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing())).toBe(
             false,
           );
@@ -112,17 +113,29 @@ test("refused native IME commit ends composition before driver cancellation", as
           expect(current?.projectionMatchesCanonical).toBe(true);
         },
         cancel: async () => {
-          cancelled = true;
           await cdp.send("Input.imeSetComposition", {
             text: "",
             selectionStart: 0,
             selectionEnd: 0,
           });
         },
+        finish: async () => {
+          finished = true;
+          await page.locator(".ProseMirror").evaluate((editor) => {
+            if (!(editor instanceof HTMLElement)) throw new TypeError("Editor unavailable");
+            editor.blur();
+            editor.focus();
+          });
+        },
       },
       { kind: "imeReplacement", updates: ["契"], completion: "commit" },
     );
-    expect(cancelled).toBe(true);
+    expect(finished).toBe(true);
+    const final = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
+    expect(final?.text).toBe("alpha");
+    expect(final?.composing).toBe(false);
+    expect(final?.canUndo).toBe(false);
+    expect(final?.projectionMatchesCanonical).toBe(true);
   } finally {
     if (!page.isClosed()) await cdp.detach();
   }

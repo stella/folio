@@ -47,6 +47,9 @@ type CanonicalBrowserHistoryRunOptions = CanonicalBrowserHistoryOptions & {
 
 /** Establish the first loaded owner once, outside the per-case reset barrier. */
 export const initializeCanonicalBrowserHistory = async (page: Page, source: number[]) => {
+  await page.evaluate(() => {
+    globalThis.__folioCanonicalFuzzErrors ??= [];
+  });
   expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
     true,
   );
