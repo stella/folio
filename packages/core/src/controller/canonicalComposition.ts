@@ -5,6 +5,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { CanonicalSessionError } from "./canonicalSession";
+import { setCanonicalInputTimer } from "./canonicalInputTimer";
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
 
 const COMPOSITION_FLUSH_DELAY_MS = 25;
@@ -102,7 +103,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
   const schedule = (view: EditorView) => {
     clearTimer();
     // Allow the native final input and PM's delayed composition flush to settle.
-    timer = setTimeout(() => finish(view, true), COMPOSITION_FLUSH_DELAY_MS);
+    timer = setCanonicalInputTimer(() => finish(view, true), COMPOSITION_FLUSH_DELAY_MS);
   };
   return {
     // Keep declaration emission tied to the authored union, not inferred member order.

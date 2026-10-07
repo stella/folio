@@ -6,6 +6,7 @@ import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx"
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import { BROWSER_INPUT_ACTION_DISPOSITIONS, type BrowserInputAction } from "./browserInputTrace";
 import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
+import { assertCanonicalInputTimersSettled } from "./canonicalTimerProbe";
 import type {} from "../parity/canonicalBridge";
 import {
   isCanonicalSaveFallback,
@@ -63,6 +64,7 @@ const runCanonicalBrowserHistory = async ({
     observation.errors = await drainErrors(page);
     return observation.errors;
   };
+  await assertCanonicalInputTimersSettled(page);
   await beginPhase({ type: "load" });
   // The first case starts with a lazy view. Create it without loading or
   // resetting an existing owner, so this check still detects cross-case leaks.
@@ -143,6 +145,7 @@ const runCanonicalBrowserHistory = async ({
     expect(reopened.package.numbering).toEqual(after.document.package.numbering);
   }
   const final = await snapshot(page);
+  await assertCanonicalInputTimersSettled(page);
   await beginPhase({ type: "finalSave" });
   const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
   expect((await collectErrors()).filter((error) => !isCanonicalSaveFallback(error))).toEqual([]);
@@ -159,6 +162,7 @@ const runCanonicalBrowserHistory = async ({
   );
   expect(reloaded.document.package.numbering).toEqual(final.document.package.numbering);
   expect(reloaded.canUndo).toBe(false);
+  await assertCanonicalInputTimersSettled(page);
   return applied;
 };
 
