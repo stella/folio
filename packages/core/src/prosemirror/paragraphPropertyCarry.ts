@@ -42,6 +42,24 @@ type CarryParagraphPropertiesOptions = {
   keep?: ReadonlySet<string>;
 };
 
+type CarriedParagraphPropertiesOptions = Pick<
+  CarryParagraphPropertiesOptions,
+  "source" | "keep"
+> & {
+  target: PMNode;
+};
+
+/** The exact formatting transfer, shared with pre-mutation capacity checks. */
+export const carriedParagraphProperties = ({
+  source,
+  target,
+  keep,
+}: CarriedParagraphPropertiesOptions) =>
+  Object.fromEntries([
+    ...Object.entries(paragraphPropertiesSnapshot(source)).filter(([key]) => !keep?.has(key)),
+    ...Object.entries(paragraphPropertiesSnapshot(target)).filter(([key]) => keep?.has(key)),
+  ]);
+
 /**
  * Give a paragraph another one's properties: the pPr a property change
  * covers. Its identity, mark, mark run properties and section stay its own,
@@ -65,11 +83,7 @@ export const carryParagraphProperties = ({
     return { tr, changed: false, tracked: false };
   }
   const previousFormatting = paragraphPropertiesSnapshot(target);
-  const own = previousFormatting as Record<string, unknown>;
-  const formatting = Object.fromEntries([
-    ...Object.entries(paragraphPropertiesSnapshot(source)).filter(([key]) => !keep?.has(key)),
-    ...Object.entries(own).filter(([key]) => keep?.has(key)),
-  ]);
+  const formatting = carriedParagraphProperties({ source, target, keep });
   if (JSON.stringify(previousFormatting) === JSON.stringify(formatting)) {
     return { tr, changed: false, tracked: false };
   }
