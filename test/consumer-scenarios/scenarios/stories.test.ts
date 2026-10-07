@@ -40,6 +40,8 @@ import {
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 const MAIN: FolioDocumentStoryHandle = { type: "main" };
+// Recorded formatting merge after a footnote split/deletion chain.
+const TRACKED_STORY_REVISION_SEED = 1455;
 
 /** Apply `operation` to `story` as a one-operation core batch, and check it. */
 const applyChecked = async (
@@ -123,7 +125,9 @@ describe("operations in every header, footer and note", () => {
   for (const mode of MODES) {
     test(`stories / ${mode}: every operation type in every secondary story does what it asked`, async () => {
       const reviewer = await openReviewer(await storiesDocument());
-      const random = createRandom(mode.length * 97);
+      const random = createRandom(
+        mode === "tracked-changes" ? TRACKED_STORY_REVISION_SEED : mode.length * 97,
+      );
       const applied = new Map<string, number>();
       // One of each kind; the fuzz flows reach the first-page and even-page parts.
       const stories = secondaryStories(reviewer).filter(

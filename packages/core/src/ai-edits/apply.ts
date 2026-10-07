@@ -580,7 +580,7 @@ const writesParagraphPropertyChange = (item: ResolvedOperation): boolean => {
     );
   }
   if (item.operation.type === "mergeBlockWithNext") {
-    return item.operation.mergedParagraphProperties !== undefined;
+    return true;
   }
   return (
     isResolvedReplaceBlockOperation(item) &&
@@ -1055,6 +1055,16 @@ const preserveRunFormattingAcrossTrackedStyleChange = ({
   return { tr, revisionIds };
 };
 
+const appendParagraphPropertyChange = (
+  existing: readonly ParagraphPropertyChangeAttrs[] | null | undefined,
+  change: ParagraphPropertyChangeAttrs,
+): ParagraphPropertyChangeAttrs[] => {
+  if (change.info.provenance !== "suggested" && hasSerializableParagraphPropertyChange(existing)) {
+    panic("A paragraph-property write must resolve its occupied revision slot first");
+  }
+  return [...(existing ?? []), change];
+};
+
 /**
  * Apply one paragraph-property patch to a live node. A tracked patch stores
  * the complete previous pPr: a partial snapshot cannot distinguish a property
@@ -1109,7 +1119,7 @@ const applyBlockParagraphProperties = ({
   const nextAttrs = {
     ...node.attrs,
     ...patch,
-    ...(change ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] } : {}),
+    ...(change ? { _propertyChanges: appendParagraphPropertyChange(existing, change) } : {}),
   };
   const bridgeResult =
     preserveRunFormatting && revisionInfo
@@ -1211,7 +1221,7 @@ const applyReplaceBlockStyleId = ({
   const nextAttrs = {
     ...block.attrs,
     ...patch,
-    ...(change ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] } : {}),
+    ...(change ? { _propertyChanges: appendParagraphPropertyChange(existing, change) } : {}),
   };
   const bridgeResult =
     preserveRunFormatting && revisionInfo
@@ -2720,6 +2730,43 @@ const pendingRemovedFinalBreakPositions = (
   return positions;
 };
 
+type ParagraphPropertyRevisionTargetsOptions = {
+  item: ResolvedOperation;
+  tr: Transaction;
+  deletedFinalParagraphs: readonly DeletedFinalParagraph[];
+};
+
+/** The paragraph a merge leaves owns its properties, even across pending deleted breaks. */
+const paragraphPropertyRevisionTargets = ({
+  item,
+  tr,
+  deletedFinalParagraphs,
+}: ParagraphPropertyRevisionTargetsOptions): PMNode[] => {
+  const position = tr.mapping.map(item.blockFrom, item.operation.type === "replaceBlock" ? -1 : 1);
+  const source = tr.doc.nodeAt(position) ?? item.blockNode;
+  const explicitProperties =
+    item.operation.type !== "mergeBlockWithNext" ||
+    item.operation.mergedParagraphProperties !== undefined;
+  const targets = source.type.name === "paragraph" ? [source] : [];
+  if (item.operation.type !== "mergeBlockWithNext") return targets;
+
+  const survivorPosition = paragraphLeftAfter({
+    doc: tr.doc,
+    paragraphPos: position,
+    removedBreakPositions: pendingRemovedFinalBreakPositions(tr, deletedFinalParagraphs),
+  });
+  const survivor = survivorPosition === null ? null : tr.doc.nodeAt(survivorPosition);
+  if (
+    survivor?.type.name === "paragraph" &&
+    (explicitProperties ||
+      JSON.stringify(paragraphPropertiesSnapshot(source)) !==
+        JSON.stringify(paragraphPropertiesSnapshot(survivor)))
+  ) {
+    targets.push(survivor);
+  }
+  return targets;
+};
+
 /**
  * Finish the tracked deletion of every paragraph a container ends with.
  *
@@ -3970,13 +4017,12 @@ const applyFolioAIEditOperationsInternal = ({
     }
     continueSharedRevisionIds();
     if (mode === "tracked-changes" && writesParagraphPropertyChange(item)) {
-      const livePosition = tr.mapping.map(item.blockFrom);
-      const liveBlock = tr.doc.nodeAt(livePosition) ?? item.blockNode;
-      const propertyChanges =
-        liveBlock.type.name === "paragraph"
-          ? expectParagraphAttrs(liveBlock)._propertyChanges
-          : undefined;
-      if (hasSerializableParagraphPropertyChange(propertyChanges)) {
+      const targets = paragraphPropertyRevisionTargets({ item, tr, deletedFinalParagraphs });
+      if (
+        targets.some((target) =>
+          hasSerializableParagraphPropertyChange(expectParagraphAttrs(target)._propertyChanges),
+        )
+      ) {
         skipped.push({ id: item.operation.id, reason: "pendingParagraphPropertyChange" });
         continue;
       }
