@@ -46,7 +46,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
   };
-  const selectedText = (baseline: EditorState, proposed: EditorState) => {
+  const selectedText = (baseline: EditorState, proposed: Pick<EditorState, "doc">) => {
     const { from, to } = baseline.selection;
     const size = proposed.doc.content.size - baseline.doc.content.size + to - from;
     if (size < 0 || from + size > proposed.doc.content.size) return null;
@@ -230,7 +230,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
           baseline: state.baseline,
           view: state.view,
           phase: state.phase,
-          text: null,
+          text: selectedText(state.baseline, transaction),
         };
         options.refuse(applied.error.message);
         return true;
