@@ -434,15 +434,24 @@ struct RunPropertiesFrame {
     hidden_eligible: bool,
 }
 
+#[derive(Clone, Copy)]
+struct ContainerReview {
+    paragraph_start: usize,
+    property_review: Option<usize>,
+    grid_review: Option<usize>,
+}
+
 struct TableFrame {
     ordinal: usize,
     next_row: usize,
+    review: ContainerReview,
 }
 
 struct RowFrame {
     table_ordinal: usize,
     row: usize,
     next_column: usize,
+    review: ContainerReview,
 }
 
 #[derive(Clone, Copy)]
@@ -450,6 +459,7 @@ struct CellFrame {
     table_ordinal: usize,
     row: usize,
     column: usize,
+    review: ContainerReview,
 }
 
 struct SdtFrame {
@@ -614,7 +624,7 @@ const fn bookmark_points_are_ordered(start: &ReviewPoint, end: &ReviewPoint) -> 
 #[derive(Clone, Copy)]
 enum OwnedRevisionSpan {
     Paragraph(ReviewSpan),
-    Run(ReviewSpan),
+    Content(ReviewSpan),
 }
 
 struct RevisionFrame {
@@ -653,6 +663,8 @@ enum Frame {
     Run(RunFrame),
     RunProperties(RunPropertiesFrame),
     ParagraphProperties,
+    TableProperties,
+    TableGrid,
     TableRowProperties,
     TableCellProperties,
     NumberingProperties,
@@ -968,7 +980,7 @@ impl ProjectionState {
                             paragraph.paragraph_review_indices.push(review_index);
                         }
                     }
-                    _ => {}
+                    _ => self.record_container_property_revision(name, review_index)?,
                 }
             }
             if self.revision_view == RevisionView::Original {
@@ -1016,6 +1028,11 @@ impl ProjectionState {
                 Frame::Table(TableFrame {
                     ordinal,
                     next_row: 0,
+                    review: ContainerReview {
+                        paragraph_start: self.paragraphs.len(),
+                        property_review: None,
+                        grid_review: None,
+                    },
                 })
             }
             b"tr" => {
@@ -1032,6 +1049,11 @@ impl ProjectionState {
                     table_ordinal: table.ordinal,
                     row,
                     next_column: 0,
+                    review: ContainerReview {
+                        paragraph_start: self.paragraphs.len(),
+                        property_review: None,
+                        grid_review: None,
+                    },
                 })
             }
             b"tc" => {
@@ -1048,6 +1070,11 @@ impl ProjectionState {
                     table_ordinal: row.table_ordinal,
                     row: row.row,
                     column,
+                    review: ContainerReview {
+                        paragraph_start: self.paragraphs.len(),
+                        property_review: None,
+                        grid_review: None,
+                    },
                 })
             }
             b"p" => {
@@ -1105,6 +1132,8 @@ impl ProjectionState {
             }
             b"sdtContent" | b"customXml" => Frame::BlockContent,
             b"pPr" => Frame::ParagraphProperties,
+            b"tblPr" => Frame::TableProperties,
+            b"tblGrid" => Frame::TableGrid,
             b"trPr" => Frame::TableRowProperties,
             b"tcPr" => Frame::TableCellProperties,
             b"pStyle" if matches!(self.frames.last(), Some(Frame::ParagraphProperties)) => {
@@ -1357,6 +1386,9 @@ impl ProjectionState {
             .ok_or(ProjectionError::InvalidDocumentXml)?;
         match frame {
             Frame::Paragraph => self.finish_paragraph(styles)?,
+            Frame::Table(table) => self.finish_container_review(table.review)?,
+            Frame::Row(row) => self.finish_container_review(row.review)?,
+            Frame::Cell(cell) => self.finish_container_review(cell.review)?,
             Frame::Hyperlink(Some(reference)) => self.references.push(reference),
             Frame::PseudoText(frame) => match frame.kind {
                 PseudoTextKind::Text { preserve_space } => {
@@ -1403,12 +1435,74 @@ impl ProjectionState {
                 if let (Some(start), Some(end)) = (start, self.current_review_point()) {
                     self.locate_owned_revisions(
                         &run.property_review_indices,
-                        OwnedRevisionSpan::Run(ReviewSpan { start, end }),
+                        OwnedRevisionSpan::Content(ReviewSpan { start, end }),
                     )?;
                 }
             }
             Frame::Revision(revision) => self.finish_attributed_revision(revision)?,
             _ => {}
+        }
+        Ok(())
+    }
+
+    fn record_container_property_revision(
+        &mut self,
+        name: &[u8],
+        review_index: usize,
+    ) -> Result<(), ProjectionError> {
+        let valid_parent = matches!(
+            (name, self.frames.last()),
+            (b"tblPrChange", Some(Frame::TableProperties))
+                | (b"tblGridChange", Some(Frame::TableGrid))
+                | (b"trPrChange", Some(Frame::TableRowProperties))
+                | (b"tcPrChange", Some(Frame::TableCellProperties))
+        );
+        if !valid_parent {
+            return Ok(());
+        }
+        let review = self
+            .frames
+            .iter_mut()
+            .rev()
+            .find_map(|frame| match (name, frame) {
+                (b"tblPrChange" | b"tblGridChange", Frame::Table(table)) => Some(&mut table.review),
+                (b"trPrChange", Frame::Row(row)) => Some(&mut row.review),
+                (b"tcPrChange", Frame::Cell(cell)) => Some(&mut cell.review),
+                _ => None,
+            });
+        if let Some(review) = review {
+            let slot = if name == b"tblGridChange" {
+                &mut review.grid_review
+            } else {
+                &mut review.property_review
+            };
+            if slot.replace(review_index).is_some() {
+                return Err(ProjectionError::InvalidDocumentXml);
+            }
+        }
+        Ok(())
+    }
+
+    fn finish_container_review(&mut self, review: ContainerReview) -> Result<(), ProjectionError> {
+        if review.paragraph_start >= self.paragraphs.len() {
+            return Ok(());
+        }
+        let end = self
+            .paragraphs
+            .last()
+            .and_then(paragraph_end)
+            .ok_or(ProjectionError::InvalidDocumentXml)?;
+        for review_index in [review.property_review, review.grid_review]
+            .into_iter()
+            .flatten()
+        {
+            self.locate_owned_revisions(
+                std::slice::from_ref(&review_index),
+                OwnedRevisionSpan::Content(ReviewSpan {
+                    start: paragraph_start(review.paragraph_start),
+                    end,
+                }),
+            )?;
         }
         Ok(())
     }
@@ -1545,7 +1639,7 @@ impl ProjectionState {
                 .get_mut(review_index)
                 .ok_or(ProjectionError::InvalidDocumentXml)?;
             let span = match owner {
-                OwnedRevisionSpan::Run(span) => span,
+                OwnedRevisionSpan::Content(span) => span,
                 OwnedRevisionSpan::Paragraph(span) => {
                     if revision.kind == RevisionFactKind::ParagraphPropertiesChange {
                         span
@@ -1559,7 +1653,11 @@ impl ProjectionState {
             };
             let payload = match revision.kind {
                 RevisionFactKind::RunPropertiesChange
-                | RevisionFactKind::ParagraphPropertiesChange => RevisionPayload::FormattingOnly,
+                | RevisionFactKind::ParagraphPropertiesChange
+                | RevisionFactKind::TablePropertiesChange
+                | RevisionFactKind::TableRowPropertiesChange
+                | RevisionFactKind::TableCellPropertiesChange
+                | RevisionFactKind::TableGridChange => RevisionPayload::FormattingOnly,
                 _ => RevisionPayload::ParagraphMark,
             };
             revision.content = ReviewDetail::Known(RevisionContent { span, payload });
