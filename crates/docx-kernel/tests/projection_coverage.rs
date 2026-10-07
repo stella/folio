@@ -2281,6 +2281,16 @@ fn unknown_reason<T>(facts: &StructuralFactSet<T>) -> Option<String> {
 fn check_projection(document: &Document, view: RevisionView, oracle: Oracle) -> Result<(), String> {
     let ids = comment_ids(document);
     let projection = project(document, &ids, view);
+    check_projected_facts(document, view, oracle, &projection)
+}
+
+#[allow(clippy::too_many_lines)] // One pass over every fact family keeps the oracle auditable.
+fn check_projected_facts(
+    document: &Document,
+    view: RevisionView,
+    oracle: Oracle,
+    projection: &DocumentPackageProjection,
+) -> Result<(), String> {
     let expected = Model::build(document, view, oracle);
     let fail = |message: String| -> Result<(), String> { Err(format!("{view:?}: {message}")) };
 
@@ -2301,7 +2311,7 @@ fn check_projection(document: &Document, view: RevisionView, oracle: Oracle) -> 
         ));
     }
 
-    for (family, reason) in family_unknowns(&projection) {
+    for (family, reason) in family_unknowns(projection) {
         let admitted = expected.shapes.iter().any(|shape| {
             let (allowed, justification) = shape_allowance(*shape);
             justification.admitted_by(oracle)
@@ -2317,7 +2327,7 @@ fn check_projection(document: &Document, view: RevisionView, oracle: Oracle) -> 
         }
     }
 
-    let revisions = known_revisions(&projection);
+    let revisions = known_revisions(projection);
     let kinds = revisions
         .iter()
         .map(|revision| revision.kind)
@@ -2360,6 +2370,17 @@ fn check_projection(document: &Document, view: RevisionView, oracle: Oracle) -> 
     let ReviewFactSet::Known(comments) = &projection.review_facts.comments else {
         return fail("comment facts are unknown".to_owned());
     };
+    let mut emitted_ids = comments
+        .iter()
+        .map(|comment| comment.comment_id.parse::<usize>().unwrap())
+        .collect::<Vec<_>>();
+    emitted_ids.sort_unstable();
+    let expected_ids = expected.comments.keys().copied().collect::<Vec<_>>();
+    if emitted_ids != expected_ids {
+        return fail(format!(
+            "comment ids {emitted_ids:?}, expected {expected_ids:?}"
+        ));
+    }
     for comment in comments {
         let id = comment.comment_id.parse::<usize>().unwrap();
         let Some(anchor) = expected.comments.get(&id) else {
@@ -2399,6 +2420,33 @@ proptest! {
         for view in VIEWS {
             let checked = check_projection(&document, view, Oracle::Tolerant);
             prop_assert!(checked.is_ok(), "{}", checked.unwrap_err());
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(config(64))]
+
+    /// A projection cannot drop or duplicate generated comments unnoticed.
+    #[test]
+    fn comment_oracle_rejects_missing_and_duplicate_facts(document in document()) {
+        let ids = comment_ids(&document);
+        for view in VIEWS {
+            let mut projection = project(&document, &ids, view);
+            prop_assert!(check_projected_facts(&document, view, Oracle::Tolerant, &projection).is_ok());
+            let ReviewFactSet::Known(comments) = &mut projection.review_facts.comments else {
+                panic!("generated comment facts are known");
+            };
+            let Some(comment) = comments.pop() else {
+                continue;
+            };
+            prop_assert!(check_projected_facts(&document, view, Oracle::Tolerant, &projection).is_err());
+            let ReviewFactSet::Known(restored_comments) = &mut projection.review_facts.comments else {
+                panic!("comment facts stay known while mutating their entries");
+            };
+            restored_comments.push(comment.clone());
+            restored_comments.push(comment);
+            prop_assert!(check_projected_facts(&document, view, Oracle::Tolerant, &projection).is_err());
         }
     }
 }
