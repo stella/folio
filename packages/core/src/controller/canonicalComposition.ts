@@ -20,15 +20,22 @@ type CompositionOptions = {
 type CompositionState =
   | { type: "committed" }
   | {
-      type: "provisional" | "refused";
+      type: "provisional";
       baseline: EditorState;
       view: EditorView;
       phase: "active" | "ended";
+    }
+  | {
+      type: "refused";
+      baseline: EditorState;
+      view: EditorView;
+      phase: "active" | "ended";
+      text: string | null;
     };
 
 type CompositionFinish =
-  | { type: "idle" | "cancelled" | "refused" }
-  | { type: "committed"; text: string | null };
+  | { type: "idle" | "cancelled" }
+  | { type: "committed" | "refused"; text: string | null };
 
 /** Native IME owns the provisional view; the captured canonical projection stays unchanged. */
 export const createCanonicalComposition = (options: CompositionOptions) => {
@@ -39,13 +46,17 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
   };
-  const selectedReplacement = (baseline: EditorState, proposed: EditorState) => {
+  const selectedText = (baseline: EditorState, proposed: EditorState) => {
     const { from, to } = baseline.selection;
     const size = proposed.doc.content.size - baseline.doc.content.size + to - from;
     if (size < 0 || from + size > proposed.doc.content.size) return null;
     const text = proposed.doc.textBetween(from, from + size, "", "");
-    if (text.length !== size || !baseline.tr.insertText(text, from, to).doc.eq(proposed.doc))
-      return null;
+    return text.length === size ? text : null;
+  };
+  const selectedReplacement = (baseline: EditorState, proposed: EditorState) => {
+    const { from, to } = baseline.selection;
+    const text = selectedText(baseline, proposed);
+    if (text === null || !baseline.tr.insertText(text, from, to).doc.eq(proposed.doc)) return null;
     return { from, to, text, semantic: "composition" as const };
   };
   const replacement = (baseline: EditorState, proposed: EditorState) => {
@@ -103,15 +114,9 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       commit && pending.type === "provisional" ? replacement(pending.baseline, view.state) : null;
     // A final beforeinput carries the whole selected replacement, even when
     // the native observer produced a smaller diff with a shared prefix/suffix.
-    const { from, to } = pending.baseline.selection;
-    const size = view.state.doc.content.size - pending.baseline.doc.content.size + to - from;
-    const text =
-      size >= 0 && from + size <= view.state.doc.content.size
-        ? view.state.doc.textBetween(from, from + size, "", "")
-        : null;
     // Acceptance is validated by replacement(); payload identity depends on text,
     // including when the accepted minimal diff retains non-inclusive metadata.
-    const committedText = text !== null && text.length === size ? text : null;
+    const committedText = selectedText(pending.baseline, view.state);
     state = { type: "committed" };
     if (!view.isDestroyed) {
       // Recovery may finish without a native end event (for example a refused
@@ -121,14 +126,14 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     }
     options.end();
     if (!commit || view.isDestroyed) return { type: "cancelled" };
-    if (pending.type === "refused") return { type: "refused" };
+    if (pending.type === "refused") return { type: "refused", text: pending.text };
     if (input?.from === input?.to && input?.text === "")
       return { type: "committed", text: committedText };
     if (!input) {
       options.refuse(
         "Composition changed unsupported content; the canonical document was restored.",
       );
-      return { type: "refused" };
+      return { type: "refused", text: committedText };
     }
     options.replace(input);
     return { type: "committed", text: committedText };
@@ -153,7 +158,27 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     },
     ended: (view: EditorView) => {
       if (state.type === "committed") return;
-      state = { type: state.type, baseline: state.baseline, view: state.view, phase: "ended" };
+      switch (state.type) {
+        case "provisional":
+          state = {
+            type: "provisional",
+            baseline: state.baseline,
+            view: state.view,
+            phase: "ended",
+          };
+          break;
+        case "refused":
+          state = {
+            type: "refused",
+            baseline: state.baseline,
+            view: state.view,
+            phase: "ended",
+            text: state.text,
+          };
+          break;
+        default:
+          state satisfies never;
+      }
       schedule(view);
     },
     authorizeNative: (view: EditorView) => {
@@ -200,14 +225,26 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       });
       if (applied.isErr()) {
         view.updateState(state.baseline);
-        state = { type: "refused", baseline: state.baseline, view: state.view, phase: state.phase };
+        state = {
+          type: "refused",
+          baseline: state.baseline,
+          view: state.view,
+          phase: state.phase,
+          text: null,
+        };
         options.refuse(applied.error.message);
         return true;
       }
       // Validate the entire proposal against one plain replacement, including plugin output.
       if (!replacement(state.baseline, applied.value.state)) {
         view.updateState(state.baseline);
-        state = { type: "refused", baseline: state.baseline, view: state.view, phase: state.phase };
+        state = {
+          type: "refused",
+          baseline: state.baseline,
+          view: state.view,
+          phase: state.phase,
+          text: selectedText(state.baseline, applied.value.state),
+        };
         options.refuse(
           "Composition changed unsupported content; the canonical document was restored.",
         );

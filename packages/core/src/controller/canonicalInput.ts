@@ -323,14 +323,15 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         if (composition.active) {
           const nativeFinal =
             event.inputType === "insertText" || event.inputType === "insertReplacementText";
+          const nativeStillComposing = view.composing;
           const recovered = composition.recover(view);
           proposal = { type: "idle" };
           // Recovery already handled the native proposal. Its matching final
           // payload must not become a second typing edit after PM exits IME.
           if (
             nativeFinal &&
-            (recovered.type === "refused" ||
-              (recovered.type === "committed" &&
+            ((recovered.type === "refused" && nativeStillComposing) ||
+              ((recovered.type === "committed" || recovered.type === "refused") &&
                 recovered.text !== null &&
                 recovered.text === event.data))
           ) {
