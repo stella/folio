@@ -189,6 +189,8 @@ struct ParagraphBuilder {
     resolved_text_base: Option<Result<TextProperties, ()>>,
     paragraph_mark_revision: Option<ParagraphMarkRevision>,
     paragraph_mark_review_indices: Vec<usize>,
+    property_review_indices: Vec<usize>,
+    mark_property_review_indices: Vec<usize>,
 }
 
 impl ParagraphBuilder {
@@ -449,6 +451,7 @@ struct RunFrame {
     character_style_id: Option<String>,
     hidden: bool,
     direct_child_count: usize,
+    property_review_indices: Vec<usize>,
 }
 
 struct RunPropertiesFrame {
@@ -950,6 +953,26 @@ impl ProjectionState {
             _ => {}
         }
         if is_change_snapshot(name) {
+            if let Some(review_index) = attributed_revision {
+                match (name, self.frames.last()) {
+                    (b"rPrChange", Some(Frame::RunProperties(properties))) => {
+                        let run_frame = properties.run_frame;
+                        if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
+                            run.property_review_indices.push(review_index);
+                        } else if self.inside_paragraph_mark_properties()
+                            && let Some(paragraph) = self.current_paragraph.as_mut()
+                        {
+                            paragraph.mark_property_review_indices.push(review_index);
+                        }
+                    }
+                    (b"pPrChange", Some(Frame::ParagraphProperties)) => {
+                        if let Some(paragraph) = self.current_paragraph.as_mut() {
+                            paragraph.property_review_indices.push(review_index);
+                        }
+                    }
+                    _ => {}
+                }
+            }
             if self.revision_view == RevisionView::Original {
                 self.revision_unsupported
                     .insert(RevisionUnsupportedReason::UnsupportedRevisionMarkup);
@@ -1058,6 +1081,8 @@ impl ProjectionState {
                     resolved_text_base: None,
                     paragraph_mark_revision: None,
                     paragraph_mark_review_indices: Vec::new(),
+                    property_review_indices: Vec::new(),
+                    mark_property_review_indices: Vec::new(),
                 });
                 Frame::Paragraph
             }
@@ -1067,6 +1092,7 @@ impl ProjectionState {
                 character_style_id: None,
                 hidden: false,
                 direct_child_count: 0,
+                property_review_indices: Vec::new(),
             }),
             b"rPr" => {
                 let Some((run_frame, child_index)) = direct_run_child else {
@@ -1367,6 +1393,24 @@ impl ProjectionState {
                     &paragraph.paragraph_mark_review_indices,
                     mark,
                 )?;
+                self.locate_property_revisions(
+                    &paragraph.property_review_indices,
+                    ReviewSpan {
+                        start: ReviewPoint {
+                            paragraph_ordinal: ordinal,
+                            utf8: 0,
+                            utf16: 0,
+                        },
+                        end: mark,
+                    },
+                )?;
+                self.locate_property_revisions(
+                    &paragraph.mark_property_review_indices,
+                    ReviewSpan {
+                        start: mark,
+                        end: mark,
+                    },
+                )?;
                 self.paragraphs.push(RawProjectedParagraph {
                     ordinal: self.paragraphs.len(),
                     package_paragraph_id: paragraph.package_paragraph_id,
@@ -1390,8 +1434,12 @@ impl ProjectionState {
                 PseudoTextKind::MathText => self.append_pseudo_text(&frame.text)?,
                 PseudoTextKind::Instruction => self.append_field_instruction(&frame.text),
             },
-            Frame::Run(run) if !run.hidden && !self.pseudo_text_is_suppressed() => {
-                if let Some(paragraph) = self.current_paragraph.as_mut() {
+            Frame::Run(run) => {
+                let start = self.current_review_point();
+                if !run.hidden
+                    && !self.pseudo_text_is_suppressed()
+                    && let Some(paragraph) = self.current_paragraph.as_mut()
+                {
                     let effective = match styles {
                         Ok(styles) => {
                             let resolved = if run.character_style_id.is_none()
@@ -1415,6 +1463,12 @@ impl ProjectionState {
                         Err(_) => run.direct_styles,
                     };
                     paragraph.append(&run.text, effective)?;
+                }
+                if let (Some(start), Some(end)) = (start, self.current_review_point()) {
+                    self.locate_property_revisions(
+                        &run.property_review_indices,
+                        ReviewSpan { start, end },
+                    )?;
                 }
             }
             Frame::Revision(revision) => self.finish_attributed_revision(revision)?,
@@ -1477,6 +1531,27 @@ impl ProjectionState {
             span: ReviewSpan { start, end },
             payload: RevisionPayload::from_text(revision.text),
         });
+        Ok(())
+    }
+
+    fn locate_property_revisions(
+        &mut self,
+        review_indices: &[usize],
+        span: ReviewSpan,
+    ) -> Result<(), ProjectionError> {
+        let ReviewRevisionCollection::Complete { revisions, .. } = &mut self.review_revisions
+        else {
+            return Ok(());
+        };
+        for &review_index in review_indices {
+            revisions
+                .get_mut(review_index)
+                .ok_or(ProjectionError::InvalidDocumentXml)?
+                .content = ReviewDetail::Known(RevisionContent {
+                span,
+                payload: RevisionPayload::FormattingOnly,
+            });
+        }
         Ok(())
     }
 
