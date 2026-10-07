@@ -1239,9 +1239,7 @@ export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguous
 * deletion is accepted. Reject that deletion first, or insert a new block
 * next to it.
 */
-"pendingDeletion" |
-/** Resolve the removed paragraph mark before editing its properties separately. */
-"pendingParagraphMarkDeletion";
+"pendingDeletion";
 
 // @public
 export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {

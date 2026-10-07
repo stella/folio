@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./canonicalTimerProbe";
 import fc from "fast-check";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
@@ -6,10 +7,14 @@ import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import { checkCanonicalBrowserHistory } from "./canonicalBrowserHistoryOracle";
 import {
   CANONICAL_BROWSER_HISTORY_REPLAYS,
+  CANONICAL_BROWSER_SAVE_REPLAYS,
   canonicalBrowserTraceArbitrary,
 } from "./canonicalBrowserTrace";
 
-for (const { seed, path, kinds } of CANONICAL_BROWSER_HISTORY_REPLAYS) {
+for (const { seed, path, kinds } of [
+  ...CANONICAL_BROWSER_HISTORY_REPLAYS,
+  ...CANONICAL_BROWSER_SAVE_REPLAYS,
+]) {
   test(`canonical history replay ${seed} ${path}`, async ({ page }) => {
     const traces = fc.sample(canonicalBrowserTraceArbitrary, { seed, path, numRuns: 1 });
     expect(traces).toHaveLength(1);

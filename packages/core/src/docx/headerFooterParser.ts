@@ -37,7 +37,6 @@ import type {
   RelationshipMap,
   MediaFile,
 } from "../types/document";
-import { blockPlainText } from "./blockPlainText";
 import { parseBlockContent } from "./blockContentParser";
 import { assignHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import type { NumberingMap } from "./numberingParser";
@@ -326,17 +325,6 @@ export function buildHeaderFooterMap(
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
-
-/**
- * Get plain text content of a header/footer.
- *
- * Shares one walk with the note stories: this used to read only text runs, so a
- * header's fields, hyperlinks, tabs and breaks were silently absent from its
- * text while the same paragraph in a footnote read in full.
- */
-export function getHeaderFooterText(hf: HeaderFooter): string {
-  return blockPlainText(hf.content);
-}
 
 /**
  * Check if header/footer is empty (no content)

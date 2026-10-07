@@ -521,88 +521,10 @@ function getNestedTables(table: Table): Table[] {
 }
 
 /**
- * Get plain text from entire document body
- */
-export function getDocumentText(body: DocumentBody): string {
-  const lines: string[] = [];
-
-  for (const block of body.content) {
-    if (block.type === "paragraph") {
-      lines.push(getParagraphText(block));
-    } else if (block.type === "table") {
-      lines.push(getTableText(block));
-    } else if (block.type === "blockSdt" || block.type === "blockCustomXml") {
-      lines.push(getTextFromBlocks(block.content));
-    }
-  }
-
-  return lines.join("\n");
-}
-
-const getTextFromBlocks = (blocks: readonly BlockContent[]): string =>
-  blocks
-    .flatMap((block) => {
-      if (block.type === "paragraph") {
-        return [getParagraphText(block)];
-      }
-      if (block.type === "table") {
-        return [getTableText(block)];
-      }
-      return block.type === "blockSdt" || block.type === "blockCustomXml"
-        ? [getTextFromBlocks(block.content)]
-        : [];
-    })
-    .join("\n");
-
-/**
- * Get plain text from a table
- */
-function getTableText(table: Table): string {
-  const lines: string[] = [];
-
-  for (const row of table.rows) {
-    const rowTexts: string[] = [];
-    for (const cell of row.cells) {
-      const cellTexts: string[] = [];
-      for (const content of cell.content) {
-        if (content.type === "paragraph") {
-          cellTexts.push(getParagraphText(content));
-        } else if (content.type === "table") {
-          cellTexts.push(getTableText(content));
-        } else if (content.type === "blockSdt" || content.type === "blockCustomXml") {
-          cellTexts.push(getTextFromBlocks(content.content));
-        }
-      }
-      rowTexts.push(cellTexts.join("\n"));
-    }
-    lines.push(rowTexts.join("\t"));
-  }
-
-  return lines.join("\n");
-}
-
-/**
  * Count total paragraphs in document
  */
 export function getParagraphCount(body: DocumentBody): number {
   return getAllParagraphs(body).length;
-}
-
-/**
- * Count total words in document (approximate)
- */
-export function getWordCount(body: DocumentBody): number {
-  const text = getDocumentText(body);
-  // Simple word counting - split by whitespace
-  const words = text.trim().split(/\s+/u);
-  return words.length > 0 && words[0] !== "" ? words.length : 0;
-}
-
-/**
- * Count total characters in document
- */
-export function getCharacterCount(body: DocumentBody): number {
-  return getDocumentText(body).length;
 }
 
 /**

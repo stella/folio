@@ -9,7 +9,7 @@ import {
   FolioDocxReviewer,
   type FolioDocumentOperationBatch,
 } from "../../packages/core/src/server";
-import { getDocumentText } from "../../packages/core/src/docx/documentParser";
+import { getDocumentText } from "../../packages/core/src/docx/storyPlainText";
 import {
   failureMarker,
   logFailureMarker,
