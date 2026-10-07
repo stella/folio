@@ -84,4 +84,13 @@ describe("runFolioCli", () => {
     expect(command.stdout()).toContain("--match-case");
     expect(command.stdout()).toContain("--expect-version");
   });
+
+  test("shows a worked operation for suggest", async () => {
+    const help = captureIo();
+
+    expect(await runFolioCli(["suggest", "--help"], help.io)).toBe(0);
+
+    expect(help.stdout()).toContain('"type":"replaceInBlock"');
+    expect(help.stdout()).toContain("folio find contract.docx --query");
+  });
 });
