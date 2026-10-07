@@ -149,6 +149,7 @@ const buildConfig = ({ pkg, entry, reportDir, tempDir }: BuildConfigOptions): Ex
   const packageJsonFullPath = path.join(pkg.root, "package.json");
   return ExtractorConfig.prepare({
     configObject: {
+      newlineKind: "lf",
       mainEntryPointFilePath: path.join(pkg.root, entry.dts),
       apiReport: {
         enabled: true,
