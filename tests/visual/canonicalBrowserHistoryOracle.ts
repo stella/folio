@@ -41,6 +41,13 @@ export const checkCanonicalBrowserHistory = async ({
   actions,
   missing,
 }: CanonicalBrowserHistoryOptions): Promise<number> => {
+  // The first case starts with a lazy view. Create it without loading or
+  // resetting an existing owner, so this check still detects cross-case leaks.
+  expect(await page.evaluate(() => globalThis.__folioCanonical?.ensureView())).toBe(true);
+  await page.waitForFunction(() => {
+    const composing = globalThis.__folioCanonical?.snapshot().composing;
+    return composing !== undefined && composing !== null;
+  });
   expect(
     await page.evaluate(() => globalThis.__folioCanonical?.snapshot().composing),
     "case must start outside native composition",

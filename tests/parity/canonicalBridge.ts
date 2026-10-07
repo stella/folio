@@ -26,6 +26,12 @@ type CanonicalPlaygroundRef = {
 
 /** Private interaction-test bridge shared by both playgrounds. */
 export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null) => ({
+  ensureView: () => {
+    const ref = getRef();
+    if (!ref) return false;
+    ref.ensureEditorView();
+    return true;
+  },
   load: async (bytes: number[]) => {
     const ref = getRef();
     if (!ref) return false;

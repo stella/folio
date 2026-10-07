@@ -9,6 +9,31 @@ import {
   canonicalBrowserTraceArbitrary,
 } from "./canonicalBrowserTrace";
 
+test("canonical history checks a lazy first view and rejects composition before reload", async ({
+  page,
+}) => {
+  await page.goto("/?session=canonical");
+  await page.waitForSelector(".layout-page");
+  expect(await page.evaluate(() => globalThis.__folioCanonical?.snapshot().composing)).toBe(null);
+  const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
+  const options = {
+    page,
+    source: [...new Uint8Array(source)],
+    actions: [],
+    missing: createMissingOpBurndown(),
+  };
+  expect(await checkCanonicalBrowserHistory(options)).toBe(0);
+  expect(await page.evaluate(() => globalThis.__folioCanonical?.snapshot().composing)).toBe(false);
+  await page.locator(".ProseMirror").evaluate((element) => {
+    element.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+  });
+  await expect(checkCanonicalBrowserHistory(options)).rejects.toThrow(
+    "case must start outside native composition",
+  );
+  // The failed invariant must not load/reset the owner and hide the leak.
+  expect(await page.evaluate(() => globalThis.__folioCanonical?.snapshot().composing)).toBe(true);
+});
+
 for (const { seed, path, kinds } of CANONICAL_BROWSER_HISTORY_REPLAYS) {
   test(`canonical history replay ${seed} ${path}`, async ({ page }) => {
     if (seed === 197 && path === "1") test.setTimeout(120_000);
