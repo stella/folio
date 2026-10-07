@@ -54,7 +54,7 @@ export const carriedParagraphProperties = ({
   source,
   target,
   keep,
-}: CarriedParagraphPropertiesOptions) =>
+}: CarriedParagraphPropertiesOptions): RecordedFormatting =>
   Object.fromEntries([
     ...Object.entries(paragraphPropertiesSnapshot(source)).filter(([key]) => !keep?.has(key)),
     ...Object.entries(paragraphPropertiesSnapshot(target)).filter(([key]) => keep?.has(key)),
@@ -83,7 +83,11 @@ export const carryParagraphProperties = ({
     return { tr, changed: false, tracked: false };
   }
   const previousFormatting = paragraphPropertiesSnapshot(target);
-  const formatting = carriedParagraphProperties({ source, target, keep });
+  const formatting = carriedParagraphProperties({
+    source,
+    target,
+    ...(keep === undefined ? {} : { keep }),
+  });
   if (JSON.stringify(previousFormatting) === JSON.stringify(formatting)) {
     return { tr, changed: false, tracked: false };
   }
@@ -99,7 +103,7 @@ export const carryParagraphProperties = ({
           {
             type: "paragraphPropertyChange",
             info: { id: -1, author: "", date: "1970-01-01T00:00:00Z" },
-            previousFormatting: formatting as RecordedFormatting,
+            previousFormatting: formatting,
           } satisfies ParagraphPropertyChangeAttrs,
         ],
       },
