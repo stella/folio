@@ -100,6 +100,7 @@ export const checkCanonicalBrowserHistory = async ({
     expect(reopened.package.document.content).toEqual(after.document.package.document.content);
   }
   const final = await snapshot(page);
+  await assertCanonicalInputTimersSettled(page);
   const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
   if (!saved) throw new TypeError("Canonical save unavailable");
   expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), saved)).toBe(
@@ -110,5 +111,6 @@ export const checkCanonicalBrowserHistory = async ({
     final.document.package.document.content,
   );
   expect(reloaded.canUndo).toBe(false);
+  await assertCanonicalInputTimersSettled(page);
   return applied;
 };
