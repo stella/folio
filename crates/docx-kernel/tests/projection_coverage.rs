@@ -197,9 +197,15 @@ enum TableLevel {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct TablePropertyChanges {
-    table: bool,
+    table: TableSnapshots,
     row: bool,
     cell: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct TableSnapshots {
+    properties: bool,
+    grid: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -371,6 +377,7 @@ fn block(block_depth: u32, inline_depth: u32) -> BoxedStrategy<Block> {
             proptest::bool::weighted(0.1),
             proptest::bool::weighted(0.1),
             proptest::bool::weighted(0.1),
+            proptest::bool::weighted(0.1),
         ),
         proptest::option::weighted(
             0.2,
@@ -378,10 +385,17 @@ fn block(block_depth: u32, inline_depth: u32) -> BoxedStrategy<Block> {
         ),
         collection::vec(children.clone(), 1..3),
     )
-        .prop_map(|(revision, (table, row, cell), bookmark, cells)| {
+        .prop_map(|(revision, (table, grid, row, cell), bookmark, cells)| {
             Block::Table(Table {
                 revision,
-                property_changes: TablePropertyChanges { table, row, cell },
+                property_changes: TablePropertyChanges {
+                    table: TableSnapshots {
+                        properties: table,
+                        grid,
+                    },
+                    row,
+                    cell,
+                },
                 bookmark: bookmark.map(|level| (level, 0)),
                 cells,
             })
@@ -748,10 +762,14 @@ impl Markup {
 
     fn table(&mut self, table: &Table) {
         self.xml.push_str("<w:tbl><w:tblPr>");
-        if table.property_changes.table {
+        if table.property_changes.table.properties {
             self.change("tblPrChange", "<w:tblPr/>");
         }
-        self.xml.push_str("</w:tblPr><w:tblGrid/>");
+        self.xml.push_str("</w:tblPr><w:tblGrid>");
+        if table.property_changes.table.grid {
+            self.change("tblGridChange", "<w:tblGrid/>");
+        }
+        self.xml.push_str("</w:tblGrid>");
         if let Some((TableLevel::Table, id)) = table.bookmark {
             self.bookmark_start(id);
         }
@@ -932,6 +950,7 @@ enum Element {
     ParagraphProperties,
     Table,
     TableProperties,
+    TableGrid,
     Row,
     RowProperties,
     Cell,
@@ -962,6 +981,7 @@ enum Element {
     RunPropertiesChange,
     ParagraphPropertiesChange,
     TablePropertiesChange,
+    TableGridChange,
     TableRowPropertiesChange,
     TableCellPropertiesChange,
     SectionPropertiesChange,
@@ -978,11 +998,12 @@ enum Element {
 }
 
 impl Element {
-    const ALL: [Self; 47] = [
+    const ALL: [Self; 49] = [
         Self::Paragraph,
         Self::ParagraphProperties,
         Self::Table,
         Self::TableProperties,
+        Self::TableGrid,
         Self::Row,
         Self::RowProperties,
         Self::Cell,
@@ -1013,6 +1034,7 @@ impl Element {
         Self::RunPropertiesChange,
         Self::ParagraphPropertiesChange,
         Self::TablePropertiesChange,
+        Self::TableGridChange,
         Self::TableRowPropertiesChange,
         Self::TableCellPropertiesChange,
         Self::SectionPropertiesChange,
@@ -1034,6 +1056,7 @@ impl Element {
             Self::ParagraphProperties => "pPr",
             Self::Table => "tbl",
             Self::TableProperties => "tblPr",
+            Self::TableGrid => "tblGrid",
             Self::Row => "tr",
             Self::RowProperties => "trPr",
             Self::Cell => "tc",
@@ -1064,6 +1087,7 @@ impl Element {
             Self::RunPropertiesChange => "rPrChange",
             Self::ParagraphPropertiesChange => "pPrChange",
             Self::TablePropertiesChange => "tblPrChange",
+            Self::TableGridChange => "tblGridChange",
             Self::TableRowPropertiesChange => "trPrChange",
             Self::TableCellPropertiesChange => "tcPrChange",
             Self::SectionPropertiesChange => "sectPrChange",
@@ -1151,8 +1175,9 @@ impl Element {
             Self::RunPropertiesChange => vec![C::RunProperties, C::ParagraphMarkProperties],
             Self::ParagraphProperties => vec![C::Paragraph],
             Self::ParagraphPropertiesChange => vec![C::ParagraphProperties],
-            Self::TableProperties | Self::Row => vec![C::Table],
+            Self::TableProperties | Self::TableGrid | Self::Row => vec![C::Table],
             Self::TablePropertiesChange => vec![C::TableProperties],
+            Self::TableGridChange => vec![C::TableGrid],
             Self::RowProperties | Self::Cell => vec![C::TableRow],
             Self::TableRowPropertiesChange => vec![C::TableRowProperties],
             Self::CellProperties => vec![C::TableCell],
@@ -1191,6 +1216,7 @@ enum Context {
     ParagraphProperties,
     ParagraphMarkProperties,
     TableProperties,
+    TableGrid,
     TableRowProperties,
     TableCellProperties,
     SectionProperties,
@@ -1275,10 +1301,6 @@ const UNGENERATED_DISPATCH: &[(&str, &str)] = &[
     ("oMath", "math zone; tests/projection.rs"),
     ("oMathPara", "math zone; tests/projection.rs"),
     (
-        "tblGridChange",
-        "grid snapshot; declared UnsupportedRevisionMarkup",
-    ),
-    (
         "customXmlDelRangeStart",
         "custom XML revision range; declared UnsupportedRevisionMarkup",
     ),
@@ -1315,7 +1337,6 @@ const UNGENERATED_DISPATCH: &[(&str, &str)] = &[
 /// Generated elements the parser handles through its default arm: they are
 /// transparent containers or markers whose content the walk still visits.
 const DEFAULT_ARM: &[Element] = &[
-    Element::TableProperties,
     Element::SectionProperties,
     Element::SmartTag,
     Element::EndnoteReference,
@@ -1455,7 +1476,7 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
             Event::Empty(element) => (element, true),
             Event::End(_) => {
                 let frame = stack.pop().unwrap();
-                if frame.name.ends_with("PrChange") {
+                if frame.name.ends_with("PrChange") || frame.name == "tblGridChange" {
                     snapshot_depth -= 1;
                 }
                 continue;
@@ -1501,6 +1522,7 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
             "trPr" => Some(Context::TableRowProperties),
             "tcPr" => Some(Context::TableCellProperties),
             "tblPr" => Some(Context::TableProperties),
+            "tblGrid" => Some(Context::TableGrid),
             "sectPr" => Some(Context::SectionProperties),
             "rPr" => Some(if parent_is_paragraph_properties {
                 Context::ParagraphMarkProperties
@@ -1523,11 +1545,11 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
             }
             _ => None,
         };
-        if name.ends_with("PrChange") {
+        if name.ends_with("PrChange") || name == "tblGridChange" {
             snapshot_depth += 1;
         }
         if empty {
-            if name.ends_with("PrChange") {
+            if name.ends_with("PrChange") || name == "tblGridChange" {
                 snapshot_depth -= 1;
             }
             continue;
@@ -1801,22 +1823,33 @@ impl Model {
     fn table(&mut self, table: &Table) {
         let ordinal = self.next_table;
         self.next_table += 1;
-        if table.property_changes.table {
+        let start = SourcePoint {
+            paragraph: self.paragraphs.len(),
+            utf8: 0,
+            utf16: 0,
+        };
+        let table_snapshot = table.property_changes.table.properties.then(|| {
             self.snapshot(
                 RevisionFactKind::TablePropertiesChange,
-                Site::TableStructure,
+                Site::PropertyChange,
             );
-        }
+            self.revisions.len() - 1
+        });
+        let grid_snapshot = table.property_changes.table.grid.then(|| {
+            self.snapshot(RevisionFactKind::TableGridChange, Site::PropertyChange);
+            self.revisions.len() - 1
+        });
         if let Some(TableRevision::Row(kind)) = table.revision {
             self.site(kind.kind(), Site::TableStructure);
             self.shapes.insert(Shape::TableStructureRevision);
         }
-        if table.property_changes.row {
+        let row_snapshot = table.property_changes.row.then(|| {
             self.snapshot(
                 RevisionFactKind::TableRowPropertiesChange,
-                Site::TableStructure,
+                Site::PropertyChange,
             );
-        }
+            self.revisions.len() - 1
+        });
         for (column, cell) in table.cells.iter().enumerate() {
             let cell_kind = match table.revision {
                 Some(TableRevision::CellInsertion) => Some(RevisionFactKind::CellInsertion),
@@ -1828,13 +1861,30 @@ impl Model {
                 self.site(kind, Site::TableStructure);
                 self.shapes.insert(Shape::TableStructureRevision);
             }
-            if table.property_changes.cell {
+            let cell_start = SourcePoint {
+                paragraph: self.paragraphs.len(),
+                utf8: 0,
+                utf16: 0,
+            };
+            let cell_snapshot = table.property_changes.cell.then(|| {
                 self.snapshot(
                     RevisionFactKind::TableCellPropertiesChange,
-                    Site::TableStructure,
+                    Site::PropertyChange,
                 );
-            }
+                self.revisions.len() - 1
+            });
             self.blocks(cell, Some((ordinal, column)));
+            if let Some(index) = cell_snapshot {
+                self.revisions[index].located =
+                    Some((cell_start, self.here(), RevisionPayload::FormattingOnly));
+            }
+        }
+        for index in [table_snapshot, grid_snapshot, row_snapshot]
+            .into_iter()
+            .flatten()
+        {
+            self.revisions[index].located =
+                Some((start, self.here(), RevisionPayload::FormattingOnly));
         }
     }
 
@@ -1971,8 +2021,11 @@ impl Model {
                     self.textbox_inlines(&paragraph.inlines);
                 }
                 Block::Table(table) => {
-                    if table.property_changes.table {
+                    if table.property_changes.table.properties {
                         self.site(RevisionFactKind::TablePropertiesChange, Site::Textbox);
+                    }
+                    if table.property_changes.table.grid {
+                        self.site(RevisionFactKind::TableGridChange, Site::Textbox);
                     }
                     if let Some(TableRevision::Row(kind)) = table.revision {
                         self.site(kind.kind(), Site::Textbox);
