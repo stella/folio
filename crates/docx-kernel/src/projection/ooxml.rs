@@ -269,21 +269,14 @@ impl ParagraphBuilder {
         if start_utf16 >= end_utf16 {
             return;
         }
-        if let Some(previous) = self
-            .formatting
-            .iter_mut()
-            .rev()
-            .find(|span| span.style == style)
-            && previous.end_utf16 == start_utf16
-        {
-            previous.end_utf16 = end_utf16;
-            return;
-        }
-        self.formatting.push(TextFormattingSpan {
-            start_utf16,
-            end_utf16,
-            style,
-        });
+        append_formatting_span(
+            &mut self.formatting,
+            TextFormattingSpan {
+                start_utf16,
+                end_utf16,
+                style,
+            },
+        );
     }
 
     fn truncate(&mut self, utf8_len: usize, utf16_len: u32) {
@@ -2242,6 +2235,19 @@ const fn paragraph_break_is_removed(
     )
 }
 
+fn append_formatting_span(spans: &mut Vec<TextFormattingSpan>, span: TextFormattingSpan) {
+    if let Some(adjacent) = spans
+        .iter_mut()
+        .rev()
+        .find(|previous| previous.style == span.style)
+        && adjacent.end_utf16 == span.start_utf16
+    {
+        adjacent.end_utf16 = span.end_utf16;
+        return;
+    }
+    spans.push(span);
+}
+
 /// Merges paragraphs whose break the selected view removes. When any merge
 /// happens, returns where each source paragraph starts in the merged text, so
 /// review points recorded against source paragraphs can be translated.
@@ -2287,7 +2293,7 @@ fn normalize_paragraph_revision_view(
                     .end_utf16
                     .checked_add(utf16_offset)
                     .ok_or(ProjectionError::InvalidDocumentXml)?;
-                previous.formatting.push(span);
+                append_formatting_span(&mut previous.formatting, span);
             }
             previous.text.push_str(&paragraph.text);
             previous.utf16_len = previous
