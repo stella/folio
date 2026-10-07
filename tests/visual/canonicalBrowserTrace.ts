@@ -33,3 +33,12 @@ export const CANONICAL_BROWSER_HISTORY_REPLAYS = [
   { seed: 197, path: "1:1:2:2:2", kinds: ["typing", "pasteHtml"] },
   { seed: 557, path: "2:2:0:1", kinds: ["backspace", "pasteListHtml"] },
 ] as const;
+
+export const CANONICAL_BROWSER_SAVE_REPLAYS = [
+  { seed: 11, path: "2:1:1:0:1:1", kinds: ["pasteListHtml", "pastePlain"] },
+  { seed: 83, path: "1:1:1:1:1:1:1", kinds: ["pasteListHtml", "historyBurst"] },
+  { seed: 131, path: "3:1:2", kinds: ["pasteListHtml", "undo"] },
+  { seed: 263, path: "2:1:0:0:0", kinds: ["pasteListHtml", "cut"] },
+  { seed: 557, path: "1:1:0:0", kinds: ["pasteListHtml", "enter"] },
+  { seed: 1791183757, path: "5:1:1", kinds: ["pasteListHtml", "pasteHtml"] },
+] as const;

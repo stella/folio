@@ -1,11 +1,17 @@
 import { expect, type Page } from "@playwright/test";
+import { Result } from "better-result";
+import { captureCanonicalOracleFailure } from "../parity/canonicalOracleFailure";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import { BROWSER_INPUT_ACTION_DISPOSITIONS, type BrowserInputAction } from "./browserInputTrace";
 import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
 import type {} from "../parity/canonicalBridge";
-import type {} from "../parity/canonicalFuzzErrors";
+import {
+  isCanonicalSaveFallback,
+  type CanonicalFuzzObservation,
+  type CanonicalFuzzPhase,
+} from "../parity/canonicalFuzzErrors";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const snapshot = async (page: Page) => {
@@ -34,13 +40,30 @@ type CanonicalBrowserHistoryOptions = {
   missing: ReturnType<typeof createMissingOpBurndown>;
 };
 
-/** One history oracle for nightly properties and deterministic interaction replays. */
-export const checkCanonicalBrowserHistory = async ({
+type CanonicalBrowserHistoryRunOptions = CanonicalBrowserHistoryOptions & {
+  observations: CanonicalFuzzObservation[];
+};
+
+const runCanonicalBrowserHistory = async ({
   page,
   source,
   actions,
   missing,
-}: CanonicalBrowserHistoryOptions): Promise<number> => {
+  observations,
+}: CanonicalBrowserHistoryRunOptions): Promise<number> => {
+  let observation: CanonicalFuzzObservation = { phase: { type: "load" }, errors: [] };
+  const beginPhase = async (phase: CanonicalFuzzPhase) => {
+    observation = { phase, errors: [] };
+    observations.push(observation);
+    await page.evaluate((current) => {
+      globalThis.__folioCanonicalFuzzPhase = current;
+    }, phase);
+  };
+  const collectErrors = async () => {
+    observation.errors = await drainErrors(page);
+    return observation.errors;
+  };
+  await beginPhase({ type: "load" });
   // The first case starts with a lazy view. Create it without loading or
   // resetting an existing owner, so this check still detects cross-case leaks.
   expect(await page.evaluate(() => globalThis.__folioCanonical?.ensureView())).toBe(true);
@@ -58,18 +81,19 @@ export const checkCanonicalBrowserHistory = async ({
   expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
     true,
   );
-  await drainErrors(page);
+  expect(await collectErrors()).toEqual([]);
   expect(await page.evaluate(() => globalThis.__folioCanonical?.select(1, 6))).toBe(true);
   const baseline = await snapshot(page);
   expect(baseline.canUndo).toBe(false);
   expect(baseline.canRedo).toBe(false);
   expect(baseline.selection).toEqual({ from: 1, to: 6 });
   let applied = 0;
-  for (const action of actions) {
+  for (const [index, action] of actions.entries()) {
     const before = await snapshot(page);
+    await beginPhase({ type: "input", index, action: action.kind });
     await driveCanonicalBrowserInput(page, action);
     const after = await snapshot(page);
-    const errors = await drainErrors(page);
+    const errors = await collectErrors();
     for (const error of errors) {
       expect(error.type).toBe("CanonicalSessionRefusalError");
       missing.record(action.kind);
@@ -92,36 +116,63 @@ export const checkCanonicalBrowserHistory = async ({
       JSON.stringify(after.document) !== JSON.stringify(before.document)
     ) {
       applied++;
+      await beginPhase({ type: "undo", index, action: action.kind });
       await page.keyboard.press(`${MODIFIER}+z`);
       const undone = await snapshot(page);
+      expect(await collectErrors()).toEqual([]);
       expect(undone.document).toEqual(before.document);
       expect(undone.projectionJSON).toEqual(before.projectionJSON);
       expect(undone.selection).toEqual(before.selection);
+      await beginPhase({ type: "redo", index, action: action.kind });
       await page.keyboard.press(`${MODIFIER}+Shift+z`);
       const redone = await snapshot(page);
+      expect(await collectErrors()).toEqual([]);
       expect(redone.document).toEqual(after.document);
       expect(redone.projectionJSON).toEqual(after.projectionJSON);
       expect(redone.selection).toEqual(after.selection);
-      expect(await drainErrors(page)).toEqual([]);
     }
+    await beginPhase({ type: "save", index, action: action.kind });
     const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+    expect((await collectErrors()).filter((error) => !isCanonicalSaveFallback(error))).toEqual([]);
     if (!saved) throw new TypeError("Canonical save unavailable");
     expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
     const reopened = structuredClone(
       await parseDocx(new Uint8Array(saved), { preloadFonts: false, detectVariables: false }),
     );
     expect(reopened.package.document.content).toEqual(after.document.package.document.content);
+    expect(reopened.package.numbering).toEqual(after.document.package.numbering);
   }
   const final = await snapshot(page);
+  await beginPhase({ type: "finalSave" });
   const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+  expect((await collectErrors()).filter((error) => !isCanonicalSaveFallback(error))).toEqual([]);
   if (!saved) throw new TypeError("Canonical save unavailable");
+  expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
+  await beginPhase({ type: "reload" });
   expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), saved)).toBe(
     true,
   );
   const reloaded = await snapshot(page);
+  expect(await collectErrors()).toEqual([]);
   expect(reloaded.document.package.document.content).toEqual(
     final.document.package.document.content,
   );
+  expect(reloaded.document.package.numbering).toEqual(final.document.package.numbering);
   expect(reloaded.canUndo).toBe(false);
   return applied;
+};
+
+/** One history oracle for nightly properties and deterministic interaction replays. */
+export const checkCanonicalBrowserHistory = async (options: CanonicalBrowserHistoryOptions) => {
+  const observations: CanonicalFuzzObservation[] = [];
+  const result = await Result.tryPromise({
+    try: () => runCanonicalBrowserHistory({ ...options, observations }),
+    catch: (cause: unknown) => cause,
+  });
+  if (result.isOk()) return result.value;
+  throw await captureCanonicalOracleFailure({
+    cause: result.error,
+    observations,
+    drainErrors: () => drainErrors(options.page),
+  });
 };

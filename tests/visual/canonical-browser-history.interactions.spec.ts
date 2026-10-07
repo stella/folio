@@ -7,6 +7,7 @@ import { checkCanonicalBrowserHistory } from "./canonicalBrowserHistoryOracle";
 import { runBrowserImeLifecycle } from "./browserImeDriver";
 import {
   CANONICAL_BROWSER_HISTORY_REPLAYS,
+  CANONICAL_BROWSER_SAVE_REPLAYS,
   canonicalBrowserTraceArbitrary,
 } from "./canonicalBrowserTrace";
 
@@ -142,7 +143,10 @@ test("canonical history checks a lazy first view and rejects composition before 
   expect(await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing())).toBe(true);
 });
 
-for (const { seed, path, kinds } of CANONICAL_BROWSER_HISTORY_REPLAYS) {
+for (const { seed, path, kinds } of [
+  ...CANONICAL_BROWSER_HISTORY_REPLAYS,
+  ...CANONICAL_BROWSER_SAVE_REPLAYS,
+]) {
   test(`canonical history replay ${seed} ${path}`, async ({ page }) => {
     if (seed === 197 && path === "1") test.setTimeout(120_000);
     const traces = fc.sample(canonicalBrowserTraceArbitrary, { seed, path, numRuns: 1 });
