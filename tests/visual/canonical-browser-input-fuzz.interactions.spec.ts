@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { test } from "../parity/canonicalTest";
+import { test } from "./canonicalTimerProbe";
 import fc from "fast-check";
 import { appendFileSync } from "node:fs";
 

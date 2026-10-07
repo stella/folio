@@ -11,6 +11,7 @@ import {
 } from "../../test/canonical-refusal-rows";
 import { BROWSER_INPUT_ACTION_DISPOSITIONS, type BrowserInputAction } from "./browserInputTrace";
 import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
+import { assertCanonicalInputTimersSettled } from "./canonicalTimerProbe";
 import type {} from "../parity/canonicalBridge";
 import {
   isCanonicalSaveFallback,
@@ -67,6 +68,7 @@ const runCanonicalBrowserHistory = async ({
     observation.errors = await drainErrors(page);
     return observation.errors;
   };
+  await assertCanonicalInputTimersSettled(page);
   await beginPhase({ type: "load" });
   expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
     true,
@@ -143,6 +145,7 @@ const runCanonicalBrowserHistory = async ({
     expect(reopened.package.numbering).toEqual(after.document.package.numbering);
   }
   const final = await snapshot(page);
+  await assertCanonicalInputTimersSettled(page);
   await beginPhase({ type: "finalSave" });
   const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
   expect((await collectErrors()).filter((error) => !isCanonicalSaveFallback(error))).toEqual([]);
@@ -159,6 +162,7 @@ const runCanonicalBrowserHistory = async ({
   );
   expect(reloaded.document.package.numbering).toEqual(final.document.package.numbering);
   expect(reloaded.canUndo).toBe(false);
+  await assertCanonicalInputTimersSettled(page);
   return applied;
 };
 
