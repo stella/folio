@@ -1,5 +1,7 @@
 import { expect, spyOn, test } from "bun:test";
 import { Result } from "better-result";
+import type { Command } from "prosemirror-state";
+import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import {
   canonicalRefusalCaseId,
   declareCanonicalRefusalCases,
@@ -98,4 +100,82 @@ test.each([
   } finally {
     planner.mockRestore();
   }
+});
+
+test("a supported command losing its descriptor fails standing conformance in both modes", async () => {
+  const operation = CONFORMANCE_OPERATIONS.find(({ id }) => id === CASE.operation);
+  if (!operation) throw new TypeError("Descriptor-loss control command is absent");
+  const refusalCases = declareCanonicalRefusalCases(DECLARED_CASES);
+  expect([...refusalCases.values()]).toEqual([[], []]);
+  const options = {
+    shape: documentShape(CASE.shape),
+    operation,
+    placement: CASE.placement,
+    refusalCases,
+  };
+  const control = await runConformanceCase(options);
+  expect(control?.runs).toEqual({ editing: "changed", suggesting: "changed" });
+  expect(control?.violations).toEqual([]);
+  expect(control?.refusals).toEqual([]);
+  let descriptorLossControls = 0;
+  const ablated = await runConformanceCase({
+    ...options,
+    operation: {
+      ...operation,
+      run: ({ view }) => {
+        if (view.authority !== "canonical")
+          throw new TypeError("Descriptor-loss case lost canonical authority");
+        const command = view.commandManager.requireCommand("toggleBold")();
+        const withoutDescriptor: Command = (state, dispatch, editorView) =>
+          command(state, dispatch, editorView);
+        // Preserve the exact command body; only its WeakMap metadata is lost.
+        expect(getCanonicalCommandIntents(command, view.state)?.length).toBeGreaterThan(0);
+        expect(getCanonicalCommandIntents(withoutDescriptor, view.state)).toBeUndefined();
+        descriptorLossControls++;
+        return view.execute(withoutDescriptor);
+      },
+    },
+  });
+  expect(descriptorLossControls).toBe(EDITOR_MODES.length);
+  expect(ablated?.runs).toEqual({ editing: "refused", suggesting: "refused" });
+  expect(ablated?.violations).toEqual(
+    EDITOR_MODES.map((mode) => ({
+      kind: "silent-refusal",
+      mode,
+      detail: `${CANONICAL_GAP.dispatch}: Unclassified native text is unavailable in this session.`,
+    })),
+  );
+  expect(ablated?.refusals.map(({ expectation }) => expectation)).toEqual([
+    "unexpected",
+    "unexpected",
+  ]);
+});
+
+test("unsupported note insertion has an explicit ledger-keyed conformance contract", async () => {
+  const key = { ...CASE, operation: "command:insertFootnote", placement: "caret-middle" } as const;
+  const operation = CONFORMANCE_OPERATIONS.find(({ id }) => id === key.operation);
+  if (!operation) throw new TypeError("Explicit descriptor-gap case is absent");
+  const refusalCases = declareCanonicalRefusalCases(EDITOR_MODES.map((mode) => ({ ...key, mode })));
+  const row = {
+    id: CANONICAL_GAP.commands,
+    gap: CANONICAL_GAP.dispatch,
+    message: "Unclassified native text is unavailable in this session.",
+  };
+  expect([...refusalCases.values()]).toEqual([[row], [row]]);
+  const result = await runConformanceCase({
+    shape: documentShape(key.shape),
+    operation,
+    placement: key.placement,
+    refusalCases,
+  });
+  expect(result?.runs).toEqual({ editing: "refused", suggesting: "refused" });
+  expect(result?.violations).toEqual([]);
+  expect(result?.refusals).toEqual(
+    EDITOR_MODES.map(() => ({
+      gap: row.gap,
+      message: row.message,
+      row: row.id,
+      expectation: "declared",
+    })),
+  );
 });

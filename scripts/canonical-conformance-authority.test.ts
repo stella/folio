@@ -103,3 +103,23 @@ test("random browser conformance is strict canonical; legacy acceptance stays in
   );
   expect(randomBrowserAuthorityProblems("for (const seed of config.seeds) {}")).toHaveLength(1);
 });
+
+test("refusal expectation owners cannot read command descriptor or planner verdicts", () => {
+  const forbiddenImports = (source: string) =>
+    parse(source).statements.flatMap((node) => {
+      if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) return [];
+      const module = node.moduleSpecifier.text;
+      return /(?:^|\/)(?:canonicalCommands|canonicalStructure)(?:\.[cm]?tsx?)?$/u.test(module)
+        ? [module]
+        : [];
+    });
+  for (const owner of ["canonicalEditorHarness", "canonical-conformance-refusals"]) {
+    const source = readFileSync(new URL(`../test/${owner}.ts`, import.meta.url), "utf8");
+    expect(forbiddenImports(source)).toEqual([]);
+    for (const module of ["canonicalCommands", "canonicalStructure"]) {
+      expect(
+        forbiddenImports(`${source}\nimport { verdict } from "../owner/${module}";`),
+      ).toHaveLength(1);
+    }
+  }
+});

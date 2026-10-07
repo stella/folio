@@ -32,6 +32,72 @@ const REFUSAL_ROWS = {
   },
 } as const satisfies Record<string, HarnessRefusalRow>;
 
+// Explicit unsupported cases; a controller descriptor/planner verdict must
+// never add an operation to this contract. Commands outside it stay strict.
+const COMMAND_REFUSAL_CONTRACTS = {
+  [CANONICAL_GAP.commands]: {
+    operations: [
+      "command:insertFootnote",
+      "command:insertEndnote",
+      "command:deleteNoteRef",
+      "command:insertSectionBreak(nextPage)",
+      "command:insertSectionBreak(continuous)",
+      "command:removeSectionBreak",
+      "command:generateTOC",
+      "command:insertTable",
+      "command:addRowAbove",
+      "command:addRowBelow",
+      "command:deleteRow",
+      "command:addColumnLeft",
+      "command:addColumnRight",
+      "command:deleteColumn",
+      "command:deleteTable",
+      "command:selectTable",
+      "command:selectRow",
+      "command:selectColumn",
+      "command:mergeCells",
+      "command:splitCell",
+      "command:setCellBorder",
+      "command:setTableBorderPreset",
+      "command:setTableBorders",
+      "command:removeTableBorders",
+      "command:setAllTableBorders",
+      "command:setOutsideTableBorders",
+      "command:setInsideTableBorders",
+      "command:setCellVerticalAlign",
+      "command:setCellMargins",
+      "command:setCellTextDirection",
+      "command:toggleNoWrap",
+      "command:setRowHeight",
+      "command:toggleHeaderRow",
+      "command:distributeColumns",
+      "command:autoFitContents",
+      "command:setTableProperties",
+      "command:applyTableStyle",
+      "command:setCellFillColor",
+      "command:setTableBorderColor",
+      "command:setTableBorderWidth",
+      "host:addComment",
+      "host:acceptChange",
+      "host:rejectChange",
+      "host:clearFormatting",
+    ],
+    rows: [
+      {
+        id: CANONICAL_GAP.commands,
+        gap: CANONICAL_GAP.dispatch,
+        message: "Unclassified native text is unavailable in this session.",
+      },
+    ],
+  },
+} as const satisfies Record<
+  typeof CANONICAL_GAP.commands,
+  {
+    operations: readonly string[];
+    rows: readonly HarnessRefusalRow[];
+  }
+>;
+
 type RefusalCase = {
   shape: string;
   operation: string;
@@ -88,6 +154,10 @@ const STORY_PROJECTION_ROWS = {
 /** Every declared case has an explicit expectation, including supported cases with no rows. */
 export const canonicalConformanceRefusalRows = (key: RefusalCase): readonly HarnessRefusalRow[] => {
   if (key.shape === "tables") return [REFUSAL_ROWS.tableActivation];
+  const commandContract = Object.values(COMMAND_REFUSAL_CONTRACTS).find(({ operations }) =>
+    operations.some((operation) => operation === key.operation),
+  );
+  if (commandContract) return commandContract.rows;
   const projection = STORY_PROJECTION_REFUSAL_CASES.find(
     (candidate) => canonicalRefusalCaseId(candidate) === canonicalRefusalCaseId(key),
   );

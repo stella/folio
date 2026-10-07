@@ -22,7 +22,6 @@ import {
 } from "../packages/core/src/controller/canonicalSession";
 import { EditorState as PMEditorState } from "prosemirror-state";
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
-import { getCanonicalCommandIntents } from "../packages/core/src/prosemirror/canonicalCommands";
 import { canonicalClipboardStoryPartRefusal } from "../packages/core/src/controller/canonicalClipboard";
 import { proseDocToBlocks } from "../packages/core/src/prosemirror/conversion/fromProseDoc";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
@@ -78,10 +77,21 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     try {
       const result = action();
       if (
-        rows.some(({ id }) => id !== "missing-command-descriptor") &&
+        rows.some(({ id }) => id !== CANONICAL_GAP.commands) &&
         refusals.length === before.refusals
       )
         panic(`Canonical refusal rows must become strict: ${rows.map(({ id }) => id).join(", ")}`);
+      if (rows.length > 0 && refusals.length === before.refusals) {
+        // Explicit descriptor-gap cases may be inapplicable, but gaining
+        // mutation support retires their refusal contract.
+        if (!editorView.state.doc.eq(before.state.doc))
+          panic(
+            `Canonical refusal rows must become strict: ${rows.map(({ id }) => id).join(", ")}`,
+          );
+        const after = manager.api.getCanonicalDocument();
+        if (!after || !before.document) panic("Refusal contract lost canonical authority");
+        assertExactModel(after, before.document);
+      }
       if (refusals.length > before.refusals) {
         const after = manager.api.getCanonicalDocument();
         if (!after || !before.document) panic("Refusal lost canonical authority");
@@ -182,20 +192,7 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
     );
   const execute = (command: Command) => {
     const count = refusals.length;
-    const intents = getCanonicalCommandIntents(command, editorView.state);
-    const rows =
-      intents === undefined
-        ? [
-            "A plugin attempted an unclassified canonical document mutation.",
-            "Unclassified native text is unavailable in this session.",
-          ].map((message) => ({
-            id: "missing-command-descriptor",
-            gap: CANONICAL_GAP.dispatch,
-            message,
-          }))
-        : [];
-    rows.push(...caseRefusalRows);
-    return withRefusalRows(rows, () => {
+    return withRefusalRows(caseRefusalRows, () => {
       const applied = executeEditorCommand(editorView, command);
       return refusals.length === count && applied;
     });
