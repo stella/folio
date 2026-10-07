@@ -250,11 +250,9 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     },
     flushed: (view: EditorView) => {
       const authorized = authorizedNativeState;
-      const final = completed;
+      // A classified late final remains bound to its state until the observer
+      // consumes it or the next gesture invalidates it, including delayed flushes.
       queueMicrotask(() => {
-        if (completed === final && final.type === "authorized") {
-          completed = { type: "completed", receipt: final.receipt };
-        }
         if (authorizedNativeState === authorized) authorizedNativeState = null;
       });
       if (state.type !== "committed" && state.phase === "ended") schedule(view);

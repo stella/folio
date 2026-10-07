@@ -342,6 +342,49 @@ test("fake-clock corrections keep separate native gestures in separate undo grou
   }
 });
 
+test("fake-clock classified late finals survive input before the delayed observer flush", async () => {
+  jest.useFakeTimers();
+  try {
+    for (const delay of [26, 250, 2500]) {
+      for (const correction of ["契", "契約"]) {
+        const rig = createLateFinalRig();
+        try {
+          rig.start("契");
+          jest.advanceTimersByTime(26);
+          const version = rig.session.version;
+          const event = new InputEvent("beforeinput", {
+            inputType: "insertFromComposition",
+            data: correction,
+            cancelable: true,
+          });
+          expect(rig.boundary.handleDOMEvents.beforeinput(rig.view, event)).toBe(false);
+          rig.boundary.handleDOMEvents.input(rig.view);
+          await Promise.resolve();
+          jest.advanceTimersByTime(delay);
+          rig.view.dispatch(rig.view.state.tr.insertText(correction, 1, 2));
+          expect(rig.refusals).toEqual([]);
+          expect(rig.view.state.doc.textContent).toBe(correction);
+          expect(rig.session.version).toBe(version + (correction === "契" ? 0 : 1));
+          const commit = rig.session.prepareUndo(rig.view.state).unwrap();
+          rig.view.updateState(
+            publishCanonicalProjection({
+              session: rig.session,
+              state: rig.view.state,
+              commit,
+            }).unwrap().state,
+          );
+          expect(rig.view.state.doc.textContent).toBe("alpha");
+          expect(rig.session.canUndo).toBe(false);
+        } finally {
+          rig.destroy();
+        }
+      }
+    }
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
 const schema = new Schema({
   nodes: {
     doc: { content: "paragraph+" },
