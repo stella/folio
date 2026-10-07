@@ -32,6 +32,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } fr
 import path from "node:path";
 
 import { isStaleDeclaration, renderReportDiff } from "./lib/api-report-diff";
+import { apiReportsWithCarriageReturns } from "./lib/api-report-line-endings";
 import { PUBLISHED_PACKAGES, type PublishedPackage } from "./lib/published-packages";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
@@ -149,6 +150,7 @@ const buildConfig = ({ pkg, entry, reportDir, tempDir }: BuildConfigOptions): Ex
   const packageJsonFullPath = path.join(pkg.root, "package.json");
   return ExtractorConfig.prepare({
     configObject: {
+      newlineKind: "lf",
       mainEntryPointFilePath: path.join(pkg.root, entry.dts),
       apiReport: {
         enabled: true,
@@ -311,6 +313,16 @@ const pkgArg = pkgArgIdx !== -1 ? args.at(pkgArgIdx + 1) : null;
 if (pkgArgIdx !== -1 && !pkgArg) {
   console.error("--package requires a package name or slug.");
   process.exit(1);
+}
+
+if (!isLocal) {
+  const invalidReports = apiReportsWithCarriageReturns(path.join(repoRoot, "api-reports"));
+  if (invalidReports.length > 0) {
+    console.error("Public-API reports must use LF line endings (carriage returns found):");
+    for (const report of invalidReports) console.error(`  - api-reports/${report}`);
+    console.error("Normalize the listed reports to LF before regenerating or committing them.");
+    process.exit(1);
+  }
 }
 
 const targets = pkgArg
