@@ -1,15 +1,346 @@
-import { afterAll, beforeAll, expect, setDefaultTimeout, test } from "bun:test";
+import { afterAll, beforeAll, expect, jest, setDefaultTimeout, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import fc from "fast-check";
 import { Schema } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { createCanonicalInputBoundary } from "./canonicalInput";
+import { CANONICAL_COMPOSITION_INPUT_TYPES, createCanonicalInputBoundary } from "./canonicalInput";
+import {
+  createCanonicalSession,
+  CanonicalSessionError,
+  publishCanonicalProjection,
+} from "./canonicalSession";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { schema as canonicalSchema } from "../prosemirror/schema";
+import { createEmptyDocument } from "../utils/createDocument";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 beforeAll(() => GlobalRegistrator.register());
 afterAll(() => GlobalRegistrator.unregister());
+
+const createLateFinalRig = () => {
+  const session = createCanonicalSession(createEmptyDocument({ initialText: "alpha" })).unwrap();
+  const refusals: CanonicalSessionError[] = [];
+  const boundary = createCanonicalInputBoundary({
+    beginComposition: () => session.beginComposition().isOk(),
+    endComposition: () => session.endComposition(),
+    breakUndoGroup: () => session.breakUndoGroup(),
+    replace: (input) => {
+      const commit = session.prepareReplace(view.state, input).unwrap();
+      view.updateState(
+        publishCanonicalProjection({ session, state: view.state, commit }).unwrap().state,
+      );
+    },
+    refuse: (message) =>
+      refusals.push(
+        new CanonicalSessionError({ gap: CANONICAL_GAP.dispatch, message, reason: "refused" }),
+      ),
+    undo: () => {
+      const commit = session.prepareUndo(view.state).unwrap();
+      view.updateState(
+        publishCanonicalProjection({ session, state: view.state, commit }).unwrap().state,
+      );
+      return true;
+    },
+    redo: () => {
+      const commit = session.prepareRedo(view.state).unwrap();
+      view.updateState(
+        publishCanonicalProjection({ session, state: view.state, commit }).unwrap().state,
+      );
+      return true;
+    },
+  });
+  const doc = session.projection.doc;
+  const mount = document.body.appendChild(document.createElement("div"));
+  const view = new EditorView(mount, {
+    state: EditorState.create({
+      schema: canonicalSchema,
+      doc,
+      selection: TextSelection.create(doc, 1, 6),
+    }),
+    handleKeyDown: boundary.handleKeyDown,
+    handleTextInput: boundary.handleTextInput,
+    handleDOMEvents: boundary.handleDOMEvents,
+    dispatchTransaction: (transaction) => {
+      if (boundary.acceptComposition(view, transaction)) return;
+      if (transaction.docChanged) {
+        if (!boundary.commitNativeProposal(view, transaction)) boundary.refuseNativeMutation(view);
+        return;
+      }
+      view.updateState(view.state.apply(transaction));
+    },
+  });
+  return {
+    boundary,
+    session,
+    view,
+    refusals,
+    destroy: () => {
+      boundary.reset();
+      view.destroy();
+      mount.remove();
+    },
+    start: (text: string) => {
+      view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+      view.dispatch(view.state.tr.insertText(text, 1, 6).setMeta("composition", 1));
+      view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+    },
+    final: (text: string, current: string) => {
+      const event = new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "insertFromComposition",
+        data: text,
+      });
+      view.dom.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      // The observer can emit a minimal diff rather than replace the full range.
+      if (text.startsWith(current))
+        view.dispatch(view.state.tr.insertText(text.slice(current.length), 1 + current.length));
+      else view.dispatch(view.state.tr.insertText(text, 1, 1 + current.length));
+      view.dom.dispatchEvent(
+        new InputEvent("input", { bubbles: true, inputType: "insertFromComposition", data: text }),
+      );
+    },
+  };
+};
+
+test("fake-clock final input before and after expiry is idempotent and undoes as one gesture", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(
+        fc.constantFrom("契", "😀", "مرحبا", "a", "alpha", ""),
+        fc.integer({ min: 1, max: 4 }),
+        (provisional, duplicates) => {
+          for (const delay of [0, 24, 25, 26, 250, 2500]) {
+            for (const final of [provisional, `${provisional}約`]) {
+              const rig = createLateFinalRig();
+              try {
+                const original = rig.session.document;
+                const originalSelection = rig.view.state.selection.toJSON();
+                rig.start(provisional);
+                jest.advanceTimersByTime(delay);
+                for (let repeat = 0; repeat < duplicates; repeat++) {
+                  const version = rig.session.version;
+                  rig.final(final, repeat === 0 ? provisional : final);
+                  jest.advanceTimersByTime(26);
+                  if (repeat > 0 || (delay >= 25 && final === provisional))
+                    expect(rig.session.version).toBe(version);
+                }
+                expect(rig.refusals).toEqual([]);
+                expect(rig.view.state.doc.textContent).toBe(final);
+                expect(rig.boundary.isComposing).toBe(false);
+                expect(rig.view.composing).toBe(false);
+                expect(rig.session.projection.doc.eq(rig.view.state.doc)).toBe(true);
+                const composed = rig.session.document;
+                const finalSelection = rig.view.state.selection.toJSON();
+                if (final !== "alpha") {
+                  rig.view.dom.dispatchEvent(
+                    new KeyboardEvent("keydown", {
+                      key: "z",
+                      ctrlKey: true,
+                      bubbles: true,
+                      cancelable: true,
+                    }),
+                  );
+                  expect(rig.session.document).toEqual(original);
+                  expect(rig.view.state.selection.toJSON()).toEqual(originalSelection);
+                  expect(rig.session.canUndo).toBe(false);
+                  rig.view.dom.dispatchEvent(
+                    new KeyboardEvent("keydown", {
+                      key: "z",
+                      ctrlKey: true,
+                      shiftKey: true,
+                      bubbles: true,
+                      cancelable: true,
+                    }),
+                  );
+                  expect(rig.session.document).toEqual(composed);
+                  expect(rig.view.state.selection.toJSON()).toEqual(finalSelection);
+                  expect(rig.session.canRedo).toBe(false);
+                } else expect(rig.session.canUndo).toBe(false);
+              } finally {
+                rig.destroy();
+              }
+            }
+          }
+        },
+      ),
+      { numRuns: 15 },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("fake-clock completion receipts admit only final input from the unchanged owner", () => {
+  const latePolicy = {
+    insertCompositionText: "refuse",
+    insertFromComposition: "native",
+    deleteCompositionText: "refuse",
+    deleteByComposition: "refuse",
+  } as const satisfies Record<
+    (typeof CANONICAL_COMPOSITION_INPUT_TYPES)[number],
+    "native" | "refuse"
+  >;
+  jest.useFakeTimers();
+  try {
+    for (const delay of [24, 25, 250]) {
+      for (const inputType of CANONICAL_COMPOSITION_INPUT_TYPES) {
+        const rig = createLateFinalRig();
+        try {
+          rig.start("契");
+          jest.advanceTimersByTime(delay);
+          const event = new InputEvent("beforeinput", { inputType, data: "契", cancelable: true });
+          const native = delay < 25 || latePolicy[inputType] === "native";
+          expect(rig.boundary.handleDOMEvents.beforeinput(rig.view, event)).toBe(!native);
+          expect(event.defaultPrevented).toBe(!native);
+          expect(rig.refusals.length).toBe(native ? 0 : 1);
+          if (!native) expect(rig.refusals.at(0)?.reason).toBe("refused");
+        } finally {
+          rig.destroy();
+        }
+      }
+    }
+    for (const invalidate of [
+      "reset",
+      "nextKey",
+      "nextInput",
+      "selection",
+      "otherView",
+      "refused",
+    ] as const) {
+      const rig = createLateFinalRig();
+      const other = createLateFinalRig();
+      try {
+        rig.start("契");
+        if (invalidate === "refused") {
+          rig.view.dispatch(
+            rig.view.state.tr.addMark(1, 2, canonicalSchema.mark("bold")).setMeta("composition", 1),
+          );
+          expect(rig.refusals).toHaveLength(1);
+        }
+        jest.advanceTimersByTime(26);
+        switch (invalidate) {
+          case "reset":
+            rig.boundary.reset();
+            break;
+          case "nextKey":
+            rig.boundary.handleKeyDown(
+              rig.view,
+              new KeyboardEvent("keydown", { key: "ArrowRight" }),
+            );
+            break;
+          case "nextInput":
+            rig.boundary.handleDOMEvents.beforeinput(
+              rig.view,
+              new InputEvent("beforeinput", { inputType: "historyUndo", cancelable: true }),
+            );
+            break;
+          case "selection":
+            rig.view.updateState(
+              rig.view.state.apply(
+                rig.view.state.tr.setSelection(TextSelection.create(rig.view.state.doc, 1)),
+              ),
+            );
+            break;
+          case "otherView":
+          case "refused":
+            break;
+          default: {
+            const unexpected: never = invalidate;
+            throw new TypeError(`Unknown invalidation: ${unexpected}`);
+          }
+        }
+        const version = rig.session.version;
+        const document = rig.session.document;
+        const event = new InputEvent("beforeinput", {
+          inputType: "insertFromComposition",
+          data: "契約",
+          cancelable: true,
+        });
+        expect(
+          rig.boundary.handleDOMEvents.beforeinput(
+            invalidate === "otherView" ? other.view : rig.view,
+            event,
+          ),
+        ).toBe(true);
+        expect(event.defaultPrevented).toBe(true);
+        expect(rig.refusals.at(-1)?.reason).toBe("refused");
+        expect(rig.session.version).toBe(version);
+        expect(rig.session.document).toBe(document);
+      } finally {
+        rig.destroy();
+        other.destroy();
+      }
+    }
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("fake-clock late final cannot authorize marks or another replacement range", () => {
+  jest.useFakeTimers();
+  try {
+    for (const mutation of ["mark", "foreign", "unclassified"] as const) {
+      const rig = createLateFinalRig();
+      try {
+        rig.start("契");
+        jest.advanceTimersByTime(26);
+        const state = rig.view.state;
+        const version = rig.session.version;
+        if (mutation !== "unclassified") {
+          const event = new InputEvent("beforeinput", {
+            inputType: "insertFromComposition",
+            data: "契約",
+            cancelable: true,
+          });
+          expect(rig.boundary.handleDOMEvents.beforeinput(rig.view, event)).toBe(false);
+        }
+        const transaction = state.tr.insertText(mutation === "foreign" ? "other" : "契約", 1, 2);
+        if (mutation === "mark") transaction.addMark(1, 3, canonicalSchema.mark("bold"));
+        rig.view.dispatch(transaction);
+        expect(rig.refusals.at(-1)?.reason).toBe("refused");
+        expect(rig.session.version).toBe(version);
+        expect(rig.view.state.doc.eq(state.doc)).toBe(true);
+      } finally {
+        rig.destroy();
+      }
+    }
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("fake-clock corrections keep separate native gestures in separate undo groups", () => {
+  jest.useFakeTimers();
+  const rig = createLateFinalRig();
+  try {
+    rig.start("契");
+    jest.advanceTimersByTime(26);
+    rig.final("契約", "契");
+    jest.advanceTimersByTime(26);
+    const first = rig.session.document;
+    rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+    const caret = rig.view.state.selection.head;
+    rig.view.dispatch(rig.view.state.tr.insertText("X", caret).setMeta("composition", 2));
+    rig.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+    jest.advanceTimersByTime(26);
+    const commit = rig.session.prepareUndo(rig.view.state).unwrap();
+    rig.view.updateState(
+      publishCanonicalProjection({ session: rig.session, state: rig.view.state, commit }).unwrap()
+        .state,
+    );
+    expect(rig.session.document).toEqual(first);
+    expect(rig.view.state.doc.textContent).toBe("契約");
+    expect(rig.session.canUndo).toBe(true);
+  } finally {
+    rig.destroy();
+    jest.useRealTimers();
+  }
+});
 
 const schema = new Schema({
   nodes: {

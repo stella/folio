@@ -13,7 +13,13 @@ const COMPOSITION_FLUSH_DELAY_MS = 25;
 type CompositionOptions = {
   begin: () => boolean;
   end: () => void;
-  replace: (input: { from: number; to: number; text: string; semantic: "composition" }) => void;
+  replace: (input: {
+    from: number;
+    to: number;
+    text: string;
+    semantic: "composition";
+    compositionPhase?: "correction";
+  }) => void;
   refuse: (reason: string) => void;
 };
 
@@ -37,10 +43,24 @@ type CompositionFinish =
   | { type: "idle" | "cancelled" }
   | { type: "committed" | "refused"; text: string | null };
 
+type CompletedReceipt = {
+  view: EditorView;
+  state: EditorState;
+  from: number;
+  to: number;
+  text: string;
+};
+
+type CompletedComposition =
+  | { type: "none" }
+  | { type: "completed"; receipt: CompletedReceipt }
+  | { type: "authorized"; receipt: CompletedReceipt; text: string };
+
 /** Native IME owns the provisional view; the captured canonical projection stays unchanged. */
 export const createCanonicalComposition = (options: CompositionOptions) => {
   let state: CompositionState = { type: "committed" };
   let authorizedNativeState: EditorState | null = null;
+  let completed: CompletedComposition = { type: "none" };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const clearTimer = () => {
     if (timer !== undefined) clearTimeout(timer);
@@ -105,6 +125,16 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     if (!expected.doc.eq(proposed.doc)) return null;
     return { from: start + from, to: start + oldEnd, text, semantic: "composition" as const };
   };
+  const applyNative = (view: EditorView, transaction: Transaction) =>
+    Result.try({
+      try: () => view.state.applyTransaction(transaction),
+      catch: (cause) =>
+        new CanonicalSessionError({
+          gap: CANONICAL_GAP.dispatch,
+          reason: "refused",
+          message: `Composition projection failed: ${String(cause)}`,
+        }),
+    });
   const finish = (view: EditorView, commit: boolean): CompositionFinish => {
     clearTimer();
     authorizedNativeState = null;
@@ -117,6 +147,9 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     // Acceptance is validated by replacement(); payload identity depends on text,
     // including when the accepted minimal diff retains non-inclusive metadata.
     const committedText = selectedText(pending.baseline, view.state);
+    const proposed = view.state;
+    const selected = input ? selectedReplacement(pending.baseline, proposed) : null;
+    completed = { type: "none" };
     state = { type: "committed" };
     if (!view.isDestroyed) {
       // Recovery may finish without a native end event (for example a refused
@@ -127,15 +160,25 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     options.end();
     if (!commit || view.isDestroyed) return { type: "cancelled" };
     if (pending.type === "refused") return { type: "refused", text: pending.text };
-    if (input?.from === input?.to && input?.text === "")
-      return { type: "committed", text: committedText };
     if (!input) {
       options.refuse(
         "Composition changed unsupported content; the canonical document was restored.",
       );
       return { type: "refused", text: committedText };
     }
-    options.replace(input);
+    if (input.from !== input.to || input.text !== "") options.replace(input);
+    if (selected && !view.isDestroyed && view.state.doc.eq(proposed.doc)) {
+      completed = {
+        type: "completed",
+        receipt: {
+          view,
+          state: view.state,
+          from: selected.from,
+          to: selected.from + selected.text.length,
+          text: selected.text,
+        },
+      };
+    }
     return { type: "committed", text: committedText };
   };
   const schedule = (view: EditorView) => {
@@ -181,12 +224,37 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       }
       schedule(view);
     },
+    forgetCompleted: () => {
+      completed = { type: "none" };
+    },
+    get pendingFinal() {
+      return completed.type === "authorized";
+    },
+    authorizeLateFinal: (view: EditorView, text: string | null) => {
+      if (completed.type === "none") return false;
+      const { receipt } = completed;
+      if (
+        view.isDestroyed ||
+        receipt.view !== view ||
+        receipt.state !== view.state ||
+        text === null
+      ) {
+        completed = { type: "none" };
+        return false;
+      }
+      completed = { type: "authorized", receipt, text };
+      return true;
+    },
     authorizeNative: (view: EditorView) => {
       authorizedNativeState = view.state;
     },
     flushed: (view: EditorView) => {
       const authorized = authorizedNativeState;
+      const final = completed;
       queueMicrotask(() => {
+        if (completed === final && final.type === "authorized") {
+          completed = { type: "completed", receipt: final.receipt };
+        }
         if (authorizedNativeState === authorized) authorizedNativeState = null;
       });
       if (state.type !== "committed" && state.phase === "ended") schedule(view);
@@ -194,6 +262,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     recover: (view: EditorView) => finish(view, true),
     cancel: (view: EditorView) => finish(view, false),
     reset: () => {
+      completed = { type: "none" };
       if (state.type !== "committed") finish(state.view, false);
       else {
         clearTimer();
@@ -201,7 +270,53 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       }
     },
     accept: (view: EditorView, transaction: Transaction) => {
-      if (state.type === "committed") return false;
+      if (state.type === "committed") {
+        const final = completed;
+        if (
+          final.type !== "authorized" ||
+          final.receipt.view !== view ||
+          final.receipt.state !== view.state
+        )
+          return false;
+        completed = { type: "none" };
+        const applied = applyNative(view, transaction);
+        const expected = final.receipt.state.tr.insertText(
+          final.text,
+          final.receipt.from,
+          final.receipt.to,
+        );
+        if (applied.isErr() || !expected.doc.eq(applied.value.state.doc)) {
+          view.updateState(final.receipt.state);
+          options.refuse(
+            applied.isErr()
+              ? applied.error.message
+              : "Final composition changed unsupported content; the canonical document was restored.",
+          );
+          return true;
+        }
+        if (final.receipt.text !== final.text)
+          options.replace({
+            from: final.receipt.from,
+            to: final.receipt.to,
+            text: final.text,
+            semantic: "composition",
+            compositionPhase: "correction",
+          });
+        if (!view.isDestroyed) view.updateState(view.state);
+        if (!view.isDestroyed && view.state.doc.eq(expected.doc)) {
+          completed = {
+            type: "completed",
+            receipt: {
+              view,
+              state: view.state,
+              from: final.receipt.from,
+              to: final.receipt.from + final.text.length,
+              text: final.text,
+            },
+          };
+        }
+        return true;
+      }
       if (state.type === "refused") {
         view.updateState(state.baseline);
         return true;
@@ -214,15 +329,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
         return true;
       }
       authorizedNativeState = null;
-      const applied = Result.try({
-        try: () => view.state.applyTransaction(transaction),
-        catch: (cause) =>
-          new CanonicalSessionError({
-            gap: CANONICAL_GAP.dispatch,
-            reason: "refused",
-            message: `Composition projection failed: ${String(cause)}`,
-          }),
-      });
+      const applied = applyNative(view, transaction);
       if (applied.isErr()) {
         view.updateState(state.baseline);
         state = {
