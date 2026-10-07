@@ -55,7 +55,11 @@ describe("table operation source coordinates", () => {
         { id: "insert-col-tie", type: "insertTableColumn", blockId: "t0r0c0" },
         { id: "insert-other-table", type: "insertTableColumn", blockId: "t1c0", position: "after" },
       ];
-      const ordered = sequentialGroups(operations, rows).flatMap((group) => group);
+      const ordered = sequentialGroups({
+        applied: operations,
+        preRows: rows,
+        mode: "direct",
+      }).flatMap((group) => group);
       assert.deepEqual(
         ordered.map(({ id }) => id),
         [

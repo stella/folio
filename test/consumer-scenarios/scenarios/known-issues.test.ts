@@ -9,12 +9,15 @@ import { describe, test } from "node:test";
 
 import {
   createFolioAITextRangeHandle,
+  type FolioDocumentOperation,
   docxToMarkdown,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
 } from "@stll/folio-core/server";
 import { toMarkdown } from "@stll/folio-core/markdown";
 
 import {
+  commentDocument,
+  directNumberedDocument,
   notesDocument,
   openReviewer,
   plainDocument,
@@ -165,6 +168,120 @@ test("a paragraph inserted inside a comment spanning a table reads the same befo
 
 // Fixed findings stay as plain regressions.
 describe("fixed findings", () => {
+  test("renumbering a mark pending terminal deletion refuses without mutation (seed 1785653011)", async () => {
+    const reviewer = await openReviewer(await directNumberedDocument());
+    const deleted = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: "5E88C024" }],
+    });
+    assert.equal(deleted.applied.length, 1);
+    const before = structuredClone(reviewer.toDocument());
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "numbering",
+          type: "setBlockParagraphProperties",
+          blockId: "31617F9A",
+          properties: { numbering: { numId: 7, level: 0 } },
+        },
+      ],
+    });
+    assert.deepEqual(result.applied, []);
+    assert.deepEqual(
+      result.skipped.map(({ id, reason }) => ({ id, reason })),
+      [{ id: "numbering", reason: "pendingParagraphMarkDeletion" }],
+    );
+    assert.deepEqual(reviewer.toDocument(), before);
+    await saveAndReopen(reviewer, "refused numbering of a pending deleted paragraph mark");
+  });
+
+  for (const atomic of [false, true]) {
+    test(`delete/split overlap and a separate merge respect atomic=${atomic} (seed 118244301)`, async () => {
+      const reviewer = await openReviewer(await directNumberedDocument());
+      const before = structuredClone(reviewer.toDocument());
+      const result = reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        atomic,
+        operations: [
+          { id: "delete", type: "deleteBlock", blockId: "3CEFFC83" },
+          { id: "split", type: "splitBlock", blockId: "3CEFFC83", offset: 9 },
+          { id: "merge", type: "mergeBlockWithNext", blockId: "412DDC7F", separator: " " },
+        ],
+      });
+      if (atomic) {
+        assert.deepEqual(result.applied, []);
+        assert.ok(
+          result.skipped.some(
+            ({ id, reason }) => id === "split" && reason === "overlappingOperation",
+          ),
+        );
+        assert.deepEqual(reviewer.toDocument(), before);
+      } else {
+        assert.deepEqual(
+          result.applied.map(({ id }) => id),
+          ["delete", "merge"],
+        );
+        assert.deepEqual(
+          result.skipped.map(({ id, reason }) => ({ id, reason })),
+          [{ id: "split", reason: "overlappingOperation" }],
+        );
+        reviewer.acceptAll();
+        const expectedTexts = ["Terms Unnumbered body text.", "Numbered clause two"];
+        assert.deepEqual(
+          reviewer.getContent().map(({ text }) => text),
+          expectedTexts,
+        );
+        const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+        assert.deepEqual(
+          reopened.getContent().map(({ text }) => text),
+          expectedTexts,
+        );
+      }
+      await saveAndReopen(reviewer, `delete/split overlap and merge atomic=${atomic}`);
+    });
+  }
+
+  test("terminal deletion preserves preceding tracked paragraph formatting (seed 18568319)", async () => {
+    await runFlow(18568319, 16, "random", { generation: "targeted" });
+  });
+
+  test("restyling a paragraph pending deletion refuses without changing the document (seed 1026398003)", async () => {
+    for (const saved of [false, true]) {
+      let reviewer = await openReviewer(await commentDocument());
+      const blockId = "412DDC7F";
+      const deletion = reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [{ id: "delete", type: "deleteBlock", blockId }],
+      });
+      assert.equal(deletion.applied.length, 1);
+      if (saved) reviewer = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+      const before = structuredClone(reviewer.toDocument());
+      const operation = {
+        id: "restyle",
+        type: "setBlockParagraphProperties",
+        blockId,
+        properties: { styleId: null },
+      } as const satisfies FolioDocumentOperation;
+      const result = reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [operation],
+      });
+      assert.deepEqual(result.applied, []);
+      assert.deepEqual(
+        result.skipped.map(({ id, reason }) => ({ id, reason })),
+        [{ id: "restyle", reason: "pendingParagraphMarkDeletion" }],
+      );
+      assert.deepEqual(reviewer.toDocument(), before);
+      await saveAndReopen(reviewer, "refused restyle of a pending deleted paragraph mark");
+    }
+  });
+
   for (const resolution of ["accept", "reject"] as const) {
     test(`${resolution}ing tracked changes in a text box and the paragraph drawing it, after a reopen, saves a package that reopens`, async () => {
       const reviewer = await openReviewer(await storiesDocument());
