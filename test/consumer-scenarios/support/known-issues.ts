@@ -118,7 +118,10 @@ export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
  * a paragraph id minted from a hash of the fixture's document.xml, so a
  * change to how the fixture serializes detaches every flow on it.
  */
-export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]>> = {};
+export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]>> = {
+  // The original recorded flow starts by accepting a change before any exists.
+  "tracked-final-retirement-spacing.json": [0],
+};
 
 /**
  * requested-outcome.test.ts collisions (fixture / mode / collision) that

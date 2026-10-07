@@ -36,16 +36,33 @@ const refusedProperty = {
   canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
 } as const;
 
+const propertiesArbitrary = fc.record({
+  styleId: fc.integer({ min: 1, max: 6 }).map((level) => `Heading${level}`),
+  alignment: fc.constantFrom(...FOLIO_PARAGRAPH_ALIGNMENT_VALUES),
+  spacing: fc.option(
+    fc.record({
+      spaceBefore: fc.integer({ min: 0, max: 720 }),
+      spaceAfter: fc.integer({ min: 0, max: 720 }),
+    }),
+    { nil: null },
+  ),
+});
 type PropertyEditsOptions = {
   blockId: string;
   text: string;
-  properties: { styleId: string; alignment: (typeof FOLIO_PARAGRAPH_ALIGNMENT_VALUES)[number] };
+  properties: fc.Infer<typeof propertiesArbitrary>;
 };
 
 // Every operation that edits paragraph properties: a patch, and a style-only
 // replaceBlock (the paragraph's own text under another style).
 const propertyEdits = ({ blockId, text, properties }: PropertyEditsOptions) => {
-  const patches = [properties, { styleId: "Heading1" }, { styleId: "Heading2" }];
+  const patches = [
+    properties,
+    { spacing: properties.spacing },
+    { spacing: null },
+    { styleId: "Heading1" },
+    { styleId: "Heading2" },
+  ];
   const restyles = [...new Set([properties.styleId, "Heading2"])].filter(
     (styleId) => styleId !== "Heading1",
   );
@@ -69,11 +86,6 @@ const propertyEdits = ({ blockId, text, properties }: PropertyEditsOptions) => {
     ),
   ];
 };
-
-const propertiesArbitrary = fc.record({
-  styleId: fc.integer({ min: 1, max: 6 }).map((level) => `Heading${level}`),
-  alignment: fc.constantFrom(...FOLIO_PARAGRAPH_ALIGNMENT_VALUES),
-});
 
 test(
   "separate patches on pending deleted paragraph marks refuse without changing any paragraph",
@@ -191,6 +203,21 @@ test(
             "reject-first-merge",
           ] as const) {
             const reviewer = await open(markdown);
+            const heading = reviewer.getContent().at(0);
+            if (!heading) throw new Error("Missing heading");
+            const initialSpacing = reviewer.applyDocumentOperations({
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode: "direct",
+              operations: [
+                {
+                  id: "initial-spacing",
+                  type: "setBlockParagraphProperties",
+                  blockId: heading.id,
+                  properties: { spacing: { spaceBefore: 240, spaceAfter: 240 } },
+                },
+              ],
+            });
+            expect(initialSpacing.skipped).toEqual([]);
             const original = reviewer.getContent();
             const originalParagraphs = paragraphProjection(reviewer.state.doc);
             const operations = original.slice(0, chainLength).map(({ id }, index) =>
@@ -242,6 +269,9 @@ test(
               expect(reviewer.getContent()).toHaveLength(1);
               expect(reviewer.getContent().at(0)?.styleId).toBe(properties.styleId);
               expect(reviewer.getContent().at(0)?.directAlignment).toBe(properties.alignment);
+              expect(reviewer.getContent().at(0)?.directSpacing).toEqual(
+                properties.spacing ?? undefined,
+              );
             } else if (resolution === "reject-first-merge") {
               expect(reviewer.getContent()).toHaveLength(2);
               expect(paragraphProjection(reviewer.state.doc).at(0)?.properties).toEqual(
