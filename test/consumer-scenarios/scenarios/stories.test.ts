@@ -133,6 +133,7 @@ describe("operations in every header, footer and note", () => {
       const stories = secondaryStories(reviewer).filter(
         (story, index, all) => all.findIndex((other) => other.type === story.type) === index,
       );
+      let generatedSteps = 0;
       for (const story of stories) {
         for (const type of Object.keys(GENERATORS)) {
           if (!supports(type, mode)) continue;
@@ -140,6 +141,41 @@ describe("operations in every header, footer and note", () => {
           const pick = biasedPicker(random, { index: featureIndex(reviewer, story), recent: [] });
           const operation = GENERATORS[type]?.(blocks, random, pick);
           if (!operation) continue;
+          generatedSteps += 1;
+          if (
+            mode === "tracked-changes" &&
+            story.type === "footnote" &&
+            type === "mergeBlockWithNext"
+          ) {
+            // Positive control: this seed must reach the occupied survivor,
+            // rather than merely run a merge that has nothing to guard.
+            assert.equal(generatedSteps, 44);
+            assert.deepEqual(operation["mergedParagraphProperties"], { alignment: "center" });
+            const note = reviewer
+              .toDocument()
+              .package.footnotes?.find(({ id }) => id === story.noteId);
+            assert.ok(note);
+            const sourceIndex = note.content.findIndex(
+              (block) => block.type === "paragraph" && block.paraId === operation["blockId"],
+            );
+            assert.ok(sourceIndex >= 0, "the recorded merge source must exist");
+            const following = note.content.slice(sourceIndex + 1);
+            assert.ok(
+              following.length > 0 && following.every((block) => block.type === "paragraph"),
+            );
+            const survivor = following.find(
+              (block) =>
+                block.type === "paragraph" &&
+                block.pPrMark?.kind !== "del" &&
+                block.pPrMark?.kind !== "moveFrom",
+            );
+            assert.ok(survivor?.type === "paragraph", "the merge must leave a paragraph");
+            assert.equal(
+              survivor.propertyChanges?.length,
+              1,
+              "the survivor must own a pending pPrChange",
+            );
+          }
           if (await applyChecked(reviewer, story, operation, mode, "fresh")) {
             applied.set(story.type, (applied.get(story.type) ?? 0) + 1);
           }

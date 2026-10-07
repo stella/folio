@@ -115,7 +115,13 @@ const apply = ({ reviewer, story, operation }: ApplyOptions) =>
     },
   });
 
-const capacity = async (reviewer: FolioDocxReviewer, kind: keyof typeof STORIES) => {
+type CapacityOptions = {
+  reviewer: FolioDocxReviewer;
+  kind: keyof typeof STORIES;
+  occupiedParaId?: string;
+};
+
+const capacity = async ({ reviewer, kind, occupiedParaId }: CapacityOptions) => {
   const zip = await JSZip.loadAsync(await reviewer.toBuffer());
   const part = zip.file(PARTS[kind]);
   if (!part) panic("The story capacity fixture lost its package part", { kind });
@@ -124,6 +130,13 @@ const capacity = async (reviewer: FolioDocxReviewer, kind: keyof typeof STORIES)
   expect(paragraphs.length).toBeGreaterThan(0);
   for (const paragraph of paragraphs) {
     expect(paragraph.match(/<w:pPrChange\b/gu)?.length ?? 0).toBeLessThanOrEqual(1);
+  }
+  if (occupiedParaId !== undefined) {
+    const target = paragraphs.find((paragraph) =>
+      paragraph.includes(`w14:paraId="${occupiedParaId}"`),
+    );
+    expect(target).toBeDefined();
+    expect(target?.match(/<w:pPrChange\b/gu)).toHaveLength(1);
   }
 };
 
@@ -177,7 +190,15 @@ const checkCapacity = async ({ kind, attempts, length, pendingAt, merge }: Capac
         changes,
       );
     }
-    await capacity(reviewer, kind);
+    await capacity({ reviewer, kind });
+  }
+  if (attempts > 0) {
+    // The two-paragraph regression must actually occupy the writer's slot.
+    await capacity({
+      reviewer,
+      kind,
+      occupiedParaId: block({ reviewer, story, index: targetIndex }).id,
+    });
   }
   const before = reviewer.snapshotStory(story);
   const changes = reviewer.readReviewedStory({ story, view: "current-markup" })?.changes;
@@ -205,7 +226,7 @@ const checkCapacity = async ({ kind, attempts, length, pendingAt, merge }: Capac
   } else {
     expect(result.status).toBe("committed");
   }
-  await capacity(reviewer, kind);
+  await capacity({ reviewer, kind });
   const saved = await reviewer.toBuffer();
   const rejecting = await FolioDocxReviewer.fromBuffer(saved);
   rejecting.rejectAll();
@@ -326,7 +347,7 @@ test.each(Object.values(STORIES))(
         },
       }).status,
     ).toBe("committed");
-    await capacity(reviewer, type);
+    await capacity({ reviewer, kind: type });
     const saved = await reviewer.toBuffer();
     const accepting = await FolioDocxReviewer.fromBuffer(saved);
     accepting.acceptAll();
@@ -396,6 +417,6 @@ test.each(Object.values(STORIES))(
     ).toEqual([{ id: "merge", reason: "pendingParagraphPropertyChange" }]);
     expect(reviewer.snapshotStory(story)).toEqual(before);
     expect(reviewer.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual(changes);
-    await capacity(reviewer, type);
+    await capacity({ reviewer, kind: type });
   },
 );
