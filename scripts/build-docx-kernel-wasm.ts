@@ -41,6 +41,11 @@ const maximumNumberingStructureBrotliBytes = 5 * 1024;
 // silently consume it.
 const maximumParagraphAlignmentBytes = 2 * 1024;
 const maximumParagraphAlignmentBrotliBytes = 1024;
+// Locating tracked paragraph marks and translating review locations across
+// view paragraph joins has its own allowance so later projection work cannot
+// silently consume it.
+const maximumReviewRelocationBytes = 2 * 1024;
+const maximumReviewRelocationBrotliBytes = 1024;
 
 const kernel = {
   label: "DOCX kernel",
@@ -60,7 +65,8 @@ const kernel = {
     maximumPreparedStylesBytes +
     maximumBookmarkBoundaryBytes +
     maximumNumberingStructureBytes +
-    maximumParagraphAlignmentBytes,
+    maximumParagraphAlignmentBytes +
+    maximumReviewRelocationBytes,
   maximumBrotliBytes:
     100 * 1024 +
     maximumReviewDetailBrotliBytes +
@@ -70,7 +76,8 @@ const kernel = {
     maximumPreparedStylesBrotliBytes +
     maximumBookmarkBoundaryBrotliBytes +
     maximumNumberingStructureBrotliBytes +
-    maximumParagraphAlignmentBrotliBytes,
+    maximumParagraphAlignmentBrotliBytes +
+    maximumReviewRelocationBrotliBytes,
 } as const satisfies RustWasmArtifact;
 
 await buildRustWasmArtifact(kernel, mode);

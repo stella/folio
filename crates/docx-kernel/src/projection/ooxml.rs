@@ -10,7 +10,7 @@ use crate::projection::compatibility::{CompatibilityAction, MarkupCompatibility}
 use crate::projection::namespaces::OoxmlNamespace;
 use crate::projection::review::{
     AttributedRevision, ReviewDetail, ReviewFactSet, ReviewFactUnknownReason, ReviewPoint,
-    ReviewSpan, RevisionContent, RevisionFactKind,
+    ReviewSpan, RevisionContent, RevisionFactKind, RevisionPayload,
 };
 use crate::projection::structure::{
     ParagraphProperties, RawBlockPoint, RawBookmarkRange, RawInternalReference,
@@ -172,6 +172,7 @@ struct ParagraphBuilder {
     properties: ParagraphProperties,
     resolved_text_base: Option<Result<TextProperties, ()>>,
     paragraph_mark_revision: Option<ParagraphMarkRevision>,
+    paragraph_mark_review_indices: Vec<usize>,
 }
 
 impl ParagraphBuilder {
@@ -771,8 +772,8 @@ pub(super) fn project_document_xml(
     {
         return Err(ProjectionError::InvalidDocumentXml);
     }
-    let paragraph_merges = if state.paragraph_mark_revisions.is_empty() {
-        false
+    let paragraph_origins = if state.paragraph_mark_revisions.is_empty() {
+        None
     } else {
         normalize_paragraph_revision_view(
             &mut state.paragraphs,
@@ -781,14 +782,27 @@ pub(super) fn project_document_xml(
             &mut state.revision_unsupported,
         )?
     };
-    if paragraph_merges {
+    if let Some(origins) = paragraph_origins {
         state.bookmarks_complete = false;
         state.references_complete = false;
-        state.review_comment_anchors.clear();
+        state.review_comment_anchors.retain(|_, anchor| {
+            relocate_review_span(&origins, *anchor).is_some_and(|relocated| {
+                *anchor = relocated;
+                true
+            })
+        });
         if let ReviewRevisionCollection::Complete { revisions, .. } = &mut state.review_revisions {
             for revision in revisions {
-                revision.content =
-                    ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation);
+                let ReviewDetail::Known(content) = &mut revision.content else {
+                    continue;
+                };
+                match relocate_review_span(&origins, content.span) {
+                    Some(span) => content.span = span,
+                    None => {
+                        revision.content =
+                            ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation);
+                    }
+                }
             }
         }
     }
@@ -1027,6 +1041,7 @@ impl ProjectionState {
                     properties: ParagraphProperties::default(),
                     resolved_text_base: None,
                     paragraph_mark_revision: None,
+                    paragraph_mark_review_indices: Vec::new(),
                 });
                 Frame::Paragraph
             }
@@ -1142,14 +1157,22 @@ impl ProjectionState {
                     self.revision_unsupported
                         .insert(RevisionUnsupportedReason::StructuralTableRevision);
                     Frame::Other
-                } else if self.inside_paragraph_mark_properties() && matches!(name, b"ins" | b"del")
-                {
+                } else if self.inside_paragraph_mark_properties() {
                     if let Some(paragraph) = self.current_paragraph.as_mut() {
-                        paragraph.paragraph_mark_revision = Some(if name == b"ins" {
-                            ParagraphMarkRevision::Insertion
-                        } else {
-                            ParagraphMarkRevision::Deletion
-                        });
+                        match name {
+                            b"ins" => {
+                                paragraph.paragraph_mark_revision =
+                                    Some(ParagraphMarkRevision::Insertion);
+                            }
+                            b"del" => {
+                                paragraph.paragraph_mark_revision =
+                                    Some(ParagraphMarkRevision::Deletion);
+                            }
+                            _ => {}
+                        }
+                        paragraph
+                            .paragraph_mark_review_indices
+                            .extend(attributed_revision);
                     }
                     Frame::Other
                 } else {
@@ -1326,6 +1349,16 @@ impl ProjectionState {
                 if let Some(revision) = paragraph.paragraph_mark_revision {
                     self.paragraph_mark_revisions.insert(ordinal, revision);
                 }
+                let mark = ReviewPoint {
+                    paragraph_ordinal: ordinal,
+                    utf8: u32::try_from(paragraph.text.len())
+                        .map_err(|_| ProjectionError::InvalidDocumentXml)?,
+                    utf16: paragraph.utf16_len,
+                };
+                self.locate_paragraph_mark_revisions(
+                    &paragraph.paragraph_mark_review_indices,
+                    mark,
+                )?;
                 self.paragraphs.push(RawProjectedParagraph {
                     ordinal: self.paragraphs.len(),
                     package_paragraph_id: paragraph.package_paragraph_id,
@@ -1434,9 +1467,32 @@ impl ProjectionState {
             .ok_or(ProjectionError::InvalidDocumentXml)?;
         attributed.content = ReviewDetail::Known(RevisionContent {
             span: ReviewSpan { start, end },
-            formatting_only: revision.text.is_empty(),
-            text: revision.text,
+            payload: RevisionPayload::from_text(revision.text),
         });
+        Ok(())
+    }
+
+    fn locate_paragraph_mark_revisions(
+        &mut self,
+        review_indices: &[usize],
+        mark: ReviewPoint,
+    ) -> Result<(), ProjectionError> {
+        let ReviewRevisionCollection::Complete { revisions, .. } = &mut self.review_revisions
+        else {
+            return Ok(());
+        };
+        for &review_index in review_indices {
+            revisions
+                .get_mut(review_index)
+                .ok_or(ProjectionError::InvalidDocumentXml)?
+                .content = ReviewDetail::Known(RevisionContent {
+                span: ReviewSpan {
+                    start: mark,
+                    end: mark,
+                },
+                payload: RevisionPayload::ParagraphMark,
+            });
+        }
         Ok(())
     }
 
@@ -2111,13 +2167,17 @@ const fn paragraph_break_is_removed(
     )
 }
 
+/// Merges paragraphs whose break the selected view removes. When any merge
+/// happens, returns where each source paragraph starts in the merged text, so
+/// review points recorded against source paragraphs can be translated.
 fn normalize_paragraph_revision_view(
     paragraphs: &mut Vec<RawProjectedParagraph>,
     paragraph_mark_revisions: &mut HashMap<usize, ParagraphMarkRevision>,
     view: RevisionView,
     unsupported: &mut BTreeSet<RevisionUnsupportedReason>,
-) -> Result<bool, ProjectionError> {
+) -> Result<Option<Vec<ReviewPoint>>, ProjectionError> {
     let mut normalized: Vec<RawProjectedParagraph> = Vec::with_capacity(paragraphs.len());
+    let mut origins = Vec::with_capacity(paragraphs.len());
     let mut merge_previous = false;
     let mut merged_any = false;
 
@@ -2131,11 +2191,18 @@ fn normalize_paragraph_revision_view(
             if previous.structure != paragraph.structure {
                 unsupported.insert(RevisionUnsupportedReason::IncompatibleParagraphMerge);
                 paragraph.ordinal = normalized.len();
+                origins.push(paragraph_start(paragraph.ordinal));
                 normalized.push(paragraph);
                 merge_previous = merge_next;
                 continue;
             }
             let utf16_offset = previous.utf16_len;
+            origins.push(ReviewPoint {
+                paragraph_ordinal: previous.ordinal,
+                utf8: u32::try_from(previous.text.len())
+                    .map_err(|_| ProjectionError::InvalidDocumentXml)?,
+                utf16: utf16_offset,
+            });
             for mut span in paragraph.formatting {
                 span.start_utf16 = span
                     .start_utf16
@@ -2158,12 +2225,39 @@ fn normalize_paragraph_revision_view(
         }
 
         paragraph.ordinal = normalized.len();
+        origins.push(paragraph_start(paragraph.ordinal));
         normalized.push(paragraph);
         merge_previous = merge_next;
     }
 
     *paragraphs = normalized;
-    Ok(merged_any)
+    Ok(merged_any.then_some(origins))
+}
+
+const fn paragraph_start(paragraph_ordinal: usize) -> ReviewPoint {
+    ReviewPoint {
+        paragraph_ordinal,
+        utf8: 0,
+        utf16: 0,
+    }
+}
+
+/// Translates a point recorded against a source paragraph into the merged
+/// paragraph coordinates. `None` means the point names no source paragraph.
+fn relocate_review_point(origins: &[ReviewPoint], point: ReviewPoint) -> Option<ReviewPoint> {
+    let origin = origins.get(point.paragraph_ordinal)?;
+    Some(ReviewPoint {
+        paragraph_ordinal: origin.paragraph_ordinal,
+        utf8: origin.utf8.checked_add(point.utf8)?,
+        utf16: origin.utf16.checked_add(point.utf16)?,
+    })
+}
+
+fn relocate_review_span(origins: &[ReviewPoint], span: ReviewSpan) -> Option<ReviewSpan> {
+    Some(ReviewSpan {
+        start: relocate_review_point(origins, span.start)?,
+        end: relocate_review_point(origins, span.end)?,
+    })
 }
 
 fn internal_reference_target(instruction: &str) -> Result<Option<String>, ()> {
