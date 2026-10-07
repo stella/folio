@@ -76,6 +76,7 @@ const createLateFinalRig = () => {
       view.updateState(view.state.apply(transaction));
     },
   });
+  let nativeMarks = view.state.storedMarks;
   return {
     boundary,
     session,
@@ -87,6 +88,8 @@ const createLateFinalRig = () => {
       mount.remove();
     },
     start: (text: string) => {
+      nativeMarks =
+        view.state.storedMarks ?? view.state.selection.$from.marksAcross(view.state.selection.$to);
       view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
       view.dispatch(view.state.tr.insertText(text, 1, 6).setMeta("composition", 1));
       view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
@@ -100,10 +103,13 @@ const createLateFinalRig = () => {
       });
       view.dom.dispatchEvent(event);
       expect(event.defaultPrevented).toBe(false);
+      // Native IME retains its carrier formatting even across an empty update.
+      const transaction =
+        current === "" ? view.state.tr.setStoredMarks(nativeMarks) : view.state.tr;
       // The observer can emit a minimal diff rather than replace the full range.
       if (text.startsWith(current))
-        view.dispatch(view.state.tr.insertText(text.slice(current.length), 1 + current.length));
-      else view.dispatch(view.state.tr.insertText(text, 1, 1 + current.length));
+        view.dispatch(transaction.insertText(text.slice(current.length), 1 + current.length));
+      else view.dispatch(transaction.insertText(text, 1, 1 + current.length));
       view.dom.dispatchEvent(
         new InputEvent("input", { bubbles: true, inputType: "insertFromComposition", data: text }),
       );
@@ -313,7 +319,9 @@ test("fake-clock state changes after final authorization consume the stale recei
         expect(rig.view.state.doc.textContent).toBe("契");
         // Without consuming stale authorization, text input remains native forever.
         expect(rig.boundary.handleTextInput(rig.view, 1, 1, "x")).toBe(true);
-        expect(rig.refusals).toHaveLength(2);
+        // The same refused gesture reports once; the handled return above
+        // proves stale native authorization was consumed.
+        expect(rig.refusals).toHaveLength(1);
         expect(rig.session.version).toBe(version);
         expect(rig.session.document).toBe(document);
       } finally {

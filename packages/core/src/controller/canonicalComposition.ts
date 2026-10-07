@@ -49,6 +49,7 @@ type CompletedReceipt = {
   from: number;
   to: number;
   text: string;
+  marks: EditorState["storedMarks"];
 };
 
 type CompletedComposition =
@@ -182,6 +183,9 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
           from,
           to: from + committedText.length,
           text: committedText,
+          marks:
+            pending.baseline.storedMarks ??
+            pending.baseline.selection.$from.marksAcross(pending.baseline.selection.$to),
         },
       };
     }
@@ -288,6 +292,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
             final.receipt.from,
             final.receipt.to,
           ),
+          storedMarks: final.receipt.marks,
         });
         const input = applied.isOk() ? replacement(baseline, applied.value.state) : null;
         // A final can arrive as the full replacement or its minimal native diff.
@@ -335,6 +340,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
               from: final.receipt.from,
               to: final.receipt.from + final.text.length,
               text: final.text,
+              marks: final.receipt.marks,
             },
           };
         }
