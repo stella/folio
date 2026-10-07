@@ -52,6 +52,11 @@ const maximumReviewRelocationBrotliBytes = 1024;
 const maximumTablePropertyRevisionSpansBytes = 2560;
 const maximumTablePropertyRevisionSpansBrotliBytes = 1024;
 
+// Effective projection styles have their own measured allowance, separate
+// from table property revision spans, rounded to 512-byte increments.
+const maximumEffectiveProjectionStylesBytes = 3584;
+const maximumEffectiveProjectionStylesBrotliBytes = 1536;
+
 const kernel = {
   label: "DOCX kernel",
   crate: "stella-docx-kernel",
@@ -72,7 +77,8 @@ const kernel = {
     maximumNumberingStructureBytes +
     maximumParagraphAlignmentBytes +
     maximumReviewRelocationBytes +
-    maximumTablePropertyRevisionSpansBytes,
+    maximumTablePropertyRevisionSpansBytes +
+    maximumEffectiveProjectionStylesBytes,
   maximumBrotliBytes:
     100 * 1024 +
     maximumReviewDetailBrotliBytes +
@@ -84,7 +90,8 @@ const kernel = {
     maximumNumberingStructureBrotliBytes +
     maximumParagraphAlignmentBrotliBytes +
     maximumReviewRelocationBrotliBytes +
-    maximumTablePropertyRevisionSpansBrotliBytes,
+    maximumTablePropertyRevisionSpansBrotliBytes +
+    maximumEffectiveProjectionStylesBrotliBytes,
 } as const satisfies RustWasmArtifact;
 
 await buildRustWasmArtifact(kernel, mode);
