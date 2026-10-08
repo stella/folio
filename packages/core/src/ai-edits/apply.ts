@@ -30,6 +30,7 @@ import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "../prosemirror/commands/propertyChangeScope";
+import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import {
   paragraphNumberingReference,
@@ -2762,17 +2763,35 @@ type FinalParagraphCarryOptions = Pick<
   predecessor: { node: PMNode; position: number };
 };
 
-/** Deferred final deletion carries admissible predecessor writes from the finished batch. */
+/** An unoccupied final carrier takes admissible writes from the finished batch. */
 const finalParagraphCarry = ({
   tr,
   at,
   target,
   predecessor,
   batchRevisionIds,
+  styleResolver,
+  numbering,
 }: FinalParagraphCarryOptions) => {
   const { node: previous, position } = predecessor;
+  // An occupied survivor keeps the established revision ownership: a later
+  // batch write cannot replace the properties its pending receipt restores.
+  const beforeBatch = hasSerializableParagraphPropertyChange(
+    expectParagraphAttrs(target)._propertyChanges,
+  )
+    ? resolveParagraphChangeAttrs({
+        node: previous,
+        mode: "reject",
+        boundaryCovered: true,
+        revisionSet: batchRevisionIds,
+        styleResolver,
+        numbering,
+      })
+    : null;
   return {
-    source: previous,
+    source: beforeBatch
+      ? previous.type.create(beforeBatch, previous.content, previous.marks)
+      : previous,
     keep: crossesBatchDeletion({
       doc: tr.doc,
       from: position + previous.nodeSize,
