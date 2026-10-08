@@ -1,6 +1,6 @@
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import type { OpStory } from "@stll/docx-core/ops";
-import { TextSelection, type Transaction } from "prosemirror-state";
+import { AllSelection, TextSelection, type Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalInputBoundary } from "./canonicalInput";
@@ -37,8 +37,7 @@ export const createCanonicalStoryEditor = ({
     return accepted;
   };
   const syncNativeSelection = (view: EditorView) => {
-    if (boundary.isComposing || view.composing || !(view.state.selection instanceof TextSelection))
-      return;
+    if (boundary.isComposing || view.composing) return;
     const selection = view.dom.ownerDocument.getSelection();
     if (
       !selection?.anchorNode ||
@@ -49,7 +48,18 @@ export const createCanonicalStoryEditor = ({
       return;
     const anchor = view.posAtDOM(selection.anchorNode, selection.anchorOffset);
     const head = view.posAtDOM(selection.focusNode, selection.focusOffset);
+    if (
+      view.state.selection instanceof AllSelection &&
+      Math.min(anchor, head) === 0 &&
+      Math.max(anchor, head) === view.state.doc.content.size
+    )
+      return;
     if (anchor === view.state.selection.anchor && head === view.state.selection.head) return;
+    if (
+      !view.state.doc.resolve(anchor).parent.inlineContent ||
+      !view.state.doc.resolve(head).parent.inlineContent
+    )
+      return;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, anchor, head)));
   };
   const boundary = createCanonicalInputBoundary({
