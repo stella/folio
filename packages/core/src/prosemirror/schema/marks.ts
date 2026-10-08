@@ -110,6 +110,7 @@ export type TextEffectAttrs = {
 };
 
 export type FootnoteRefAttrs = {
+  occurrenceId: string;
   id: string | number;
   noteType?: "footnote" | "endnote";
   vertAlign?: "baseline" | "superscript";

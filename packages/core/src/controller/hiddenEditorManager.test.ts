@@ -20,6 +20,13 @@ import type { Paragraph } from "../types/document";
 import type { FolioDocumentOperationStory } from "../document-operations";
 import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
 import { createNoteEditorManager } from "./noteEditorManager";
+import { createDocx } from "../docx/rezip";
+import { parseShapeDocument } from "../__tests__/editorHarness";
+import { singletonManager } from "../prosemirror/schema";
+import {
+  NoteReferenceEditRefusal,
+  NoteReferenceReplayDefect,
+} from "../prosemirror/noteReferenceOccurrences";
 
 import {
   createHiddenEditorManager,
@@ -102,6 +109,24 @@ const makeDeps = (
   return { deps, spies };
 };
 
+const sourceWithNoteReference = async () => {
+  const source = createEmptyDocument({ initialText: "LR" });
+  const noteContent = createEmptyDocument({ initialText: "Note" }).package.document.content;
+  source.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "12345678",
+      content: [
+        { type: "run", content: [{ type: "text", text: "L" }] },
+        { type: "run", formatting: { bold: true }, content: [{ type: "footnoteRef", id: 123 }] },
+        { type: "run", content: [{ type: "text", text: "R" }] },
+      ],
+    },
+  ];
+  source.package.footnotes = [{ type: "footnote", id: 123, content: noteContent }];
+  return parseShapeDocument(new Uint8Array(await createDocx(source)));
+};
+
 describe("createHiddenEditorManager", () => {
   test("starts with no view and uninitialized", () => {
     const { deps } = makeDeps();
@@ -160,6 +185,136 @@ describe("createHiddenEditorManager", () => {
     expect(manager.api.getState()).toBeNull();
     expect(manager.api.getDocument()).toBeNull();
   });
+});
+
+test("hidden manager refuses a local partial note-reference edit before committing it", async () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = await sourceWithNoteReference();
+  const refusals: { reason: string; gap: unknown; error?: Error }[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExtensionManager: () => singletonManager,
+    onSessionRefusal: (reason, gap, error) => refusals.push({ reason, gap, error }),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected note-reference editor view");
+    const before = view.state;
+    const partialFormatting = before.tr.addMark(
+      3,
+      4,
+      before.schema.marks.italic?.create() ?? panic("Expected italic mark"),
+    );
+
+    expect(() => view.dispatch(partialFormatting)).not.toThrow();
+    expect(view.state).toBe(before);
+    expect(view.state.doc).toBe(before.doc);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]?.error).toBeInstanceOf(NoteReferenceEditRefusal);
+    expect(refusals[0]?.reason).toBe(refusals[0]?.error?.message);
+    expect(refusals[0]?.gap).toBe(CANONICAL_GAP.dispatch);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("hidden manager accepts an invalid remote note-reference replay and reports its typed defect", async () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = await sourceWithNoteReference();
+  const refusals: { reason: string; gap: unknown; error?: Error }[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExtensionManager: () => singletonManager,
+    onSessionRefusal: (reason, gap, error) => refusals.push({ reason, gap, error }),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected note-reference editor view");
+    const before = view.state;
+    const remotePartialFormatting = before.tr
+      .addMark(3, 4, before.schema.marks.italic?.create() ?? panic("Expected italic mark"))
+      .setMeta("y-sync$", { isChangeOrigin: true });
+
+    expect(() => view.dispatch(remotePartialFormatting)).not.toThrow();
+    expect(view.state).not.toBe(before);
+    expect(view.state.doc).not.toBe(before.doc);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]?.error).toBeInstanceOf(NoteReferenceReplayDefect);
+    expect(refusals[0]?.reason).toBe(refusals[0]?.error?.message);
+    expect(refusals[0]?.gap).toBe(CANONICAL_GAP.dispatch);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("hidden manager history remains usable around a refused partial note-reference edit", async () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = await sourceWithNoteReference();
+  const refusals: { reason: string; gap: unknown; error?: Error }[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExtensionManager: () => singletonManager,
+    onSessionRefusal: (reason, gap, error) => refusals.push({ reason, gap, error }),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected note-reference editor view");
+    const initial = view.state;
+    const referenceFormatting = initial.tr.addMark(
+      2,
+      5,
+      initial.schema.marks.italic?.create() ?? panic("Expected italic mark"),
+    );
+
+    expect(() => view.dispatch(referenceFormatting)).not.toThrow();
+    const formatted = view.state;
+    expect(formatted).not.toBe(initial);
+    expect(manager.api.canUndo()).toBe(true);
+
+    const partialBoldRemoval = formatted.tr.removeMark(
+      3,
+      4,
+      formatted.schema.marks.bold ?? panic("Expected bold mark"),
+    );
+    expect(() => view.dispatch(partialBoldRemoval)).not.toThrow();
+    expect(view.state).toBe(formatted);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]?.error).toBeInstanceOf(NoteReferenceEditRefusal);
+    expect(refusals[0]?.reason).toBe(refusals[0]?.error?.message);
+    expect(refusals[0]?.gap).toBe(CANONICAL_GAP.dispatch);
+
+    expect(manager.api.undo()).toBe(true);
+    expect(view.state.doc.textContent).toBe(initial.doc.textContent);
+    expect(manager.api.redo()).toBe(true);
+    expect(view.state.doc.eq(formatted.doc)).toBe(true);
+    expect(refusals).toHaveLength(1);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
 });
 
 describe("createHiddenEditorClipboardHandlers", () => {

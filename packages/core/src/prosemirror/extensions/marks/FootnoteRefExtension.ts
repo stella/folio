@@ -4,6 +4,11 @@
  * Provides footnoteRef mark + insert/delete commands for footnotes and endnotes.
  */
 
+import {
+  mintNoteReferenceOccurrenceId,
+  noteReferenceOccurrencePlugin,
+} from "../../noteReferenceOccurrences";
+
 import { panic } from "better-result";
 import type { Command } from "prosemirror-state";
 
@@ -18,6 +23,7 @@ const noteRefAttrsFromDom = (
   noteType: "footnote" | "endnote",
   vertAlign?: "baseline" | "superscript",
 ): Record<string, string> => ({
+  occurrenceId: dom.dataset["noteOccurrence"] ?? mintNoteReferenceOccurrenceId(),
   id: dom.dataset["id"] ?? "",
   noteType: dom.dataset["noteType"] ?? noteType,
   ...(vertAlign ? { vertAlign } : {}),
@@ -30,6 +36,7 @@ export const FootnoteRefExtension = createMarkExtension({
     inclusive: false,
     attrs: {
       id: {},
+      occurrenceId: {},
       noteType: { default: "footnote" },
       vertAlign: { default: null },
       customMarkFollows: { default: null },
@@ -64,6 +71,7 @@ export const FootnoteRefExtension = createMarkExtension({
         {
           class: `docx-${noteType}-ref ${alignClass}`,
           "data-id": id,
+          "data-note-occurrence": attrs.occurrenceId,
           "data-note-type": noteType,
         },
         0,
@@ -104,6 +112,7 @@ export const FootnoteRefExtension = createMarkExtension({
           }
           const mark = footnoteRefType.create({
             id: String(id),
+            occurrenceId: mintNoteReferenceOccurrenceId(),
             noteType,
             vertAlign: "superscript",
           });
@@ -143,6 +152,7 @@ export const FootnoteRefExtension = createMarkExtension({
     };
 
     return {
+      plugins: [noteReferenceOccurrencePlugin()],
       keyboardShortcuts: {
         Backspace: deleteWholeNoteReference("backward"),
         Delete: deleteWholeNoteReference("forward"),

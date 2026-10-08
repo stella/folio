@@ -12,6 +12,8 @@
  * - Inline properties (highest priority)
  */
 
+import { mintNoteReferenceOccurrenceId } from "../noteReferenceOccurrences";
+
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
@@ -3921,6 +3923,7 @@ function convertRunContent(
       // Footnote reference - render as superscript number with footnoteRef mark
       const footnoteMark = schema.mark("footnoteRef", {
         id: content.id.toString(),
+        occurrenceId: mintNoteReferenceOccurrenceId(),
         noteType: "footnote",
         vertAlign: noteReferenceVertAlign(formatting?.vertAlign),
         customMarkFollows: content.customMarkFollows,
@@ -3932,6 +3935,7 @@ function convertRunContent(
       // Endnote reference - render as superscript number with footnoteRef mark
       const endnoteMark = schema.mark("footnoteRef", {
         id: content.id.toString(),
+        occurrenceId: mintNoteReferenceOccurrenceId(),
         noteType: "endnote",
         vertAlign: noteReferenceVertAlign(formatting?.vertAlign),
         customMarkFollows: content.customMarkFollows,

@@ -2154,6 +2154,7 @@ describe("fromProseDoc", () => {
 
   test("exports subscript overrides on superscript note references", () => {
     const footnoteRef = schema.mark("footnoteRef", {
+      occurrenceId: "fixture-note",
       id: "1",
       noteType: "footnote",
       vertAlign: "superscript",
@@ -2181,6 +2182,7 @@ describe("fromProseDoc", () => {
 
   test("keeps a deleted footnote reference inside the tracked-change wrapper", () => {
     const footnoteRef = schema.mark("footnoteRef", {
+      occurrenceId: "fixture-note",
       id: "7",
       noteType: "footnote",
       vertAlign: "superscript",

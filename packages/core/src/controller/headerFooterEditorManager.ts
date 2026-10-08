@@ -1,3 +1,4 @@
+import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
 import {
   CANONICAL_GAP,
   usesCanonicalSession,
@@ -65,7 +66,7 @@ export type HeaderFooterEditorManagerDeps = {
   getDocument: () => Document | null;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
-  onSessionRefusal?: ((reason: string, gap: CanonicalGap) => void) | undefined;
+  onSessionRefusal?: ((reason: string, gap: CanonicalGap, error?: Error) => void) | undefined;
   getHost: () => HTMLElement | null;
   getStyles: () => StyleDefinitions | null | undefined;
   getTheme: () => Theme | null | undefined;
@@ -362,6 +363,9 @@ export const createHeaderFooterEditorManager = (
         dispatchTransaction(transaction) {
           if (canonical.dispatch(transaction)) return;
           const nextState = view.state.apply(transaction);
+          const noteIssue = noteReferenceTransactionIssue(transaction);
+          if (noteIssue)
+            deps.onSessionRefusal?.(noteIssue.message, CANONICAL_GAP.dispatch, noteIssue);
           view.updateState(nextState);
           const mountedPart = mounted.get(part.rId);
           if (mountedPart && transaction.docChanged) {

@@ -1,3 +1,4 @@
+import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
 import {
   CANONICAL_GAP,
   usesCanonicalSession,
@@ -55,7 +56,7 @@ export type NoteEditorManagerDeps = {
   getDocument: () => Document | null;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
-  onSessionRefusal?: ((reason: string, gap: CanonicalGap) => void) | undefined;
+  onSessionRefusal?: ((reason: string, gap: CanonicalGap, error?: Error) => void) | undefined;
   getHost: () => HTMLElement | null;
   getPlugins?: (() => Plugin[]) | undefined;
   getStyles: () => StyleDefinitions | null | undefined;
@@ -352,6 +353,9 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         dispatchTransaction(transaction) {
           if (canonical.dispatch(transaction)) return;
           view.updateState(view.state.apply(transaction));
+          const noteIssue = noteReferenceTransactionIssue(transaction);
+          if (noteIssue)
+            deps.onSessionRefusal?.(noteIssue.message, CANONICAL_GAP.dispatch, noteIssue);
           const mountedStory = mounted.get(key);
           if (mountedStory && transaction.docChanged) mountedStory.dirty = true;
           deps.onTransaction?.({

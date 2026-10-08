@@ -1639,6 +1639,7 @@ export const readFootnoteRefMarkAttrs = (
   expectMarkType(mark, "footnoteRef", issues);
 
   requiredStringOrNumber(attrs, "id", "footnoteRef.attrs.id", issues);
+  requiredString(attrs, "occurrenceId", "footnoteRef.attrs.occurrenceId", issues);
   optionalOneOf(attrs, "noteType", "footnoteRef.attrs.noteType", issues, NOTE_TYPES);
   optionalOneOf(attrs, "vertAlign", "footnoteRef.attrs.vertAlign", issues, NOTE_REF_VERT_ALIGNS);
   optionalBoolean(attrs, "customMarkFollows", "footnoteRef.attrs.customMarkFollows", issues);

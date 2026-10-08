@@ -67,7 +67,7 @@ export type HiddenProseMirrorProps = {
   experimentalSession?: "canonical";
   suggestionModeActive?: boolean;
   suggestionAuthor?: string;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap) => void;
+  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
   /**
    * Identity of the loaded document (same across internal edits, distinct per
    * load); a change means an external load and resets the editor state.
@@ -273,7 +273,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
         getExperimentalSession: () => experimentalSessionRef.current,
         getEditingMode: () => (suggestionModeActiveRef.current ? "suggesting" : "editing"),
         getSuggestionAuthor: () => suggestionAuthorRef.current,
-        onSessionRefusal: (reason, gap) => onSessionRefusalRef.current?.(reason, gap),
+        onSessionRefusal: (reason, gap, error) => onSessionRefusalRef.current?.(reason, gap, error),
         getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,
         onTransaction: (update) => onTransactionRef.current?.(update),

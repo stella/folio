@@ -1472,9 +1472,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     onDocumentChangeRef.current = onDocumentChange;
     onTotalPagesChangeRef.current = onTotalPagesChange;
     onErrorRef.current = onError;
-    const handleSessionRefusal = useCallback((message: string, gap: CanonicalGap) => {
-      onErrorRef.current?.(new CanonicalSessionRefusalError({ gap, message }));
-    }, []);
+    const handleSessionRefusal = useCallback(
+      (message: string, gap: CanonicalGap, error?: Error) => {
+        onErrorRef.current?.(error ?? new CanonicalSessionRefusalError({ gap, message }));
+      },
+      [],
+    );
 
     // State
     const [layout, setLayout] = useState<Layout | null>(null);

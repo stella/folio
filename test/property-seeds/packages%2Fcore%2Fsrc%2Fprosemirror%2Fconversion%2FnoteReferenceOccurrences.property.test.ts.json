@@ -1,0 +1,26 @@
+{
+  "retracted adjacent note occurrences preserve multiplicity and ownership through save and reopen": [
+    {
+      "seed": -1604782376,
+      "path": "15:0:0:0",
+      "note": "Retracting the middle own insertion loses a surviving same-id occurrence after rejection and save/reopen without structural attribution.",
+      "date": "2026-10-08"
+    }
+  ],
+  "arbitrary digit splits preserve adjacent occurrences and whole-unit revision owners": [
+    {
+      "seed": 1037721863,
+      "path": "0:0:0:0:0:0:0:0",
+      "note": "The direct conversion oracle must supply the parsed paragraph-property source document on both sides.",
+      "date": "2026-10-08"
+    }
+  ],
+  "random public edits keep occurrences saveable or visibly refuse before commit": [
+    {
+      "seed": 1137381818,
+      "path": "0:3:1:6:7:14:2:5:5:5:9:7:3:4:3:4:5:4:6:8:6",
+      "note": "Save normalizes duplicate revision element ids; compare author/date/type ownership instead of incidental save ids.",
+      "date": "2026-10-08"
+    }
+  ]
+}

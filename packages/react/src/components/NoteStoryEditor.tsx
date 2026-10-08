@@ -34,7 +34,7 @@ export type NoteStoryEditorProps = {
   document: Document | null;
   experimentalSession?: "canonical";
   getCanonicalApi?: () => HiddenEditorApi | null;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap) => void;
+  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
   onActiveChange: (story: NoteStoryKey | null) => void;
   onDocumentChange: (document: Document) => void;
   onStoryChange: (view: EditorView, docChanged: boolean, selectionChanged: boolean) => void;
@@ -135,7 +135,7 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
           getTheme: () => themeRef.current,
           getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
           getExperimentalSession: () => sessionRef.current,
-          onSessionRefusal: (reason, gap) => refusalRef.current?.(reason, gap),
+          onSessionRefusal: (reason, gap, error) => refusalRef.current?.(reason, gap, error),
           onTransaction: ({ docChanged, selectionChanged, view }) => {
             if (docChanged) {
               if (usesCanonicalSession(sessionRef.current, CANONICAL_GAP.secondaryStories)) {

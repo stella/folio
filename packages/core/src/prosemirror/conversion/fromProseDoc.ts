@@ -13,6 +13,11 @@ import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 
 import { panic } from "better-result";
 import { DRAWING_RAW_XML_MODES, relationshipIdOf } from "@stll/docx-core/model";
+import {
+  assertNoteReferenceOccurrences,
+  coalesceNoteReferenceOccurrences,
+} from "../noteReferenceOccurrences";
+
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 import {
@@ -654,6 +659,7 @@ export function fromProseDoc(
   baseDocument?: Document,
   { reuse = "none" }: FromProseDocOptions = {},
 ): Document {
+  assertNoteReferenceOccurrences(pmDoc);
   switch (reuse) {
     case "none": {
       break;
@@ -2676,7 +2682,7 @@ const nestInlineWrapperGroups = (
 };
 
 function extractParagraphContent(
-  paragraph: PMNode,
+  originalParagraph: PMNode,
   // Parameter retained for signature compatibility with the call sites
   // threaded through tables/cells. The body no longer needs the counts
   // — `moveFrom`/`moveTo` round-trip is now driven by the explicit
@@ -2687,6 +2693,7 @@ function extractParagraphContent(
   skipLeadingRenderedPageBreak = false,
   inheritedFormattingOverride?: RunFormattingContext,
 ): ParagraphContent[] {
+  const paragraph = coalesceNoteReferenceOccurrences(originalParagraph);
   const content: ParagraphContent[] = [];
   const paragraphStyleContext =
     paragraph.type.name === "paragraph" ? paragraphRunStyleContext(paragraph) : undefined;
