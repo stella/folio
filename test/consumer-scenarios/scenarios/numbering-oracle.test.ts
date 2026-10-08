@@ -459,15 +459,23 @@ test(
             const reopened = await openReviewer(bytes);
             // Proposals are host-owned, outside DOCX until explicitly accepted.
             assert.ok(!rowsOf(reopened).some((row) => row.text === text));
-            const baseline = reopened.snapshot();
-            // Earlier review resolutions may change an older proposal's anchor.
-            // Derive staleness from the saved baseline, never from the load result.
-            const expectedLoads = records.map(({ suggestionId, anchor }) => {
-              const savedAnchor = baseline.anchors[anchor.blockId];
+            const replay = await openReviewer(bytes);
+            // Each proposal is anchored after the preceding proposals, while
+            // earlier review resolutions can leave an older anchor stale.
+            // Derive outcomes without invoking the host-store loader.
+            const expectedLoads = records.map(({ suggestionId, anchor, operation }) => {
+              const savedAnchor = replay.snapshot().anchors[anchor.blockId];
               assert.ok(savedAnchor, `Saved proposal ${suggestionId} has no anchor`);
-              return savedAnchor.textHash === anchor.originalTextHash
-                ? { status: "restaged", suggestionId }
-                : { status: "stale", suggestionId, reason: "textChanged" };
+              if (savedAnchor.textHash !== anchor.originalTextHash)
+                return { status: "stale", suggestionId, reason: "textChanged" };
+              const applied = replay.applyDocumentOperations({
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode: "suggested",
+                operations: [operation],
+              });
+              assert.equal(applied.applied.length, 1);
+              assert.deepEqual(applied.issues, []);
+              return { status: "restaged", suggestionId };
             });
             const loaded = reopened.loadPendingSuggestions(JSON.parse(JSON.stringify(records)));
             assert.deepEqual(loaded, expectedLoads);
