@@ -66,6 +66,14 @@ const noChange = (message: string) =>
     new CanonicalSessionError({ gap: CANONICAL_GAP.dispatch, message, reason: "noChange" }),
   );
 
+const COMMENT_OPERATION_TYPES: ReadonlySet<DocumentOp["type"]> = new Set([
+  DOCUMENT_OP_TYPES.CREATE_COMMENT,
+  DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+  DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
+  DOCUMENT_OP_TYPES.DELETE_COMMENT,
+  DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+]);
+
 const operationChangesPackage = (op: DocumentOp): boolean => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
@@ -1564,7 +1572,17 @@ class CanonicalSession {
         ]) {
           for (const id of ids) this.saveTouched.add(id);
         }
-        if (ops.some(operationChangesStructure)) this.saveStructure = "changed";
+        // Comment operations touch only the comments part and keep the paragraph
+        // splice path; every other operation that inserts or removes blocks, or
+        // changes package parts or a non-body story, invalidates it.
+        const bodyOps = ops.filter((op) => !COMMENT_OPERATION_TYPES.has(op.type));
+        if (
+          bodyOps.some(operationChangesStructure) ||
+          bodyOps.some(operationChangesPackage) ||
+          (bodyOps.length > 0 &&
+            (applied.value.touched.inserted.length > 0 || applied.value.touched.removed.length > 0))
+        )
+          this.saveStructure = "changed";
         this.currentVersion = baseVersion + 1;
         onPublish(applied.value.inverse, this.currentVersion);
         return Result.ok(undefined);
