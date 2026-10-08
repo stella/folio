@@ -1,3 +1,4 @@
+import { restoreCanonicalSelection } from "./canonicalSelection";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import {
   CANONICAL_GAP,
@@ -57,7 +58,10 @@ import {
   ensureParaIdsInDoc,
   ensureParaIdsInState,
 } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
-import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import {
+  createDocumentStylesPlugin,
+  createDocumentStyleContextPlugin,
+} from "../prosemirror/plugins/documentStyles";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
 import { createTextInputPlugin } from "../prosemirror/textInput";
@@ -570,7 +574,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       doc: session.projection.doc,
       plugins: [
         createParagraphChangeTrackerPlugin(),
-        createDocumentStylesPlugin(deps.getStyles() ?? session.document.package.styles),
+        createDocumentStyleContextPlugin(deps.getStyles() ?? session.document.package.styles),
         createDocumentNumberingPlugin(session.document.package.numbering),
         ...[
           ...(deps.getExtensionManager()?.getPlugins() ?? []),
@@ -1292,6 +1296,22 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         bodyTransaction.doc.content.size,
         commit.bodyProjection.doc.content,
       );
+    if (
+      commit.selection.anchor.story === OP_STORIES.MAIN &&
+      commit.selection.head.story === OP_STORIES.MAIN
+    ) {
+      if (
+        !restoreCanonicalSelection({
+          transaction: bodyTransaction,
+          projection: commit.bodyProjection,
+          selection: commit.selection,
+          unavailable: { type: "refuse" },
+        })
+      ) {
+        refuse("The canonical body history selection is unavailable.");
+        return false;
+      }
+    }
     markPackageChange(bodyTransaction);
     bodyTransaction.setMeta("addToHistory", false);
     const bodyStaged = Result.try(() => view?.state.applyTransaction(bodyTransaction));

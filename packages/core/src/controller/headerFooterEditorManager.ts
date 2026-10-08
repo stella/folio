@@ -30,7 +30,10 @@ import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
-import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import {
+  createDocumentStylesPlugin,
+  createDocumentStyleContextPlugin,
+} from "../prosemirror/plugins/documentStyles";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
 import type {
@@ -42,6 +45,7 @@ import type {
   Theme,
 } from "../types/document";
 
+import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 
@@ -211,6 +215,11 @@ export const createHeaderFooterEditorManager = (
     mounted.clear();
   };
 
+  const getOwnedDocument = (): Document | null =>
+    usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)
+      ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? null)
+      : deps.getDocument();
+
   const sync = (): void => {
     const host = deps.getHost();
     if (!host) {
@@ -219,17 +228,12 @@ export const createHeaderFooterEditorManager = (
 
     // Pending IME input owns its view until the shared session commits.
     if (
-      usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories) &&
+      usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting) &&
       !deps.getCanonicalApi?.()?.getCanonicalStoryProjection(OP_STORIES.MAIN)
     )
       return;
 
-    const document = usesCanonicalSession(
-      deps.getExperimentalSession?.(),
-      CANONICAL_GAP.secondaryStories,
-    )
-      ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? deps.getDocument())
-      : deps.getDocument();
+    const document = getOwnedDocument();
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
@@ -256,7 +260,7 @@ export const createHeaderFooterEditorManager = (
         if (existing.mountNode.parentElement !== host) {
           host.append(existing.mountNode);
         }
-        if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories)) {
+        if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
           const projected = deps
             .getCanonicalApi?.()
             ?.getCanonicalStoryProjection({ kind: part.kind, rId: part.rId });
@@ -323,7 +327,7 @@ export const createHeaderFooterEditorManager = (
         getView: () => view,
         getApi: () => deps.getCanonicalApi?.() ?? null,
         enabled: () =>
-          usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories),
+          usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting),
         onRefusal: deps.onSessionRefusal,
         onSelectionChange: () =>
           deps.onTransaction?.({
@@ -336,12 +340,12 @@ export const createHeaderFooterEditorManager = (
       });
       const canonicalProjection = usesCanonicalSession(
         deps.getExperimentalSession?.(),
-        CANONICAL_GAP.secondaryStories,
+        CANONICAL_GAP.authorityRouting,
       )
         ? deps.getCanonicalApi?.()?.getCanonicalStoryProjection({ kind: part.kind, rId: part.rId })
         : null;
       if (
-        usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories) &&
+        usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting) &&
         !canonicalProjection
       ) {
         manager.destroy();
@@ -354,7 +358,7 @@ export const createHeaderFooterEditorManager = (
           ? EditorState.create({
               doc: canonicalProjection,
               plugins: [
-                createDocumentStylesPlugin(styles),
+                createDocumentStyleContextPlugin(styles),
                 createDocumentNumberingPlugin(numbering),
               ],
             })
@@ -402,8 +406,15 @@ export const createHeaderFooterEditorManager = (
         rId,
       })),
     snapshotDocument: (document) => {
-      if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories))
-        return deps.getCanonicalApi?.()?.getCanonicalDocument() ?? document;
+      if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
+        const canonical = deps.getCanonicalApi?.()?.getCanonicalDocument();
+        if (canonical) return canonical;
+        throw new CanonicalSessionError({
+          gap: CANONICAL_GAP.authorityRouting,
+          reason: "refused",
+          message: "Canonical story snapshot is unavailable.",
+        });
+      }
       let headers = document.package.headers;
       let footers = document.package.footers;
       let headersChanged = false;
