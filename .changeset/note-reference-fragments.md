@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Delete each fragment of a note reference according to its revision ownership in suggesting mode.
+Map the caret to the exact note-reference occurrence after retracting an insertion in suggesting mode.

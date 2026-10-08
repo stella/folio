@@ -1,0 +1,10 @@
+{
+  "resolved note-occurrence deletion preserves text, references, and formatting through save and reopen": [
+    {
+      "seed": 308808408,
+      "path": "0:2",
+      "note": "Forward retraction after a deleted occurrence must map the caret to the targeted occurrence, not retain the incoming cursor.",
+      "date": "2026-10-08"
+    }
+  ]
+}

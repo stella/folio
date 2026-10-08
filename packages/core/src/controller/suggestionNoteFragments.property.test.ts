@@ -25,8 +25,8 @@ type NoteType = (typeof NOTE_TYPES)[number];
 const REFERENCE_ID = 123;
 const LABEL = String(REFERENCE_ID);
 const REFERENCE_FROM = 2;
-const FRAGMENT_COUNT = 3;
-const REFERENCE_TO = REFERENCE_FROM + LABEL.length * FRAGMENT_COUNT;
+const OCCURRENCE_COUNT = 3;
+const REFERENCE_TO = REFERENCE_FROM + LABEL.length * OCCURRENCE_COUNT;
 
 // Serialize and parse the same model shape the public note insertion command produces.
 const sourceDocument = async (kind: NoteType) => {
@@ -37,7 +37,7 @@ const sourceDocument = async (kind: NoteType) => {
       paraId: "12345678",
       content: [
         { type: "run", content: [{ type: "text", text: "L" }] },
-        ...Array.from({ length: FRAGMENT_COUNT }, (_, index) => ({
+        ...Array.from({ length: OCCURRENCE_COUNT }, (_, index) => ({
           type: "run" as const,
           formatting: index % 2 === 0 ? { bold: true } : { italic: true },
           content: [
@@ -58,13 +58,13 @@ const sourceDocument = async (kind: NoteType) => {
   return parseShapeDocument(new Uint8Array(await createDocx(source)));
 };
 
-type FragmentCase = {
+type OccurrenceCase = {
   base: Awaited<ReturnType<typeof sourceDocument>>;
   ownerships: readonly [Ownership, Ownership, Ownership];
   direction: "forward" | "backward";
 };
 
-const deleteFragments = ({ base, ownerships, direction }: FragmentCase) => {
+const deleteOccurrences = ({ base, ownerships, direction }: OccurrenceCase) => {
   let state = createHarnessState(base, "suggesting");
   const { schema } = state;
   const label = state.doc.nodeAt(REFERENCE_FROM);
@@ -207,19 +207,19 @@ const noteTokens = (state: ReturnType<typeof createHarnessState>) => {
   return tokens;
 };
 
-test("note deletion preserves per-fragment ownership for every mix and direction", async () => {
+test("note deletion preserves exact occurrence ownership for every mix and direction", async () => {
   for (const kind of NOTE_TYPES) {
     const base = await sourceDocument(kind);
     for (const direction of ["forward", "backward"] as const) {
       for (const first of OWNERSHIPS)
         for (const second of OWNERSHIPS)
           for (const third of OWNERSHIPS)
-            deleteFragments({ base, direction, ownerships: [first, second, third] });
+            deleteOccurrences({ base, direction, ownerships: [first, second, third] });
     }
   }
 });
 
-test("resolved split-note deletion preserves text, references, and formatting through save and reopen", async () => {
+test("resolved note-occurrence deletion preserves text, references, and formatting through save and reopen", async () => {
   const bases = {
     footnote: await sourceDocument("footnote"),
     endnote: await sourceDocument("endnote"),
@@ -235,7 +235,7 @@ test("resolved split-note deletion preserves text, references, and formatting th
       ),
       async (kind, direction, ownerships) => {
         const base = bases[kind];
-        const { accepted, rejected } = deleteFragments({ base, direction, ownerships });
+        const { accepted, rejected } = deleteOccurrences({ base, direction, ownerships });
         for (const resolved of [accepted, rejected]) {
           const saved = await saveHarnessState(resolved, base);
           const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "editing");
