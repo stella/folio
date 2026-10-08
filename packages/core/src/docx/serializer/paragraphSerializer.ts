@@ -30,6 +30,7 @@ import type {
   SimpleField,
   ComplexField,
   InlineSdt,
+  InlineWrapper,
   Insertion,
   Deletion,
   MoveFrom,
@@ -929,42 +930,102 @@ function serializeTrackedChange(
   tag: "ins" | "del" | "moveFrom" | "moveTo",
   change: Insertion | Deletion | MoveFrom | MoveTo,
 ): string {
-  return serializeNestedTrackedChange({ tag, change, enclosing: [] });
+  return emitTrackedInlineSegments(trackedChangeSegments({ tag, change }));
 }
 
-type SerializeNestedTrackedChangeOptions = {
-  tag: "ins" | "del" | "moveFrom" | "moveTo";
-  change: Insertion | Deletion | MoveFrom | MoveTo;
-  enclosing: readonly { open: string; close: string }[];
+type TrackedInlineSegment =
+  | { type: "plain"; xml: string }
+  | { type: "hyperlink"; hyperlink: Hyperlink; xml: string; lowering: "emit" | "refuse-sdt" };
+
+class UnrepresentableTrackedSdtHyperlinkError extends TaggedError(
+  "UnrepresentableTrackedSdtHyperlinkError",
+)<{
+  message: string;
+}> {}
+
+const emitTrackedInlineSegments = (segments: readonly TrackedInlineSegment[]): string =>
+  segments
+    .map((segment) => {
+      switch (segment.type) {
+        case "plain":
+          return segment.xml;
+        case "hyperlink":
+          switch (segment.lowering) {
+            case "emit":
+              return `<w:hyperlink${hyperlinkAttributes(segment.hyperlink)}>${segment.xml}</w:hyperlink>`;
+            case "refuse-sdt":
+              throw new UnrepresentableTrackedSdtHyperlinkError({
+                message:
+                  "A tracked content control cannot be represented inside a lifted hyperlink.",
+              });
+            default: {
+              const unwritten: never = segment.lowering;
+              return unwritten;
+            }
+          }
+        default: {
+          const unwritten: never = segment;
+          return unwritten;
+        }
+      }
+    })
+    .join("");
+
+/** Wrap contiguous plain content once, and carry wrappers inside each lifted link. */
+const wrapTrackedInlineSegments = (
+  segments: readonly TrackedInlineSegment[],
+  wrap: (xml: string) => string,
+): TrackedInlineSegment[] => {
+  if (segments.length === 0) return [{ type: "plain", xml: wrap("") }];
+  const result: TrackedInlineSegment[] = [];
+  const pending: string[] = [];
+  const flush = () => {
+    if (pending.length === 0) return;
+    result.push({ type: "plain", xml: wrap(pending.join("")) });
+    pending.length = 0;
+  };
+  for (const segment of segments) {
+    switch (segment.type) {
+      case "plain":
+        pending.push(segment.xml);
+        break;
+      case "hyperlink":
+        flush();
+        result.push({
+          type: "hyperlink",
+          hyperlink: segment.hyperlink,
+          xml: wrap(segment.xml),
+          lowering: segment.lowering,
+        });
+        break;
+      default: {
+        const unwritten: never = segment;
+        return unwritten;
+      }
+    }
+  }
+  flush();
+  return result;
 };
 
-/** Only hyperlink lifting requires splitting an authored revision wrapper. */
-const requiresHyperlinkSegmentation = (content: readonly ParagraphContent[]): boolean =>
-  content.some((item) => {
-    switch (item.type) {
-      case "hyperlink":
-        return true;
-      case "simpleField":
-      case "insertion":
-      case "deletion":
-      case "moveFrom":
-      case "moveTo":
-        return requiresHyperlinkSegmentation(item.content);
-      default:
-        return false;
-    }
-  });
+type TrackedChangeSegmentsOptions = {
+  tag: "ins" | "del" | "moveFrom" | "moveTo";
+  change: TrackedRunChange;
+};
 
-/** Carry all enclosing revisions inside a hyperlink when segmenting nested changes. */
-function serializeNestedTrackedChange({
+const trackedChangeSegments = ({
   tag,
   change,
-  enclosing,
-}: SerializeNestedTrackedChangeOptions): string {
-  const content = change.content.flatMap((item) =>
-    item.type === "simpleField" ? trackedSimpleFieldContent(item) : [item],
-  );
-  if (change.resolutionJoins !== undefined && requiresHyperlinkSegmentation(content)) {
+}: TrackedChangeSegmentsOptions): TrackedInlineSegment[] => {
+  const disposition: InlineTextDisposition =
+    tag === "del" || tag === "moveFrom" ? "removed" : "kept";
+  const segments = walkTrackedInlineContent(change.content, disposition);
+  // This is the only revision-wrapping boundary. The execution's own segments
+  // decide refusal, so no separate detector can miss a nested container.
+  if (
+    change.resolutionJoins !== undefined &&
+    segments.some((segment) => segment.type === "hyperlink")
+  ) {
     throw new ReviewResolutionProvenanceError({
       attribute: "resolutionJoins",
       reason: "unrepresentable",
@@ -975,124 +1036,122 @@ function serializeNestedTrackedChange({
   const attrs =
     serializeTrackedChangeAttributes(change.info) +
     serializeResolutionJoins(change.resolutionJoins);
+  return wrapTrackedInlineSegments(segments, (xml) => `<w:${tag} ${attrs}>${xml}</w:${tag}>`);
+};
 
-  const disposition: InlineTextDisposition =
-    tag === "del" || tag === "moveFrom" ? "removed" : "kept";
+class UnrepresentableNestedHyperlinkError extends TaggedError(
+  "UnrepresentableNestedHyperlinkError",
+)<{
+  message: string;
+}> {}
 
-  const serializeContentRun = (run: Run): string => serializeInlineRun(run, disposition);
-
-  // A hyperlink is not written inside the wrapper at all, so it is not one of
-  // the items this writes: the loop below opens the wrapper inside the link
-  // instead.
-  type WrappedItem = Exclude<(typeof change.content)[number], Hyperlink>;
-
-  const serializeWrappedItem = (item: WrappedItem): string => {
+/** One exhaustive recursive owner for all containers inside a tracked revision. */
+const walkTrackedInlineContent = (
+  content: readonly ParagraphContent[],
+  disposition: InlineTextDisposition,
+): TrackedInlineSegment[] => {
+  const segments: TrackedInlineSegment[] = [];
+  for (const item of content) {
     switch (item.type) {
-      case "run":
-        return serializeContentRun(item);
-      case "simpleField":
-      case "complexField": {
-        const xml =
-          item.type === "simpleField" ? serializeSimpleField(item) : serializeComplexField(item);
-        return disposition === "removed" ? rewriteRunTextAsDeleted(xml) : xml;
+      case "hyperlink": {
+        const children = walkTrackedInlineContent(item.children, disposition);
+        if (children.some((child) => child.type === "hyperlink")) {
+          throw new UnrepresentableNestedHyperlinkError({
+            message: "A tracked hyperlink cannot contain another hyperlink.",
+          });
+        }
+        segments.push({
+          type: "hyperlink",
+          hyperlink: item,
+          xml: emitTrackedInlineSegments(children),
+          lowering: "emit",
+        });
+        break;
       }
-      case "mathEquation":
-        return item.ommlXml;
+      case "simpleField":
+        segments.push(...walkTrackedInlineContent(trackedSimpleFieldContent(item), disposition));
+        break;
       case "insertion":
       case "deletion":
       case "moveFrom":
       case "moveTo":
-        return serializeTrackedChange(trackedChangeTag(item), item);
+        segments.push(...trackedChangeSegments({ tag: trackedChangeTag(item), change: item }));
+        break;
+      case "inlineWrapper":
+        segments.push(
+          ...wrapTrackedInlineSegments(walkTrackedInlineContent(item.content, disposition), (xml) =>
+            serializeInlineWrapperMarkup(item, xml),
+          ),
+        );
+        break;
+      case "inlineSdt": {
+        const wrapped = wrapTrackedInlineSegments(
+          walkTrackedInlineContent(item.content, disposition),
+          (xml) => serializeSdtWrapper(item.properties, xml),
+        );
+        // Hyperlink.children cannot carry an SDT on reopen. Defer the typed
+        // refusal until emission so enclosing revisions first enforce provenance.
+        for (const segment of wrapped) {
+          if (segment.type === "hyperlink") segment.lowering = "refuse-sdt";
+        }
+        segments.push(...wrapped);
+        break;
+      }
+      case "complexField": {
+        // ComplexField owns run-only code/results; a rich field stays in the
+        // paragraph model and reaches the recursive cases above instead.
+        const xml = serializeComplexField(item);
+        segments.push({
+          type: "plain",
+          xml: disposition === "removed" ? rewriteRunTextAsDeleted(xml) : xml,
+        });
+        break;
+      }
+      case "preservedInline": {
+        // Opaque captures cannot enter the typed lifting walk. Refuse hyperlinks
+        // in this inline scope; a nested paragraph owns a separate revision scope.
+        const pending = getChildElements(parseXml(item.xml, OOXML_NAMESPACE_SCOPE));
+        while (pending.length > 0) {
+          const captured = pending.pop();
+          if (!captured) continue;
+          const wordprocessing = WORDPROCESSINGML_NAMESPACE_URIS.has(captured.namespaceUri ?? "");
+          const name = getLocalName(captured.name);
+          if (wordprocessing && name === "p") continue;
+          if (wordprocessing && name === "hyperlink") {
+            throw new UnrepresentableTrackedCaptureError({
+              message:
+                "A tracked capture containing a hyperlink requires typed content for lifting.",
+            });
+          }
+          pending.push(...getChildElements(captured));
+        }
+        segments.push({
+          type: "plain",
+          xml: disposition === "removed" ? serializeRemovedPreservedInline(item) : item.xml,
+        });
+        break;
+      }
+      case "run":
+      case "mathEquation":
       case "bookmarkStart":
       case "bookmarkEnd":
-        return serializeBookmarkMarker(item);
       case "moveFromRangeStart":
-        return serializeMoveRangeStart("moveFromRangeStart", item);
       case "moveFromRangeEnd":
-        return `<w:moveFromRangeEnd ${markupRangeAttributes(item).join(" ")}/>`;
       case "moveToRangeStart":
-        return serializeMoveRangeStart("moveToRangeStart", item);
       case "moveToRangeEnd":
-        return `<w:moveToRangeEnd ${markupRangeAttributes(item).join(" ")}/>`;
-      // Inside the wrapper, where the source put it: markup lifted out of a
-      // `w:ins` is markup the reviewer no longer accepts or rejects with the
-      // change.
-      case "preservedInline":
-        return disposition === "removed" ? serializeRemovedPreservedInline(item) : item.xml;
-      // Transparent wrappers stay where the author put them, inside the
-      // revision, and carry its disposition down to the runs they hold.
-      case "inlineWrapper":
-      case "inlineSdt":
-        return serializeParagraphContent(item, disposition);
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+        segments.push({ type: "plain", xml: serializeParagraphContent(item, disposition) });
+        break;
       default: {
         const unwritten: never = item;
         return unwritten;
       }
     }
-  };
-
-  const open = `<w:${tag} ${attrs}>`;
-  const close = `</w:${tag}>`;
-  const wrap = (inner: string): string => {
-    let xml = `${open}${inner}${close}`;
-    for (const ancestor of enclosing.toReversed()) xml = `${ancestor.open}${xml}${ancestor.close}`;
-    return xml;
-  };
-
-  // An empty wrapper is a marker in its own right (a paragraph mark's
-  // revision, a move end), so it survives the segmentation below.
-  if (content.length === 0) {
-    return wrap("");
   }
-
-  // `w:hyperlink` may not appear inside a revision wrapper; the nesting runs
-  // the other way, with the wrapper opened again around the linked runs. So a
-  // revision spanning a hyperlink is emitted as several wrappers — text
-  // before, the hyperlink carrying its own, text after — which the package's
-  // revision-id pass then gives distinct `w:id`s.
-  const segments: string[] = [];
-  const pending: string[] = [];
-  const flushPending = (): void => {
-    if (pending.length > 0) {
-      segments.push(wrap(pending.join("")));
-      pending.length = 0;
-    }
-  };
-  for (const item of content) {
-    if (
-      (item.type === "insertion" ||
-        item.type === "deletion" ||
-        item.type === "moveFrom" ||
-        item.type === "moveTo") &&
-      requiresHyperlinkSegmentation(item.content)
-    ) {
-      flushPending();
-      segments.push(
-        serializeNestedTrackedChange({
-          tag: trackedChangeTag(item),
-          change: item,
-          enclosing: [...enclosing, { open, close }],
-        }),
-      );
-      continue;
-    }
-    if (item.type === "hyperlink") {
-      flushPending();
-      const childrenXml = item.children
-        .map((child) => serializeHyperlinkChild(child, disposition))
-        .join("");
-      // Always the full wrapper, never `wrap`: a linked run range that is
-      // empty still has to say it was inserted or deleted, or reopening the
-      // package finds a plain hyperlink.
-      segments.push(`<w:hyperlink${hyperlinkAttributes(item)}>${wrap(childrenXml)}</w:hyperlink>`);
-      continue;
-    }
-    pending.push(serializeWrappedItem(item));
-  }
-  flushPending();
-
-  return segments.join("");
-}
+  return segments;
+};
 
 /** The properties element each tagged wrapper declares ahead of its content. */
 const TAGGED_WRAPPER_PROPERTIES = { smartTag: "smartTagPr", customXml: "customXmlPr" } as const;
@@ -1139,6 +1198,31 @@ function serializeTaggedWrapper(
 /** Emit the `<w:commentReference>` run Word places after a comment range end. */
 function serializeCommentReferenceRun(id: number): string {
   return `<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="${id}"/></w:r>`;
+}
+
+function serializeInlineWrapperMarkup(content: InlineWrapper, inner: string): string {
+  switch (content.kind) {
+    case "bidi": {
+      // `w:dir` is the embedding and `w:bdo` the override; the schema
+      // gives them the same content model, which is paragraph content, so
+      // the children went back through this function above.
+      const tag = content.control === "override" ? "bdo" : "dir";
+      const value =
+        content.direction === undefined ? "" : ` w:val="${escapeXmlAttribute(content.direction)}"`;
+      return `<w:${tag}${value}>${inner}</w:${tag}>`;
+    }
+    // `CT_SmartTagRun` and `CT_CustomXmlRun` declare the properties child
+    // ahead of the content, so it is written first; the content model is
+    // the same paragraph content the branches above went back through.
+    case "smartTag":
+      return serializeTaggedWrapper("smartTag", content, inner);
+    case "customXml":
+      return serializeTaggedWrapper("customXml", content, inner);
+    default: {
+      const unwritten: never = content;
+      return unwritten;
+    }
+  }
 }
 
 /**
@@ -1193,30 +1277,7 @@ function serializeParagraphContent(
       const inner = content.content
         .map((child) => serializeParagraphContent(child, disposition))
         .join("");
-      switch (content.kind) {
-        case "bidi": {
-          // `w:dir` is the embedding and `w:bdo` the override; the schema
-          // gives them the same content model, which is paragraph content, so
-          // the children went back through this function above.
-          const tag = content.control === "override" ? "bdo" : "dir";
-          const value =
-            content.direction === undefined
-              ? ""
-              : ` w:val="${escapeXmlAttribute(content.direction)}"`;
-          return `<w:${tag}${value}>${inner}</w:${tag}>`;
-        }
-        // `CT_SmartTagRun` and `CT_CustomXmlRun` declare the properties child
-        // ahead of the content, so it is written first; the content model is
-        // the same paragraph content the branches above went back through.
-        case "smartTag":
-          return serializeTaggedWrapper("smartTag", content, inner);
-        case "customXml":
-          return serializeTaggedWrapper("customXml", content, inner);
-        default: {
-          const unwritten: never = content;
-          return unwritten;
-        }
-      }
+      return serializeInlineWrapperMarkup(content, inner);
     }
     case "mathEquation":
       // Round-trip the raw OMML XML directly

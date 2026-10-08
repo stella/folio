@@ -20,8 +20,19 @@ import {
   serializeBoundaryJoins,
   serializeResolutionJoins,
 } from "./reviewResolutionProvenance";
-import { findChild, parseXmlDocument, WORDPROCESSINGML_NAMESPACE_URIS } from "./xmlParser";
-import type { TrackedRunChange, Paragraph, ParagraphMarkChange } from "../types/document";
+import {
+  getChildElements,
+  getLocalName,
+  findChild,
+  parseXmlDocument,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+} from "./xmlParser";
+import type {
+  TrackedRunChange,
+  ParagraphContent,
+  Paragraph,
+  ParagraphMarkChange,
+} from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -300,12 +311,26 @@ test("nested hyperlink lifting refuses enclosing resolution provenance", () => {
   expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
 });
 
+type RecursiveInlineContainerKind = Extract<
+  ParagraphContent,
+  { content: ParagraphContent[] }
+>["type"];
+const RECURSIVE_CONTAINER_KINDS = {
+  insertion: fc.constant("insertion" as const),
+  deletion: fc.constant("deletion" as const),
+  moveFrom: fc.constant("moveFrom" as const),
+  moveTo: fc.constant("moveTo" as const),
+  simpleField: fc.constant("simpleField" as const),
+  inlineSdt: fc.constant("inlineSdt" as const),
+  inlineWrapper: fc.constantFrom("bidiEmbedding", "bidiOverride", "smartTag", "customXml"),
+} satisfies Record<RecursiveInlineContainerKind, fc.Arbitrary<string>>;
+
 test(
   "generated nested lifting refuses provenance and unsplit revisions retain it",
   () => {
     assertProperty(
       fc.property(
-        fc.array(fc.constantFrom("insertion", "deletion", "moveFrom", "moveTo"), {
+        fc.array(fc.oneof(...Object.values(RECURSIVE_CONTAINER_KINDS)), {
           minLength: 1,
           maxLength: 5,
         }),
@@ -344,29 +369,109 @@ test(
               provenance === "every" ||
               (provenance === "inner" && index === 0) ||
               (provenance === "outer" && index === kinds.length - 1);
-            if (retains) owners++;
             const nestedContent: TrackedRunChange["content"] = [
               { type: "run", content: [{ type: "text", text: "before" }] },
             ];
             nestedContent.push(...content);
             nestedContent.push({ type: "run", content: [{ type: "text", text: "after" }] });
-            content = [
-              {
-                type: kind,
-                info: { id: index + 1, author: "Reviewer" },
-                ...(retains ? { resolutionJoins: joins } : {}),
-                content: nestedContent,
-              },
-            ];
+            switch (kind) {
+              case "insertion":
+              case "deletion":
+              case "moveFrom":
+              case "moveTo":
+                if (retains) owners++;
+                content = [
+                  {
+                    type: kind,
+                    info: { id: index + 1, author: "Reviewer" },
+                    ...(retains ? { resolutionJoins: joins } : {}),
+                    content: nestedContent,
+                  },
+                ];
+                break;
+              case "simpleField":
+                if (retains) owners++;
+                content = [
+                  {
+                    type: "simpleField",
+                    instruction: "REF target",
+                    fieldType: "REF",
+                    content: [
+                      {
+                        type: "insertion",
+                        info: { id: index + 1, author: "Reviewer" },
+                        ...(retains ? { resolutionJoins: joins } : {}),
+                        content: nestedContent,
+                      },
+                    ],
+                  },
+                ];
+                break;
+              case "inlineSdt":
+                content = [
+                  {
+                    type: "inlineSdt",
+                    properties: { sdtType: "richText" },
+                    content: nestedContent,
+                  },
+                ];
+                break;
+              case "bidiEmbedding":
+              case "bidiOverride":
+                content = [
+                  {
+                    type: "inlineWrapper",
+                    kind: "bidi",
+                    control: kind === "bidiEmbedding" ? "embedding" : "override",
+                    direction: "rtl",
+                    content: nestedContent,
+                  },
+                ];
+                break;
+              case "smartTag":
+              case "customXml":
+                content = [
+                  {
+                    type: "inlineWrapper",
+                    kind,
+                    element: "tag",
+                    uri: "urn:tag",
+                    content: nestedContent,
+                  },
+                ];
+                break;
+              default: {
+                const untested: never = kind;
+                return untested;
+              }
+            }
           }
+          // Every generated container stack is inside a tracked owner, including
+          // stacks made entirely from fields, transparent wrappers and controls.
+          content = [{ type: "insertion", info: { id: 100, author: "Root Reviewer" }, content }];
           const paragraph: Paragraph = { type: "paragraph", content };
           if (link === "linked" && owners > 0) {
             expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
             return;
           }
+          if (link === "linked" && kinds.includes("inlineSdt")) {
+            expect(() => serializeParagraph(paragraph)).toThrow(/content control/);
+            return;
+          }
           const xml = serializeParagraph(paragraph);
+          expectNoHyperlinkInsideRevision(xml);
           expect(xml.match(/folio:resolutionJoins=/gu)?.length ?? 0).toBe(owners);
           if (owners > 0) expect(xml).toContain(serializeResolutionJoins(joins));
+          const parsedRoot = element(
+            `<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}">${xml}</root>`,
+          );
+          const parsedParagraph = findChild(parsedRoot, "w", "p");
+          if (!parsedParagraph) throw new TypeError("Generated paragraph disappeared.");
+          const reopenedXml = serializeParagraph(parseParagraph(parsedParagraph, null, null, null));
+          expectNoHyperlinkInsideRevision(reopenedXml);
+          expect(reopenedXml.match(/<w:hyperlink\b/gu)?.length ?? 0).toBe(
+            link === "linked" ? 1 : 0,
+          );
         },
       ),
       { numRuns: 80 },
@@ -374,3 +479,88 @@ test(
   },
   propertyTestTimeout(10_000),
 );
+
+const expectNoHyperlinkInsideRevision = (xml: string) => {
+  const root = element(
+    `<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${xml}</root>`,
+  );
+  const pending = [{ node: root, revisionDepth: 0 }];
+  while (pending.length > 0) {
+    const next = pending.pop();
+    if (!next) continue;
+    const name = getLocalName(next.node.name);
+    if (name === "hyperlink") expect(next.revisionDepth).toBe(0);
+    const revisionDepth =
+      next.revisionDepth + (["ins", "del", "moveFrom", "moveTo"].includes(name) ? 1 : 0);
+    for (const child of getChildElements(next.node)) pending.push({ node: child, revisionDepth });
+  }
+};
+
+for (const provenance of ["none", "joins"] as const) {
+  test(`tracked field wrapper hyperlink uses lifted revision placement (${provenance})`, () => {
+    const paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 35, author: "Reviewer" },
+          ...(provenance === "joins"
+            ? { resolutionJoins: { before: 1, after: 1, remove: 1 } }
+            : {}),
+          content: [
+            {
+              type: "simpleField",
+              instruction: "REF target",
+              fieldType: "REF",
+              content: [
+                {
+                  type: "inlineWrapper",
+                  kind: "bidi",
+                  control: "embedding",
+                  direction: "rtl",
+                  content: [
+                    {
+                      type: "hyperlink",
+                      anchor: "target",
+                      children: [{ type: "run", content: [{ type: "text", text: "linked" }] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    } satisfies Paragraph;
+    if (provenance === "joins") {
+      expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
+      return;
+    }
+    const xml = serializeParagraph(paragraph);
+    expectNoHyperlinkInsideRevision(xml);
+    expect(xml).toContain("<w:hyperlink");
+    expect(xml).toContain('<w:dir w:val="rtl">');
+    expect(xml).toContain("linked");
+  });
+}
+
+test("opaque tracked captures refuse untyped hyperlinks", () => {
+  expect(() =>
+    serializeParagraph({
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 35, author: "Reviewer" },
+          content: [
+            {
+              type: "preservedInline",
+              text: "linked",
+              xml: '<w:sdt><w:sdtPr/><w:sdtContent><w:hyperlink w:anchor="target"><w:r><w:t>linked</w:t></w:r></w:hyperlink></w:sdtContent></w:sdt>',
+            },
+          ],
+        },
+      ],
+    }),
+  ).toThrow(/tracked capture/);
+});
