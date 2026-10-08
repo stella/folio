@@ -12,6 +12,53 @@ import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
 import { createDocx } from "./rezip";
 import { parseDocx } from "./parser";
 import { toMarkdown } from "../markdown/index";
+import { serializeParagraph } from "./serializer/paragraphSerializer";
+import {
+  getChildElements,
+  getLocalName,
+  getTextContent,
+  getAttributeByNamespaceUri,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+  parseXmlDocument,
+} from "./xmlParser";
+import { TRACKED_RUN_WORDPROCESSING_CHILDREN } from "./containerChildren.gen";
+
+const FIELD_DATA =
+  '<w:fldData xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">AQID</w:fldData>';
+
+const expectFieldDataHome = (source: ReturnType<typeof createEmptyDocument>) => {
+  const paragraph = source.package.document.content.at(0);
+  expect(paragraph?.type).toBe("paragraph");
+  if (paragraph?.type !== "paragraph") return;
+  const xml = serializeParagraph(paragraph);
+  const root = parseXmlDocument(
+    `<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${xml}</root>`,
+  );
+  expect(root).not.toBeNull();
+  if (!root) return;
+  const pending = [root];
+  const revisionChildren: ReadonlySet<string> = new Set(TRACKED_RUN_WORDPROCESSING_CHILDREN);
+  let count = 0;
+  while (pending.length > 0) {
+    const parent = pending.pop();
+    if (!parent) continue;
+    const name = getLocalName(parent.name);
+    for (const child of getChildElements(parent)) {
+      if (["ins", "del", "moveFrom", "moveTo"].includes(name))
+        expect(revisionChildren.has(getLocalName(child.name))).toBe(true);
+      if (getLocalName(child.name) === "fldData") {
+        expect(name).toBe("fldChar");
+        expect(
+          getAttributeByNamespaceUri(parent, WORDPROCESSINGML_NAMESPACE_URIS, "fldCharType"),
+        ).toBe("begin");
+        expect(getTextContent(child)).toBe("AQID");
+        count++;
+      }
+      pending.push(child);
+    }
+  }
+  expect(count).toBe(1);
+};
 
 const childRevisions = (doc: PMNode) => {
   const found = [];
@@ -48,7 +95,8 @@ test(
         fc.integer({ min: 1, max: 8 }),
         fc.constantFrom("none", "insertion"),
         fc.constantFrom("Child Reviewer", "Outer Reviewer", "Žluťoučký", "レビュー"),
-        async (kind, outer, carrier, length, ancestry, author) => {
+        fc.constantFrom("none", "fldData"),
+        async (kind, outer, carrier, length, ancestry, author, fieldCapture) => {
           const run = {
             type: "run",
             content: [{ type: "text", text: "x".repeat(length) }],
@@ -100,6 +148,8 @@ test(
             trackedChild,
             { type: "run", content: [{ type: "text", text: "after" }] },
           ];
+          if (fieldCapture === "fldData")
+            field.content.unshift({ type: "preservedInline", xml: FIELD_DATA, text: "" });
           const source = createEmptyDocument();
           const content: ParagraphContent =
             outer === "none"
@@ -127,8 +177,11 @@ test(
           const serializedRevisions = childRevisions(initial);
           for (const revisionAttrs of serializedRevisions) revisionAttrs.initials = undefined;
           const live = EditorState.create({ doc: initial });
-          const saved = await createDocx(fromProseDoc(initial, source));
+          const serializedSource = fromProseDoc(initial, source);
+          if (fieldCapture === "fldData" && outer !== "none") expectFieldDataHome(serializedSource);
+          const saved = await createDocx(serializedSource);
           const reopenedSource = await parseDocx(saved, { preloadFonts: false });
+          if (fieldCapture === "fldData" && outer !== "none") expectFieldDataHome(reopenedSource);
           const reopened = EditorState.create({ doc: toProseDoc(reopenedSource) });
           expect(childRevisions(reopened.doc)).toEqual(serializedRevisions);
           for (const mode of ["accept", "reject"] as const) {
@@ -154,3 +207,68 @@ test(
   },
   propertyTestTimeout(30_000),
 );
+
+for (const type of ["insertion", "deletion"] as const) {
+  test(`tracked ${type} field data stays on the begin character through save/reopen`, async () => {
+    const source = createEmptyDocument();
+    source.package.document.content = [
+      {
+        type: "paragraph",
+        content: [
+          {
+            type,
+            info: { id: 35, author: "Reviewer" },
+            content: [
+              {
+                type: "simpleField",
+                instruction: "REF target",
+                fieldType: "REF",
+                content: [
+                  { type: "preservedInline", xml: FIELD_DATA, text: "" },
+                  { type: "run", content: [{ type: "text", text: "result" }] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const projected = fromProseDoc(toProseDoc(source), source);
+    expectFieldDataHome(projected);
+    const reopened = await parseDocx(await createDocx(projected), { preloadFonts: false });
+    expectFieldDataHome(reopened);
+    const projectedAgain = fromProseDoc(toProseDoc(reopened), reopened);
+    expectFieldDataHome(projectedAgain);
+    expectFieldDataHome(await parseDocx(await createDocx(projectedAgain), { preloadFonts: false }));
+  });
+}
+
+test("tracked fields refuse captures without a valid lowered home", () => {
+  for (const xml of [
+    '<w:subDoc xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/>',
+    '<w:fldSimple w:instr="REF target"/>',
+    '<w:hyperlink w:anchor="target"/>',
+    '<w:fldData xmlns:w="urn:other">AQID</w:fldData>',
+    FIELD_DATA + FIELD_DATA,
+  ]) {
+    expect(() =>
+      serializeParagraph({
+        type: "paragraph",
+        content: [
+          {
+            type: "insertion",
+            info: { id: 35, author: "Reviewer" },
+            content: [
+              {
+                type: "simpleField",
+                instruction: "REF target",
+                fieldType: "REF",
+                content: [{ type: "preservedInline", xml, text: "" }],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/tracked field/i);
+  }
+});

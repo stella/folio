@@ -920,7 +920,18 @@ const SIMPLE_FIELD_CHILD_HANDLERS = {
     push(parseRun(child, styles, theme, rels, media, inScopeXmlns, previews));
   },
   hyperlink: (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
-    push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns, previews));
+    for (const content of parseHyperlinkParagraphContents(
+      child,
+      rels,
+      styles,
+      theme,
+      media,
+      inScopeXmlns,
+      previews,
+    )) {
+      if (!isSimpleFieldContent(content)) panic("A parsed field hyperlink must be a field child");
+      push(content);
+    }
   },
 
   // The transparent wrappers, read as the wrappers they are: a cached field
@@ -1398,7 +1409,13 @@ const assembledFieldBeginsOf = (container: XmlElement): ReadonlySet<XmlElement> 
     }
     if (hasEnd && open.length > 0) {
       const closed = open.pop();
-      if (closed !== undefined && open.length === 0) {
+      // ComplexField represents ffData, but not fldData. Keep fldData-bearing
+      // fields as structural runs, including the captured begin child.
+      if (
+        closed !== undefined &&
+        open.length === 0 &&
+        !findWordprocessingChild(beginFieldCharOf(closed), "fldData")
+      ) {
         assembled.add(closed);
       }
     }

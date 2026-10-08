@@ -49,7 +49,7 @@ import {
   serializeParagraphPropertySet,
 } from "../../internal/paragraphFormattingSerialization";
 import { serializePreservedAttributes } from "../attributeRemainder";
-import { CONTAINER_CHILDREN } from "../containerChildren.gen";
+import { CONTAINER_CHILDREN, TRACKED_RUN_WORDPROCESSING_CHILDREN } from "../containerChildren.gen";
 import {
   getParagraphPropertySource,
   paragraphPropertySourceMatchesEmission,
@@ -64,6 +64,7 @@ import {
   getLocalName,
   NAMESPACES,
   OOXML_NAMESPACE_SCOPE,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   parseXml,
   type XmlElement,
   type XmlNamespaceScope,
@@ -688,6 +689,21 @@ function serializeRemovedPreservedInline(item: PreservedInline): string {
   return item.xml;
 }
 
+class UnrepresentableTrackedFieldChildError extends TaggedError(
+  "UnrepresentableTrackedFieldChildError",
+)<{
+  message: string;
+}> {}
+
+const TRACKED_FIELD_CAPTURE_NAMES: ReadonlySet<string> = new Set(
+  TRACKED_RUN_WORDPROCESSING_CHILDREN,
+);
+const replayableFieldDataXml = createCapturedXmlSanitizer({
+  allowedLocalNames: new Set(["fldData"]),
+  allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE_URIS,
+  inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+});
+
 /** Lower a tracked field into run-level structure before revision/link segmentation. */
 const trackedSimpleFieldContent = (field: SimpleField): TrackedRunChange["content"] => {
   const formatting = field.content.find((item) => item.type === "run")?.formatting;
@@ -696,20 +712,69 @@ const trackedSimpleFieldContent = (field: SimpleField): TrackedRunChange["conten
     content,
     ...(formatting && { formatting }),
   });
+  let fieldDataXml: string | null = null;
+  const result: SimpleField["content"] = [];
+  for (const item of field.content) {
+    if (item.type !== "preservedInline") {
+      result.push(item);
+      continue;
+    }
+    const captured = parseXml(item.xml, OOXML_NAMESPACE_SCOPE);
+    const root = captured.elements?.at(0);
+    if (
+      captured.elements?.length !== 1 ||
+      !root ||
+      !WORDPROCESSINGML_NAMESPACE_URIS.has(root.namespaceUri ?? "")
+    ) {
+      throw new UnrepresentableTrackedFieldChildError({
+        message: "A tracked field capture has no representable revision-level home.",
+      });
+    }
+    const name = getLocalName(root.name);
+    if (name === "fldData") {
+      const data = replayableFieldDataXml(item.xml);
+      if (!data || fieldDataXml !== null) {
+        throw new UnrepresentableTrackedFieldChildError({
+          message: "A tracked field requires at most one valid fldData child.",
+        });
+      }
+      fieldDataXml = data;
+      continue;
+    }
+    if (!TRACKED_FIELD_CAPTURE_NAMES.has(name)) {
+      throw new UnrepresentableTrackedFieldChildError({
+        message: `A tracked field capture cannot lower ${name} into a revision wrapper.`,
+      });
+    }
+    result.push(item);
+  }
+  // fldData belongs to CT_FldChar, not CT_RunTrackChange. Keep its captured bytes
+  // on the begin character; the parser retains this structure instead of assembling it.
+  const begin = fieldDataXml
+    ? structuralRun([
+        {
+          type: "preservedXml",
+          text: "",
+          xml: `<w:fldChar w:fldCharType="begin"${fieldStateAttributes(field)
+            .map((attr) => ` ${attr}`)
+            .join("")}>${fieldDataXml}</w:fldChar>`,
+        },
+      ])
+    : structuralRun([
+        {
+          type: "fieldChar",
+          charType: "begin",
+          ...(field.fldLock !== undefined && { fldLock: field.fldLock }),
+          ...(field.dirty !== undefined && { dirty: field.dirty }),
+        },
+      ]);
   return [
-    structuralRun([
-      {
-        type: "fieldChar",
-        charType: "begin",
-        ...(field.fldLock !== undefined && { fldLock: field.fldLock }),
-        ...(field.dirty !== undefined && { dirty: field.dirty }),
-      },
-    ]),
+    begin,
     ...(field.instruction.length
       ? [structuralRun([{ type: "instrText", text: field.instruction }])]
       : []),
     structuralRun([{ type: "fieldChar", charType: "separate" }]),
-    ...field.content,
+    ...result,
     structuralRun([{ type: "fieldChar", charType: "end" }]),
   ];
 };
