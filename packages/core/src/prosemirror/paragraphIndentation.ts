@@ -13,7 +13,7 @@ type IndentationModelAgreement = [FolioContentParagraphIndentation, ModelIndenta
   ? unknown
   : never;
 
-const DIRECT_PARAGRAPH_INDENTATION_KEYS = [
+export const DIRECT_PARAGRAPH_INDENTATION_KEYS = [
   "indentLeft",
   "indentRight",
   "indentFirstLine",

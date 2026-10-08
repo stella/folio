@@ -43,6 +43,10 @@ import { isStyleSourcedParagraphNumbering } from "../../internal/paragraphFormat
 import { expectParagraphAttrs } from "../attrs";
 import { directParagraphAlignment } from "../paragraphAlignment";
 import {
+  directParagraphIndentation,
+  DIRECT_PARAGRAPH_INDENTATION_KEYS,
+} from "../paragraphIndentation";
+import {
   PARAGRAPH_FORMATTING_WRITE_BACK,
   STYLE_RESOLVED_PARAGRAPH_FIELDS,
 } from "../paragraphFormattingProvenance";
@@ -176,6 +180,10 @@ export const PPR_CHANGE_SCOPED_ATTR_KEYS = [
 const PPR_CHANGE_SCOPED_ATTR_KEY_SET: ReadonlySet<string> = new Set(PPR_CHANGE_SCOPED_ATTR_KEYS);
 
 /** Effective/bookkeeping attrs whose tracked snapshot must use direct provenance instead. */
+const PPR_INDENTATION_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set(
+  DIRECT_PARAGRAPH_INDENTATION_KEYS,
+);
+
 const PPR_SPACING_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set([
   "spaceBefore",
   "spaceAfter",
@@ -220,6 +228,7 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
     if (
       key === "alignment" ||
       PPR_SPACING_ATTR_KEYS.has(key) ||
+      PPR_INDENTATION_ATTR_KEYS.has(key) ||
       (key === "numPr" && isStyleSourcedParagraphNumbering(attrs.numPr, attrs.numPrFromStyle))
     ) {
       continue;
@@ -229,25 +238,7 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
     if (styleSuppliedParagraphValue(attrs, key)) {
       continue;
     }
-    if (key === "hangingIndent" && styleSuppliedParagraphValue(attrs, "indentFirstLine")) {
-      continue;
-    }
-    // A value the style lends is not the paragraph's own `w:pPr`: a record
-    // holds what the paragraph states, as a save would write it.
-    if (styleSuppliedParagraphValue(attrs, key)) {
-      continue;
-    }
-    if (key === "hangingIndent" && styleSuppliedParagraphValue(attrs, "indentFirstLine")) {
-      continue;
-    }
     const value: unknown = attrs[key];
-    if (
-      key === "hangingIndent" &&
-      value === false &&
-      attrs._originalFormatting?.hangingIndent === undefined
-    ) {
-      continue;
-    }
     if (value !== null && value !== undefined) {
       snapshot[key] = value;
     }
@@ -256,7 +247,7 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
   if (directAlignment !== undefined) {
     snapshot["alignment"] = directAlignment;
   }
-  Object.assign(snapshot, directParagraphSpacing(attrs));
+  Object.assign(snapshot, directParagraphSpacing(attrs), directParagraphIndentation(attrs));
   return snapshot;
 };
 
