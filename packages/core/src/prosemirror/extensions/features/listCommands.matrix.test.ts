@@ -750,13 +750,19 @@ describe("list changes while suggesting", () => {
             expect(
               paragraphIndentationFromFormatting(targetParagraph(reopened).formatting),
             ).toEqual(originalIndentation);
-            const reopenedNode = toProseDoc(reopened).firstChild;
+            const reopenedNode = toProseDoc(reopened, {
+              styles: reopened.package.styles,
+              theme: reopened.package.theme,
+            }).firstChild;
             if (reopenedNode === null)
               throw new TypeError("Reopened toggle fixture lost paragraph.");
             const reopenedAttrs = expectParagraphAttrs(reopenedNode);
-            for (const key of ["indentLeft", "indentRight", "indentFirstLine", "hangingIndent"]) {
-              expect(reopenedAttrs[key]).toEqual(before[key]);
+            // The portable schema omits absent indentation; the extension
+            // schema uses null. Both mean no stated distance, while zero stays explicit.
+            for (const key of ["indentLeft", "indentRight", "indentFirstLine"]) {
+              expect(reopenedAttrs[key] ?? null).toEqual(before[key] ?? null);
             }
+            expect(reopenedAttrs.hangingIndent ?? false).toEqual(before["hangingIndent"] ?? false);
           });
         }
       }
