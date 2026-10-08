@@ -230,24 +230,22 @@ export const HyperlinkExtension = createMarkExtension({
       const { empty, $from } = state.selection;
       const { from, to } = canonicalSelectionRange(state);
       if (!empty) return { from, to };
-      const hlType = documentHyperlinkType(state);
-      if (!$from.marks().some((mark) => mark.type === hlType)) return undefined;
-      let start = from;
-      let end = to;
+      const linkMark = $from.marks().find((mark) => mark.type === documentHyperlinkType(state));
+      if (!linkMark) return undefined;
+      let contiguous: { from: number; to: number } | undefined;
+      let selected: typeof contiguous;
       $from.parent.forEach((node, offset) => {
-        const nodeStart = $from.start() + offset;
-        const nodeEnd = nodeStart + node.nodeSize;
-        if (
-          node.isText &&
-          nodeStart <= from &&
-          from <= nodeEnd &&
-          node.marks.some((mark) => mark.type === hlType)
-        ) {
-          start = Math.min(start, nodeStart);
-          end = Math.max(end, nodeEnd);
+        if (!node.isText || !node.marks.some((mark) => mark.eq(linkMark))) {
+          contiguous = undefined;
+          return;
         }
+        const start = $from.start() + offset;
+        const end = start + node.nodeSize;
+        if (contiguous?.to === start) contiguous.to = end;
+        else contiguous = { from: start, to: end };
+        if (start <= from && from <= end) selected = contiguous;
       });
-      return { from: start, to: end };
+      return selected;
     };
     const removeHyperlink = withCanonicalCommand(
       (state, dispatch) => {
