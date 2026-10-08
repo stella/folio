@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { readFileSync } from "node:fs";
 import config from "../playwright.config";
-import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
+import { assertProperty, propertyConfig, propertyTestTimeout } from "../test/property-testing";
+import JSZip from "jszip";
+import { FolioDocxReviewer } from "../packages/core/src/server";
+import { validateDocxPackage } from "../packages/docx-core/src/validate/docx";
+import { buildScrollRootDocument } from "../tests/support/scrollRootDocument";
 import {
   HOST_NAVIGATION_CASES,
   hostApiFlowArbitrary,
@@ -10,6 +14,72 @@ import {
 } from "../tests/parity/hostApiFlow";
 
 const key = ({ type, method }: (typeof HOST_NAVIGATION_CASES)[number]) => `${type}:${method}`;
+
+test(
+  "host flow fixtures remain schema valid through replacement and headless edits",
+  async () => {
+    const source = await buildScrollRootDocument();
+    const zip = await JSZip.loadAsync(source);
+    const part = zip.file("word/document.xml");
+    if (!part) throw new Error("Missing fixture document part");
+    zip.file(
+      "word/document.xml",
+      (await part.async("string")).replace("First page", "Replacement page"),
+    );
+    const replacement = await zip.generateAsync({ type: "uint8array" });
+    await assertProperty(
+      fc.asyncProperty(hostApiFlowArbitrary, async ({ edits, replacementAfter }) => {
+        let reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(source).buffer);
+        expect(await validateDocxPackage(source)).toEqual({ valid: true });
+        expect(await validateDocxPackage(replacement)).toEqual({ valid: true });
+        for (const [index, text] of edits.entries()) {
+          if (index === replacementAfter) {
+            reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(replacement).buffer);
+          }
+          expect(
+            reviewer.applyDocumentOperations({
+              version: 1,
+              mode: "direct",
+              operations: [
+                {
+                  id: `host-edit-${index}`,
+                  type: "replaceInBlock",
+                  blockId: "13300100",
+                  find: "page",
+                  replace: `page ${text}`,
+                },
+              ],
+            }),
+          ).toMatchObject({ skipped: [], applied: [{ id: `host-edit-${index}` }] });
+          expect(await validateDocxPackage(new Uint8Array(await reviewer.toBuffer()))).toEqual({
+            valid: true,
+          });
+        }
+      }),
+      { numRuns: 3 },
+    );
+  },
+  propertyTestTimeout(60_000),
+);
+
+test("scroll fixture schema validation rejects each omitted required margin", async () => {
+  const source = await buildScrollRootDocument();
+  for (const attribute of ["top", "right", "bottom", "left", "header", "footer", "gutter"]) {
+    const zip = await JSZip.loadAsync(source);
+    const part = zip.file("word/document.xml");
+    if (!part) throw new Error("Missing fixture document part");
+    zip.file(
+      "word/document.xml",
+      (await part.async("string")).replace(new RegExp(` w:${attribute}="[0-9]+"`, "u"), ""),
+    );
+    expect(
+      await validateDocxPackage(await zip.generateAsync({ type: "uint8array" })),
+    ).toMatchObject({
+      valid: false,
+      code: "invalid_schema_attribute",
+    });
+  }
+});
 
 test(
   "generated host flows exercise exactly the total navigation matrix",

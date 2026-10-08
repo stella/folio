@@ -1,0 +1,10 @@
+{
+  "host flow fixtures remain schema valid through replacement and headless edits": [
+    {
+      "seed": 1968720058,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "#1591 d8085a230841ee00: shared navigation fixture omitted required page margins before host save comparisons",
+      "date": "2026-10-08"
+    }
+  ]
+}
