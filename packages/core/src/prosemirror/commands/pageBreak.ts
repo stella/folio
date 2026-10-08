@@ -7,6 +7,7 @@ import type { Command } from "prosemirror-state";
 
 import { pageBreakRunParagraphProjectionDisposition } from "../pageBreakRunProjection";
 import { withCanonicalCommand } from "../canonicalCommands";
+import { canonicalSelectionRange } from "../canonicalSelectionRange";
 
 const UNSUPPORTED_PAGE_BREAK_RUN_ANCESTORS = new Set(["tableCell", "tableHeader", "textBox"]);
 
@@ -75,8 +76,7 @@ export const insertPageBreak = withCanonicalCommand(insertPageBreakCommand, (sta
     ? [
         {
           type: "insertBreak",
-          from: state.selection.from,
-          to: state.selection.to,
+          ...canonicalSelectionRange(state),
           breakType: "page",
         },
       ]

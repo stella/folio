@@ -1,11 +1,13 @@
 import { defineConfig } from "@playwright/test";
+import { PLAYGROUND_HOSTS } from "./tests/parity/playgroundHosts";
 
-const reactPlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
-const vuePlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+const vuePlaygroundPort = new URL(PLAYGROUND_HOSTS.vue).port;
 
 const managedConfig = defineConfig({
-  globalSetup: "./tests/parity/previewSetup.ts",
+  globalSetup: ["./tests/parity/previewSetup.ts", "./tests/parity/playgroundSetup.ts"],
   testDir: "./tests/visual",
+  // Bun unit tests share helper directories; browser projects discover only specs.
+  testMatch: /\.spec\.ts$/u,
   // A stray test.only must fail CI instead of silently running one test.
   forbidOnly: !!process.env["CI"],
   timeout: 30_000,
@@ -17,7 +19,7 @@ const managedConfig = defineConfig({
     },
   },
   use: {
-    baseURL: `http://localhost:${reactPlaygroundPort}`,
+    baseURL: PLAYGROUND_HOSTS.react,
     browserName: "chromium",
     viewport: { width: 1280, height: 900 },
     // Consistent rendering across machines
@@ -93,7 +95,7 @@ const managedConfig = defineConfig({
         "bun scripts/playground-build.ts packages/playground && bun --filter @stll/playground preview",
       stdout: "pipe",
       stderr: "pipe",
-      url: `http://localhost:${reactPlaygroundPort}`,
+      url: PLAYGROUND_HOSTS.react,
       reuseExistingServer: false,
       timeout: 120_000,
     },
@@ -105,7 +107,7 @@ const managedConfig = defineConfig({
       },
       stdout: "pipe",
       stderr: "pipe",
-      url: `http://localhost:${vuePlaygroundPort}`,
+      url: PLAYGROUND_HOSTS.vue,
       reuseExistingServer: false,
       timeout: 120_000,
     },
