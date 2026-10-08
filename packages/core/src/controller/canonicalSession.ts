@@ -1617,7 +1617,7 @@ const visibleDeletionContext = (state: EditorState) => {
       const value = cell.type === "text" ? cell.text : "\uFFFC";
       const from = paragraphOffset + 1 + cell.from;
       const to = paragraphOffset + 1 + cell.to;
-      if (cell.type === "unit" && selection.from > from && selection.from < to) {
+      if (cell.type !== "text" && selection.from > from && selection.from < to) {
         issue = new CanonicalSessionError({
           gap: CANONICAL_GAP.dispatch,
           reason: "refused",

@@ -1,7 +1,17 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { panic } from "better-result";
 import { OP_STORIES, paragraphLogicalText, inlineLeafSpans } from "@stll/docx-core/ops";
-import type { Document, Paragraph, ParagraphContent, Run, ComplexField } from "../types/document";
+import type {
+  Document,
+  Paragraph,
+  ParagraphContent,
+  Run,
+  ComplexField,
+  NoteReferenceContent,
+  Footnote,
+  Endnote,
+} from "../types/document";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { projectCanonicalInline } from "./canonicalInlineProjection";
@@ -207,7 +217,7 @@ test("generated erased containers keep unique source seams beside text and colla
       [run("L"), pair[0], ...containers, pair[1], run("R")],
       [
         run("L"),
-        { type: "hyperlink", href: "https://outer.example/", children: containers },
+        { type: "inlineWrapper", kind: "smartTag", element: "outer", content: containers },
         run("R"),
       ],
       [run("L"), ...containers, ...PAIRS.moveFromRangeStart, run("R")],
@@ -271,4 +281,114 @@ test("generated erased containers keep unique source seams beside text and colla
     ),
     { seed: -1348404097, numRuns: 30 },
   );
+});
+
+test("adjacent note-reference carriers preserve every source unit after identical marks merge", () => {
+  const check = (kind: NoteReferenceContent["type"], count: number, ids: readonly number[]) => {
+    const references = Array.from(
+      { length: count },
+      (_, index) =>
+        ({
+          type: kind,
+          id: ids.at(index % ids.length) ?? panic("Adjacent reference fixture has no note id."),
+        }) satisfies NoteReferenceContent,
+    );
+    const paragraph = {
+      type: "paragraph",
+      paraId: "12345678",
+      content: [run("L"), { type: "run", content: references }, run("R")],
+    } satisfies Paragraph;
+    const noteParagraph = (id: number) =>
+      ({
+        type: "paragraph",
+        paraId: (0x20000000 + id).toString(16),
+        content: [run("Note")],
+      }) satisfies Paragraph;
+    const document = {
+      package: {
+        document: { content: [paragraph] },
+        ...(kind === "footnoteRef"
+          ? {
+              footnotes: [...new Set(ids)].map(
+                (id) => ({ type: "footnote", id, content: [noteParagraph(id)] }) satisfies Footnote,
+              ),
+            }
+          : {
+              endnotes: [...new Set(ids)].map(
+                (id) => ({ type: "endnote", id, content: [noteParagraph(id)] }) satisfies Endnote,
+              ),
+            }),
+      },
+    } satisfies Document;
+    const session = createCanonicalSession(document).unwrap();
+    const native = session.projection.doc.child(0);
+    const mapped = projectCanonicalInline(paragraph, native).unwrap();
+    expect(mapped.text).toBe(`L${"\uFFFC".repeat(count)}R`);
+    const renderedNodes: string[] = [];
+    native.forEach((node) => {
+      if (node.marks.some(({ type }) => type.name === "footnoteRef"))
+        renderedNodes.push(node.text ?? "");
+    });
+    if (ids.length === 1) expect(renderedNodes).toEqual([String(ids.at(0)).repeat(count)]);
+    let physical = 2;
+    for (const [index, reference] of references.entries()) {
+      const offset = index + 1;
+      expect(
+        session.projection
+          .positionAt({ story: OP_STORIES.MAIN, blockId: paragraph.paraId, offset })
+          .unwrap(),
+      ).toBe(physical);
+      expect(session.projection.addressAt(physical).unwrap().offset).toBe(offset);
+      for (let interior = 1; interior < String(reference.id).length; interior += 1)
+        expect(session.projection.addressAt(physical + interior).isErr()).toBe(true);
+      physical += String(reference.id).length;
+    }
+    expect(session.projection.addressAt(physical).unwrap().offset).toBe(count + 1);
+    expect(
+      session.projection
+        .positionAt({ story: OP_STORIES.MAIN, blockId: paragraph.paraId, offset: count + 1 })
+        .unwrap(),
+    ).toBe(physical);
+  };
+  for (const kind of ["footnoteRef", "endnoteRef"] as const)
+    for (const count of [2, 3])
+      for (const ids of [[1], [11], [111], [1, 11, 111]]) check(kind, count, ids);
+  assertProperty(
+    fc.property(
+      fc.constantFrom("footnoteRef", "endnoteRef"),
+      fc.integer({ min: 2, max: 6 }),
+      fc.constantFrom([1], [11], [111], [1, 11, 111]),
+      check,
+    ),
+    { seed: 197, numRuns: 40 },
+  );
+});
+
+test("adjacent field atoms retain separate source-unit boundaries", () => {
+  const fields = [
+    { type: "simpleField", instruction: "PAGE", fieldType: "PAGE", content: [run("123")] },
+    {
+      type: "complexField",
+      instruction: "PAGE",
+      fieldType: "PAGE",
+      fieldCode: [{ type: "run", content: [{ type: "instrText", text: "PAGE" }] }],
+      fieldResult: [run("123")],
+    },
+  ] satisfies ParagraphContent[];
+  for (const field of fields)
+    for (const count of [2, 3]) {
+      const source = {
+        type: "paragraph",
+        paraId: "12345678",
+        content: [run("L"), ...Array.from({ length: count }, () => field), run("R")],
+      } satisfies Paragraph;
+      const projection = createCanonicalSession(documentFor(source)).unwrap().projection;
+      expect(projection.doc.child(0).childCount).toBe(count + 2);
+      for (let offset = 0; offset <= count + 2; offset += 1) {
+        const address = { story: OP_STORIES.MAIN, blockId: source.paraId, offset };
+        expect(projection.addressAt(projection.positionAt(address).unwrap()).unwrap().offset).toBe(
+          offset,
+        );
+      }
+    }
 });

@@ -2,7 +2,12 @@ import { panic, Result, TaggedError } from "better-result";
 import { inlineLeafSpans, paragraphLogicalText } from "@stll/docx-core/ops";
 import { hasIllegalXmlCharacters } from "@stll/docx-core";
 import type { Node as PMNode } from "prosemirror-model";
-import type { Paragraph, ParagraphContent, RunContent } from "../types/document";
+import type {
+  Paragraph,
+  ParagraphContent,
+  RunContent,
+  NoteReferenceContent,
+} from "../types/document";
 import {
   readBookmarkBoundaryAttrs,
   bookmarkMarkerFromAttrs,
@@ -10,7 +15,7 @@ import {
 import { readMoveRangeBoundaryAttrs } from "../prosemirror/moveRangeBoundaryAttrs";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
-import { readPreservedXmlAttrs } from "../prosemirror/attrs/index";
+import { readFootnoteRefMarkAttrs, readPreservedXmlAttrs } from "../prosemirror/attrs/index";
 import { PRESERVED_XML_LEVELS } from "../prosemirror/schema/nodes";
 import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "../prosemirror/trackedRunInlineAtoms";
 import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
@@ -163,6 +168,14 @@ type NativeCell =
   | { type: "text"; text: string; from: number; to: number; node: PMNode }
   | { type: "unit"; from: number; to: number; node: PMNode }
   | {
+      type: "markedUnit";
+      sourceType: NoteReferenceContent["type"];
+      label: string;
+      from: number;
+      to: number;
+      node: PMNode;
+    }
+  | {
       type: "zeroWidth";
       sources: readonly (ParagraphContent | RunContent)[];
       from: number;
@@ -181,11 +194,40 @@ export const canonicalNativeCells = (
     const to = from + node.nodeSize;
     const policy = nativePolicies.get(node.type.name);
     switch (policy) {
-      case "text":
-        if (node.marks.some(({ type }) => type.name === "footnoteRef"))
-          cells.push({ type: "unit", from, to, node });
-        else cells.push({ type: "text", text: node.text ?? "", from, to, node });
+      case "text": {
+        const reference = node.marks.find(({ type }) => type.name === "footnoteRef");
+        if (!reference) {
+          cells.push({ type: "text", text: node.text ?? "", from, to, node });
+          return;
+        }
+        const attrs = readFootnoteRefMarkAttrs(reference);
+        if (!attrs.ok) {
+          issue = "Canonical editing requires valid note-reference mark attributes.";
+          return;
+        }
+        const label = String(attrs.value.id);
+        const text = node.text ?? "";
+        if (
+          label.length === 0 ||
+          text.length % label.length !== 0 ||
+          text !== label.repeat(text.length / label.length)
+        ) {
+          issue = "Canonical editing cannot map the rendered note-reference labels.";
+          return;
+        }
+        // Identical marks merge adjacent labels into one native text node.
+        for (let offset = 0; offset < text.length; offset += label.length) {
+          cells.push({
+            type: "markedUnit",
+            sourceType: attrs.value.noteType === "endnote" ? "endnoteRef" : "footnoteRef",
+            label,
+            from: from + offset,
+            to: from + offset + label.length,
+            node,
+          });
+        }
         return;
+      }
       case "unit":
         cells.push({ type: "unit", from, to, node });
         return;
@@ -361,6 +403,14 @@ export const projectCanonicalInline = (
         addGap(cell.to, span.after);
         break;
       case "unit":
+      case "markedUnit":
+        if (
+          cell.type === "markedUnit" &&
+          ((span.node.type !== "footnoteRef" && span.node.type !== "endnoteRef") ||
+            span.node.type !== cell.sourceType ||
+            String(span.node.id) !== cell.label)
+        )
+          return refuse("Canonical editing cannot preserve note-reference identity.");
         if (
           consumed !== 0 ||
           span.node.type === "text" ||

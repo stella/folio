@@ -242,6 +242,21 @@ const rawFieldContent = (text: string) => [
   { type: "fieldChar", charType: "end" } satisfies RunContent,
 ];
 
+const adjacentReferenceFixtures = (item: NoteReferenceContent) => [
+  runFixture(item),
+  ...[2, 3].map(
+    (count) =>
+      ({
+        item,
+        story: "main",
+        variant: `adjacentIdenticalMarks${count}`,
+        content: [
+          { type: "run", content: Array.from({ length: count }, () => item) } satisfies Run,
+        ],
+      }) satisfies CanonicalInlineShapeFixture<NoteReferenceContent>,
+  ),
+];
+
 export const CANONICAL_RUN_SHAPE_FACTORIES = {
   text: (text = "x") => [runFixture({ type: "text", text })],
   tab: () => [runFixture({ type: "tab" })],
@@ -251,8 +266,8 @@ export const CANONICAL_RUN_SHAPE_FACTORIES = {
     runFixture({ type: "break", breakType: "page" }, "page"),
   ],
   symbol: () => [runFixture({ type: "symbol", font: "Symbol", char: "F061" })],
-  footnoteRef: () => [runFixture({ type: "footnoteRef", id: 1 })],
-  endnoteRef: () => [runFixture({ type: "endnoteRef", id: 2 })],
+  footnoteRef: () => adjacentReferenceFixtures({ type: "footnoteRef", id: 1 }),
+  endnoteRef: () => adjacentReferenceFixtures({ type: "endnoteRef", id: 2 }),
   noteMarker: () => [
     { ...runFixture({ type: "noteMarker", kind: "footnote" }), story: "footnote" },
     { ...runFixture({ type: "noteMarker", kind: "endnote" }, "endnote"), story: "endnote" },
