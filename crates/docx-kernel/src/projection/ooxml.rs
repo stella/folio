@@ -1548,22 +1548,24 @@ impl ProjectionState {
         else {
             return Ok(());
         };
+        let (owner_span, mark_span) = match owner {
+            OwnedRevisionSpan::Run(span) => (span, span),
+            OwnedRevisionSpan::Paragraph(span) => (
+                span,
+                ReviewSpan {
+                    start: span.end,
+                    end: span.end,
+                },
+            ),
+        };
         for &review_index in review_indices {
             let revision = revisions
                 .get_mut(review_index)
                 .ok_or(ProjectionError::InvalidDocumentXml)?;
-            let span = match owner {
-                OwnedRevisionSpan::Run(span) => span,
-                OwnedRevisionSpan::Paragraph(span) => {
-                    if revision.kind == RevisionFactKind::ParagraphPropertiesChange {
-                        span
-                    } else {
-                        ReviewSpan {
-                            start: span.end,
-                            end: span.end,
-                        }
-                    }
-                }
+            let span = if revision.kind == RevisionFactKind::ParagraphPropertiesChange {
+                owner_span
+            } else {
+                mark_span
             };
             let payload = match revision.kind {
                 RevisionFactKind::RunPropertiesChange
@@ -1960,7 +1962,7 @@ impl ProjectionState {
 
     fn current_bookmark_point(&self) -> Option<BookmarkPoint> {
         if self.current_paragraph.is_some() {
-            return self.current_point().map(BookmarkPoint::Paragraph);
+            return self.current_review_point().map(BookmarkPoint::Paragraph);
         }
         matches!(
             self.frames.last(),
