@@ -131,6 +131,13 @@ const runCanonicalBrowserHistory = async ({
         throw new TypeError("Canonical browser refusal did not match a declared row.");
       missing.record(matchedRow.gap);
     }
+    if (action.kind === "imeReplacement" && action.completion === "cancel") {
+      expect(after.document).toEqual(before.document);
+      expect(after.projectionJSON).toEqual(before.projectionJSON);
+      expect(after.selection).toEqual(before.selection);
+      expect(after.canUndo).toBe(before.canUndo);
+      expect(after.canRedo).toBe(before.canRedo);
+    }
     if (errors.length > 0) {
       expect(after.document).toEqual(before.document);
       expect(after.projectionJSON).toEqual(before.projectionJSON);
