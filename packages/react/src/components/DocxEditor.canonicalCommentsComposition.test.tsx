@@ -2,7 +2,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, setSystemTime, test } from "bun:test";
+import { afterAll, expect, setSystemTime, spyOn, test } from "bun:test";
 import { panic } from "better-result";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
@@ -250,3 +250,95 @@ for (const shape of SHAPES) {
     }
   }
 }
+
+test("committed comments are derived once across caret and composition renders", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<DocxEditorRef>();
+  const bytes = await createShapeBuffer("header-footer");
+  const messages = getFolioMessages("en");
+  const observer = createErrorObserver();
+  let showToolbar = false;
+  const renderEditor = () => (
+    <IntlProvider locale="en" timeZone="UTC" messages={messages}>
+      <DocxEditor
+        ref={editor}
+        documentBuffer={bytes}
+        experimentalSession="canonical"
+        onError={observer.onError}
+        showToolbar={showToolbar}
+      />
+    </IntlProvider>
+  );
+  try {
+    await act(async () => root.render(renderEditor()));
+    await act(async () => editor.current?.loadDocumentBuffer(bytes));
+    await act(async () => editor.current?.ensureEditorView({ focus: false }));
+    const api = editor.current?.getEditor() ?? panic("Missing canonical editor.");
+    const view = api.getView() ?? panic("Missing canonical view.");
+    await act(async () => {
+      const result = api.applyCanonicalComment({
+        type: "create",
+        text: "Review",
+        author: "Projection fixture",
+        anchor: { kind: "selection", from: 8, to: 10, story: "main" },
+      });
+      expect(result?.status).toBe("applied");
+    });
+    await act(async () => root.render(renderEditor()));
+    const clones = spyOn(globalThis, "structuredClone");
+    const serializations = spyOn(JSON, "stringify");
+    const commentProjectionCalls = (values: readonly unknown[]) =>
+      values.filter(
+        (value) =>
+          Array.isArray(value) &&
+          value.some(
+            (entry) =>
+              entry !== null &&
+              typeof entry === "object" &&
+              "author" in entry &&
+              entry.author === "Projection fixture",
+          ),
+      ).length;
+    const projectionWork = () => ({
+      clones: commentProjectionCalls(clones.mock.calls.map(([value]) => value)),
+      serializations: commentProjectionCalls(serializations.mock.calls.map(([value]) => value)),
+    });
+    try {
+      for (const position of [2, 3, 4, 2, 1]) {
+        await act(async () => api.setSelection(position));
+      }
+      showToolbar = true;
+      await act(async () => root.render(renderEditor()));
+      expect(projectionWork()).toEqual({ clones: 0, serializations: 0 });
+      await act(async () => {
+        view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+        view.dispatch(view.state.tr.insertText("alpha", 1, 3).setMeta("composition", 1));
+      });
+      showToolbar = false;
+      await act(async () => root.render(renderEditor()));
+      expect(projectionWork()).toEqual({ clones: 0, serializations: 0 });
+      expect(api.getCanonicalDocument).toThrow("Composition must finish before taking a snapshot.");
+      await act(async () => {
+        view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+        await new Promise<void>((resolve) => setTimeout(resolve, 40));
+      });
+      showToolbar = true;
+      await act(async () => root.render(renderEditor()));
+      expect(projectionWork()).toEqual({ clones: 1, serializations: 1 });
+      expect(observer.errors).toEqual([]);
+      const committedWork = projectionWork();
+      await act(async () => api.setSelection(2));
+      expect(projectionWork()).toEqual(committedWork);
+      await act(async () => editor.current?.loadDocumentBuffer(bytes));
+      expect(api.getCanonicalComments()).toEqual([]);
+    } finally {
+      clones.mockRestore();
+      serializations.mockRestore();
+    }
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

@@ -55,6 +55,8 @@ export type HiddenEditorApi = {
   getDocument: () => Document | null;
   /** Canonical snapshot, or null in the default session. */
   getCanonicalComments: () => Comment[] | null;
+  /** Committed session/version identity; safe during provisional composition. */
+  getCanonicalCommittedVersion: () => string | null;
   getCanonicalDocument: () => Document | null;
   captureCanonicalSave: () => CanonicalSaveSnapshot | null;
   /** A save cannot acknowledge newer edits or an unfinished composition. */
@@ -113,6 +115,7 @@ export type HiddenEditorApiDeps = {
   getView: () => EditorView | null;
   getDocumentContext: () => Document | null;
   getCanonicalComments?: () => Comment[] | null;
+  getCanonicalCommittedVersion?: HiddenEditorApi["getCanonicalCommittedVersion"];
   getCanonicalDocument?: () => Document | null;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
@@ -191,6 +194,7 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       !deps.isDestroying() && (deps.resolveCanonicalRevisions?.(revisionIds, resolution) ?? false),
 
     getCanonicalComments: () => deps.getCanonicalComments?.() ?? null,
+    getCanonicalCommittedVersion: () => deps.getCanonicalCommittedVersion?.() ?? null,
     captureCanonicalSave: () => deps.captureCanonicalSave?.() ?? null,
     isCanonicalSaveCurrent: (version) => deps.isCanonicalSaveCurrent?.(version) ?? false,
 

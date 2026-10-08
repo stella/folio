@@ -526,6 +526,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
   let view: EditorView | null = null;
   let releaseCommandOwner: (() => void) | undefined;
   let editorSession: EditorSession = { type: "prosemirror" };
+  let canonicalSessionEpoch = 0;
   let modeOverride: CanonicalSessionMode | null = null;
   const syncCanonicalMode = (): void => {
     if (editorSession.type !== "canonical") return;
@@ -565,6 +566,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       return false;
     }
     editorSession = { type: "canonical", session: result.value };
+    canonicalSessionEpoch += 1;
     modeOverride = null;
     syncCanonicalMode();
     return true;
@@ -1366,6 +1368,10 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     getDocumentContext: () => (editorSession.type === "refused" ? null : deps.getDocumentContext()),
     getCanonicalComments: () =>
       editorSession.type === "canonical" ? editorSession.session.getCommittedComments() : null,
+    getCanonicalCommittedVersion: () =>
+      editorSession.type === "canonical"
+        ? `${canonicalSessionEpoch}:${editorSession.session.version}`
+        : null,
     isCanonicalSaveCurrent: (version) =>
       editorSession.type === "canonical" &&
       !editorSession.session.isComposing &&
