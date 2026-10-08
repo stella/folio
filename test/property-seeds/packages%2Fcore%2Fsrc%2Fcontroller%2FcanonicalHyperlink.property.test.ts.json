@@ -44,5 +44,13 @@
       "note": "Deletion node spans use rendered positions; bookmark atoms make logical offsets differ. Derive the skipped destination through the canonical address map.",
       "date": "2026-10-04"
     }
+  ],
+  "every range intent handles AllSelection and restores exact undo redo": [
+    {
+      "seed": -1348404097,
+      "path": "0:0",
+      "note": "Empty hyperlink containers retain source gap ordinals at their native seam; activation and complete range intents must preserve their metadata.",
+      "date": "2026-10-08"
+    }
   ]
 }
