@@ -130,7 +130,7 @@ export const ImageExtension = createNodeExtension({
         ...pictureNamesDomAttrs(attrs.pictureNames),
       };
 
-      if (attrs.docPrName !== undefined) domAttrs["data-doc-pr-name"] = attrs.docPrName;
+      if (attrs.docPrName != null) domAttrs["data-doc-pr-name"] = attrs.docPrName;
       if (attrs.alt) {
         domAttrs["alt"] = attrs.alt;
       }
