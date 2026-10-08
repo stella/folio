@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { generateDocxFixture } from "../../support/validatedDocxFixture";
 /**
  * Build the synthetic DOCX whose text needs several `unicode-range` subsets of
  * folio's bundled faces.
@@ -122,11 +123,7 @@ const build = async (): Promise<void> => {
   addXml(zip, "word/document.xml", DOCUMENT_XML);
   addXml(zip, "word/styles.xml", STYLES_XML);
 
-  const fixture = await zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-    compressionOptions: { level: 9 },
-  });
+  const fixture = await generateDocxFixture(zip, "font-subsets");
   await mkdir(OUTPUT_DIR, { recursive: true });
   await Bun.write(OUTPUT_PATH, fixture);
   console.log(`Wrote ${OUTPUT_PATH} (${fixture.byteLength} bytes)`);

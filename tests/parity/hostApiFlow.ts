@@ -1,4 +1,5 @@
 import fc from "fast-check";
+import regressionSeeds from "../../test/property-seeds/scripts%2Fhost-api-flow.test.ts.json";
 import {
   PAGED_SCROLL_NAVIGATION_CASES,
   SCROLL_NAVIGATION_CASES,
@@ -56,3 +57,16 @@ export const navigationWasEffective = ({
   after.top < after.viewportBottom &&
   after.bottom <= after.viewportBottom &&
   outerAfter === outerBefore;
+
+/** The browser and headless lanes share the standing seed registry. */
+const hostFlowRegression =
+  regressionSeeds[
+    "host flow fixtures remain schema valid through replacement and headless edits"
+  ].at(0);
+if (!hostFlowRegression) throw new Error("Missing host-flow standing regression seed");
+export const HOST_FLOW_REGRESSION = {
+  seed: hostFlowRegression.seed,
+  path: hostFlowRegression.path,
+  numRuns: 1,
+  endOnFailure: true,
+} as const;

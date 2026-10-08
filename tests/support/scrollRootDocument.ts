@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
+import { generateDocxFixture } from "./validatedDocxFixture";
 import {
   SCROLL_CONTROL_TAG,
   SCROLL_REVISION_ID,
@@ -8,7 +8,7 @@ import {
 } from "../../packages/playground/src/scrollParityBridge";
 
 /** Explicit page boundaries and OOXML paragraph identifiers make navigation targets stable. */
-export const buildScrollRootDocument = async () => {
+export const buildScrollRootDocument = () => {
   const zip = new JSZip();
   const options = { date: new Date("2026-01-01T00:00:00Z") };
   zip.file(
@@ -33,8 +33,5 @@ export const buildScrollRootDocument = async () => {
 </w:body></w:document>`,
     options,
   );
-  const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
-  const validation = await validateDocxPackage(bytes);
-  if (!validation.valid) throw new Error(`Invalid scroll fixture: ${validation.error}`);
-  return bytes;
+  return generateDocxFixture(zip, "scroll-root");
 };

@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { readFileSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { runFolioCli } from "../packages/cli/src/cli";
+import { fileVersionOf } from "../packages/cli/src/document";
+import { makeTempDir } from "../packages/cli/src/__tests__/fixtures";
+import { generateDocxFixture } from "../tests/support/validatedDocxFixture";
 import config from "../playwright.config";
 import { assertProperty, propertyConfig, propertyTestTimeout } from "../test/property-testing";
 import JSZip from "jszip";
@@ -26,18 +32,24 @@ test(
       "word/document.xml",
       (await part.async("string")).replace("First page", "Replacement page"),
     );
-    const replacement = await zip.generateAsync({ type: "uint8array" });
-    await assertProperty(
-      fc.asyncProperty(hostApiFlowArbitrary, async ({ edits, replacementAfter }) => {
-        let reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(source).buffer);
-        expect(await validateDocxPackage(source)).toEqual({ valid: true });
-        expect(await validateDocxPackage(replacement)).toEqual({ valid: true });
-        for (const [index, text] of edits.entries()) {
-          if (index === replacementAfter) {
-            reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(replacement).buffer);
-          }
-          expect(
-            reviewer.applyDocumentOperations({
+    const replacement = await generateDocxFixture(zip, "host-flow-replacement");
+    const { dir, cleanup } = await makeTempDir();
+    const file = path.join(dir, "host-flow.docx");
+    try {
+      await assertProperty(
+        fc.asyncProperty(hostApiFlowArbitrary, async ({ edits, replacementAfter }) => {
+          await writeFile(file, source);
+          let expectedFirstText = "First page";
+          let reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(source).buffer);
+          expect(await validateDocxPackage(source)).toEqual({ valid: true });
+          expect(await validateDocxPackage(replacement)).toEqual({ valid: true });
+          for (const [index, text] of edits.entries()) {
+            if (index === replacementAfter) {
+              reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(replacement).buffer);
+              await writeFile(file, replacement);
+              expectedFirstText = "Replacement page";
+            }
+            const batch = {
               version: 1,
               mode: "direct",
               operations: [
@@ -49,17 +61,66 @@ test(
                   replace: `page ${text}`,
                 },
               ],
-            }),
-          ).toMatchObject({ skipped: [], applied: [{ id: `host-edit-${index}` }] });
-          expect(await validateDocxPackage(new Uint8Array(await reviewer.toBuffer()))).toEqual({
-            valid: true,
-          });
-        }
-      }),
-      { numRuns: 3 },
-    );
+            } as const;
+            expectedFirstText = expectedFirstText.replace("page", `page ${text}`);
+            expect(reviewer.applyDocumentOperations(batch)).toMatchObject({
+              skipped: [],
+              applied: [{ id: `host-edit-${index}` }],
+            });
+            const before = new Uint8Array(await readFile(file));
+            const stdout: string[] = [];
+            const stderr: string[] = [];
+            const exit = await runFolioCli(
+              [
+                "suggest",
+                file,
+                "--input",
+                JSON.stringify({ operations: batch.operations }),
+                "--direct",
+                "--in-place",
+                "--expect-version",
+                fileVersionOf(before),
+                "--author",
+                "Parity",
+                "--date",
+                "2026-01-02T03:04:05Z",
+                "--allow-repack",
+              ],
+              {
+                stdout: (chunk) => stdout.push(chunk),
+                stderr: (chunk) => stderr.push(chunk),
+                readStdin: async () => "",
+                isTTY: false,
+                env: {},
+                cwd: dir,
+              },
+            );
+            expect(exit, stderr.join("")).toBe(0);
+            expect(JSON.parse(stdout.join(""))).toMatchObject({
+              ok: true,
+              data: { status: "committed" },
+            });
+            const cliBytes = new Uint8Array(await readFile(file));
+            expect(await validateDocxPackage(cliBytes)).toEqual({ valid: true });
+            expect(fileVersionOf(cliBytes)).not.toBe(fileVersionOf(before));
+            const reopened = await FolioDocxReviewer.fromBuffer(new Uint8Array(cliBytes).buffer);
+            const headless = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+            expect(headless.snapshot().blocks.at(0)?.text).toBe(expectedFirstText);
+            expect(reopened.snapshot().blocks).toEqual(headless.snapshot().blocks);
+            expect(reopened.getChanges()).toEqual(headless.getChanges());
+            expect(reopened.getComments()).toEqual(headless.getComments());
+            expect(await validateDocxPackage(new Uint8Array(await reviewer.toBuffer()))).toEqual({
+              valid: true,
+            });
+          }
+        }),
+        { numRuns: 3 },
+      );
+    } finally {
+      await cleanup();
+    }
   },
-  propertyTestTimeout(60_000),
+  propertyTestTimeout(240_000),
 );
 
 test("scroll fixture schema validation rejects each omitted required margin", async () => {
