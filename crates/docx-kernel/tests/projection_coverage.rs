@@ -35,10 +35,11 @@ use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
 use proptest::{collection, prop_assert, prop_assert_eq, proptest, sample};
 use quick_xml::events::{BytesStart, Event};
 use stella_docx_kernel::{
-    AttributedRevision, CommentContent, DocumentPackageProjection, DocxLimits,
-    FormattingProjectionStatus, InternalParagraphId, ParagraphIdentityFacts, ProjectionError,
-    ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewPoint, ReviewSpan,
-    RevisionContent, RevisionFactKind, RevisionPayload, RevisionProjectionStatus, RevisionView,
+    AttributedRevision, CommentContent, DocumentPackageProjection, DocumentStructureFacts,
+    DocxLimits, FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
+    ParagraphIdentityFacts, ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail,
+    ReviewFactLimits, ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind,
+    RevisionPayload, RevisionProjectionStatus, RevisionUnsupportedReason, RevisionView,
     StructuralFactSet, TextFormattingSpan, TextStyle, project_docx_with_review_facts,
 };
 use zip::ZipWriter;
@@ -996,6 +997,7 @@ enum Element {
     ParagraphProperties,
     Table,
     TableProperties,
+    TableGrid,
     Row,
     RowProperties,
     Cell,
@@ -1026,6 +1028,7 @@ enum Element {
     RunPropertiesChange,
     ParagraphPropertiesChange,
     TablePropertiesChange,
+    TableGridChange,
     TableRowPropertiesChange,
     TableCellPropertiesChange,
     SectionPropertiesChange,
@@ -1042,11 +1045,12 @@ enum Element {
 }
 
 impl Element {
-    const ALL: [Self; 47] = [
+    const ALL: [Self; 49] = [
         Self::Paragraph,
         Self::ParagraphProperties,
         Self::Table,
         Self::TableProperties,
+        Self::TableGrid,
         Self::Row,
         Self::RowProperties,
         Self::Cell,
@@ -1077,6 +1081,7 @@ impl Element {
         Self::RunPropertiesChange,
         Self::ParagraphPropertiesChange,
         Self::TablePropertiesChange,
+        Self::TableGridChange,
         Self::TableRowPropertiesChange,
         Self::TableCellPropertiesChange,
         Self::SectionPropertiesChange,
@@ -1098,6 +1103,7 @@ impl Element {
             Self::ParagraphProperties => "pPr",
             Self::Table => "tbl",
             Self::TableProperties => "tblPr",
+            Self::TableGrid => "tblGrid",
             Self::Row => "tr",
             Self::RowProperties => "trPr",
             Self::Cell => "tc",
@@ -1128,6 +1134,7 @@ impl Element {
             Self::RunPropertiesChange => "rPrChange",
             Self::ParagraphPropertiesChange => "pPrChange",
             Self::TablePropertiesChange => "tblPrChange",
+            Self::TableGridChange => "tblGridChange",
             Self::TableRowPropertiesChange => "trPrChange",
             Self::TableCellPropertiesChange => "tcPrChange",
             Self::SectionPropertiesChange => "sectPrChange",
@@ -1215,8 +1222,9 @@ impl Element {
             Self::RunPropertiesChange => vec![C::RunProperties, C::ParagraphMarkProperties],
             Self::ParagraphProperties => vec![C::Paragraph],
             Self::ParagraphPropertiesChange => vec![C::ParagraphProperties],
-            Self::TableProperties | Self::Row => vec![C::Table],
+            Self::TableProperties | Self::TableGrid | Self::Row => vec![C::Table],
             Self::TablePropertiesChange => vec![C::TableProperties],
+            Self::TableGridChange => vec![C::TableGrid],
             Self::RowProperties | Self::Cell => vec![C::TableRow],
             Self::TableRowPropertiesChange => vec![C::TableRowProperties],
             Self::CellProperties => vec![C::TableCell],
@@ -1257,6 +1265,7 @@ enum Context {
     TableProperties,
     TableRowProperties,
     TableCellProperties,
+    TableGrid,
     SectionProperties,
 }
 
@@ -1312,7 +1321,6 @@ const UNGENERATED_DISPATCH: &[&str] = &[
     "sym",
     "oMath",
     "oMathPara",
-    "tblGridChange",
     "customXmlDelRangeStart",
     "customXmlDelRangeEnd",
     "customXmlInsRangeStart",
@@ -1326,7 +1334,6 @@ const UNGENERATED_DISPATCH: &[&str] = &[
 /// Generated elements the parser handles through its default arm: they are
 /// transparent containers or markers whose content the walk still visits.
 const DEFAULT_ARM: &[Element] = &[
-    Element::TableProperties,
     Element::SectionProperties,
     Element::SmartTag,
     Element::ProofErr,
@@ -1465,7 +1472,7 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
             Event::Empty(element) => (element, true),
             Event::End(_) => {
                 let frame = stack.pop().unwrap();
-                if frame.name.ends_with("PrChange") {
+                if frame.name.ends_with("PrChange") || frame.name == "tblGridChange" {
                     snapshot_depth -= 1;
                 }
                 continue;
@@ -1511,6 +1518,7 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
             "trPr" => Some(Context::TableRowProperties),
             "tcPr" => Some(Context::TableCellProperties),
             "tblPr" => Some(Context::TableProperties),
+            "tblGrid" => Some(Context::TableGrid),
             "sectPr" => Some(Context::SectionProperties),
             "rPr" => Some(if parent_is_paragraph_properties {
                 Context::ParagraphMarkProperties
@@ -1533,11 +1541,11 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
             }
             _ => None,
         };
-        if name.ends_with("PrChange") {
+        if name.ends_with("PrChange") || name == "tblGridChange" {
             snapshot_depth += 1;
         }
         if empty {
-            if name.ends_with("PrChange") {
+            if name.ends_with("PrChange") || name == "tblGridChange" {
                 snapshot_depth -= 1;
             }
             continue;
@@ -1552,12 +1560,8 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
 
 /// Placements not generated in this suite.
 const EXCLUDED_ROWS: &[(Element, Context)] = &[
-    (Element::Paragraph, Context::TableCell),
     (Element::Paragraph, Context::Textbox),
-    (Element::Table, Context::Body),
     (Element::Table, Context::TableCell),
-    (Element::Table, Context::BlockSdt),
-    (Element::Table, Context::BlockCustomXml),
     (Element::Table, Context::Textbox),
     (Element::Sdt, Context::TableCell),
     (Element::Sdt, Context::Textbox),
@@ -1580,20 +1584,6 @@ const EXCLUDED_ROWS: &[(Element, Context)] = &[
     (Element::Insertion, Context::TableRowProperties),
     (Element::Deletion, Context::TableRowProperties),
     (Element::Textbox, Context::Run),
-    (Element::TableProperties, Context::Table),
-    (Element::Row, Context::Table),
-    (Element::TablePropertiesChange, Context::TableProperties),
-    (Element::RowProperties, Context::TableRow),
-    (Element::Cell, Context::TableRow),
-    (
-        Element::TableRowPropertiesChange,
-        Context::TableRowProperties,
-    ),
-    (Element::CellProperties, Context::TableCell),
-    (
-        Element::TableCellPropertiesChange,
-        Context::TableCellProperties,
-    ),
     (Element::CellInsertion, Context::TableCellProperties),
     (Element::CellDeletion, Context::TableCellProperties),
     (Element::CellMerge, Context::TableCellProperties),
@@ -1624,6 +1614,11 @@ fn generator_reaches_every_context_row() {
         let document = strategy.new_tree(&mut runner).unwrap().current();
         let (xml, _) = write_document(&document, &BTreeSet::new());
         observe(&xml, &mut observed);
+    }
+    let table_strategy = table_property_document();
+    for _ in 0..RECEIPT_CASES {
+        let table = table_strategy.new_tree(&mut runner).unwrap().current();
+        observe(&table.xml(), &mut observed);
     }
     let expected = expected_rows();
     let excluded = EXCLUDED_ROWS.iter().copied().collect::<BTreeSet<_>>();
@@ -3060,3 +3055,285 @@ fn paragraph_joins_coalesce_formatting_spans() {
 }
 
 const TRACKED: &str = r#"w:id="1" w:author="A""#;
+
+#[derive(Clone, Debug)]
+struct TablePropertyDocument {
+    rows: Vec<Vec<Vec<&'static str>>>,
+    snapshots: [bool; 4],
+    placement: TablePlacement,
+    namespace: NamespaceProfile,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum NamespaceProfile {
+    Transitional,
+    Strict,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum TablePlacement {
+    Body,
+    ContentControl,
+    CustomXml,
+}
+
+fn table_property_document() -> impl Strategy<Value = TablePropertyDocument> {
+    (
+        collection::vec(
+            collection::vec(
+                collection::vec(sample::select(vec!["", "ab", "é", "😀", "a😀é"]), 1..4),
+                1..4,
+            ),
+            1..4,
+        ),
+        any::<[bool; 4]>(),
+        sample::select(vec![
+            TablePlacement::Body,
+            TablePlacement::ContentControl,
+            TablePlacement::CustomXml,
+        ]),
+        sample::select(vec![
+            NamespaceProfile::Transitional,
+            NamespaceProfile::Strict,
+        ]),
+    )
+        .prop_map(
+            |(rows, snapshots, placement, namespace)| TablePropertyDocument {
+                rows,
+                snapshots,
+                placement,
+                namespace,
+            },
+        )
+}
+
+impl TablePropertyDocument {
+    fn xml(&self) -> String {
+        let namespace = match self.namespace {
+            NamespaceProfile::Strict => "http://purl.oclc.org/ooxml/wordprocessingml/main",
+            NamespaceProfile::Transitional => W,
+        };
+        let mut markup = Markup {
+            xml: format!(r#"<w:document xmlns:w="{namespace}"><w:body>"#),
+            comment_ids: BTreeSet::new(),
+            next_revision: 1,
+        };
+        markup.paragraph(&empty_paragraph());
+        let (opening, closing) = match self.placement {
+            TablePlacement::Body => ("", ""),
+            TablePlacement::ContentControl => ("<w:sdt><w:sdtContent>", "</w:sdtContent></w:sdt>"),
+            TablePlacement::CustomXml => ("<w:customXml>", "</w:customXml>"),
+        };
+        markup.xml.push_str(opening);
+        markup.xml.push_str("<w:tbl><w:tblPr>");
+        if self.snapshots[0] {
+            markup.change("tblPrChange", "<w:tblPr/>");
+        }
+        markup.xml.push_str("</w:tblPr><w:tblGrid>");
+        if self.snapshots[1] {
+            markup.change("tblGridChange", "<w:tblGrid/>");
+        }
+        markup.xml.push_str("</w:tblGrid>");
+        for row in &self.rows {
+            markup.xml.push_str("<w:tr><w:trPr>");
+            if self.snapshots[2] {
+                markup.change("trPrChange", "<w:trPr/>");
+            }
+            markup.xml.push_str("</w:trPr>");
+            for cell in row {
+                markup.xml.push_str("<w:tc><w:tcPr>");
+                if self.snapshots[3] {
+                    markup.change("tcPrChange", "<w:tcPr/>");
+                }
+                markup.xml.push_str("</w:tcPr>");
+                for text in cell {
+                    markup.paragraph(&Paragraph {
+                        inlines: vec![Inline::Run(Run {
+                            content: RunContent::Text(text),
+                            bold: false,
+                            property_change: false,
+                        })],
+                        ..empty_paragraph()
+                    });
+                }
+                markup.xml.push_str("</w:tc>");
+            }
+            markup.xml.push_str("</w:tr>");
+        }
+        markup.xml.push_str("</w:tbl>");
+        markup.xml.push_str(closing);
+        markup.paragraph(&empty_paragraph());
+        markup.xml.push_str("</w:body></w:document>");
+        markup.xml
+    }
+
+    #[allow(clippy::too_many_lines)] // Compare every generated owner in one traversal.
+    fn check(&self, view: RevisionView) -> Result<(), String> {
+        let projection = project_xml(
+            &self.xml(),
+            &format!(r#"<w:comments xmlns:w="{W}"/>"#),
+            view,
+        );
+        let mut texts = vec![""];
+        let mut structures = vec![None];
+        let mut owners = Vec::new();
+        let point = |ordinal: usize, text: &str| ReviewPoint {
+            paragraph_ordinal: ordinal,
+            utf8: u32::try_from(text.len()).unwrap(),
+            utf16: u32::try_from(text.encode_utf16().count()).unwrap(),
+        };
+        for (row_index, row) in self.rows.iter().enumerate() {
+            let row_start = point(texts.len(), "");
+            let mut cells = Vec::new();
+            for (column, cell) in row.iter().enumerate() {
+                let start = point(texts.len(), "");
+                for text in cell {
+                    texts.push(text);
+                    structures.push(Some(ParagraphStructure {
+                        table_ordinal: 0,
+                        row: row_index,
+                        column,
+                    }));
+                }
+                cells.push(ReviewSpan {
+                    start,
+                    end: point(texts.len() - 1, texts[texts.len() - 1]),
+                });
+            }
+            owners.push((
+                ReviewSpan {
+                    start: row_start,
+                    end: point(texts.len() - 1, texts[texts.len() - 1]),
+                },
+                cells,
+            ));
+        }
+        let table_span = ReviewSpan {
+            start: point(1, ""),
+            end: point(texts.len() - 1, texts[texts.len() - 1]),
+        };
+        texts.push("");
+        structures.push(None);
+        let mut expected = Vec::new();
+        if self.snapshots[0] {
+            expected.push((RevisionFactKind::TablePropertiesChange, table_span));
+        }
+        if self.snapshots[1] {
+            expected.push((RevisionFactKind::TableGridChange, table_span));
+        }
+        for (row, cells) in owners {
+            if self.snapshots[2] {
+                expected.push((RevisionFactKind::TableRowPropertiesChange, row));
+            }
+            if self.snapshots[3] {
+                for cell in cells {
+                    expected.push((RevisionFactKind::TableCellPropertiesChange, cell));
+                }
+            }
+        }
+        let paragraphs = &projection.document.paragraphs;
+        if paragraphs.iter().enumerate().any(|(ordinal, paragraph)| {
+            paragraph.ordinal != ordinal
+                || paragraph.style_id.is_some()
+                || paragraph.package_paragraph_id.is_some()
+                || paragraph.alignment.is_some()
+                || !paragraph.formatting.is_empty()
+        }) {
+            return Err("table paragraph ordinals or direct formatting differ".to_owned());
+        }
+        if paragraphs
+            .iter()
+            .map(|p| p.text.as_str())
+            .collect::<Vec<_>>()
+            != texts
+            || paragraphs
+                .iter()
+                .map(|p| p.structure.clone())
+                .collect::<Vec<_>>()
+                != structures
+        {
+            return Err("table text or coordinates differ from the generated cells".to_owned());
+        }
+        let empty_structure = DocumentStructureFacts {
+            bookmarks: StructuralFactSet::Known(Vec::new()),
+            internal_references: StructuralFactSet::Known(Vec::new()),
+            indentation: StructuralFactSet::Known(Vec::new()),
+            numbering_hierarchy: StructuralFactSet::Known(Vec::new()),
+            outline_levels: StructuralFactSet::Known(Vec::new()),
+        };
+        if projection.document.structural_facts != empty_structure
+            || projection.review_facts.comments != ReviewFactSet::Known(Vec::new())
+        {
+            return Err("table annotations and paragraph properties are empty".to_owned());
+        }
+        let expected_status =
+            if view == RevisionView::Original && self.snapshots.iter().any(|present| *present) {
+                RevisionProjectionStatus::Incomplete(vec![
+                    RevisionUnsupportedReason::UnsupportedRevisionMarkup,
+                ])
+            } else {
+                RevisionProjectionStatus::Complete
+            };
+        if projection.document.revision_status != expected_status
+            || projection.document.formatting_status
+                != FormattingProjectionStatus::Incomplete(
+                    FormattingUnknownReason::UnsupportedStyles,
+                )
+        {
+            return Err(
+                "table projection statuses differ from their declared semantics".to_owned(),
+            );
+        }
+        let ReviewFactSet::Known(revisions) = &projection.review_facts.revisions else {
+            return Err("bounded table revisions are unknown".to_owned());
+        };
+        if revisions.len() != expected.len() {
+            return Err("table revision cardinality differs".to_owned());
+        }
+        for (index, (revision, (kind, span))) in revisions.iter().zip(expected).enumerate() {
+            if revision.kind != kind
+                || revision.author != format!("Author {}", (index + 1) % 3)
+                || revision.date.as_deref()
+                    != Some(format!("2024-01-0{}T00:00:00Z", (index + 1) % 9 + 1).as_str())
+                || revision.revision_id.as_deref() != Some((index + 1).to_string().as_str())
+                || revision.content
+                    != ReviewDetail::Known(RevisionContent {
+                        span,
+                        payload: RevisionPayload::FormattingOnly,
+                    })
+            {
+                return Err(format!(
+                    "table revision {index} differs from its owner span"
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+proptest! {
+    #![proptest_config(config(64))]
+    #[test]
+    fn table_property_revisions_match_their_owners(document in table_property_document()) {
+        for view in VIEWS {
+            let checked = document.check(view);
+            prop_assert!(checked.is_ok(), "{}", checked.unwrap_err());
+        }
+    }
+}
+
+#[test]
+fn table_property_revisions_cover_distinct_rows_and_cells() {
+    let document = TablePropertyDocument {
+        rows: vec![
+            vec![vec!["", "é😀"], vec!["a"]],
+            vec![vec!["b", "😀"], vec![""]],
+        ],
+        snapshots: [true; 4],
+        placement: TablePlacement::Body,
+        namespace: NamespaceProfile::Transitional,
+    };
+    for view in VIEWS {
+        document.check(view).unwrap();
+    }
+}

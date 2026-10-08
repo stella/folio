@@ -305,6 +305,13 @@
       "kind": "random",
       "generation": "targeted",
       "title": "note trailers retain body reader agreement with direct edits"
+    },
+    {
+      "seed": 436695225,
+      "steps": 16,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "keeps accepted Markdown and plain-text readers aligned"
     }
   ]
 }

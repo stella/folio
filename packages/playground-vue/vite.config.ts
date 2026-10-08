@@ -2,6 +2,7 @@ import vue from "@vitejs/plugin-vue";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fixtureMiddleware } from "../../scripts/playground-fixtures";
 import { defineConfig, searchForWorkspaceRoot, type Plugin } from "vite";
 
 const playgroundRoot = import.meta.dirname;
@@ -19,39 +20,17 @@ function bundledFontPackageDirs(): string[] {
     .map((name) => path.dirname(fs.realpathSync(requireFromVue.resolve(`${name}/package.json`))));
 }
 
-const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const FIXTURE_PREFIX = "/fixtures/";
-
-// Serve the repo's visual-test fixtures at `/fixtures/<name>.docx` — the same
-// middleware the React playground uses, so both adapters load identical bytes
-// with `?file=<name>`. `tests/visual/fixtures` stays the single source of truth.
+// Both lifecycle hooks serve the same repository fixture bytes and path policy.
 function serveFixtures(): Plugin {
   return {
     name: "folio-serve-fixtures",
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        if (!req.url || !req.url.startsWith(FIXTURE_PREFIX)) {
-          next();
-          return;
-        }
-        const requested = req.url.slice(FIXTURE_PREFIX.length).split("?")[0] ?? "";
-        const name = decodeURIComponent(requested);
-        if (!name || name.includes("/") || name.includes("..")) {
-          res.statusCode = 400;
-          res.end("Invalid fixture path");
-          return;
-        }
-        fs.readFile(path.join(fixturesDir, name), (error, data) => {
-          if (error) {
-            res.statusCode = 404;
-            res.end(`Fixture not found: ${name}`);
-            return;
-          }
-          res.setHeader("Content-Type", DOCX_MIME);
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(data);
-        });
-      });
+      server.middlewares.use(fixtureMiddleware({ fixturesDir, cacheControl: "no-cache" }));
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(
+        fixtureMiddleware({ fixturesDir, cacheControl: "public, max-age=3600" }),
+      );
     },
   };
 }
@@ -86,6 +65,11 @@ export default defineConfig({
     fs: {
       allow: [searchForWorkspaceRoot(playgroundRoot), ...bundledFontPackageDirs()],
     },
+  },
+  preview: {
+    port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4201,
+    strictPort: true,
+    open: false,
   },
   build: {
     outDir: "dist",
