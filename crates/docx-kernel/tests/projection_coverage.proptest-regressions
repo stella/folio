@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3af38749efc72e383a5e2da80c6b7e20f56d1f2cd5548b6444a520b0e181fee7 # shrinks to document = Document { blocks: [Paragraph(Paragraph { mark: Some(Insertion), mark_property_change: false, property_change: false, inlines: [] })], section_change: false }

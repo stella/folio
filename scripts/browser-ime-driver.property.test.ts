@@ -1,15 +1,24 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+import type { BrowserInputAction } from "../tests/visual/browserInputTrace";
 import { browserImeActionArbitrary } from "../tests/visual/browserInputTrace";
 import { runBrowserImeLifecycle } from "../tests/visual/browserImeDriver";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
 
-test("generated IME lifecycles deliver every update and exactly their declared completion", async () => {
+type ImeDriverEvent =
+  | { kind: "update" | "commit"; text: string }
+  | { kind: "cancel" }
+  | {
+      kind: "finish";
+      completion: Extract<BrowserInputAction, { kind: "imeReplacement" }>["completion"];
+    };
+
+test("generated IME lifecycles deliver every update and terminate native composition", async () => {
   await assertProperty(
     fc.asyncProperty(browserImeActionArbitrary, async (action) => {
-      const events: { kind: "update" | "commit" | "cancel"; text?: string }[] = [];
+      const events: ImeDriverEvent[] = [];
       await runBrowserImeLifecycle(
         {
           update: async (text) => {
@@ -21,14 +30,21 @@ test("generated IME lifecycles deliver every update and exactly their declared c
           cancel: async () => {
             events.push({ kind: "cancel" });
           },
+          finish: async (completion) => {
+            events.push({ kind: "finish", completion });
+          },
         },
         action,
       );
-      expect(events.slice(0, -1)).toEqual(action.updates.map((text) => ({ kind: "update", text })));
-      expect(events.at(-1)).toEqual(
+      const expected = action.updates.map((text) => ({ kind: "update", text }));
+      expect(events.slice(0, action.updates.length)).toEqual(expected);
+      expect(events.slice(action.updates.length)).toEqual(
         action.completion === "commit"
-          ? { kind: "commit", text: action.updates.at(-1) }
-          : { kind: "cancel" },
+          ? [
+              { kind: "commit", text: action.updates.at(-1) },
+              { kind: "finish", completion: action.completion },
+            ]
+          : [{ kind: "cancel" }, { kind: "finish", completion: action.completion }],
       );
     }),
     { numRuns: 100 },
@@ -49,6 +65,9 @@ test("empty IME lifecycles reject before sending a browser command", async () =>
           },
           cancel: async () => {
             events.push("cancel");
+          },
+          finish: async () => {
+            events.push("finish");
           },
         },
         { kind: "imeReplacement", updates: [], completion },
@@ -73,6 +92,9 @@ test("failed updates propagate without completing the composition", async () => 
         },
         cancel: async () => {
           events.push("cancel");
+        },
+        finish: async () => {
+          events.push("finish");
         },
       },
       { kind: "imeReplacement", updates: ["alpha", "東京", "café"], completion: "commit" },

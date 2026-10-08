@@ -1,0 +1,73 @@
+name: Projection artifacts
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "crates/docx-kernel/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "package.json"
+      - "bun.lock"
+      - "packages/docx-core/package.json"
+      - "packages/docx-core/src/generated/**"
+      - "scripts/build-docx-kernel-wasm.ts"
+      - "scripts/lib/rust-wasm-artifact.ts"
+      - ".github/workflows/canonical-wasm.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: projection-artifacts-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-wasm:
+    name: Canonical projection artifact
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install pinned projection toolchain
+        run: |
+          rustup show active-toolchain
+          rustup target add wasm32-unknown-unknown
+          mapfile -t versions < <(cargo metadata --locked --format-version 1 --features wasm | jq -r '[.packages[] | select(.name == "wasm-bindgen") | .version] | unique | .[]')
+          if (( ${#versions[@]} != 1 )); then
+            echo "expected exactly one wasm-bindgen version" >&2
+            exit 1
+          fi
+          cargo install wasm-bindgen-cli --version "${versions[0]}" --locked
+
+      - name: Generate canonical projection artifact
+        run: bun --filter '@stll/docx-core' wasm:generate
+
+      - name: Upload canonical projection artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: canonical-wasm
+          path: packages/docx-core/src/generated/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Verify committed projection artifact
+        run: |
+          drift="$(git status --porcelain=v1 --untracked-files=all -- packages/docx-core/src/generated)"
+          if [[ -n "${drift}" ]]; then
+            echo "canonical projection artifacts differ from the committed files:" >&2
+            echo "${drift}" >&2
+            exit 1
+          fi
