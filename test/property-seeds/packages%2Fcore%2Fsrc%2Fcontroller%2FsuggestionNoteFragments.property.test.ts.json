@@ -1,0 +1,10 @@
+{
+  "resolved split-note deletion preserves text, references, and formatting through save and reopen": [
+    {
+      "seed": -1604782376,
+      "path": "15:0:0:0",
+      "note": "Retracting the middle insertion merges two complete same-id labels; serialization loses one occurrence.",
+      "date": "2026-10-08"
+    }
+  ]
+}
