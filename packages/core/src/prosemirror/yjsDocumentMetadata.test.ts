@@ -341,7 +341,8 @@ describe("note-reference occurrence schema cutover", () => {
       const text = new Y.XmlText();
       text.insert(0, "123123", { footnoteRef: { id: "123", noteType: "footnote" } });
       const paragraph = new Y.XmlElement("paragraph");
-      paragraph.insert(0, [text]);
+      // Non-text hooks cannot hide the attributed text that follows them.
+      paragraph.insert(0, [new Y.XmlHook("fixture"), text]);
       const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
       fragment.insert(0, [paragraph]);
       ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, version);

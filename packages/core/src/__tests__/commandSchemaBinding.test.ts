@@ -13,6 +13,7 @@
  * runtime built with another, and the two must end alike.
  */
 
+import { normalizeNoteOccurrenceIds } from "../../../../test/note-occurrence-oracle";
 import { describe, expect, test } from "bun:test";
 import type { EditorState } from "prosemirror-state";
 
@@ -107,7 +108,10 @@ const outcome = (
   } catch (error) {
     status = `threw ${error instanceof Error ? error.message : String(error)}`;
   }
-  return { status, doc: JSON.stringify(stable(view.state.doc.toJSON())) };
+  return {
+    status,
+    doc: JSON.stringify(stable(normalizeNoteOccurrenceIds(view.state.doc.toJSON()))),
+  };
 };
 
 describe("operations build from the document's schema", () => {
