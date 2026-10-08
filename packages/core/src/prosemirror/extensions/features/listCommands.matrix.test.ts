@@ -34,6 +34,7 @@ import { FolioDocxReviewer } from "../../../ai-edits/headless";
 import { fromMarkdown } from "../../../markdown/fromMarkdown";
 import type { BlockContent, Document, Paragraph } from "../../../types/document";
 import { paragraphNumberingReferenceId } from "../../../docx/numberingReference";
+import { paragraphIndentationFromFormatting } from "../../paragraphIndentation";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
 import { expectParagraphAttrs } from "../../attrs";
 import { toProseDoc } from "../../conversion/toProseDoc";
@@ -695,14 +696,72 @@ describe("list changes while suggesting", () => {
     expect(paragraphAttrsOf(editor, "Plain")["_propertyChanges"]).toBeNull();
   });
 
-  test("toggling back to the original leaves nothing tracked", async () => {
-    const { editor } = await sessionOf(fromMarkdown("Plain one"), "suggesting");
-    run(editor, "Plain one", toggleBulletList);
-    run(editor, "Plain one", toggleBulletList);
+  for (const mode of EDITING_MODES) {
+    for (const [kind, toggle] of [
+      ["bullet", toggleBulletList],
+      ["numbered", toggleNumberedList],
+    ] as const) {
+      for (const source of ["direct", "style"] as const) {
+        for (const indentation of [
+          undefined,
+          { indentLeft: 0, indentFirstLine: 0 },
+          { indentLeft: 480, indentRight: 240, indentFirstLine: 120 },
+          { indentLeft: 480, indentFirstLine: -120, hangingIndent: true },
+        ]) {
+          test(`two ${kind} toggles preserve indentation ${source} ${JSON.stringify(indentation)}, ${mode}`, async () => {
+            const model = fromMarkdown(TARGET);
+            const paragraph = targetParagraph(model);
+            if (source === "direct") {
+              paragraph.formatting = { ...paragraph.formatting, ...indentation };
+            } else {
+              model.package.styles = {
+                ...model.package.styles,
+                styles: [
+                  ...(model.package.styles?.styles ?? []),
+                  { styleId: "ToggleBaseline", type: "paragraph", pPr: indentation },
+                ],
+              };
+              paragraph.formatting = { ...paragraph.formatting, styleId: "ToggleBaseline" };
+            }
+            const session = await sessionOf(model, mode);
+            const { editor, document } = session;
+            const before = paragraphAttrsOf(editor, TARGET);
+            const originalIndentation = paragraphIndentationFromFormatting(
+              targetParagraph(document).formatting,
+            );
 
-    expect(paragraphAttrsOf(editor, "Plain one")["numPr"]).toBeNull();
-    expect(paragraphAttrsOf(editor, "Plain one")["_propertyChanges"]).toBeNull();
-  });
+            expect(run(editor, TARGET, toggle)).toBe(true);
+            expect(run(editor, TARGET, toggle)).toBe(true);
+
+            const after = paragraphAttrsOf(editor, TARGET);
+            expect(after["numPr"]).toBeNull();
+            expect(after["_propertyChanges"]).toBeNull();
+            for (const key of ["indentLeft", "indentRight", "indentFirstLine", "hangingIndent"]) {
+              expect(after[key]).toEqual(before[key]);
+            }
+            const savedModel = fromProseDoc(editor.state.doc, document);
+            expect(
+              paragraphIndentationFromFormatting(targetParagraph(savedModel).formatting),
+            ).toEqual(originalIndentation);
+            const reopened = await parseDocx(await repackDocx(savedModel), {
+              preloadFonts: false,
+              detectVariables: false,
+            });
+            expect(
+              paragraphIndentationFromFormatting(targetParagraph(reopened).formatting),
+            ).toEqual(originalIndentation);
+            const reopenedNode = toProseDoc(reopened).firstChild;
+            if (reopenedNode === null)
+              throw new TypeError("Reopened toggle fixture lost paragraph.");
+            const reopenedAttrs = expectParagraphAttrs(reopenedNode);
+            for (const key of ["indentLeft", "indentRight", "indentFirstLine", "hangingIndent"]) {
+              expect(reopenedAttrs[key]).toEqual(before[key]);
+            }
+          });
+        }
+      }
+    }
+  }
 
   test("a typed marker becomes a list and leaves no typing behind", async () => {
     const session = await sessionOf(fromMarkdown("Plain two"), "suggesting");

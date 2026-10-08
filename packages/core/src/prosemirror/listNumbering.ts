@@ -28,7 +28,7 @@ import {
 } from "../docx/listNumberingInstances";
 import { createNumberingMap, isBulletLevel, type NumberingMap } from "../docx/numberingParser";
 import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "../docx/numberingReference";
-import type { ListLevel } from "../types/document";
+import type { ListLevel, ParagraphFormatting } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import { paragraphPropertiesSnapshot } from "./commands/propertyChangeScope";
 import { LIST_RENDERING_ATTR_KEYS } from "./listMarker";
@@ -37,8 +37,7 @@ import type { RunStyleResolver } from "./runStyleFormatting";
 import { getDocumentNumbering } from "./plugins/documentNumbering";
 import { makeRevisionInfo, SUGGESTION_META } from "./plugins/suggestionMode";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "./schema/nodes";
-import { directParagraphIndentation } from "./paragraphIndentation";
-import { listAttrsFromNumbering, listLevelIndentAttrPatch } from "./styles/resolvedStyleAttrs";
+import { listLevelAttrPatch } from "./styles/resolvedStyleAttrs";
 import { listRenderingFor, recordsListRendering } from "./listRendering";
 
 const PARAGRAPH_NODE = "paragraph";
@@ -343,15 +342,22 @@ export const resolveListTarget = ({
   return { numId: minted.numId, ilvl: 0, numbering: createNumberingMap(minted.definitions) };
 };
 
+type ListItemAttrsOptions = {
+  attrs: Readonly<ParagraphAttrs>;
+  numPr: { numId: number; ilvl: number };
+  numbering: NumberingMap;
+  styleFormatting?: ParagraphFormatting | undefined;
+};
+
 /** A paragraph's attrs as an item of `numId` at `ilvl`, resolved in `numbering`. */
-export const listItemAttrs = (
-  attrs: Readonly<ParagraphAttrs>,
-  { numId, ilvl }: { numId: number; ilvl: number },
-  numbering: NumberingMap,
-): Record<string, unknown> => ({
+export const listItemAttrs = ({
+  attrs,
+  numPr,
+  numbering,
+  styleFormatting,
+}: ListItemAttrsOptions): Record<string, unknown> => ({
   ...attrs,
-  ...listAttrsFromNumbering({ numId, ilvl }, numbering),
-  ...listLevelIndentAttrPatch(directParagraphIndentation(attrs), { numId, ilvl }, numbering),
+  ...listLevelAttrPatch(attrs, numPr, { numbering, styleFormatting }),
   // Counted from the paragraph's own inline fields; the list does not change them.
   listImplicitChildLevelAdvances: attrs["listImplicitChildLevelAdvances"] ?? null,
   listFoldedMarkerSuffix: attrs["listFoldedMarkerSuffix"] ?? undefined,
@@ -449,7 +455,14 @@ const moveItems = ({ state, items, numId, numbering }: MoveItemsOptions): Transa
     updates: items.map(({ pos, node, membership }) => ({
       pos,
       node,
-      next: listItemAttrs(expectParagraphAttrs(node), { numId, ilvl: membership.ilvl }, numbering),
+      next: listItemAttrs({
+        attrs: expectParagraphAttrs(node),
+        numPr: { numId, ilvl: membership.ilvl },
+        numbering,
+        styleFormatting: getDocumentStyleResolver(state)?.resolveParagraphStyle(
+          expectParagraphAttrs(node).styleId,
+        ).paragraphFormatting,
+      }),
     })),
   });
   return tr.scrollIntoView();

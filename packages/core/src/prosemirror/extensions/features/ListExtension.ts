@@ -134,14 +134,17 @@ const numberParagraphs = ({ state, tr, from, to, requests }: NumberParagraphsOpt
       // The definition, not the id, says what the paragraph now renders: the
       // full attr group, so the painter, the next command and the save all
       // read the same level.
-      next: listItemAttrs(
-        expectParagraphAttrs(node),
-        {
+      next: listItemAttrs({
+        attrs: expectParagraphAttrs(node),
+        numPr: {
           numId: target.numId,
           ilvl: paragraphNumberingLevel(expectParagraphAttrs(node).numPr) ?? target.ilvl,
         },
-        target.numbering,
-      ),
+        numbering: target.numbering,
+        styleFormatting: getDocumentStyleResolver(state)?.resolveParagraphStyle(
+          expectParagraphAttrs(node).styleId,
+        ).paragraphFormatting,
+      }),
     })),
   });
   return true;

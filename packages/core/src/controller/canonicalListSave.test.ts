@@ -42,11 +42,11 @@ test(
               texts.map((text, index) =>
                 schema.node(
                   "paragraph",
-                  listItemAttrs(
+                  listItemAttrs({
                     attrs,
-                    { numId: minted.numId, ilvl: index === 1 ? nestedLevel : 0 },
+                    numPr: { numId: minted.numId, ilvl: index === 1 ? nestedLevel : 0 },
                     numbering,
-                  ),
+                  }),
                   schema.text(text),
                 ),
               ),
