@@ -53,7 +53,7 @@ type CompletedReceipt = {
 };
 
 type CompletedComposition =
-  | { type: "none" }
+  | { type: "idle" }
   | { type: "completed"; receipt: CompletedReceipt }
   | { type: "authorized"; receipt: CompletedReceipt; text: string };
 
@@ -61,7 +61,7 @@ type CompletedComposition =
 export const createCanonicalComposition = (options: CompositionOptions) => {
   let state: CompositionState = { type: "committed" };
   let authorizedNativeState: EditorState | null = null;
-  let completed: CompletedComposition = { type: "none" };
+  let completed: CompletedComposition = { type: "idle" };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const clearTimer = () => {
     if (timer !== undefined) clearTimeout(timer);
@@ -150,7 +150,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     const committedText = selectedText(pending.baseline, view.state);
     const proposed = view.state;
     const from = pending.baseline.selection.from;
-    completed = { type: "none" };
+    completed = { type: "idle" };
     state = { type: "committed" };
     if (!view.isDestroyed) {
       // Recovery may finish without a native end event (for example a refused
@@ -235,13 +235,13 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       schedule(view);
     },
     forgetCompleted: () => {
-      completed = { type: "none" };
+      completed = { type: "idle" };
     },
     get pendingFinal() {
       return completed.type === "authorized";
     },
     authorizeLateFinal: (view: EditorView, text: string | null) => {
-      if (completed.type === "none") return false;
+      if (completed.type === "idle") return false;
       const { receipt } = completed;
       if (
         view.isDestroyed ||
@@ -249,7 +249,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
         receipt.state !== view.state ||
         text === null
       ) {
-        completed = { type: "none" };
+        completed = { type: "idle" };
         return false;
       }
       completed = { type: "authorized", receipt, text };
@@ -270,7 +270,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     recover: (view: EditorView) => finish(view, true),
     cancel: (view: EditorView) => finish(view, false),
     reset: () => {
-      completed = { type: "none" };
+      completed = { type: "idle" };
       if (state.type !== "committed") finish(state.view, false);
       else {
         clearTimer();
@@ -281,7 +281,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       if (state.type === "committed") {
         const final = completed;
         if (final.type !== "authorized" || final.receipt.view !== view) return false;
-        completed = { type: "none" };
+        completed = { type: "idle" };
         if (view.isDestroyed || final.receipt.state !== view.state) return false;
         const applied = applyNative(view, transaction);
         const baseline = EditorState.create({
