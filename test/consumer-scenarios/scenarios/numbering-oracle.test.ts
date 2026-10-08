@@ -521,14 +521,39 @@ test(
             }
             // Earlier proposals may change this anchor during replay. Stage the success
             // control against the saved baseline instead of requiring a stale record to load.
+            // The live anchor inherits list numbering only through a pending deletion
+            // that the saved baseline does not contain, so anchor the control on the
+            // nearest saved paragraph that carries the same numbering.
+            assert.ok(proposal.operation.type === "insertAfterBlock");
+            const savedRows = rowsOf(await openReviewer(bytes));
+            const liveAnchorAt = savedRows.findIndex(
+              (row) => row.id === proposal.operation.blockId,
+            );
+            assert.ok(liveAnchorAt >= 0, "The live anchor exists in the saved baseline");
+            const numberedAnchor = savedRows
+              .slice(0, liveAnchorAt + 1)
+              .findLast((row) => row.listReference !== undefined);
+            assert.ok(numberedAnchor, "The saved baseline keeps a numbered anchor");
+            assert.deepEqual(numberedAnchor.listReference, expected);
             const staging = await openReviewer(bytes);
             const staged = await applyChecked(
               staging,
-              [{ ...proposal.operation, id: "saved-heading-roundtrip" }],
+              [
+                {
+                  ...proposal.operation,
+                  id: "saved-heading-roundtrip",
+                  blockId: numberedAnchor.id,
+                },
+              ],
               "suggested",
               "heading proposal against saved baseline",
             );
             assert.equal(staged.applied.length, 1);
+            assert.deepEqual(
+              rowsOf(staging).find((row) => row.text === text)?.listReference,
+              expected,
+              "Staging on the saved baseline inherits the anchor's numbering",
+            );
             const freshRecords = staging.exportPendingSuggestions();
             assert.equal(freshRecords.length, 1);
             const freshProposal = freshRecords.at(0);
