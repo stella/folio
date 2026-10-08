@@ -8,7 +8,6 @@ export const CANONICAL_GAP = {
   modelEdits: "direct-model-edits",
   sectionProperties: "section-properties",
   watermark: "watermark-model-edits",
-  secondaryStories: "secondary-story-routing",
   collaboration: "collaboration-session",
   dispatch: "unclassified-transactions",
   tableActivation: "table-session-activation",
@@ -98,12 +97,6 @@ export const CANONICAL_CAPABILITIES = {
     kind: "refusal",
     adapters: ["vue"],
     summary: "Vue watermark mutations still change the model directly.",
-  },
-  [CANONICAL_GAP.secondaryStories]: {
-    owner: "controller",
-    kind: "routing",
-    adapters: ["react", "vue"],
-    summary: "Secondary-story creation, views and history still select their session authority.",
   },
   [CANONICAL_GAP.collaboration]: {
     owner: "controller",

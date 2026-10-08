@@ -1426,9 +1426,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     );
 
     useEffect(() => {
-      if (readOnly || usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
-        noteEditorRef.current?.close();
-    }, [experimentalSession, readOnly]);
+      if (readOnly) noteEditorRef.current?.close();
+    }, [readOnly]);
 
     const getCanonicalApi = useCallback(() => hiddenPMRef.current, []);
 
@@ -4542,13 +4541,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           if (story) {
             e.preventDefault();
             e.stopPropagation();
-            if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-              handleSessionRefusal(
-                "Footnote and endnote editing is unavailable in this session.",
-                CANONICAL_GAP.secondaryStories,
-              );
-              return;
-            }
             noteEditorRef.current?.open(story);
             return;
           }
@@ -4819,14 +4811,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
       },
       // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
-      [
-        experimentalSession,
-        getPositionFromMouse,
-        handleSessionRefusal,
-        onHeaderFooterDoubleClick,
-        onHyperlinkClick,
-        readOnly,
-      ],
+      [getPositionFromMouse, onHeaderFooterDoubleClick, onHyperlinkClick, readOnly],
     );
 
     /**
@@ -5720,8 +5705,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           return folioEditor.getView();
         },
         getActiveView() {
-          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
-            return folioEditor.getView();
           return getActiveEditorStory().view;
         },
         closeNoteStory() {

@@ -1,3 +1,4 @@
+import { restoreCanonicalSelection } from "./canonicalSelection";
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import { mapTocSelection } from "./canonicalTocSelection";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
@@ -638,6 +639,7 @@ export type CanonicalCommit = {
   document: Document;
   projection: CanonicalProjection;
   bodyProjection: CanonicalProjection;
+  selection: CanonicalSelection;
   touched: TouchedBlocks;
   version: number;
   origin: CanonicalOrigin;
@@ -1573,41 +1575,19 @@ class CanonicalSession {
     }
     if (!transaction.doc.eq(projected.value.doc))
       transaction.replaceWith(0, transaction.doc.content.size, projected.value.doc.content);
-    if (sameStory(selection.anchor.story, story) && sameStory(selection.head.story, story)) {
-      const anchor = projected.value.positionAt(selection.anchor);
-      const head = projected.value.positionAt(selection.head);
-      if (selection.type === "all") {
-        transaction.setSelection(new AllSelection(transaction.doc));
-      } else if (anchor.isOk() && head.isOk()) {
-        switch (selection.type) {
-          case "text":
-            transaction.setSelection(
-              TextSelection.create(transaction.doc, anchor.value, head.value),
-            );
-            break;
-          case "inlineNode": {
-            const node = transaction.doc.nodeAt(anchor.value);
-            if (
-              !node?.isInline ||
-              !node.isAtom ||
-              !NodeSelection.isSelectable(node) ||
-              anchor.value + node.nodeSize !== head.value
-            )
-              return refuse("Canonical history cannot restore the selected inline atom.");
-            transaction.setSelection(NodeSelection.create(transaction.doc, anchor.value));
-            break;
-          }
-          default: {
-            const unreachable: never = selection.type;
-            return panic(`Unknown canonical selection type: ${unreachable}`);
-          }
-        }
-      } else
-        transaction.setSelection(
-          TextSelection.near(
-            transaction.doc.resolve(Math.min(state.selection.anchor, transaction.doc.content.size)),
-          ),
-        );
+    if (
+      sameStory(selection.anchor.story, projectedStory) &&
+      sameStory(selection.head.story, projectedStory)
+    ) {
+      if (
+        !restoreCanonicalSelection({
+          transaction,
+          projection: projected.value,
+          selection,
+          unavailable: { type: "near", anchor: state.selection.anchor },
+        })
+      )
+        return refuse("Canonical history cannot restore the selected inline atom.");
     }
     transaction.setMeta(CANONICAL_PROJECTION_META, {
       type: "canonical",
@@ -1628,6 +1608,7 @@ class CanonicalSession {
       document: applied.value.document,
       projection: projected.value,
       bodyProjection: bodyProjection.value,
+      selection,
       touched: applied.value.touched,
       version: baseVersion + 1,
       origin,

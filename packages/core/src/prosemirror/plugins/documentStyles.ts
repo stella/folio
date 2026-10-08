@@ -97,6 +97,26 @@ const bareResolver = (): StyleResolver => {
   return bareStyleResolver;
 };
 
+type DocumentStylesInput = StyleDefinitions | StyleResolver | null | undefined;
+
+const documentStyleContextSpec = (styles: DocumentStylesInput) => {
+  let resolver: StyleResolver | null;
+  if (styles instanceof StyleResolver) resolver = styles;
+  else if (styles) resolver = createStyleResolver(styles);
+  else resolver = null;
+  return {
+    key: documentStylesKey,
+    state: {
+      init: () => resolver,
+      apply: (_tr: Transaction, value: StyleResolver | null) => value,
+    },
+  };
+};
+
+/** Canonical projections own formatting; expose the resolver without PM repair transactions. */
+export const createDocumentStyleContextPlugin = (styles: DocumentStylesInput): Plugin =>
+  new Plugin(documentStyleContextSpec(styles));
+
 /**
  * Create the plugin holding a StyleResolver for the document's `styles` for
  * the lifetime of the EditorState. The resolver is fixed per document load;
@@ -107,20 +127,8 @@ const bareResolver = (): StyleResolver => {
 export function createDocumentStylesPlugin(
   styles: StyleDefinitions | StyleResolver | null | undefined,
 ): Plugin {
-  let resolver: StyleResolver | null;
-  if (styles instanceof StyleResolver) {
-    resolver = styles;
-  } else if (styles) {
-    resolver = createStyleResolver(styles);
-  } else {
-    resolver = null;
-  }
-  return new Plugin<StyleResolver | null>({
-    key: documentStylesKey,
-    state: {
-      init: () => resolver,
-      apply: (_tr, value) => value,
-    },
+  return new Plugin({
+    ...documentStyleContextSpec(styles),
     // A paragraph an edit creates reads its style cascade the way a loaded
     // one does, so it paints its inherited formatting before any reopen.
     // A package without a styles part loads against the built-in defaults.
