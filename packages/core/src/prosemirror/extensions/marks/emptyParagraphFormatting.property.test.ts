@@ -129,6 +129,37 @@ test("empty paragraph formatting and explicit clearing survive typing, paste, sa
   }
 });
 
+test("clearing a loaded paragraph default emits a run cancellation without an empty-paragraph edit", async () => {
+  const source = createEmptyDocument({ initialText: "x" });
+  source.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "12345678",
+      formatting: {
+        alignment: "right",
+        keepNext: true,
+        spaceAfter: 120,
+        runProperties: { bold: true, italic: true },
+      },
+      content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+    },
+  ];
+  const base = await parseShapeDocument(new Uint8Array(await createDocx(source)));
+  const view = new HeadlessEditorView(createHarnessState(base, "editing"));
+  const before = view.state.doc.firstChild?.firstChild;
+  expect(before?.marks.some(({ type }) => type.name === "bold")).toBe(true);
+  expect(before?.marks.some(({ type }) => type.name === "italic")).toBe(true);
+  view.state = view.state.apply(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 2)),
+  );
+  expect(clearFormatting(view.state, view.dispatch)).toBe(true);
+  const text = view.state.doc.firstChild?.firstChild;
+  expect(text?.marks.some(({ type }) => type.name === "bold" || type.name === "italic")).toBe(
+    false,
+  );
+  await assertRoundtrip(view, base);
+});
+
 test("random formatting and text edit sequences preserve authored paragraph defaults through save and reopen", async () => {
   const base = await sourceDocument();
   const editAction = fc.record({
