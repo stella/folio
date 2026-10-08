@@ -1690,12 +1690,14 @@ impl ProjectionState {
 
     fn current_review_point(&self) -> Option<ReviewPoint> {
         let paragraph = self.current_paragraph.as_ref()?;
-        let run_text = self.frames.iter().rev().find_map(|frame| match frame {
-            Frame::Run(run) if !run.hidden && !self.pseudo_text_is_suppressed() => {
-                Some(run.text.as_str())
-            }
-            _ => None,
-        });
+        let run_text = if self.pseudo_text_is_suppressed() {
+            None
+        } else {
+            self.frames.iter().rev().find_map(|frame| match frame {
+                Frame::Run(run) if !run.hidden => Some(run.text.as_str()),
+                _ => None,
+            })
+        };
         let run_utf8 = run_text.map_or(0, str::len);
         let run_utf16 = run_text.map_or(0, |text| text.encode_utf16().count());
         Some(ReviewPoint {
