@@ -15,7 +15,8 @@ import type {
 import { toProseDoc, collectPairedBookmarkIds } from "../prosemirror/conversion/toProseDoc";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { projectCanonicalInline } from "./canonicalInlineProjection";
-import { createCanonicalSession } from "./canonicalSession";
+import { EditorState } from "prosemirror-state";
+import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -190,16 +191,57 @@ test("generated nonempty bookmark and move ranges preserve native gap geometry",
   );
 });
 
-test("source markers with no native boundary receive typed activation refusals", () => {
-  const contents = [
-    [run("L"), PAIRS.commentRangeStart[0], run("x"), PAIRS.commentRangeStart[1], run("R")],
-  ] satisfies ParagraphContent[][];
-  for (const content of contents) {
-    const source = { type: "paragraph", paraId: "12345678", content } satisfies Paragraph;
-    const result = createCanonicalSession(documentFor(source));
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) expect(result.error.reason).toBe("refused");
+const commentRangeContent = [
+  run("L"),
+  PAIRS.commentRangeStart[0],
+  run("x"),
+  PAIRS.commentRangeStart[1],
+  run("R"),
+] satisfies ParagraphContent[];
+
+test("a comment range carried by native comment marks activates and keeps its boundaries through edits", () => {
+  const source = {
+    type: "paragraph",
+    paraId: "12345678",
+    content: commentRangeContent,
+  } satisfies Paragraph;
+  const session = createCanonicalSession(documentFor(source)).unwrap();
+  // The range is a mark on "x": the native paragraph holds only "LxR" (positions 1-3).
+  for (const edit of [
+    { from: 3, to: 4, text: "Q", expected: "LxQ" },
+    { from: 2, to: 3, text: "yz", expected: "LyzQ" },
+  ]) {
+    const state = EditorState.create({ doc: session.projection.doc });
+    const commit = session.prepareReplace(state, { from: edit.from, to: edit.to, text: edit.text });
+    publishCanonicalProjection({ session, state, commit: commit.unwrap() }).unwrap();
+    const paragraph = session.document.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("The edit lost its paragraph");
+    expect(paragraphLogicalText(paragraph)).toBe(edit.expected);
+    const boundaries = inlineLeafSpans(paragraph.content).flatMap(({ node, before }) =>
+      node.type === "commentRangeStart" || node.type === "commentRangeEnd"
+        ? [{ type: node.type, offset: before.offset }]
+        : [],
+    );
+    // The comment keeps bracketing the text between "L" and the trailing character.
+    expect(boundaries).toEqual([
+      { type: "commentRangeStart", offset: 1 },
+      { type: "commentRangeEnd", offset: edit.expected.length - 1 },
+    ]);
   }
+});
+
+test("source markers with no native boundary receive typed activation refusals", () => {
+  // Without a comment entry the range has no native mark, so its markers stay unmappable.
+  const source = {
+    type: "paragraph",
+    paraId: "12345678",
+    content: commentRangeContent,
+  } satisfies Paragraph;
+  const document = documentFor(source);
+  document.package.document.comments = [];
+  const result = createCanonicalSession(document);
+  expect(result.isErr()).toBe(true);
+  if (result.isErr()) expect(result.error.reason).toBe("refused");
 });
 
 test("generated erased containers keep unique source seams beside text and collapsed markers", () => {

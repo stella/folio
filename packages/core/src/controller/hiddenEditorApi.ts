@@ -20,12 +20,14 @@ import type { EditorView } from "prosemirror-view";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document } from "../types/document";
+import type { Comment } from "../types/content";
 import type {
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
 } from "../document-operations";
 import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
+import type { CanonicalCommentRequest, CanonicalCommentResult } from "../types/canonicalComments";
 import type { CanonicalSessionMode } from "./canonicalSession";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
 
@@ -52,6 +54,7 @@ export type HiddenEditorApi = {
   /** Get the current Document from PM state */
   getDocument: () => Document | null;
   /** Canonical snapshot, or null in the default session. */
+  getCanonicalComments: () => Comment[] | null;
   getCanonicalDocument: () => Document | null;
   captureCanonicalSave: () => CanonicalSaveSnapshot | null;
   /** A save cannot acknowledge newer edits or an unfinished composition. */
@@ -68,6 +71,7 @@ export type HiddenEditorApi = {
   ) => boolean;
   applyCanonicalStoryHistory: (options: CanonicalStoryHistoryOptions) => boolean;
   applyCanonicalOperations: (ops: readonly DocumentOp[]) => boolean;
+  applyCanonicalComment: (request: CanonicalCommentRequest) => CanonicalCommentResult | null;
   getCanonicalStorySelection: (story: OpStory) => { anchor: number; head: number } | null;
   getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
   replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
@@ -108,6 +112,7 @@ export type HiddenEditorApi = {
 export type HiddenEditorApiDeps = {
   getView: () => EditorView | null;
   getDocumentContext: () => Document | null;
+  getCanonicalComments?: () => Comment[] | null;
   getCanonicalDocument?: () => Document | null;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
@@ -119,6 +124,7 @@ export type HiddenEditorApiDeps = {
     HiddenEditorApi,
     | "updateCanonicalInputLifecycle"
     | "applyCanonicalOperations"
+    | "applyCanonicalComment"
     | "getCanonicalStoryProjection"
     | "replaceCanonicalStoryText"
     | "applyCanonicalStoryHistory"
@@ -184,6 +190,7 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
     resolveCanonicalRevisions: (revisionIds, resolution) =>
       !deps.isDestroying() && (deps.resolveCanonicalRevisions?.(revisionIds, resolution) ?? false),
 
+    getCanonicalComments: () => deps.getCanonicalComments?.() ?? null,
     captureCanonicalSave: () => deps.captureCanonicalSave?.() ?? null,
     isCanonicalSaveCurrent: (version) => deps.isCanonicalSaveCurrent?.(version) ?? false,
 
@@ -206,6 +213,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       deps.canonicalOperations?.updateCanonicalInputLifecycle(action) ?? false,
     applyCanonicalStoryHistory: (options) =>
       deps.canonicalOperations?.applyCanonicalStoryHistory(options) ?? false,
+    applyCanonicalComment: (request) =>
+      deps.canonicalOperations?.applyCanonicalComment(request) ?? null,
     applyCanonicalOperations: (ops) =>
       deps.canonicalOperations?.applyCanonicalOperations(ops) ?? false,
     getCanonicalStorySelection: (story) =>

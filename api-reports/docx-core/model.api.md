@@ -147,6 +147,18 @@ type Comment_2 = {
 export { Comment_2 as Comment }
 
 // @public
+export const COMMENT_PART_RELATIONSHIPS: {
+    readonly comments: {
+        readonly type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
+        readonly target: "comments.xml";
+    };
+    readonly commentsExtended: {
+        readonly type: "http://schemas.microsoft.com/office/2011/relationships/commentsExtended";
+        readonly target: "commentsExtended.xml";
+    };
+};
+
+// @public
 export type CommentRangeEnd = {
     type: "commentRangeEnd";
 } & MarkupRangeMarker;

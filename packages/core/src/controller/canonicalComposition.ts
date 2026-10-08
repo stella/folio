@@ -5,10 +5,11 @@ import { EditorState, TextSelection, type Transaction } from "prosemirror-state"
 import type { EditorView } from "prosemirror-view";
 
 import { CanonicalSessionError } from "./canonicalSession";
-import { setCanonicalInputTimer } from "./canonicalInputTimer";
+import {
+  CANONICAL_COMPOSITION_FLUSH_DELAY_MS,
+  setCanonicalInputTimer,
+} from "./canonicalInputTimer";
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
-
-const COMPOSITION_FLUSH_DELAY_MS = 25;
 
 type CompositionOptions = {
   begin: () => boolean;
@@ -104,24 +105,53 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     if (!$from.sameParent($to)) return null;
     const start = $from.start();
     const next = proposed.doc.nodeAt(start - 1);
-    if (!next || next.type !== $from.parent.type || next.content.size !== next.textContent.length)
-      return null;
-    const before = $from.parent.textContent;
-    const after = next.textContent;
-    let from = 0;
-    while (from < before.length && from < after.length && before[from] === after[from]) from++;
-    while (splitsSurrogatePair(before, from) || splitsSurrogatePair(after, from)) from--;
-    let oldEnd = before.length;
-    let newEnd = after.length;
+    if (!next || next.type !== $from.parent.type) return null;
+    const previous = $from.parent.content;
+    const changedFrom = previous.findDiffStart(next.content);
+    if (changedFrom === null) {
+      if (!baseline.doc.eq(proposed.doc)) return null;
+      return {
+        from: baseline.selection.from,
+        to: baseline.selection.from,
+        text: "",
+        semantic: "composition" as const,
+      };
+    }
+    const changedEnd = previous.findDiffEnd(next.content);
+    if (changedEnd === null) return null;
+    let from = changedFrom;
+    let oldEnd = changedEnd.a;
+    let newEnd = changedEnd.b;
+    const overlap = from - Math.min(oldEnd, newEnd);
+    if (overlap > 0) {
+      oldEnd += overlap;
+      newEnd += overlap;
+    }
+    // Leaf placeholders keep text offsets aligned with PM positions while
+    // untouched inline atoms remain part of the exact reconstruction below.
+    const before = previous.textBetween(0, previous.size, "", "\uFFFC");
+    const after = next.content.textBetween(0, next.content.size, "", "\uFFFC");
+    // Node diffs also report mark-only changes (a native rewrite can drop run
+    // identity). Narrow to the text change so the reconstruction refuses them
+    // instead of committing a same-text replacement.
+    while (from < oldEnd && from < newEnd && before[from] === after[from]) from++;
     while (oldEnd > from && newEnd > from && before[oldEnd - 1] === after[newEnd - 1]) {
       oldEnd--;
       newEnd--;
     }
+    while (splitsSurrogatePair(before, from) || splitsSurrogatePair(after, from)) from--;
     while (splitsSurrogatePair(before, oldEnd) || splitsSurrogatePair(after, newEnd)) {
       oldEnd++;
       newEnd++;
     }
-    const text = after.slice(from, newEnd);
+    const removed = previous.cut(from, oldEnd);
+    const inserted = next.content.cut(from, newEnd);
+    const text = inserted.textBetween(0, inserted.size, "", "");
+    if (
+      removed.textBetween(0, removed.size, "", "").length !== removed.size ||
+      text.length !== inserted.size
+    )
+      return null;
     const expected = baseline.tr.insertText(text, start + from, start + oldEnd);
     if (!expected.doc.eq(proposed.doc)) return null;
     return { from: start + from, to: start + oldEnd, text, semantic: "composition" as const };
@@ -194,7 +224,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
   const schedule = (view: EditorView) => {
     clearTimer();
     // Allow the native final input and PM's delayed composition flush to settle.
-    timer = setCanonicalInputTimer(() => finish(view, true), COMPOSITION_FLUSH_DELAY_MS);
+    timer = setCanonicalInputTimer(() => finish(view, true), CANONICAL_COMPOSITION_FLUSH_DELAY_MS);
   };
   return {
     // Keep declaration emission tied to the authored union, not inferred member order.
