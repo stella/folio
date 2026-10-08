@@ -108,7 +108,6 @@ for (const adapter of adapters) {
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
     expect((await canonicalSnapshot(page)).document.package.document.content).toEqual(bodyModel);
 
-    const originalBodyJSON = JSON.stringify(bodyModel);
     const header = page.locator(".layout-page-header").first();
     await header.dblclick();
     await expect(page.locator(".hf-inline-editor")).toBeVisible();
@@ -123,9 +122,7 @@ for (const adapter of adapters) {
     await expect(header).not.toContainText("header tracked");
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
     await expect(header).toContainText("header tracked");
-    expect(JSON.stringify((await canonicalSnapshot(page)).document.package.document.content)).toBe(
-      originalBodyJSON,
-    );
+    expect((await canonicalSnapshot(page)).document.package.document.content).toEqual(bodyModel);
     await page.getByRole("button", { name: "Options", exact: false }).click();
     await page.getByRole("button", { name: "Close header editing" }).click();
 
@@ -145,7 +142,7 @@ for (const adapter of adapters) {
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
     await expect(footer).toContainText("footer tracked");
     const beforeSave = await canonicalSnapshot(page);
-    expect(JSON.stringify(beforeSave.document.package.document.content)).toBe(originalBodyJSON);
+    expect(beforeSave.document.package.document.content).toEqual(bodyModel);
 
     const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
     if (!saved) throw new TypeError("Canonical save unavailable.");
@@ -161,6 +158,7 @@ for (const adapter of adapters) {
     );
     expect(hasTrackedInsertion(savedHeader?.content, "Folio User")).toBe(true);
     expect(hasTrackedInsertion(savedFooter?.content, "Folio User")).toBe(true);
-    expect(JSON.stringify(reopened.package.document.content)).toBe(originalBodyJSON);
+    // Parsed source captures are symbol properties outside the snapshot wire model.
+    expect(JSON.parse(JSON.stringify(reopened.package.document.content))).toEqual(bodyModel);
   });
 }
