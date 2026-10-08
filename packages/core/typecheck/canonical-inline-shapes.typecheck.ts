@@ -100,6 +100,7 @@ export const CANONICAL_PARAGRAPH_SHAPE_FACTORIES = {
       href: "https://example.test/",
       children: [textRun(text)],
     }),
+    paragraphFixture({ type: "hyperlink", href: "https://empty.example/", children: [] }, "empty"),
   ],
   bookmarkStart: (text = "x") =>
     rangeFixtures({ item: bookmarkStart, start: bookmarkStart, end: bookmarkEnd, text }),
@@ -184,6 +185,18 @@ export const CANONICAL_PARAGRAPH_SHAPE_FACTORIES = {
         content: [{ type: "insertion", info: revision, content: [textRun(text)] }],
       },
       "customXml",
+    ),
+    paragraphFixture(
+      { type: "inlineWrapper", kind: "bidi", control: "override", direction: "rtl", content: [] },
+      "emptyBidi",
+    ),
+    paragraphFixture(
+      { type: "inlineWrapper", kind: "smartTag", element: "place", content: [] },
+      "emptySmartTag",
+    ),
+    paragraphFixture(
+      { type: "inlineWrapper", kind: "customXml", element: "value", content: [] },
+      "emptyCustomXml",
     ),
   ],
   inlineSdt: (text = "x") => [

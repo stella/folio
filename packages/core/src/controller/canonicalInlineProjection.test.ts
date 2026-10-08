@@ -1,6 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { OP_STORIES, paragraphLogicalText } from "@stll/docx-core/ops";
+import { OP_STORIES, paragraphLogicalText, inlineLeafSpans } from "@stll/docx-core/ops";
 import type { Document, Paragraph, ParagraphContent, Run, ComplexField } from "../types/document";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
@@ -183,4 +183,92 @@ test("source markers with no native boundary receive typed activation refusals",
     expect(result.isErr()).toBe(true);
     if (result.isErr()) expect(result.error.reason).toBe("refused");
   }
+});
+
+test("generated erased containers keep unique source seams beside text and collapsed markers", () => {
+  const empty = (kind: "hyperlink" | "bidi" | "smartTag" | "customXml"): ParagraphContent => {
+    switch (kind) {
+      case "hyperlink":
+        return { type: "hyperlink", href: "https://empty.example/", children: [] };
+      case "bidi":
+        return { type: "inlineWrapper", kind, control: "override", direction: "rtl", content: [] };
+      case "smartTag":
+      case "customXml":
+        return { type: "inlineWrapper", kind, element: "value", content: [] };
+    }
+  };
+  const check = (kind: "hyperlink" | "bidi" | "smartTag" | "customXml", count: number) => {
+    const containers = Array.from({ length: count }, () => empty(kind));
+    const pair = PAIRS.bookmarkStart;
+    const variants = [
+      [...containers, run("LR")],
+      [run("L"), ...containers, run("R")],
+      [run("LR"), ...containers],
+      [run("L"), pair[0], ...containers, pair[1], run("R")],
+      [
+        run("L"),
+        { type: "hyperlink", href: "https://outer.example/", children: containers },
+        run("R"),
+      ],
+      [run("L"), ...containers, ...PAIRS.moveFromRangeStart, run("R")],
+      [run("L"), ...PAIRS.moveFromRangeStart, ...containers, run("R")],
+      [run("L"), PAIRS.moveFromRangeStart[0], empty("bidi"), PAIRS.moveFromRangeStart[1], run("R")],
+    ] satisfies ParagraphContent[][];
+    for (const content of variants) {
+      const source = { type: "paragraph", paraId: "12345678", content } satisfies Paragraph;
+      const document = documentFor(source);
+      const session = createCanonicalSession(document).unwrap();
+      const native = session.projection.doc.child(0);
+      if (content.some((item) => item.type === "moveFromRangeStart")) {
+        const nativeKinds: string[] = [];
+        native.forEach((node) => nativeKinds.push(node.type.name));
+        expect(nativeKinds).toContain("rangeAnchor");
+      }
+      const mapped = projectCanonicalInline(source, native).unwrap();
+      expect(mapped.text).toBe("LR");
+      const zeroWidth = (paragraph: Paragraph) =>
+        inlineLeafSpans(paragraph.content)
+          .filter(({ before, after }) => before.offset === after.offset)
+          .map(({ node }) => node);
+      const preserved = session.document.package.document.content.at(0);
+      expect(preserved?.type).toBe("paragraph");
+      if (preserved?.type !== "paragraph") return;
+      expect(zeroWidth(preserved)).toEqual(zeroWidth(source));
+      for (const [offset, gaps] of mapped.boundaries.entries()) {
+        expect(new Set(gaps.map(({ position }) => position)).size).toBe(gaps.length);
+        for (const gap of gaps) {
+          const address = session.projection.addressAt(1 + gap.position).unwrap();
+          expect(address.offset).toBe(offset);
+          expect(address.zeroWidthBefore ?? 0).toBe(gap.zeroWidthBefore);
+          expect(session.projection.positionAt(address).unwrap()).toBe(1 + gap.position);
+        }
+        const maxOrdinal = Math.max(
+          0,
+          ...inlineLeafSpans(content)
+            .filter(({ after }) => after.offset === offset)
+            .map(({ after }) => after.zeroWidthBefore),
+        );
+        for (let ordinal = 0; ordinal <= maxOrdinal; ordinal += 1) {
+          const position = session.projection.positionAt({
+            story: OP_STORIES.MAIN,
+            blockId: source.paraId,
+            offset,
+            zeroWidthBefore: ordinal,
+          });
+          expect(position.isOk()).toBe(
+            gaps.some(({ zeroWidthBefore }) => zeroWidthBefore === ordinal),
+          );
+        }
+      }
+    }
+  };
+  for (const kind of ["hyperlink", "bidi", "smartTag", "customXml"] as const) check(kind, 2);
+  assertProperty(
+    fc.property(
+      fc.constantFrom("hyperlink", "bidi", "smartTag", "customXml"),
+      fc.integer({ min: 1, max: 5 }),
+      check,
+    ),
+    { seed: -1348404097, numRuns: 30 },
+  );
 });

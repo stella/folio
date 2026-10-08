@@ -220,7 +220,9 @@ class CanonicalProjection {
       story: this.story,
       blockId: paragraph.blockId,
       offset,
-      ...(gaps.length > 1 ? { zeroWidthBefore: gap.zeroWidthBefore } : {}),
+      ...(gaps.length > 1 || gap.zeroWidthBefore > 0
+        ? { zeroWidthBefore: gap.zeroWidthBefore }
+        : {}),
     });
   }
 
@@ -261,7 +263,7 @@ class CanonicalProjection {
       return refuse("The canonical selection is outside a paragraph gap.");
     if (gap === undefined)
       return refuse(
-        "This source gap is inside a collapsed inline range and has no editor position.",
+        "This source gap is inside a collapsed range or an empty inline container and has no editor position.",
       );
     return Result.ok(paragraph.start + gap.position);
   }
