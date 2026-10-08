@@ -509,6 +509,8 @@ export const createHiddenEditorClipboardHandlers = (
 });
 
 export type HiddenEditorManager = {
+  /** Whether the canonical owner still holds a provisional composition. */
+  isCanonicalComposing: () => boolean;
   /** Request the view (sets the requested flag, then attempts creation). */
   ensureView: () => void;
   /** Re-attempt a previously-requested-but-deferred creation (no-op otherwise). */
@@ -1576,5 +1578,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     getView: () => view,
     isInitialized: () => isInitialized,
     api,
+    isCanonicalComposing: () =>
+      editorSession.type === "canonical" && editorSession.session.isComposing,
   };
 };

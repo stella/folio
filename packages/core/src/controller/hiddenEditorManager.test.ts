@@ -543,7 +543,9 @@ test.each(["body", "story"] as const)(
       if (owner === "body") {
         view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
       } else {
+        expect(manager.isCanonicalComposing()).toBe(false);
         expect(manager.api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
+        expect(manager.isCanonicalComposing()).toBe(true);
       }
       for (const read of [manager.api.getDocument, manager.api.getCanonicalDocument])
         expect(read).toThrow("Composition must finish before taking a snapshot.");
@@ -557,6 +559,7 @@ test.each(["body", "story"] as const)(
         await new Promise<void>((resolve) => setTimeout(resolve, 40));
       } else {
         manager.api.updateCanonicalInputLifecycle("endComposition");
+        expect(manager.isCanonicalComposing()).toBe(false);
       }
       expect(manager.api.getCanonicalDocument()).toEqual(initial);
       expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).not.toBeNull();
