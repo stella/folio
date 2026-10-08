@@ -495,8 +495,24 @@ test.describe("pinned browser input", () => {
       async ({ page }) => {
         const source = await shapeArrayBuffer(trace.shape);
         const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-        const edited = await runMode(page, source, baseline, trace, false);
-        const suggested = await runMode(page, source, baseline, trace, true);
+        const edited = await runMode({
+          page,
+          source,
+          baseline,
+          trace,
+          suggesting: false,
+          authority: "prosemirror",
+        });
+        const suggested = await runMode({
+          page,
+          source,
+          baseline,
+          trace,
+          suggesting: true,
+          authority: "prosemirror",
+        });
+        if (edited.type !== "ready" || suggested.type !== "ready")
+          throw new TypeError("Legacy replay unexpectedly refused activation.");
         const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
         accepting.acceptAll();
         expect(project(await reopenSaved(await accepting.toBuffer()))).toEqual(edited.blocks);
