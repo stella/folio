@@ -1377,13 +1377,29 @@ function handleSuggestionDelete(
     return false;
   }
 
+  if (noteRange) {
+    markRangeAsDeleted(
+      tr,
+      state.doc,
+      noteRange.from,
+      noteRange.to,
+      insertionType,
+      deletionType,
+      pluginState,
+    );
+    const cursor = tr.mapping.map(isBackward ? noteRange.from : noteRange.to);
+    tr.setSelection(TextSelection.near(tr.doc.resolve(cursor)));
+    dispatch(tr.scrollIntoView());
+    return true;
+  }
+
   const hasOwnInsertion = nodeAfter.marks.some(
     (m) => m.type === insertionType && m.attrs["author"] === pluginState.author,
   );
   const hasDeletion = nodeAfter.marks.some((m) => m.type === deletionType);
 
   if (hasDeletion) {
-    // A whole-note expansion can include an earlier deleted fragment.
+    // Preserve an existing deletion revision.
     const newPos = isBackward ? rangeFrom : rangeTo;
     tr.setSelection(TextSelection.near(tr.doc.resolve(newPos)));
   } else if (hasOwnInsertion) {
