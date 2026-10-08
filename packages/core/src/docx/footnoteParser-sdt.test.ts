@@ -1,3 +1,4 @@
+import { getEndnoteText, getFootnoteText } from "./storyPlainText";
 /**
  * SDT inside a footnote/endnote body must round-trip as BlockSdt so
  * getContentControls + headless mutate APIs see citation slots and
@@ -7,7 +8,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { findContentControls, setContentControlContent } from "../content-controls";
-import { getEndnoteText, getFootnoteText, parseEndnotes, parseFootnotes } from "./footnoteParser";
+import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 
 const FOOTNOTE_WITH_SDT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

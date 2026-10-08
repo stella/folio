@@ -26,7 +26,6 @@
  */
 
 import type {
-  BlockContent,
   TextBox,
   Paragraph,
   Table,
@@ -632,44 +631,6 @@ export function hasTextBoxOutline(textBox: TextBox): boolean {
 export function hasTextBoxContent(textBox: TextBox): boolean {
   return textBox.content.length > 0;
 }
-
-/**
- * Get plain text from text box (helper for search/indexing)
- */
-export function getTextBoxText(textBox: TextBox): string {
-  return textBox.content.map(getTextBoxBlockText).join("\n");
-}
-
-const getTextBoxBlockText = (block: BlockContent): string => {
-  if (block.type === "paragraph") {
-    const runTexts: string[] = [];
-    for (const item of block.content) {
-      if (item.type !== "run") {
-        continue;
-      }
-      for (const content of item.content) {
-        if (content.type === "text") {
-          runTexts.push(content.text);
-        }
-      }
-    }
-    return runTexts.join("");
-  }
-
-  if (block.type === "table") {
-    return block.rows
-      .map((row) =>
-        row.cells.map((cell) => cell.content.map(getTextBoxBlockText).join("\n")).join("\t"),
-      )
-      .join("\n");
-  }
-
-  if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
-    return "";
-  }
-
-  return block.content.map(getTextBoxBlockText).join("\n");
-};
 
 /**
  * Resolve fill color to CSS color string

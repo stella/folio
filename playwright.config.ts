@@ -6,6 +6,8 @@ const vuePlaygroundPort = new URL(PLAYGROUND_HOSTS.vue).port;
 export default defineConfig({
   globalSetup: "./tests/parity/playgroundSetup.ts",
   testDir: "./tests/visual",
+  // Bun unit tests share helper directories; browser projects discover only specs.
+  testMatch: /\.spec\.ts$/u,
   // A stray test.only must fail CI instead of silently running one test.
   forbidOnly: !!process.env["CI"],
   timeout: 30_000,

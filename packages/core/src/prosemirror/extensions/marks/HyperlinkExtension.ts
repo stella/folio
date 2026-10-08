@@ -3,6 +3,7 @@
  */
 
 import { withCanonicalCommand } from "../../canonicalCommands";
+import { canonicalSelectionRange } from "../../canonicalSelectionRange";
 import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
 import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
 import { panic } from "better-result";
@@ -218,8 +219,7 @@ export const HyperlinkExtension = createMarkExtension({
             : [
                 {
                   type: "setHyperlink",
-                  from: state.selection.from,
-                  to: state.selection.to,
+                  ...canonicalSelectionRange(state),
                   href: normalizeHyperlinkInput(href),
                   ...(tooltip ? { tooltip } : {}),
                 },
@@ -227,7 +227,8 @@ export const HyperlinkExtension = createMarkExtension({
       );
 
     const removalRange = (state: EditorState) => {
-      const { from, to, empty, $from } = state.selection;
+      const { empty, $from } = state.selection;
+      const { from, to } = canonicalSelectionRange(state);
       if (!empty) return { from, to };
       const hlType = documentHyperlinkType(state);
       if (!$from.marks().some((mark) => mark.type === hlType)) return undefined;
@@ -289,8 +290,7 @@ export const HyperlinkExtension = createMarkExtension({
         (state) => [
           {
             type: "insertHyperlink",
-            from: state.selection.from,
-            to: state.selection.to,
+            ...canonicalSelectionRange(state),
             text,
             href: normalizeHyperlinkInput(href),
             ...(tooltip ? { tooltip } : {}),

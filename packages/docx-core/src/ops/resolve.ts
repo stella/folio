@@ -1301,6 +1301,10 @@ export const resolveRevision = (
         !markWasAdded(candidate.pPrMark.kind)
       )
         break;
+      // An empty inserted paragraph can carry the source cut for a later
+      // join. Rejecting its break must carry that cut across the entire chain.
+      if (op.decision === REVISION_DECISIONS.REJECT && ids.has(candidate.pPrMark.info.id))
+        leadingCut = Math.max(leadingCut, candidate.pPrMark.resolutionJoin ?? 0);
     }
     let depth = Math.max(
       mark.resolutionJoin,

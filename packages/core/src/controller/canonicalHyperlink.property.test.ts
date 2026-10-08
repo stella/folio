@@ -1,12 +1,14 @@
 import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
-import { EditorState, TextSelection } from "prosemirror-state";
+import { AllSelection, EditorState, TextSelection, type Command } from "prosemirror-state";
 import type { Document, ParagraphContent } from "../types/document";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import type { CanonicalCommandIntent } from "../prosemirror/canonicalCommands";
+import { insertPageBreak } from "../prosemirror/commands/pageBreak";
 import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
 import { prepareCanonicalCommands } from "./canonicalStructure";
 import { createDocx } from "../docx/rezip";
@@ -98,12 +100,7 @@ const inputArbitrary = fc.record({
   left: fc.nat(),
   right: fc.nat(),
   reverse: fc.boolean(),
-  href: fc.constantFrom(
-    "example.com",
-    "#anchor",
-    "https://new.example/path",
-    "javascript:alert(1)",
-  ),
+  href: fc.constantFrom("example.com", "#anchor", "https://new.example/path", "javascript:void 0"),
   tooltip: fc.constantFrom(undefined, "Tip", ""),
 });
 type HyperlinkInput = ReturnType<typeof inputArbitrary.generate>["value"];
@@ -114,6 +111,90 @@ const factories = {
   insertHyperlink: ({ href, tooltip }: HyperlinkInput) =>
     singletonManager.requireCommand("insertHyperlink")("New😀", href, tooltip),
 };
+
+const allSelectionCommands = {
+  setHyperlink: [() => singletonManager.requireCommand("setHyperlink")("https://new.example/")],
+  removeHyperlink: [() => singletonManager.requireCommand("removeHyperlink")()],
+  insertHyperlink: [() => singletonManager.requireCommand("insertHyperlink")("New😀", "#anchor")],
+  formatRun: [
+    () => singletonManager.requireCommand("toggleUnderline")(),
+    () => singletonManager.requireCommand("setFontFamily")("New Font"),
+  ],
+  insertBreak: [() => insertPageBreak],
+} as const satisfies Record<
+  Extract<CanonicalCommandIntent, { from: number; to: number }>["type"],
+  readonly (() => Command)[]
+>;
+
+test("every range intent handles AllSelection and restores exact undo redo", () => {
+  assertProperty(
+    fc.property(fc.boolean(), fc.integer({ min: 1, max: 3 }), (bookmarks, paragraphCount) => {
+      const exercised = new Set<string>();
+      for (const [name, commandFactories] of Object.entries(allSelectionCommands)) {
+        for (const factory of commandFactories) {
+          exercised.add(name);
+          const document = seed(bookmarks);
+          for (let index = 1; index < paragraphCount; index += 1) {
+            document.package.document.content.push({
+              type: "paragraph",
+              paraId: (0x12345678 + index).toString(16),
+              content: [{ type: "run", content: [{ type: "text", text: "tail😀" }] }],
+            });
+          }
+          const session = createCanonicalSession(document).unwrap();
+          let state = EditorState.create({ schema, doc: session.projection.doc });
+          state = state.apply(state.tr.setSelection(new AllSelection(state.doc)));
+          const before = session.document;
+          const beforeSelection = state.selection.toJSON();
+          const intents =
+            getCanonicalCommandIntents(factory(), state) ?? panic("Missing range descriptor.");
+          // Positive control: the old derivation addresses document edges, not paragraph gaps.
+          const rawRange = { from: state.selection.from, to: state.selection.to };
+          expect(session.projection.addressAt(rawRange.from).isErr()).toBe(true);
+          expect(session.projection.addressAt(rawRange.to).isErr()).toBe(true);
+          // Page breaks require a caret, so whole-document selection has no intent.
+          if (name === "insertBreak") {
+            expect(intents).toEqual([]);
+            continue;
+          }
+          expect(intents.length).toBeGreaterThan(0);
+          const oldIntents = intents.map((intent) => ({ ...intent, ...rawRange }));
+          const oldPreparation = prepareCanonicalCommands(session, state, oldIntents);
+          expect(oldPreparation.isErr()).toBe(true);
+          if (oldPreparation.isOk()) panic("The old raw-selection derivation must refuse.");
+          expect(oldPreparation.error.reason).toBe("refused");
+          expect(session.document).toBe(before);
+          expect(state.selection.toJSON()).toEqual(beforeSelection);
+          const prepared = prepareCanonicalCommands(session, state, intents).unwrap();
+          state = publishCanonicalProjection({ session, state, commit: prepared }).unwrap().state;
+          const after = session.document;
+          const afterSelection = state.selection.toJSON();
+          if (name === "insertHyperlink") {
+            expect(state.doc.textContent).toBe("New😀");
+          } else {
+            expect(afterSelection).toEqual(beforeSelection);
+          }
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: session.prepareUndo(state).unwrap(),
+          }).unwrap().state;
+          expect(session.document).toStrictEqual(before);
+          expect(state.selection.toJSON()).toEqual(beforeSelection);
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: session.prepareRedo(state).unwrap(),
+          }).unwrap().state;
+          expect(session.document).toStrictEqual(after);
+          expect(state.selection.toJSON()).toEqual(afterSelection);
+        }
+      }
+      expect([...exercised].sort()).toEqual(Object.keys(allSelectionCommands).sort());
+    }),
+    { numRuns: 12 },
+  );
+});
 
 test("generated hyperlink command histories preserve targets, bookmarks, probes and exact inverse", async () => {
   await assertProperty(

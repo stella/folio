@@ -229,6 +229,20 @@ const rootHelp = (): string => {
   ].join("\n");
 };
 
+/**
+ * A worked call for commands whose JSON flags the flag list cannot show: the
+ * operation shape and where its ids come from.
+ */
+const COMMAND_EXAMPLES: Readonly<Partial<Record<string, readonly string[]>>> = {
+  suggest: [
+    "Example (find the text, then replace it as a tracked change):",
+    '  folio find contract.docx --query "the Supplier"',
+    "  folio suggest contract.docx --in-place --expect-version <fileVersion> --operations \\",
+    '    \'[{"type":"replaceInBlock","blockId":"<blockId>","find":"the Supplier","replace":"each party"}]\'',
+    "Copy fileVersion and blockId from the find result; every operation names its `type`.",
+  ],
+};
+
 const commandHelp = (resolved: FolioResolvedCommand): string => {
   const flags = [
     ...generatedFlags(resolved).map(({ flag, description, valueType }) => ({
@@ -252,6 +266,9 @@ const commandHelp = (resolved: FolioResolvedCommand): string => {
     "Flags:",
     ...flags.map(({ name, description }) => `  ${name}\n      ${wrapText(description, "      ")}`),
     "",
+    ...(COMMAND_EXAMPLES[resolved.command.name] ?? []).flatMap((line, index, lines) =>
+      index === lines.length - 1 ? [line, ""] : [line],
+    ),
   ].join("\n");
 };
 

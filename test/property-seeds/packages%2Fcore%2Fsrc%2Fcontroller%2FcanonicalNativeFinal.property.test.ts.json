@@ -1,0 +1,30 @@
+{
+  "native final text is committed exactly once or refused without a journal change": [
+    {
+      "seed": 1255698489,
+      "path": "0",
+      "note": "Exercise the native final through a real canonical journal with production-shaped paragraph identifiers.",
+      "date": "2026-10-07"
+    },
+    {
+      "seed": 1255698489,
+      "path": "4",
+      "note": "Native replacement sharing the original prefix must commit and undo once.",
+      "date": "2026-10-07"
+    },
+    {
+      "seed": 1255698489,
+      "path": "13:1",
+      "note": "Equal native replacement leaves the real canonical journal empty.",
+      "date": "2026-10-07"
+    }
+  ],
+  "same-payload typing after native end is always a separate gesture": [
+    {
+      "seed": -1144041901,
+      "path": "0:0",
+      "note": "Ordinary same-text typing after native end must remain separate at every finish boundary; fails without the native-lifecycle discriminator.",
+      "date": "2026-10-07"
+    }
+  ]
+}

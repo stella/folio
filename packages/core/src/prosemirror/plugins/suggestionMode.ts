@@ -1106,7 +1106,7 @@ type CaretDeleteTarget =
   | { type: "inlineUnit"; from: number; to: number }
   | { type: "paragraphEdge" };
 
-/** Find the adjacent visible unit without consuming a bookmark range marker. */
+/** Find the adjacent visible unit without consuming retained deletions or bookmark markers. */
 function caretDeleteTarget(
   state: EditorState,
   direction: "backward" | "forward",
@@ -1116,12 +1116,20 @@ function caretDeleteTarget(
   let from = backward ? $from.pos - 1 : $from.pos;
   let to = backward ? $from.pos : $from.pos + 1;
   while (from >= $from.start() && to <= $from.end()) {
-    const adjacent = state.doc.resolve(from).nodeAfter;
-    if (adjacent?.type.name !== "bookmarkBoundary") {
+    const $adjacent = state.doc.resolve(from);
+    const adjacent = $adjacent.nodeAfter;
+    if (
+      !adjacent ||
+      (adjacent.type.name !== "bookmarkBoundary" &&
+        !adjacent.marks.some((mark) => mark.type === state.schema.marks["deletion"]))
+    ) {
       return { type: "inlineUnit", from, to };
     }
-    from += backward ? -adjacent.nodeSize : adjacent.nodeSize;
-    to += backward ? -adjacent.nodeSize : adjacent.nodeSize;
+    // nodeAfter is the suffix of a text run. Backward traversal needs the
+    // prefix ending at this unit, including coalesced deletion runs.
+    const skipped = backward && adjacent.isText ? $adjacent.textOffset + 1 : adjacent.nodeSize;
+    from += backward ? -skipped : skipped;
+    to += backward ? -skipped : skipped;
   }
   return { type: "paragraphEdge" };
 }
@@ -1375,7 +1383,7 @@ function handleSuggestionDelete(
   const hasDeletion = nodeAfter.marks.some((m) => m.type === deletionType);
 
   if (hasDeletion) {
-    // Already deleted — skip cursor past it
+    // A whole-note expansion can include an earlier deleted fragment.
     const newPos = isBackward ? rangeFrom : rangeTo;
     tr.setSelection(TextSelection.near(tr.doc.resolve(newPos)));
   } else if (hasOwnInsertion) {

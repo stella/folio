@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "tracked-changes",
+  "seed": 694344246,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2766522247,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "5E88C024",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from reseed+dropOperation of b4d3b9d93f02c1f2",
+  "title": "PINNED #1384, reported seed 1785651826: paragraph formatting before terminal deletion matches sequential edits"
+}

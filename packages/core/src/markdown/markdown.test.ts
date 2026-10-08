@@ -6,6 +6,8 @@
 // skills bridge fixtures.
 
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import type {
   BlockContent,
@@ -87,6 +89,41 @@ describe("toMarkdown — block structure", () => {
   test("heading style → ATX heading at the matching level", () => {
     expect(md([para([run("Title")], { styleId: "Heading1" })])).toBe("# Title");
     expect(md([para([run("Sub")], { styleId: "Heading3" })])).toBe("### Sub");
+  });
+
+  test(
+    "generated whitespace-only headings do not emit extra Markdown blocks",
+    async () => {
+      await assertProperty(
+        fc.property(
+          fc.array(fc.constantFrom(" ", "\t", "\n", "\u00a0", "\u2003"), {
+            minLength: 1,
+            maxLength: 12,
+          }),
+          fc.integer({ min: 1, max: 6 }),
+          fc.record({ bold: fc.boolean(), italic: fc.boolean(), strike: fc.boolean() }),
+          (whitespace, level, formatting) => {
+            expect(
+              md([
+                para([run(whitespace.join(""), formatting)], { styleId: `Heading${level}` }),
+                para([run("Tail.")]),
+              ]),
+            ).toBe("Tail.");
+            expect(md([para([run("Title")], { styleId: `Heading${level}` })])).toBe(
+              `${"#".repeat(level)} Title`,
+            );
+          },
+        ),
+        { seed: 717860451, numRuns: 100 },
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test("a whitespace heading keeps its visible list label", () => {
+    expect(
+      md([para([run(" ")], { styleId: "Heading1", listRendering: list(0, false, "1.") })]),
+    ).toBe("# 1.  ");
   });
 
   test("plain paragraphs join with a blank line", () => {
