@@ -31,12 +31,12 @@ import { paragraphRunStyleContextAt } from "./runStyleFormatting";
 type LinkedPiece = { from: number; to: number; node: PMNode };
 type LinkedRange = { from: number; to: number; pieces: LinkedPiece[] };
 
-/** Contiguous stretches of linked, not yet deleted, text in [`from`, `to`) of `doc`. */
+/** Contiguous stretches of linked, not yet deleted, inline content in [`from`, `to`) of `doc`. */
 const linkedRanges = (doc: PMNode, from: number, to: number): LinkedRange[] => {
   const ranges: LinkedRange[] = [];
   doc.nodesBetween(from, to, (node, position) => {
     if (
-      !node.isText ||
+      !node.isInline ||
       !node.marks.some(({ type }) => type.name === "hyperlink") ||
       node.marks.some(({ type }) => type.name === "deletion")
     ) {
@@ -55,7 +55,8 @@ const linkedRanges = (doc: PMNode, from: number, to: number): LinkedRange[] => {
     } else {
       ranges.push({ from: start, to: end, pieces: [piece] });
     }
-    return true;
+    // A matched atom owns its content; do not collect its descendants again.
+    return false;
   });
   return ranges;
 };
@@ -97,8 +98,8 @@ const withoutHyperlinkStyle = (state: EditorState, doc: PMNode, piece: LinkedPie
   };
 };
 
-/** Replace the marks of the text at [`from`, `to`) of `tr.doc` with `marks`. */
-const setTextMarks = (
+/** Replace the marks of the inline content at [`from`, `to`) of `tr.doc` with `marks`. */
+const setInlineMarks = (
   tr: Transaction,
   from: number,
   to: number,
@@ -172,7 +173,7 @@ export const removeHyperlinkInRange = (
     }));
     if (!insertion || !deletionType) {
       for (const { piece, marks } of unlinked) {
-        setTextMarks(
+        setInlineMarks(
           tr,
           piece.from,
           piece.to,
@@ -198,7 +199,7 @@ export const removeHyperlinkInRange = (
         previousFormatting && !hasPendingPropertyChange(piece.node.marks)
           ? propertyChange(previousFormatting)
           : null;
-      setTextMarks(
+      setInlineMarks(
         tr,
         piece.from,
         piece.to,
