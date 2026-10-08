@@ -18,6 +18,13 @@ use stella_docx_kernel::{
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TableSelection {
+    Explicit,
+    Default,
+    Missing,
+}
+
 const NAMESPACE: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 fn project(body: &str, definitions: &str) -> DocumentProjection {
@@ -119,10 +126,14 @@ proptest! {
         character_toggle in proptest::option::of(any::<bool>()),
         direct_bold in proptest::option::of(any::<bool>()),
         direct_paragraph in any::<bool>(),
-        missing_table in any::<bool>(),
+        selection in prop::sample::select(vec![TableSelection::Explicit, TableSelection::Default, TableSelection::Missing]),
         text in prop::sample::select(vec!["a😀é", "😀😀", "ébc", "x"]),
     ) {
-        let mut definitions = format!("{}{}", default_properties(default_bold), chain(&toggles, false));
+        let table_definitions = chain(&toggles, false).replace(
+            &format!(r#"w:styleId="T{}""#, toggles.len() - 1),
+            &format!(r#"w:styleId="T{}" w:default="1""#, toggles.len() - 1),
+        );
+        let mut definitions = format!("{}{}", default_properties(default_bold), table_definitions);
         let paragraph_style = paragraph_toggle.map_or_else(String::new, |toggle| {
             write!(definitions, r#"<w:style w:type="paragraph" w:styleId="P"><w:rPr><w:b w:val="{toggle}"/></w:rPr><w:pPr><w:ind w:start="700"/><w:outlineLvl w:val="2"/><w:jc w:val="both"/></w:pPr></w:style>"#).unwrap();
             r#"<w:pStyle w:val="P"/>"#.to_owned()
@@ -134,7 +145,12 @@ proptest! {
         let direct = direct_bold.map_or_else(String::new, |bold| format!(r#"<w:b w:val="{bold}"/>"#));
         let direct_properties = if direct_paragraph { r#"<w:ind w:start="900"/><w:outlineLvl w:val="3"/><w:jc w:val="right"/>"# } else { "" };
         let paragraph = format!("<w:p><w:pPr>{paragraph_style}{direct_properties}</w:pPr><w:r><w:rPr>{character_style}{direct}</w:rPr><w:t>{text}</w:t></w:r></w:p>");
-        let selected = if missing_table { "MissingTable".to_owned() } else { format!("T{}", toggles.len() - 1) };
+        let selected = match selection {
+            TableSelection::Explicit => format!("T{}", toggles.len() - 1),
+            TableSelection::Default => String::new(),
+            TableSelection::Missing => "MissingTable".to_owned(),
+        };
+        let missing_table = selection == TableSelection::Missing;
         let projection = project(&table(&selected, &paragraph), &definitions);
         prop_assert_eq!(projection.formatting_status, FormattingProjectionStatus::Complete);
         let table_toggle = !missing_table && toggles.iter().filter(|value| **value).count() % 2 == 1;
@@ -168,13 +184,21 @@ proptest! {
     #[test]
     fn selected_cycles_are_typed_unknown_and_unused_cycles_preserve_facts(
         toggles in prop::collection::vec(any::<bool>(), 2..17),
-        selected in any::<bool>(),
+        selection in prop::sample::select(vec![TableSelection::Explicit, TableSelection::Default, TableSelection::Missing]),
     ) {
-        let name = if selected { format!("T{}", toggles.len() - 1) } else { "MissingTable".to_owned() };
+        let name = match selection {
+            TableSelection::Explicit => format!("T{}", toggles.len() - 1),
+            TableSelection::Default => String::new(),
+            TableSelection::Missing => "MissingTable".to_owned(),
+        };
         let paragraph = "<w:p><w:r><w:t>é😀</w:t></w:r></w:p>";
-        let definitions = format!("{}{}", default_properties(false), chain(&toggles, true));
+        let table_definitions = chain(&toggles, true).replace(
+            &format!(r#"w:styleId="T{}""#, toggles.len() - 1),
+            &format!(r#"w:styleId="T{}" w:default="1""#, toggles.len() - 1),
+        );
+        let definitions = format!("{}{}", default_properties(false), table_definitions);
         let projection = project(&table(&name, paragraph), &definitions);
-        if selected {
+        if selection != TableSelection::Missing {
             prop_assert_eq!(projection.formatting_status, FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles));
             prop_assert_eq!(&projection.structural_facts.indentation, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
             prop_assert_eq!(&projection.structural_facts.outline_levels, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
@@ -186,31 +210,35 @@ proptest! {
     }
 
     /// Nested tables choose their nearest table's style; an omitted inner
-    /// style never inherits the outer table's properties.
+    /// style selects the default without inheriting outer table properties.
     #[test]
     fn nested_tables_isolate_their_style_selection(
         outer_bold in any::<bool>(),
         inner_bold in proptest::option::of(any::<bool>()),
+        default_table_bold in any::<bool>(),
     ) {
         let mut definitions = format!(r#"{}<w:style w:type="table" w:styleId="Outer"><w:rPr><w:b w:val="{outer_bold}"/></w:rPr><w:pPr><w:ind w:start="500"/></w:pPr></w:style>"#, default_properties(false));
+        write!(definitions, r#"<w:style w:type="table" w:styleId="DefaultTable" w:default="1"><w:rPr><w:b w:val="{default_table_bold}"/></w:rPr><w:pPr><w:ind w:start="600"/></w:pPr></w:style>"#).unwrap();
         let inner_style = inner_bold.map_or("", |bold| {
             write!(definitions, r#"<w:style w:type="table" w:styleId="Inner"><w:rPr><w:b w:val="{bold}"/></w:rPr><w:pPr><w:ind w:start="700"/></w:pPr></w:style>"#).unwrap();
             "Inner"
         });
         let paragraph = "<w:p><w:r><w:t>é😀</w:t></w:r></w:p>";
         let inner = table(inner_style, paragraph);
-        let projection = project(&table("Outer", &format!("{paragraph}{inner}{paragraph}")), &definitions);
+        let body = format!("{}{}", table("Outer", &format!("{paragraph}{inner}{paragraph}")), paragraph);
+        let projection = project(&body, &definitions);
         prop_assert_eq!(projection.formatting_status, FormattingProjectionStatus::Complete);
-        prop_assert_eq!(projection.paragraphs.len(), 3);
+        prop_assert_eq!(projection.paragraphs.len(), 4);
         for index in [0, 2] {
             prop_assert_eq!(&projection.paragraphs[index].formatting, &bold_spans("é😀", outer_bold));
         }
-        prop_assert_eq!(&projection.paragraphs[1].formatting, &bold_spans("é😀", inner_bold.unwrap_or(false)));
+        prop_assert_eq!(&projection.paragraphs[1].formatting, &bold_spans("é😀", inner_bold.unwrap_or(default_table_bold)));
+        prop_assert_eq!(&projection.paragraphs[3].formatting, &bold_spans("é😀", false));
         let StructuralFactSet::Known(indentation) = &projection.structural_facts.indentation else {
             prop_assert!(false, "nested table indentation remains Known");
             return Ok(());
         };
-        prop_assert_eq!(indentation.iter().map(|fact| fact.value.start_twips).collect::<Vec<_>>(), vec![Some(500), Some(if inner_bold.is_some() { 700 } else { 100 }), Some(500)]);
+        prop_assert_eq!(indentation.iter().map(|fact| fact.value.start_twips).collect::<Vec<_>>(), vec![Some(500), Some(if inner_bold.is_some() { 700 } else { 600 }), Some(500), Some(100)]);
     }
 }
 

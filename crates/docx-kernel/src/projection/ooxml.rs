@@ -14,7 +14,7 @@ use crate::projection::review::{
 };
 use crate::projection::structure::{
     ParagraphProperties, RawBookmarkRange, RawInternalReference, StructuralFactUnknownReason,
-    StyleSheet, TextProperties, TextStyleInput,
+    StyleSheet, TableStyleSelection, TextProperties, TextStyleInput,
 };
 use crate::projection::styles::{
     parse_alignment, parse_indentation, parse_level_attribute, parse_outline_level_attribute,
@@ -1121,18 +1121,21 @@ impl ProjectionState {
                     formatting: Vec::new(),
                     structure,
                     properties: ParagraphProperties {
-                        table_style_id: self
+                        table_style: self
                             .frames
                             .iter()
                             .rev()
                             .find_map(|frame| {
                                 if let Frame::Table(table) = frame {
-                                    Some(table.style_id.clone())
+                                    Some(table.style_id.clone().map_or(
+                                        TableStyleSelection::Default,
+                                        TableStyleSelection::Explicit,
+                                    ))
                                 } else {
                                     None
                                 }
                             })
-                            .flatten(),
+                            .unwrap_or_default(),
                         ..ParagraphProperties::default()
                     },
                     resolved_text_base: None,

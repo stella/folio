@@ -369,15 +369,15 @@ fn end(state: &mut StyleParserState) -> Result<(), ProjectionError> {
                 style.id.as_str(),
                 "NoList" | "DefaultParagraphFont" | "TableNormal"
             );
-            if kind == StyleKind::Paragraph
-                && style.is_default
-                && state
-                    .sheet
-                    .default_style_id
-                    .replace(style.id.clone())
-                    .is_some()
-            {
-                return Err(ProjectionError::InvalidStylesXml);
+            if style.is_default {
+                let default_id = match kind {
+                    StyleKind::Paragraph => Some(&mut state.sheet.default_style_id),
+                    StyleKind::Table => Some(&mut state.sheet.default_table_style_id),
+                    StyleKind::Character => None,
+                };
+                if default_id.is_some_and(|id| id.replace(style.id.clone()).is_some()) {
+                    return Err(ProjectionError::InvalidStylesXml);
+                }
             }
             if state
                 .sheet
