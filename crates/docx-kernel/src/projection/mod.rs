@@ -25,7 +25,7 @@ pub use ooxml::{
 pub use review::{
     AttributedComment, AttributedRevision, CommentContent, DocumentReviewFacts, ReviewDetail,
     ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason, ReviewPoint, ReviewSpan,
-    RevisionContent, RevisionFactKind,
+    RevisionContent, RevisionFactKind, RevisionPayload,
 };
 pub use structure::{
     BookmarkFact, DocumentStructureFacts, InternalReferenceFact, InternalReferenceRole,

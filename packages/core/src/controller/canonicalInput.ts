@@ -7,12 +7,21 @@ import { handleEditorBeforeInput } from "../prosemirror/textInput";
 import { createCanonicalComposition } from "./canonicalComposition";
 import { deletionRange, isCanonicalJoinBoundary } from "./canonicalSession";
 
+export const CANONICAL_COMPOSITION_INPUT_TYPES = [
+  "insertCompositionText",
+  "insertFromComposition",
+  "deleteCompositionText",
+  "deleteByComposition",
+] as const;
+
 type ReplaceTextInput = {
   from: number;
   to: number;
   text: string;
-  semantic?: "typing" | "deleteBackward" | "deleteForward" | "composition";
-};
+} & (
+  | { semantic: "composition"; compositionPhase?: "correction" }
+  | { semantic?: "typing" | "deleteBackward" | "deleteForward"; compositionPhase?: never }
+);
 
 type CanonicalInputOptions = {
   replace: (input: ReplaceTextInput) => void;
@@ -54,7 +63,8 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
   let proposal: NativeProposal = { type: "idle" };
   let authorizedInput: { view: EditorView; state: EditorState } | null = null;
   let groupClosed = false;
-  const beginGesture = () => {
+  const beginGesture = (lifecycle: "new" | "compositionFinal" = "new") => {
+    if (lifecycle === "new") composition.forgetCompleted();
     proposal = { type: "idle" };
     authorizedInput = null;
     groupClosed = false;
@@ -132,7 +142,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
     },
     acceptComposition: composition.accept,
     handleTextInput: (view: EditorView, from: number, to: number, text: string) => {
-      if (composition.active) return false;
+      if (composition.active || composition.pendingFinal) return false;
       const pending = proposal;
       if (authorizedInput?.view === view && authorizedInput.state === view.state) {
         options.replace({ from, to, text, semantic: "typing" });
@@ -153,6 +163,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       return true;
     },
     handleKeyDown: (view: EditorView, event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) return false;
       beginGesture();
       if (composition.active) {
         if (event.key === "Escape") {
@@ -272,6 +283,15 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       return true;
     },
     handleDOMEvents: {
+      keydown: (view: EditorView, event: KeyboardEvent) => {
+        // Mark native IME keys handled without preventing their browser default;
+        // they must not fall through to PM or extension keyboard shortcuts.
+        if (event.isComposing || event.keyCode === 229) return true;
+        if (!composition.active || event.key !== "Escape") return false;
+        event.preventDefault();
+        composition.cancel(view);
+        return true;
+      },
       compositionstart: (view: EditorView) => {
         beginGesture();
         composition.start(view);
@@ -295,26 +315,42 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         return false;
       },
       beforeinput: (view: EditorView, event: InputEvent) => {
-        beginGesture();
+        beginGesture(event.inputType === "insertFromComposition" ? "compositionFinal" : "new");
         if (
           event.isComposing ||
-          event.inputType === "insertCompositionText" ||
-          event.inputType === "insertFromComposition" ||
-          event.inputType === "deleteCompositionText" ||
-          event.inputType === "deleteByComposition"
+          CANONICAL_COMPOSITION_INPUT_TYPES.some((inputType) => inputType === event.inputType)
         ) {
           if (composition.active) {
             composition.authorizeNative(view);
             return false;
           }
+          if (
+            event.inputType === "insertFromComposition" &&
+            composition.authorizeLateFinal(view, event.data)
+          )
+            return false;
           return refuseEvent(event, "Composition has no captured canonical baseline.");
         }
         // A new, non-composition event recovers an IME missing compositionend.
         if (composition.active) {
-          const refusedNativeCommit = composition.status === "refused" && view.composing;
-          composition.recover(view);
+          // A plain input after native compositionend belongs to typing,
+          // even when its text equals the preceding composition payload.
+          const nativeFinal =
+            view.composing &&
+            (event.inputType === "insertText" || event.inputType === "insertReplacementText");
+          const nativeStillComposing = view.composing;
+          const recovered = composition.recover(view);
+          composition.forgetCompleted();
           proposal = { type: "idle" };
-          if (refusedNativeCommit) {
+          // Missing-end recovery terminates the captured gesture once. Only
+          // its still-native final may be consumed; subsequent typing is separate.
+          if (
+            nativeFinal &&
+            ((recovered.type === "refused" && nativeStillComposing) ||
+              ((recovered.type === "committed" || recovered.type === "refused") &&
+                recovered.text !== null &&
+                recovered.text === event.data))
+          ) {
             event.preventDefault();
             return true;
           }
@@ -414,7 +450,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       },
       // A native DOM proposal is valid only until this event's observer flush.
       input: (view: EditorView) => {
-        if (composition.active) {
+        if (composition.active || composition.pendingFinal) {
           composition.flushed(view);
           return false;
         }

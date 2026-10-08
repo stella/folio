@@ -2420,52 +2420,6 @@ export function isCellHorizontallyMerged(cell: TableCell): boolean {
 }
 
 /**
- * Get the plain text content of a table
- *
- * @param table - The table to extract text from
- * @returns Plain text content
- */
-export function getTableText(table: Table): string {
-  const rows: string[] = [];
-
-  for (const row of table.rows) {
-    const cells: string[] = [];
-
-    for (const cell of row.cells) {
-      const cellText = cell.content
-        .filter((c): c is Paragraph => c.type === "paragraph")
-        .map((p) => getParagraphText(p))
-        .join("\n");
-      cells.push(cellText);
-    }
-
-    rows.push(cells.join("\t"));
-  }
-
-  return rows.join("\n");
-}
-
-/**
- * Helper to get paragraph text (simplified)
- */
-function getParagraphText(para: Paragraph): string {
-  return para.content
-    .filter((c) => "content" in c)
-    .flatMap((run) => {
-      if (!("content" in run) || !Array.isArray(run.content)) {
-        return [];
-      }
-      return run.content
-        .filter(
-          (c: unknown): c is { type: "text"; text: string } =>
-            typeof c === "object" && c !== null && "type" in c && c.type === "text" && "text" in c,
-        )
-        .map((c) => c.text);
-    })
-    .join("");
-}
-
-/**
  * Check if table has header row
  *
  * @param table - The table to check

@@ -25,7 +25,7 @@
     "check:parity-contract": "node scripts/check-parity-contract.mjs",
     "check:export-parity": "node scripts/check-export-parity.mjs",
     "check:react-compiler": "bun scripts/react-compiler-bailouts.ts --check",
-    "check:dependencies": "bun scripts/check-workspace-manifests.ts && bun scripts/check-tsconfig-package-aliases.ts && NODE_PATH=node_modules NODE_OPTIONS=--import=./scripts/lib/depcruise-typescript-preload.mjs depcruise --config .dependency-cruiser.cjs --ignore-known .dependency-cruiser-known-violations.json packages",
+    "check:dependencies": "bun scripts/check-workspace-manifests.ts && bun scripts/check-tsconfig-package-aliases.ts && bun scripts/check-dependency-cruise.ts",
     "check:lockfile-versions": "bun scripts/check-lockfile-workspace-versions.ts",
     "check:lockfile-overrides": "bun scripts/check-lockfile-overrides.ts",
     "check:dedupe": "bun dedupe --check",
@@ -117,7 +117,7 @@
     "validate-dist:vue": "bun scripts/validate-dist.ts vue",
     "validate-dist:nuxt": "bun scripts/validate-dist.ts nuxt",
     "api:update": "bun scripts/api-reports.ts --update",
-    "api:check": "bun scripts/api-reports.ts",
+    "api:check": "bun scripts/check-api-report-line-endings.ts && bun scripts/api-reports.ts",
     "api:budget": "bun scripts/api-surface-budget.ts --check",
     "api:budget:write": "bun run api:update && bun scripts/api-surface-budget.ts --write",
     "changeset:version": "changeset version && bun scripts/sync-docx-kernel-version.ts --write && bun scripts/sync-plugin-cli-version.ts --write && bun scripts/check-lockfile-workspace-versions.ts --write && bun install --frozen-lockfile && bun --filter '*' wasm:generate",
@@ -138,7 +138,7 @@
     "test:visual:update": "bunx playwright test --update-snapshots",
     "test:visual:report": "bunx playwright show-report",
     "bench:compare": "bun benchmarks/compare/run.ts",
-    "test:source-guards": "bun test scripts/browser-preview-imports.test.ts scripts/workflow-cache-policy.test.ts scripts/canonical-cutover.test.ts scripts/canonical-command-census.test.ts scripts/property-test-budgets.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts"
+    "test:source-guards": "bun test scripts/browser-preview-imports.test.ts scripts/workflow-cache-policy.test.ts scripts/canonical-timer-owner.test.ts scripts/canonical-cutover.test.ts scripts/canonical-command-census.test.ts scripts/property-test-budgets.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
@@ -196,6 +196,7 @@
     "prosemirror-model": "1.25.12",
     "prosemirror-view": "1.42.6",
     "seroval": "1.6.8",
+    "shell-quote": "1.11.0",
     "simple-git": "4.0.2",
     "source-map-js": "1.2.2",
     "tinypool": "2.2.0",

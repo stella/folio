@@ -1,0 +1,16 @@
+{
+  "fake-clock final input before and after expiry is idempotent and undoes as one gesture": [
+    {
+      "seed": 1553350806,
+      "path": "2",
+      "note": "Empty provisional composition and its late correction preserve one undo gesture.",
+      "date": "2026-10-07"
+    },
+    {
+      "seed": 1221974773,
+      "path": "1:1",
+      "note": "Empty provisional replacement keeps a late final within its gesture.",
+      "date": "2026-10-07"
+    }
+  ]
+}

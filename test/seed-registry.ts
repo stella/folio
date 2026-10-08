@@ -1,6 +1,7 @@
 import { Result, TaggedError } from "better-result";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import type { PinnedSeed } from "./property-testing";
 
@@ -11,7 +12,7 @@ import type { PinnedSeed } from "./property-testing";
  */
 export const PROPERTY_SEEDS_FILE = "test/property-seeds";
 const LEGACY_FILE = "test/property-seeds.json";
-const REPO_ROOT = path.resolve(import.meta.dir, "..");
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 type SeedRegistry = Record<string, readonly PinnedSeed[]>;
 type SeedFiles = Record<string, SeedRegistry>;

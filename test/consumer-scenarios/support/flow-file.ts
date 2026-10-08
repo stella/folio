@@ -67,6 +67,8 @@ export type FlowStep = {
   seed: number;
   /** The operations a batch step applies instead of the ones it draws. */
   operations?: Record<string, unknown>[];
+  /** The core batch's atomicity, pinned independently of generator draws. */
+  atomic?: boolean;
 };
 
 export type FlowFile = {
@@ -103,8 +105,16 @@ const parseStep = (value: unknown, index: number): FlowStep => {
     throw new TypeError(`flow step ${index}: seed must be an unsigned 32-bit integer`);
   }
   const action = value["action"] as Action;
+  const atomic = value["atomic"];
+  if (
+    atomic !== undefined &&
+    (typeof atomic !== "boolean" || (action !== "core batch" && action !== "story batch"))
+  ) {
+    throw new TypeError(`flow step ${index}: atomic needs a core or story batch and a boolean`);
+  }
   const operations = value["operations"];
-  if (operations === undefined) return { action, seed };
+  const batchOptions = atomic === undefined ? {} : { atomic };
+  if (operations === undefined) return { action, seed, ...batchOptions };
   if (
     !BATCH_ACTIONS.has(action) ||
     !Array.isArray(operations) ||
@@ -112,7 +122,7 @@ const parseStep = (value: unknown, index: number): FlowStep => {
   ) {
     throw new TypeError(`flow step ${index}: operations need a batch step and a type each`);
   }
-  return { action, seed, operations: operations as Record<string, unknown>[] };
+  return { action, seed, operations: operations as Record<string, unknown>[], ...batchOptions };
 };
 
 /** Read a flow file; throws a TypeError naming what is wrong. */

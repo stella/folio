@@ -40,11 +40,24 @@ import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/commen
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIEditSnapshot } from "./types";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
+import { resolveStateStory } from "../prosemirror/markupViewProjection";
+import type { Node as PMNode } from "prosemirror-model";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
 type Mode = "direct" | "tracked-changes";
 const MODES: readonly Mode[] = ["direct", "tracked-changes"];
+
+const paragraphProjection = (doc: PMNode) => {
+  const rows: { text: string; properties: ReturnType<typeof paragraphPropertiesSnapshot> }[] = [];
+  doc.descendants((node) => {
+    if (node.type.name === "paragraph")
+      rows.push({ text: node.textContent, properties: paragraphPropertiesSnapshot(node) });
+  });
+  return rows;
+};
 
 const apply = (
   reviewer: FolioDocxReviewer,
@@ -382,6 +395,7 @@ const batchAgainstOneAtATime = async ({
     return session;
   };
   const batch = await initializedSession();
+  const originalParagraphs = paragraphProjection(batch.state.doc);
   const blockIds = batch.snapshot().blocks.map((block) => block.id);
   const operations = generated.flatMap((operation, index) => {
     const materialized = materialize(batch, blockIds, operation, index);
@@ -392,7 +406,31 @@ const batchAgainstOneAtATime = async ({
     return problems;
   }
   const result = batch.apply(mode, operations);
-  for (const { id, reason } of result.skipped) {
+  if (mode === "tracked-changes") {
+    expect(paragraphProjection(resolveStateStory(batch.state, "reject").resolved)).toEqual(
+      originalParagraphs,
+    );
+  }
+  for (const skipped of result.skipped) {
+    const { id, reason } = skipped;
+    if (reason === "pendingParagraphMarkDeletion") {
+      const operation = operations.find((candidate) => candidate.id === id);
+      expect(operation?.type).toBe("setBlockParagraphProperties");
+      if (operation?.type !== "setBlockParagraphProperties") continue;
+      const anchor = batch.snapshot().anchors[operation.blockId];
+      expect(anchor).toBeDefined();
+      const mark: unknown = anchor && batch.state.doc.nodeAt(anchor.from)?.attrs["pPrMark"];
+      expect(mark).toMatchObject({ kind: "del" });
+      expect(skipped.canonicalRefusal).toEqual({
+        gap: CANONICAL_GAP.publicPendingParagraphMarkProperties,
+      });
+      expect(result.issues.find((issue) => issue.operationId === id)).toMatchObject({
+        code: reason,
+        retryable: false,
+        recovery: "resolveTrackedChange",
+      });
+      continue;
+    }
     if (reason !== "overlappingOperation" && !INCIDENTAL_SKIPS.has(reason)) {
       report(`${id} skipped as ${reason}`);
     }
@@ -427,11 +465,34 @@ const batchAgainstOneAtATime = async ({
   // Insertions sharing a gap keep their input order: that order is the
   // batch's own contract, so the oracle states them together the same way.
   applyAlone(materializeAll(applied.filter(({ operation }) => INSERTIONS.has(operation.kind))));
+  // Retiring the story's final break happens at batch completion, after the
+  // predecessor's admissible property edit. A separate delete call retires
+  // that mark immediately; replay those properties before completing deletion.
+  const deletedBlocks = new Set(
+    applied
+      .filter(({ operation }) => operation.kind === "deleteBlock")
+      .map(({ operation }) => operation.block),
+  );
+  let finalBreakCarrier = BLOCK_COUNT - 1;
+  while (finalBreakCarrier > 0 && deletedBlocks.has(finalBreakCarrier)) finalBreakCarrier--;
+  const insertsAfterLast = applied.some(
+    ({ operation }) => operation.kind === "insertAfterBlock" && operation.block === BLOCK_COUNT - 1,
+  );
+  const beforeFinalBreakRetirement = ({ operation }: { operation: GeneratedOperation }) =>
+    mode === "tracked-changes" &&
+    !insertsAfterLast &&
+    finalBreakCarrier < BLOCK_COUNT - 1 &&
+    operation.kind === "setBlockParagraphProperties" &&
+    operation.block === finalBreakCarrier;
   const rest = [
     ...applied.filter(({ operation }) => ANNOTATIONS.has(operation.kind)),
+    ...applied.filter(beforeFinalBreakRetirement),
     ...applied
       .filter(
-        ({ operation }) => !INSERTIONS.has(operation.kind) && !ANNOTATIONS.has(operation.kind),
+        (entry) =>
+          !INSERTIONS.has(entry.operation.kind) &&
+          !ANNOTATIONS.has(entry.operation.kind) &&
+          !beforeFinalBreakRetirement(entry),
       )
       .toSorted(
         (left, right) =>
@@ -497,15 +558,13 @@ const batchAgainstOneAtATime = async ({
   // last paragraph the batch keeps end in the deleted one's paragraph, whose
   // mark is the one that stays: that paragraph goes by the deleted one's id.
   const lastIndex = BLOCK_COUNT - 1;
-  const insertsAfterLast = applied.some(
-    ({ operation }) => operation.kind === "insertAfterBlock" && operation.block === lastIndex,
-  );
   if (mode !== "direct" && deletes(lastIndex) && !insertsAfterLast) {
     let kept = lastIndex - 1;
     while (kept >= 0 && deletes(kept)) kept--;
     if (kept >= 0) named.add(kept);
   }
   if (mode !== "direct") {
+    const acceptedPreview = paragraphProjection(resolveStateStory(batch.state, "accept").resolved);
     // Both redlines accept, and to the same document.
     const accepts = (session: OperationSession, whose: string): boolean => {
       try {
@@ -517,6 +576,7 @@ const batchAgainstOneAtATime = async ({
       }
     };
     if (accepts(oracle, "the one-at-a-time") && accepts(batch, "the batch's")) {
+      expect(paragraphProjection(batch.state.doc)).toEqual(acceptedPreview);
       compareDocuments("accepted");
     }
   }
@@ -710,7 +770,7 @@ describe("a merge into blocks the batch deletes", () => {
     expect(accepted.at(-1)).toBe(blockText(last - 1));
   });
 
-  test("deleting the last block carries its predecessor's properties from before the batch set them", async () => {
+  test("deleting the last block carries its predecessor's admissible batch properties", async () => {
     const generated: GeneratedOperation[] = [
       { kind: "setBlockParagraphProperties", block: 2 },
       { kind: "deleteBlock", block: 3 },
@@ -728,7 +788,8 @@ describe("a merge past a break retired by the same batch", () => {
     ["left", "left", "center", "left"],
     ["right", "left", "center", "right"],
     ["center", "right", "left", "center"],
-  ] as const;
+    ["both", "both", "both", "both"],
+  ] as const satisfies readonly (readonly ParagraphFormatting["alignment"][])[];
   const orders = [
     [0, 1, 2],
     [0, 2, 1],
@@ -1013,6 +1074,9 @@ describe("a merge retracting an inserted break before the last paragraph the bat
             const label = `${JSON.stringify(alignments)}`;
             const batch = await prepare("tracked-changes", origin, alignedA, alignments);
             const before = rejectedView(batch.session);
+            const originalParagraphs = paragraphProjection(
+              resolveStateStory(batch.session.state, "reject").resolved,
+            );
             const result = batch.session.apply("tracked-changes", batchOf(extra, batch));
             const appliedIds = new Set(result.applied.map(({ id }) => id));
             // One at a time, from the end of the document backwards, tracked and direct.
@@ -1023,7 +1087,8 @@ describe("a merge retracting an inserted break before the last paragraph the bat
               ["direct", direct],
             ] as const) {
               const operations = batchOf(extra, setup);
-              for (const id of ["delete", "b", "merge"]) {
+              // The batch retires B's final break after its property edit.
+              for (const id of ["b", "delete", "merge"]) {
                 const operation = operations.find((candidate) => candidate.id === id);
                 if (!operation || !appliedIds.has(id)) continue;
                 const alone = setup.session.apply(mode, [operation]);
@@ -1034,8 +1099,38 @@ describe("a merge retracting an inserted break before the last paragraph the bat
                 }
               }
             }
-            // A paragraph with a pending property change refuses merged properties.
-            const refused = alignedA === "tracked" && extra === "mergedProperties" ? ["merge"] : [];
+            // The final deletion precedes this merge, even when its property
+            // carry is deferred until batch finalization. Different B/C
+            // alignments occupy C's slot; the old standalone merge appended a
+            // second receipt there. Equal B/C alignments allocate no receipt.
+            const deletionOccupiesSurvivor = alignments.at(-2) !== alignments.at(-1);
+            const refused =
+              extra === "mergedProperties" && (alignedA === "tracked" || deletionOccupiesSurvivor)
+                ? ["merge"]
+                : [];
+            if (extra === "mergedProperties" && alignedA === "direct" && deletionOccupiesSurvivor) {
+              const sequential = await prepare("tracked-changes", origin, alignedA, alignments);
+              const operations = batchOf(extra, sequential);
+              const deletion = operations.find(({ id }) => id === "delete");
+              const merge = operations.find(({ id }) => id === "merge");
+              if (!deletion || !merge)
+                throw new TypeError("The merge-capacity fixture lost its operations.");
+              expect(sequential.session.apply("tracked-changes", [deletion]).skipped).toEqual([]);
+              let survivorReceipts = 0;
+              sequential.session.state.doc.descendants((node) => {
+                if (node.attrs["paraId"] !== sequential.c) return;
+                const changes: unknown = node.attrs["_propertyChanges"];
+                survivorReceipts = Array.isArray(changes) ? changes.length : 0;
+              });
+              // Positive control: this is the occupied writer, not just a
+              // differing alignment that the retirement never actually carries.
+              expect(survivorReceipts).toBe(1);
+              const beforeMerge = sequential.session.state.doc.toJSON();
+              expect(sequential.session.apply("tracked-changes", [merge]).skipped).toEqual([
+                { id: "merge", reason: "pendingParagraphPropertyChange" },
+              ]);
+              expect(sequential.session.state.doc.toJSON()).toEqual(beforeMerge);
+            }
             expect(result.skipped.map(({ id }) => id).toSorted()).toEqual(refused);
             if (view(batch.session) !== view(oracle.session)) {
               problems.push(
@@ -1045,7 +1140,14 @@ describe("a merge retracting an inserted break before the last paragraph the bat
             if (rejectedView(batch.session) !== before) {
               problems.push(`${label}: rejected ${rejectedView(batch.session)} vs ${before}`);
             }
+            expect(
+              paragraphProjection(resolveStateStory(batch.session.state, "reject").resolved),
+            ).toEqual(originalParagraphs);
+            const acceptedPreview = paragraphProjection(
+              resolveStateStory(batch.session.state, "accept").resolved,
+            );
             batch.session.acceptAll();
+            expect(paragraphProjection(batch.session.state.doc)).toEqual(acceptedPreview);
             oracle.session.acceptAll();
             if (view(batch.session) !== view(oracle.session)) {
               problems.push(`${label}: accepted ${view(batch.session)} vs ${view(oracle.session)}`);

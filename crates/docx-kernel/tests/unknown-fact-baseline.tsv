@@ -1,0 +1,27 @@
+# Unknown facts across 66 committed DOCX packages; see tests/unknown_fact_ratchet.rs.
+# view	family	reason	count
+Current	bookmarks	IncompleteBookmarkRanges	3
+Current	comment	UnsupportedLocation	8
+Current	formatting	UnsupportedStyles	16
+Current	indentation	UnsupportedStyles	1
+Current	internal-references	UnsupportedInternalReferences	2
+Current	numbering-hierarchy	UnsupportedStyles	1
+Current	outline-levels	UnsupportedStyles	1
+Current	package	InvalidArchive	1
+Current	revision	RunPropertiesChange/UnsupportedLocation	1
+Current	revision	TableCellPropertiesChange/UnsupportedLocation	96
+Current	revision	TableGridChange/UnsupportedLocation	1
+Current	revision	TableRowPropertiesChange/UnsupportedLocation	9
+Original	bookmarks	IncompleteBookmarkRanges	3
+Original	comment	UnsupportedLocation	8
+Original	formatting	UnsupportedStyles	16
+Original	indentation	UnsupportedStyles	1
+Original	internal-references	UnsupportedInternalReferences	2
+Original	numbering-hierarchy	UnsupportedStyles	1
+Original	outline-levels	UnsupportedStyles	1
+Original	package	InvalidArchive	1
+Original	revision	RunPropertiesChange/UnsupportedLocation	1
+Original	revision	TableCellPropertiesChange/UnsupportedLocation	96
+Original	revision	TableGridChange/UnsupportedLocation	1
+Original	revision	TableRowPropertiesChange/UnsupportedLocation	9
+Original	revision-status	UnsupportedRevisionMarkup	2

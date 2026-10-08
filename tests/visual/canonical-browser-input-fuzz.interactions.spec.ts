@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./canonicalTimerProbe";
 import fc from "fast-check";
 import { appendFileSync } from "node:fs";
 
@@ -7,7 +8,6 @@ import { createEmptyDocument } from "../../packages/core/src/utils/createDocumen
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import {
   failureMarker,
-  failureRecord,
   logFailureMarker,
   shellQuote,
   writeFailureRecord,
@@ -15,7 +15,11 @@ import {
 import { parseBrowserInputTraceConfig } from "./browserInputTrace";
 import { BROWSER_FUZZ_BUDGET, checkWithBoundedShrink } from "../../test/bounded-async-fuzz";
 import { canonicalBrowserTraceArbitrary } from "./canonicalBrowserTrace";
-import { checkCanonicalBrowserHistory } from "./canonicalBrowserHistoryOracle";
+import {
+  checkCanonicalBrowserHistory,
+  initializeCanonicalBrowserHistory,
+} from "./canonicalBrowserHistoryOracle";
+import { canonicalOracleFailureRecord } from "../parity/canonicalOracleFailure";
 import type {} from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
 
@@ -37,6 +41,7 @@ for (const seed of config.seeds) {
       globalThis.__folioCanonicalFuzzErrors = [];
     });
     const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
+    await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
     const { verdict } = await checkWithBoundedShrink({
       arbitrary: canonicalBrowserTraceArbitrary,
       evaluate: async (actions) => {
@@ -118,9 +123,10 @@ for (const seed of config.seeds) {
           flow: flow.map(({ kind }) => kind).join(" → "),
         });
         logFailureMarker(marker);
+        const record = canonicalOracleFailureRecord({ marker, failure, flow });
         const artifact = writeFailureRecord(
           process.env["FOLIO_FUZZ_FAILURES_DIR"] ?? "fuzz-artifacts/canonical/findings",
-          failureRecord(marker, failure, { flow }),
+          record,
         );
         await info.attach("canonical-failure-record", {
           path: artifact,
