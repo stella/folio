@@ -25,3 +25,8 @@ test("fresh deletion marks use the owner through aliases and schema constructors
   expect(lintFixture("invalid")).toBe(7);
   expect(lintFixture("valid")).toBe(0);
 }, 30_000);
+
+test("deletion aliases resolve their lexical binding across siblings and shadowing", () => {
+  expect(lintFixture("scoped")).toBe(3);
+  expect(lintFixture("scoped-valid")).toBe(0);
+}, 30_000);

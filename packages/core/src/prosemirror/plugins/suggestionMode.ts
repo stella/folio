@@ -1097,23 +1097,26 @@ function caretDeleteTarget(
 ): CaretDeleteTarget {
   const { $from } = state.selection;
   const backward = direction === "backward";
-  let from = backward ? $from.pos - 1 : $from.pos;
-  let to = backward ? $from.pos : $from.pos + 1;
-  while (from >= $from.start() && to <= $from.end()) {
-    const $adjacent = state.doc.resolve(from);
-    const adjacent = $adjacent.nodeAfter;
+  let cursor = $from.pos;
+  while (cursor >= $from.start() && cursor <= $from.end()) {
+    const adjacent = backward
+      ? state.doc.resolve(cursor).nodeBefore
+      : state.doc.resolve(cursor).nodeAfter;
+    if (!adjacent) return { type: "paragraphEdge" };
     if (
-      !adjacent ||
-      (adjacent.type.name !== "bookmarkBoundary" &&
-        !adjacent.marks.some((mark) => mark.type === state.schema.marks["deletion"]))
+      adjacent.type.name !== "bookmarkBoundary" &&
+      !adjacent.marks.some((mark) => mark.type === state.schema.marks["deletion"])
     ) {
-      return { type: "inlineUnit", from, to };
+      // A non-leaf atom is still one editor unit: its whole carrier owns the
+      // revision, including both boundary tokens and its result children.
+      const size = adjacent.isAtom && !adjacent.isText ? adjacent.nodeSize : 1;
+      return {
+        type: "inlineUnit",
+        from: backward ? cursor - size : cursor,
+        to: backward ? cursor : cursor + size,
+      };
     }
-    // nodeAfter is the suffix of a text run. Backward traversal needs the
-    // prefix ending at this unit, including coalesced deletion runs.
-    const skipped = backward && adjacent.isText ? $adjacent.textOffset + 1 : adjacent.nodeSize;
-    from += backward ? -skipped : skipped;
-    to += backward ? -skipped : skipped;
+    cursor += backward ? -adjacent.nodeSize : adjacent.nodeSize;
   }
   return { type: "paragraphEdge" };
 }

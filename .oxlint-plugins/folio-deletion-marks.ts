@@ -1,7 +1,16 @@
 /** Fresh range deletions must preserve revisions on already deleted runs. */
 type AstNode = Record<string, unknown> & { type: string };
+type LexicalVariable = {
+  defs: readonly { node: unknown }[];
+  references: readonly { writeExpr: unknown }[];
+};
+type LexicalScope = {
+  upper: LexicalScope | null;
+  set: Map<string, LexicalVariable>;
+};
 type RuleContext = {
   filename: string;
+  sourceCode: { getScope: (node: AstNode) => LexicalScope };
   report: (descriptor: { node: unknown; messageId: "rawDeletion" }) => void;
 };
 
@@ -35,21 +44,48 @@ export default {
           filename.endsWith("/addTrackedDeletionMark.ts")
         )
           return {};
-        const bindings = new Map<string, unknown[]>();
+        const variableOf = (node: AstNode): LexicalVariable | undefined => {
+          if (typeof node.name !== "string") return undefined;
+          let scope: LexicalScope | null = context.sourceCode.getScope(node);
+          while (scope) {
+            const variable = scope.set.get(node.name);
+            if (variable) return variable;
+            scope = scope.upper;
+          }
+          return undefined;
+        };
+        const valuesOf = (variable: LexicalVariable): unknown[] => {
+          const values = variable.references.map(({ writeExpr }) => writeExpr);
+          for (const { node } of variable.defs) {
+            if (!isNode(node) || node.type !== "VariableDeclarator" || !isNode(node.id)) continue;
+            if (node.id.type === "Identifier") values.push(node.init);
+            if (node.id.type !== "ObjectPattern" || !Array.isArray(node.id.properties)) continue;
+            for (const property of node.id.properties) {
+              if (
+                !isNode(property) ||
+                !isNode(property.value) ||
+                property.value.type !== "Identifier"
+              )
+                continue;
+              if (variableOf(property.value) !== variable) continue;
+              values.push({ type: "MemberExpression", object: node.init, property: property.key });
+            }
+          }
+          return values;
+        };
         const calls: AstNode[] = [];
         const resolves = (
           node: unknown,
           predicate: (value: AstNode) => boolean,
-          seen = new Set<string>(),
+          seen = new Set<LexicalVariable>(),
         ): boolean => {
           if (!isNode(node)) return false;
           if (predicate(node)) return true;
           if (node.type === "Identifier" && typeof node.name === "string") {
-            if (seen.has(node.name)) return false;
-            const next = new Set(seen).add(node.name);
-            return (bindings.get(node.name) ?? []).some((value) =>
-              resolves(value, predicate, next),
-            );
+            const variable = variableOf(node);
+            if (!variable || seen.has(variable)) return false;
+            const next = new Set(seen).add(variable);
+            return valuesOf(variable).some((value) => resolves(value, predicate, next));
           }
           if (node.type === "LogicalExpression")
             return resolves(node.left, predicate, seen) || resolves(node.right, predicate, seen);
@@ -72,44 +108,6 @@ export default {
           );
         };
         return {
-          AssignmentExpression: (node: unknown) => {
-            if (
-              !isNode(node) ||
-              !isNode(node.left) ||
-              node.left.type !== "Identifier" ||
-              typeof node.left.name !== "string"
-            )
-              return;
-            const values = bindings.get(node.left.name) ?? [];
-            values.push(node.right);
-            bindings.set(node.left.name, values);
-          },
-          VariableDeclarator: (node: unknown) => {
-            if (!isNode(node) || !isNode(node.id)) return;
-            if (node.id.type === "ObjectPattern" && Array.isArray(node.id.properties)) {
-              for (const property of node.id.properties) {
-                if (
-                  !isNode(property) ||
-                  !isNode(property.value) ||
-                  property.value.type !== "Identifier" ||
-                  typeof property.value.name !== "string"
-                )
-                  continue;
-                const values = bindings.get(property.value.name) ?? [];
-                values.push({
-                  type: "MemberExpression",
-                  object: node.init,
-                  property: property.key,
-                });
-                bindings.set(property.value.name, values);
-              }
-              return;
-            }
-            if (node.id.type !== "Identifier" || typeof node.id.name !== "string") return;
-            const values = bindings.get(node.id.name) ?? [];
-            values.push(node.init);
-            bindings.set(node.id.name, values);
-          },
           CallExpression: (node: unknown) => {
             if (isNode(node) && member(node.callee, "addMark")) calls.push(node);
           },
