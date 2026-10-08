@@ -13,7 +13,7 @@ const REFUSAL_ROWS = {
   hyperlinkSuggestion: {
     id: CANONICAL_GAP.trackedHyperlinkResolution,
     gap: CANONICAL_GAP.trackedHyperlinkResolution,
-    message: "Hyperlink suggestions require serializable wrapper review provenance.",
+    message: "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
   },
   hyperlinkReview: {
     id: CANONICAL_GAP.trackedHyperlinkResolution,
@@ -43,7 +43,6 @@ const COMMAND_REFUSAL_CONTRACTS = {
       "command:insertSectionBreak(nextPage)",
       "command:insertSectionBreak(continuous)",
       "command:removeSectionBreak",
-      "command:generateTOC",
       "command:insertTable",
       "command:addRowAbove",
       "command:addRowBelow",
@@ -162,6 +161,8 @@ export const canonicalConformanceRefusalRows = (key: RefusalCase): readonly Harn
     (candidate) => canonicalRefusalCaseId(candidate) === canonicalRefusalCaseId(key),
   );
   if (projection) return [STORY_PROJECTION_ROWS[projection.shape]];
+  if (key.operation === "command:generateTOC")
+    return key.mode === "suggesting" ? [REFUSAL_ROWS.hyperlinkSuggestion] : [];
   const range = ["word", "paragraph", "cross-paragraph", "document", "node"].includes(
     key.placement,
   );

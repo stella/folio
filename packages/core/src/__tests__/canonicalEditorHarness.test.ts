@@ -343,7 +343,7 @@ test.each(REVIEW_HYPERLINK_CASES)(
           expectation: "declared",
           message:
             mode === "suggesting"
-              ? "Hyperlink suggestions require serializable wrapper review provenance."
+              ? "Hyperlink and TOC suggestions require serializable wrapper review provenance."
               : "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
         },
       ]);

@@ -31,6 +31,39 @@ test("canonical refusal table covers exactly the declared concrete cases", () =>
   );
 });
 
+test("TOC generation has an editing descriptor and a precise suggesting refusal contract", async () => {
+  const cases = EDITOR_MODES.map(
+    (mode) =>
+      ({
+        shape: "style-numbered-headings",
+        operation: "command:generateTOC",
+        placement: "caret-middle",
+        mode,
+      }) as const,
+  );
+  const rows = declareCanonicalRefusalCases(cases);
+  expect([...rows.values()]).toEqual([
+    [],
+    [
+      {
+        id: CANONICAL_GAP.trackedHyperlinkResolution,
+        gap: CANONICAL_GAP.trackedHyperlinkResolution,
+        message: "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
+      },
+    ],
+  ]);
+  const operation = CONFORMANCE_OPERATIONS.find(({ id }) => id === "command:generateTOC");
+  if (!operation) throw new TypeError("TOC conformance command is absent");
+  const result = await runConformanceCase({
+    shape: documentShape("style-numbered-headings"),
+    operation,
+    placement: "caret-middle",
+    refusalCases: rows,
+  });
+  expect(result?.runs).toEqual({ editing: "changed", suggesting: "refused" });
+  expect(result?.violations).toEqual([]);
+});
+
 test.each(EDITOR_MODES)(
   "table activation contracts match the declared fixture features in %s",
   (mode) => {
