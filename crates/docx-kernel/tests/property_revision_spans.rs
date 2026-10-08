@@ -6,8 +6,8 @@ use std::io::{Cursor, Write};
 use proptest::prelude::{prop_assert_eq, proptest};
 use stella_docx_kernel::{
     DocxLimits, InternalParagraphId, ProjectionOptions, ReviewDetail, ReviewFactLimits,
-    ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionPayload, RevisionView,
-    project_docx_with_review_facts,
+    ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionPayload,
+    RevisionView, project_docx_with_review_facts,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;

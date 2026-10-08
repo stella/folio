@@ -31,7 +31,7 @@ use std::io::{Cursor, Write};
 
 use proptest::prelude::{BoxedStrategy, Just, Strategy, any, prop_oneof};
 use proptest::strategy::ValueTree;
-use proptest::test_runner::{Config, TestRunner};
+use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
 use proptest::{collection, prop_assert, prop_assert_eq, proptest, sample};
 use quick_xml::events::{BytesStart, Event};
 use stella_docx_kernel::{
@@ -66,6 +66,10 @@ fn case_factor() -> u32 {
 fn config(cases: u32) -> Config {
     Config {
         cases: cases * case_factor(),
+        failure_persistence: Some(Box::new(FileFailurePersistence::Direct(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/projection_coverage.proptest-regressions"
+        )))),
         ..Config::default()
     }
 }
@@ -481,11 +485,10 @@ fn sanitize_blocks(blocks: &mut Vec<Block>) {
                 }
                 continue;
             }
-            Block::Sdt(children) | Block::CustomXml(children) => sanitize_blocks(children),
-            Block::Bookmark(_, children) => {
-                sanitize_blocks(children);
-            }
-            Block::Comment(_, children) => sanitize_blocks(children),
+            Block::Sdt(children)
+            | Block::CustomXml(children)
+            | Block::Bookmark(_, children)
+            | Block::Comment(_, children) => sanitize_blocks(children),
         }
         output.push(block);
     }
@@ -524,7 +527,7 @@ fn sanitize_inlines(inlines: &mut Vec<Inline>, scope: InlineScope) {
                 }
             }
             Inline::ComplexField(_, children) | Inline::Bookmark(_, children) => {
-                sanitize_inlines(children, scope)
+                sanitize_inlines(children, scope);
             }
             Inline::Sdt(children) | Inline::SmartTag(children) | Inline::CustomXml(children) => {
                 let child_scope = if scope.inside_revision() {
@@ -1576,7 +1579,6 @@ const EXCLUDED_ROWS: &[(Element, Context)] = &[
     (Element::BookmarkEnd, Context::TableRow),
     (Element::Insertion, Context::TableRowProperties),
     (Element::Deletion, Context::TableRowProperties),
-    (Element::DeletedInstruction, Context::Run),
     (Element::Textbox, Context::Run),
     (Element::TableProperties, Context::Table),
     (Element::Row, Context::Table),
@@ -2629,6 +2631,8 @@ fn valid_in_revision(inline: &Inline) -> bool {
         Inline::Hyperlink(..) | Inline::SimpleField(..) | Inline::Textbox(_) => false,
         Inline::Revision(revision) => revision.children.iter().all(valid_in_revision),
         Inline::Comment(_, children)
+        | Inline::ComplexField(_, children)
+        | Inline::Bookmark(_, children)
         | Inline::Sdt(children)
         | Inline::SmartTag(children)
         | Inline::CustomXml(children) => children.iter().all(valid_in_revision),
