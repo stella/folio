@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1026398003,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1530351279,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "First added clause."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "Second added clause."
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 266679939,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "@1",
+          "offset": 6
+        },
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@1",
+            "startOffset": 12,
+            "endOffset": 18,
+            "selectedTextHash": "hwx73rb"
+          },
+          "replace": "tail"
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "save and reopen",
+      "seed": 74856348
+    },
+    {
+      "action": "story batch",
+      "seed": 259103639,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@2"
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "collisions flow seed 1026398003",
+  "title": "Deleting a saved split replacement preserves earlier deletion ancestry"
+}

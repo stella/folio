@@ -11,6 +11,7 @@
  *   (retracting your own suggestion)
  */
 
+import { addTrackedDeletionMark } from "../addTrackedDeletionMark";
 import {
   joinBackward,
   joinForward,
@@ -190,13 +191,12 @@ function markRangeAsDeleted(
   doc: PMNode,
   from: number,
   to: number,
-  insertionType: MarkType,
   deletionType: MarkType,
   pluginState: SuggestionModeState,
   /** Set for a deletion the user made across paragraphs (Delete, cut, typing over). */
   joinState?: EditorState,
 ): void {
-  const ranges: { from: number; to: number; isOwnInsert: boolean }[] = [];
+  let hasMarkableContent = false;
 
   doc.nodesBetween(from, to, (node, pos) => {
     if (!canCarryTrackedRunMark(node)) {
@@ -207,9 +207,6 @@ function markRangeAsDeleted(
     if (start >= end) {
       return;
     }
-    const isOwnInsert = node.marks.some(
-      (m) => m.type === insertionType && m.attrs["author"] === pluginState.author,
-    );
     // Already struck by someone: re-marking it would overwrite their author,
     // date and revision id with ours, losing who proposed the deletion. The
     // single-character path already steps over such a node; the range path
@@ -217,7 +214,7 @@ function markRangeAsDeleted(
     if (node.marks.some((m) => m.type === deletionType)) {
       return;
     }
-    ranges.push({ from: start, to: end, isOwnInsert });
+    hasMarkableContent = true;
   });
 
   const delAttrs =
@@ -273,7 +270,7 @@ function markRangeAsDeleted(
     });
   }
 
-  if (ranges.length === 0) {
+  if (!hasMarkableContent) {
     return;
   }
 
@@ -286,15 +283,13 @@ function markRangeAsDeleted(
     revisionId: delAttrs.revisionId,
   });
 
-  for (let i = ranges.length - 1; i >= 0; i--) {
-    // SAFETY: i >= 0 and i < ranges.length in for loop
-    const range = ranges[i]!;
-    if (range.isOwnInsert) {
-      tr.delete(range.from, range.to);
-    } else {
-      tr.addMark(range.from, range.to, deletionType.create(delAttrs));
-    }
-  }
+  addTrackedDeletionMark({
+    tr,
+    from,
+    to,
+    mark: deletionType.create(delAttrs),
+    insertionPolicy: "retract-own",
+  });
 }
 
 type EnclosePastedRunRevisionsOptions = {
@@ -516,7 +511,6 @@ export function handleSuggestionPaste(
       doc,
       from,
       wholeBlocks && !endsContainer ? $to.after() : to,
-      insertionType,
       deletionType,
       pluginState,
     );
@@ -584,7 +578,6 @@ export function handleSuggestionPaste(
       tr.doc,
       tr.mapping.map(from),
       tr.mapping.map(to),
-      insertionType,
       deletionType,
       pluginState,
     );
@@ -699,7 +692,7 @@ export function handleSuggestionTableCellPaste(
         }
         const { from, to } = cellPasteRange(cell, cellPos, content);
         const mapFrom = tr.mapping.maps.length;
-        markRangeAsDeleted(tr, tr.doc, from, to, insertionType, deletionType, pluginState);
+        markRangeAsDeleted(tr, tr.doc, from, to, deletionType, pluginState);
         const insertFrom = tr.mapping.slice(mapFrom).map(to);
         const sizeBefore = tr.doc.content.size;
         tr.replaceRange(insertFrom, insertFrom, content);
@@ -898,16 +891,7 @@ function applySuggestionInsert(
   if (from !== to) {
     const deletionType = view.state.schema.marks["deletion"];
     if (deletionType) {
-      markRangeAsDeleted(
-        tr,
-        view.state.doc,
-        from,
-        to,
-        insertionType,
-        deletionType,
-        pluginState,
-        view.state,
-      );
+      markRangeAsDeleted(tr, view.state.doc, from, to, deletionType, pluginState, view.state);
     }
   }
 
@@ -1006,7 +990,7 @@ export function suggestRangeDeletion(
   if (!pluginState?.active || !insertionType || !deletionType) {
     return false;
   }
-  markRangeAsDeleted(tr, tr.doc, from, to, insertionType, deletionType, pluginState);
+  markRangeAsDeleted(tr, tr.doc, from, to, deletionType, pluginState);
   return true;
 }
 
@@ -1328,7 +1312,7 @@ function handleSuggestionDelete(
       )
       .sort((a, b) => b.from - a.from);
     for (const { from, to } of ranges) {
-      markRangeAsDeleted(tr, state.doc, from, to, insertionType, deletionType, pluginState, state);
+      markRangeAsDeleted(tr, state.doc, from, to, deletionType, pluginState, state);
     }
     // Clearing cells preserves the rectangle, as the table deletion command
     // does, so the next input still acts on those cells. Text deletion instead
@@ -1377,28 +1361,23 @@ function handleSuggestionDelete(
     return false;
   }
 
-  const hasOwnInsertion = nodeAfter.marks.some(
-    (m) => m.type === insertionType && m.attrs["author"] === pluginState.author,
-  );
   const hasDeletion = nodeAfter.marks.some((m) => m.type === deletionType);
-
-  if (hasDeletion) {
-    // A whole-note expansion can include an earlier deleted fragment.
-    const newPos = isBackward ? rangeFrom : rangeTo;
-    tr.setSelection(TextSelection.near(tr.doc.resolve(newPos)));
-  } else if (hasOwnInsertion) {
-    // Retract own insertion — actually delete the character
-    tr.delete(rangeFrom, rangeTo);
-  } else {
-    // Mark as deletion instead of removing
+  const mapFrom = tr.mapping.maps.length;
+  if (!hasDeletion) {
     const delAttrs =
       findAdjacentRevisionForRange(state.doc, rangeFrom, rangeTo, "deletion", pluginState.author) ||
       makeMarkAttrs(pluginState);
-    tr.addMark(rangeFrom, rangeTo, deletionType.create(delAttrs));
-    // Move cursor past the deletion mark
-    const newPos = isBackward ? rangeFrom : rangeTo;
-    tr.setSelection(TextSelection.near(tr.doc.resolve(newPos)));
+    addTrackedDeletionMark({
+      insertionPolicy: "retract-own",
+      tr,
+      from: rangeFrom,
+      to: rangeTo,
+      mark: deletionType.create(delAttrs),
+    });
   }
+  // A retracted insertion moves the cursor with the removed characters.
+  const newPos = tr.mapping.slice(mapFrom).map(isBackward ? rangeFrom : rangeTo);
+  tr.setSelection(TextSelection.near(tr.doc.resolve(newPos)));
 
   dispatch(tr.scrollIntoView());
   return true;
@@ -1462,15 +1441,7 @@ function markComposedAsInsertion({
     // paragraphs. Inserting the closed fragment splits them again around an
     // extra empty paragraph instead of restoring the selected range.
     tr.replaceRange(from, from, replaced);
-    markRangeAsDeleted(
-      tr,
-      tr.doc,
-      from,
-      tr.mapping.map(from, 1),
-      insertionType,
-      deletionType,
-      pluginState,
-    );
+    markRangeAsDeleted(tr, tr.doc, from, tr.mapping.map(from, 1), deletionType, pluginState);
     // Native composition keeps the starting paragraph's properties even when
     // the selection starts at its first character. Carry that committed
     // formatting to the restored end paragraph; rejection restores its own.
@@ -1610,7 +1581,6 @@ function replacedInline(
 type RestoreReplacedInlineOptions = {
   tr: Transaction;
   replaced: readonly ReplacedInline[];
-  insertionType: MarkType;
   deletionType: MarkType;
   pluginState: SuggestionModeState;
 };
@@ -1625,7 +1595,6 @@ type RestoreReplacedInlineOptions = {
 function restoreReplacedInline({
   tr,
   replaced,
-  insertionType,
   deletionType,
   pluginState,
 }: RestoreReplacedInlineOptions): void {
@@ -1638,15 +1607,7 @@ function restoreReplacedInline({
       continue;
     }
     tr.insert(pos, content);
-    markRangeAsDeleted(
-      tr,
-      tr.doc,
-      pos,
-      pos + content.size,
-      insertionType,
-      deletionType,
-      pluginState,
-    );
+    markRangeAsDeleted(tr, tr.doc, pos, pos + content.size, deletionType, pluginState);
   }
 }
 
@@ -1963,7 +1924,6 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         restoreReplacedInline({
           tr,
           replaced,
-          insertionType,
           deletionType,
           pluginState,
         });

@@ -1,0 +1,14 @@
+const deletionType = schema.marks["deletion"];
+const renamed = deletionType;
+const deletion = renamed.create({ revisionId: 10 });
+const alias = deletion;
+tr.addMark(1, 10, alias);
+tr.addMark(1, 10, deletionType.create({ revisionId: 11 }));
+tr.addMark(1, 10, schema.marks.deletion.create({ revisionId: 12 }));
+tr.addMark(1, 10, schema.mark("deletion", { revisionId: 13 }));
+tr.addMark(1, 10, (schema.marks["deletion"] ?? reference.type).create({ revisionId: 14 }));
+const { deletion: renamedType } = schema.marks;
+tr.addMark(1, 10, renamedType.create({ revisionId: 15 }));
+let later;
+later = deletionType.create({ revisionId: 16 });
+tr.addMark(1, 10, later);

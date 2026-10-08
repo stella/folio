@@ -6,6 +6,7 @@
  * UI stay in each adapter.
  */
 
+import { addTrackedDeletionMark } from "./addTrackedDeletionMark";
 import type { EditorView } from "prosemirror-view";
 import type { Comment } from "../types/content";
 import type { CommentIdAllocator } from "./commentIdAllocator";
@@ -148,7 +149,14 @@ export function applyProposedChange(
   });
 
   let tr = view.state.tr;
-  if (!isInsertion) tr = tr.addMark(textFrom, textTo, deletionMark);
+  if (!isInsertion)
+    tr = addTrackedDeletionMark({
+      insertionPolicy: "preserve-pending",
+      tr,
+      from: textFrom,
+      to: textTo,
+      mark: deletionMark,
+    });
   if (!isDeletion) tr = tr.insert(textTo, schema.text(options.replaceWith, [insertionMark]));
   view.dispatch(tr);
   return true;

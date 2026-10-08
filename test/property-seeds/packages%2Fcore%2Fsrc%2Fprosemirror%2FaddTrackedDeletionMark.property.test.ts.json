@@ -1,0 +1,9 @@
+{
+  "range deletion preserves every existing deletion and is idempotent": [
+    {
+      "seed": -1301752643,
+      "note": "Structured-field child marks retain ownership under repeated range deletion.",
+      "date": "2026-10-08"
+    }
+  ]
+}
