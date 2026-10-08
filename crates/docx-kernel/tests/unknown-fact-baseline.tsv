@@ -2,16 +2,7 @@
 # view	family	reason	count
 Current	bookmarks	IncompleteBookmarkRanges	1
 Current	comment	UnsupportedLocation	8
-Current	formatting	UnsupportedStyles	16
-Current	indentation	UnsupportedStyles	1
-Current	numbering-hierarchy	UnsupportedStyles	1
-Current	outline-levels	UnsupportedStyles	1
 Current	package	InvalidArchive	1
 Original	bookmarks	IncompleteBookmarkRanges	1
 Original	comment	UnsupportedLocation	8
-Original	formatting	UnsupportedStyles	16
-Original	indentation	UnsupportedStyles	1
-Original	numbering-hierarchy	UnsupportedStyles	1
-Original	outline-levels	UnsupportedStyles	1
 Original	package	InvalidArchive	1
-Original	revision-status	UnsupportedRevisionMarkup	2

@@ -14,7 +14,7 @@ use crate::projection::review::{
 };
 use crate::projection::structure::{
     ParagraphProperties, RawBookmarkRange, RawInternalReference, StructuralFactUnknownReason,
-    StyleSheet, TextProperties,
+    StyleSheet, TableStyleSelection, TextProperties, TextStyleInput,
 };
 use crate::projection::styles::{
     parse_alignment, parse_indentation, parse_level_attribute, parse_outline_level_attribute,
@@ -266,11 +266,11 @@ impl ParagraphBuilder {
         if let Some(resolved) = self.resolved_text_base {
             return resolved;
         }
-        let resolved = styles.resolve_text(
-            self.properties.style_id.as_deref(),
-            None,
-            TextProperties::default(),
-        );
+        let resolved = styles.resolve_text(TextStyleInput {
+            paragraph: &self.properties,
+            character_style_id: None,
+            direct: TextProperties::default(),
+        });
         self.resolved_text_base = Some(resolved);
         resolved
     }
@@ -455,11 +455,13 @@ struct ContainerReview {
     paragraph_start: usize,
     property_review: Option<usize>,
     grid_review: Option<usize>,
+    exception_review: Option<usize>,
 }
 
 struct TableFrame {
     ordinal: usize,
     next_row: usize,
+    style_id: Option<String>,
     review: ContainerReview,
 }
 
@@ -668,6 +670,32 @@ pub(super) struct ReviewProjectionLimits {
     pub maximum_detail_bytes: usize,
 }
 
+#[derive(Clone, Copy)]
+enum SnapshotOwner {
+    Run { frame: usize, hidden_eligible: bool },
+    Paragraph,
+    ParagraphMark,
+    Table,
+    Row,
+    Cell,
+    Grid,
+    Section,
+    TableExceptions,
+    Unsupported,
+}
+
+#[derive(Clone, Copy)]
+enum SnapshotStatus {
+    AwaitingRoot,
+    Applied,
+    Unsupported,
+}
+
+struct SnapshotFrame {
+    owner: SnapshotOwner,
+    status: SnapshotStatus,
+}
+
 enum Frame {
     Other,
     Body,
@@ -679,14 +707,18 @@ enum Frame {
     Run(RunFrame),
     RunProperties(RunPropertiesFrame),
     ParagraphProperties,
+    ParagraphMarkProperties,
     TableProperties,
     TableGrid,
     TableRowProperties,
     TableCellProperties,
+    TablePropertyExceptions,
+    SectionProperties,
     NumberingProperties,
     Hyperlink(Option<RawInternalReference>),
     Revision(RevisionFrame),
-    ChangeSnapshot,
+    ChangeSnapshot(SnapshotFrame),
+    SnapshotIgnored,
     Math,
     MathRun,
     Textbox,
@@ -953,11 +985,15 @@ impl ProjectionState {
             self.frames.push(Frame::Other);
             return Ok(());
         }
-        if self.inside_change_snapshot() {
-            self.frames.push(Frame::Other);
+        let inside_snapshot = self.inside_change_snapshot();
+        if inside_snapshot && self.start_snapshot_child(name)? {
             return Ok(());
         }
-        let attributed_revision = self.record_attributed_revision(reader, element, name)?;
+        let attributed_revision = if inside_snapshot {
+            None
+        } else {
+            self.record_attributed_revision(reader, element, name)?
+        };
         if name == b"txbxContent" {
             self.frames.push(Frame::Textbox);
             return Ok(());
@@ -999,11 +1035,11 @@ impl ProjectionState {
                     _ => self.record_container_property_revision(name, review_index)?,
                 }
             }
-            if self.revision_view == RevisionView::Original {
-                self.revision_unsupported
-                    .insert(RevisionUnsupportedReason::UnsupportedRevisionMarkup);
-            }
-            self.frames.push(Frame::ChangeSnapshot);
+            let owner = self.snapshot_owner(name);
+            self.frames.push(Frame::ChangeSnapshot(SnapshotFrame {
+                owner,
+                status: SnapshotStatus::AwaitingRoot,
+            }));
             return Ok(());
         }
         if is_unsupported_revision_markup(name) {
@@ -1044,10 +1080,12 @@ impl ProjectionState {
                 Frame::Table(TableFrame {
                     ordinal,
                     next_row: 0,
+                    style_id: None,
                     review: ContainerReview {
                         paragraph_start: self.paragraphs.len(),
                         property_review: None,
                         grid_review: None,
+                        exception_review: None,
                     },
                 })
             }
@@ -1069,6 +1107,7 @@ impl ProjectionState {
                         paragraph_start: self.paragraphs.len(),
                         property_review: None,
                         grid_review: None,
+                        exception_review: None,
                     },
                 })
             }
@@ -1090,6 +1129,7 @@ impl ProjectionState {
                         paragraph_start: self.paragraphs.len(),
                         property_review: None,
                         grid_review: None,
+                        exception_review: None,
                     },
                 })
             }
@@ -1118,7 +1158,24 @@ impl ProjectionState {
                     utf16_len: 0,
                     formatting: Vec::new(),
                     structure,
-                    properties: ParagraphProperties::default(),
+                    properties: ParagraphProperties {
+                        table_style: self
+                            .frames
+                            .iter()
+                            .rev()
+                            .find_map(|frame| {
+                                if let Frame::Table(table) = frame {
+                                    Some(table.style_id.clone().map_or(
+                                        TableStyleSelection::Default,
+                                        TableStyleSelection::Explicit,
+                                    ))
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_default(),
+                        ..ParagraphProperties::default()
+                    },
                     resolved_text_base: None,
                     paragraph_mark_revision: None,
                     paragraph_review_indices: Vec::new(),
@@ -1148,10 +1205,18 @@ impl ProjectionState {
             }
             b"sdtContent" | b"customXml" => Frame::BlockContent,
             b"pPr" => Frame::ParagraphProperties,
+            b"tblStyle" if matches!(self.frames.last(), Some(Frame::TableProperties)) => {
+                if let Some(table) = enclosing_table(&mut self.frames) {
+                    table.style_id = word_style_id(attribute(reader, element, b"val")?);
+                }
+                Frame::Other
+            }
             b"tblPr" => Frame::TableProperties,
             b"tblGrid" => Frame::TableGrid,
             b"trPr" => Frame::TableRowProperties,
             b"tcPr" => Frame::TableCellProperties,
+            b"tblPrEx" => Frame::TablePropertyExceptions,
+            b"sectPr" => Frame::SectionProperties,
             b"pStyle" if matches!(self.frames.last(), Some(Frame::ParagraphProperties)) => {
                 if let Some(paragraph) = self.current_paragraph.as_mut() {
                     paragraph.properties.style_id =
@@ -1423,11 +1488,11 @@ impl ProjectionState {
                             {
                                 paragraph.resolve_text_base(styles)
                             } else {
-                                styles.resolve_text(
-                                    paragraph.properties.style_id.as_deref(),
-                                    run.character_style_id.as_deref(),
-                                    run.direct_styles,
-                                )
+                                styles.resolve_text(TextStyleInput {
+                                    paragraph: &paragraph.properties,
+                                    character_style_id: run.character_style_id.as_deref(),
+                                    direct: run.direct_styles,
+                                })
                             };
                             resolved.unwrap_or_else(|()| {
                                 self.formatting_status = FormattingProjectionStatus::Incomplete(
@@ -1447,10 +1512,191 @@ impl ProjectionState {
                     )?;
                 }
             }
+            Frame::ChangeSnapshot(snapshot) => {
+                if self.revision_view == RevisionView::Original
+                    && !matches!(snapshot.status, SnapshotStatus::Applied)
+                {
+                    self.revision_unsupported
+                        .insert(RevisionUnsupportedReason::UnsupportedRevisionMarkup);
+                }
+            }
             Frame::Revision(revision) => self.finish_attributed_revision(revision)?,
             _ => {}
         }
         Ok(())
+    }
+
+    fn snapshot_owner(&self, name: &[u8]) -> SnapshotOwner {
+        match (name, self.frames.last()) {
+            (b"rPrChange", Some(Frame::RunProperties(properties))) => {
+                if matches!(self.frames.get(properties.run_frame), Some(Frame::Run(_))) {
+                    SnapshotOwner::Run {
+                        frame: properties.run_frame,
+                        hidden_eligible: properties.hidden_eligible,
+                    }
+                } else if self.inside_paragraph_mark_properties() {
+                    SnapshotOwner::ParagraphMark
+                } else {
+                    SnapshotOwner::Unsupported
+                }
+            }
+            (b"pPrChange", Some(Frame::ParagraphProperties))
+                if self.current_paragraph.is_some() =>
+            {
+                SnapshotOwner::Paragraph
+            }
+            (b"tblPrChange", Some(Frame::TableProperties))
+                if matches!(self.frames.iter().rev().nth(1), Some(Frame::Table(_))) =>
+            {
+                SnapshotOwner::Table
+            }
+            (b"trPrChange", Some(Frame::TableRowProperties))
+                if matches!(self.frames.iter().rev().nth(1), Some(Frame::Row(_))) =>
+            {
+                SnapshotOwner::Row
+            }
+            (b"tcPrChange", Some(Frame::TableCellProperties))
+                if matches!(self.frames.iter().rev().nth(1), Some(Frame::Cell(_))) =>
+            {
+                SnapshotOwner::Cell
+            }
+            (b"tblGridChange", Some(Frame::TableGrid))
+                if matches!(self.frames.iter().rev().nth(1), Some(Frame::Table(_))) =>
+            {
+                SnapshotOwner::Grid
+            }
+            (b"sectPrChange", Some(Frame::SectionProperties))
+                if matches!(
+                    self.frames.iter().rev().nth(1),
+                    Some(Frame::Body | Frame::ParagraphProperties)
+                ) =>
+            {
+                SnapshotOwner::Section
+            }
+            (b"tblPrExChange", Some(Frame::TablePropertyExceptions))
+                if matches!(self.frames.iter().rev().nth(1), Some(Frame::Row(_))) =>
+            {
+                SnapshotOwner::TableExceptions
+            }
+            _ => SnapshotOwner::Unsupported,
+        }
+    }
+
+    fn start_snapshot_child(&mut self, name: &[u8]) -> Result<bool, ProjectionError> {
+        if self.revision_view == RevisionView::Current {
+            self.frames.push(Frame::SnapshotIgnored);
+            return Ok(true);
+        }
+        if let Some(Frame::ChangeSnapshot(snapshot)) = self.frames.last_mut() {
+            let owner = snapshot.owner;
+            let matches_root = matches!(
+                (owner, name),
+                (
+                    SnapshotOwner::Run { .. } | SnapshotOwner::ParagraphMark,
+                    b"rPr"
+                ) | (SnapshotOwner::Paragraph, b"pPr")
+                    | (SnapshotOwner::Table, b"tblPr")
+                    | (SnapshotOwner::Row, b"trPr")
+                    | (SnapshotOwner::Cell, b"tcPr")
+                    | (SnapshotOwner::Grid, b"tblGrid")
+                    | (SnapshotOwner::Section, b"sectPr")
+                    | (SnapshotOwner::TableExceptions, b"tblPrEx")
+            );
+            if !matches_root || !matches!(snapshot.status, SnapshotStatus::AwaitingRoot) {
+                snapshot.status = SnapshotStatus::Unsupported;
+                self.frames.push(Frame::SnapshotIgnored);
+                return Ok(true);
+            }
+            snapshot.status = SnapshotStatus::Applied;
+            let frame = self.restore_snapshot_owner(owner)?;
+            self.frames.push(frame);
+            return Ok(true);
+        }
+        if matches!(self.frames.last(), Some(Frame::ParagraphMarkProperties))
+            && matches!(name, b"moveFrom" | b"moveTo")
+        {
+            self.revision_unsupported
+                .insert(RevisionUnsupportedReason::UnsupportedRevisionMarkup);
+            self.frames.push(Frame::SnapshotIgnored);
+            return Ok(true);
+        }
+        let supported_property = matches!(
+            (self.frames.last(), name),
+            (
+                Some(Frame::RunProperties(_)),
+                b"rStyle"
+                    | b"b"
+                    | b"bCs"
+                    | b"cs"
+                    | b"rtl"
+                    | b"highlight"
+                    | b"vertAlign"
+                    | b"vanish"
+            ) | (
+                Some(Frame::ParagraphProperties),
+                b"pStyle" | b"ind" | b"jc" | b"outlineLvl" | b"numPr"
+            ) | (Some(Frame::NumberingProperties), b"numId" | b"ilvl")
+                | (Some(Frame::TableProperties), b"tblStyle")
+                | (Some(Frame::ParagraphMarkProperties), b"ins" | b"del")
+        );
+        if supported_property {
+            return Ok(false);
+        }
+        self.frames.push(Frame::SnapshotIgnored);
+        Ok(true)
+    }
+
+    fn restore_snapshot_owner(&mut self, owner: SnapshotOwner) -> Result<Frame, ProjectionError> {
+        match owner {
+            SnapshotOwner::Run {
+                frame,
+                hidden_eligible,
+            } => {
+                let Some(Frame::Run(run)) = self.frames.get_mut(frame) else {
+                    return Err(ProjectionError::InvalidDocumentXml);
+                };
+                run.direct_styles = TextProperties::default();
+                run.character_style_id = None;
+                run.hidden = false;
+                Ok(Frame::RunProperties(RunPropertiesFrame {
+                    run_frame: frame,
+                    hidden_eligible,
+                }))
+            }
+            SnapshotOwner::Paragraph => {
+                // CT_PPrBase excludes the independent paragraph-mark properties.
+                let paragraph = self
+                    .current_paragraph
+                    .as_mut()
+                    .ok_or(ProjectionError::InvalidDocumentXml)?;
+                paragraph.properties = ParagraphProperties {
+                    table_style: std::mem::take(&mut paragraph.properties.table_style),
+                    ..ParagraphProperties::default()
+                };
+                paragraph.resolved_text_base = None;
+                Ok(Frame::ParagraphProperties)
+            }
+            SnapshotOwner::Table => {
+                let table =
+                    enclosing_table(&mut self.frames).ok_or(ProjectionError::InvalidDocumentXml)?;
+                table.style_id = None;
+                Ok(Frame::TableProperties)
+            }
+            SnapshotOwner::Row => Ok(Frame::TableRowProperties),
+            SnapshotOwner::Cell => Ok(Frame::TableCellProperties),
+            SnapshotOwner::Grid => Ok(Frame::TableGrid),
+            SnapshotOwner::Section => Ok(Frame::SectionProperties),
+            SnapshotOwner::TableExceptions => Ok(Frame::TablePropertyExceptions),
+            SnapshotOwner::ParagraphMark => {
+                let paragraph = self
+                    .current_paragraph
+                    .as_mut()
+                    .ok_or(ProjectionError::InvalidDocumentXml)?;
+                paragraph.paragraph_mark_revision = None;
+                Ok(Frame::ParagraphMarkProperties)
+            }
+            SnapshotOwner::Unsupported => Err(ProjectionError::InvalidDocumentXml),
+        }
     }
 
     fn record_container_property_revision(
@@ -1464,6 +1710,7 @@ impl ProjectionState {
                 | (b"tblGridChange", Some(Frame::TableGrid))
                 | (b"trPrChange", Some(Frame::TableRowProperties))
                 | (b"tcPrChange", Some(Frame::TableCellProperties))
+                | (b"tblPrExChange", Some(Frame::TablePropertyExceptions))
         );
         if !valid_parent {
             return Ok(());
@@ -1474,15 +1721,15 @@ impl ProjectionState {
             .rev()
             .find_map(|frame| match (name, frame) {
                 (b"tblPrChange" | b"tblGridChange", Frame::Table(table)) => Some(&mut table.review),
-                (b"trPrChange", Frame::Row(row)) => Some(&mut row.review),
+                (b"trPrChange" | b"tblPrExChange", Frame::Row(row)) => Some(&mut row.review),
                 (b"tcPrChange", Frame::Cell(cell)) => Some(&mut cell.review),
                 _ => None,
             });
         if let Some(review) = review {
-            let slot = if name == b"tblGridChange" {
-                &mut review.grid_review
-            } else {
-                &mut review.property_review
+            let slot = match name {
+                b"tblGridChange" => &mut review.grid_review,
+                b"tblPrExChange" => &mut review.exception_review,
+                _ => &mut review.property_review,
             };
             if slot.replace(review_index).is_some() {
                 return Err(ProjectionError::InvalidDocumentXml);
@@ -1500,9 +1747,13 @@ impl ProjectionState {
             .last()
             .and_then(paragraph_end)
             .ok_or(ProjectionError::InvalidDocumentXml)?;
-        for review_index in [review.property_review, review.grid_review]
-            .into_iter()
-            .flatten()
+        for review_index in [
+            review.property_review,
+            review.grid_review,
+            review.exception_review,
+        ]
+        .into_iter()
+        .flatten()
         {
             self.locate_owned_revisions(
                 std::slice::from_ref(&review_index),
@@ -1524,26 +1775,6 @@ impl ProjectionState {
             .take()
             .ok_or(ProjectionError::InvalidDocumentXml)?;
         if styles.is_ok_and(|styles| paragraph.resolve_text_base(styles).is_err()) {
-            self.formatting_status =
-                FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles);
-        }
-        if styles.is_ok_and(|styles| {
-            styles
-                .paragraph_uses_numbering(&paragraph.properties)
-                .unwrap_or(false)
-        }) {
-            // Numbering-level run properties are another formatting
-            // hierarchy level. Retain known spans, but do not present
-            // them as authoritative until that level is projected.
-            self.formatting_status =
-                FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles);
-        }
-        if paragraph.structure.is_some()
-            && self.formatting_status == FormattingProjectionStatus::Complete
-        {
-            // Table-style run properties are a distinct style-hierarchy level.
-            // Until that level is projected, retain best-known spans but do not
-            // claim that they are authoritative effective formatting.
             self.formatting_status =
                 FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles);
         }
@@ -1663,6 +1894,7 @@ impl ProjectionState {
                 RevisionFactKind::RunPropertiesChange
                 | RevisionFactKind::ParagraphPropertiesChange
                 | RevisionFactKind::TablePropertiesChange
+                | RevisionFactKind::TablePropertiesExceptionChange
                 | RevisionFactKind::TableRowPropertiesChange
                 | RevisionFactKind::TableCellPropertiesChange
                 | RevisionFactKind::TableGridChange => RevisionPayload::FormattingOnly,
@@ -1686,7 +1918,7 @@ impl ProjectionState {
     fn inside_change_snapshot(&self) -> bool {
         self.frames
             .iter()
-            .any(|frame| matches!(frame, Frame::ChangeSnapshot))
+            .any(|frame| matches!(frame, Frame::ChangeSnapshot(_)))
     }
 
     fn inside_paragraph_mark_properties(&self) -> bool {
@@ -1713,7 +1945,7 @@ impl ProjectionState {
                 frame,
                 Frame::ParagraphProperties
                     | Frame::RunProperties(_)
-                    | Frame::ChangeSnapshot
+                    | Frame::ChangeSnapshot(_)
                     | Frame::Textbox
             ) || matches!(frame, Frame::Revision(revision) if revision.suppressed)
                 || matches!(frame, Frame::Sdt(sdt) if sdt.placeholder)
@@ -1726,7 +1958,7 @@ impl ProjectionState {
                 frame,
                 Frame::ParagraphProperties
                     | Frame::RunProperties(_)
-                    | Frame::ChangeSnapshot
+                    | Frame::ChangeSnapshot(_)
                     | Frame::Textbox
             ) || matches!(frame, Frame::Sdt(sdt) if sdt.placeholder)
         })
@@ -2234,6 +2466,7 @@ const fn revision_fact_kind(name: &[u8]) -> Option<RevisionFactKind> {
         b"rPrChange" => Some(RevisionFactKind::RunPropertiesChange),
         b"sectPrChange" => Some(RevisionFactKind::SectionPropertiesChange),
         b"tblPrChange" => Some(RevisionFactKind::TablePropertiesChange),
+        b"tblPrExChange" => Some(RevisionFactKind::TablePropertiesExceptionChange),
         b"trPrChange" => Some(RevisionFactKind::TableRowPropertiesChange),
         b"tcPrChange" => Some(RevisionFactKind::TableCellPropertiesChange),
         b"tblGridChange" => Some(RevisionFactKind::TableGridChange),
@@ -2285,6 +2518,7 @@ fn is_change_snapshot(name: &[u8]) -> bool {
             | b"rPrChange"
             | b"sectPrChange"
             | b"tblPrChange"
+            | b"tblPrExChange"
             | b"trPrChange"
             | b"tcPrChange"
             | b"tblGridChange"

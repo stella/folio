@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { generateDocxFixture } from "./validatedDocxFixture";
 import {
   SCROLL_CONTROL_TAG,
   SCROLL_REVISION_ID,
@@ -28,9 +29,9 @@ export const buildScrollRootDocument = () => {
 <w:p w14:paraId="${SCROLL_TARGET_PARA_ID}"><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>${SCROLL_TARGET_TEXT}</w:t></w:r><w:ins w:id="${SCROLL_REVISION_ID}" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"><w:r><w:t> revised</w:t></w:r></w:ins></w:p>
 <w:sdt><w:sdtPr><w:id w:val="1330"/><w:tag w:val="${SCROLL_CONTROL_TAG}"/><w:text/></w:sdtPr><w:sdtContent><w:p w14:paraId="13300301"><w:r><w:t>Content control destination</w:t></w:r></w:p></w:sdtContent></w:sdt>
 <w:p w14:paraId="13300400"><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>Fourth page</w:t></w:r></w:p>
-<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>
 </w:body></w:document>`,
     options,
   );
-  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  return generateDocxFixture(zip, "scroll-root");
 };

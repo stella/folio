@@ -193,6 +193,30 @@ describe("DOCX projection TypeScript binding", () => {
     expect(projection[2]).toEqual(expectedReviewFacts);
   });
 
+  test("preserves table exception revision kinds across the wire", async () => {
+    for (const namespace of [
+      "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+      "http://purl.oclc.org/ooxml/wordprocessingml/main",
+    ]) {
+      const archive = new JSZip();
+      archive.file(
+        "word/document.xml",
+        `<w:document xmlns:w="${namespace}"><w:body><w:tbl><w:tr><w:tblPrEx><w:tblPrExChange w:id="1" w:author="A"><w:tblPrEx/></w:tblPrExChange></w:tblPrEx><w:tc><w:p><w:r><w:rPr><w:rPrChange w:id="2" w:author="A"><w:rPr><w:b/></w:rPr></w:rPrChange></w:rPr><w:t>é😀</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
+      );
+      addStylesPart(archive, `<w:styles xmlns:w="${namespace}"/>`);
+      const bytes = await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
+      const projection = await projectCompressedDocxWithReviewFacts(bytes);
+      const expectedRevisions = [
+        "known",
+        [
+          ["tblPrExChange", "A", null, "1", "known", 0, 0, 0, 0, 6, 3, "", "formatting-only"],
+          ["rPrChange", "A", null, "2", "known", 0, 0, 0, 0, 6, 3, "", "formatting-only"],
+        ],
+      ] as const satisfies DocxReviewFactsWire[1];
+      expect(projection[2][1]).toEqual(expectedRevisions);
+    }
+  });
+
   test("locates a tracked paragraph mark at the paragraph join", async () => {
     const archive = new JSZip();
     archive.file(

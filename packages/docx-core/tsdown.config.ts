@@ -7,6 +7,7 @@ export default defineConfig({
     "src/ops/documentOps.ts",
     "src/projection.ts",
     "src/schema/sequenceChildren.ts",
+    "src/zip/writeZipPart.ts",
   ],
   format: ["esm"],
   platform: "neutral",
