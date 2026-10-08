@@ -99,6 +99,7 @@ import {
 import {
   type CommentPartPlan,
   planCommentParts,
+  hasOwnedCommentsPart,
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
@@ -392,7 +393,10 @@ async function serializeCommentsToZip(
     // A non-empty source part with an empty current model is different: the
     // user removed the last comment, so it must still be overwritten below to
     // prevent the old thread from reappearing.
-    if (sourceCommentsXml === undefined || !hasCommentEntries(sourceCommentsXml)) {
+    const ownsCommentsPart = hasOwnedCommentsPart(doc);
+    if (
+      sourceCommentsXml === undefined ? !ownsCommentsPart : !hasCommentEntries(sourceCommentsXml)
+    ) {
       return;
     }
   }
@@ -2075,14 +2079,16 @@ async function ensureCommentsContentType(zip: JSZip, compressionLevel: number): 
   }
 
   let ctXml = await ctFile.async("text");
-  if (ctXml.includes("/word/comments.xml")) {
+  if (ctXml.toLowerCase().includes("/word/comments.xml")) {
     return;
   }
 
+  const commentsPartPath =
+    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.name ?? "word/comments.xml";
   // Insert before closing </Types>
   ctXml = ctXml.replace(
     "</Types>",
-    `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
+    `<Override PartName="/${commentsPartPath}" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
   );
   writeZipPart({
     zip,
@@ -2107,16 +2113,18 @@ async function ensureCommentsRelationship(zip: JSZip, compressionLevel: number):
   }
 
   let relsXml = await relsFile.async("text");
-  if (relsXml.includes("comments.xml")) {
+  if (relsXml.toLowerCase().includes("comments.xml")) {
     return;
   }
 
+  const commentsPartPath =
+    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.name ?? "word/comments.xml";
   // Generate a unique rId
   const newRId = `rId${findMaxRId(relsXml) + 1}`;
 
   relsXml = relsXml.replace(
     "</Relationships>",
-    `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.comments}" Target="comments.xml"/></Relationships>`,
+    `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.comments}" Target="${commentsPartPath.slice("word/".length)}"/></Relationships>`,
   );
   writeZipPart({
     zip,

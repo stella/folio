@@ -69,6 +69,7 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
       calls.push({ method: "getDocument", args: [] });
       return sentinelDocument;
     },
+    getCanonicalComments: () => null,
     getCanonicalDocument: () => null,
     captureCanonicalSave: () => null,
     isCanonicalSaveCurrent: () => false,
@@ -80,6 +81,7 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
     },
     applyCanonicalStoryHistory: () => false,
     applyCanonicalOperations: () => false,
+    applyCanonicalComment: () => null,
     getCanonicalStorySelection: () => null,
     getCanonicalStoryProjection: () => null,
     replaceCanonicalStoryText: () => false,
