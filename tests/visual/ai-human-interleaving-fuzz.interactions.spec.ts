@@ -12,11 +12,10 @@ import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShap
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
 import { parseBrowserInputTraceConfig } from "./browserInputTrace";
 import { interleavingTraceArbitrary, type InterleavingAction } from "./interleavingTrace";
-import type {} from "./interleavingBridge";
+import type {} from "./browserTestBridge";
 
 const replayPath = process.env["PROPERTY_TEST_PATH"];
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
-const bridgeUrl = `/@fs${new URL("./interleavingBridge.ts", import.meta.url).pathname}`;
 const config = parseBrowserInputTraceConfig(
   process.env,
   process.env["FOLIO_FUZZ_LANE"] === "nightly" ? "nightly" : "pullRequest",
@@ -145,15 +144,11 @@ for (const seed of config.seeds) {
             [...new Uint8Array(source)],
           );
           stage = "install-document-operation-bridge";
-          // Await module loading and installation so import errors reach fast-check
-          // instead of leaving an unbounded wait for a missing global function.
-          await page.evaluate(async (url) => {
-            const { installInterleavingBridge } = await import(/* @vite-ignore */ url);
-            installInterleavingBridge();
-          }, bridgeUrl);
-          await page.waitForFunction(
-            () => typeof globalThis.__folioInterleavingSuggest === "function",
-          );
+          await page.evaluate(() => {
+            const bridge = globalThis.__folioBrowserTestBridge;
+            if (!bridge) throw new Error("bundled browser test bridge unavailable");
+            bridge.installInterleavingBridge();
+          });
           await checkpoint(page);
           for (const [index, action] of trace.actions.entries()) {
             stage = `action-${index}-${action.kind}`;

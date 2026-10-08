@@ -13,8 +13,8 @@ use crate::projection::review::{
     ReviewSpan, RevisionContent, RevisionFactKind, RevisionPayload,
 };
 use crate::projection::structure::{
-    ParagraphProperties, RawBlockPoint, RawBookmarkRange, RawInternalReference,
-    StructuralFactUnknownReason, StyleSheet, TextProperties,
+    ParagraphProperties, RawBookmarkRange, RawInternalReference, StructuralFactUnknownReason,
+    StyleSheet, TableStyleSelection, TextProperties, TextStyleInput,
 };
 use crate::projection::styles::{
     parse_alignment, parse_indentation, parse_level_attribute, parse_outline_level_attribute,
@@ -188,7 +188,7 @@ struct ParagraphBuilder {
     properties: ParagraphProperties,
     resolved_text_base: Option<Result<TextProperties, ()>>,
     paragraph_mark_revision: Option<ParagraphMarkRevision>,
-    paragraph_mark_review_indices: Vec<usize>,
+    paragraph_review_indices: Vec<usize>,
 }
 
 impl ParagraphBuilder {
@@ -266,11 +266,11 @@ impl ParagraphBuilder {
         if let Some(resolved) = self.resolved_text_base {
             return resolved;
         }
-        let resolved = styles.resolve_text(
-            self.properties.style_id.as_deref(),
-            None,
-            TextProperties::default(),
-        );
+        let resolved = styles.resolve_text(TextStyleInput {
+            paragraph: &self.properties,
+            character_style_id: None,
+            direct: TextProperties::default(),
+        });
         self.resolved_text_base = Some(resolved);
         resolved
     }
@@ -283,21 +283,14 @@ impl ParagraphBuilder {
         if start_utf16 >= end_utf16 {
             return;
         }
-        if let Some(previous) = self
-            .formatting
-            .iter_mut()
-            .rev()
-            .find(|span| span.style == style)
-            && previous.end_utf16 == start_utf16
-        {
-            previous.end_utf16 = end_utf16;
-            return;
-        }
-        self.formatting.push(TextFormattingSpan {
-            start_utf16,
-            end_utf16,
-            style,
-        });
+        append_formatting_span(
+            &mut self.formatting,
+            TextFormattingSpan {
+                start_utf16,
+                end_utf16,
+                style,
+            },
+        );
     }
 
     fn truncate(&mut self, utf8_len: usize, utf16_len: u32) {
@@ -449,6 +442,7 @@ struct RunFrame {
     character_style_id: Option<String>,
     hidden: bool,
     direct_child_count: usize,
+    property_review_indices: Vec<usize>,
 }
 
 struct RunPropertiesFrame {
@@ -456,15 +450,25 @@ struct RunPropertiesFrame {
     hidden_eligible: bool,
 }
 
+#[derive(Clone, Copy)]
+struct ContainerReview {
+    paragraph_start: usize,
+    property_review: Option<usize>,
+    grid_review: Option<usize>,
+}
+
 struct TableFrame {
     ordinal: usize,
     next_row: usize,
+    style_id: Option<String>,
+    review: ContainerReview,
 }
 
 struct RowFrame {
     table_ordinal: usize,
     row: usize,
     next_column: usize,
+    review: ContainerReview,
 }
 
 #[derive(Clone, Copy)]
@@ -472,6 +476,7 @@ struct CellFrame {
     table_ordinal: usize,
     row: usize,
     column: usize,
+    review: ContainerReview,
 }
 
 struct SdtFrame {
@@ -515,15 +520,22 @@ impl PseudoTextFrame {
     }
 }
 
+#[derive(Clone, Copy)]
+enum FieldSource {
+    Projected(ReviewPoint),
+    Hidden,
+    Unsupported,
+}
+
 struct FieldFrame {
-    source: Option<RawBlockPoint>,
+    source: FieldSource,
     instruction: String,
     separated: bool,
 }
 
 #[derive(Clone, Debug)]
 enum BookmarkPoint {
-    Paragraph(RawBlockPoint),
+    Paragraph(ReviewPoint),
     ParagraphBoundary(usize),
 }
 
@@ -579,9 +591,9 @@ fn resolve_bookmark_point(
     paragraphs: &[RawProjectedParagraph],
     point: &BookmarkPoint,
     side: BoundarySide,
-) -> Option<RawBlockPoint> {
+) -> Option<ReviewPoint> {
     let boundary = match point {
-        BookmarkPoint::Paragraph(point) => return Some(point.clone()),
+        BookmarkPoint::Paragraph(point) => return Some(*point),
         BookmarkPoint::ParagraphBoundary(boundary) => boundary,
     };
     if *boundary > paragraphs.len() || paragraphs.is_empty() {
@@ -591,8 +603,8 @@ fn resolve_bookmark_point(
         BoundarySide::Start => paragraphs.get(*boundary).map_or_else(
             || paragraph_end(paragraphs.last()?),
             |paragraph| {
-                Some(RawBlockPoint {
-                    paragraph: paragraph.ordinal,
+                Some(ReviewPoint {
+                    paragraph_ordinal: paragraph.ordinal,
                     utf8: 0,
                     utf16: 0,
                 })
@@ -600,8 +612,8 @@ fn resolve_bookmark_point(
         ),
         BoundarySide::End => boundary.checked_sub(1).map_or_else(
             || {
-                Some(RawBlockPoint {
-                    paragraph: paragraphs.first()?.ordinal,
+                Some(ReviewPoint {
+                    paragraph_ordinal: paragraphs.first()?.ordinal,
                     utf8: 0,
                     utf16: 0,
                 })
@@ -611,17 +623,25 @@ fn resolve_bookmark_point(
     }
 }
 
-fn paragraph_end(paragraph: &RawProjectedParagraph) -> Option<RawBlockPoint> {
-    Some(RawBlockPoint {
-        paragraph: paragraph.ordinal,
+fn paragraph_end(paragraph: &RawProjectedParagraph) -> Option<ReviewPoint> {
+    Some(ReviewPoint {
+        paragraph_ordinal: paragraph.ordinal,
         utf8: u32::try_from(paragraph.text.len()).ok()?,
         utf16: paragraph.utf16_len,
     })
 }
 
-const fn bookmark_points_are_ordered(start: &RawBlockPoint, end: &RawBlockPoint) -> bool {
-    start.paragraph < end.paragraph
-        || (start.paragraph == end.paragraph && start.utf8 <= end.utf8 && start.utf16 <= end.utf16)
+const fn bookmark_points_are_ordered(start: &ReviewPoint, end: &ReviewPoint) -> bool {
+    start.paragraph_ordinal < end.paragraph_ordinal
+        || (start.paragraph_ordinal == end.paragraph_ordinal
+            && start.utf8 <= end.utf8
+            && start.utf16 <= end.utf16)
+}
+
+#[derive(Clone, Copy)]
+enum OwnedRevisionSpan {
+    Paragraph(ReviewSpan),
+    Content(ReviewSpan),
 }
 
 struct RevisionFrame {
@@ -652,6 +672,7 @@ pub(super) struct ReviewProjectionLimits {
 enum Frame {
     Other,
     Body,
+    BlockContent,
     Table(TableFrame),
     Row(RowFrame),
     Cell(CellFrame),
@@ -659,6 +680,8 @@ enum Frame {
     Run(RunFrame),
     RunProperties(RunPropertiesFrame),
     ParagraphProperties,
+    TableProperties,
+    TableGrid,
     TableRowProperties,
     TableCellProperties,
     NumberingProperties,
@@ -788,6 +811,12 @@ pub(super) fn project_document_xml(
     {
         return Err(ProjectionError::InvalidDocumentXml);
     }
+    let mut bookmarks = if state.bookmarks_complete && state.open_bookmarks.is_empty() {
+        resolve_bookmark_ranges(&state.paragraphs, state.bookmarks)
+            .ok_or(StructuralFactUnknownReason::IncompleteBookmarkRanges)
+    } else {
+        Err(StructuralFactUnknownReason::IncompleteBookmarkRanges)
+    };
     let paragraph_origins = if state.paragraph_mark_revisions.is_empty() {
         None
     } else {
@@ -799,8 +828,15 @@ pub(super) fn project_document_xml(
         )?
     };
     if let Some(origins) = paragraph_origins {
-        state.bookmarks_complete = false;
-        state.references_complete = false;
+        if let Ok(ranges) = &mut bookmarks {
+            for range in ranges {
+                relocate_block_point(&origins, &mut range.start)?;
+                relocate_block_point(&origins, &mut range.end)?;
+            }
+        }
+        for reference in &mut state.references {
+            relocate_block_point(&origins, &mut reference.source)?;
+        }
         state.review_comment_anchors.retain(|_, anchor| {
             relocate_review_span(&origins, *anchor).is_some_and(|relocated| {
                 *anchor = relocated;
@@ -822,12 +858,6 @@ pub(super) fn project_document_xml(
             }
         }
     }
-    let bookmarks = if state.bookmarks_complete && state.open_bookmarks.is_empty() {
-        resolve_bookmark_ranges(&state.paragraphs, state.bookmarks)
-            .ok_or(StructuralFactUnknownReason::IncompleteBookmarkRanges)
-    } else {
-        Err(StructuralFactUnknownReason::IncompleteBookmarkRanges)
-    };
     let references = if state.references_complete && state.fields.is_empty() {
         Ok(state.references)
     } else {
@@ -950,6 +980,26 @@ impl ProjectionState {
             _ => {}
         }
         if is_change_snapshot(name) {
+            if let Some(review_index) = attributed_revision {
+                match (name, self.frames.last()) {
+                    (b"rPrChange", Some(Frame::RunProperties(properties))) => {
+                        let run_frame = properties.run_frame;
+                        if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
+                            run.property_review_indices.push(review_index);
+                        } else if self.inside_paragraph_mark_properties()
+                            && let Some(paragraph) = self.current_paragraph.as_mut()
+                        {
+                            paragraph.paragraph_review_indices.push(review_index);
+                        }
+                    }
+                    (b"pPrChange", Some(Frame::ParagraphProperties)) => {
+                        if let Some(paragraph) = self.current_paragraph.as_mut() {
+                            paragraph.paragraph_review_indices.push(review_index);
+                        }
+                    }
+                    _ => self.record_container_property_revision(name, review_index)?,
+                }
+            }
             if self.revision_view == RevisionView::Original {
                 self.revision_unsupported
                     .insert(RevisionUnsupportedReason::UnsupportedRevisionMarkup);
@@ -995,6 +1045,12 @@ impl ProjectionState {
                 Frame::Table(TableFrame {
                     ordinal,
                     next_row: 0,
+                    style_id: None,
+                    review: ContainerReview {
+                        paragraph_start: self.paragraphs.len(),
+                        property_review: None,
+                        grid_review: None,
+                    },
                 })
             }
             b"tr" => {
@@ -1011,6 +1067,11 @@ impl ProjectionState {
                     table_ordinal: table.ordinal,
                     row,
                     next_column: 0,
+                    review: ContainerReview {
+                        paragraph_start: self.paragraphs.len(),
+                        property_review: None,
+                        grid_review: None,
+                    },
                 })
             }
             b"tc" => {
@@ -1027,6 +1088,11 @@ impl ProjectionState {
                     table_ordinal: row.table_ordinal,
                     row: row.row,
                     column,
+                    review: ContainerReview {
+                        paragraph_start: self.paragraphs.len(),
+                        property_review: None,
+                        grid_review: None,
+                    },
                 })
             }
             b"p" => {
@@ -1054,10 +1120,27 @@ impl ProjectionState {
                     utf16_len: 0,
                     formatting: Vec::new(),
                     structure,
-                    properties: ParagraphProperties::default(),
+                    properties: ParagraphProperties {
+                        table_style: self
+                            .frames
+                            .iter()
+                            .rev()
+                            .find_map(|frame| {
+                                if let Frame::Table(table) = frame {
+                                    Some(table.style_id.clone().map_or(
+                                        TableStyleSelection::Default,
+                                        TableStyleSelection::Explicit,
+                                    ))
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_default(),
+                        ..ParagraphProperties::default()
+                    },
                     resolved_text_base: None,
                     paragraph_mark_revision: None,
-                    paragraph_mark_review_indices: Vec::new(),
+                    paragraph_review_indices: Vec::new(),
                 });
                 Frame::Paragraph
             }
@@ -1067,6 +1150,7 @@ impl ProjectionState {
                 character_style_id: None,
                 hidden: false,
                 direct_child_count: 0,
+                property_review_indices: Vec::new(),
             }),
             b"rPr" => {
                 let Some((run_frame, child_index)) = direct_run_child else {
@@ -1081,7 +1165,16 @@ impl ProjectionState {
                     hidden_eligible: child_index == 0,
                 })
             }
+            b"sdtContent" | b"customXml" => Frame::BlockContent,
             b"pPr" => Frame::ParagraphProperties,
+            b"tblStyle" if matches!(self.frames.last(), Some(Frame::TableProperties)) => {
+                if let Some(table) = enclosing_table(&mut self.frames) {
+                    table.style_id = word_style_id(attribute(reader, element, b"val")?);
+                }
+                Frame::Other
+            }
+            b"tblPr" => Frame::TableProperties,
+            b"tblGrid" => Frame::TableGrid,
             b"trPr" => Frame::TableRowProperties,
             b"tcPr" => Frame::TableCellProperties,
             b"pStyle" if matches!(self.frames.last(), Some(Frame::ParagraphProperties)) => {
@@ -1143,6 +1236,10 @@ impl ProjectionState {
                 Frame::Other
             }
             b"hyperlink" => {
+                if self.pseudo_text_is_suppressed() {
+                    self.frames.push(Frame::Hyperlink(None));
+                    return Ok(());
+                }
                 let anchor = attribute(reader, element, b"anchor")?;
                 let reference =
                     anchor
@@ -1179,7 +1276,7 @@ impl ProjectionState {
                             ParagraphMarkRevision::from_element(name)
                                 .or(paragraph.paragraph_mark_revision);
                         paragraph
-                            .paragraph_mark_review_indices
+                            .paragraph_review_indices
                             .extend(attributed_revision);
                     }
                     Frame::Other
@@ -1321,62 +1418,10 @@ impl ProjectionState {
             .pop()
             .ok_or(ProjectionError::InvalidDocumentXml)?;
         match frame {
-            Frame::Paragraph => {
-                let mut paragraph = self
-                    .current_paragraph
-                    .take()
-                    .ok_or(ProjectionError::InvalidDocumentXml)?;
-                if styles.is_ok_and(|styles| paragraph.resolve_text_base(styles).is_err()) {
-                    self.formatting_status = FormattingProjectionStatus::Incomplete(
-                        FormattingUnknownReason::UnsupportedStyles,
-                    );
-                }
-                if styles.is_ok_and(|styles| {
-                    styles
-                        .paragraph_uses_numbering(&paragraph.properties)
-                        .unwrap_or(false)
-                }) {
-                    // Numbering-level run properties are another formatting
-                    // hierarchy level. Retain known spans, but do not present
-                    // them as authoritative until that level is projected.
-                    self.formatting_status = FormattingProjectionStatus::Incomplete(
-                        FormattingUnknownReason::UnsupportedStyles,
-                    );
-                }
-                if paragraph.structure.is_some()
-                    && self.formatting_status == FormattingProjectionStatus::Complete
-                {
-                    // Table-style run properties are a distinct style-hierarchy level.
-                    // Until that level is projected, retain best-known spans but do not
-                    // claim that they are authoritative effective formatting.
-                    self.formatting_status = FormattingProjectionStatus::Incomplete(
-                        FormattingUnknownReason::UnsupportedStyles,
-                    );
-                }
-                let ordinal = self.paragraphs.len();
-                if let Some(revision) = paragraph.paragraph_mark_revision {
-                    self.paragraph_mark_revisions.insert(ordinal, revision);
-                }
-                let mark = ReviewPoint {
-                    paragraph_ordinal: ordinal,
-                    utf8: u32::try_from(paragraph.text.len())
-                        .map_err(|_| ProjectionError::InvalidDocumentXml)?,
-                    utf16: paragraph.utf16_len,
-                };
-                self.locate_paragraph_mark_revisions(
-                    &paragraph.paragraph_mark_review_indices,
-                    mark,
-                )?;
-                self.paragraphs.push(RawProjectedParagraph {
-                    ordinal: self.paragraphs.len(),
-                    package_paragraph_id: paragraph.package_paragraph_id,
-                    text: paragraph.text,
-                    utf16_len: paragraph.utf16_len,
-                    formatting: paragraph.formatting,
-                    structure: paragraph.structure,
-                    properties: paragraph.properties,
-                });
-            }
+            Frame::Paragraph => self.finish_paragraph(styles)?,
+            Frame::Table(table) => self.finish_container_review(table.review)?,
+            Frame::Row(row) => self.finish_container_review(row.review)?,
+            Frame::Cell(cell) => self.finish_container_review(cell.review)?,
             Frame::Hyperlink(Some(reference)) => self.references.push(reference),
             Frame::PseudoText(frame) => match frame.kind {
                 PseudoTextKind::Text { preserve_space } => {
@@ -1390,8 +1435,12 @@ impl ProjectionState {
                 PseudoTextKind::MathText => self.append_pseudo_text(&frame.text)?,
                 PseudoTextKind::Instruction => self.append_field_instruction(&frame.text),
             },
-            Frame::Run(run) if !run.hidden && !self.pseudo_text_is_suppressed() => {
-                if let Some(paragraph) = self.current_paragraph.as_mut() {
+            Frame::Run(run) => {
+                let start = self.current_review_point();
+                if !run.hidden
+                    && !self.pseudo_text_is_suppressed()
+                    && let Some(paragraph) = self.current_paragraph.as_mut()
+                {
                     let effective = match styles {
                         Ok(styles) => {
                             let resolved = if run.character_style_id.is_none()
@@ -1399,11 +1448,11 @@ impl ProjectionState {
                             {
                                 paragraph.resolve_text_base(styles)
                             } else {
-                                styles.resolve_text(
-                                    paragraph.properties.style_id.as_deref(),
-                                    run.character_style_id.as_deref(),
-                                    run.direct_styles,
-                                )
+                                styles.resolve_text(TextStyleInput {
+                                    paragraph: &paragraph.properties,
+                                    character_style_id: run.character_style_id.as_deref(),
+                                    direct: run.direct_styles,
+                                })
                             };
                             resolved.unwrap_or_else(|()| {
                                 self.formatting_status = FormattingProjectionStatus::Incomplete(
@@ -1416,10 +1465,119 @@ impl ProjectionState {
                     };
                     paragraph.append(&run.text, effective)?;
                 }
+                if let (Some(start), Some(end)) = (start, self.current_review_point()) {
+                    self.locate_owned_revisions(
+                        &run.property_review_indices,
+                        OwnedRevisionSpan::Content(ReviewSpan { start, end }),
+                    )?;
+                }
             }
             Frame::Revision(revision) => self.finish_attributed_revision(revision)?,
             _ => {}
         }
+        Ok(())
+    }
+
+    fn record_container_property_revision(
+        &mut self,
+        name: &[u8],
+        review_index: usize,
+    ) -> Result<(), ProjectionError> {
+        let valid_parent = matches!(
+            (name, self.frames.last()),
+            (b"tblPrChange", Some(Frame::TableProperties))
+                | (b"tblGridChange", Some(Frame::TableGrid))
+                | (b"trPrChange", Some(Frame::TableRowProperties))
+                | (b"tcPrChange", Some(Frame::TableCellProperties))
+        );
+        if !valid_parent {
+            return Ok(());
+        }
+        let review = self
+            .frames
+            .iter_mut()
+            .rev()
+            .find_map(|frame| match (name, frame) {
+                (b"tblPrChange" | b"tblGridChange", Frame::Table(table)) => Some(&mut table.review),
+                (b"trPrChange", Frame::Row(row)) => Some(&mut row.review),
+                (b"tcPrChange", Frame::Cell(cell)) => Some(&mut cell.review),
+                _ => None,
+            });
+        if let Some(review) = review {
+            let slot = if name == b"tblGridChange" {
+                &mut review.grid_review
+            } else {
+                &mut review.property_review
+            };
+            if slot.replace(review_index).is_some() {
+                return Err(ProjectionError::InvalidDocumentXml);
+            }
+        }
+        Ok(())
+    }
+
+    fn finish_container_review(&mut self, review: ContainerReview) -> Result<(), ProjectionError> {
+        if review.paragraph_start >= self.paragraphs.len() {
+            return Ok(());
+        }
+        let end = self
+            .paragraphs
+            .last()
+            .and_then(paragraph_end)
+            .ok_or(ProjectionError::InvalidDocumentXml)?;
+        for review_index in [review.property_review, review.grid_review]
+            .into_iter()
+            .flatten()
+        {
+            self.locate_owned_revisions(
+                std::slice::from_ref(&review_index),
+                OwnedRevisionSpan::Content(ReviewSpan {
+                    start: paragraph_start(review.paragraph_start),
+                    end,
+                }),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn finish_paragraph(
+        &mut self,
+        styles: Result<&StyleSheet, FormattingUnknownReason>,
+    ) -> Result<(), ProjectionError> {
+        let mut paragraph = self
+            .current_paragraph
+            .take()
+            .ok_or(ProjectionError::InvalidDocumentXml)?;
+        if styles.is_ok_and(|styles| paragraph.resolve_text_base(styles).is_err()) {
+            self.formatting_status =
+                FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles);
+        }
+        let ordinal = self.paragraphs.len();
+        if let Some(revision) = paragraph.paragraph_mark_revision {
+            self.paragraph_mark_revisions.insert(ordinal, revision);
+        }
+        let mark = ReviewPoint {
+            paragraph_ordinal: ordinal,
+            utf8: u32::try_from(paragraph.text.len())
+                .map_err(|_| ProjectionError::InvalidDocumentXml)?,
+            utf16: paragraph.utf16_len,
+        };
+        self.locate_owned_revisions(
+            &paragraph.paragraph_review_indices,
+            OwnedRevisionSpan::Paragraph(ReviewSpan {
+                start: paragraph_start(ordinal),
+                end: mark,
+            }),
+        )?;
+        self.paragraphs.push(RawProjectedParagraph {
+            ordinal: self.paragraphs.len(),
+            package_paragraph_id: paragraph.package_paragraph_id,
+            text: paragraph.text,
+            utf16_len: paragraph.utf16_len,
+            formatting: paragraph.formatting,
+            structure: paragraph.structure,
+            properties: paragraph.properties,
+        });
         Ok(())
     }
 
@@ -1480,26 +1638,42 @@ impl ProjectionState {
         Ok(())
     }
 
-    fn locate_paragraph_mark_revisions(
+    fn locate_owned_revisions(
         &mut self,
         review_indices: &[usize],
-        mark: ReviewPoint,
+        owner: OwnedRevisionSpan,
     ) -> Result<(), ProjectionError> {
         let ReviewRevisionCollection::Complete { revisions, .. } = &mut self.review_revisions
         else {
             return Ok(());
         };
         for &review_index in review_indices {
-            revisions
+            let revision = revisions
                 .get_mut(review_index)
-                .ok_or(ProjectionError::InvalidDocumentXml)?
-                .content = ReviewDetail::Known(RevisionContent {
-                span: ReviewSpan {
-                    start: mark,
-                    end: mark,
-                },
-                payload: RevisionPayload::ParagraphMark,
-            });
+                .ok_or(ProjectionError::InvalidDocumentXml)?;
+            let span = match owner {
+                OwnedRevisionSpan::Content(span) => span,
+                OwnedRevisionSpan::Paragraph(span) => {
+                    if revision.kind == RevisionFactKind::ParagraphPropertiesChange {
+                        span
+                    } else {
+                        ReviewSpan {
+                            start: span.end,
+                            end: span.end,
+                        }
+                    }
+                }
+            };
+            let payload = match revision.kind {
+                RevisionFactKind::RunPropertiesChange
+                | RevisionFactKind::ParagraphPropertiesChange
+                | RevisionFactKind::TablePropertiesChange
+                | RevisionFactKind::TableRowPropertiesChange
+                | RevisionFactKind::TableCellPropertiesChange
+                | RevisionFactKind::TableGridChange => RevisionPayload::FormattingOnly,
+                _ => RevisionPayload::ParagraphMark,
+            };
+            revision.content = ReviewDetail::Known(RevisionContent { span, payload });
         }
         Ok(())
     }
@@ -1619,12 +1793,14 @@ impl ProjectionState {
 
     fn current_review_point(&self) -> Option<ReviewPoint> {
         let paragraph = self.current_paragraph.as_ref()?;
-        let run_text = self.frames.iter().rev().find_map(|frame| match frame {
-            Frame::Run(run) if !run.hidden && !self.pseudo_text_is_suppressed() => {
-                Some(run.text.as_str())
-            }
-            _ => None,
-        });
+        let run_text = if self.pseudo_text_is_suppressed() {
+            None
+        } else {
+            self.frames.iter().rev().find_map(|frame| match frame {
+                Frame::Run(run) if !run.hidden => Some(run.text.as_str()),
+                _ => None,
+            })
+        };
         let run_utf8 = run_text.map_or(0, str::len);
         let run_utf16 = run_text.map_or(0, |text| text.encode_utf16().count());
         Some(ReviewPoint {
@@ -1651,12 +1827,7 @@ impl ProjectionState {
         if self.current_paragraph.is_some() {
             return self.current_review_point();
         }
-        let paragraph = self.paragraphs.last()?;
-        Some(ReviewPoint {
-            paragraph_ordinal: paragraph.ordinal,
-            utf8: u32::try_from(paragraph.text.len()).ok()?,
-            utf16: paragraph.utf16_len,
-        })
+        self.paragraphs.last().and_then(paragraph_end)
     }
 
     fn review_comment_id(
@@ -1784,6 +1955,9 @@ impl ProjectionState {
             self.references_complete = false;
             return;
         };
+        if matches!(field.source, FieldSource::Hidden) {
+            return;
+        }
         if field.separated || field.instruction.len().saturating_add(text.len()) > 4096 {
             self.references_complete = false;
             return;
@@ -1797,7 +1971,10 @@ impl ProjectionState {
         element: &BytesStart<'_>,
     ) -> Result<(), ProjectionError> {
         let instruction = attribute(reader, element, b"instr")?;
-        let source = self.current_point();
+        let source = self.current_field_source();
+        if matches!(source, FieldSource::Hidden) {
+            return Ok(());
+        }
         let Some(instruction) = instruction.filter(|value| value.len() <= 4096) else {
             self.references_complete = false;
             return Ok(());
@@ -1813,7 +1990,7 @@ impl ProjectionState {
     ) -> Result<(), ProjectionError> {
         match attribute(reader, element, b"fldCharType")?.as_deref() {
             Some("begin") => self.fields.push(FieldFrame {
-                source: self.current_field_point(),
+                source: self.current_field_source(),
                 instruction: String::new(),
                 separated: false,
             }),
@@ -1825,7 +2002,7 @@ impl ProjectionState {
                 if field.separated {
                     self.references_complete = false;
                 } else {
-                    self.record_field_reference(&field.instruction, field.source.clone());
+                    self.record_field_reference(&field.instruction, field.source);
                     field.separated = true;
                 }
                 self.fields.push(field);
@@ -1844,29 +2021,21 @@ impl ProjectionState {
         Ok(())
     }
 
-    fn current_field_point(&self) -> Option<RawBlockPoint> {
-        let paragraph = self.current_paragraph.as_ref()?;
+    fn current_field_source(&self) -> FieldSource {
         if self.pseudo_text_is_suppressed() {
-            return None;
+            return FieldSource::Hidden;
         }
-        if self.frames.iter().rev().find_map(|frame| match frame {
-            Frame::Run(run) => Some(!run.text.is_empty()),
-            _ => None,
-        }) == Some(true)
-        {
-            return None;
-        }
-        Some(RawBlockPoint {
-            paragraph: self.paragraphs.len(),
-            utf8: u32::try_from(paragraph.text.len()).ok()?,
-            utf16: paragraph.utf16_len,
-        })
+        self.current_review_point()
+            .map_or(FieldSource::Unsupported, FieldSource::Projected)
     }
 
-    fn record_field_reference(&mut self, instruction: &str, source: Option<RawBlockPoint>) {
+    fn record_field_reference(&mut self, instruction: &str, source: FieldSource) {
+        if matches!(source, FieldSource::Hidden) {
+            return;
+        }
         match internal_reference_target(instruction) {
             Ok(Some(reference_id)) => {
-                let Some(source) = source else {
+                let FieldSource::Projected(source) = source else {
                     self.references_complete = false;
                     return;
                 };
@@ -1880,51 +2049,31 @@ impl ProjectionState {
         }
     }
 
-    fn current_point(&self) -> Option<RawBlockPoint> {
-        if let Some(paragraph) = self.current_paragraph.as_ref() {
-            if self.pseudo_text_is_suppressed()
-                || self
-                    .frames
-                    .iter()
-                    .any(|frame| matches!(frame, Frame::Run(_)))
-            {
-                return None;
-            }
-            return Some(RawBlockPoint {
-                paragraph: self.paragraphs.len(),
-                utf8: u32::try_from(paragraph.text.len()).ok()?,
-                utf16: paragraph.utf16_len,
-            });
+    fn current_point(&self) -> Option<ReviewPoint> {
+        if self.current_paragraph.is_some() {
+            return self.current_review_point();
         }
         if !matches!(self.frames.last(), Some(Frame::Body)) {
             return None;
         }
-        self.paragraphs.last().map_or(
-            Some(RawBlockPoint {
-                paragraph: 0,
-                utf8: 0,
-                utf16: 0,
-            }),
-            |paragraph| {
-                Some(RawBlockPoint {
-                    paragraph: paragraph.ordinal,
-                    utf8: u32::try_from(paragraph.text.len()).ok()?,
-                    utf16: u32::try_from(paragraph.text.encode_utf16().count()).ok()?,
-                })
-            },
-        )
+        self.paragraphs
+            .last()
+            .map_or(Some(paragraph_start(0)), paragraph_end)
     }
 
     fn current_bookmark_point(&self) -> Option<BookmarkPoint> {
-        if self.pseudo_text_is_suppressed() {
-            return None;
-        }
         if self.current_paragraph.is_some() {
             return self.current_point().map(BookmarkPoint::Paragraph);
         }
         matches!(
             self.frames.last(),
-            Some(Frame::Body | Frame::Table(_) | Frame::Row(_) | Frame::Cell(_))
+            Some(
+                Frame::Body
+                    | Frame::BlockContent
+                    | Frame::Table(_)
+                    | Frame::Row(_)
+                    | Frame::Cell(_)
+            )
         )
         .then(|| BookmarkPoint::ParagraphBoundary(self.paragraphs.len()))
     }
@@ -2172,6 +2321,21 @@ const fn paragraph_break_is_removed(
     )
 }
 
+// Share the compiled coalescer between run projection and paragraph joins.
+#[inline(never)]
+fn append_formatting_span(spans: &mut Vec<TextFormattingSpan>, span: TextFormattingSpan) {
+    if let Some(adjacent) = spans
+        .iter_mut()
+        .rev()
+        .find(|previous| previous.style == span.style)
+        && adjacent.end_utf16 == span.start_utf16
+    {
+        adjacent.end_utf16 = span.end_utf16;
+        return;
+    }
+    spans.push(span);
+}
+
 /// Merges paragraphs whose break the selected view removes. When any merge
 /// happens, returns where each source paragraph starts in the merged text, so
 /// review points recorded against source paragraphs can be translated.
@@ -2217,7 +2381,7 @@ fn normalize_paragraph_revision_view(
                     .end_utf16
                     .checked_add(utf16_offset)
                     .ok_or(ProjectionError::InvalidDocumentXml)?;
-                previous.formatting.push(span);
+                append_formatting_span(&mut previous.formatting, span);
             }
             previous.text.push_str(&paragraph.text);
             previous.utf16_len = previous
@@ -2256,6 +2420,14 @@ fn relocate_review_point(origins: &[ReviewPoint], point: ReviewPoint) -> Option<
         utf8: origin.utf8.checked_add(point.utf8)?,
         utf16: origin.utf16.checked_add(point.utf16)?,
     })
+}
+
+fn relocate_block_point(
+    origins: &[ReviewPoint],
+    point: &mut ReviewPoint,
+) -> Result<(), ProjectionError> {
+    *point = relocate_review_point(origins, *point).ok_or(ProjectionError::InvalidDocumentXml)?;
+    Ok(())
 }
 
 fn relocate_review_span(origins: &[ReviewPoint], span: ReviewSpan) -> Option<ReviewSpan> {

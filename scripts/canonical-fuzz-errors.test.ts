@@ -114,6 +114,43 @@ test(
   propertyTestTimeout(5_000),
 );
 
+test(
+  "refusal records preserve every gap and phase without becoming save fallbacks",
+  () => {
+    const previousErrors = globalThis.__folioCanonicalFuzzErrors;
+    const previousPhase = globalThis.__folioCanonicalFuzzPhase;
+    try {
+      assertProperty(
+        fc.property(fc.string({ maxLength: 80 }), (message) => {
+          for (const gap of Object.values(CANONICAL_GAP)) {
+            for (const phase of [...Object.values(PHASES), undefined]) {
+              const errors: CanonicalFuzzError[] = [];
+              globalThis.__folioCanonicalFuzzErrors = errors;
+              globalThis.__folioCanonicalFuzzPhase = phase;
+              recordCanonicalFuzzError(new CanonicalSessionRefusalError({ message, gap }));
+              expect(errors).toEqual([
+                {
+                  status: "refusal",
+                  type: "CanonicalSessionRefusalError",
+                  message,
+                  gap,
+                  phase: phase ?? null,
+                },
+              ]);
+              expect(errors.some(isCanonicalSaveFallback)).toBe(false);
+            }
+          }
+        }),
+        { numRuns: 20 },
+      );
+    } finally {
+      globalThis.__folioCanonicalFuzzErrors = previousErrors;
+      globalThis.__folioCanonicalFuzzPhase = previousPhase;
+    }
+  },
+  propertyTestTimeout(5_000),
+);
+
 test("unscoped ordinary errors retain their identity without becoming save diagnostics", () => {
   const previousErrors = globalThis.__folioCanonicalFuzzErrors;
   const previousPhase = globalThis.__folioCanonicalFuzzPhase;

@@ -1,3 +1,4 @@
+import type {} from "./browserTestBridge";
 import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
 import { expect, test, type Page } from "@playwright/test";
@@ -44,6 +45,7 @@ import {
   writeFailureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
 import { clipboardHtmlProjection } from "./clipboardHtmlProjection";
+import { BROWSER_INPUT_REGRESSIONS } from "./browserInputRegressions";
 
 declare global {
   var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
@@ -51,7 +53,6 @@ declare global {
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const INPUT_TRACE = browserInputTraceArbitrary();
-const PAINTED_TARGET_MODULE = `/@fs${new URL("./browserPaintedTargets.ts", import.meta.url).pathname}`;
 const missingCanonical = createMissingOpBurndown();
 test.afterAll(() => console.info(missingCanonical.markdown()));
 
@@ -191,14 +192,12 @@ const load = async ({ page, bytes, baseline, suggesting, authority }: LoadFuzzOp
 };
 
 const selectTableTarget = async (page: Page) => {
-  const target = await page.evaluate(async (moduleUrl) => {
-    const { resolvePaintedTableTarget }: typeof import("./browserPaintedTargets") = await import(
-      moduleUrl
-    );
+  const target = await page.evaluate(() => {
+    const bridge = globalThis.__folioBrowserTestBridge;
     const ref = globalThis.__folioPlayground?.getEditorRef();
-    if (!ref) throw new Error("browser editor unavailable");
-    return resolvePaintedTableTarget(ref);
-  }, PAINTED_TARGET_MODULE);
+    if (!bridge || !ref) throw new Error("bundled browser editor bridge unavailable");
+    return bridge.resolvePaintedTableTarget(ref);
+  });
   if (target.type === "absent") return false;
   await page.mouse.move(target.from.x, target.from.y);
   await page.mouse.down();
@@ -230,17 +229,12 @@ const selectTableTarget = async (page: Page) => {
 
 const selectTarget = async (page: Page, target: BrowserDragTarget) => {
   if (target === "table") return selectTableTarget(page);
-  const painted = await page.evaluate(
-    async ({ moduleUrl, wanted }) => {
-      const { resolvePaintedDragTarget }: typeof import("./browserPaintedTargets") = await import(
-        moduleUrl
-      );
-      const ref = globalThis.__folioPlayground?.getEditorRef();
-      if (!ref) throw new Error("browser editor unavailable");
-      return resolvePaintedDragTarget(ref, wanted);
-    },
-    { moduleUrl: PAINTED_TARGET_MODULE, wanted: target },
-  );
+  const painted = await page.evaluate((wanted) => {
+    const bridge = globalThis.__folioBrowserTestBridge;
+    const ref = globalThis.__folioPlayground?.getEditorRef();
+    if (!bridge || !ref) throw new Error("bundled browser editor bridge unavailable");
+    return bridge.resolvePaintedDragTarget(ref, wanted);
+  }, target);
   if (painted.type === "absent") return false;
   const { positions } = painted;
   expect(positions.to).toBeGreaterThan(positions.from);
@@ -491,6 +485,21 @@ for (const [index, trace] of paintedTargetReplays.entries()) {
 
 const isBrowserShape = (shape: string): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
   Object.hasOwn(BROWSER_SHAPE_TARGETS, shape);
+
+for (const { seed, path, fingerprint, trace } of BROWSER_INPUT_REGRESSIONS) {
+  test(`regression seed ${seed} path ${path} / ${fingerprint}`, async ({ page }) => {
+    const source = await shapeArrayBuffer(trace.shape);
+    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+    const edited = await runMode(page, source, baseline, trace, false);
+    const suggested = await runMode(page, source, baseline, trace, true);
+    const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+    accepting.acceptAll();
+    expect(project(await reopenSaved(await accepting.toBuffer()))).toEqual(edited.blocks);
+    const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+    rejecting.rejectAll();
+    expect(project(await reopenSaved(await rejecting.toBuffer()))).toEqual(baseline);
+  });
+}
 
 const browserAcceptances = knownFailures.known.flatMap(({ fingerprint, acceptance }) => {
   if (acceptance?.type !== "browser") return [];

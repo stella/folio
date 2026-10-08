@@ -21,6 +21,9 @@ import type {
 } from "../types/document";
 import { toMarkdown } from "./index";
 import type { MarkdownOptions } from "./types";
+import { compileMarkdownToContent } from "@stll/docx-core";
+import { applyMarks } from "./renderRuns";
+import { escapeInline, inlineBreaksToHtml } from "./escape";
 
 const run = (text: string, formatting?: TextFormatting): Run => ({
   type: "run",
@@ -85,6 +88,170 @@ const list = (level: number, isBullet: boolean, marker: string): ListRendering =
   isBullet,
 });
 
+const parsedCharacters = (markdown: string) => {
+  const characters: {
+    char: string;
+    bold: boolean;
+    italic: boolean;
+    strike: boolean;
+    code: boolean;
+    href?: string;
+  }[] = [];
+  const visit = (content: Paragraph["content"], href?: string): void => {
+    for (const item of content) {
+      if (item.type === "hyperlink") {
+        visit(item.children, item.href);
+        continue;
+      }
+      expect(item.type).toBe("run");
+      if (item.type !== "run") throw new Error(`Unexpected parsed inline ${item.type}`);
+      for (const part of item.content) {
+        let text = "";
+        if (part.type === "text") text = part.text;
+        else if (part.type === "break") text = "\n";
+        else throw new Error(`Unexpected parsed run content ${part.type}`);
+        for (const char of text) {
+          characters.push({
+            char,
+            bold: item.formatting?.bold === true,
+            italic: item.formatting?.italic === true,
+            strike: item.formatting?.strike === true,
+            code: item.formatting?.fontFamily?.ascii === "Courier New",
+            ...(href === undefined ? {} : { href }),
+          });
+        }
+      }
+    }
+  };
+  for (const block of compileMarkdownToContent(markdown).content) {
+    expect(block.type).toBe("paragraph");
+    if (block.type !== "paragraph") throw new Error(`Unexpected parsed block ${block.type}`);
+    visit(block.content);
+  }
+  return characters;
+};
+
+test(
+  "mark delimiters preserve parsed text and formatting with generated edge whitespace",
+  async () => {
+    const href = "https://example.com/";
+    const marks = {
+      bold: { mark: "bold", formatting: { bold: true } },
+      italic: { mark: "italic", formatting: { italic: true } },
+      strike: { mark: "strike", formatting: { strike: true } },
+      code: { mark: "code", formatting: { fontFamily: { ascii: "Consolas" } } },
+    } as const satisfies Record<
+      Parameters<typeof applyMarks>[1][number],
+      {
+        mark: Parameters<typeof applyMarks>[1][number];
+        formatting: TextFormatting;
+      }
+    >;
+    const whitespace = fc
+      .array(fc.constantFrom(" ", "\t", "\u00a0", "\u2003"), { maxLength: 4 })
+      .map((parts) => parts.join(""));
+    await assertProperty(
+      fc.property(whitespace, whitespace, (leading, trailing) => {
+        const variants = Object.values(marks);
+        for (let mask = 0; mask < 2 ** variants.length; mask++) {
+          const active = variants.filter((_, index) => (mask & (1 << index)) !== 0);
+          const selected = active.map(({ mark }) => mark);
+          const expectedMarks = {
+            bold: selected.includes("bold") && !selected.includes("code"),
+            italic: selected.includes("italic") && !selected.includes("code"),
+            strike: selected.includes("strike") && !selected.includes("code"),
+            code: selected.includes("code"),
+          };
+          const inner = `${leading}First Second${trailing}`;
+          const marked = applyMarks(escapeInline(inner), selected);
+          const parsed = parsedCharacters(`Prefix ${marked} Suffix`);
+          expect(parsed.map(({ char }) => char).join("")).toBe(
+            parsedCharacters(`Prefix ${inner} Suffix`)
+              .map(({ char }) => char)
+              .join(""),
+          );
+          const from = "Prefix ".length + Array.from(leading).length;
+          expect(parsed.slice(from, from + "First Second".length)).toEqual(
+            Array.from("First Second", (char) => ({ char, ...expectedMarks })),
+          );
+          const formatting: TextFormatting = {};
+          for (const { formatting: value } of active) Object.assign(formatting, value);
+          for (const linked of [false, true]) {
+            const formatted: Run = {
+              type: "run",
+              formatting,
+              content: [
+                { type: "text", text: "First" },
+                { type: "break" },
+                { type: "text", text: `${leading}Second${trailing}` },
+              ],
+            };
+            const content: Paragraph["content"] = [run("Prefix ")];
+            if (linked)
+              content.push({
+                type: "hyperlink",
+                href,
+                children: [formatted],
+              });
+            else content.push(formatted);
+            content.push(run(" Suffix"));
+            const rendered = toMarkdown(doc([{ type: "paragraph", content }]));
+            const read = parsedCharacters(rendered);
+            const control = parsedCharacters(`Prefix First  \n${leading}Second${trailing} Suffix`);
+            expect(read.map(({ char }) => char).join("")).toBe(
+              control.map(({ char }) => char).join(""),
+            );
+            const plainMarks = { bold: false, italic: false, strike: false, code: false };
+            expect(read.filter(({ char }) => !/\s/u.test(char))).toEqual([
+              ...Array.from("Prefix", (char) => ({ char, ...plainMarks })),
+              ...Array.from("FirstSecond", (char) => ({
+                char,
+                ...expectedMarks,
+                ...(linked ? { href } : {}),
+              })),
+              ...Array.from("Suffix", (char) => ({ char, ...plainMarks })),
+            ]);
+          }
+        }
+      }),
+      { seed: 1634001732, numRuns: 40 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+test(
+  "inline break encoding preserves generated line boundaries and unfinished whitespace",
+  async () => {
+    const core = fc.constantFrom("", "word", "\t", "文\t件", "\u00a0");
+    await assertProperty(
+      fc.property(
+        fc.array(
+          fc.record({
+            core,
+            spaces: fc.integer({ min: 0, max: 32 }),
+            ending: fc.constantFrom("\n", "\r\n"),
+          }),
+          { maxLength: 12 },
+        ),
+        core,
+        fc.integer({ min: 0, max: 32 }),
+        (lines, tail, spaces) => {
+          const unfinished = tail + " ".repeat(spaces);
+          const text =
+            lines.map((line) => line.core + " ".repeat(line.spaces) + line.ending).join("") +
+            unfinished;
+          const expected = lines.map((line) => line.core + "<br>").join("") + unfinished;
+          expect(inlineBreaksToHtml(text)).toBe(expected);
+          expect(inlineBreaksToHtml(expected)).toBe(expected);
+        },
+      ),
+      { seed: 1634001732, numRuns: 60 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
 describe("toMarkdown — block structure", () => {
   test("heading style → ATX heading at the matching level", () => {
     expect(md([para([run("Title")], { styleId: "Heading1" })])).toBe("# Title");
@@ -115,6 +282,83 @@ describe("toMarkdown — block structure", () => {
           },
         ),
         { seed: 717860451, numRuns: 100 },
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
+    "generated heading breaks preserve one Markdown block",
+    async () => {
+      await assertProperty(
+        fc.property(
+          fc.array(fc.constantFrom("line", "page", "column", "tab", "softHyphen"), {
+            minLength: 1,
+            maxLength: 8,
+          }),
+          fc.integer({ min: 1, max: 6 }),
+          fc.boolean(),
+          fc.record({ bold: fc.boolean(), italic: fc.boolean(), strike: fc.boolean() }),
+          (breaks, level, numbered, formatting) => {
+            const content: Run["content"] = [{ type: "text", text: "First" }];
+            for (const kind of breaks) {
+              switch (kind) {
+                case "line":
+                case "page":
+                case "column":
+                  content.push({
+                    type: "break",
+                    breakType: kind === "line" ? "textWrapping" : kind,
+                  });
+                  break;
+                case "tab":
+                case "softHyphen":
+                  content.push({ type: kind });
+                  break;
+                default: {
+                  const unhandled: never = kind;
+                  throw new Error(`Unhandled break ${unhandled}`);
+                }
+              }
+              content.push({ type: "text", text: "Next" });
+            }
+            for (const code of [false, true]) {
+              const rendered = md([
+                para(
+                  [
+                    {
+                      type: "run",
+                      content,
+                      formatting: code ? { fontFamily: { ascii: "Consolas" } } : formatting,
+                    },
+                  ],
+                  {
+                    styleId: `Heading${level}`,
+                    ...(numbered ? { listRendering: list(0, false, "1.") } : {}),
+                  },
+                ),
+                para([run("Tail.")]),
+              ]);
+              expect(rendered.split("\n\n")).toHaveLength(2);
+              expect(rendered.split("\n\n").at(0)).not.toContain("\n");
+              expect(rendered.match(/<br>/gu)?.length ?? 0).toBe(
+                breaks.reduce(
+                  (count, kind) =>
+                    count +
+                    {
+                      line: 1,
+                      page: 2,
+                      column: 1,
+                      tab: 0,
+                      softHyphen: 0,
+                    }[kind],
+                  0,
+                ),
+              );
+            }
+          },
+        ),
+        { seed: 1634001732, numRuns: 60 },
       );
     },
     propertyTestTimeout(30_000),

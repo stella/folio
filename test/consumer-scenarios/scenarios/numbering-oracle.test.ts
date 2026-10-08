@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import { fromMarkdown } from "@stll/folio-core/markdown";
+import { createDocx, parseDocx, paragraph } from "@stll/folio-core/server";
 
 import {
   decimalLevel,
@@ -10,6 +11,8 @@ import {
   openReviewer,
   packDocument,
   styleNumberedDocument,
+  storiesDocument,
+  toArrayBuffer,
 } from "../support/documents.ts";
 import {
   compareWithModel,
@@ -201,4 +204,66 @@ test("style inheritance folds independent numbering slots and cancellation", asy
     paragraphNumberingFromSlots({ numId: 5, ilvl: 2 }),
   );
   assert.deepEqual(facts.styles.get("CancelledList"), { kind: "none" });
+});
+
+test("package numbering provenance covers allocated paragraph identities in every editable story", async () => {
+  for (const identity of ["authored", "mixed", "positional"] as const) {
+    const document = await parseDocx(toArrayBuffer(await storiesDocument()), {
+      preloadFonts: false,
+    });
+    document.package.document.content.push(
+      { ...paragraph("Repeated paragraph"), paraId: "71234501" },
+      { ...paragraph("Repeated paragraph"), paraId: "71234502" },
+    );
+    const authoredBytes = new Uint8Array(await createDocx(document));
+    const authoredReviewer = await openReviewer(authoredBytes);
+    const authoredFacts = await numberingFactsOf(authoredBytes);
+    let ordinal = 0;
+    const removeIds = (value: unknown): void => {
+      if (typeof value !== "object" || value === null) return;
+      if ("paraId" in value) {
+        if (identity === "positional" || (identity === "mixed" && ordinal % 2 === 0))
+          delete value.paraId;
+        ordinal++;
+      }
+      for (const child of Object.values(value)) removeIds(child);
+      if (value instanceof Map) for (const child of value.values()) removeIds(child);
+    };
+    removeIds(document.package);
+    const bytes = new Uint8Array(await createDocx(document));
+    const reviewer = await openReviewer(bytes);
+    const facts = await numberingFactsOf(bytes);
+    const stories = reviewer.listStories();
+    assert.deepEqual(
+      new Set(stories.map(({ handle }) => handle.type)),
+      new Set(["main", "header", "footer", "footnote", "endnote"]),
+    );
+    for (const { handle } of stories) {
+      const rows = rowsOf(reviewer, handle).filter((row) => row.kind !== "diagnostic");
+      const authoredRows = rowsOf(authoredReviewer, handle).filter(
+        (row) => row.kind !== "diagnostic",
+      );
+      assert.deepEqual(
+        rows.map(({ text }) => text),
+        authoredRows.map(({ text }) => text),
+      );
+      assert.deepEqual(
+        rows.map(({ id }) => facts.direct.get(id)),
+        authoredRows.map(({ id }) => authoredFacts.direct.get(id)),
+      );
+      for (const row of rows) {
+        assert.ok(facts.direct.has(row.id), `${identity} ${handle.type}: ${row.id}`);
+        const model = modelOf(rows);
+        model.numberingFacts = facts;
+        expectOperation(model, {
+          type: "setBlockParagraphProperties",
+          blockId: row.id,
+          properties: { styleId: null },
+        });
+      }
+    }
+    const repeated = rowsOf(reviewer).filter(({ text }) => text === "Repeated paragraph");
+    assert.equal(repeated.length, 2);
+    assert.equal(new Set(repeated.map(({ id }) => id)).size, 2);
+  }
 });

@@ -76,6 +76,10 @@ export const isInlineContainer = (item: ParagraphContent): item is InlineContain
 export const isOpeningMarker = (item: ParagraphContent): boolean =>
   INLINE_KINDS[item.type] === "openingMarker";
 
+/** A source range boundary is zero-width and remains outside replacement revisions. */
+export const isRangeBoundary = (item: ParagraphContent): boolean =>
+  INLINE_KINDS[item.type] === "openingMarker" || INLINE_KINDS[item.type] === "closingMarker";
+
 /** Tracked content that direct text must not join: it is on its way out. */
 export const isRemovedRevision = (item: ParagraphContent): boolean =>
   item.type === "deletion" || item.type === "moveFrom";

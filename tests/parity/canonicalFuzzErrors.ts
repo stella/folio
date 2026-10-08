@@ -1,6 +1,7 @@
-/** Private error sink: retain repeated refusals even when the status text is unchanged. */
 import { CanonicalSessionRefusalError } from "../../packages/core/src/controller/hiddenEditorManager";
 import type { CanonicalGap } from "../../packages/core/src/types/canonicalCapabilities";
+
+/** Private error sink: retain repeated refusals even when the status text is unchanged. */
 import { CanonicalSaveDiagnosticError } from "../../packages/core/src/docx/canonicalSave";
 import type { SaveDiagnostic } from "../../packages/core/src/docx/saveDiagnostics";
 import type { BrowserInputAction } from "../visual/browserInputTrace";
@@ -12,12 +13,16 @@ export type CanonicalFuzzPhase =
   | { type: "input" | "undo" | "redo" | "save"; index: number; action: BrowserInputAction["kind"] };
 
 type CanonicalFuzzErrorDetails =
-  | { status: "refusal"; type: "CanonicalSessionRefusalError"; gap: CanonicalGap }
   | {
       status: "saveDiagnostic";
       type: "CanonicalSaveDiagnosticError";
       gap: CanonicalSaveDiagnosticError["gap"];
       diagnostic: SaveDiagnostic;
+    }
+  | {
+      status: "refusal";
+      type: "CanonicalSessionRefusalError";
+      gap: CanonicalGap;
     }
   | { status: "error"; type: string };
 
@@ -48,24 +53,27 @@ declare global {
   var __folioCanonicalFuzzPhase: CanonicalFuzzPhase | undefined;
 }
 
-const canonicalFuzzErrorDetails = (error: Error): CanonicalFuzzErrorDetails => {
-  if (error instanceof CanonicalSessionRefusalError) {
-    return { status: "refusal", type: "CanonicalSessionRefusalError", gap: error.gap };
-  }
-  if (error instanceof CanonicalSaveDiagnosticError) {
+const canonicalFuzzErrorDetails = (error: Error) => {
+  if (error instanceof CanonicalSaveDiagnosticError)
     return {
       status: "saveDiagnostic",
       type: "CanonicalSaveDiagnosticError",
       gap: error.gap,
       diagnostic: error.diagnostic,
-    };
-  }
-  return { status: "error", type: error.name };
+    } as const;
+  if (CanonicalSessionRefusalError.is(error))
+    return {
+      status: "refusal",
+      type: "CanonicalSessionRefusalError",
+      gap: error.gap,
+    } as const;
+  return { status: "error", type: error.name } as const;
 };
 
 export const recordCanonicalFuzzError = (error: Error) => {
+  const details = canonicalFuzzErrorDetails(error);
   globalThis.__folioCanonicalFuzzErrors?.push({
-    ...canonicalFuzzErrorDetails(error),
+    ...details,
     message: error.message,
     phase: globalThis.__folioCanonicalFuzzPhase ?? null,
   });

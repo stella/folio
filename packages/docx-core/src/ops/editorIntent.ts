@@ -36,13 +36,19 @@ import {
   compareGaps,
   defaultInsertionGap,
   isCommentAnchor,
+  isParagraphContent,
+  childNodes,
+  rebuildNode,
+  asParagraphContent,
+  isEmptyRecord,
+  type InlineNode,
   leafSpans,
   zeroWidthLeavesAt,
 } from "./leaves";
 import { deleteBetween, gapAfterInserted } from "./inline";
 import { createCensusReader } from "./editorIntentCensus";
 import { alikeDepth } from "./leaves";
-import { paragraphLength, paragraphLogicalText } from "./offsets";
+import { isRangeBoundary, paragraphLength, paragraphLogicalText } from "./offsets";
 import {
   appendTrackedDeletion,
   createTrackedPlan,
@@ -539,6 +545,22 @@ const isCopiedRangeMarker = (value: object): boolean =>
     (value.type === "bookmarkEnd" ||
       value.type === "moveFromRangeEnd" ||
       value.type === "moveToRangeEnd"));
+
+const isMoveAnchor = (node: InlineNode): boolean =>
+  isCommentAnchor(node) || (isParagraphContent(node) && isRangeBoundary(node));
+
+/** Suggested moves retain source anchors; their inserted copy carries only tracked content. */
+const withoutMoveAnchors = (nodes: readonly InlineNode[]): InlineNode[] => {
+  const out: InlineNode[] = [];
+  for (const node of nodes) {
+    if (isMoveAnchor(node)) continue;
+    const children = childNodes(node);
+    const retained =
+      children === undefined ? node : rebuildNode(node, withoutMoveAnchors(children));
+    if (!isEmptyRecord(retained)) out.push(retained);
+  }
+  return out;
+};
 
 type IdentifyClipboardParagraphsOptions = {
   document: Document;
@@ -1225,7 +1247,8 @@ export const compileEditorIntent = (
         return Result.ok({ ops: [], selection: intent.target });
       }
       const anchorDeletions: DeleteRangeOp[] = [];
-      for (const { paragraph } of range.value.flat()) {
+      const sourceAnchors = mode.type === "editing" ? range.value.flat() : [];
+      for (const { paragraph } of sourceAnchors) {
         const blockId = paragraph.paraId ?? "";
         const from =
           idKey(blockId) === idKey(intent.from.blockId)
@@ -1241,7 +1264,7 @@ export const compileEditorIntent = (
               };
         for (const span of leafSpans(paragraph.content)) {
           if (
-            !isCommentAnchor(span.node) ||
+            !isMoveAnchor(span.node) ||
             span.ancestors.some(isRemovedRevisionNode) ||
             compareGaps(span.before, from) < 0 ||
             compareGaps(span.after, to) > 0
@@ -1254,14 +1277,6 @@ export const compileEditorIntent = (
           });
         }
       }
-      if (anchorDeletions.length > 0 && mode.type === "suggesting")
-        return Result.err(
-          new DocumentOpRefusal({
-            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            message: "A tracked move cannot transfer comment anchors.",
-            opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
-          }),
-        );
       const deleted = compileEditorIntent(document, {
         intent: { type: "replaceText", from: intent.from, to: intent.to, text: "" },
         mode,
@@ -1360,12 +1375,20 @@ export const compileEditorIntent = (
           }
         }
       }
+      const paragraphs =
+        mode.type === "suggesting"
+          ? intent.paragraphs.map((paragraph) =>
+              Object.assign({}, paragraph, {
+                content: asParagraphContent(withoutMoveAnchors(paragraph.content)),
+              }),
+            )
+          : intent.paragraphs;
       const inserted = compileEditorIntent(afterDeletion, {
         intent: {
           type: "replaceFragment",
           from: target,
           to: target,
-          paragraphs: intent.paragraphs,
+          paragraphs,
           openStart: intent.openStart,
           openEnd: intent.openEnd,
         },

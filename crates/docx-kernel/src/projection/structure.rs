@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ProjectionError;
 use crate::projection::numbering::NumberingCatalog;
+use crate::projection::review::ReviewPoint;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StructuralFactUnknownReason {
@@ -277,8 +278,17 @@ impl NumberingProperties {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) enum TableStyleSelection {
+    #[default]
+    OutsideTable,
+    Default,
+    Explicit(String),
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct ParagraphProperties {
     pub style_id: Option<String>,
+    pub table_style: TableStyleSelection,
     pub outline_level: Option<u8>,
     pub indentation: ParagraphIndentation,
     pub numbering: NumberingProperties,
@@ -286,24 +296,17 @@ pub(super) struct ParagraphProperties {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct RawBlockPoint {
-    pub paragraph: usize,
-    pub utf8: u32,
-    pub utf16: u32,
-}
-
-#[derive(Clone, Debug)]
 pub(super) struct RawBookmarkRange {
     pub id: u32,
     pub name: String,
-    pub start: RawBlockPoint,
-    pub end: RawBlockPoint,
+    pub start: ReviewPoint,
+    pub end: ReviewPoint,
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct RawInternalReference {
     pub reference_id: String,
-    pub source: RawBlockPoint,
+    pub source: ReviewPoint,
 }
 
 #[derive(Clone, Debug)]
@@ -312,12 +315,27 @@ pub(super) struct StyleDefinition {
     pub properties: ParagraphProperties,
     pub text_properties: TextProperties,
     pub kind: StyleKind,
+    pub table_formatting: TableStyleFormatting,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum StyleKind {
     Character,
     Paragraph,
+    Table,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum TableStyleFormatting {
+    #[default]
+    Base,
+    Conditional,
+}
+
+pub(super) struct TextStyleInput<'a> {
+    pub paragraph: &'a ParagraphProperties,
+    pub character_style_id: Option<&'a str>,
+    pub direct: TextProperties,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -385,11 +403,13 @@ fn inherit_style_toggle(inherited: Option<bool>, child: Option<bool>) -> Option<
 #[derive(Clone, Debug, Default)]
 pub(super) struct StyleSheet {
     pub default_style_id: Option<String>,
+    pub default_table_style_id: Option<String>,
     pub document_defaults: ParagraphProperties,
     pub document_text_defaults: TextProperties,
     pub styles: HashMap<String, StyleDefinition>,
     resolved_character_text: HashMap<String, TextProperties>,
     resolved_paragraph_styles: HashMap<String, ResolvedParagraphStyle>,
+    resolved_table_styles: HashMap<String, ResolvedParagraphStyle>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -436,26 +456,33 @@ struct ResolvedParagraphProperties {
 impl StyleSheet {
     pub(super) fn prepare_styles(&mut self) {
         (self.resolved_character_text, _) = self.resolve_character_text_styles();
-        (self.resolved_paragraph_styles, _) = self.resolve_paragraph_styles();
+        (self.resolved_paragraph_styles, _) = self.resolve_block_styles(StyleKind::Paragraph);
+        (self.resolved_table_styles, _) = self.resolve_block_styles(StyleKind::Table);
     }
 
     pub(super) fn resolve_text(
         &self,
-        paragraph_style_id: Option<&str>,
-        character_style_id: Option<&str>,
-        direct: TextProperties,
+        TextStyleInput {
+            paragraph: properties,
+            character_style_id,
+            direct,
+        }: TextStyleInput<'_>,
     ) -> Result<TextProperties, ()> {
-        let paragraph_style_id = paragraph_style_id.or(self.default_style_id.as_deref());
-        let paragraph = paragraph_style_id
-            .map(|style_id| {
-                self.resolved_paragraph_styles
-                    .get(style_id)
-                    .map(|style| style.text)
-                    .ok_or(())
-            })
-            .transpose()?
+        let table = self
+            .table_style(&properties.table_style)?
+            .map(|style| style.text)
             .unwrap_or_default();
+        let paragraph = table.inherit_style(
+            self.paragraph_style(properties.style_id.as_deref())?
+                .map(|style| style.text)
+                .unwrap_or_default(),
+        );
         let character = character_style_id
+            .filter(|style_id| {
+                self.styles
+                    .get(*style_id)
+                    .is_some_and(|style| style.kind == StyleKind::Character)
+            })
             .map(|style_id| {
                 self.resolved_character_text
                     .get(style_id)
@@ -514,14 +541,13 @@ impl StyleSheet {
                     break;
                 }
                 let Some(style) = self.styles.get(style_id) else {
-                    // Word ignores a missing basedOn target. A missing initially
-                    // selected style is still unsupported.
+                    // A missing base contributes no inherited properties.
                     valid = !chain.is_empty();
                     break;
                 };
                 if style.kind != StyleKind::Character {
-                    // basedOn inheritance cannot cross style kinds; Word treats
-                    // the current style as a root instead of discarding it.
+                    // Inheritance cannot cross style kinds; the current style
+                    // remains a root with its own properties.
                     valid = !chain.is_empty();
                     break;
                 }
@@ -547,13 +573,18 @@ impl StyleSheet {
         (resolved, resolution_steps)
     }
 
-    fn resolve_paragraph_styles(&self) -> (HashMap<String, ResolvedParagraphStyle>, usize) {
+    fn resolve_block_styles(
+        &self,
+        kind: StyleKind,
+    ) -> (HashMap<String, ResolvedParagraphStyle>, usize) {
         let mut resolved = HashMap::new();
         let mut unresolved = HashSet::new();
         let mut resolution_steps = 0usize;
-        for root_id in self.styles.iter().filter_map(|(style_id, style)| {
-            (style.kind == StyleKind::Paragraph).then_some(style_id)
-        }) {
+        for root_id in self
+            .styles
+            .iter()
+            .filter_map(|(style_id, style)| (style.kind == kind).then_some(style_id))
+        {
             if resolved.contains_key(root_id) || unresolved.contains(root_id) {
                 continue;
             }
@@ -576,11 +607,17 @@ impl StyleSheet {
                     valid = !chain.is_empty();
                     break;
                 };
-                if style.kind != StyleKind::Paragraph {
+                if style.kind != kind {
                     valid = !chain.is_empty();
                     break;
                 }
                 chain.push(style_id);
+                if kind == StyleKind::Table
+                    && style.table_formatting == TableStyleFormatting::Conditional
+                {
+                    valid = false;
+                    break;
+                }
                 current = style.based_on.as_deref();
             }
             if !valid {
@@ -601,34 +638,54 @@ impl StyleSheet {
         (resolved, resolution_steps)
     }
 
-    /// Resolves `w:jc` from the paragraph style chain, then `w:docDefaults`.
-    ///
-    /// An initially selected style that does not resolve (a missing `w:pStyle`
-    /// target, a `w:basedOn` cycle, or a kind-crossing chain) yields no
-    /// style-tier alignment at all, matching [`Self::resolve`] and
-    /// [`Self::resolve_text`]. Word falls back to Normal there, so reporting
-    /// `w:docDefaults` instead would claim a value the document never resolves
-    /// to.
-    fn style_alignment(&self, direct: &ParagraphProperties) -> Option<ParagraphAlignmentSetting> {
-        let initial_style_id = direct.style_id.as_ref().or(self.default_style_id.as_ref());
-        let style = match initial_style_id {
-            Some(style_id) => Some(self.resolved_paragraph_styles.get(style_id)?),
-            None => None,
+    fn table_style(
+        &self,
+        selection: &TableStyleSelection,
+    ) -> Result<Option<&ResolvedParagraphStyle>, ()> {
+        let style_id = match selection {
+            TableStyleSelection::OutsideTable => return Ok(None),
+            TableStyleSelection::Default => self.default_table_style_id.as_deref(),
+            TableStyleSelection::Explicit(id) => Some(id.as_str()),
         };
-        style
-            .and_then(|style| style.properties.alignment)
-            .or(self.document_defaults.alignment)
+        let Some(style_id) = style_id.filter(|id| {
+            self.styles
+                .get(*id)
+                .is_some_and(|style| style.kind == StyleKind::Table)
+        }) else {
+            return Ok(None);
+        };
+        self.resolved_table_styles.get(style_id).map(Some).ok_or(())
     }
 
-    pub(super) fn paragraph_uses_numbering(
+    fn paragraph_style(
         &self,
-        direct: &ParagraphProperties,
-    ) -> Result<bool, StructuralFactUnknownReason> {
-        self.resolve(
-            direct,
-            Err(StructuralFactUnknownReason::UnsupportedNumbering),
-        )
-        .map(|resolved| resolved.numbering.present && resolved.numbering.num_id != Some(0))
+        explicit_style_id: Option<&str>,
+    ) -> Result<Option<&ResolvedParagraphStyle>, ()> {
+        let Some(style_id) = explicit_style_id
+            .filter(|id| {
+                self.styles
+                    .get(*id)
+                    .is_some_and(|style| style.kind == StyleKind::Paragraph)
+            })
+            .or(self.default_style_id.as_deref())
+        else {
+            return Ok(None);
+        };
+        self.resolved_paragraph_styles
+            .get(style_id)
+            .map(Some)
+            .ok_or(())
+    }
+
+    /// Missing, wrong-kind, and omitted paragraph references select the default.
+    /// Cyclic inheritance cannot supply an effective alignment.
+    fn style_alignment(&self, direct: &ParagraphProperties) -> Option<ParagraphAlignmentSetting> {
+        let table = self.table_style(&direct.table_style).ok()?;
+        self.paragraph_style(direct.style_id.as_deref())
+            .ok()?
+            .and_then(|style| style.properties.alignment)
+            .or_else(|| table.and_then(|style| style.properties.alignment))
+            .or(self.document_defaults.alignment)
     }
 
     fn resolve(
@@ -636,16 +693,22 @@ impl StyleSheet {
         direct: &ParagraphProperties,
         numbering_catalog: Result<&NumberingCatalog, StructuralFactUnknownReason>,
     ) -> Result<ResolvedParagraphProperties, StructuralFactUnknownReason> {
-        let initial_style_id = direct.style_id.as_ref().or(self.default_style_id.as_ref());
-        let style = initial_style_id
-            .map(|style_id| {
-                self.resolved_paragraph_styles
-                    .get(style_id)
-                    .map(|style| style.properties)
-                    .ok_or(StructuralFactUnknownReason::UnsupportedStyles)
-            })
-            .transpose()?
+        let table = self
+            .table_style(&direct.table_style)
+            .map_err(|()| StructuralFactUnknownReason::UnsupportedStyles)?
+            .map(|style| style.properties)
             .unwrap_or_default();
+        let style = self
+            .paragraph_style(direct.style_id.as_deref())
+            .map_err(|()| StructuralFactUnknownReason::UnsupportedStyles)?
+            .map(|style| style.properties)
+            .unwrap_or_default();
+        let style = ResolvedParagraphStyleProperties {
+            indentation: table.indentation.inherit(style.indentation),
+            numbering: table.numbering.inherit(style.numbering),
+            outline_level: style.outline_level.or(table.outline_level),
+            alignment: style.alignment.or(table.alignment),
+        };
         let mut numbering = self.document_defaults.numbering.inherit(style.numbering);
         let mut outline_level = style.outline_level.or(self.document_defaults.outline_level);
         let inherited_numbering = numbering;
@@ -998,7 +1061,7 @@ fn materialize_references(
     for reference in references {
         fact_budget.consume(1)?;
         facts.push(InternalReferenceFact {
-            paragraph_ordinal: reference.source.paragraph,
+            paragraph_ordinal: reference.source.paragraph_ordinal,
             reference_id: reference.reference_id.clone(),
             role: InternalReferenceRole::Source,
             span: StructuralSpan {
@@ -1046,32 +1109,34 @@ fn materialize_references(
 
 fn segment_range(
     texts: &[&str],
-    start: &RawBlockPoint,
-    end: &RawBlockPoint,
+    start: &ReviewPoint,
+    end: &ReviewPoint,
     mut visit: impl FnMut(usize, StructuralSpan) -> Result<(), ProjectionError>,
 ) -> Result<(), ProjectionError> {
-    if start.paragraph > end.paragraph || end.paragraph >= texts.len() {
+    if start.paragraph_ordinal > end.paragraph_ordinal || end.paragraph_ordinal >= texts.len() {
         return Err(ProjectionError::InvalidDocumentXml);
     }
-    if start.paragraph == end.paragraph && (start.utf8 > end.utf8 || start.utf16 > end.utf16) {
+    if start.paragraph_ordinal == end.paragraph_ordinal
+        && (start.utf8 > end.utf8 || start.utf16 > end.utf16)
+    {
         return Err(ProjectionError::InvalidDocumentXml);
     }
     for (paragraph, text) in texts
         .iter()
         .enumerate()
-        .take(end.paragraph.saturating_add(1))
-        .skip(start.paragraph)
+        .take(end.paragraph_ordinal.saturating_add(1))
+        .skip(start.paragraph_ordinal)
     {
         let text_utf8 =
             u32::try_from(text.len()).map_err(|_| ProjectionError::InvalidDocumentXml)?;
         let text_utf16 = u32::try_from(text.encode_utf16().count())
             .map_err(|_| ProjectionError::InvalidDocumentXml)?;
-        let (start_utf8, start_utf16) = if paragraph == start.paragraph {
+        let (start_utf8, start_utf16) = if paragraph == start.paragraph_ordinal {
             (start.utf8, start.utf16)
         } else {
             (0, 0)
         };
-        let (end_utf8, end_utf16) = if paragraph == end.paragraph {
+        let (end_utf8, end_utf16) = if paragraph == end.paragraph_ordinal {
             (end.utf8, end.utf16)
         } else {
             (text_utf8, text_utf16)
@@ -1083,8 +1148,8 @@ fn segment_range(
         {
             return Err(ProjectionError::InvalidDocumentXml);
         }
-        let continues_before = paragraph > start.paragraph;
-        let continues_after = paragraph < end.paragraph;
+        let continues_before = paragraph > start.paragraph_ordinal;
+        let continues_after = paragraph < end.paragraph_ordinal;
         let coverage = match (continues_before, continues_after) {
             (false, false) => SpanCoverage::Complete,
             (true, false) => SpanCoverage::ContinuesBefore,
@@ -1108,8 +1173,8 @@ fn segment_range(
 #[cfg(test)]
 mod tests {
     use super::{
-        ParagraphProperties, StyleDefinition, StyleKind, StyleSheet, TextProperties,
-        inherit_style_toggle,
+        ParagraphProperties, StyleDefinition, StyleKind, StyleSheet, TableStyleFormatting,
+        TextProperties, inherit_style_toggle,
     };
 
     const WORD_STYLE_LIMIT: usize = 4_079;
@@ -1123,6 +1188,7 @@ mod tests {
                 ..TextProperties::default()
             },
             kind,
+            table_formatting: TableStyleFormatting::Base,
         }
     }
 
@@ -1161,7 +1227,8 @@ mod tests {
             );
             paragraph_parent = Some(id.clone());
         }
-        let (resolved_paragraphs, paragraph_steps) = paragraph_chain.resolve_paragraph_styles();
+        let (resolved_paragraphs, paragraph_steps) =
+            paragraph_chain.resolve_block_styles(StyleKind::Paragraph);
         assert_eq!(resolved_paragraphs.len(), WORD_STYLE_LIMIT);
         assert!(paragraph_steps <= WORD_STYLE_LIMIT.saturating_mul(2).saturating_add(1));
 
@@ -1188,7 +1255,7 @@ mod tests {
                 style(Some(successor.clone()), StyleKind::Paragraph),
             );
         }
-        let (cycle_resolved, cycle_steps) = cycle.resolve_paragraph_styles();
+        let (cycle_resolved, cycle_steps) = cycle.resolve_block_styles(StyleKind::Paragraph);
         assert!(cycle_resolved.is_empty());
         assert!(cycle_steps <= WORD_STYLE_LIMIT.saturating_add(1));
         Ok(())
