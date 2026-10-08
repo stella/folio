@@ -127,6 +127,47 @@ const createLateFinalRig = (initialText = "alpha") => {
   };
 };
 
+type NativeDeletionOptions = {
+  view: EditorView;
+  inputType: string;
+} & ({ type: "withoutTarget" } | { type: "caret" | "selected"; from: number; to: number });
+
+const nativeDeletion = (options: NativeDeletionOptions) => {
+  const event = new InputEvent("beforeinput", {
+    bubbles: true,
+    cancelable: true,
+    inputType: options.inputType,
+    isComposing: false,
+  });
+  if (options.type === "withoutTarget") {
+    Object.defineProperty(event, "getTargetRanges", { value: () => [] });
+    return event;
+  }
+  const start = options.view.domAtPos(options.from);
+  const end = options.view.domAtPos(options.to);
+  const target = {
+    startContainer: start.node,
+    startOffset: start.offset,
+    endContainer: end.node,
+    endOffset: end.offset,
+    collapsed: options.from === options.to,
+  } satisfies StaticRange;
+  Object.defineProperty(event, "getTargetRanges", { value: () => [target] });
+  const selection = document.getSelection();
+  if (!selection) throw new TypeError("Missing native selection");
+  if (options.type === "caret") {
+    const caret = options.view.domAtPos(options.view.state.selection.head);
+    selection.collapse(caret.node, caret.offset);
+    return event;
+  }
+  const selected = document.createRange();
+  selected.setStart(target.startContainer, target.startOffset);
+  selected.setEnd(target.endContainer, target.endOffset);
+  selection.removeAllRanges();
+  selection.addRange(selected);
+  return event;
+};
+
 test("native composition cancellation preserves the captured selection and journal", () => {
   jest.useFakeTimers();
   try {
@@ -162,9 +203,13 @@ test("native composition cancellation preserves the captured selection and journ
                     );
                     if (history === "redo") rig.history("undo");
                   }
+                  // Refused cancellation targets the restored non-empty selection.
+                  let selectedHead = head;
+                  if (phase === "refused" && anchor === head)
+                    selectedHead = head === 6 ? 5 : head + 1;
                   rig.view.dispatch(
                     rig.view.state.tr.setSelection(
-                      TextSelection.create(rig.view.state.doc, anchor, head),
+                      TextSelection.create(rig.view.state.doc, anchor, selectedHead),
                     ),
                   );
                   const baseline = rig.view.state;
@@ -193,10 +238,12 @@ test("native composition cancellation preserves the captured selection and journ
                   expect(rig.view.composing).toBe(true);
                   // Chromium cancels through a non-composing deletion before
                   // compositionend; it must not delete the restored selection.
-                  const cancel = new InputEvent("beforeinput", {
-                    bubbles: true,
-                    cancelable: true,
+                  const cancel = nativeDeletion({
+                    view: rig.view,
                     inputType,
+                    type: "selected",
+                    from: baseline.selection.from,
+                    to,
                   });
                   rig.view.dom.dispatchEvent(cancel);
                   jest.advanceTimersByTime(26);
@@ -269,6 +316,136 @@ test("ordinary deletion after native compositionend commits and undoes as a new 
             } finally {
               rig.destroy();
             }
+          }
+        }
+      }),
+      { numRuns: 10 },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("ordinary deletion recovers a missing native compositionend as a new gesture", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(fc.constantFrom("契約", "alphabet", "😀", "مرحبا", "é", ""), (text) => {
+        for (const origin of ["keyboard", "inputOnly"]) {
+          for (const target of ["absent", "character", "selectedPartial"]) {
+            // A selected whole one-character proposal is the cancellation shape.
+            // Ordinary deletion uses a caret or selects only part of a longer proposal.
+            if (target === "selectedPartial" && text === "") continue;
+            for (const inputType of ["deleteContentBackward", "deleteContentForward"]) {
+              const forward = inputType === "deleteContentForward";
+              const rig = createLateFinalRig(forward ? "alphax" : "alpha");
+              try {
+                const original = rig.session.document;
+                rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+                rig.view.dispatch(
+                  rig.view.state.tr
+                    .insertText(forward ? text : `${text}x`, 1, 6)
+                    .setMeta("composition", 1),
+                );
+                const keydown = new KeyboardEvent("keydown", {
+                  key: forward ? "Delete" : "Backspace",
+                  bubbles: true,
+                  cancelable: true,
+                  isComposing: false,
+                });
+                if (origin === "keyboard") {
+                  rig.view.dom.dispatchEvent(keydown);
+                  expect(keydown.defaultPrevented).toBe(false);
+                }
+                const deletion = nativeDeletion(
+                  target === "absent"
+                    ? { view: rig.view, inputType, type: "withoutTarget" }
+                    : {
+                        view: rig.view,
+                        inputType,
+                        type: target === "selectedPartial" ? "selected" : "caret",
+                        from: 1 + text.length,
+                        to: 2 + text.length,
+                      },
+                );
+                rig.view.dom.dispatchEvent(deletion);
+                jest.advanceTimersByTime(26);
+                expect(
+                  rig.view.state.doc.textContent,
+                  `${origin}/${target}/${inputType}/${JSON.stringify(text)}`,
+                ).toBe(text);
+                expect(rig.refusals).toEqual([]);
+                rig.history("undo");
+                expect(
+                  rig.view.state.doc.textContent,
+                  `${origin}/${target}/${inputType}/${JSON.stringify(text)}`,
+                ).toBe(`${text}x`);
+                rig.history("undo");
+                expect(rig.session.document).toEqual(original);
+                rig.history("redo");
+                expect(
+                  rig.view.state.doc.textContent,
+                  `${origin}/${target}/${inputType}/${JSON.stringify(text)}`,
+                ).toBe(`${text}x`);
+                rig.history("redo");
+                expect(
+                  rig.view.state.doc.textContent,
+                  `${origin}/${target}/${inputType}/${JSON.stringify(text)}`,
+                ).toBe(text);
+              } finally {
+                rig.destroy();
+              }
+            }
+          }
+        }
+      }),
+      { numRuns: 10 },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("word, line and cut deletion remain explicit refusals after missing-end recovery", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(fc.constantFrom("契約", "😀", "مرحبا", "é"), (text) => {
+        for (const inputType of [
+          "deleteWordBackward",
+          "deleteWordForward",
+          "deleteSoftLineBackward",
+          "deleteSoftLineForward",
+          "deleteByCut",
+        ]) {
+          const rig = createLateFinalRig();
+          try {
+            const original = rig.session.document;
+            rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+            rig.view.dispatch(rig.view.state.tr.insertText(text, 1, 6).setMeta("composition", 1));
+            const deletion = nativeDeletion({
+              view: rig.view,
+              inputType,
+              type: "selected",
+              from: 1,
+              to: 1 + text.length,
+            });
+            rig.view.dom.dispatchEvent(deletion);
+            jest.advanceTimersByTime(26);
+            expect(deletion.defaultPrevented).toBe(true);
+            expect(rig.view.composing).toBe(false);
+            expect(rig.boundary.isComposing).toBe(false);
+            expect(rig.view.state.doc.textContent).toBe(text);
+            expect(rig.refusals.map(({ message }) => message)).toEqual([
+              `Input ${inputType} is unavailable in this session.`,
+            ]);
+            rig.history("undo");
+            expect(rig.session.document).toEqual(original);
+            expect(rig.session.canUndo).toBe(false);
+            rig.history("redo");
+            expect(rig.view.state.doc.textContent).toBe(text);
+          } finally {
+            rig.destroy();
           }
         }
       }),

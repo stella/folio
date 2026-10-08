@@ -3,7 +3,7 @@ import { Selection, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { ReplaceStep } from "prosemirror-transform";
 
-import { handleEditorBeforeInput } from "../prosemirror/textInput";
+import { getEditorInputTargetRange, handleEditorBeforeInput } from "../prosemirror/textInput";
 import { createCanonicalComposition } from "./canonicalComposition";
 import { deletionRange, isCanonicalJoinBoundary } from "./canonicalSession";
 
@@ -333,17 +333,19 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         }
         // A new, non-composition event recovers an IME missing compositionend.
         if (composition.active) {
-          // Chromium cancels its native replacement with a plain deletion
-          // before compositionend. Consume it against the captured baseline;
-          // recovering first would delete that restored selection as a new edit.
+          // Chromium cancellation targets and selects the whole native proposal.
+          // A normal character deletion with missing compositionend must instead
+          // recover the proposal and apply the new deletion. Word, line and cut
+          // events are separate gestures, not this native character cancellation.
           if (
             view.composing &&
             (event.inputType === "deleteContentBackward" ||
               event.inputType === "deleteContentForward")
           ) {
-            const recovered = composition.cancel(view);
-            if (recovered.type === "cancelled") {
+            const range = getEditorInputTargetRange(view, event);
+            if (range && composition.matchesCancellationRange(view, range)) {
               event.preventDefault();
+              composition.cancel(view);
               closeGroup();
               return true;
             }

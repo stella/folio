@@ -20,5 +20,13 @@
       "note": "Empty provisional replacement keeps a late final within its gesture.",
       "date": "2026-10-07"
     }
+  ],
+  "ordinary deletion recovers a missing native compositionend as a new gesture": [
+    {
+      "seed": -1233656905,
+      "path": "0",
+      "note": "A non-composing character deletion with missing native compositionend commits the proposal and keeps deletion as a separate gesture.",
+      "date": "2026-10-08"
+    }
   ]
 }

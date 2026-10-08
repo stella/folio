@@ -168,82 +168,6 @@ test("canonical history checks a lazy first view and rejects composition before 
 });
 
 for (const { seed, path, kinds } of [
-  { seed: 431, path: "8", kinds: ["imeReplacement"] },
-  {
-    seed: 47,
-    path: "4",
-    kinds: [
-      "redo",
-      "imeReplacement",
-      "pasteTable",
-      "pasteHtml",
-      "undo",
-      "historyBurst",
-      "historyBurst",
-      "pastePlain",
-      "pastePlain",
-      "pastePlain",
-    ],
-  },
-  {
-    seed: 131,
-    path: "8",
-    kinds: [
-      "imeReplacement",
-      "typing",
-      "redo",
-      "pasteMultiBlock",
-      "pastePlain",
-      "backspace",
-      "pasteWordHtml",
-    ],
-  },
-  {
-    seed: 557,
-    path: "18",
-    kinds: [
-      "imeReplacement",
-      "historyBurst",
-      "imeReplacement",
-      "cut",
-      "pasteWordHtml",
-      "pasteHtml",
-      "pasteMultiBlock",
-      "typing",
-      "undo",
-      "cut",
-      "delete",
-    ],
-  },
-  { seed: 1791442067, path: "1", kinds: ["imeReplacement", "pasteListHtml"] },
-]) {
-  test(`canonical native cancellation replay ${seed} ${path}`, async ({ page }) => {
-    const actions = fc.sample(canonicalBrowserTraceArbitrary, { seed, path, numRuns: 1 }).at(0);
-    if (actions === undefined) throw new TypeError("Missing cancellation regression trace");
-    expect(actions.map(({ kind }) => kind)).toEqual(kinds);
-    expect(
-      actions.some((action) => action.kind === "imeReplacement" && action.completion === "cancel"),
-    ).toBe(true);
-    if (seed === 431)
-      expect(actions).toEqual([
-        { kind: "imeReplacement", updates: ["shall", "café 東京 é"], completion: "cancel" },
-      ]);
-    await page.goto("/?session=canonical");
-    await page.waitForSelector(".layout-page");
-    const source = [
-      ...new Uint8Array(await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }))),
-    ];
-    await initializeCanonicalBrowserHistory(page, source);
-    await checkCanonicalBrowserHistory({
-      page,
-      source,
-      actions,
-      missing: createMissingOpBurndown(),
-    });
-  });
-}
-
-for (const { seed, path, kinds } of [
   ...CANONICAL_BROWSER_HISTORY_REPLAYS,
   ...CANONICAL_BROWSER_SAVE_REPLAYS,
 ]) {
@@ -255,6 +179,10 @@ for (const { seed, path, kinds } of [
     if (actions === undefined) throw new TypeError("Missing canonical regression trace");
     expect(actions.length).toBeGreaterThan(0);
     expect(actions.map(({ kind }) => kind)).toEqual(kinds);
+    if (seed === 431 && path === "8")
+      expect(actions).toEqual([
+        { kind: "imeReplacement", updates: ["shall", "café 東京 é"], completion: "cancel" },
+      ]);
     await page.goto("/?session=canonical");
     await page.waitForSelector(".layout-page");
     await page.evaluate(() => {
@@ -270,7 +198,13 @@ for (const { seed, path, kinds } of [
         actions,
         missing: createMissingOpBurndown(),
       });
-      expect(applied).toBeGreaterThan(0);
+      if (
+        actions.every(
+          (action) => action.kind === "imeReplacement" && action.completion === "cancel",
+        )
+      )
+        expect(applied).toBe(0);
+      else expect(applied).toBeGreaterThan(0);
     }
   });
 }
