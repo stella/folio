@@ -2,7 +2,7 @@ import { expect, test, setDefaultTimeout } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
 import fc from "fast-check";
-import { AllSelection, EditorState, TextSelection } from "prosemirror-state";
+import { AllSelection, EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp } from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
@@ -296,8 +296,8 @@ for (const target of [
   { kind: "endnote" },
 ] as const) {
   for (const editText of [false, true]) {
-    for (const selectionType of ["text", "all"] as const) {
-      test(`native ${editText ? "typed " : ""}${target.kind}${target.kind === "footer" ? ` ${target.variant}` : ""} undo retires its active newly-created story with ${selectionType} selection`, () => {
+    for (const selectionType of ["text", "all", "node"] as const) {
+      test(`native ${editText ? "typed " : ""}${target.kind}${target.kind === "footer" ? ` ${target.variant}` : ""} ${selectionType === "node" ? "creation refuses without mutation" : "undo retires its active newly-created story"} with ${selectionType} selection`, () => {
         GlobalRegistrator.register();
         const bodyHost = document.createElement("div");
         const storyHost = document.createElement("div");
@@ -347,11 +347,12 @@ for (const target of [
         try {
           manager.ensureView();
           const bodyView = manager.getView() ?? panic("Expected native body view.");
-          const selection =
-            selectionType === "all"
-              ? new AllSelection(bodyView.state.doc)
-              : TextSelection.create(bodyView.state.doc, 2, 4);
-          bodyView.dispatch(bodyView.state.tr.setSelection(selection));
+          const selections = {
+            text: () => TextSelection.create(bodyView.state.doc, 2, 4),
+            all: () => new AllSelection(bodyView.state.doc),
+            node: () => NodeSelection.create(bodyView.state.doc, 0),
+          };
+          bodyView.dispatch(bodyView.state.tr.setSelection(selections[selectionType]()));
           const original = manager.api.getCanonicalDocument();
           const originalSelection = manager.getView()?.state.selection.toJSON();
           const story =
@@ -372,6 +373,17 @@ for (const target of [
                   at: { story: OP_STORIES.MAIN, blockId: "12345678", offset: 0 },
                   note: { type: target.kind, id: 9, content: [paragraph("23456789", "Story")] },
                 } as const satisfies DocumentOp);
+          if (selectionType === "node") {
+            expect(manager.api.applyCanonicalOperations([operation])).toBe(false);
+            assertExactModel(manager.api.getCanonicalDocument(), original);
+            expect(manager.getView()?.state.selection.toJSON()).toEqual(originalSelection);
+            expect(notes.listStories()).toEqual([]);
+            expect(parts.listSlots()).toEqual([]);
+            expect(refusals).toHaveLength(1);
+            expect(refusals.at(0)).toContain("selection");
+            expect(manager.api.undo()).toBe(false);
+            return;
+          }
           expect(manager.api.applyCanonicalOperations([operation])).toBe(true);
           const created = manager.api.getCanonicalDocument();
           const storyView =

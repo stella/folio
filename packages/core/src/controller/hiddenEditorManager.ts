@@ -1,3 +1,4 @@
+import { restoreCanonicalSelection } from "./canonicalSelection";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import {
   CANONICAL_GAP,
@@ -31,7 +32,7 @@ import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand"
 import { prepareCanonicalCommands, prepareCanonicalAutoformat } from "./canonicalStructure";
 import { panic, Result, TaggedError } from "better-result";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
-import { AllSelection, EditorState as PMEditorState, TextSelection } from "prosemirror-state";
+import { EditorState as PMEditorState } from "prosemirror-state";
 import type { DirectEditorProps } from "prosemirror-view";
 import { EditorView } from "prosemirror-view";
 import type * as YProseMirror from "y-prosemirror";
@@ -1296,26 +1297,16 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       commit.selection.anchor.story === OP_STORIES.MAIN &&
       commit.selection.head.story === OP_STORIES.MAIN
     ) {
-      switch (commit.selection.type) {
-        case "all":
-          bodyTransaction.setSelection(new AllSelection(bodyTransaction.doc));
-          break;
-        case "text": {
-          const anchor = commit.bodyProjection.positionAt(commit.selection.anchor);
-          const head = commit.bodyProjection.positionAt(commit.selection.head);
-          if (anchor.isErr() || head.isErr()) {
-            refuse("The canonical body history selection is unavailable.");
-            return false;
-          }
-          bodyTransaction.setSelection(
-            TextSelection.create(bodyTransaction.doc, anchor.value, head.value),
-          );
-          break;
-        }
-        default: {
-          const exhaustive: never = commit.selection.type;
-          return panic(`Unknown canonical selection type: ${exhaustive}`);
-        }
+      if (
+        !restoreCanonicalSelection({
+          transaction: bodyTransaction,
+          projection: commit.bodyProjection,
+          selection: commit.selection,
+          unavailable: { type: "refuse" },
+        })
+      ) {
+        refuse("The canonical body history selection is unavailable.");
+        return false;
       }
     }
     markPackageChange(bodyTransaction);

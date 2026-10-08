@@ -1,3 +1,4 @@
+import { restoreCanonicalSelection } from "./canonicalSelection";
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import { mapTocSelection } from "./canonicalTocSelection";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
@@ -1471,32 +1472,12 @@ class CanonicalSession {
       sameStory(selection.anchor.story, projectedStory) &&
       sameStory(selection.head.story, projectedStory)
     ) {
-      const anchor = projected.value.positionAt(selection.anchor);
-      const head = projected.value.positionAt(selection.head);
-      switch (selection.type) {
-        case "all":
-          transaction.setSelection(new AllSelection(transaction.doc));
-          break;
-        case "text":
-          if (anchor.isOk() && head.isOk()) {
-            transaction.setSelection(
-              TextSelection.create(transaction.doc, anchor.value, head.value),
-            );
-            break;
-          }
-          transaction.setSelection(
-            TextSelection.near(
-              transaction.doc.resolve(
-                Math.min(state.selection.anchor, transaction.doc.content.size),
-              ),
-            ),
-          );
-          break;
-        default: {
-          const exhaustive: never = selection.type;
-          return panic(`Unknown canonical selection type: ${exhaustive}`);
-        }
-      }
+      restoreCanonicalSelection({
+        transaction,
+        projection: projected.value,
+        selection,
+        unavailable: { type: "near", anchor: state.selection.anchor },
+      });
     }
     transaction.setMeta(CANONICAL_PROJECTION_META, {
       type: "canonical",
