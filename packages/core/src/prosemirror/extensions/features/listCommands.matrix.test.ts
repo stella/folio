@@ -465,6 +465,14 @@ const paragraphAttrsOf = (editor: Editor, text: string): Record<string, unknown>
   return node.attrs;
 };
 
+// The portable schema omits absent distances; the extension schema uses null.
+// Compare only that numeric absence consistently, preserving explicit zero.
+const numericIndentationForComparison = (attrs: Readonly<Record<string, unknown>>) => ({
+  indentLeft: attrs["indentLeft"] ?? null,
+  indentRight: attrs["indentRight"] ?? null,
+  indentFirstLine: attrs["indentFirstLine"] ?? null,
+});
+
 type Gesturer = (editor: Editor, text: string) => void;
 
 const clickNumbered: Gesturer = (editor, text) => {
@@ -757,12 +765,10 @@ describe("list changes while suggesting", () => {
             if (reopenedNode === null)
               throw new TypeError("Reopened toggle fixture lost paragraph.");
             const reopenedAttrs = expectParagraphAttrs(reopenedNode);
-            // The portable schema omits absent indentation; the extension
-            // schema uses null. Both mean no stated distance, while zero stays explicit.
-            for (const key of ["indentLeft", "indentRight", "indentFirstLine"]) {
-              expect(reopenedAttrs[key] ?? null).toEqual(before[key] ?? null);
-            }
-            expect(reopenedAttrs.hangingIndent ?? false).toEqual(before["hangingIndent"] ?? false);
+            expect(numericIndentationForComparison(reopenedAttrs)).toEqual(
+              numericIndentationForComparison(before),
+            );
+            expect(reopenedAttrs.hangingIndent).toEqual(before["hangingIndent"]);
           });
         }
       }
