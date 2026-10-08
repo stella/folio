@@ -10,7 +10,7 @@ import { assertProperty, propertyTestTimeout } from "../../../../../test/propert
 import { type Comment, type Document, type Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { allocateCommentAnchorIds, planTrackedDeletion } from "../plan";
-import { commentDocumentIssue, freshCommentId } from "../comments";
+import { commentDocumentIssue, freshCommentId, orphanRootCommentIds } from "../comments";
 import { paragraphLength } from "../offsets";
 import { contractViolation } from "../contract";
 import { documentStories, storyBody } from "../stories";
@@ -592,3 +592,34 @@ test.each([
     expect(ownsAnchor(replied, replyId)).toBe(true);
   },
 );
+
+test("a loaded root comment without source anchors is accepted, preserved and read-only", () => {
+  const document = seed("present");
+  document.package.document.comments = [comment(200, "00000020", "orphan")];
+  expect(orphanRootCommentIds(document)).toEqual(new Set([200]));
+  expect(commentDocumentIssue(document)).toBeDefined();
+  expect(commentDocumentIssue(document, "all")).toBeUndefined();
+  for (const op of [
+    { type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION, id: 200, status: "resolved" },
+    { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id: 200, scope: "thread" },
+    {
+      type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+      comment: comment(201, "00000021", "reply"),
+      anchor: { kind: "reply", parentId: 200 },
+    },
+  ] satisfies CommentOp[]) {
+    const result = applyDocumentOp(document, op);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error.message).toContain("preserved read-only");
+  }
+  const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 };
+  const created = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+    comment: comment(202, "00000022", "anchored"),
+    anchor: { kind: "range", from: at, to: { ...at, offset: 3 } },
+  }).unwrap();
+  expect(created.document.package.document.comments?.map(({ id }) => id)).toEqual([200, 202]);
+  expect(commentDocumentIssue(created.document, orphanRootCommentIds(document))).toBeUndefined();
+  const undone = applyDocumentOps(created.document, created.inverse).unwrap();
+  expect(undone.document).toStrictEqual(document);
+});

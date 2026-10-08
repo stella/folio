@@ -69,8 +69,32 @@ const anchorsIn = (document: Document) =>
     ),
   );
 
-/** Shared loaded-comment activation contract; legacy parentId revision associations stay explicit. */
-export const commentDocumentIssue = (document: Document): string | undefined => {
+/**
+ * Root comments without any owned source anchor. Loaded packages may carry
+ * them; they stay preserved as read-only entries rather than refusing the
+ * document, and no comment operation may create or target one.
+ */
+export const orphanRootCommentIds = (document: Document): Set<number> => {
+  const comments = document.package.document.comments ?? [];
+  const ids = new Set(comments.map(({ id }) => id));
+  const anchored = new Set(anchorsIn(document).map(({ node }) => anchorId(node)));
+  return new Set(
+    comments
+      .filter(
+        ({ id, parentId }) => (parentId === undefined || !ids.has(parentId)) && !anchored.has(id),
+      )
+      .map(({ id }) => id),
+  );
+};
+
+/**
+ * Shared loaded-comment activation contract; legacy parentId revision associations stay explicit.
+ * `allowedOrphans` names unanchored root comments the caller accepts ("all" for a loaded package).
+ */
+export const commentDocumentIssue = (
+  document: Document,
+  allowedOrphans: ReadonlySet<number> | "all" = new Set(),
+): string | undefined => {
   const comments = document.package.document.comments ?? [];
   const byId = new Map(comments.map((comment) => [comment.id, comment]));
   if (comments.some(({ id }) => !validId(id)) || byId.size !== comments.length)
@@ -94,7 +118,7 @@ export const commentDocumentIssue = (document: Document): string | undefined => 
     )
       return "Comment range boundaries must be ordered in one story.";
     const parent = comment.parentId === undefined ? undefined : byId.get(comment.parentId);
-    if (!parent && own.length === 0)
+    if (!parent && own.length === 0 && allowedOrphans !== "all" && !allowedOrphans.has(comment.id))
       return "A root or revision-associated comment needs an owned source anchor.";
     if (comment.parentId !== undefined && !validId(comment.parentId))
       return "A comment parent identity is invalid.";
@@ -274,7 +298,8 @@ const edited = (
   if (op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) after = reconcileRelationships(after);
   const invalid = contractViolation(after);
   if (invalid) return fail(op, invalid.message, invalid.reason);
-  const issue = commentDocumentIssue(after);
+  // An edit may keep a loaded orphan, never strand another comment.
+  const issue = commentDocumentIssue(after, orphanRootCommentIds(before));
   if (issue) return fail(op, issue);
   const anchors = changedAnchors(before, after);
   const prior = capture(before, ids, anchors);
@@ -738,9 +763,12 @@ export const applyCommentOp = (
       return fail(op, "The comment inverse payload is invalid.");
     return restore(document, op);
   }
-  const issue = commentDocumentIssue(document);
+  const issue = commentDocumentIssue(document, "all");
   if (issue) return fail(op, issue);
+  const orphans = orphanRootCommentIds(document);
   if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
+    if (op.anchor?.kind === "reply" && orphans.has(op.anchor.parentId))
+      return fail(op, "A comment without a source anchor is preserved read-only.");
     if (
       !op.comment ||
       typeof op.comment.author !== "string" ||
@@ -754,6 +782,8 @@ export const applyCommentOp = (
   const comments = document.package.document.comments ?? [];
   const comment = comments.find(({ id }) => id === op.id);
   if (!comment) return fail(op, "The comment does not exist.");
+  if (orphans.has(comment.id))
+    return fail(op, "A comment without a source anchor is preserved read-only.");
   if (op.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT) {
     if (
       !Array.isArray(op.content) ||

@@ -367,7 +367,7 @@ const unsupportedSeedReason = (
   document: Document,
   stories = documentStories(document),
 ): string | null => {
-  const commentIssue = commentDocumentIssue(document);
+  const commentIssue = commentDocumentIssue(document, "all");
   if (commentIssue !== undefined) return commentIssue;
   for (const story of stories) {
     const body = findStoryBody(document, story);

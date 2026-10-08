@@ -318,3 +318,47 @@ test("creating then deleting a canonical thread saves an owned empty comments pa
   editor.apply({ type: "delete", id });
   await assertCanonicalCommentSave(editor.session);
 });
+
+test("a loaded root comment without source anchors activates, stays read-only and survives save", async () => {
+  const source = seed();
+  source.package.document.comments = [
+    {
+      id: 7,
+      author: "Reviewer",
+      content: [
+        {
+          type: "paragraph",
+          paraId: "ABCDEF02",
+          content: [{ type: "run", content: [{ type: "text", text: "Orphan" }] }],
+        },
+      ],
+    },
+  ];
+  const loaded = await parseDocx(await createDocx(source));
+  expect(loaded.package.document.comments?.map(({ id }) => id)).toEqual([7]);
+  const editor = setup(loaded);
+  const refusedOnOrphan = (command: Parameters<typeof compileCanonicalComments>[0]["command"]) => {
+    const compiled = compileCanonicalComments({ document: editor.session.document, command });
+    if (compiled.isErr()) return true;
+    const state = EditorState.create({ doc: editor.session.projection.doc });
+    return editor.session.prepareOperations(state, compiled.value.ops).isErr();
+  };
+  expect(refusedOnOrphan({ type: "resolve", id: 7, status: "resolved" })).toBe(true);
+  expect(refusedOnOrphan({ type: "delete", id: 7 })).toBe(true);
+  expect(
+    refusedOnOrphan({
+      type: "create",
+      anchor: { kind: "reply", parentId: 7 },
+      comment: {
+        id: freshCommentId(editor.session.document).unwrap(),
+        author: "Reviewer",
+        done: false,
+        content: canonicalCommentBody(editor.session.document, "reply"),
+      },
+    }),
+  ).toBe(true);
+  // Other comments stay fully editable beside the preserved one.
+  editor.create("anchored", "range");
+  expect(editor.session.document.package.document.comments?.map(({ id }) => id)).toContain(7);
+  await assertCanonicalCommentSave(editor.session);
+});
