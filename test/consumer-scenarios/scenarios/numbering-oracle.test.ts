@@ -3,6 +3,10 @@ import { test } from "node:test";
 
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import { fromMarkdown } from "@stll/folio-core/markdown";
+import {
+  hashFolioAIBlockText,
+  normalizeFolioAIBlockText,
+} from "@stll/folio-core/ai-edits/snapshot";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, parseDocx } from "@stll/folio-core/server";
 import type { FolioAIBlockParagraphProperties } from "@stll/folio-core/ai-edits/types";
 
@@ -430,6 +434,63 @@ test("direct heading insertion beside a newly authored bullet keeps its direct n
   assert.equal(second.applied.length, 1);
 });
 
+type PendingRecord = ReturnType<
+  Awaited<ReturnType<typeof openReviewer>>["exportPendingSuggestions"]
+>[number];
+
+/** Text-only expectations for the pinned flow, independent of operation application. */
+const expectedPendingLoads = (
+  records: readonly PendingRecord[],
+  savedText: ReadonlyMap<string, string>,
+) => {
+  const textByBlock = new Map(savedText);
+  return records.map(({ suggestionId, anchor, operation }) => {
+    const text = textByBlock.get(anchor.blockId);
+    assert.ok(text !== undefined, `Saved proposal ${suggestionId} has no anchor`);
+    if (hashFolioAIBlockText(normalizeFolioAIBlockText(text)) !== anchor.originalTextHash)
+      return { status: "stale", suggestionId, reason: "textChanged" } as const;
+    if (
+      anchor.startOffset !== undefined &&
+      anchor.endOffset !== undefined &&
+      anchor.selectedTextHash !== undefined &&
+      hashFolioAIBlockText(text.slice(anchor.startOffset, anchor.endOffset)) !==
+        anchor.selectedTextHash
+    )
+      return { status: "stale", suggestionId, reason: "textChanged" } as const;
+    switch (operation.type) {
+      case "replaceRange": {
+        const { startOffset, endOffset } = operation.range;
+        assert.ok(startOffset >= 0 && endOffset >= startOffset && endOffset <= text.length);
+        textByBlock.set(
+          anchor.blockId,
+          text.slice(0, startOffset) + operation.replace + text.slice(endOffset),
+        );
+        break;
+      }
+      case "replaceInBlock": {
+        const start = text.indexOf(operation.find);
+        assert.ok(start >= 0);
+        assert.equal(start, text.lastIndexOf(operation.find), "Pinned replacement must be unique");
+        textByBlock.set(
+          anchor.blockId,
+          text.slice(0, start) + operation.replace + text.slice(start + operation.find.length),
+        );
+        break;
+      }
+      case "insertAfterBlock":
+      case "insertBeforeBlock":
+      case "formatRange":
+      case "commentOnRange":
+      case "setBlockParagraphProperties":
+        // These operations preserve the existing anchor's text.
+        break;
+      default:
+        assert.fail(`Pinned proposal text effect is not modeled: ${operation.type}`);
+    }
+    return { status: "restaged", suggestionId } as const;
+  });
+};
+
 test(
   "suggested collision numbering survives host persistence and tracked DOCX save",
   { timeout: 30_000 },
@@ -459,24 +520,28 @@ test(
             const reopened = await openReviewer(bytes);
             // Proposals are host-owned, outside DOCX until explicitly accepted.
             assert.ok(!rowsOf(reopened).some((row) => row.text === text));
-            const replay = await openReviewer(bytes);
-            // Each proposal is anchored after the preceding proposals, while
-            // earlier review resolutions can leave an older anchor stale.
-            // Derive outcomes without invoking the host-store loader.
-            const expectedLoads = records.map(({ suggestionId, anchor, operation }) => {
-              const savedAnchor = replay.snapshot().anchors[anchor.blockId];
-              assert.ok(savedAnchor, `Saved proposal ${suggestionId} has no anchor`);
-              if (savedAnchor.textHash !== anchor.originalTextHash)
-                return { status: "stale", suggestionId, reason: "textChanged" };
-              const applied = replay.applyDocumentOperations({
-                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-                mode: "suggested",
-                operations: [operation],
-              });
-              assert.equal(applied.applied.length, 1);
-              assert.deepEqual(applied.issues, []);
-              return { status: "restaged", suggestionId };
-            });
+            const savedText = new Map(
+              Object.entries(reopened.snapshot().anchors).map(([id, anchor]) => [id, anchor.text]),
+            );
+            const expectedLoads = expectedPendingLoads(records, savedText);
+            // Positive control: change the saved paragraph itself, not a load result.
+            const changedDocument = await parseDocx(toArrayBuffer(bytes), { preloadFonts: false });
+            const changedParagraph = changedDocument.package.document.content.find(
+              (block) => block.type === "paragraph" && block.paraId === proposal.anchor.paraId,
+            );
+            assert.ok(changedParagraph?.type === "paragraph");
+            changedParagraph.content = [
+              { type: "run", content: [{ type: "text", text: "Changed saved anchor." }] },
+            ];
+            const changed = await openReviewer(await packDocument(changedDocument));
+            const changedText = new Map(
+              Object.entries(changed.snapshot().anchors).map(([id, anchor]) => [id, anchor.text]),
+            );
+            const staleControl = expectedPendingLoads([proposal], changedText);
+            assert.deepEqual(staleControl, [
+              { status: "stale", suggestionId: proposal.suggestionId, reason: "textChanged" },
+            ]);
+            assert.deepEqual(changed.loadPendingSuggestions([proposal]), staleControl);
             const loaded = reopened.loadPendingSuggestions(JSON.parse(JSON.stringify(records)));
             assert.deepEqual(loaded, expectedLoads);
             assert.deepEqual(
