@@ -644,6 +644,10 @@ export const leafSpans = (items: readonly InlineNode[]): LeafSpan[] => {
   return out;
 };
 
+/** Source leaf coordinates without the ancestry needed by edit planning. */
+export const inlineLeafSpans = (items: readonly InlineNode[]) =>
+  leafSpans(items).map(({ node, before, after }) => ({ node, before, after }));
+
 /** Gaps in document order: by offset, then by the zero-width leaves before them. */
 export const compareGaps = (left: Gap, right: Gap): number =>
   left.offset === right.offset
