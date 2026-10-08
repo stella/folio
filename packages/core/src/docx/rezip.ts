@@ -1,3 +1,4 @@
+import { writeZipPart } from "@stll/docx-core/zip";
 import { getXmlSourceRange, parseStreamingXmlWithSourceRanges } from "./streamingXmlParser";
 import type { SaveDiagnosticOptions } from "./saveDiagnostics";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
@@ -408,9 +409,14 @@ async function serializeCommentsToZip(
     plan,
     sourceCommentsXml === undefined ? undefined : readRootNamespaceBindings(sourceCommentsXml),
   );
-  zip.file(sourceCommentsFile?.name ?? "word/comments.xml", commentsXml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip,
+    path: sourceCommentsFile?.name ?? "word/comments.xml",
+    data: commentsXml,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 
   // Sequential, not Promise.all: comments.xml and commentsExtended.xml both
@@ -466,9 +472,14 @@ async function syncCommentsExtendedPart(
     return;
   }
 
-  zip.file(existing?.name ?? COMMENTS_EXTENDED_PART, xml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip,
+    path: existing?.name ?? COMMENTS_EXTENDED_PART,
+    data: xml,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
   await transformPackagingFile(
     zip,
@@ -498,9 +509,14 @@ async function transformPackagingFile(
   const xml = await file.async("text");
   const next = transform(xml);
   if (next !== xml) {
-    zip.file(path, next, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
+    writeZipPart({
+      zip,
+      path,
+      data: next,
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      },
     });
   }
 }
@@ -675,9 +691,14 @@ async function registerImageExtensions(
   if (!changed) {
     return;
   }
-  zip.file("[Content_Types].xml", ctXml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip,
+    path: "[Content_Types].xml",
+    data: ctXml,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 }
 
@@ -815,9 +836,14 @@ async function processNewImages(
       const newRId = mintRelationshipId(maxId);
 
       // Add binary to ZIP
-      zip.file(mediaPath, data, {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
+      writeZipPart({
+        zip,
+        path: mediaPath,
+        data: data,
+        options: {
+          compression: "DEFLATE",
+          compressionOptions: { level: compressionLevel },
+        },
       });
 
       // Build relationship entry (target relative to the owning part).
@@ -844,9 +870,14 @@ async function processNewImages(
         "</Relationships>",
         `${relEntries.join("")}</Relationships>`,
       );
-      zip.file(relsPath, updatedRelsXml, {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
+      writeZipPart({
+        zip,
+        path: relsPath,
+        data: updatedRelsXml,
+        options: {
+          compression: "DEFLATE",
+          compressionOptions: { level: compressionLevel },
+        },
       });
     }
   }
@@ -874,9 +905,14 @@ const materializeEmbeddedMedia = async ({
     const extension = media.path.split(".").at(-1)?.toLowerCase();
     if (!extension || !/^[a-z0-9]+$/u.test(extension))
       panic("Embedded media has an invalid extension");
-    zip.file(media.path, media.data, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
+    writeZipPart({
+      zip,
+      path: media.path,
+      data: media.data,
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      },
     });
     extensions.add(extension);
   }
@@ -999,9 +1035,14 @@ export const publishCanonicalImageResources = async ({
             "unsafeTarget",
             "A canonical inline picture media path does not match its relationship.",
           );
-        zip.file(absolute, media.data, {
-          compression: "DEFLATE",
-          compressionOptions: { level: compressionLevel },
+        writeZipPart({
+          zip,
+          path: absolute,
+          data: media.data,
+          options: {
+            compression: "DEFLATE",
+            compressionOptions: { level: compressionLevel },
+          },
         });
         const extension = absolute.split(".").at(-1)?.toLowerCase();
         if (!extension || !/^[a-z0-9]+$/u.test(extension))
@@ -1037,9 +1078,14 @@ export const publishCanonicalImageResources = async ({
       changed = true;
     }
     if (changed)
-      zip.file(relsPath, xml, {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
+      writeZipPart({
+        zip,
+        path: relsPath,
+        data: xml,
+        options: {
+          compression: "DEFLATE",
+          compressionOptions: { level: compressionLevel },
+        },
       });
   }
 };
@@ -1252,9 +1298,14 @@ async function processNewHyperlinks(
     }
     if (relEntries.length > 0) {
       (root.elements ??= []).push(...relEntries);
-      zip.file(relsPath, captureVerbatimXml(root), {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
+      writeZipPart({
+        zip,
+        path: relsPath,
+        data: captureVerbatimXml(root),
+        options: {
+          compression: "DEFLATE",
+          compressionOptions: { level: compressionLevel },
+        },
       });
     }
   }
@@ -1305,9 +1356,14 @@ const normalizePackageIdsInZip = async (zip: JSZip, compressionLevel: number): P
   for (const [path, xml] of normalizedParts) {
     if (xml !== xmlParts.get(path)) {
       assertValidOoxmlNumericIds(xml, path);
-      zip.file(path, xml, {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
+      writeZipPart({
+        zip,
+        path,
+        data: xml,
+        options: {
+          compression: "DEFLATE",
+          compressionOptions: { level: compressionLevel },
+        },
       });
     }
   }
@@ -1328,9 +1384,14 @@ const normalizeAppVersionInZip = async (zip: JSZip, compressionLevel: number): P
   const xml = await extendedProperties.async("text");
   const normalized = normalizeAppVersionInExtendedProperties(xml);
   if (normalized !== xml) {
-    zip.file(EXTENDED_PROPERTIES_PATH, normalized, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
+    writeZipPart({
+      zip,
+      path: EXTENDED_PROPERTIES_PATH,
+      data: normalized,
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      },
     });
   }
 };
@@ -1528,9 +1589,14 @@ const finishRepack = async ({
     ],
     compressionLevel,
   });
-  outputZip.file("word/document.xml", documentXml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip: outputZip,
+    path: "word/document.xml",
+    data: documentXml,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 
   await rebindWatermarkRelIds({ document, zip: outputZip, compressionLevel, bodyAuthority });
@@ -1564,9 +1630,14 @@ const finishRepack = async ({
       ...(modifiedBy !== undefined ? { modifiedBy } : {}),
     });
 
-    outputZip.file("docProps/core.xml", updatedCoreProperties, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
+    writeZipPart({
+      zip: outputZip,
+      path: "docProps/core.xml",
+      data: updatedCoreProperties,
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      },
     });
   }
 
@@ -1676,7 +1747,7 @@ export async function repackDocxFromRaw(
   for (const [path, file] of Object.entries(rawContent.originalZip.files)) {
     // Skip directories
     if (file.dir) {
-      newZip.folder(path.replace(/\/$/u, ""));
+      writeZipPart({ zip: newZip, path, data: "", options: { dir: true, date: file.date } });
       continue;
     }
 
@@ -1689,9 +1760,14 @@ export async function repackDocxFromRaw(
     const content = await file.async("arraybuffer");
 
     // Add to new ZIP
-    newZip.file(path, content, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
+    writeZipPart({
+      zip: newZip,
+      path,
+      data: content,
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      },
     });
   }
 
@@ -1734,9 +1810,14 @@ export async function repackDocxFromRaw(
       doc: exportDocument,
     });
   }
-  newZip.file("word/document.xml", documentXml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip: newZip,
+    path: "word/document.xml",
+    data: documentXml,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 
   // Rebind picture-watermark image rIds so each header references the image in
@@ -1790,9 +1871,14 @@ export async function repackDocxFromRaw(
       ...(modifiedBy !== undefined ? { modifiedBy } : {}),
     });
 
-    newZip.file("docProps/core.xml", updatedCoreProps, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
+    writeZipPart({
+      zip: newZip,
+      path: "docProps/core.xml",
+      data: updatedCoreProps,
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      },
     });
   }
 
@@ -1959,15 +2045,25 @@ async function dropAttachedTemplateReference(zip: JSZip, compressionLevel: numbe
   );
 
   if (filtered.settingsXml !== undefined) {
-    zip.file(SETTINGS_PART, filtered.settingsXml, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
+    writeZipPart({
+      zip,
+      path: SETTINGS_PART,
+      data: filtered.settingsXml,
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      },
     });
   }
   if (filtered.relsXml !== undefined) {
-    zip.file(SETTINGS_RELS_PART, filtered.relsXml, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
+    writeZipPart({
+      zip,
+      path: SETTINGS_RELS_PART,
+      data: filtered.relsXml,
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      },
     });
   }
 }
@@ -1994,9 +2090,14 @@ async function ensureCommentsContentType(zip: JSZip, compressionLevel: number): 
     "</Types>",
     `<Override PartName="/${commentsPartPath}" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
   );
-  zip.file("[Content_Types].xml", ctXml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip,
+    path: "[Content_Types].xml",
+    data: ctXml,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 }
 
@@ -2025,9 +2126,14 @@ async function ensureCommentsRelationship(zip: JSZip, compressionLevel: number):
     "</Relationships>",
     `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.comments}" Target="${commentsPartPath.slice("word/".length)}"/></Relationships>`,
   );
-  zip.file(relsPath, relsXml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip,
+    path: relsPath,
+    data: relsXml,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 }
 
@@ -2054,9 +2160,14 @@ export async function updateDocumentXml(
   const zip = await JSZip.loadAsync(originalBuffer);
 
   // Update document.xml
-  zip.file("word/document.xml", newDocumentXml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip,
+    path: "word/document.xml",
+    data: newDocumentXml,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 
   // Generate new DOCX
@@ -2086,9 +2197,14 @@ export async function updateXmlFile(
 
   const zip = await JSZip.loadAsync(originalBuffer);
 
-  zip.file(path, content, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip,
+    path,
+    data: content,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 
   return zip.generateAsync({
@@ -2133,9 +2249,14 @@ export async function applyUpdatesToZip(
   const { compressionLevel = 6 } = options;
 
   for (const [path, content] of updates) {
-    zip.file(path, content, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
+    writeZipPart({
+      zip,
+      path,
+      data: content,
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      },
     });
   }
 
@@ -2191,7 +2312,7 @@ export async function addRelationship(
   const updatedRelsXml = relsXml.replace("</Relationships>", `${newRelElement}</Relationships>`);
 
   // Update the ZIP
-  zip.file(relsPath, updatedRelsXml);
+  writeZipPart({ zip, path: relsPath, data: updatedRelsXml });
 
   const buffer = await zip.generateAsync({
     type: "arraybuffer",
@@ -2223,7 +2344,7 @@ export async function addMedia(
   const mediaPath = `word/media/${filename}`;
 
   // Add media file
-  zip.file(mediaPath, data);
+  writeZipPart({ zip, path: mediaPath, data: data });
 
   // Add relationship
   const relResult = await addRelationship(await zip.generateAsync({ type: "arraybuffer" }), {
@@ -2252,7 +2373,7 @@ export async function addMedia(
       );
 
       const finalZip = await JSZip.loadAsync(relResult.buffer);
-      finalZip.file("[Content_Types].xml", updatedContentTypes);
+      writeZipPart({ zip: finalZip, path: "[Content_Types].xml", data: updatedContentTypes });
 
       return {
         buffer: await finalZip.generateAsync({
@@ -2486,18 +2607,24 @@ async function materializeNewHeaderFooterParts(
 
   const compressionOptions = { level: compressionLevel };
   if (relEntries.length > 0)
-    zip.file(
-      relsPath,
-      relsXml.replace("</Relationships>", `${relEntries.join("")}</Relationships>`),
-      { compression: "DEFLATE", compressionOptions },
-    );
+    writeZipPart({
+      zip,
+      path: relsPath,
+      data: relsXml.replace("</Relationships>", `${relEntries.join("")}</Relationships>`),
+      options: { compression: "DEFLATE", compressionOptions },
+    });
 
   const ctFile = zip.file("[Content_Types].xml");
   if (ctFile) {
     const original = await ctFile.async("text");
     const updated = registerContentTypeParts(original, contentTypeParts);
     if (updated !== original)
-      zip.file("[Content_Types].xml", updated, { compression: "DEFLATE", compressionOptions });
+      writeZipPart({
+        zip,
+        path: "[Content_Types].xml",
+        data: updated,
+        options: { compression: "DEFLATE", compressionOptions },
+      });
   }
   return doc;
 }
@@ -2790,7 +2917,12 @@ async function rebindWatermarkRelIds({
   for (const path of changedPaths) {
     const xml = relsXmlByPath.get(path);
     if (xml) {
-      zip.file(path, xml, { compression: "DEFLATE", compressionOptions });
+      writeZipPart({
+        zip,
+        path,
+        data: xml,
+        options: { compression: "DEFLATE", compressionOptions },
+      });
     }
   }
 }
@@ -2869,7 +3001,12 @@ async function serializeHeadersFootersToZip({
     sourceZip: zip,
     onDiagnostic,
   })) {
-    zip.file(filename, xml, { compression: "DEFLATE", compressionOptions });
+    writeZipPart({
+      zip,
+      path: filename,
+      data: xml,
+      options: { compression: "DEFLATE", compressionOptions },
+    });
   }
 }
 
@@ -3000,34 +3137,41 @@ async function materializeNewNotePart({
   const contentTypesXml = await contentTypesFile.async("text");
   const partName = `/${partPath}`;
   if (!contentTypesXml.toLowerCase().includes(partName.toLowerCase())) {
-    newZip.file(
-      contentTypesFile.name,
-      contentTypesXml.replace(
+    writeZipPart({
+      zip: newZip,
+      path: contentTypesFile.name,
+      data: contentTypesXml.replace(
         "</Types>",
         () => `<Override PartName="${partName}" ContentType="${contentType}"/></Types>`,
       ),
-      { compression: "DEFLATE", compressionOptions },
-    );
+      options: { compression: "DEFLATE", compressionOptions },
+    });
   }
 
   const relationshipsXml = await relationshipsFile.async("text");
   if (!relationshipsXml.includes(relationshipType)) {
     const relationshipId = `rId${findMaxRId(relationshipsXml) + 1}`;
     const target = partPath.slice("word/".length);
-    newZip.file(
-      relationshipsFile.name,
-      relationshipsXml.replace(
+    writeZipPart({
+      zip: newZip,
+      path: relationshipsFile.name,
+      data: relationshipsXml.replace(
         "</Relationships>",
         () =>
           `<Relationship Id="${relationshipId}" Type="${relationshipType}" Target="${target}"/></Relationships>`,
       ),
-      { compression: "DEFLATE", compressionOptions },
-    );
+      options: { compression: "DEFLATE", compressionOptions },
+    });
   }
 
-  newZip.file(partPath, serializedPart, {
-    compression: "DEFLATE",
-    compressionOptions,
+  writeZipPart({
+    zip: newZip,
+    path: partPath,
+    data: serializedPart,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions,
+    },
   });
 }
 
@@ -3057,9 +3201,14 @@ async function serializeHeaderFooterSettingsIntoZip(
   const patched = updateEvenAndOddHeaders(xml, enabled);
   if (patched === null)
     throw new DocxPackageFidelityError("Cannot update malformed header/footer settings");
-  zip.file(file.name, patched, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip,
+    path: file.name,
+    data: patched,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 }
 
@@ -3129,9 +3278,14 @@ async function serializeNumberingIntoZip(
   if (patched === null || patched === baseline.originalXml) {
     return;
   }
-  newZip.file(file.name, patched, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip: newZip,
+    path: file.name,
+    data: patched,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 }
 
@@ -3337,9 +3491,14 @@ async function serializeAddedStylesIntoZip(
       });
       return;
     case "patch":
-      newZip.file(plan.path, plan.xml, {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
+      writeZipPart({
+        zip: newZip,
+        path: plan.path,
+        data: plan.xml,
+        options: {
+          compression: "DEFLATE",
+          compressionOptions: { level: compressionLevel },
+        },
       });
       return;
     default: {
@@ -3464,9 +3623,14 @@ async function patchNotePartIntoZip({
   if (patchedXml === null || patchedXml === originalXml) {
     return;
   }
-  newZip.file(file.name, patchedXml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip: newZip,
+    path: file.name,
+    data: patchedXml,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 }
 
@@ -3639,9 +3803,10 @@ const createEmptyDocxZip = ({ creator, application }: DocumentPropertiesOptions)
   const zip = new JSZip();
 
   // Content Types
-  zip.file(
-    "[Content_Types].xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  writeZipPart({
+    zip,
+    path: "[Content_Types].xml",
+    data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
@@ -3650,32 +3815,35 @@ const createEmptyDocxZip = ({ creator, application }: DocumentPropertiesOptions)
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 </Types>`,
-  );
+  });
 
   // Package relationships
-  zip.file(
-    "_rels/.rels",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  writeZipPart({
+    zip,
+    path: "_rels/.rels",
+    data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
 </Relationships>`,
-  );
+  });
 
   // Document relationships
-  zip.file(
-    "word/_rels/document.xml.rels",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  writeZipPart({
+    zip,
+    path: "word/_rels/document.xml.rels",
+    data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`,
-  );
+  });
 
   // Document
-  zip.file(
-    "word/document.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  writeZipPart({
+    zip,
+    path: "word/document.xml",
+    data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
     <w:p>
@@ -3689,35 +3857,37 @@ const createEmptyDocxZip = ({ creator, application }: DocumentPropertiesOptions)
     </w:sectPr>
   </w:body>
 </w:document>`,
-  );
+  });
 
   // Minimal styles
-  zip.file(STYLES_PART_PATH, SEED_STYLES_XML);
+  writeZipPart({ zip, path: STYLES_PART_PATH, data: SEED_STYLES_XML });
 
   // Core properties
   const now = new Date().toISOString();
   const creatorElement =
     creator === undefined ? "" : `\n  <dc:creator>${escapeXmlText(creator)}</dc:creator>`;
-  zip.file(
-    "docProps/core.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  writeZipPart({
+    zip,
+    path: "docProps/core.xml",
+    data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${creatorElement}
   <dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
 </cp:coreProperties>`,
-  );
+  });
 
   // App properties
   const applicationElements =
     application === undefined
       ? ""
       : `\n  <Application>${escapeXmlText(application)}</Application>\n  <AppVersion>${CREATED_APP_VERSION}</AppVersion>`;
-  zip.file(
-    "docProps/app.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  writeZipPart({
+    zip,
+    path: "docProps/app.xml",
+    data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">${applicationElements}
 </Properties>`,
-  );
+  });
 
   return zip;
 };
@@ -3777,17 +3947,20 @@ const createDocumentSeedZip = async (
   const styleDefinitions = styleDefinitionsToSerialize(doc);
   if (styleDefinitions) {
     assertStyleNumberingReferences(doc);
-    zip.file(STYLES_PART_PATH, serializeStylesXml(styleDefinitions));
+    writeZipPart({ zip, path: STYLES_PART_PATH, data: serializeStylesXml(styleDefinitions) });
   } else {
-    zip.file(
-      STYLES_PART_PATH,
-      seedStylesXmlWith(missingNoteReferenceStyles(undefined, noteReferenceNeeds(doc.package))),
-    );
+    writeZipPart({
+      zip,
+      path: STYLES_PART_PATH,
+      data: seedStylesXmlWith(
+        missingNoteReferenceStyles(undefined, noteReferenceNeeds(doc.package)),
+      ),
+    });
   }
 
   const numbering = doc.package.numbering;
   if (numbering && (numbering.abstractNums.length > 0 || numbering.nums.length > 0)) {
-    zip.file("word/numbering.xml", serializeNumberingXml(numbering));
+    writeZipPart({ zip, path: "word/numbering.xml", data: serializeNumberingXml(numbering) });
     relationships.push(relationshipXml(nextRelationshipId, "numbering", "numbering.xml"));
     overrides.push(
       overrideXml(
@@ -3799,7 +3972,11 @@ const createDocumentSeedZip = async (
   }
 
   if (doc.package.theme) {
-    zip.file("word/theme/theme1.xml", serializeThemeXml(doc.package.theme));
+    writeZipPart({
+      zip,
+      path: "word/theme/theme1.xml",
+      data: serializeThemeXml(doc.package.theme),
+    });
     relationships.push(relationshipXml(nextRelationshipId, "theme", "theme/theme1.xml"));
     overrides.push(
       overrideXml(
@@ -3811,7 +3988,11 @@ const createDocumentSeedZip = async (
   }
 
   if (doc.package.fontTable && doc.package.fontTable.fonts.length > 0) {
-    zip.file("word/fontTable.xml", serializeFontTableXml(doc.package.fontTable));
+    writeZipPart({
+      zip,
+      path: "word/fontTable.xml",
+      data: serializeFontTableXml(doc.package.fontTable),
+    });
     relationships.push(relationshipXml(nextRelationshipId, "fontTable", "fontTable.xml"));
     overrides.push(
       overrideXml(
@@ -3823,7 +4004,11 @@ const createDocumentSeedZip = async (
   }
 
   if (doc.package.settings) {
-    zip.file("word/settings.xml", serializeSettingsXml(doc.package.settings));
+    writeZipPart({
+      zip,
+      path: "word/settings.xml",
+      data: serializeSettingsXml(doc.package.settings),
+    });
     relationships.push(relationshipXml(nextRelationshipId, "settings", "settings.xml"));
     overrides.push(
       overrideXml(
@@ -3833,20 +4018,22 @@ const createDocumentSeedZip = async (
     );
   }
 
-  zip.file(
-    "word/_rels/document.xml.rels",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`,
-  );
+  writeZipPart({
+    zip,
+    path: "word/_rels/document.xml.rels",
+    data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`,
+  });
   if (overrides.length > 0) {
     const contentTypesFile = zip.file("[Content_Types].xml");
     if (!contentTypesFile) {
       panic("Fresh DOCX seed is missing [Content_Types].xml");
     }
     const contentTypes = await contentTypesFile.async("string");
-    zip.file(
-      "[Content_Types].xml",
-      contentTypes.replace("</Types>", `${overrides.join("")}\n</Types>`),
-    );
+    writeZipPart({
+      zip,
+      path: "[Content_Types].xml",
+      data: contentTypes.replace("</Types>", `${overrides.join("")}\n</Types>`),
+    });
   }
 
   return zip;

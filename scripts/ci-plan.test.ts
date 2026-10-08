@@ -139,6 +139,7 @@ describe("CI plan", () => {
       "scripts/property-test-budgets.test.ts",
       "scripts/rust-boundaries.test.ts",
       "scripts/on-off-element-writer.test.ts",
+      "scripts/zip-part-writer.test.ts",
       "scripts/on-off-spelling.test.ts",
       "scripts/consumer-scenario-dependencies.test.ts",
       "scripts/adapter-layout-timing.test.ts",
