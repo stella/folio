@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Preserve inline breaks inside a single Markdown heading.
+Preserve inline breaks and formatting inside a single Markdown heading.

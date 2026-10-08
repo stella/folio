@@ -93,8 +93,19 @@ function marksFor(run: Run): MarkKey[] {
   return out;
 }
 
-function applyMarks(text: string, marks: MarkKey[]): string {
-  if (!text) {
+const splitEdgeWhitespace = (text: string) => {
+  const start = text.length - text.trimStart().length;
+  const end = text.trimEnd().length;
+  return {
+    leading: text.slice(0, start),
+    core: text.slice(start, Math.max(start, end)),
+    trailing: text.slice(Math.max(start, end)),
+  };
+};
+
+export function applyMarks(text: string, marks: readonly MarkKey[]): string {
+  const { leading, core, trailing } = splitEdgeWhitespace(text);
+  if (!core || marks.length === 0) {
     return text;
   }
   // Code overrides other marks: a code span is literal, so undo the inline
@@ -102,21 +113,21 @@ function applyMarks(text: string, marks: MarkKey[]): string {
   // fence must be longer than the longest backtick run in the content, and a
   // space is padded inside when the content begins or ends with a backtick.
   if (marks.includes("code")) {
-    const literal = text.replace(/\\(?<char>[\\`*[\]_<~])/gu, "$<char>");
+    const literal = core.replace(/\\(?<char>[\\`*[\]_<~])/gu, "$<char>");
     let longestRun = 0;
     for (const m of literal.matchAll(/`+/gu)) {
       longestRun = Math.max(longestRun, m[0].length);
     }
     const fence = "`".repeat(longestRun + 1);
     const pad = literal.startsWith("`") || literal.endsWith("`") ? " " : "";
-    return `${fence}${pad}${literal}${pad}${fence}`;
+    return `${leading}${fence}${pad}${literal}${pad}${fence}${trailing}`;
   }
-  let out = text;
+  let out = core;
   for (const m of marks) {
     const d = MARK_DELIMS[m];
     out = `${d}${out}${d}`;
   }
-  return out;
+  return `${leading}${out}${trailing}`;
 }
 
 /**
@@ -404,20 +415,11 @@ function pieceOf(
   if (!marks.includes("code")) {
     return { text: inner, marks: new Set(marks as EmphasisKey[]) };
   }
-  // A code span cannot hold whitespace at its ends, so it is split out.
-  // Done with trim-length math rather than a regex to avoid backtracking on
-  // long runs.
-  const leadLen = inner.length - inner.trimStart().length;
-  const trailLen = inner.length - inner.trimEnd().length;
-  const core = inner.slice(leadLen, inner.length - trailLen);
   // CommonMark normalizes newlines inside code spans; keep breaks outside them.
-  const markedCore = core
+  const text = inner
     .split(/( *\n)/gu)
     .map((part, index) => (index % 2 === 0 && part ? applyMarks(part, marks) : part))
     .join("");
-  const text = core
-    ? `${inner.slice(0, leadLen)}${markedCore}${inner.slice(inner.length - trailLen)}`
-    : inner;
   return { text, marks: new Set() };
 }
 
@@ -555,6 +557,8 @@ function renderHyperlink(
   if (!inner) {
     return "";
   }
+  const { leading, core, trailing } = splitEdgeWhitespace(inner);
+  if (!core) return inner;
   const href = link.href ?? (link.anchor ? `#${link.anchor}` : "");
   if (!href) {
     pushWarning(ctx, "hyperlink missing href and anchor; rendered as plain text");
@@ -563,9 +567,9 @@ function renderHyperlink(
   if (ctx.opts.hyperlinks === "reference") {
     const refNumber = ctx.hyperlinkRefs.length + 1;
     ctx.hyperlinkRefs.push({ href, refNumber });
-    return `[${inner}][${refNumber}]`;
+    return `${leading}[${core}][${refNumber}]${trailing}`;
   }
-  return `[${inner}](${escapeLinkUrl(href)})`;
+  return `${leading}[${core}](${escapeLinkUrl(href)})${trailing}`;
 }
 
 function renderTrackedWrapper(
