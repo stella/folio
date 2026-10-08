@@ -1393,9 +1393,9 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     canonicalOperations: {
       applyCanonicalComment: (request) => {
         ensureView();
-        const fail = (message: string) => {
+        const fail = (message: string, retry: "afterComposition" | "never" = "never") => {
           refuse(message, CANONICAL_GAP.comments);
-          return { status: "refused", gap: CANONICAL_GAP.comments, message } as const;
+          return { status: "refused", gap: CANONICAL_GAP.comments, message, retry } as const;
         };
         if (editorSession.type === "refused") return fail(editorSession.reason);
         if (editorSession.type !== "canonical") {
@@ -1405,7 +1405,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         }
         if (!view || deps.getReadOnly()) return fail("The document is not editable.");
         const session = editorSession.session;
-        if (session.isComposing) return fail("Comments cannot change during composition.");
+        if (session.isComposing)
+          return fail("Comments cannot change during composition.", "afterComposition");
         let command: CanonicalCommentCommand;
         if (request.type === "create") {
           const id = freshCommentId(session.document);

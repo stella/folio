@@ -18,6 +18,7 @@
 import { computed, ref, toRaw, watch, type ComputedRef, type Ref } from "vue";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
+import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { EditorView } from "prosemirror-view";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
@@ -136,27 +137,44 @@ export function useCommentManagement(
   );
 
   let lastControlledComments: string | undefined;
+  const controlledRetry = ref(0);
   watch(
-    [() => canonicalComments.value !== null, () => options.commentsProp()],
-    ([ready, requested]) => {
-      if (!ready) {
+    [
+      () => canonicalComments.value !== null,
+      // Serializing reads every nested field, so in-place reactive edits
+      // (a resolved flag, changed text) count as a new host value.
+      () => {
+        const requested = options.commentsProp();
+        return requested === undefined ? undefined : JSON.stringify(requested);
+      },
+      controlledRetry,
+    ],
+    ([ready, serialized], _previous, onCleanup) => {
+      if (!ready || serialized === undefined) {
         lastControlledComments = undefined;
         return;
       }
-      if (requested === undefined) {
-        lastControlledComments = undefined;
-        return;
-      }
-      const serialized = JSON.stringify(requested);
       // Journal changes and same-value host renders cannot replay a stale prop.
       if (serialized === lastControlledComments) return;
-      lastControlledComments = serialized;
       const current = canonicalComments.value ?? [];
-      if (JSON.stringify(current) === serialized) return;
-      options.editor?.applyCanonicalComment({
+      if (JSON.stringify(current) === serialized) {
+        lastControlledComments = serialized;
+        return;
+      }
+      const requested = options.commentsProp() ?? [];
+      const result = options.editor?.applyCanonicalComment({
         type: "replace",
         comments: toRaw(requested),
       });
+      // Only an applied value is handled; a value deferred by composition retries.
+      if (result?.status === "applied") {
+        lastControlledComments = serialized;
+        return;
+      }
+      if (result?.status !== "refused" || result.retry !== "afterComposition") return;
+      const view = options.editor?.getView();
+      if (!view) return;
+      onCleanup(afterCanonicalCompositionSettles(view, () => (controlledRetry.value += 1)));
     },
     { flush: "post" },
   );

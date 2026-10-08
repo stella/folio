@@ -11,7 +11,7 @@ import { panic } from "better-result";
 import { TextSelection } from "prosemirror-state";
 import { closeHistory } from "prosemirror-history";
 
-const { createApp, defineComponent, h, ref, shallowRef, nextTick } = await import("vue");
+const { createApp, defineComponent, h, ref, shallowRef, nextTick, toRaw } = await import("vue");
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
@@ -430,6 +430,118 @@ test.each(["immediate", "deferred"] as const)(
           messages: [],
           omitted: 0,
         });
+      }
+    } finally {
+      app.unmount();
+      container.remove();
+      hidden.remove();
+      pages.remove();
+    }
+  },
+);
+
+test.each(["in-place resolution", "in-place content", "during composition"] as const)(
+  "Vue controlled comments apply a %s host change",
+  async (change) => {
+    const container = document.createElement("div");
+    const hidden = document.createElement("div");
+    const pages = document.createElement("div");
+    document.body.append(container, hidden, pages);
+    const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
+    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
+    const controlledComments = ref<Comment[] | undefined>([]);
+    const stateTick = ref(0);
+    const app = createApp(
+      defineComponent({
+        setup() {
+          const editor = useDocxEditor({
+            hiddenContainer: shallowRef(hidden),
+            pagesContainer: shallowRef(pages),
+            experimentalSession: "canonical",
+          });
+          holder.editor = editor;
+          editor.editor.on("docChange", () => {
+            stateTick.value += 1;
+          });
+          useCommentManagement({
+            editor: editor.editor,
+            editorView: editor.editorView,
+            getDocument: editor.getDocument,
+            author: () => "Reviewer",
+            commentsProp: () => controlledComments.value,
+            canonicalTick: stateTick,
+            onCommentsChange: () => undefined,
+            reLayout: () => undefined,
+          });
+          return () => h("div");
+        },
+      }),
+    );
+    app.mount(container);
+    const settle = async () => {
+      await nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      await nextTick();
+    };
+    try {
+      const adapter = holder.editor ?? panic("Expected Vue editor");
+      await adapter.loadBuffer(bytes);
+      stateTick.value += 1;
+      await nextTick();
+      const created = adapter.editor.applyCanonicalComment({
+        type: "create",
+        text: "Review this",
+        author: "Reviewer",
+        anchor: { kind: "selection", from: 1, to: 8, story: "main" },
+      });
+      if (created?.status !== "applied" || created.commentId === undefined)
+        panic("Expected canonical comment creation");
+      controlledComments.value = structuredClone(created.comments);
+      await settle();
+      const committed = () =>
+        adapter.editor
+          .getCanonicalDocument()
+          ?.package.document.comments?.find(({ id }) => id === created.commentId);
+      const hostComment = () =>
+        controlledComments.value?.find(({ id }) => id === created.commentId) ??
+        panic("Expected the host comment");
+
+      switch (change) {
+        case "in-place resolution":
+          hostComment().done = true;
+          await settle();
+          expect(committed()?.done).toBe(true);
+          break;
+        case "in-place content": {
+          const paragraph = hostComment().content[0];
+          const run = paragraph?.type === "paragraph" ? paragraph.content[0] : undefined;
+          const text = run?.type === "run" ? run.content[0] : undefined;
+          if (text?.type !== "text") panic("Expected comment text");
+          text.text = "Changed in place";
+          await settle();
+          expect(committed()?.content).toEqual(hostComment().content);
+          break;
+        }
+        case "during composition": {
+          const view = adapter.editorView.value ?? panic("Expected Vue canonical view");
+          view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 9)));
+          view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+          view.dispatch(view.state.tr.insertText("x", 9, 9).setMeta("composition", 1));
+          const requested = structuredClone(toRaw(controlledComments.value) ?? []);
+          const resolved =
+            requested.find(({ id }) => id === created.commentId) ?? panic("Expected comment");
+          resolved.done = true;
+          controlledComments.value = requested;
+          await nextTick();
+          // Deferred while composing; the host does not change the value again.
+          expect(adapter.editor.getCanonicalComments()?.at(0)?.done).toBeFalsy();
+          view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+          await settle();
+          expect(committed()?.done).toBe(true);
+          break;
+        }
+        default:
+          change satisfies never;
       }
     } finally {
       app.unmount();

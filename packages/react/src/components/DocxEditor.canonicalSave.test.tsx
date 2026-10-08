@@ -320,6 +320,90 @@ test.each(["immediate", "deferred"] as const)(
   },
 );
 
+test.each(["resolution", "content"] as const)(
+  "a controlled comment %s change during composition applies once composition settles",
+  async (change) => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const editor = createRef<DocxEditorRef>();
+    const errors: Error[] = [];
+    const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
+    const messages = getFolioMessages("en");
+    const initialComments: Comment[] = [];
+    let controlledComments = initialComments;
+    const renderEditor = () => (
+      <IntlProvider locale="en" timeZone="UTC" messages={messages}>
+        <DocxEditor
+          ref={editor}
+          documentBuffer={bytes}
+          experimentalSession="canonical"
+          comments={controlledComments}
+          onError={collectCommentErrors(errors)}
+          showToolbar={false}
+        />
+      </IntlProvider>
+    );
+    try {
+      await act(async () => root.render(renderEditor()));
+      await act(async () => editor.current?.loadDocumentBuffer(bytes));
+      await act(async () => editor.current?.ensureEditorView({ focus: false }));
+      const api = editor.current?.getEditor() ?? panic("Expected canonical editor");
+      let created: CanonicalCommentResult | null = null;
+      await act(async () => {
+        created = api.applyCanonicalComment({
+          type: "create",
+          text: "Review this",
+          author: "Reviewer",
+          anchor: { kind: "selection", from: 1, to: 8, story: "main" },
+        });
+      });
+      if (created?.status !== "applied" || created.commentId === undefined)
+        panic("Expected canonical comment creation");
+      const commentId = created.commentId;
+      controlledComments = created.comments;
+      await act(async () => root.render(renderEditor()));
+
+      const view = api.getView() ?? panic("Expected mounted canonical view");
+      await act(async () => {
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 9, 9)));
+        view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+        view.dispatch(view.state.tr.insertText("x", 9, 9).setMeta("composition", 1));
+      });
+      const requested = structuredClone(controlledComments);
+      const changed = requested.find(({ id }) => id === commentId) ?? panic("Expected comment");
+      if (change === "resolution") changed.done = true;
+      else
+        changed.content = [
+          {
+            type: "paragraph",
+            paraId:
+              changed.content[0]?.type === "paragraph" ? changed.content[0].paraId : undefined,
+            formatting: {},
+            content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "Later" }] }],
+          },
+        ];
+      controlledComments = requested;
+      await act(async () => root.render(renderEditor()));
+      // The update waits for the composition; the host does not render again.
+      const pending = api.getCanonicalComments() ?? [];
+      expect(pending.find(({ id }) => id === commentId)?.done).toBeFalsy();
+      await act(async () => {
+        view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+        await new Promise<void>((resolve) => setTimeout(resolve, 80));
+      });
+      const settled = editor.current?.getDocument()?.package.document.comments ?? [];
+      const target = settled.find(({ id }) => id === commentId);
+      const expected = requested.find(({ id }) => id === commentId);
+      if (change === "resolution") expect(target?.done).toBe(true);
+      else expect(target?.content).toEqual(expected?.content);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  },
+);
+
 test("canonical header edits and new footer and note stories survive adapter save and reopen", async () => {
   const container = document.createElement("div");
   document.body.append(container);

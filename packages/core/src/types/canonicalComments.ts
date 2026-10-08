@@ -21,4 +21,10 @@ export type CanonicalCommentRequest =
 
 export type CanonicalCommentResult =
   | { status: "applied"; comments: Comment[]; commentId?: number }
-  | { status: "refused"; gap: CanonicalGap; message: string };
+  | {
+      status: "refused";
+      gap: CanonicalGap;
+      message: string;
+      /** Whether the same request can succeed once a pending composition settles. */
+      retry: "afterComposition" | "never";
+    };

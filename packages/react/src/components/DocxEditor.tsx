@@ -59,6 +59,7 @@ import {
   type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
+import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
@@ -1639,6 +1640,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [commentsRef, replaceComments],
   );
 
+  const [controlledCommentsRetry, setControlledCommentsRetry] = useState(0);
   useEffect(() => {
     if (commentsProp === undefined || canonicalComments === null) {
       lastControlledCommentsRef.current = undefined;
@@ -1647,10 +1649,30 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     const requested = JSON.stringify(legacyComments);
     // Internal journal changes cannot reapply an unchanged host value.
     if (lastControlledCommentsRef.current === requested) return;
-    lastControlledCommentsRef.current = requested;
-    if (JSON.stringify(canonicalComments) === requested) return;
-    applyCanonicalComment({ type: "replace", comments: legacyComments });
-  }, [applyCanonicalComment, commentsProp, legacyComments, canonicalCommentsSerialized]);
+    if (JSON.stringify(canonicalComments) === requested) {
+      lastControlledCommentsRef.current = requested;
+      return;
+    }
+    const result = applyCanonicalComment({ type: "replace", comments: legacyComments });
+    // Only an applied value is handled; a value deferred by composition retries.
+    if (result?.status === "applied") {
+      lastControlledCommentsRef.current = requested;
+      return;
+    }
+    if (result?.status !== "refused" || result.retry !== "afterComposition") return;
+    const view = getCanonicalApi()?.getView();
+    if (!view) return;
+    return afterCanonicalCompositionSettles(view, () =>
+      setControlledCommentsRetry((attempt) => attempt + 1),
+    );
+  }, [
+    applyCanonicalComment,
+    commentsProp,
+    controlledCommentsRetry,
+    getCanonicalApi,
+    legacyComments,
+    canonicalCommentsSerialized,
+  ]);
 
   useEffect(() => {
     if (canonicalComments === null) return;
