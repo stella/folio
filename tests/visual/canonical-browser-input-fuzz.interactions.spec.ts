@@ -73,7 +73,7 @@ for (const seed of config.seeds) {
         logFailureMarker(marker);
         const artifact = writeFailureRecord(
           "fuzz-artifacts/canonical/original",
-          failureRecord(marker, failure, { flow }),
+          canonicalOracleFailureRecord({ marker, failure, flow }),
         );
         await info.attach("canonical-original-failure", {
           path: artifact,
