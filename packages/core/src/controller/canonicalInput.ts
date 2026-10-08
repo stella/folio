@@ -333,6 +333,21 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         }
         // A new, non-composition event recovers an IME missing compositionend.
         if (composition.active) {
+          // Chromium cancels its native replacement with a plain deletion
+          // before compositionend. Consume it against the captured baseline;
+          // recovering first would delete that restored selection as a new edit.
+          if (
+            view.composing &&
+            (event.inputType === "deleteContentBackward" ||
+              event.inputType === "deleteContentForward")
+          ) {
+            const recovered = composition.cancel(view);
+            if (recovered.type === "cancelled") {
+              event.preventDefault();
+              closeGroup();
+              return true;
+            }
+          }
           // A plain input after native compositionend belongs to typing,
           // even when its text equals the preceding composition payload.
           const nativeFinal =

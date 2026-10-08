@@ -1,4 +1,12 @@
 {
+  "native composition cancellation preserves the captured selection and journal": [
+    {
+      "seed": 1893585205,
+      "path": "0:0:0:0:0",
+      "note": "Native cancellation consumes its deletion without committing provisional text or deleting the restored selection.",
+      "date": "2026-10-08"
+    }
+  ],
   "fake-clock final input before and after expiry is idempotent and undoes as one gesture": [
     {
       "seed": 1553350806,

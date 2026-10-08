@@ -117,6 +117,13 @@ const runCanonicalBrowserHistory = async ({
       expect(error.type).toBe("CanonicalSessionRefusalError");
       missing.record(action.kind);
     }
+    if (action.kind === "imeReplacement" && action.completion === "cancel") {
+      expect(after.document).toEqual(before.document);
+      expect(after.projectionJSON).toEqual(before.projectionJSON);
+      expect(after.selection).toEqual(before.selection);
+      expect(after.canUndo).toBe(before.canUndo);
+      expect(after.canRedo).toBe(before.canRedo);
+    }
     if (errors.length > 0) {
       expect(after.document).toEqual(before.document);
       expect(after.projectionJSON).toEqual(before.projectionJSON);
