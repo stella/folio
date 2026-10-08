@@ -111,6 +111,8 @@ export type HiddenProseMirrorProps = {
 };
 
 export type HiddenProseMirrorRef = HiddenEditorApi & {
+  /** Internal composition availability for deferred document notifications. */
+  isCanonicalComposing: () => boolean;
   /** Get the off-screen host element. */
   getHostElement: () => HTMLElement | null;
 };
@@ -400,6 +402,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
       () => ({
         ...managerRef.current!.api,
         getHostElement: () => hostRef.current,
+        isCanonicalComposing: () => managerRef.current?.isCanonicalComposing() ?? false,
       }),
       [],
     );
