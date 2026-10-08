@@ -15,7 +15,11 @@ import {
 import { readMoveRangeBoundaryAttrs } from "../prosemirror/moveRangeBoundaryAttrs";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
-import { readFootnoteRefMarkAttrs, readPreservedXmlAttrs } from "../prosemirror/attrs/index";
+import {
+  readCommentMarkAttrs,
+  readFootnoteRefMarkAttrs,
+  readPreservedXmlAttrs,
+} from "../prosemirror/attrs/index";
 import { PRESERVED_XML_LEVELS } from "../prosemirror/schema/nodes";
 import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "../prosemirror/trackedRunInlineAtoms";
 import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
@@ -342,6 +346,63 @@ type CanonicalInlineProjectionArgs = {
   source: Paragraph;
   paragraph: PMNode;
   pairedBookmarkIds: ReadonlySet<number>;
+  commentContext?: {
+    rangedIds: ReadonlySet<number>;
+    pointIds: ReadonlySet<number>;
+    openIds: ReadonlySet<number>;
+  };
+};
+
+type CommentTransition = { starts: Set<number>; ends: Set<number> };
+
+/** Marks carry nonempty ranges; explicit range anchors carry empty ranges. */
+const commentMarkTransitions = ({
+  source,
+  paragraph,
+  commentContext,
+}: Pick<CanonicalInlineProjectionArgs, "source" | "paragraph" | "commentContext">) => {
+  const spans = inlineLeafSpans(source.content);
+  const rangedIds = new Set(commentContext?.rangedIds);
+  const pointIds = new Set(commentContext?.pointIds);
+  const finalIds = new Set(commentContext?.openIds);
+  for (const { node } of spans) {
+    if (node.type === "commentRangeStart" || node.type === "commentRangeEnd")
+      rangedIds.add(node.id);
+    if (node.type === "commentReference") pointIds.add(node.id);
+    if (node.type === "commentRangeStart") finalIds.add(node.id);
+    if (node.type === "commentRangeEnd") finalIds.delete(node.id);
+  }
+  const transitions = new Map<number, CommentTransition>();
+  let previous = new Set(commentContext?.openIds);
+  let issue: string | undefined;
+  const record = (position: number, current: Set<number>) => {
+    const starts = new Set([...current].filter((id) => !previous.has(id)));
+    const ends = new Set([...previous].filter((id) => !current.has(id)));
+    if (starts.size > 0 || ends.size > 0) transitions.set(position, { starts, ends });
+    previous = current;
+  };
+  paragraph.forEach((node, position) => {
+    if (issue !== undefined) return;
+    const current = new Set<number>();
+    for (const mark of node.marks) {
+      if (mark.type.name !== "comment") continue;
+      const attrs = readCommentMarkAttrs(mark);
+      if (!attrs.ok) {
+        issue = "Canonical editing requires valid comment mark attributes.";
+        return;
+      }
+      const id = attrs.value.commentId;
+      if (rangedIds.has(id)) current.add(id);
+      else if (!pointIds.has(id)) {
+        issue = "Canonical editing cannot attribute a comment mark to its source.";
+        return;
+      }
+    }
+    record(position, current);
+  });
+  // A range may continue into the next paragraph, whose marks verify this context.
+  record(paragraph.content.size, finalIds);
+  return issue === undefined ? Result.ok(transitions) : refuse(issue);
 };
 
 /** Bind rendered gaps to the operation owner's source leaf ordinals, including collapsed pairs. */
@@ -349,9 +410,12 @@ export const projectCanonicalInline = ({
   source,
   paragraph,
   pairedBookmarkIds,
+  commentContext,
 }: CanonicalInlineProjectionArgs): Result<InlineProjection, InlineProjectionError> => {
   const native = canonicalNativeCells(paragraph);
   if (native.isErr()) return native;
+  const comments = commentMarkTransitions({ source, paragraph, commentContext });
+  if (comments.isErr()) return comments;
   const spans = inlineLeafSpans(source.content);
   const erasedBookmarks = new Set<ParagraphContent | RunContent>();
   const collectErasedBookmarks = (
@@ -387,6 +451,19 @@ export const projectCanonicalInline = ({
   const consumeErasedLeaves = (position: number | null) => {
     while (consumed === 0) {
       const span = spans.at(index);
+      if (
+        position !== null &&
+        span &&
+        (span.node.type === "commentRangeStart" || span.node.type === "commentRangeEnd")
+      ) {
+        const transition = comments.value.get(position);
+        const ids = span.node.type === "commentRangeStart" ? transition?.starts : transition?.ends;
+        if (ids?.delete(span.node.id)) {
+          index += 1;
+          addGap(position, span.after);
+          continue;
+        }
+      }
       if (
         !span ||
         span.before.offset !== span.after.offset ||
@@ -490,6 +567,8 @@ export const projectCanonicalInline = ({
     }
   }
   consumeErasedLeaves(paragraph.content.size);
+  if ([...comments.value.values()].some(({ starts, ends }) => starts.size > 0 || ends.size > 0))
+    return refuse("Canonical editing cannot attribute a comment mark transition to its source.");
   const missing = spans.at(index);
   if (missing || consumed !== 0)
     return refuse(
