@@ -7,13 +7,18 @@ import { resolvePainterTarget } from "./painterTargetCommit";
 import type { BrowserDragTarget } from "./browserDragTarget";
 
 type PaintedTargetEditor = {
-  getEditorRef: () => { getView: () => { state: EditorState } | null } | null;
+  getEditorRef: () => { getView: () => { state: EditorState } | null; relayout: () => void } | null;
   onLayoutChange: (listener: () => void) => () => void;
 };
 
 export const resolvePaintedTableTarget = (ref: PaintedTargetEditor) =>
   resolvePainterTarget({
     subscribe: ref.onLayoutChange,
+    commit: () => {
+      const editor = ref.getEditorRef();
+      if (!editor) throw new Error("browser editor unavailable");
+      editor.relayout();
+    },
     read: () => {
       const view = ref.getEditorRef()?.getView();
       if (!view) throw new Error("browser editor unavailable");
@@ -62,6 +67,11 @@ export const resolvePaintedDragTarget = (
 ) =>
   resolvePainterTarget({
     subscribe: ref.onLayoutChange,
+    commit: () => {
+      const editor = ref.getEditorRef();
+      if (!editor) throw new Error("browser editor unavailable");
+      editor.relayout();
+    },
     read: () => {
       const view = ref.getEditorRef()?.getView();
       if (!view) throw new Error("browser editor unavailable");
