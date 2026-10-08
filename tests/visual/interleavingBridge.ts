@@ -29,7 +29,6 @@ export const createInterleavingSuggest = (ref: InterleavingRef) => {
     const options = {
       snapshot,
       author: "Fuzz reviewer",
-      mode: "tracked-changes",
       batch: {
         version: 1,
         mode: "tracked-changes",

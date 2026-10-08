@@ -152,6 +152,7 @@ const inlineText = (tokens: readonly Token[]): string =>
           return "\n";
         case "html": {
           const html = token.text;
+          if (/^<br\s*\/?\s*>$/iu.test(html)) return "\n";
           if (/^<\/?(?:u|sup|sub)>$/iu.test(html)) return "";
           throw new Error(`Unsupported inline Markdown HTML: ${html}`);
         }

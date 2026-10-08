@@ -2,6 +2,8 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { dependencyCruiseCoverageIssue } from "./check-dependency-cruise";
+
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const DEPCRUISE_BINARY = path.join(REPOSITORY_ROOT, "node_modules/.bin/depcruise");
 const DEPCRUISE_CONFIG = path.join(REPOSITORY_ROOT, ".dependency-cruiser.cjs");
@@ -75,8 +77,9 @@ const runCruise = (): CruiseRun => {
     modules: ReadonlyArray<{
       dependencies: ReadonlyArray<{ dependencyTypes?: readonly string[] }>;
     }>;
-    summary: { violations: readonly CruiseViolation[] };
+    summary: { violations: readonly CruiseViolation[]; totalCruised: number };
   };
+  expect(dependencyCruiseCoverageIssue(report.summary.totalCruised)).toBeNull();
   const dependencyTypesSeen = new Set<string>();
   for (const module of report.modules) {
     for (const dependency of module.dependencies) {

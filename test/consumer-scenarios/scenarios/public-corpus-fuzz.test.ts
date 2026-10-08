@@ -11,7 +11,7 @@ import {
   writeFailureRecord,
 } from "../support/failure-fingerprints.ts";
 import { recordFailure, relationEnv } from "../support/fuzz-loop.ts";
-import { FlowError, runFlow } from "../support/fuzz.ts";
+import { FlowError, runFlow, runFlowFile } from "../support/fuzz.ts";
 import type { FlowFile } from "../support/flow-file.ts";
 import { openReviewer } from "../support/documents.ts";
 import { assertReadersAgree, saveAndReopen } from "../support/invariants.ts";
@@ -31,6 +31,31 @@ if (!ENABLED) {
     () => {},
   );
 } else {
+  test("pinned #1520 seed 1634001732: restyling a heading with inline breaks", async () => {
+    await runFlowFile({
+      version: 1,
+      kind: "random",
+      generation: "targeted",
+      fixture: "public-corpus:00e76a5f41aec4c76133b89312337952016bc73ff12b37c29d5aa07026c35d51",
+      mode: "direct",
+      seed: 1634001732,
+      steps: [
+        {
+          action: "suggest_changes",
+          seed: 938224865,
+          operations: [
+            {
+              type: "setBlockParagraphProperties",
+              blockId: "021CE00A",
+              properties: { styleId: "Heading2" },
+            },
+          ],
+        },
+      ],
+      origin: "shrunk from random flow seed 1634001732",
+    });
+  });
+
   const READER_CASES = [
     {
       issue: 1366,
@@ -100,6 +125,31 @@ if (!ENABLED) {
       await relations.afterStep(reviewer, saved, name);
     });
   }
+
+  test("pinned numbering provenance #1453, seed 1634001732", async () => {
+    await runFlowFile({
+      version: 1,
+      kind: "random",
+      generation: "targeted",
+      fixture: "public-corpus:003e08fc366ccc3f36f621b32f4c897f4e42b00853d0311a6b56b3e36423e1d6",
+      mode: "direct",
+      seed: 1634001732,
+      steps: [
+        {
+          action: "suggest_changes",
+          seed: 938224865,
+          operations: [
+            {
+              type: "setBlockParagraphProperties",
+              blockId: "43392F69",
+              properties: { styleId: null },
+            },
+          ],
+        },
+      ],
+      origin: "shrunk from random flow seed 1634001732",
+    });
+  });
 
   const seed = Number(process.env["FOLIO_SCENARIO_SEED"]);
   const steps = Number(process.env["FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS"] ?? "12");

@@ -146,6 +146,25 @@ describe("per-commit seeds", () => {
 });
 
 describe("failure reporting", () => {
+  test("Node runners import and read the default seed registry", () => {
+    const result = Bun.spawnSync(
+      [
+        "node",
+        "--experimental-strip-types",
+        "--input-type=module",
+        "-e",
+        `import { readSeedRegistry } from "./test/seed-registry.ts";
+process.stdout.write(JSON.stringify(Object.keys(readSeedRegistry()).length));`,
+      ],
+      { cwd: REPO_ROOT },
+    );
+    expect({
+      exitCode: result.exitCode,
+      stderr: new TextDecoder().decode(result.stderr),
+    }).toMatchObject({ exitCode: 0 });
+    expect(Number(new TextDecoder().decode(result.stdout))).toBeGreaterThan(0);
+  });
+
   test("explicit nightly fuzz files execute and report their own replay source", () => {
     const directory = mkdtempSync(path.join(REPO_ROOT, "test/.property-replay-"));
     const fixture = path.join(directory, "fixture.fuzz.ts");

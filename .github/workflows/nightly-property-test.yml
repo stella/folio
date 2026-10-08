@@ -30,7 +30,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -77,6 +77,29 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  docx-kernel-property:
+    name: DOCX kernel properties (nightly budget)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+
+      # The context-coverage generator scales its case counts by the same
+      # multiplier as the TypeScript properties; PR CI runs the factor-1
+      # budget across the generated placements.
+      - name: Projection coverage properties
+        run: cargo test -p stella-docx-kernel --test projection_coverage
+        env:
+          PROPERTY_TEST_NUM_RUNS_FACTOR: ${{ github.event.inputs.factor || '10' }}
+
   conformance-full:
     name: Editor-command conformance (full tier)
     runs-on: ubuntu-latest
@@ -89,7 +112,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -146,7 +169,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -184,7 +207,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -215,7 +238,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -267,7 +290,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 

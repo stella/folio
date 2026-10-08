@@ -8,18 +8,18 @@ const workflow = Bun.YAML.parse(
 const resultStep = workflow.jobs["ci-result"].steps[0];
 const scopes = JSON.parse(resultStep.env.JOB_SCOPES);
 
+const planOutputs = Object.keys(workflow.jobs["ci-plan"].outputs);
+// Derived from the plan so a new selection area cannot be left unset here.
+const areaOutputs = planOutputs.filter(
+  (output) => output.endsWith("_required") && output !== "code_required",
+);
+
 const needsFor = (depth, event, codeRequired = "true") => {
   const outputs = {
+    ...Object.fromEntries(areaOutputs.map((area) => [area, "true"])),
     trusted: "true",
     suite_depth: depth,
     code_required: codeRequired,
-    typecheck_budget_required: "true",
-    container_contract_required: "true",
-    docx_kernel_required: "true",
-    interactions_required: "true",
-    differential_required: "true",
-    consumer_scenarios_required: "true",
-    packaged_consumer_required: "true",
   };
   const needs = { "ci-plan": { result: "success", outputs } };
   for (const [job, scope] of Object.entries(scopes)) {
@@ -69,6 +69,7 @@ describe("CI result", () => {
         expect(gate).toContain("github.event.pull_request.draft != true");
       }
       if (scope.area) {
+        expect(planOutputs).toContain(scope.area);
         expect(gate).toContain(`needs.ci-plan.outputs.${scope.area} == '${scope.value ?? "true"}'`);
         expect(gate.includes("needs.ci-plan.outputs.suite_depth == 'full'")).toBe(
           scope.depth === "full",

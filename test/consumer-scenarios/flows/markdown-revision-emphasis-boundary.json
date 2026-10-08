@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 717860705,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3053379794,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "412DDC7F",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hu6sn9r"
+          },
+          "formatting": {
+            "bold": true
+          }
+        },
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "412DDC7F",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hu6sn9r"
+          },
+          "replace": "changed"
+        }
+      ]
+    },
+    {
+      "action": "reject one",
+      "seed": 462095917
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "formatRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "insertTable",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from collisions flow seed 717860705",
+  "title": "PINNED #1409: adjacent formatted runs across accepted revision boundaries retain reader text"
+}

@@ -56,6 +56,11 @@ export const validateTSConfigPackageAliases = (
   packages: readonly WorkspacePackage[],
   paths: Record<string, readonly string[]>,
 ): string[] => {
+  if (Object.keys(paths).length === 0) {
+    return [
+      "tsconfig.depcruise.json must declare workspace package aliases; alias validation scanned none",
+    ];
+  }
   const directoryByPackageName = new Map(packages.map(({ directory, name }) => [name, directory]));
   const issues: string[] = [];
 

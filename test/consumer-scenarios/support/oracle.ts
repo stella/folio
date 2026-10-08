@@ -20,6 +20,8 @@
 
 import assert from "node:assert/strict";
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
+import { sourceDocumentOf } from "@stll/folio-core/ai-edits/snapshot";
+import { readParagraphNumberingAttr } from "@stll/folio-core/prosemirror/numberingAttr";
 
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
@@ -77,6 +79,23 @@ const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
       throw new Error(`Unhandled numbering ${JSON.stringify(unhandled)}`);
     }
   }
+};
+
+const directNumberingOf = ({
+  numPr,
+  numPrFromStyle,
+}: {
+  numPr: Numbering;
+  numPrFromStyle: Numbering;
+}): Numbering => {
+  if (numPrFromStyle === undefined) return numPr;
+  if (
+    numPr?.kind === "reference" &&
+    numPrFromStyle.kind !== "none" &&
+    numPr.ilvl !== numPrFromStyle.ilvl
+  )
+    return { kind: "levelOnly", ilvl: numPr.ilvl ?? 0 };
+  return undefined;
 };
 
 /** Package definitions and direct provenance, never an effective reader sample. */
@@ -147,15 +166,7 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
           for (const content of block.content) visitInline(content);
           if (block.paraId === undefined) break;
           const { numPr, numPrFromStyle } = block.formatting ?? {};
-          let override: Numbering;
-          if (numPrFromStyle === undefined) override = numPr;
-          else if (
-            numPr?.kind === "reference" &&
-            numPrFromStyle.kind !== "none" &&
-            numPr.ilvl !== numPrFromStyle.ilvl
-          )
-            override = { kind: "levelOnly", ilvl: numPr.ilvl ?? 0 };
-          direct.set(block.paraId, override);
+          direct.set(block.paraId, directNumberingOf({ numPr, numPrFromStyle }));
           break;
         }
         case "table":
@@ -186,8 +197,30 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
   return { styles, direct };
 };
 
-export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFacts> =>
-  numberingFactsFromDocument(await parseDocx(toArrayBuffer(bytes), { preloadFonts: false }));
+export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFacts> => {
+  const facts = numberingFactsFromDocument(
+    await parseDocx(toArrayBuffer(bytes), { preloadFonts: false }),
+  );
+  // Unsaved positional identities come from the same owner as every reader anchor.
+  const reviewer = await openReviewer(bytes);
+  for (const { handle } of reviewer.listStories()) {
+    const snapshot = reviewer.snapshotStory(handle);
+    assert.ok(snapshot, "A discovered story must have a snapshot");
+    const doc = sourceDocumentOf(snapshot);
+    const { anchors, blocks } = snapshot;
+    for (const block of blocks) {
+      if (block.kind === "diagnostic" || facts.direct.has(block.id)) continue;
+      const anchor = anchors[block.id];
+      assert.ok(anchor, `Block ${block.id} must have an anchor`);
+      const node = doc.nodeAt(anchor.from);
+      assert.ok(node?.type.name === "paragraph", `Block ${block.id} must have a paragraph`);
+      const numPr = readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined;
+      const numPrFromStyle = readParagraphNumberingAttr(node.attrs["numPrFromStyle"]) ?? undefined;
+      facts.direct.set(block.id, directNumberingOf({ numPr, numPrFromStyle }));
+    }
+  }
+  return facts;
+};
 
 type TableLocation = {
   outerTableIndex: number;
@@ -335,6 +368,10 @@ type ModelRow = {
 
 export type Model = {
   rows: ModelRow[];
+  /** Live source paragraphs whose pending marks run into an accepted row. */
+  pendingJoins: Map<ModelRow, { sources: readonly Row[]; destination: Row }>;
+  /** Outside text carried to a new destination by an earlier table removal. */
+  preservedJoinPrefixes: Map<ModelRow, TextEdit>;
   mode: Mode;
   tables: TableModel;
   tableGaps: string[];
@@ -389,6 +426,8 @@ const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => ({
 export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Model => {
   const model: Model = {
     rows: rows.map((row) => modelRow(row.text, fieldsOf(row), row)),
+    pendingJoins: new Map(),
+    preservedJoinPrefixes: new Map(),
     mode: "direct",
     tables: modelFromRows(rows),
     tableGaps: [],
@@ -410,6 +449,7 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
   let previous: string | undefined;
   // Blocks whose mark accepting removes, waiting for the block they run into.
   let joining = false;
+  let joiningSources: Row[] = [];
   for (const row of live) {
     if (known.has(row.id)) {
       // The paragraph left by a join is the one whose mark stays: the block
@@ -421,9 +461,13 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
         // deletion can renumber the accepted projection's surviving rows;
         // keep the live table coordinates for source-anchor placement.
         survivor.pre = { ...survivor.pre, ...(row.table !== undefined && { table: row.table }) };
-        if (joining) survivor.pendingJoin = true;
+        if (joining) {
+          survivor.pendingJoin = true;
+          model.pendingJoins.set(survivor, { sources: joiningSources, destination: row });
+        }
       }
       joining = false;
+      joiningSources = [];
       previous = row.id;
       continue;
     }
@@ -433,6 +477,7 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
     if (row.text.length > 0) {
       // Runs on into the block after it once accepted.
       joining = true;
+      joiningSources.push(row);
       ghost.pendingJoin = true;
       ghost.removed = true;
       model.rows.push(ghost);
@@ -477,6 +522,56 @@ const tableOf = (row: ModelRow): TableLocation => {
 
 const tableRows = (model: Model, tableIndex: number): ModelRow[] =>
   model.rows.filter((row) => row.pre?.table?.tableIndex === tableIndex);
+
+/** Table removal owns live cells, including comments, rather than joined outside text. */
+const removeTableRows = (model: Model, removedRows: readonly ModelRow[]): void => {
+  const newlyRemoved = removedRows.filter((row) => !row.removed);
+  for (const row of removedRows) {
+    row.removed = true;
+    if (row.pre) model.deletedBlockIds.add(row.pre.id);
+  }
+  for (const survivor of newlyRemoved) {
+    let prefix = model.preservedJoinPrefixes.get(survivor)?.replace ?? "";
+    const ownership = model.pendingJoins.get(survivor);
+    // Ownership transfers once; later region removals can include this row again.
+    model.preservedJoinPrefixes.delete(survivor);
+    model.pendingJoins.delete(survivor);
+    if (ownership) {
+      const { sources, destination } = ownership;
+      const joinedText = sources.map(({ text }) => text).join("") + destination.text;
+      if (survivor.text !== joinedText) {
+        throw new Error(`Pending join ownership does not reconstruct block ${destination.id}`);
+      }
+      prefix += sources
+        .filter((source) => !model.deletedBlockIds.has(source.id))
+        .map(({ text }) => text)
+        .join("");
+    }
+    if (prefix.length === 0) continue;
+    const next = model.rows.slice(model.rows.indexOf(survivor) + 1).find((row) => !row.removed);
+    if (next) {
+      const existing = model.preservedJoinPrefixes.get(next);
+      if (existing) existing.replace += prefix;
+      else {
+        const edit = { start: 0, end: 0, replace: prefix };
+        next.edits.push(edit);
+        model.preservedJoinPrefixes.set(next, edit);
+      }
+      continue;
+    }
+    const first = ownership?.sources.find((source) => !model.deletedBlockIds.has(source.id));
+    model.rows.push(modelRow(prefix, first ? fieldsOf(first) : survivor.fields));
+  }
+};
+
+/** Removing a table region may target the destination of a pending outside join. */
+const tableRemovalTarget = (model: Model, blockId: unknown): ModelRow => {
+  const row = model.rows.find((candidate) => candidate.pre?.id === blockId);
+  if (!row) throw new Error(`Table removal anchor ${String(blockId)} is absent`);
+  if (row.removed) throw new Error(`Table removal anchor ${String(blockId)} was already removed`);
+  tableOf(row);
+  return row;
+};
 
 const hasMergedCells = (model: Model, tableIndex: number): boolean =>
   tableRows(model, tableIndex).some(
@@ -916,8 +1011,8 @@ export const EXPECTATIONS = {
     gapOf(model, anchor, position).push(...texts.map((text) => modelRow(text)));
   },
   deleteTable: (model, operation) => {
-    const { tableIndex } = tableOf(target(model, operation["blockId"]));
-    for (const row of tableRows(model, tableIndex)) row.removed = true;
+    const { tableIndex } = tableOf(tableRemovalTarget(model, operation["blockId"]));
+    removeTableRows(model, tableRows(model, tableIndex));
   },
   insertTableRow: (model, operation) => {
     // A row may go in beside one the batch deletes.
@@ -940,11 +1035,14 @@ export const EXPECTATIONS = {
     edge[position].push(...added);
   },
   deleteTableRow: (model, operation) => {
-    const anchor = tableOf(target(model, operation["blockId"]));
+    const anchor = tableOf(tableRemovalTarget(model, operation["blockId"]));
     if (hasMergedCells(model, anchor.tableIndex)) throw new Unmodelled("merged cells");
-    for (const row of tableRows(model, anchor.tableIndex)) {
-      if (row.pre?.table?.rowIndex === anchor.rowIndex) row.removed = true;
-    }
+    removeTableRows(
+      model,
+      tableRows(model, anchor.tableIndex).filter(
+        (row) => row.pre?.table?.rowIndex === anchor.rowIndex,
+      ),
+    );
   },
   insertTableColumn: (model, operation) => {
     const anchor = tableOf(target(model, operation["blockId"]));
@@ -972,11 +1070,14 @@ export const EXPECTATIONS = {
     });
   },
   deleteTableColumn: (model, operation) => {
-    const anchor = tableOf(target(model, operation["blockId"]));
+    const anchor = tableOf(tableRemovalTarget(model, operation["blockId"]));
     if (hasMergedCells(model, anchor.tableIndex)) throw new Unmodelled("merged cells");
-    for (const row of tableRows(model, anchor.tableIndex)) {
-      if (row.pre?.table?.gridColumnIndex === anchor.gridColumnIndex) row.removed = true;
-    }
+    removeTableRows(
+      model,
+      tableRows(model, anchor.tableIndex).filter(
+        (row) => row.pre?.table?.gridColumnIndex === anchor.gridColumnIndex,
+      ),
+    );
   },
   insertSignatureTable: (model, operation) => {
     const position = operation["position"] === "before" ? "before" : "after";

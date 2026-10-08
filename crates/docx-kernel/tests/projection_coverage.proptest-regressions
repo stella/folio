@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3af38749efc72e383a5e2da80c6b7e20f56d1f2cd5548b6444a520b0e181fee7 # shrinks to document = Document { blocks: [Paragraph(Paragraph { mark: Some(Insertion), mark_property_change: false, property_change: false, inlines: [] })], section_change: false }
+cc 1fc955c9d1ea9fb0ba29e3b0e1966db918739f0cc813e50ea509dc278d82ad0b # shrinks to document = Document { blocks: [Paragraph(Paragraph { mark: None, mark_property_change: false, property_change: false, inlines: [Revision(Revision { kind: Insertion, author: Generated, children: [Revision(Revision { kind: Insertion, author: Generated, children: [ComplexField(0, [])] })] })] })], section_change: false }
