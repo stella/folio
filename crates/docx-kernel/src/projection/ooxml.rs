@@ -1670,7 +1670,7 @@ impl ProjectionState {
                     .as_mut()
                     .ok_or(ProjectionError::InvalidDocumentXml)?;
                 paragraph.properties = ParagraphProperties {
-                    table_style_id: paragraph.properties.table_style_id.take(),
+                    table_style: std::mem::take(&mut paragraph.properties.table_style),
                     ..ParagraphProperties::default()
                 };
                 paragraph.resolved_text_base = None;
