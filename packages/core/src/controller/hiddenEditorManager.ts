@@ -1394,7 +1394,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       applyCanonicalComment: (request) => {
         ensureView();
         const fail = (message: string, retry: "afterComposition" | "never" = "never") => {
-          refuse(message, CANONICAL_GAP.comments);
+          // A deferral the adapters retry after composition is not a user-facing refusal.
+          if (retry === "never") refuse(message, CANONICAL_GAP.comments);
           return { status: "refused", gap: CANONICAL_GAP.comments, message, retry } as const;
         };
         if (editorSession.type === "refused") return fail(editorSession.reason);

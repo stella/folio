@@ -399,6 +399,8 @@ test.each(["resolution", "content"] as const)(
       const expected = requested.find(({ id }) => id === commentId);
       if (change === "resolution") expect(target?.done).toBe(true);
       else expect(target?.content).toEqual(expected?.content);
+      // A deferral the adapter retries is not reported as a refusal.
+      expect(errors).toEqual([]);
     } finally {
       await act(async () => root.unmount());
       container.remove();
