@@ -227,7 +227,6 @@ import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
 import { pointsToHalfPoints, twipsToPixels } from "@stll/folio-core/utils/units";
 import { useDocumentHistory } from "../hooks/useHistory";
-import { createCanonicalSectionPropertiesOperation } from "@stll/folio-core/controller/canonicalOperations";
 import {
   CanonicalSaveDiagnosticError,
   serializeCanonicalSave,
@@ -2061,22 +2060,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Handle footnote/endnote properties update
   const handleApplyFootnoteProperties = useCallback(
     (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => {
-      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-        const api = getCanonicalApi();
-        api?.ensureView();
-        const canonical = api?.getCanonicalDocument();
-        if (
-          !canonical ||
-          !api?.applyCanonicalOperations([
-            createCanonicalSectionPropertiesOperation(canonical, { footnotePr, endnotePr }),
-          ])
-        )
-          refuseCanonicalModelEdit(
-            CANONICAL_GAP.sectionProperties,
-            "Section property changes could not be applied.",
-          );
+      const api = getCanonicalApi();
+      if (!api) {
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.sectionProperties,
+          "The editor is not ready for section changes.",
+        );
         return;
       }
+      const result = api.applyCanonicalSectionProperties({ footnotePr, endnotePr });
+      if (result !== null) return;
       if (!history.state?.package) {
         return;
       }
@@ -2096,7 +2089,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         },
       });
     },
-    [history, pushDocument, experimentalSession, getCanonicalApi, refuseCanonicalModelEdit],
+    [history, pushDocument, getCanonicalApi, refuseCanonicalModelEdit],
   );
 
   // Handle table action from Toolbar - use ProseMirror commands
@@ -2998,22 +2991,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const handlePageSetupApply = useCallback(
     (props: Partial<SectionProperties>) => {
       if (readOnly) return;
-      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-        const api = getCanonicalApi();
-        api?.ensureView();
-        const canonical = api?.getCanonicalDocument();
-        if (
-          !canonical ||
-          !api?.applyCanonicalOperations([
-            createCanonicalSectionPropertiesOperation(canonical, props),
-          ])
-        )
-          refuseCanonicalModelEdit(
-            CANONICAL_GAP.sectionProperties,
-            "Section property changes could not be applied.",
-          );
+      const api = getCanonicalApi();
+      if (!api) {
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.sectionProperties,
+          "The editor is not ready for section changes.",
+        );
         return;
       }
+      const result = api.applyCanonicalSectionProperties(props);
+      if (result !== null) return;
       if (!history.state || readOnly) {
         return;
       }
@@ -3032,14 +3019,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       };
       handleDocumentChange(newDoc);
     },
-    [
-      history.state,
-      readOnly,
-      handleDocumentChange,
-      experimentalSession,
-      getCanonicalApi,
-      refuseCanonicalModelEdit,
-    ],
+    [history.state, readOnly, handleDocumentChange, getCanonicalApi, refuseCanonicalModelEdit],
   );
 
   // Ruler drag handlers. Page-margin drags go through the section-properties
