@@ -383,5 +383,9 @@ export const compileGenerateTOCIntent = (
     at: { type: "before", blockId: intent.at.blockId },
     blocks,
   });
-  return Result.ok({ ops, selection: { story, blockId: intent.at.blockId, offset: 0 } });
+  // The retained half starts with the markers that followed the split gap; stay before them.
+  return Result.ok({
+    ops,
+    selection: { story, blockId: intent.at.blockId, offset: 0, zeroWidthBefore: 0 },
+  });
 };

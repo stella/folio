@@ -18,8 +18,10 @@ export const mapTocSelection = (
   { at, after, ops }: TocSelectionMapping,
 ): TextPosition => {
   if (!sameStory(point.story, at.story)) return point;
-  point = mapTocBookmarkPosition(point, ops);
-  at = mapTocBookmarkPosition(at, ops);
+  // An address without an ordinal had no zero-width leaves at its offset before the TOC; the
+  // markers the TOC adds would otherwise absorb it, so pin it before them.
+  point = mapTocBookmarkPosition({ ...point, zeroWidthBefore: point.zeroWidthBefore ?? 0 }, ops);
+  at = mapTocBookmarkPosition({ ...at, zeroWidthBefore: at.zeroWidthBefore ?? 0 }, ops);
   if (idKey(point.blockId) !== idKey(at.blockId)) return point;
   const split = ops.find((op) => op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK);
   if (split === undefined) return point;
