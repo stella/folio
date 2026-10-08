@@ -439,6 +439,34 @@ export const projectCanonicalInline = ({
     }
   };
   collectErasedBookmarks(source.content, "paragraph");
+  // Comment ranges render as marks; only a range collapsed inside this paragraph
+  // keeps native range-anchor markers. A boundary of a range the native text
+  // carries as a comment mark is a zero-width source leaf with no native cell,
+  // like an unpaired bookmark; any other boundary stays unmappable and refuses.
+  const markedCommentIds = new Set<number>();
+  paragraph.descendants((node) => {
+    for (const mark of node.marks) {
+      if (mark.type.name !== "comment") continue;
+      const attrs = readCommentMarkAttrs(mark);
+      if (attrs.ok) markedCommentIds.add(attrs.value.commentId);
+    }
+  });
+  const commentRangeOffsets = new Map<number, { start?: number; end?: number }>();
+  for (const { node, before } of spans) {
+    if (node.type !== "commentRangeStart" && node.type !== "commentRangeEnd") continue;
+    const offsets = commentRangeOffsets.get(node.id) ?? {};
+    if (node.type === "commentRangeStart") offsets.start = before.offset;
+    else offsets.end = before.offset;
+    commentRangeOffsets.set(node.id, offsets);
+  }
+  const erasedCommentMarkers = new Set<ParagraphContent | RunContent>();
+  for (const { node } of spans) {
+    if (node.type !== "commentRangeStart" && node.type !== "commentRangeEnd") continue;
+    const offsets = commentRangeOffsets.get(node.id);
+    const collapsed =
+      offsets?.start !== undefined && offsets.end !== undefined && offsets.start === offsets.end;
+    if (!collapsed && markedCommentIds.has(node.id)) erasedCommentMarkers.add(node);
+  }
   const text = paragraphLogicalText(source);
   const boundaries: CanonicalInlineGap[][] = Array.from({ length: text.length + 1 }, () => []);
   let index = 0;
@@ -473,6 +501,7 @@ export const projectCanonicalInline = ({
         span.before.offset !== span.after.offset ||
         !(
           erasedBookmarks.has(span.node) ||
+          erasedCommentMarkers.has(span.node) ||
           (CANONICAL_SOURCE_INLINE_POLICIES[span.node.type] === "container" &&
             sourceContainerChildren(span.node).length === 0)
         )

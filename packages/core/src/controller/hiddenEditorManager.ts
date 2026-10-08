@@ -4,7 +4,12 @@ import {
   usesCanonicalSession,
   type CanonicalGap,
 } from "../types/canonicalCapabilities";
-import { OP_STORIES } from "@stll/docx-core/ops";
+import { OP_STORIES, freshCommentId, type CreateCommentOp } from "@stll/docx-core/ops";
+import {
+  canonicalCommentBody,
+  compileCanonicalComments,
+  type CanonicalCommentCommand,
+} from "./canonicalComments";
 /**
  * Hidden-editor view lifecycle manager
  *
@@ -1198,13 +1203,13 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     if (!view || isDestroying) {
       return;
     }
+    const canonicalRequested = usesCanonicalSession(
+      deps.getExperimentalSession?.(),
+      CANONICAL_GAP.authorityRouting,
+    );
     const collaboration = deps.getCollaboration();
     const collaborationModules = deps.getCollaborationModules();
-    if (
-      collaboration &&
-      !collaborationModules &&
-      !usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)
-    ) {
+    if (collaboration && !collaborationModules && !canonicalRequested) {
       return;
     }
 
@@ -1213,9 +1218,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const currentCollaborationFragment = collaboration?.yXmlFragment ?? null;
     const collaborationSourceChanged = currentCollaborationFragment !== lastCollaborationFragment;
 
-    const sessionChanged =
-      (editorSession.type !== "prosemirror") !==
-      usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting);
+    const sessionChanged = (editorSession.type !== "prosemirror") !== canonicalRequested;
     if (collaboration && !collaborationSourceChanged && !sessionChanged) {
       return;
     }
@@ -1341,6 +1344,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
   const api = createHiddenEditorApi({
     getView: () => view,
     getDocumentContext: () => (editorSession.type === "refused" ? null : deps.getDocumentContext()),
+    getCanonicalComments: () =>
+      editorSession.type === "canonical" ? editorSession.session.getCommittedComments() : null,
     isCanonicalSaveCurrent: (version) =>
       editorSession.type === "canonical" &&
       !editorSession.session.isComposing &&
@@ -1379,6 +1384,85 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           }
         : null,
     canonicalOperations: {
+      applyCanonicalComment: (request) => {
+        ensureView();
+        const fail = (message: string, retry: "afterComposition" | "never" = "never") => {
+          // A deferral the adapters retry after composition is not a user-facing refusal.
+          if (retry === "never") refuse(message, CANONICAL_GAP.comments);
+          return { status: "refused", gap: CANONICAL_GAP.comments, message, retry } as const;
+        };
+        if (editorSession.type === "refused") return fail(editorSession.reason);
+        if (editorSession.type !== "canonical") {
+          if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.comments))
+            return fail("The canonical document is not ready for comment changes.");
+          return null;
+        }
+        if (!view || deps.getReadOnly()) return fail("The document is not editable.");
+        const session = editorSession.session;
+        if (session.isComposing)
+          return fail("Comments cannot change during composition.", "afterComposition");
+        let command: CanonicalCommentCommand;
+        if (request.type === "create") {
+          const id = freshCommentId(session.document);
+          if (id.isErr()) return fail(id.error.message);
+          let anchor: CreateCommentOp["anchor"];
+          switch (request.anchor.kind) {
+            case "selection": {
+              const projection = session.projectStory(request.anchor.story);
+              if (projection.isErr()) return fail(projection.error.message);
+              const from = projection.value.addressAt(request.anchor.from);
+              const to = projection.value.addressAt(request.anchor.to);
+              if (from.isErr()) return fail(from.error.message);
+              if (to.isErr()) return fail(to.error.message);
+              anchor =
+                request.anchor.from === request.anchor.to
+                  ? { kind: "point", at: from.value }
+                  : { kind: "range", from: from.value, to: to.value };
+              break;
+            }
+            case "reply":
+              anchor = { kind: "reply", parentId: request.anchor.parentId };
+              break;
+            case "revision":
+              anchor = {
+                kind: "revision",
+                story: request.anchor.story,
+                revisionId: request.anchor.revisionId,
+              };
+              break;
+            default: {
+              const unreachable: never = request.anchor;
+              return unreachable;
+            }
+          }
+          command = {
+            type: "create",
+            anchor,
+            comment: {
+              id: id.value,
+              author: request.author,
+              done: false,
+              date: request.date ?? new Date().toISOString(),
+              content: canonicalCommentBody(session.document, request.text),
+            },
+          };
+        } else command = request;
+        const compiled = compileCanonicalComments({ document: session.document, command });
+        if (compiled.isErr()) return fail(compiled.error.message);
+        if (compiled.value.ops.length > 0) {
+          const prepared = session.prepareOperations(view.state, compiled.value.ops);
+          if (prepared.isErr()) return fail(prepared.error.message);
+          if (!publishCommit(prepared.value))
+            return fail("The comment projection could not publish.");
+        }
+        return {
+          status: "applied",
+          comments: session.getCommittedComments(),
+          ...(compiled.value.commentId === undefined
+            ? {}
+            : { commentId: compiled.value.commentId }),
+        };
+      },
       applyCanonicalDocumentOperations: (options) => {
         ensureView();
         return getPublicOperations()?.apply(options) ?? null;

@@ -8,6 +8,10 @@ import {
   paragraphChangeTrackerKey,
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { schema } from "../prosemirror/schema";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
+import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import {
   normalizeForOps,
@@ -1806,4 +1810,96 @@ describe("canonical tracked input", () => {
       expect(session.document).toStrictEqual(baseline);
     },
   );
+});
+
+test.each([
+  ["deletion", ["abcd"]],
+  ["insertion", ["a", "b", "cd"]],
+] as const)(
+  "accepting a tracked paragraph %s changes the save structure and a selective save keeps the result",
+  async (change, expected) => {
+    const document = seed("ab");
+    const second = document.package.document.content.at(1);
+    if (second?.type !== "paragraph") panic("The fixture lost its second paragraph.");
+    second.content = [{ type: "run", content: [{ type: "text", text: "cd" }] }];
+    const suggesting = createCanonicalSession(document).unwrap();
+    suggesting.setMode({ type: "suggesting", author: "Author" });
+    let state = stateFor(suggesting);
+    if (change === "deletion") {
+      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 5)));
+      accept(state, suggesting.prepareJoin(state, "backward").unwrap());
+    } else {
+      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
+      accept(state, suggesting.prepareSplit(state).unwrap());
+    }
+    const loaded = await parseDocx(await createDocx(suggesting.document), { preloadFonts: false });
+    const session = createCanonicalSession(loaded).unwrap();
+    const revisionIds = session.document.package.document.content.flatMap((block) => {
+      if (block.type !== "paragraph") return [];
+      return [
+        ...(block.pPrMark === undefined ? [] : [block.pPrMark.info.id]),
+        ...block.content.flatMap((item) =>
+          item.type === "deletion" || item.type === "insertion" ? [item.info.id] : [],
+        ),
+      ];
+    });
+    expect(revisionIds.length).toBeGreaterThan(0);
+    const resolvedState = stateFor(session);
+    accept(
+      resolvedState,
+      session.prepareResolve(resolvedState, { revisionIds, resolution: "accept" }).unwrap(),
+    );
+    const paragraphs = (value: Document) =>
+      editorParagraphGroups(value, OP_STORIES.MAIN).map(({ text }) => text);
+    expect(paragraphs(session.document)).toEqual(expected);
+    const snapshot = session.captureSaveSnapshot();
+    expect(snapshot.structure).toBe("changed");
+    for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
+      const saved = await serializeCanonicalSave({
+        snapshot,
+        featureFlags: { selectiveSave: true },
+        options: { mode },
+      });
+      const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+      expect(paragraphs(reopened)).toEqual(expected);
+    }
+  },
+);
+
+test("a header text edit changes the save structure while comment edits keep the splice path", () => {
+  const document = seed("ab");
+  document.package.headers = new Map([
+    [
+      "rIdHeader1",
+      {
+        type: "header",
+        hdrFtrType: "default",
+        content: [
+          {
+            type: "paragraph",
+            paraId: "4ABC0001",
+            content: [{ type: "run", content: [{ type: "text", text: "Header" }] }],
+          },
+        ],
+      },
+    ],
+  ]);
+  document.package.document.finalSectionProperties = {
+    ...document.package.document.finalSectionProperties,
+    headerReferences: [{ type: "default", rId: "rIdHeader1" }],
+  };
+  const session = createCanonicalSession(document).unwrap();
+  expect(session.captureSaveSnapshot().structure).toBe("stable");
+  const state = stateFor(session);
+  const edit = session
+    .prepareOperations(state, [
+      {
+        type: documentOps.DOCUMENT_OP_TYPES.INSERT_TEXT,
+        at: { story: { kind: "header", rId: "rIdHeader1" }, blockId: "4ABC0001", offset: 0 },
+        text: "New ",
+      },
+    ])
+    .unwrap();
+  edit.publish().unwrap();
+  expect(session.captureSaveSnapshot().structure).toBe("changed");
 });

@@ -235,8 +235,8 @@ describe("serializeCommentsExtended", () => {
     expect(xml).not.toBeNull();
     expect([...(xml ?? "").matchAll(/<w15:commentEx w15:paraId="([^"]+)"/gu)]).toHaveLength(3);
     expect(xml).toContain(
-      '<w15:commentEx w15:paraId="0000AAA2" w15:done="0"/>' +
-        '<w15:commentEx w15:paraId="0000BBB1" w15:paraIdParent="0000AAA2" w15:done="0"/>' +
+      '<w15:commentEx w15:paraId="0000AAA2"/>' +
+        '<w15:commentEx w15:paraId="0000BBB1" w15:paraIdParent="0000AAA2"/>' +
         '<w15:commentEx w15:paraId="0000CCC1" w15:done="1"/>',
     );
   });

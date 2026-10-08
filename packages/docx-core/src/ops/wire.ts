@@ -27,7 +27,10 @@ export const captureDocumentOp = (op: DocumentOp): DocumentOp => {
     }
   };
   visit(op, []);
-  return fields.length === 0 ? op : { ...cloneModel(op), undefinedFields: cloneModel(fields) };
+  if (fields.length === 0) return op;
+  const captured = cloneModel(op);
+  captured.undefinedFields = cloneModel(fields);
+  return captured;
 };
 
 /** Restore validated presence metadata without mutating the supplied operation. */
