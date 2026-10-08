@@ -134,6 +134,7 @@ const parsedCharacters = (markdown: string) => {
 test(
   "mark delimiters preserve parsed text and formatting with generated edge whitespace",
   async () => {
+    const href = "https://example.com/";
     const marks = {
       bold: { mark: "bold", formatting: { bold: true } },
       italic: { mark: "italic", formatting: { italic: true } },
@@ -189,7 +190,7 @@ test(
             if (linked)
               content.push({
                 type: "hyperlink",
-                href: "https://example.com",
+                href,
                 children: [formatted],
               });
             else content.push(formatted);
@@ -206,7 +207,7 @@ test(
               ...Array.from("FirstSecond", (char) => ({
                 char,
                 ...expectedMarks,
-                ...(linked ? { href: "https://example.com" } : {}),
+                ...(linked ? { href } : {}),
               })),
               ...Array.from("Suffix", (char) => ({ char, ...plainMarks })),
             ]);
