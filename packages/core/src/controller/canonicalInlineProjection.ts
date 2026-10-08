@@ -15,7 +15,11 @@ import {
 import { readMoveRangeBoundaryAttrs } from "../prosemirror/moveRangeBoundaryAttrs";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
-import { readFootnoteRefMarkAttrs, readPreservedXmlAttrs } from "../prosemirror/attrs/index";
+import {
+  readCommentMarkAttrs,
+  readFootnoteRefMarkAttrs,
+  readPreservedXmlAttrs,
+} from "../prosemirror/attrs/index";
 import { PRESERVED_XML_LEVELS } from "../prosemirror/schema/nodes";
 import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "../prosemirror/trackedRunInlineAtoms";
 import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
@@ -372,8 +376,17 @@ export const projectCanonicalInline = ({
   };
   collectErasedBookmarks(source.content, "paragraph");
   // Comment ranges render as marks; only a range collapsed inside this paragraph
-  // keeps native range-anchor markers. Every other comment boundary is a
-  // zero-width source leaf with no native cell, like an unpaired bookmark.
+  // keeps native range-anchor markers. A boundary of a range the native text
+  // carries as a comment mark is a zero-width source leaf with no native cell,
+  // like an unpaired bookmark; any other boundary stays unmappable and refuses.
+  const markedCommentIds = new Set<number>();
+  paragraph.descendants((node) => {
+    for (const mark of node.marks) {
+      if (mark.type.name !== "comment") continue;
+      const attrs = readCommentMarkAttrs(mark);
+      if (attrs.ok) markedCommentIds.add(attrs.value.commentId);
+    }
+  });
   const commentRangeOffsets = new Map<number, { start?: number; end?: number }>();
   for (const { node, before } of spans) {
     if (node.type !== "commentRangeStart" && node.type !== "commentRangeEnd") continue;
@@ -388,7 +401,7 @@ export const projectCanonicalInline = ({
     const offsets = commentRangeOffsets.get(node.id);
     const collapsed =
       offsets?.start !== undefined && offsets.end !== undefined && offsets.start === offsets.end;
-    if (!collapsed) erasedCommentMarkers.add(node);
+    if (!collapsed && markedCommentIds.has(node.id)) erasedCommentMarkers.add(node);
   }
   const text = paragraphLogicalText(source);
   const boundaries: CanonicalInlineGap[][] = Array.from({ length: text.length + 1 }, () => []);

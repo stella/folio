@@ -240,6 +240,8 @@ test.each(["immediate", "deferred"] as const)(
       if (created?.status !== "applied" || created.commentId === undefined) {
         panic("Expected canonical comment creation");
       }
+      // Host notifications follow the coalesced document-change notification.
+      await act(async () => await new Promise((resolve) => window.setTimeout(resolve, 300)));
       expect(editor.current?.getDocument()?.package.document.comments).toEqual(created.comments);
       expect(changes.at(-1)).toEqual(created.comments);
       // New array identity without a host value change must not undo creation.

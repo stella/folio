@@ -384,7 +384,7 @@ test.each(["immediate", "deferred"] as const)(
       expect(changes.at(-1)).toEqual(undone);
       if (feedback === "deferred") {
         expect(controlledComments.value?.at(0)?.done).toBe(true);
-        controlledComments.value = structuredClone(controlledComments.value);
+        controlledComments.value = structuredClone(toRaw(controlledComments.value));
         await nextTick();
         expect(management.comments.value).toEqual(undone);
         expect(adapter.editor.redo()).toBe(true);
