@@ -196,12 +196,12 @@ test(
       {
         styleId: "OracleList",
         type: "paragraph",
-        pPr: { numPr: { kind: "reference", numId: 900, ilvl: 0 } },
+        pPr: { numPr: paragraphNumberingFromSlots({ numId: 900, ilvl: 0 }) },
       },
       {
         styleId: "OracleOtherList",
         type: "paragraph",
-        pPr: { numPr: { kind: "reference", numId: 901, ilvl: 0 } },
+        pPr: { numPr: paragraphNumberingFromSlots({ numId: 901, ilvl: 0 }) },
       },
     );
     const bytes = await packDocument(document);
@@ -213,7 +213,7 @@ test(
     const cases = [
       {
         properties: { numbering: { numId: 901, level: 0 } },
-        direct: { kind: "reference", numId: 901, ilvl: 0 },
+        direct: paragraphNumberingFromSlots({ numId: 901, ilvl: 0 }),
       },
       {
         properties: { numbering: { numId: 900, level: 1 } },
@@ -488,11 +488,10 @@ test("a pending inserted anchor has complete live numbering provenance", async (
   const pre = await capture(reviewer, "suggested");
   assert.equal(pre.numberingSource.type, "live");
   if (pre.numberingSource.type !== "live") throw new Error("Expected live provenance");
-  assert.deepEqual(pre.numberingSource.facts.direct.get(pending.id), {
-    kind: "reference",
-    numId: 7,
-    ilvl: 0,
-  });
+  assert.deepEqual(
+    pre.numberingSource.facts.direct.get(pending.id),
+    paragraphNumberingFromSlots({ numId: 7, ilvl: 0 }),
+  );
   const inserted = await applyChecked(
     reviewer,
     [
