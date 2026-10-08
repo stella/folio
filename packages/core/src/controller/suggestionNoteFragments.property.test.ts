@@ -1,6 +1,6 @@
 import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
-import { TextSelection } from "prosemirror-state";
+import { EditorState, TextSelection } from "prosemirror-state";
 import { panic } from "better-result";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
@@ -127,9 +127,9 @@ const deleteFragments = ({ base, ownerships, direction }: FragmentCase) => {
 
   const targetsReference = ownerships.some((value) => value === "live" || value === "ownInsertion");
   const remaining = ownerships.flatMap((ownership, index) =>
-    targetsReference && ownership === "ownInsertion"
+    index === adjacent && ownership === "ownInsertion"
       ? []
-      : [{ ownership, text: LABEL, revisionId: 200 + index }],
+      : [{ ownership, text: LABEL, revisionId: 200 + index, targeted: index === adjacent }],
   );
   const fragments: { text: string; deletion: boolean; author: unknown; revisionId: unknown }[] = [];
   view.state.doc.descendants((node) => {
@@ -152,25 +152,39 @@ const deleteFragments = ({ base, ownerships, direction }: FragmentCase) => {
   for (const [index, fragment] of fragments.entries()) {
     const expected = remainingCharacters.at(index);
     if (!expected) panic("Deletion added a note fragment.");
-    expect(fragment.deletion).toBe(true);
-    expect(fragment.author).toBe(expected.ownership === "otherDeletion" ? "Other" : HARNESS_AUTHOR);
+    const deleted =
+      expected.targeted ||
+      expected.ownership === "otherDeletion" ||
+      expected.ownership === "ownDeletion";
+    expect(fragment.deletion).toBe(deleted);
+    const author = expected.ownership === "otherDeletion" ? "Other" : HARNESS_AUTHOR;
+    expect(fragment.author).toBe(deleted ? author : undefined);
     if (expected.ownership === "otherDeletion" || expected.ownership === "ownDeletion")
       expect(fragment.revisionId).toBe(expected.revisionId);
   }
   let expectedCaret = direction === "forward" ? REFERENCE_TO + 1 : REFERENCE_FROM - 1;
-  let acceptedText = direction === "forward" ? "L" : "R";
-  if (targetsReference) {
+  if (adjacent !== undefined) {
+    const targetedFrom = REFERENCE_FROM + adjacent * LABEL.length;
     expectedCaret =
-      direction === "forward" ? REFERENCE_FROM + remaining.length * LABEL.length : REFERENCE_FROM;
-    acceptedText = "LR";
+      direction === "backward" || ownerships[adjacent] === "ownInsertion"
+        ? targetedFrom
+        : targetedFrom + LABEL.length;
   }
   expect(view.state.selection.from).toBe(expectedCaret);
   expect(view.state.selection.empty).toBe(true);
   const accepted = resolveAllChanges(view.state, "accept");
-  expect(accepted.doc.textContent).toBe(acceptedText);
-  expect(noteReferenceStates(accepted.doc).size).toBe(0);
+  const acceptedLabels = remaining.filter(
+    ({ ownership, targeted }) =>
+      !targeted && ownership !== "otherDeletion" && ownership !== "ownDeletion",
+  );
+  const leftText = targetsReference || direction === "forward" ? "L" : "";
+  const rightText = targetsReference || direction === "backward" ? "R" : "";
+  expect(accepted.doc.textContent).toBe(
+    `${leftText}${acceptedLabels.map(({ text }) => text).join("")}${rightText}`,
+  );
   const rejected = resolveAllChanges(view.state, "reject");
-  expect(rejected.doc.textContent).toBe(`L${remaining.map(({ text }) => text).join("")}R`);
+  const rejectedLabels = remaining.filter(({ ownership }) => ownership !== "ownInsertion");
+  expect(rejected.doc.textContent).toBe(`L${rejectedLabels.map(({ text }) => text).join("")}R`);
   return { accepted, rejected, remaining };
 };
 
@@ -221,12 +235,11 @@ test("resolved split-note deletion preserves text, references, and formatting th
       ),
       async (kind, direction, ownerships) => {
         const base = bases[kind];
-        const { accepted, rejected, remaining } = deleteFragments({ base, direction, ownerships });
+        const { accepted, rejected } = deleteFragments({ base, direction, ownerships });
         for (const resolved of [accepted, rejected]) {
           const saved = await saveHarnessState(resolved, base);
           const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "editing");
-          const expectedKeys =
-            resolved === accepted || remaining.length === 0 ? [] : [`${kind}:${REFERENCE_ID}`];
+          const expectedKeys = [...noteReferenceStates(resolved.doc).keys()];
           expect([...noteReferenceStates(reopened.doc).keys()]).toEqual(expectedKeys);
           expect(reopened.doc.textContent).toBe(resolved.doc.textContent);
           expect(noteTokens(reopened)).toEqual(noteTokens(resolved));
@@ -242,9 +255,13 @@ test("canonical partial-label refusal preserves the document for both note kinds
     const base = await sourceDocument(kind);
     for (const direction of ["forward", "backward"] as const) {
       let state = createHarnessState(base, "suggesting");
-      state = state.apply(
-        state.tr.addMark(REFERENCE_FROM, REFERENCE_FROM + 1, state.schema.mark("italic")),
+      const malformed = state.tr.addMark(
+        REFERENCE_FROM,
+        REFERENCE_FROM + 1,
+        state.schema.mark("italic"),
       );
+      // Local edits cannot produce this state; exercise canonical refusal at its raw boundary.
+      state = EditorState.create({ doc: malformed.doc, plugins: state.plugins });
       state = state.apply(
         state.tr.setSelection(
           TextSelection.create(state.doc, direction === "forward" ? REFERENCE_FROM : REFERENCE_TO),
