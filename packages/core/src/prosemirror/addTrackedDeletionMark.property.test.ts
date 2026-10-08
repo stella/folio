@@ -142,8 +142,9 @@ test(
             const state = EditorState.create({
               doc: schema.node("doc", null, schema.node("paragraph", null, nodes)),
             });
-            const tr = addTrackedDeletionMark({
-              tr: state.tr,
+            const tr = state.tr;
+            addTrackedDeletionMark({
+              tr,
               from: 1,
               to: state.doc.content.size - 1,
               mark: schema.mark("deletion", { revisionId: 6, author: "Reviewer" }),
@@ -236,15 +237,15 @@ test(
           );
           for (const insertionPolicy of ["preserve-pending", "retract-own"] as const) {
             const state = EditorState.create({ doc });
-            const live = state.apply(
-              addTrackedDeletionMark({
-                tr: state.tr,
-                from: 1,
-                to: doc.content.size - 1,
-                mark: schema.mark("deletion", { revisionId: 38, author: "Reviewer" }),
-                insertionPolicy,
-              }),
-            );
+            const tr = state.tr;
+            addTrackedDeletionMark({
+              tr,
+              from: 1,
+              to: doc.content.size - 1,
+              mark: schema.mark("deletion", { revisionId: 38, author: "Reviewer" }),
+              insertionPolicy,
+            });
+            const live = state.apply(tr);
             const protectedNodes = [];
             live.doc.descendants((node) => {
               const deletion = node.marks.find(({ type }) => type.name === "deletion");

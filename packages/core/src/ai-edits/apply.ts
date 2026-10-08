@@ -5018,7 +5018,7 @@ const applyFolioAIEditOperationsInternal = ({
             ...(isPairedMove(item.operation.moveId) && { moveKind: "moveFrom" }),
             ...trackedRevisionExtras,
           });
-          tr = addTrackedDeletionMark({
+          addTrackedDeletionMark({
             insertionPolicy: "preserve-pending",
             tr,
             from: item.from,
@@ -5031,7 +5031,7 @@ const applyFolioAIEditOperationsInternal = ({
           // the deletion kept a paragraph standing around an orphan image.
           const atomRanges = undeletedContentAtomRanges(tr, item.blockFrom);
           for (const { from, to } of atomRanges) {
-            tr = addTrackedDeletionMark({
+            addTrackedDeletionMark({
               insertionPolicy: "preserve-pending",
               tr,
               from,
@@ -5419,7 +5419,7 @@ const applyFolioAIEditOperationsInternal = ({
           appliedRevisionIds = [revisionIdMark];
           if (item.to > item.from && deletionType) {
             const revisionIdSeparator = operationRevisionSeed++;
-            tr = addTrackedDeletionMark({
+            addTrackedDeletionMark({
               insertionPolicy: "preserve-pending",
               tr,
               from: item.from,
@@ -6199,7 +6199,7 @@ const applyTextReplacement = ({
   }
 
   if (item.to > item.from && deletionType) {
-    nextTr = addTrackedDeletionMark({
+    addTrackedDeletionMark({
       insertionPolicy: "preserve-pending",
       tr: nextTr,
       from: item.from,
@@ -6974,7 +6974,7 @@ const applyMinimalTrackedReplacement = ({
         surveyReplacedAnnotations(doc, first.from, last.to).carried,
       );
       for (const piece of change.pieces) {
-        nextTr = addTrackedDeletionMark({
+        addTrackedDeletionMark({
           insertionPolicy: "preserve-pending",
           tr: nextTr,
           from: piece.from,

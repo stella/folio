@@ -6,8 +6,8 @@ import { expectTrackedChangeMarkAttrs } from "./attrs";
 import { trackedRevisionLayerOf } from "./trackedRevisionPath";
 import { canCarryTrackedRunMark } from "./trackedRunInlineAtoms";
 
-type AddTrackedDeletionMarkOptions<T extends Transform> = {
-  tr: T;
+type AddTrackedDeletionMarkOptions = {
+  tr: Transform;
   from: number;
   to: number;
   mark: Mark;
@@ -19,13 +19,13 @@ type AddTrackedDeletionMarkOptions<T extends Transform> = {
  * An own insertion containing deleted descendants is marked rather than retracted:
  * removing its carrier would also remove another pending revision.
  */
-export const addTrackedDeletionMark = <T extends Transform>({
+export const addTrackedDeletionMark = ({
   tr,
   from,
   to,
   mark,
   insertionPolicy,
-}: AddTrackedDeletionMarkOptions<T>): T => {
+}: AddTrackedDeletionMarkOptions): void => {
   if (mark.type.name !== "deletion") panic("A tracked deletion requires a deletion mark");
   // AddMarkStep also marks descendants of an inline atom (a structured field).
   // Restore their existing deletion marks after marking the enclosing carrier.
@@ -91,5 +91,4 @@ export const addTrackedDeletionMark = <T extends Transform>({
     const end = mapping.map(preserved.to);
     if (start < end) tr.addMark(start, end, preserved.mark);
   }
-  return tr;
 };

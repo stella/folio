@@ -5,5 +5,13 @@
       "note": "Structured-field child marks retain ownership under repeated range deletion.",
       "date": "2026-10-08"
     }
+  ],
+  "nested insertion carriers preserve protected descendant revisions under both policies": [
+    {
+      "seed": -92470647,
+      "path": "0:0",
+      "note": "Apply the retained transaction after the deletion owner mutates it; protected text descendants retain their revision.",
+      "date": "2026-10-08"
+    }
   ]
 }

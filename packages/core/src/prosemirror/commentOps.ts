@@ -150,7 +150,7 @@ export function applyProposedChange(
 
   let tr = view.state.tr;
   if (!isInsertion)
-    tr = addTrackedDeletionMark({
+    addTrackedDeletionMark({
       insertionPolicy: "preserve-pending",
       tr,
       from: textFrom,
