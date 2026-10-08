@@ -124,6 +124,23 @@ const checkGeometry = (ranges: readonly Interval[], units: readonly Unit[]) => {
   const document = documentFor(source);
   const unchanged = structuredClone(document);
   const paragraph = toProseDoc(document).child(0);
+  // Every visible carrier keeps all enclosing ranges, including leaf atoms whose
+  // own child-content mark policy is empty.
+  paragraph.forEach((node, nativePosition) => {
+    if (node.type.name === "rangeAnchor") return;
+    const offset = expected.findIndex((gaps) => gaps.at(-1)?.position === nativePosition);
+    expect(offset).toBeGreaterThanOrEqual(0);
+    expect(
+      node.marks
+        .filter((mark) => mark.type.name === "comment")
+        .map((mark) => mark.attrs.commentId)
+        .toSorted((left, right) => left - right),
+    ).toEqual(
+      ranges.flatMap((range, index) =>
+        range.from <= offset && offset < range.to ? [index + 1] : [],
+      ),
+    );
+  });
   const mapped = projectCanonicalInline({
     source,
     paragraph,

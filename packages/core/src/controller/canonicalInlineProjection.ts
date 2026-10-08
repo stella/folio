@@ -414,7 +414,11 @@ export const projectCanonicalInline = ({
 }: CanonicalInlineProjectionArgs): Result<InlineProjection, InlineProjectionError> => {
   const native = canonicalNativeCells(paragraph);
   if (native.isErr()) return native;
-  const comments = commentMarkTransitions({ source, paragraph, commentContext });
+  const comments = commentMarkTransitions({
+    source,
+    paragraph,
+    ...(commentContext === undefined ? {} : { commentContext }),
+  });
   if (comments.isErr()) return comments;
   const spans = inlineLeafSpans(source.content);
   const erasedBookmarks = new Set<ParagraphContent | RunContent>();
