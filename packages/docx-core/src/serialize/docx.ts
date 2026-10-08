@@ -1,3 +1,4 @@
+import { writeZipPart } from "../zip/writeZipPart";
 import JSZip from "jszip";
 
 import { borderStyleToken, statesNoBorder } from "../model/borderStyle";
@@ -152,19 +153,25 @@ export const serializeDocumentToDocx = async (
 ): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   const hasNumbering = hasNumberingDefinitions(document.package.numbering);
-  zip.file("[Content_Types].xml", contentTypesXml(hasNumbering));
-  zip.folder("_rels")?.file(".rels", ROOT_RELS_XML);
-  zip.folder("docProps")?.file("app.xml", APP_XML);
-  zip.folder("docProps")?.file("core.xml", serializeCoreProperties(document));
-
-  const word = zip.folder("word");
-  word?.file("document.xml", serializeDocumentXml(document));
-  word?.file("styles.xml", serializeStyles(document.package.styles));
+  writeZipPart({ zip, path: "[Content_Types].xml", data: contentTypesXml(hasNumbering) });
+  writeZipPart({ zip, path: "_rels/.rels", data: ROOT_RELS_XML });
+  writeZipPart({ zip, path: "docProps/app.xml", data: APP_XML });
+  writeZipPart({ zip, path: "docProps/core.xml", data: serializeCoreProperties(document) });
+  writeZipPart({ zip, path: "word/document.xml", data: serializeDocumentXml(document) });
+  writeZipPart({ zip, path: "word/styles.xml", data: serializeStyles(document.package.styles) });
   if (hasNumbering) {
-    word?.file("numbering.xml", serializeNumbering(document.package.numbering));
+    writeZipPart({
+      zip,
+      path: "word/numbering.xml",
+      data: serializeNumbering(document.package.numbering),
+    });
   }
-  word?.file(DEFAULT_FOOTER_PART_NAME, buildFooterXml(options.language));
-  word?.folder("_rels")?.file("document.xml.rels", documentRelsXml(hasNumbering));
+  writeZipPart({
+    zip,
+    path: `word/${DEFAULT_FOOTER_PART_NAME}`,
+    data: buildFooterXml(options.language),
+  });
+  writeZipPart({ zip, path: "word/_rels/document.xml.rels", data: documentRelsXml(hasNumbering) });
 
   for (const [path, file] of Object.entries(zip.files)) {
     if (file.dir || !path.endsWith(".xml")) continue;

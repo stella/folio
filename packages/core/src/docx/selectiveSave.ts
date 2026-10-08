@@ -1,3 +1,4 @@
+import { writeZipPart } from "@stll/docx-core/zip";
 import type { SaveDiagnosticOptions } from "./saveDiagnostics";
 /**
  * Selective Save Module
@@ -460,7 +461,7 @@ export async function attemptSelectiveSave(
         sourceParts.set(path, await file.async("text"));
       }
       for (const [path, xml] of normalizeImportedNumericIds(sourceParts)) {
-        if (xml !== sourceParts.get(path)) zip.file(path, xml);
+        if (xml !== sourceParts.get(path)) writeZipPart({ zip, path, data: xml });
       }
     }
 
