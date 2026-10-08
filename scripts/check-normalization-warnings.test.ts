@@ -5,6 +5,12 @@ import { findNormalizationWarningViolations } from "./lib/normalization-warnings
 const module_ = (path: string, source: string) => ({ path, source });
 
 describe("normalisation warning coverage", () => {
+  test("empty module discovery fails instead of passing without checking normalisers", () => {
+    const violations = findNormalizationWarningViolations([]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.detail).toContain("scanned no modules");
+  });
+
   test("a normaliser that reaches for a warning code passes", () => {
     expect(
       findNormalizationWarningViolations([
