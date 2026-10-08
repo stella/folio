@@ -873,6 +873,23 @@ type SerializeNestedTrackedChangeOptions = {
   enclosing: readonly { open: string; close: string }[];
 };
 
+/** Only hyperlink lifting requires splitting an authored revision wrapper. */
+const requiresHyperlinkSegmentation = (content: readonly ParagraphContent[]): boolean =>
+  content.some((item) => {
+    switch (item.type) {
+      case "hyperlink":
+        return true;
+      case "simpleField":
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        return requiresHyperlinkSegmentation(item.content);
+      default:
+        return false;
+    }
+  });
+
 /** Carry all enclosing revisions inside a hyperlink when segmenting nested changes. */
 function serializeNestedTrackedChange({
   tag,
@@ -978,10 +995,11 @@ function serializeNestedTrackedChange({
   };
   for (const item of content) {
     if (
-      item.type === "insertion" ||
-      item.type === "deletion" ||
-      item.type === "moveFrom" ||
-      item.type === "moveTo"
+      (item.type === "insertion" ||
+        item.type === "deletion" ||
+        item.type === "moveFrom" ||
+        item.type === "moveTo") &&
+      requiresHyperlinkSegmentation(item.content)
     ) {
       flushPending();
       segments.push(

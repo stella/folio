@@ -407,7 +407,7 @@ describe("ProseMirror document validation", () => {
     ]);
 
     expect(validateProseMirrorDocument(doc).issues.map((issue) => issue.message)).toContain(
-      "Structured simple fields require hyperlink, page-break, preserved or wrapper content.",
+      "Structured simple fields require hyperlink, page-break, preserved, wrapper or tracked content.",
     );
   });
 

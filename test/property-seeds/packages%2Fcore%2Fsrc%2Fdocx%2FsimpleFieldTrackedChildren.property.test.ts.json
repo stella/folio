@@ -1,0 +1,16 @@
+{
+  "simple field child revision ownership survives editor save and reopen": [
+    {
+      "seed": -210126698,
+      "path": "0:0:0:0:0:0",
+      "note": "Field child metadata and resolution survive save/reopen; initials remain UI/model-only under schema-strict serialization.",
+      "date": "2026-10-08"
+    },
+    {
+      "seed": -863502319,
+      "path": "0:0:0",
+      "note": "Field child metadata and resolution survive save/reopen; initials remain UI/model-only under schema-strict serialization.",
+      "date": "2026-10-08"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/commen
 import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
 import { createDocx } from "./rezip";
 import { parseDocx } from "./parser";
+import { toMarkdown } from "../markdown/index";
 
 const childRevisions = (doc: PMNode) => {
   const found = [];
@@ -104,14 +105,32 @@ test(
             outer === "none"
               ? field
               : { type: outer, info: { id: 35, author: "Outer Reviewer" }, content: [field] };
+          // Field results share the paragraph renderer's revision projection in both modes.
+          const fieldSource = createEmptyDocument();
+          fieldSource.package.document.content = [{ type: "paragraph", content: [field] }];
+          const flattenedSource = createEmptyDocument();
+          flattenedSource.package.document.content = [
+            { type: "paragraph", content: field.content },
+          ];
+          for (const trackedChanges of ["clean", "annotate"] as const) {
+            expect(toMarkdown(fieldSource, { trackedChanges })).toEqual(
+              toMarkdown(flattenedSource, { trackedChanges }),
+            );
+          }
           source.package.document.content = [{ type: "paragraph", content: [content] }];
           const initial = toProseDoc(source);
           expect(childRevisions(initial)).toHaveLength(1);
+          // Initials are UI/model metadata, excluded from schema-strict CT_TrackChange XML.
+          expect(childRevisions(toProseDoc(fromProseDoc(initial, source)))).toEqual(
+            childRevisions(initial),
+          );
+          const serializedRevisions = childRevisions(initial);
+          for (const revisionAttrs of serializedRevisions) revisionAttrs.initials = undefined;
           const live = EditorState.create({ doc: initial });
           const saved = await createDocx(fromProseDoc(initial, source));
           const reopenedSource = await parseDocx(saved, { preloadFonts: false });
           const reopened = EditorState.create({ doc: toProseDoc(reopenedSource) });
-          expect(childRevisions(reopened.doc)).toEqual(childRevisions(initial));
+          expect(childRevisions(reopened.doc)).toEqual(serializedRevisions);
           for (const mode of ["accept", "reject"] as const) {
             const childKept =
               mode === "accept"
@@ -127,7 +146,7 @@ test(
           const savedAgain = await createDocx(fromProseDoc(reopened.doc, reopenedSource));
           expect(
             childRevisions(toProseDoc(await parseDocx(savedAgain, { preloadFonts: false }))),
-          ).toEqual(childRevisions(initial));
+          ).toEqual(serializedRevisions);
         },
       ),
       { numRuns: 40 },
