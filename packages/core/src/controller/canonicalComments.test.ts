@@ -2,14 +2,14 @@ import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
-import { freshCommentId } from "@stll/docx-core/ops";
+import { freshCommentId, findStoryBody } from "@stll/docx-core/ops";
 import { validateDocxPackage } from "@stll/docx-core";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { canonicalCommentBody, compileCanonicalComments } from "./canonicalComments";
 import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
-import type { Document } from "../types/document";
+import type { Document, Paragraph } from "../types/document";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
@@ -128,6 +128,78 @@ const assertCanonicalCommentSave = async (session: ReturnType<typeof setup>["ses
     });
   }
 };
+
+test.each(["header", "footnote"] as const)(
+  "selective comment save preserves created and deleted %s anchors",
+  async (storyKind) => {
+    const document: Document = seed();
+    const block = {
+      type: "paragraph",
+      paraId: "ABCDEF02",
+      content: [{ type: "run", content: [{ type: "text", text: "Secondary story" }] }],
+    } satisfies Paragraph;
+    const story =
+      storyKind === "header"
+        ? ({ kind: "header", rId: "rIdHeader" } as const)
+        : ({ kind: "footnote", id: 1 } as const);
+    if (storyKind === "header") {
+      document.package.headers = new Map([
+        ["rIdHeader", { type: "header", hdrFtrType: "default", content: [block] }],
+      ]);
+      document.package.document.finalSectionProperties = {
+        headerReferences: [{ type: "default", rId: "rIdHeader" }],
+      };
+    } else {
+      document.package.footnotes = [{ type: "footnote", id: 1, content: [block] }];
+      const body = document.package.document.content.at(0);
+      if (body?.type !== "paragraph") throw new Error("Missing body paragraph");
+      body.content.push({ type: "run", content: [{ type: "footnoteRef", id: 1 }] });
+    }
+    const source = await parseDocx(await createDocx(document), { preloadFonts: false });
+    const editor = setup(source);
+    const id = freshCommentId(editor.session.document).unwrap();
+    const target = findStoryBody(editor.session.document, story)?.content.at(0);
+    if (target?.type !== "paragraph" || !target.paraId) throw new Error("Missing story paragraph");
+    editor.apply({
+      type: "create",
+      comment: {
+        id,
+        author: "Reviewer",
+        content: canonicalCommentBody(editor.session.document, "Secondary comment"),
+      },
+      anchor: { kind: "point", at: { story, blockId: target.paraId, offset: 2 } },
+    });
+    const saveAndReopen = async (current: ReturnType<typeof setup>) => {
+      const snapshot = current.session.captureSaveSnapshot();
+      const saved = await serializeCanonicalSave({
+        snapshot,
+        featureFlags: { selectiveSave: true },
+        options: { mode: FOLIO_DOCX_SERIALIZATION_MODE.preferSelective },
+      });
+      expect(snapshot.changedBlockIds).toContain(target.paraId);
+      expect(saved.diagnostics).toEqual(
+        storyKind === "header" ? [{ type: "selectiveSaveRefused", part: "word/document.xml" }] : [],
+      );
+      const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+      expect(findStoryBody(reopened, story)?.content).toEqual(
+        findStoryBody(snapshot.document, story)?.content,
+      );
+      expect(describePackageDifferences(snapshot.document, reopened)).toEqual({
+        messages: [],
+        omitted: 0,
+      });
+      return reopened;
+    };
+    const created = await saveAndReopen(editor);
+    const deletion = setup(created);
+    deletion.apply({ type: "delete", id });
+    await saveAndReopen(deletion);
+    deletion.history("undo");
+    await saveAndReopen(deletion);
+    deletion.history("redo");
+    await saveAndReopen(deletion);
+  },
+);
 
 test("generated point/range comment histories preserve exact undo, projection and canonical snapshot save", async () => {
   await assertProperty(
