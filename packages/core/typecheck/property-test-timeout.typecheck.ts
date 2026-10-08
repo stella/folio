@@ -1,4 +1,4 @@
-import { propertyTestTimeout } from "../../../../test/property-timeout";
+import { propertyTestTimeout } from "../../../test/property-timeout";
 
 propertyTestTimeout(15_000);
 
