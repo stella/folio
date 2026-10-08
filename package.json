@@ -138,7 +138,7 @@
     "test:visual:update": "bunx playwright test --update-snapshots",
     "test:visual:report": "bunx playwright show-report",
     "bench:compare": "bun benchmarks/compare/run.ts",
-    "test:source-guards": "bun test scripts/browser-preview-imports.test.ts scripts/workflow-cache-policy.test.ts scripts/canonical-timer-owner.test.ts scripts/canonical-cutover.test.ts scripts/canonical-command-census.test.ts scripts/canonical-range-producers.test.ts scripts/property-test-budgets.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/zip-part-writer.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts"
+    "test:source-guards": "bun test scripts/shared-docx-fixtures.test.ts scripts/browser-preview-imports.test.ts scripts/workflow-cache-policy.test.ts scripts/canonical-timer-owner.test.ts scripts/canonical-cutover.test.ts scripts/canonical-command-census.test.ts scripts/canonical-range-producers.test.ts scripts/property-test-budgets.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/zip-part-writer.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
