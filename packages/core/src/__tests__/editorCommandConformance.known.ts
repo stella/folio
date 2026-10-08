@@ -126,19 +126,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     modes: ["suggesting"],
     kinds: ["readback-painted"],
   },
-  ...[
-    {
-      shapes: ["single-decimal-list", "outline-level-numbered"],
-      toggle: "command:toggleNumberedList",
-    },
-    { shapes: ["single-bullet-list"], toggle: "command:toggleBulletList" },
-  ].map(({ shapes, toggle }) => ({
-    reason: "Legacy list removal keeps resolved indentation painted live but loses it after save",
-    operations: ["command:removeList", toggle],
-    shapes,
-    placements: ["caret-middle"] as const,
-    kinds: ["readback-painted"] as const,
-  })),
   // ---------------------------------------------------------------- lists --
   {
     reason:

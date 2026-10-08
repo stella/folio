@@ -247,10 +247,8 @@ export function listLevelIndentRemovalPatch(
 
 /** Recompute every level-dependent attr when a paragraph changes list level. */
 export function listLevelAttrPatch(
-  attrs: ParagraphIndentationAttrs & {
-    listImplicitChildLevelAdvances?: number | null;
-    numPrFromStyle?: ParagraphAttrs["numPrFromStyle"] | null;
-  },
+  attrs: ParagraphIndentationAttrs &
+    Pick<ParagraphAttrsPatch, "listImplicitChildLevelAdvances" | "numPrFromStyle">,
   numPr: { numId: number; ilvl: number },
   { numbering, styleFormatting }: ListLevelProvenanceContext,
 ): ParagraphAttrsPatch {
