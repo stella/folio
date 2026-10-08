@@ -2,7 +2,7 @@ import { expect, test, setDefaultTimeout } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
 import fc from "fast-check";
-import { EditorState } from "prosemirror-state";
+import { AllSelection, EditorState, TextSelection } from "prosemirror-state";
 import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp } from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
@@ -296,138 +296,145 @@ for (const target of [
   { kind: "endnote" },
 ] as const) {
   for (const editText of [false, true]) {
-    test(`native ${editText ? "typed " : ""}${target.kind}${target.kind === "footer" ? ` ${target.variant}` : ""} undo retires its active newly-created story`, () => {
-      GlobalRegistrator.register();
-      const bodyHost = document.createElement("div");
-      const storyHost = document.createElement("div");
-      document.body.append(bodyHost, storyHost);
-      const source = sourceDocument();
-      const refusals: string[] = [];
-      const manager = createHiddenEditorManager({
-        getHost: () => bodyHost,
-        getDocument: () => source,
-        getDocumentContext: () => source,
-        getExperimentalSession: () => "canonical",
-        getStyles: () => null,
-        getExtensionManager: () => undefined,
-        getExternalPlugins: () => [],
-        getCollaboration: () => undefined,
-        getCollaborationModules: () => null,
-        getPrecomputedInitialState: () => null,
-        getReadOnly: () => false,
-        getDocumentIdentity: () => "native-story-history",
-        onTransaction: () => {
-          notes.sync();
-          parts.sync();
-        },
-        onSelectionChange: () => {},
-        onKeyDown: () => false,
-        onCopy: () => {},
-        onCut: () => {},
-        onPaste: () => {},
-        onReadOnlyEditAttempt: () => {},
-        onEditorViewReady: () => {},
-        onEditorViewDestroy: () => {},
-        onRemoteSelectionsChange: () => {},
-        onSessionRefusal: (message) => {
-          refusals.push(message);
-        },
-      });
-      const deps = {
-        getHost: () => storyHost,
-        getDocument: () => source,
-        getCanonicalApi: () => manager.api,
-        getExperimentalSession: () => "canonical" as const,
-        getStyles: () => null,
-        getTheme: () => null,
-      };
-      const notes = createNoteEditorManager(deps);
-      const parts = createHeaderFooterEditorManager(deps);
-      try {
-        manager.ensureView();
-        manager.api.setSelection(2, 4);
-        const original = manager.api.getCanonicalDocument();
-        const originalSelection = manager.getView()?.state.selection.toJSON();
-        const story =
-          target.kind === "footer"
-            ? ({ kind: "footer", rId: "rIdNewFooter" } as const)
-            : ({ kind: target.kind, id: 9 } as const);
-        const operation =
-          target.kind === "footer"
-            ? ({
-                type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
-                sectionIndex: 0,
-                story: { kind: "footer", rId: "rIdNewFooter" },
-                referenceType: target.variant,
-                content: [paragraph("23456789", "Story")],
-              } as const satisfies DocumentOp)
-            : ({
-                type: DOCUMENT_OP_TYPES.ADD_NOTE,
-                at: { story: OP_STORIES.MAIN, blockId: "12345678", offset: 0 },
-                note: { type: target.kind, id: 9, content: [paragraph("23456789", "Story")] },
-              } as const satisfies DocumentOp);
-        expect(manager.api.applyCanonicalOperations([operation])).toBe(true);
-        const created = manager.api.getCanonicalDocument();
-        const storyView =
-          target.kind === "footer"
-            ? parts.getView("rIdNewFooter")
-            : notes.activate({ kind: target.kind, noteId: 9 });
-        if (!storyView) panic("The native history fixture did not mount its story.");
-        if (editText) {
-          const position = storyView.state.doc.content.size - 1;
-          const accepted = manager.api.replaceCanonicalStoryText({
-            view: storyView,
-            story,
-            intent: { from: position, to: position, text: "X", semantic: "replacement" },
-          });
-          expect(refusals).toEqual([]);
-          expect(accepted).toBe(true);
-        }
-        const edited = manager.api.getCanonicalDocument();
-        for (const expected of editText ? [created, original] : [original]) {
-          const event = new KeyboardEvent("keydown", {
-            key: "z",
-            ctrlKey: true,
-            metaKey: true,
-            bubbles: true,
-            cancelable: true,
-          });
-          storyView.dom.dispatchEvent(event);
-          expect(event.defaultPrevented).toBe(true);
-          assertExactModel(manager.api.getCanonicalDocument(), expected);
-        }
-        expect(storyView.isDestroyed).toBe(true);
-        if (target.kind === "footer") expect(parts.getView("rIdNewFooter")).toBeNull();
-        else {
-          expect(notes.getView({ kind: target.kind, noteId: 9 })).toBeNull();
-          expect(notes.getActive()).toBeNull();
-        }
-        expect(manager.getView()?.state.selection.toJSON()).toEqual(originalSelection);
-        expect(manager.api.redo()).toBe(true);
-        assertExactModel(manager.api.getCanonicalDocument(), created);
-        const restoredView =
-          target.kind === "footer"
-            ? parts.getView("rIdNewFooter")
-            : notes.activate({ kind: target.kind, noteId: 9 });
-        if (!restoredView) panic("Redo did not remount its restored story.");
-        if (editText)
-          expect(
-            manager.api.applyCanonicalStoryHistory({
-              view: restoredView,
+    for (const selectionType of ["text", "all"] as const) {
+      test(`native ${editText ? "typed " : ""}${target.kind}${target.kind === "footer" ? ` ${target.variant}` : ""} undo retires its active newly-created story with ${selectionType} selection`, () => {
+        GlobalRegistrator.register();
+        const bodyHost = document.createElement("div");
+        const storyHost = document.createElement("div");
+        document.body.append(bodyHost, storyHost);
+        const source = sourceDocument();
+        const refusals: string[] = [];
+        const manager = createHiddenEditorManager({
+          getHost: () => bodyHost,
+          getDocument: () => source,
+          getDocumentContext: () => source,
+          getExperimentalSession: () => "canonical",
+          getStyles: () => null,
+          getExtensionManager: () => undefined,
+          getExternalPlugins: () => [],
+          getCollaboration: () => undefined,
+          getCollaborationModules: () => null,
+          getPrecomputedInitialState: () => null,
+          getReadOnly: () => false,
+          getDocumentIdentity: () => "native-story-history",
+          onTransaction: () => {
+            notes.sync();
+            parts.sync();
+          },
+          onSelectionChange: () => {},
+          onKeyDown: () => false,
+          onCopy: () => {},
+          onCut: () => {},
+          onPaste: () => {},
+          onReadOnlyEditAttempt: () => {},
+          onEditorViewReady: () => {},
+          onEditorViewDestroy: () => {},
+          onRemoteSelectionsChange: () => {},
+          onSessionRefusal: (message) => {
+            refusals.push(message);
+          },
+        });
+        const deps = {
+          getHost: () => storyHost,
+          getDocument: () => source,
+          getCanonicalApi: () => manager.api,
+          getExperimentalSession: () => "canonical" as const,
+          getStyles: () => null,
+          getTheme: () => null,
+        };
+        const notes = createNoteEditorManager(deps);
+        const parts = createHeaderFooterEditorManager(deps);
+        try {
+          manager.ensureView();
+          const bodyView = manager.getView() ?? panic("Expected native body view.");
+          const selection =
+            selectionType === "all"
+              ? new AllSelection(bodyView.state.doc)
+              : TextSelection.create(bodyView.state.doc, 2, 4);
+          bodyView.dispatch(bodyView.state.tr.setSelection(selection));
+          const original = manager.api.getCanonicalDocument();
+          const originalSelection = manager.getView()?.state.selection.toJSON();
+          const story =
+            target.kind === "footer"
+              ? ({ kind: "footer", rId: "rIdNewFooter" } as const)
+              : ({ kind: target.kind, id: 9 } as const);
+          const operation =
+            target.kind === "footer"
+              ? ({
+                  type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+                  sectionIndex: 0,
+                  story: { kind: "footer", rId: "rIdNewFooter" },
+                  referenceType: target.variant,
+                  content: [paragraph("23456789", "Story")],
+                } as const satisfies DocumentOp)
+              : ({
+                  type: DOCUMENT_OP_TYPES.ADD_NOTE,
+                  at: { story: OP_STORIES.MAIN, blockId: "12345678", offset: 0 },
+                  note: { type: target.kind, id: 9, content: [paragraph("23456789", "Story")] },
+                } as const satisfies DocumentOp);
+          expect(manager.api.applyCanonicalOperations([operation])).toBe(true);
+          const created = manager.api.getCanonicalDocument();
+          const storyView =
+            target.kind === "footer"
+              ? parts.getView("rIdNewFooter")
+              : notes.activate({ kind: target.kind, noteId: 9 });
+          if (!storyView) panic("The native history fixture did not mount its story.");
+          if (editText) {
+            const position = storyView.state.doc.content.size - 1;
+            const accepted = manager.api.replaceCanonicalStoryText({
+              view: storyView,
               story,
-              direction: "redo",
-            }),
-          ).toBe(true);
-        assertExactModel(manager.api.getCanonicalDocument(), edited);
-        expect(refusals).toEqual([]);
-      } finally {
-        notes.destroy();
-        parts.destroy();
-        manager.destroyView();
-        bodyHost.remove();
-        storyHost.remove();
-        GlobalRegistrator.unregister();
-      }
-    });
+              intent: { from: position, to: position, text: "X", semantic: "replacement" },
+            });
+            expect(refusals).toEqual([]);
+            expect(accepted).toBe(true);
+          }
+          const edited = manager.api.getCanonicalDocument();
+          for (const expected of editText ? [created, original] : [original]) {
+            const event = new KeyboardEvent("keydown", {
+              key: "z",
+              ctrlKey: true,
+              metaKey: true,
+              bubbles: true,
+              cancelable: true,
+            });
+            storyView.dom.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(true);
+            assertExactModel(manager.api.getCanonicalDocument(), expected);
+          }
+          expect(storyView.isDestroyed).toBe(true);
+          if (target.kind === "footer") expect(parts.getView("rIdNewFooter")).toBeNull();
+          else {
+            expect(notes.getView({ kind: target.kind, noteId: 9 })).toBeNull();
+            expect(notes.getActive()).toBeNull();
+          }
+          expect(manager.getView()?.state.selection.toJSON()).toEqual(originalSelection);
+          expect(manager.api.redo()).toBe(true);
+          assertExactModel(manager.api.getCanonicalDocument(), created);
+          const restoredView =
+            target.kind === "footer"
+              ? parts.getView("rIdNewFooter")
+              : notes.activate({ kind: target.kind, noteId: 9 });
+          if (!restoredView) panic("Redo did not remount its restored story.");
+          if (editText)
+            expect(
+              manager.api.applyCanonicalStoryHistory({
+                view: restoredView,
+                story,
+                direction: "redo",
+              }),
+            ).toBe(true);
+          assertExactModel(manager.api.getCanonicalDocument(), edited);
+          expect(refusals).toEqual([]);
+        } finally {
+          notes.destroy();
+          parts.destroy();
+          manager.destroyView();
+          bodyHost.remove();
+          storyHost.remove();
+          GlobalRegistrator.unregister();
+        }
+      });
+    }
   }
 }
