@@ -20,6 +20,7 @@ import {
   withCanonicalParagraphIds,
 } from "@stll/folio-core/controller/canonicalOperations";
 import * as headerFooterHook from "./hooks/useHeaderFooterEditor";
+import { propertyTestTimeout } from "../../../../test/property-testing";
 import { reviewDifferences } from "../../../../test/reviewDifferences";
 import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
 import { CANONICAL_SAVE_FALLBACK_DIAGNOSTIC } from "../../../../test/canonicalSaveDiagnostics";
@@ -499,6 +500,156 @@ test("canonical toolbar capture shortcuts publish formatting and break intents w
   }
 });
 
+const createModeControlObserver = () => {
+  const modes: string[] = [];
+  const errors: Error[] = [];
+  return {
+    modes,
+    errors,
+    onModeChange: (mode: string) => {
+      modes.push(mode);
+    },
+    onError: (error: Error) => {
+      errors.push(error);
+    },
+  };
+};
+
+test.each(["uncontrolled", "controlled"] as const)(
+  "canonical track-changes control follows effective %s mode and saves authored revisions",
+  async (control) => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const editor = createRef<DocxEditorRef>();
+    const { modes, errors, onModeChange, onError } = createModeControlObserver();
+    const bytes = await createDocx(createEmptyDocument({ initialText: "Start" }));
+    const render = (mode: "editing" | "suggesting", readOnly = false) => (
+      <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <DocxEditor
+          ref={editor}
+          documentBuffer={bytes}
+          experimentalSession="canonical"
+          mode={control === "controlled" ? mode : undefined}
+          author="Control author"
+          readOnly={readOnly}
+          onModeChange={onModeChange}
+          onError={onError}
+          showReviewControls
+        />
+      </IntlProvider>
+    );
+    try {
+      await act(async () => root.render(render("editing")));
+      await act(async () => editor.current?.loadDocumentBuffer(bytes));
+      await act(async () => editor.current?.ensureEditorView({ focus: false }));
+      const view = editor.current?.getEditor()?.getView() ?? panic("Expected canonical view");
+      if (control === "uncontrolled") {
+        expect(
+          editor.current
+            ?.getEditor()
+            ?.setCanonicalMode({ type: "suggesting", author: "Explicit author" }),
+        ).toBe(true);
+        // Stable host props preserve an explicit session override; a later effective mode change replaces it.
+        await act(async () => root.render(render("editing")));
+        await act(async () => {
+          view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
+          view.dom.dispatchEvent(
+            new InputEvent("beforeinput", {
+              bubbles: true,
+              cancelable: true,
+              inputType: "insertText",
+              data: "override",
+            }),
+          );
+        });
+        expect(
+          view.state.doc
+            .nodeAt(6)
+            ?.marks.some((mark) => mark.attrs["author"] === "Explicit author"),
+        ).toBe(true);
+        await act(async () => {
+          editor.current?.getEditor()?.undo();
+        });
+        expect(view.state.doc.textContent).toBe("Start");
+      }
+      const getToggle = () =>
+        container.querySelector<HTMLButtonElement>('button[aria-label="Toggle Track Changes"]') ??
+        panic("Expected actual track-changes control");
+      await act(async () => getToggle().click());
+      expect(modes).toEqual(["suggesting"]);
+      if (control === "controlled") {
+        // An unacknowledged host request must not change the authoritative mode.
+        expect(getToggle().getAttribute("aria-pressed")).toBe("false");
+        await act(async () => {
+          view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
+          view.dom.dispatchEvent(
+            new InputEvent("beforeinput", {
+              bubbles: true,
+              cancelable: true,
+              inputType: "insertText",
+              data: "!",
+            }),
+          );
+        });
+        expect(view.state.doc.nodeAt(6)?.marks.some((mark) => mark.type.name === "insertion")).toBe(
+          false,
+        );
+        await act(async () => root.render(render("suggesting")));
+      }
+      expect(getToggle().getAttribute("aria-pressed")).toBe("true");
+      const end = view.state.doc.content.size - 1;
+      await act(async () => {
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
+        view.dom.dispatchEvent(
+          new InputEvent("beforeinput", {
+            bubbles: true,
+            cancelable: true,
+            inputType: "insertText",
+            data: "😀 tracked",
+          }),
+        );
+      });
+      expect(view.state.doc.nodeAt(end)?.marks).toContainEqual(
+        expect.objectContaining({ attrs: expect.objectContaining({ author: "Control author" }) }),
+      );
+      const tracked = editor.current?.getDocument() ?? panic("Expected tracked document");
+      await act(async () => {
+        editor.current?.getEditor()?.undo();
+      });
+      expect(view.state.doc.textContent).toBe(control === "controlled" ? "Start!" : "Start");
+      await act(async () => {
+        editor.current?.getEditor()?.redo();
+      });
+      expect(editor.current?.getDocument()).toEqual(tracked);
+      let saved: ArrayBuffer | null | undefined;
+      await act(async () => {
+        saved = await editor.current?.save();
+      });
+      if (!saved) panic("Expected tracked save");
+      const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+      expect(reviewDifferences(tracked, reopened)).toEqual({ messages: [], omitted: 0 });
+      expect(errors).toEqual([]);
+      await act(async () => root.render(render("suggesting", true)));
+      expect(container.querySelector('button[aria-label="Toggle Track Changes"]')).toBeNull();
+      await act(async () => {
+        view.dom.dispatchEvent(
+          new InputEvent("beforeinput", {
+            bubbles: true,
+            cancelable: true,
+            inputType: "insertText",
+            data: "blocked",
+          }),
+        );
+      });
+      expect(editor.current?.getDocument()).toEqual(tracked);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  },
+);
+
 test.each(CANONICAL_SAVE_SEEDS)(
   "generated canonical history %s saves independently of PM trackers",
   async (seed) => {
@@ -643,4 +794,6 @@ test.each(CANONICAL_SAVE_SEEDS)(
       container.remove();
     }
   },
+  // Each generated history saves and reparses several committed versions.
+  propertyTestTimeout(30_000),
 );

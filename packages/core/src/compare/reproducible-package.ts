@@ -1,19 +1,8 @@
+import { writeZipPart } from "@stll/docx-core/zip";
 /**
- * The last two clocks in the compare path are outside the document body.
- *
- * Every part the serializer rewrites is stored with JSZip's default entry
- * date, which is `new Date()`. The XML is identical between two runs, but the
- * DOS timestamp fields in the local headers are not, and they only agree when
- * both runs land in the same two-second bucket — so the packages match most of
- * the time and differ occasionally, which is worse than differing always.
- *
- * The save also stamps `dcterms:modified` in `docProps/core.xml` from the wall
- * clock, which is the same failure one part deeper: two runs over identical
- * inputs differ in that part alone.
- *
- * Restamping both from the comparison's own timestamp removes them. It also
- * states the truth about the package: a generated redline is dated by the
- * comparison that produced it, not by the second it happened to be written.
+ * Date comparison output from the comparison's timestamp. Imported entries
+ * retain source dates, and saves can stamp `dcterms:modified` from the wall
+ * clock; restamping both makes repeated comparisons reproducible.
  */
 
 import JSZip from "jszip";
@@ -43,9 +32,14 @@ export const withFixedPackageDates = async (
   const zip = await JSZip.loadAsync(buffer);
   const coreProps = zip.file(CORE_PROPERTIES_PATH);
   if (coreProps) {
-    zip.file(CORE_PROPERTIES_PATH, withFixedModifiedDate(await coreProps.async("text"), date), {
-      compression: "DEFLATE",
-      compressionOptions: { level: DOCX_COMPRESSION_LEVEL },
+    writeZipPart({
+      zip,
+      path: CORE_PROPERTIES_PATH,
+      data: withFixedModifiedDate(await coreProps.async("text"), date),
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: DOCX_COMPRESSION_LEVEL },
+      },
     });
   }
   zip.forEach((_path, file) => {

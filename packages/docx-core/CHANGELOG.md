@@ -1,5 +1,49 @@
 # @stll/docx-core
 
+## 0.32.0
+
+### Minor Changes
+
+- [#1472](https://github.com/stella/folio/pull/1472) [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Compile clipboard paste and moves into atomic canonical edits with package resource imports and exact history.
+
+  Clipboard package imports use schema 9 over the shipped schema-8 table contract; older operation and batch envelopes receive structured refusals.
+
+- [#1582](https://github.com/stella/folio/pull/1582) [`c5a0926`](https://github.com/stella/folio/commit/c5a0926238207aaf2d0b98caaf162b15dda0589c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Restore prior direct properties in Original projections and expose located table property exception revisions.
+
+- [#1568](https://github.com/stella/folio/pull/1568) [`baeff8a`](https://github.com/stella/folio/commit/baeff8aa3dc1a01a0bd13d6d92fa857653f21549) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Locate tracked paragraph-mark revisions with a zero-width span and the new `"paragraph-mark"` revision content kind, and keep revision and comment locations known when the selected revision view joins paragraphs.
+
+### Patch Changes
+
+- [#1472](https://github.com/stella/folio/pull/1472) [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve copied paragraph review and surviving mark formatting, share edited run seams between clipboard modes, and apply canonical clipboard transforms and composition lifecycle.
+
+- [#1537](https://github.com/stella/folio/pull/1537) [`cea1b5f`](https://github.com/stella/folio/commit/cea1b5ff41ae983617a1f2a42444eadcf41d617e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Lower hyperlink commands to canonical editor intents with exact inverses and explicit tracked-mode refusals.
+
+- [#1589](https://github.com/stella/folio/pull/1589) [`00b65d4`](https://github.com/stella/folio/commit/00b65d49c0bc0867bd5d3557b67f2d8c1f14aab3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve source marker ordinals when activating canonical inline projections.
+
+- [#1592](https://github.com/stella/folio/pull/1592) [`836731a`](https://github.com/stella/folio/commit/836731aed2040950a49a12abd7f9049aeb0479b6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve source range anchors in planned replacements, transfer them once in editing moves, and retain them at source during suggested moves.
+
+- [#1539](https://github.com/stella/folio/pull/1539) [`38340e2`](https://github.com/stella/folio/commit/38340e2e66203b84010fed1b2a2d7092eedec2d6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Generate tables of contents through canonical operations while preserving heading bookmark references and exact history.
+
+- [#1472](https://github.com/stella/folio/pull/1472) [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep source container joins explicit for tracked replacement plans and type clipboard cut events.
+
+- [#1472](https://github.com/stella/folio/pull/1472) [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve clipboard identity, relationship and story projection ownership.
+
+- [#1472](https://github.com/stella/folio/pull/1472) [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep header and footer source captures across document clones, so an edited part saved from a clone reports its source mismatch.
+
+- [#1581](https://github.com/stella/folio/pull/1581) [`f2ddacf`](https://github.com/stella/folio/commit/f2ddacfe536f9f1f9661c7320e3eaee89f53b176) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve effective table and paragraph style cascades, preserve default paragraph styles for invalid references, and keep numbering-label formatting separate from paragraph content.
+
+- [#1547](https://github.com/stella/folio/pull/1547) [`310afcd`](https://github.com/stella/folio/commit/310afcdda4b2b40c2c2d4d93697c693ca66aa53d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Restore captured section story snapshots exactly when they differ from their referenced package parts.
+
+- [#1573](https://github.com/stella/folio/pull/1573) [`ef1117d`](https://github.com/stella/folio/commit/ef1117d877a9040b6ae88ea25df0886204feda0b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Join paragraphs across tracked moved paragraph marks: a `w:moveFrom` mark removes the paragraph break in the current view like a `w:del` mark, and a `w:moveTo` mark removes it in the original view like a `w:ins` mark. Materialize `w:endnoteReference` as U+0002 in projected text, like `w:footnoteReference`.
+
+- [#1575](https://github.com/stella/folio/pull/1575) [`52b6075`](https://github.com/stella/folio/commit/52b6075528a05afe3115a315955f5b384f3d570b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep review and structural facts known across paragraph joins and hidden content, and coalesce joined formatting spans.
+
+- [#1579](https://github.com/stella/folio/pull/1579) [`8a7231b`](https://github.com/stella/folio/commit/8a7231bcb1fd45b8ced5dbe9f407a9a037db6f0b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Locate table, grid, row, and cell property revisions over their owning content.
+
+- [#1588](https://github.com/stella/folio/pull/1588) [`a74f206`](https://github.com/stella/folio/commit/a74f2065839ad396943fc66820e454083f1522d2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Write DOCX package parts without creating parent directory entries, using deterministic default ZIP dates.
+
+- [#1555](https://github.com/stella/folio/pull/1555) [`3e389e3`](https://github.com/stella/folio/commit/3e389e32d3cd992c70f1dfe6f025498bc3c0b3cf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve content-control source cuts when rejecting chains of inserted paragraph breaks.
+
 ## 0.31.0
 
 ### Minor Changes

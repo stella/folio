@@ -9,6 +9,7 @@
  */
 
 import type { EditorView } from "prosemirror-view";
+import { executeEditorCommand } from "./executeEditorCommand";
 
 import { generateTableOfContents, insertPageBreak, insertTable } from "./commands";
 import type { GenerateTableOfContentsOptions } from "./commands";
@@ -36,5 +37,5 @@ export function insertTableOfContentsInView(
   view: EditorView,
   options: GenerateTableOfContentsOptions,
 ): boolean {
-  return generateTableOfContents(options)(view.state, view.dispatch);
+  return executeEditorCommand(view, generateTableOfContents(options));
 }

@@ -1,0 +1,10 @@
+# Audited unknown facts; counts and fixture identity must match the corpus.
+# fixture	view	family	reason	count	rationale
+packages/core/src/docx/encryption/fixtures/encrypted-agile-example.docx	Current	package	InvalidArchive	1	Encrypted compound container is outside the supported ZIP input.
+packages/core/src/docx/encryption/fixtures/encrypted-agile-example.docx	Original	package	InvalidArchive	1	Encrypted compound container is outside the supported ZIP input.
+packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx	Current	bookmarks	IncompleteBookmarkRanges	1	Bookmark 1 markers are direct sdt children outside sdtContent.
+packages/core/src/docx/__tests__/__fixtures__/corpus/extraspec-bookmark-sibling.docx	Original	bookmarks	IncompleteBookmarkRanges	1	Bookmark 1 markers are direct sdt children outside sdtContent.
+test/packaged-consumer/public/fixture.docx	Current	comment	UnsupportedLocation	4	Comment ids 0, 1, 2, and 3 have no range or reference markers in any document part.
+test/packaged-consumer/public/fixture.docx	Original	comment	UnsupportedLocation	4	Comment ids 0, 1, 2, and 3 have no range or reference markers in any document part.
+tests/visual/fixtures/docx-editor-demo.docx	Current	comment	UnsupportedLocation	4	Comment ids 0, 1, 2, and 3 have no range or reference markers in any document part.
+tests/visual/fixtures/docx-editor-demo.docx	Original	comment	UnsupportedLocation	4	Comment ids 0, 1, 2, and 3 have no range or reference markers in any document part.

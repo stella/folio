@@ -1,14 +1,25 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { Schema } from "prosemirror-model";
 import fc from "fast-check";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { createSuggestionModePlugin } from "./plugins/suggestionMode";
 import { createTextInputPlugin } from "./textInput";
+
+// Synchronous generated XML or editor-state cases use a 15-second base budget.
+setDefaultTimeout(propertyTestTimeout(15_000));
 
 const schema = new Schema({
   nodes: {

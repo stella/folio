@@ -16,16 +16,19 @@
 
 import { readFileSync } from "node:fs";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { NUMBER_FORMAT_VALUES } from "../types/documentEnumValues";
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
 import { parseNumbering } from "./numberingParser";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { getChildElements, getLocalName, parseXmlDocument } from "./xmlParser";
+
+// Synchronous generated XML or editor-state cases use a 15-second base budget.
+setDefaultTimeout(propertyTestTimeout(15_000));
 
 type NamedChild = readonly [name: string, xml: string];
 

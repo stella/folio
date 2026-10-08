@@ -1,5 +1,29 @@
 # @stll/folio-vue
 
+## 0.22.1
+
+### Patch Changes
+
+- [#1580](https://github.com/stella/folio/pull/1580) [`0bff91e`](https://github.com/stella/folio/commit/0bff91e2ad29558196660ee48004d0dedffbab7a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve pending block deletions and paragraph joins consistently in clean Markdown and plain-text readers.
+
+  Import these moved exports from `@stll/folio-core/docx/storyPlainText`:
+
+  - `getDocumentText`, `getWordCount`, and `getCharacterCount` (previously `@stll/folio-core/docx/documentParser`).
+  - `getTableText` (previously `@stll/folio-core/docx/tableParser`).
+  - `getTextBoxText` (previously `@stll/folio-core/docx/textBoxParser`).
+  - `getHeaderFooterText` (previously `@stll/folio-core/docx/headerFooterParser`).
+  - `getFootnoteText` and `getEndnoteText` (previously `@stll/folio-core/docx/footnoteParser`).
+
+- [#1533](https://github.com/stella/folio/pull/1533) [`57ed3d6`](https://github.com/stella/folio/commit/57ed3d6263fc2f8869bfae01f5f7cf60a7d85e94) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Track canonical session capabilities and include capability ids in refusal errors.
+
+- [#1534](https://github.com/stella/folio/pull/1534) [`b746a0d`](https://github.com/stella/folio/commit/b746a0d300c3c7418be8382a6ee97097eda3b7ec) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Compile supported public batches into the canonical journal and report typed capability refusals for unavailable operations.
+
+- [#1536](https://github.com/stella/folio/pull/1536) [`7565793`](https://github.com/stella/folio/commit/756579312a2aadda47cf01704a57be1bea6cdf40) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Save canonical sessions from committed model changes, preserve untouched body XML and allocated picture resources, and report fidelity fallbacks or unsupported package replacements with typed diagnostics.
+
+- [#1564](https://github.com/stella/folio/pull/1564) [`1a2a8da`](https://github.com/stella/folio/commit/1a2a8da9cf0b04f73f024f096288b7449c6874c4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Require prosemirror-view 1.42.6 or later (GHSA-c8x8-7fp4-3x9w) and, in folio-core, DOMPurify 3.4.16 or later.
+- Updated dependencies [[`0bff91e`](https://github.com/stella/folio/commit/0bff91e2ad29558196660ee48004d0dedffbab7a), [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e), [`57ed3d6`](https://github.com/stella/folio/commit/57ed3d6263fc2f8869bfae01f5f7cf60a7d85e94), [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e), [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e), [`f19c5b9`](https://github.com/stella/folio/commit/f19c5b935e77461d841d9348bb7d4e15b611bafb), [`cea1b5f`](https://github.com/stella/folio/commit/cea1b5ff41ae983617a1f2a42444eadcf41d617e), [`95b938a`](https://github.com/stella/folio/commit/95b938aafd0989025c510d490b7372866e39045c), [`00b65d4`](https://github.com/stella/folio/commit/00b65d49c0bc0867bd5d3557b67f2d8c1f14aab3), [`86b0d80`](https://github.com/stella/folio/commit/86b0d80b6ec494b85481fdf7a97e0e75a8a347de), [`fb63465`](https://github.com/stella/folio/commit/fb6346593294d4d5633077abae71d6c48aa0e8b1), [`5b73467`](https://github.com/stella/folio/commit/5b73467e1fcb4beed1950a2dfd1dfb3772b07f27), [`5b6a6d8`](https://github.com/stella/folio/commit/5b6a6d866f0b593ea1f7e9fe2145a140aca24056), [`b746a0d`](https://github.com/stella/folio/commit/b746a0d300c3c7418be8382a6ee97097eda3b7ec), [`7565793`](https://github.com/stella/folio/commit/756579312a2aadda47cf01704a57be1bea6cdf40), [`38340e2`](https://github.com/stella/folio/commit/38340e2e66203b84010fed1b2a2d7092eedec2d6), [`cea1b5f`](https://github.com/stella/folio/commit/cea1b5ff41ae983617a1f2a42444eadcf41d617e), [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e), [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e), [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e), [`2f3acb1`](https://github.com/stella/folio/commit/2f3acb1799c26bc943f84214888d0ce85133c55e), [`9ebe157`](https://github.com/stella/folio/commit/9ebe15796e7cd7248fc82a6d4df256e003b5259c), [`5e228d3`](https://github.com/stella/folio/commit/5e228d3e31b8bc5c5a803d26947664928ff36240), [`bb3680a`](https://github.com/stella/folio/commit/bb3680ab9fe35be068f2f1672fbf925d5f988bd2), [`30db74a`](https://github.com/stella/folio/commit/30db74af4c2336de449cfaaa80889afadaa4a9d7), [`1a2a8da`](https://github.com/stella/folio/commit/1a2a8da9cf0b04f73f024f096288b7449c6874c4), [`e720149`](https://github.com/stella/folio/commit/e7201497f5b928e6de12f42e344234be2003bb2c), [`4cb55d5`](https://github.com/stella/folio/commit/4cb55d53373be335a013a0a96a182ae1a2d30f50), [`a74f206`](https://github.com/stella/folio/commit/a74f2065839ad396943fc66820e454083f1522d2), [`55db573`](https://github.com/stella/folio/commit/55db5734748557fbf79df8850e7b477ea11ee59b)]:
+  - @stll/folio-core@0.56.0
+
 ## 0.22.0
 
 ### Minor Changes

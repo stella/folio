@@ -167,35 +167,46 @@ const placementArbitrary = fc.record({
 });
 
 describe("a container's verbatim sink survives the editor projection", () => {
-  test("every marker comes back between the siblings it was written between", async () => {
-    await fc.assert(
-      fc.asyncProperty(placementArbitrary, async (placement) => {
-        const parsed = await open(documentXml(placement));
-        // The save leg is the premise: a sink the parser never filled would
-        // make the editor assertion below vacuous.
-        expectSinksIntact(parsed, placement);
-        expectSinksIntact(await reopen(fromProseDoc(toProseDoc(parsed), parsed)), placement);
-      }),
-      propertyConfig({ numRuns: 20 }),
-    );
-  }, 180_000);
+  test(
+    "every marker comes back between the siblings it was written between",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(placementArbitrary, async (placement) => {
+          const parsed = await open(documentXml(placement));
+          // The save leg is the premise: a sink the parser never filled would
+          // make the editor assertion below vacuous.
+          expectSinksIntact(parsed, placement);
+          expectSinksIntact(await reopen(fromProseDoc(toProseDoc(parsed), parsed)), placement);
+        }),
+        propertyConfig({ numRuns: 20 }),
+      );
+    },
+    propertyTestTimeout(180_000),
+  );
 
-  test("an edit elsewhere in the document leaves the sink where it was", async () => {
-    await fc.assert(
-      fc.asyncProperty(placementArbitrary, async (placement) => {
-        const parsed = await open(documentXml(placement));
-        const projected = toProseDoc(parsed);
-        const created = schema.nodes["paragraph"]?.createAndFill();
-        if (!created) {
-          throw new Error("the schema refused an empty paragraph");
-        }
-        const edited = schema.node("doc", projected.attrs, [...projected.content.content, created]);
+  test(
+    "an edit elsewhere in the document leaves the sink where it was",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(placementArbitrary, async (placement) => {
+          const parsed = await open(documentXml(placement));
+          const projected = toProseDoc(parsed);
+          const created = schema.nodes["paragraph"]?.createAndFill();
+          if (!created) {
+            throw new Error("the schema refused an empty paragraph");
+          }
+          const edited = schema.node("doc", projected.attrs, [
+            ...projected.content.content,
+            created,
+          ]);
 
-        expectSinksIntact(await reopen(fromProseDoc(edited, parsed)), placement);
-      }),
-      propertyConfig({ numRuns: 20 }),
-    );
-  }, 180_000);
+          expectSinksIntact(await reopen(fromProseDoc(edited, parsed)), placement);
+        }),
+        propertyConfig({ numRuns: 20 }),
+      );
+    },
+    propertyTestTimeout(180_000),
+  );
 });
 
 describe("the sink follows the record", () => {

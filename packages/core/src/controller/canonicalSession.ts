@@ -1,4 +1,5 @@
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
+import { mapTocSelection } from "./canonicalTocSelection";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
@@ -480,6 +481,7 @@ const intentStory = (intent: EditorIntent): OpStory => {
     case "formatRun":
     case "insertAtom":
       return intent.from.story;
+    case "generateTOC":
     case "splitParagraph":
     case "formatParagraph":
       return intent.at.story;
@@ -774,12 +776,13 @@ class CanonicalSession {
 
   private intentMode(document: Document, intent: EditorIntent): EditorIntentMode {
     if (this.mode.type === "editing" && !this.intentNeedsIdentityIds(document, intent))
-      return { type: "editing" };
+      return { type: "editing", reservedBlockIds: this.allocatedBlockIds };
     const ids = this.allocateIntentIds(document, intent);
     return this.mode.type === "editing"
-      ? { type: "editing", newIds: ids.newIds }
+      ? { type: "editing", newIds: ids.newIds, reservedBlockIds: this.allocatedBlockIds }
       : {
           type: "suggesting",
+          reservedBlockIds: this.allocatedBlockIds,
           revision: {
             id: ids.revisionId,
             author: this.mode.author,
@@ -794,6 +797,7 @@ class CanonicalSession {
     switch (intent.type) {
       case "table":
         return true;
+      case "generateTOC":
       case "setList":
       case "formatParagraph":
         return false;
@@ -1087,13 +1091,15 @@ class CanonicalSession {
         this.mode.type === "suggesting" &&
         (intent.type === "setHyperlink" ||
           intent.type === "removeHyperlink" ||
-          intent.type === "insertHyperlink")
+          intent.type === "insertHyperlink" ||
+          intent.type === "generateTOC")
       ) {
         return Result.err(
           new CanonicalSessionError({
             gap: CANONICAL_GAP.trackedHyperlinkResolution,
             reason: "refused",
-            message: "Hyperlink suggestions require serializable wrapper review provenance.",
+            message:
+              "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
           }),
         );
       }
@@ -1123,7 +1129,13 @@ class CanonicalSession {
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
-      if (
+      if (intent.type === "generateTOC") {
+        const mapping = { at: intent.at, after: compiled.value.selection, ops: compiled.value.ops };
+        postSelection = Object.assign({}, postSelection, {
+          anchor: mapTocSelection(postSelection.anchor, mapping),
+          head: mapTocSelection(postSelection.head, mapping),
+        });
+      } else if (
         intent.type !== "setHyperlink" &&
         intent.type !== "removeHyperlink" &&
         intent.type !== "formatRun" &&

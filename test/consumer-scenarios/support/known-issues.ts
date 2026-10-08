@@ -19,6 +19,8 @@ export const FINDINGS = {
   LEGACY_HYPERLINK_REMOVAL_PARTIAL:
     "legacy collapsed hyperlink removal only removes the text node containing the cursor; canonical descriptors remove the contiguous equal hyperlink mark",
 
+  LEGACY_TOC_REGENERATION_DANGLING_REFERENCES:
+    "Legacy generateTOC replaces existing _Toc bookmark names while prior TOC hyperlinks and PAGEREF instructions keep those names",
   LEGACY_PARAGRAPH_TAB_EDITS_LOST:
     "legacy paragraph tab commands edit PM attrs, but imported paragraph serialization retains original tabs; canonical descriptors retire this defect for canonical sessions",
   INSERT_AFTER_PENDING_MERGE:
@@ -76,6 +78,8 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   LEGACY_HYPERLINK_REMOVAL_PARTIAL:
     /legacy collapsed removal leaves part of the same hyperlink linked/u,
 
+  LEGACY_TOC_REGENERATION_DANGLING_REFERENCES:
+    /legacy TOC regeneration preserves previously referenced bookmark names/u,
   LEGACY_PARAGRAPH_TAB_EDITS_LOST:
     /legacy (?:setTabs|addTabStop|removeTabStop) serialization retains original paragraph tabs/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,

@@ -21,27 +21,32 @@ const specFiles = (suite: unknown): string[] => {
   return files;
 };
 
-test("Node discovers every interaction module, including the built-preview regression", () => {
-  const root = join(import.meta.dir, "..");
-  const result = Bun.spawnSync(
-    [
-      "node",
-      join(root, "node_modules/.bin/playwright"),
-      "test",
-      "--project=interactions",
-      "--list",
-      "--reporter=json",
-    ],
-    { cwd: root, stdout: "pipe", stderr: "pipe" },
-  );
-  const report: unknown = JSON.parse(result.stdout.toString());
-  if (!isRecord(report) || !Array.isArray(report["errors"]) || !Array.isArray(report["suites"]))
-    throw new TypeError(`Invalid Playwright discovery report: ${result.stderr.toString()}`);
-  expect(result.exitCode, JSON.stringify(report["errors"])).toBe(0);
-  expect(report["errors"]).toEqual([]);
-  const files = report["suites"].flatMap(specFiles);
-  expect(files.length).toBeGreaterThan(0);
-  expect(
-    files.filter((file) => file.endsWith("playground-preview.interactions.spec.ts")),
-  ).toHaveLength(3);
-}, 30_000);
+test.each([
+  { project: "interactions", file: "playground-preview.interactions.spec.ts", count: 3 },
+  { project: "parity-fuzzer", file: "host-api-flow.spec.ts", count: 1 },
+])(
+  "Node discovers $project modules and their standing regression",
+  ({ project, file, count }) => {
+    const root = join(import.meta.dir, "..");
+    const result = Bun.spawnSync(
+      [
+        "node",
+        join(root, "node_modules/.bin/playwright"),
+        "test",
+        `--project=${project}`,
+        "--list",
+        "--reporter=json",
+      ],
+      { cwd: root, stdout: "pipe", stderr: "pipe" },
+    );
+    const report: unknown = JSON.parse(result.stdout.toString());
+    if (!isRecord(report) || !Array.isArray(report["errors"]) || !Array.isArray(report["suites"]))
+      throw new TypeError(`Invalid Playwright discovery report: ${result.stderr.toString()}`);
+    expect(result.exitCode, JSON.stringify(report["errors"])).toBe(0);
+    expect(report["errors"]).toEqual([]);
+    const files = report["suites"].flatMap(specFiles);
+    expect(files.length).toBeGreaterThan(0);
+    expect(files.filter((candidate) => candidate.endsWith(file))).toHaveLength(count);
+  },
+  30_000,
+);
