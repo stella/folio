@@ -278,9 +278,17 @@ impl NumberingProperties {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) enum TableStyleSelection {
+    #[default]
+    OutsideTable,
+    Default,
+    Explicit(String),
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct ParagraphProperties {
     pub style_id: Option<String>,
-    pub table_style_id: Option<String>,
+    pub table_style: TableStyleSelection,
     pub outline_level: Option<u8>,
     pub indentation: ParagraphIndentation,
     pub numbering: NumberingProperties,
@@ -395,6 +403,7 @@ fn inherit_style_toggle(inherited: Option<bool>, child: Option<bool>) -> Option<
 #[derive(Clone, Debug, Default)]
 pub(super) struct StyleSheet {
     pub default_style_id: Option<String>,
+    pub default_table_style_id: Option<String>,
     pub document_defaults: ParagraphProperties,
     pub document_text_defaults: TextProperties,
     pub styles: HashMap<String, StyleDefinition>,
@@ -460,7 +469,7 @@ impl StyleSheet {
         }: TextStyleInput<'_>,
     ) -> Result<TextProperties, ()> {
         let table = self
-            .table_style(properties.table_style_id.as_deref())?
+            .table_style(&properties.table_style)?
             .map(|style| style.text)
             .unwrap_or_default();
         let paragraph = table.inherit_style(
@@ -629,7 +638,15 @@ impl StyleSheet {
         (resolved, resolution_steps)
     }
 
-    fn table_style(&self, style_id: Option<&str>) -> Result<Option<&ResolvedParagraphStyle>, ()> {
+    fn table_style(
+        &self,
+        selection: &TableStyleSelection,
+    ) -> Result<Option<&ResolvedParagraphStyle>, ()> {
+        let style_id = match selection {
+            TableStyleSelection::OutsideTable => return Ok(None),
+            TableStyleSelection::Default => self.default_table_style_id.as_deref(),
+            TableStyleSelection::Explicit(id) => Some(id.as_str()),
+        };
         let Some(style_id) = style_id.filter(|id| {
             self.styles
                 .get(*id)
@@ -663,7 +680,7 @@ impl StyleSheet {
     /// Missing explicit styles contribute no properties; omitted styles select
     /// the default. Cyclic inheritance cannot supply an effective alignment.
     fn style_alignment(&self, direct: &ParagraphProperties) -> Option<ParagraphAlignmentSetting> {
-        let table = self.table_style(direct.table_style_id.as_deref()).ok()?;
+        let table = self.table_style(&direct.table_style).ok()?;
         self.paragraph_style(direct.style_id.as_deref())
             .ok()?
             .and_then(|style| style.properties.alignment)
@@ -677,7 +694,7 @@ impl StyleSheet {
         numbering_catalog: Result<&NumberingCatalog, StructuralFactUnknownReason>,
     ) -> Result<ResolvedParagraphProperties, StructuralFactUnknownReason> {
         let table = self
-            .table_style(direct.table_style_id.as_deref())
+            .table_style(&direct.table_style)
             .map_err(|()| StructuralFactUnknownReason::UnsupportedStyles)?
             .map(|style| style.properties)
             .unwrap_or_default();
