@@ -497,10 +497,30 @@ test(
               reopened.snapshot().blocks.map((block) => [block.id, block.text]),
             );
             const expectedLoads = expectedPendingLoads(records, savedText);
+            const loaded = reopened.loadPendingSuggestions(JSON.parse(JSON.stringify(records)));
+            assert.deepEqual(loaded, expectedLoads);
+            // Earlier proposals may change this anchor during replay. Stage the success
+            // control against the saved baseline instead of requiring a stale record to load.
+            const staging = await openReviewer(bytes);
+            const staged = await applyChecked(
+              staging,
+              [{ ...proposal.operation, id: "saved-heading-roundtrip" }],
+              "suggested",
+              "heading proposal against saved baseline",
+            );
+            assert.equal(staged.applied.length, 1);
+            const freshRecords = staging.exportPendingSuggestions();
+            assert.equal(freshRecords.length, 1);
+            const freshProposal = freshRecords.at(0);
+            assert.ok(freshProposal);
+            const expectedFreshLoads = expectedPendingLoads(freshRecords, savedText);
+            assert.deepEqual(expectedFreshLoads, [
+              { status: "restaged", suggestionId: freshProposal.suggestionId },
+            ]);
             // Positive control: change the saved paragraph itself, not a load result.
             const changedDocument = await parseDocx(toArrayBuffer(bytes), { preloadFonts: false });
             const changedParagraph = changedDocument.package.document.content.find(
-              (block) => block.type === "paragraph" && block.paraId === proposal.anchor.paraId,
+              (block) => block.type === "paragraph" && block.paraId === freshProposal.anchor.paraId,
             );
             assert.ok(changedParagraph?.type === "paragraph");
             changedParagraph.content = [
@@ -510,22 +530,21 @@ test(
             const changedText = new Map(
               changed.snapshot().blocks.map((block) => [block.id, block.text]),
             );
-            const staleControl = expectedPendingLoads([proposal], changedText);
+            const staleControl = expectedPendingLoads(freshRecords, changedText);
             assert.deepEqual(staleControl, [
-              { status: "stale", suggestionId: proposal.suggestionId, reason: "textChanged" },
+              { status: "stale", suggestionId: freshProposal.suggestionId, reason: "textChanged" },
             ]);
-            assert.deepEqual(changed.loadPendingSuggestions([proposal]), staleControl);
-            const loaded = reopened.loadPendingSuggestions(JSON.parse(JSON.stringify(records)));
-            assert.deepEqual(loaded, expectedLoads);
+            assert.deepEqual(changed.loadPendingSuggestions(freshRecords), staleControl);
+            const restaged = await openReviewer(bytes);
             assert.deepEqual(
-              loaded.find(({ suggestionId }) => suggestionId === proposal.suggestionId),
-              { status: "restaged", suggestionId: proposal.suggestionId },
+              restaged.loadPendingSuggestions(JSON.parse(JSON.stringify(freshRecords))),
+              expectedFreshLoads,
             );
-            const restored = rowsOf(reopened).find((row) => row.text === text);
+            const restored = rowsOf(restaged).find((row) => row.text === text);
             assert.ok(restored);
             assert.deepEqual(restored.listReference, expected);
-            assert.equal(reopened.acceptSuggestion(proposal.suggestionId), true);
-            const tracked = await openReviewer(new Uint8Array(await reopened.toBuffer()));
+            assert.equal(restaged.acceptSuggestion(freshProposal.suggestionId), true);
+            const tracked = await openReviewer(new Uint8Array(await restaged.toBuffer()));
             const persisted = rowsOf(tracked).find((row) => row.text === text);
             assert.ok(persisted);
             assert.deepEqual(persisted.listReference, expected);
