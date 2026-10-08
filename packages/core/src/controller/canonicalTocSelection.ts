@@ -5,6 +5,7 @@ import {
   sameStory,
   idKey,
   compareGaps,
+  mapTocBookmarkPosition,
   type DocumentOp,
   type TextPosition,
 } from "@stll/docx-core/ops";
@@ -17,6 +18,8 @@ export const mapTocSelection = (
   { at, after, ops }: TocSelectionMapping,
 ): TextPosition => {
   if (!sameStory(point.story, at.story)) return point;
+  point = mapTocBookmarkPosition(point, ops);
+  at = mapTocBookmarkPosition(at, ops);
   if (idKey(point.blockId) !== idKey(at.blockId)) return point;
   const split = ops.find((op) => op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK);
   if (split === undefined) return point;

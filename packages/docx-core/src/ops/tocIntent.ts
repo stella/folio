@@ -17,6 +17,7 @@ import {
 } from "./types";
 import type { EditorIntentMode } from "./editorIntent";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import { sameStory } from "./stories";
 
 export type TocHeading = {
   blockId: string;
@@ -106,6 +107,28 @@ const bookmarkAtStart = (paragraph: Paragraph, id: number, name: string): Paragr
   ...paragraph.content,
   { type: "bookmarkEnd", id },
 ];
+
+/** Map original endpoints through the bookmark wrappers emitted by TOC compilation. */
+export const mapTocBookmarkPosition = (
+  position: TextPosition,
+  ops: readonly DocumentOp[],
+): TextPosition => {
+  if (position.offset !== 0) return position;
+  let prepended = 0;
+  for (const op of ops) {
+    if (
+      op.type !== DOCUMENT_OP_TYPES.REPLACE_INLINE ||
+      !sameStory(op.story, position.story) ||
+      idKey(op.blockId) !== idKey(position.blockId)
+    )
+      continue;
+    // bookmarkAtStart adds one opening marker before every original gap at offset zero.
+    prepended += 1;
+  }
+  return prepended === 0
+    ? position
+    : { ...position, zeroWidthBefore: (position.zeroWidthBefore ?? 0) + prepended };
+};
 
 const paragraphBookmarks = (
   content: readonly ParagraphContent[],
@@ -275,6 +298,7 @@ export const compileGenerateTOCIntent = (
   }
 
   const ops: DocumentOp[] = [];
+  let insertionAt: TextPosition = { ...intent.at, ...initialGap };
   for (const [index, { heading, name }] of links.entries()) {
     const paragraph = locations.find(
       ({ paragraph: candidate }) => idKey(candidate.paraId ?? "") === idKey(heading.blockId),
@@ -294,11 +318,16 @@ export const compileGenerateTOCIntent = (
     const applied = applyDocumentOp(document, op);
     if (applied.isErr()) return Result.err(applied.error);
     document = applied.value.document;
+    insertionAt = mapTocBookmarkPosition(insertionAt, [op]);
   }
 
   const currentTarget = paragraphFor(document, intent.at);
   if (currentTarget === undefined) return refuse("The TOC insertion paragraph disappeared.");
-  const gap = resolveGap({ paragraph: currentTarget, position: intent.at, fallback: "insertion" });
+  const gap = resolveGap({
+    paragraph: currentTarget,
+    position: insertionAt,
+    fallback: "insertion",
+  });
   if (typeof gap !== "object")
     return refuse("The TOC insertion position is invalid after bookmark updates.", gap);
   if (
@@ -326,7 +355,7 @@ export const compileGenerateTOCIntent = (
     });
     return Result.ok({
       ops,
-      selection: { story, blockId: intent.at.blockId, offset: gap.offset === 0 ? 0 : targetLength },
+      selection: { ...insertionAt, ...gap },
     });
   }
 
@@ -336,7 +365,7 @@ export const compileGenerateTOCIntent = (
   if (newBlockId === undefined) return refuse("The paragraph identity space is exhausted.");
   const split = {
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
-    at: { ...intent.at, offset: gap.offset, zeroWidthBefore: gap.zeroWidthBefore },
+    at: { ...insertionAt, ...gap },
     newBlockId,
     newHalf: SPLIT_HALVES.FIRST,
     newParagraph: target.formatting === undefined ? {} : { formatting: target.formatting },

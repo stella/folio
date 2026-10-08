@@ -10,6 +10,7 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
 
 export { captureDocumentOp } from "./wire";
 export { compareGaps, defaultInsertionGap, zeroWidthLeavesAt } from "./leaves";
+export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
 export {
