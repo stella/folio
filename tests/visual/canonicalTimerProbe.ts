@@ -1,4 +1,5 @@
-import { expect, test as base, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test as base } from "../parity/canonicalTest";
 import { CANONICAL_INPUT_TIMER_OWNER } from "../../packages/core/src/controller/canonicalInputTimer";
 
 declare global {
