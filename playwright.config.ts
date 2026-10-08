@@ -37,16 +37,19 @@ const managedConfig = defineConfig({
   projects: [
     {
       name: "interactions",
+      use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
       testMatch: /(?:interactions|editing-flows)\.spec\.ts/u,
       testIgnore:
         /(?:(?:canonical-)?browser-input|ai-human-interleaving)-fuzz\.interactions\.spec\.ts/u,
     },
     {
       name: "browser-fuzzer",
+      use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
       testMatch: /(?:canonical-)?browser-input-fuzz\.interactions\.spec\.ts/u,
     },
     {
       name: "interleaving-fuzzer",
+      use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
       testMatch: /ai-human-interleaving-fuzz\.interactions\.spec\.ts/u,
     },
     // Measure/paint parity compares two numbers read from the SAME browser in
