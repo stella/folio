@@ -1,3 +1,4 @@
+import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * Headless `w14:paraId` normalization for a `.docx` buffer.
  *
@@ -583,10 +584,15 @@ const ensureParaIdsInternal = async (
     if (sourceEntry === null) {
       throw createEnsureParaIdsError(`Package part disappeared during normalization: ${partPath}`);
     }
-    zip.file(partPath, content, {
-      compression: "DEFLATE",
-      compressionOptions: { level: 6 },
-      date: sourceEntry.date,
+    writeZipPart({
+      zip,
+      path: partPath,
+      data: content,
+      options: {
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+        date: sourceEntry.date,
+      },
     });
   }
   const output = await zip.generateAsync({

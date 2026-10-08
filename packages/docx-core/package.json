@@ -35,7 +35,8 @@
     "./model": "./src/model/document.ts",
     "./ops": "./src/ops/documentOps.ts",
     "./projection": "./src/projection.ts",
-    "./schema": "./src/schema/sequenceChildren.ts"
+    "./schema": "./src/schema/sequenceChildren.ts",
+    "./zip": "./src/zip/writeZipPart.ts"
   },
   "publishConfig": {
     "access": "public"

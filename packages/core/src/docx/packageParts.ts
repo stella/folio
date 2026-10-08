@@ -1,3 +1,4 @@
+import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * What a repack carries out of the source package, and the guarantee that
  * nothing in the output points at a part the output does not hold.
@@ -195,9 +196,14 @@ type WritePartOptions = {
 };
 
 const writePart = ({ zip, path, xml, compressionLevel }: WritePartOptions): void => {
-  zip.file(path, xml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  writeZipPart({
+    zip,
+    path,
+    data: xml,
+    options: {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    },
   });
 };
 

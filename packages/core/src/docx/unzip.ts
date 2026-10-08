@@ -1,3 +1,4 @@
+import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * DOCX Unzipper
  *
@@ -553,7 +554,7 @@ export const replaceRawDocxXmlParts = async (
       lowerPath: path.toLowerCase(),
       content: xmlContent,
     });
-    content.originalZip.file(path, xmlContent);
+    writeZipPart({ zip: content.originalZip, path, data: xmlContent });
     identitiesChanged = true;
   }
   if (identitiesChanged) {

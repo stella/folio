@@ -1,3 +1,4 @@
+import { writeZipPart } from "@stll/docx-core/zip";
 import { createHash } from "node:crypto";
 
 import { panic, TaggedError } from "better-result";
@@ -256,15 +257,19 @@ const applyReplacements = async ({
         stage: "replace",
       });
     }
-    zip.file(replacement.path, new TextEncoder().encode(replacement.replacementXml), {
-      binary: true,
-      date: current.date,
-      comment: current.comment,
-      createFolders: false,
-      unixPermissions: current.unixPermissions,
-      dosPermissions: current.dosPermissions,
-      compression: "DEFLATE",
-      compressionOptions: { level: 6 },
+    writeZipPart({
+      zip,
+      path: replacement.path,
+      data: new TextEncoder().encode(replacement.replacementXml),
+      options: {
+        binary: true,
+        date: current.date,
+        comment: current.comment,
+        unixPermissions: current.unixPermissions,
+        dosPermissions: current.dosPermissions,
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+      },
     });
   }
 
