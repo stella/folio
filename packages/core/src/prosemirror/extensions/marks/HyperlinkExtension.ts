@@ -235,7 +235,7 @@ export const HyperlinkExtension = createMarkExtension({
       let contiguous: { from: number; to: number } | undefined;
       let selected: typeof contiguous;
       $from.parent.forEach((node, offset) => {
-        if (!node.isText || !node.marks.some((mark) => mark.eq(linkMark))) {
+        if (!node.isInline || !node.marks.some((mark) => mark.eq(linkMark))) {
           contiguous = undefined;
           return;
         }
