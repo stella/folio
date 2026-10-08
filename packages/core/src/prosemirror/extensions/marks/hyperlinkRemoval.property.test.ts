@@ -5,6 +5,9 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import { assertProperty, propertyTestTimeout } from "../../../../../../test/property-testing";
 import { getCanonicalCommandIntents } from "../../canonicalCommands";
 import { schema, singletonManager } from "../../schema";
+import { HyperlinkRemovalRefusal, removeHyperlinkInRange } from "../../hyperlinkRemoval";
+import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
+import { acceptAllChanges, rejectAllChanges } from "../../commands/comments";
 
 setDefaultTimeout(propertyTestTimeout(15_000));
 
@@ -53,13 +56,22 @@ const assertRemoval = ({ nodes, link, neighbor }: AssertRemovalOptions) => {
   ]);
   const command = singletonManager.requireCommand("removeHyperlink")();
   for (let cursor = from + 1; cursor < to; cursor += 1) {
-    // Atomic field interiors are not paragraph cursor positions.
-    if (doc.resolve(cursor).parent.type.name !== "paragraph") continue;
     let state = EditorState.create({
       schema,
       doc,
       selection: TextSelection.create(doc, cursor),
     });
+    if (doc.resolve(cursor).parent.type.name !== "paragraph") {
+      expect(() => command(state)).toThrow(HyperlinkRemovalRefusal);
+      expect(() => getCanonicalCommandIntents(command, state)).toThrow(HyperlinkRemovalRefusal);
+      expect(() =>
+        command(state, () => {
+          throw new TypeError("A refused command dispatched");
+        }),
+      ).toThrow(HyperlinkRemovalRefusal);
+      expect(state.doc.eq(doc)).toBe(true);
+      continue;
+    }
     const intents = getCanonicalCommandIntents(command, state);
     expect(command(state)).toBe(true);
     expect(
@@ -166,4 +178,64 @@ test("collapsed removal unlinks text/image/text as one hyperlink", () => {
     link,
     neighbor,
   });
+});
+
+const assertPartialFieldRefusal = (text: string) => {
+  const link = schema.mark("hyperlink", { href: "https://example.com/" });
+  const field = schema.node(
+    "structuredField",
+    { fieldType: "REF", instruction: "REF target", displayText: text },
+    [schema.text(text)],
+    [link],
+  );
+  const doc = schema.node("doc", undefined, [
+    schema.node("paragraph", { paraId: "12345678" }, [
+      schema.text("L", [link]),
+      field,
+      schema.text("R", [link]),
+    ]),
+  ]);
+  const command = singletonManager.requireCommand("removeHyperlink")();
+  // Field starts at 2; its content spans [3, 3 + text.length).
+  for (let from = 3; from < 3 + text.length; from += 1) {
+    for (let to = from + 1; to <= 3 + text.length; to += 1) {
+      const state = EditorState.create({
+        schema,
+        doc,
+        selection: TextSelection.create(doc, from, to),
+        plugins: [createSuggestionModePlugin(true, "Reviewer")],
+      });
+      const tr = state.tr;
+      expect(() => removeHyperlinkInRange(state, tr, from, to)).toThrow(HyperlinkRemovalRefusal);
+      expect(tr.steps).toEqual([]);
+      expect(tr.doc.eq(doc)).toBe(true);
+      expect(() => command(state)).toThrow(HyperlinkRemovalRefusal);
+      expect(() =>
+        command(state, () => {
+          throw new TypeError("A refused command dispatched");
+        }),
+      ).toThrow(HyperlinkRemovalRefusal);
+      for (const resolve of [acceptAllChanges(), rejectAllChanges()]) {
+        let resolved = state;
+        resolve(state, (transaction) => {
+          resolved = state.apply(transaction);
+        });
+        expect(resolved.doc.eq(doc)).toBe(true);
+        expect(resolved.doc.textContent).toBe(`L${text}R`);
+      }
+    }
+  }
+};
+
+test("suggesting removal refuses a linked structured-field substring before replacement", () => {
+  assertPartialFieldRefusal("result");
+});
+
+test("every generated field substring refuses atom splitting with exact accept and reject content", () => {
+  assertProperty(
+    fc.property(fc.integer({ min: 2, max: 8 }), (length) =>
+      assertPartialFieldRefusal("x".repeat(length)),
+    ),
+    { numRuns: 20 },
+  );
 });
