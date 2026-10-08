@@ -417,9 +417,9 @@ function pieceOf(
   }
   // CommonMark normalizes newlines inside code spans; keep breaks outside them.
   const text = inner
-    .split(/( *\n)/gu)
-    .map((part, index) => (index % 2 === 0 && part ? applyMarks(part, marks) : part))
-    .join("");
+    .split("\n")
+    .map((line) => applyMarks(line, marks))
+    .join("\n");
   return { text, marks: new Set() };
 }
 

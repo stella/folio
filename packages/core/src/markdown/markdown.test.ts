@@ -23,7 +23,7 @@ import { toMarkdown } from "./index";
 import type { MarkdownOptions } from "./types";
 import { compileMarkdownToContent } from "@stll/docx-core";
 import { applyMarks } from "./renderRuns";
-import { escapeInline } from "./escape";
+import { escapeInline, inlineBreaksToHtml } from "./escape";
 
 const run = (text: string, formatting?: TextFormatting): Run => ({
   type: "run",
@@ -219,6 +219,34 @@ test(
   },
   propertyTestTimeout(30_000),
 );
+
+test("inline break encoding preserves generated line boundaries and unfinished whitespace", async () => {
+  const core = fc.constantFrom("", "word", "\t", "文\t件", "\u00a0");
+  await assertProperty(
+    fc.property(
+      fc.array(
+        fc.record({
+          core,
+          spaces: fc.integer({ min: 0, max: 32 }),
+          ending: fc.constantFrom("\n", "\r\n"),
+        }),
+        { maxLength: 12 },
+      ),
+      core,
+      fc.integer({ min: 0, max: 32 }),
+      (lines, tail, spaces) => {
+        const unfinished = tail + " ".repeat(spaces);
+        const text =
+          lines.map((line) => line.core + " ".repeat(line.spaces) + line.ending).join("") +
+          unfinished;
+        const expected = lines.map((line) => line.core + "<br>").join("") + unfinished;
+        expect(inlineBreaksToHtml(text)).toBe(expected);
+        expect(inlineBreaksToHtml(expected)).toBe(expected);
+      },
+    ),
+    { seed: 1634001732, numRuns: 60 },
+  );
+});
 
 describe("toMarkdown — block structure", () => {
   test("heading style → ATX heading at the matching level", () => {
