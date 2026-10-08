@@ -214,118 +214,128 @@ const hasLoneSurrogate = (value: string): boolean => {
 };
 
 describe("an offset-taking operation at any offset", () => {
-  test("changes no text beyond what it names, and cuts no character", async () => {
-    await assertProperty(
-      fc.asyncProperty(
-        textArbitrary,
-        fc.constantFrom<OffsetOperation>(
-          "splitBlock",
-          "replaceRange",
-          "replaceInBlock",
-          "formatRange",
-          "commentOnRange",
-          "commentOnBlock",
-        ),
-        fc.nat(),
-        fc.nat(),
-        fc.constantFrom(...MODES),
-        async (text, type, first, second, mode) => {
-          const start = 1 + (first % (text.length - 1));
-          const end = Math.min(text.length, start + 1 + (second % 4));
-          const reviewer = await openReviewer(
-            await paragraphsDocx([[textRun(text)], [textRun("Untouched.")]]),
-          );
-          const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-          const selected = text.slice(start, end);
-          const unique = text.indexOf(selected) === text.lastIndexOf(selected);
-          let operation: FolioDocumentOperation;
-          let expected: string[];
-          let offsets: number[] = [start, end];
-          switch (type) {
-            case "splitBlock":
-              operation = { id: "op", type, blockId, offset: start };
-              expected = [text.slice(0, start), text.slice(start), "Untouched."];
-              offsets = [start];
-              break;
-            case "replaceRange":
-              operation = {
-                id: "op",
-                type,
-                range: handle(blockId, text, start, end),
-                replace: "Q",
-              };
-              expected = [`${text.slice(0, start)}Q${text.slice(end)}`, "Untouched."];
-              break;
-            case "replaceInBlock":
-              if (!unique || hasLoneSurrogate(selected)) {
-                return;
-              }
-              operation = { id: "op", type, blockId, find: selected, replace: "Q" };
-              expected = [`${text.slice(0, start)}Q${text.slice(end)}`, "Untouched."];
-              break;
-            case "formatRange":
-              operation = {
-                id: "op",
-                type,
-                range: handle(blockId, text, start, end),
-                formatting: { bold: true },
-              };
-              expected = [text, "Untouched."];
-              break;
-            case "commentOnRange":
-              operation = {
-                id: "op",
-                type,
-                range: handle(blockId, text, start, end),
-                comment: { text: "Note." },
-              };
-              expected = [text, "Untouched."];
-              break;
-            case "commentOnBlock":
-              if (!unique || hasLoneSurrogate(selected)) {
-                return;
-              }
-              operation = { id: "op", type, blockId, quote: selected, comment: { text: "Note." } };
-              expected = [text, "Untouched."];
-              break;
-          }
-          const allowed = offsets.every((offset) =>
-            ANNOTATING.has(type)
-              ? !splitsSurrogatePair(text, offset)
-              : !splitsGraphemeCluster(text, offset),
-          );
-
-          const result = applyOne(reviewer, mode, operation);
-          // No text node the operation leaves holds half a character.
-          reviewer.state.doc.descendants((node) => {
-            if (node.isText) {
-              expect(hasLoneSurrogate(node.text ?? "")).toBe(false);
+  test(
+    "changes no text beyond what it names, and cuts no character",
+    async () => {
+      await assertProperty(
+        fc.asyncProperty(
+          textArbitrary,
+          fc.constantFrom<OffsetOperation>(
+            "splitBlock",
+            "replaceRange",
+            "replaceInBlock",
+            "formatRange",
+            "commentOnRange",
+            "commentOnBlock",
+          ),
+          fc.nat(),
+          fc.nat(),
+          fc.constantFrom(...MODES),
+          async (text, type, first, second, mode) => {
+            const start = 1 + (first % (text.length - 1));
+            const end = Math.min(text.length, start + 1 + (second % 4));
+            const reviewer = await openReviewer(
+              await paragraphsDocx([[textRun(text)], [textRun("Untouched.")]]),
+            );
+            const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
+            const selected = text.slice(start, end);
+            const unique = text.indexOf(selected) === text.lastIndexOf(selected);
+            let operation: FolioDocumentOperation;
+            let expected: string[];
+            let offsets: number[] = [start, end];
+            switch (type) {
+              case "splitBlock":
+                operation = { id: "op", type, blockId, offset: start };
+                expected = [text.slice(0, start), text.slice(start), "Untouched."];
+                offsets = [start];
+                break;
+              case "replaceRange":
+                operation = {
+                  id: "op",
+                  type,
+                  range: handle(blockId, text, start, end),
+                  replace: "Q",
+                };
+                expected = [`${text.slice(0, start)}Q${text.slice(end)}`, "Untouched."];
+                break;
+              case "replaceInBlock":
+                if (!unique || hasLoneSurrogate(selected)) {
+                  return;
+                }
+                operation = { id: "op", type, blockId, find: selected, replace: "Q" };
+                expected = [`${text.slice(0, start)}Q${text.slice(end)}`, "Untouched."];
+                break;
+              case "formatRange":
+                operation = {
+                  id: "op",
+                  type,
+                  range: handle(blockId, text, start, end),
+                  formatting: { bold: true },
+                };
+                expected = [text, "Untouched."];
+                break;
+              case "commentOnRange":
+                operation = {
+                  id: "op",
+                  type,
+                  range: handle(blockId, text, start, end),
+                  comment: { text: "Note." },
+                };
+                expected = [text, "Untouched."];
+                break;
+              case "commentOnBlock":
+                if (!unique || hasLoneSurrogate(selected)) {
+                  return;
+                }
+                operation = {
+                  id: "op",
+                  type,
+                  blockId,
+                  quote: selected,
+                  comment: { text: "Note." },
+                };
+                expected = [text, "Untouched."];
+                break;
             }
-            return true;
-          });
-          const final = blockTexts(await settled(reviewer, mode));
-          if (allowed) {
-            expect({ text, type, start, end, skipped: result.skipped }).toEqual({
-              text,
-              type,
-              start,
-              end,
-              skipped: [],
+            const allowed = offsets.every((offset) =>
+              ANNOTATING.has(type)
+                ? !splitsSurrogatePair(text, offset)
+                : !splitsGraphemeCluster(text, offset),
+            );
+
+            const result = applyOne(reviewer, mode, operation);
+            // No text node the operation leaves holds half a character.
+            reviewer.state.doc.descendants((node) => {
+              if (node.isText) {
+                expect(hasLoneSurrogate(node.text ?? "")).toBe(false);
+              }
+              return true;
             });
-            expect(final).toEqual(expected);
-          } else {
-            expect({
-              text,
-              type,
-              start,
-              end,
-              reasons: result.skipped.map((s) => s.reason),
-            }).toEqual({ text, type, start, end, reasons: ["splitsCharacter"] });
-            expect(final).toEqual([text, "Untouched."]);
-          }
-        },
-      ),
-      { numRuns: 120 },
-    );
-  }, 300_000);
+            const final = blockTexts(await settled(reviewer, mode));
+            if (allowed) {
+              expect({ text, type, start, end, skipped: result.skipped }).toEqual({
+                text,
+                type,
+                start,
+                end,
+                skipped: [],
+              });
+              expect(final).toEqual(expected);
+            } else {
+              expect({
+                text,
+                type,
+                start,
+                end,
+                reasons: result.skipped.map((s) => s.reason),
+              }).toEqual({ text, type, start, end, reasons: ["splitsCharacter"] });
+              expect(final).toEqual([text, "Untouched."]);
+            }
+          },
+        ),
+        { numRuns: 120 },
+      );
+    },
+    propertyTestTimeout(300_000),
+  );
 });

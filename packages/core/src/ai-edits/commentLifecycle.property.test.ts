@@ -371,27 +371,31 @@ const expectPackageConsistent = async (
 };
 
 describe("live comment threads match the saved package after every step", () => {
-  test("over generated sessions across a table and a note", async () => {
-    await assertProperty(
-      fc.asyncProperty(sessionArbitrary, async ({ comments, steps }) => {
-        let reviewer = await FolioDocxReviewer.fromBuffer(
-          await createDocx(buildDocument(comments)),
-          { author: "Editor" },
-        );
-        for (const [index, { step, reopen }] of steps.entries()) {
-          applyStep(reviewer, step);
-          const live = threadsOf(reviewer.getComments());
-          const saved = await reviewer.toBuffer();
-          const reopened = await FolioDocxReviewer.fromBuffer(saved, { author: "Editor" });
-          const persisted = threadsOf(reopened.getComments());
-          await expectPackageConsistent(saved, persisted);
-          expect({ step: index, threads: persisted }).toEqual({ step: index, threads: live });
-          if (reopen) {
-            reviewer = reopened;
+  test(
+    "over generated sessions across a table and a note",
+    async () => {
+      await assertProperty(
+        fc.asyncProperty(sessionArbitrary, async ({ comments, steps }) => {
+          let reviewer = await FolioDocxReviewer.fromBuffer(
+            await createDocx(buildDocument(comments)),
+            { author: "Editor" },
+          );
+          for (const [index, { step, reopen }] of steps.entries()) {
+            applyStep(reviewer, step);
+            const live = threadsOf(reviewer.getComments());
+            const saved = await reviewer.toBuffer();
+            const reopened = await FolioDocxReviewer.fromBuffer(saved, { author: "Editor" });
+            const persisted = threadsOf(reopened.getComments());
+            await expectPackageConsistent(saved, persisted);
+            expect({ step: index, threads: persisted }).toEqual({ step: index, threads: live });
+            if (reopen) {
+              reviewer = reopened;
+            }
           }
-        }
-      }),
-      { numRuns: 40 },
-    );
-  }, 240_000);
+        }),
+        { numRuns: 40 },
+      );
+    },
+    propertyTestTimeout(240_000),
+  );
 });

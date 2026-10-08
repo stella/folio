@@ -188,62 +188,78 @@ const typeInEditor = (document: Document, target: EditTarget, text: string): Doc
 const safeText = fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9 ]{0,24}$/u);
 
 describe("a shape read from mc:AlternateContent", () => {
-  test("an unedited text box writes its element back whole, through the model and the editor", async () => {
-    await fc.assert(
-      fc.asyncProperty(safeText, async (text) => {
-        const alternateContent = textBoxAlternateContent(text);
-        const parsed = await open(documentXml(alternateContent));
+  test(
+    "an unedited text box writes its element back whole, through the model and the editor",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(safeText, async (text) => {
+          const alternateContent = textBoxAlternateContent(text);
+          const parsed = await open(documentXml(alternateContent));
 
-        expect(await savedDocumentPart(parsed)).toContain(alternateContent);
-        expect(await savedDocumentPart(throughEditor(parsed))).toContain(alternateContent);
-      }),
-      propertyConfig({ numRuns: 20 }),
-    );
-  }, 120_000);
+          expect(await savedDocumentPart(parsed)).toContain(alternateContent);
+          expect(await savedDocumentPart(throughEditor(parsed))).toContain(alternateContent);
+        }),
+        propertyConfig({ numRuns: 20 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
-  test("an edited text box is regenerated without the stale Fallback", async () => {
-    await fc.assert(
-      fc.asyncProperty(safeText, safeText, async (original, replacement) => {
-        fc.pre(original !== replacement);
-        const parsed = await open(documentXml(textBoxAlternateContent(original)));
-        editTextBoxInModel(parsed, replacement);
-        const saved = await savedDocumentPart(parsed);
+  test(
+    "an edited text box is regenerated without the stale Fallback",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(safeText, safeText, async (original, replacement) => {
+          fc.pre(original !== replacement);
+          const parsed = await open(documentXml(textBoxAlternateContent(original)));
+          editTextBoxInModel(parsed, replacement);
+          const saved = await savedDocumentPart(parsed);
 
-        expect(saved).not.toContain("mc:Fallback");
-        expect(textOf(saved)).toBe(`Host${replacement}`);
-        expectFallbacksAgree(saved);
-      }),
-      propertyConfig({ numRuns: 20 }),
-    );
-  }, 120_000);
+          expect(saved).not.toContain("mc:Fallback");
+          expect(textOf(saved)).toBe(`Host${replacement}`);
+          expectFallbacksAgree(saved);
+        }),
+        propertyConfig({ numRuns: 20 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
-  test("typing into a text box in the editor drops the stale Fallback", async () => {
-    await fc.assert(
-      fc.asyncProperty(safeText, safeText, async (original, typed) => {
-        const parsed = await open(documentXml(textBoxAlternateContent(original)));
-        const saved = await savedDocumentPart(typeInEditor(parsed, "textBox", typed));
+  test(
+    "typing into a text box in the editor drops the stale Fallback",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(safeText, safeText, async (original, typed) => {
+          const parsed = await open(documentXml(textBoxAlternateContent(original)));
+          const saved = await savedDocumentPart(typeInEditor(parsed, "textBox", typed));
 
-        expect(saved).not.toContain("mc:Fallback");
-        expect(textOf(saved)).toBe(`Host${typed}${original}`);
-        expectFallbacksAgree(saved);
-      }),
-      propertyConfig({ numRuns: 20 }),
-    );
-  }, 120_000);
+          expect(saved).not.toContain("mc:Fallback");
+          expect(textOf(saved)).toBe(`Host${typed}${original}`);
+          expectFallbacksAgree(saved);
+        }),
+        propertyConfig({ numRuns: 20 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
-  test("typing elsewhere in the document keeps the text box's element whole", async () => {
-    await fc.assert(
-      fc.asyncProperty(safeText, safeText, async (text, typed) => {
-        const alternateContent = textBoxAlternateContent(text);
-        const parsed = await open(documentXml(alternateContent));
-        const saved = await savedDocumentPart(typeInEditor(parsed, "host", typed));
+  test(
+    "typing elsewhere in the document keeps the text box's element whole",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(safeText, safeText, async (text, typed) => {
+          const alternateContent = textBoxAlternateContent(text);
+          const parsed = await open(documentXml(alternateContent));
+          const saved = await savedDocumentPart(typeInEditor(parsed, "host", typed));
 
-        expect(saved).toContain(alternateContent);
-        expect(textOf(saved)).toBe(`${typed}Host${text}${text}`);
-      }),
-      propertyConfig({ numRuns: 20 }),
-    );
-  }, 120_000);
+          expect(saved).toContain(alternateContent);
+          expect(textOf(saved)).toBe(`${typed}Host${text}${text}`);
+        }),
+        propertyConfig({ numRuns: 20 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
   test("a shape without a text body keeps its Fallback until it is edited", async () => {
     const parsed = await open(documentXml(CONNECTOR_ALTERNATE_CONTENT));
