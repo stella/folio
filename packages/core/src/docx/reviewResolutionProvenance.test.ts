@@ -364,6 +364,8 @@ test(
                 ]
               : [leaf];
           let owners = 0;
+          let exposedLink = link === "linked";
+          let refusesSegmentation = false;
           for (const [index, kind] of kinds.entries()) {
             const retains =
               provenance === "every" ||
@@ -379,7 +381,10 @@ test(
               case "deletion":
               case "moveFrom":
               case "moveTo":
-                if (retains) owners++;
+                if (retains) {
+                  owners++;
+                  if (exposedLink) refusesSegmentation = true;
+                }
                 content = [
                   {
                     type: kind,
@@ -390,7 +395,10 @@ test(
                 ];
                 break;
               case "simpleField":
-                if (retains) owners++;
+                if (retains) {
+                  owners++;
+                  if (exposedLink) refusesSegmentation = true;
+                }
                 content = [
                   {
                     type: "simpleField",
@@ -408,6 +416,7 @@ test(
                 ];
                 break;
               case "inlineSdt":
+                exposedLink = false;
                 content = [
                   {
                     type: "inlineSdt",
@@ -450,12 +459,8 @@ test(
           // stacks made entirely from fields, transparent wrappers and controls.
           content = [{ type: "insertion", info: { id: 100, author: "Root Reviewer" }, content }];
           const paragraph: Paragraph = { type: "paragraph", content };
-          if (link === "linked" && owners > 0) {
+          if (refusesSegmentation) {
             expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
-            return;
-          }
-          if (link === "linked" && kinds.includes("inlineSdt")) {
-            expect(() => serializeParagraph(paragraph)).toThrow(/content control/);
             return;
           }
           const xml = serializeParagraph(paragraph);
@@ -491,7 +496,9 @@ const expectNoHyperlinkInsideRevision = (xml: string) => {
     const name = getLocalName(next.node.name);
     if (name === "hyperlink") expect(next.revisionDepth).toBe(0);
     const revisionDepth =
-      next.revisionDepth + (["ins", "del", "moveFrom", "moveTo"].includes(name) ? 1 : 0);
+      name === "sdt"
+        ? 0
+        : next.revisionDepth + (["ins", "del", "moveFrom", "moveTo"].includes(name) ? 1 : 0);
     for (const child of getChildElements(next.node)) pending.push({ node: child, revisionDepth });
   }
 };
@@ -556,11 +563,29 @@ test("opaque tracked captures refuse untyped hyperlinks", () => {
             {
               type: "preservedInline",
               text: "linked",
-              xml: '<w:sdt><w:sdtPr/><w:sdtContent><w:hyperlink w:anchor="target"><w:r><w:t>linked</w:t></w:r></w:hyperlink></w:sdtContent></w:sdt>',
+              xml: '<w:dir w:val="rtl"><w:hyperlink w:anchor="target"><w:r><w:t>linked</w:t></w:r></w:hyperlink></w:dir>',
             },
           ],
         },
       ],
     }),
   ).toThrow(/tracked capture/);
+});
+
+test("hyperlink revision hoisting descends through transparent revision containers", () => {
+  const paragraph = parseParagraph(
+    element(
+      '<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:hyperlink w:anchor="target"><w:ins w:id="1" w:author="Outer"><w:dir w:val="rtl"><w:del w:id="2" w:author="Inner"><w:r><w:delText>linked</w:delText></w:r></w:del></w:dir></w:ins></w:hyperlink></w:p>',
+    ),
+    null,
+    null,
+    null,
+  );
+  const xml = serializeParagraph(paragraph);
+  expect(xml.match(/<w:hyperlink\b/gu)).toHaveLength(1);
+  expect(xml).toContain('w:anchor="target"');
+  expect(xml).toContain('w:id="1"');
+  expect(xml).toContain('w:id="2"');
+  expect(JSON.stringify(paragraph)).not.toContain('"type":"preservedInline"');
+  expectNoHyperlinkInsideRevision(xml);
 });

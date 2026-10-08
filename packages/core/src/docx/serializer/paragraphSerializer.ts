@@ -935,13 +935,7 @@ function serializeTrackedChange(
 
 type TrackedInlineSegment =
   | { type: "plain"; xml: string }
-  | { type: "hyperlink"; hyperlink: Hyperlink; xml: string; lowering: "emit" | "refuse-sdt" };
-
-class UnrepresentableTrackedSdtHyperlinkError extends TaggedError(
-  "UnrepresentableTrackedSdtHyperlinkError",
-)<{
-  message: string;
-}> {}
+  | { type: "hyperlink"; hyperlink: Hyperlink; xml: string };
 
 const emitTrackedInlineSegments = (segments: readonly TrackedInlineSegment[]): string =>
   segments
@@ -950,19 +944,7 @@ const emitTrackedInlineSegments = (segments: readonly TrackedInlineSegment[]): s
         case "plain":
           return segment.xml;
         case "hyperlink":
-          switch (segment.lowering) {
-            case "emit":
-              return `<w:hyperlink${hyperlinkAttributes(segment.hyperlink)}>${segment.xml}</w:hyperlink>`;
-            case "refuse-sdt":
-              throw new UnrepresentableTrackedSdtHyperlinkError({
-                message:
-                  "A tracked content control cannot be represented inside a lifted hyperlink.",
-              });
-            default: {
-              const unwritten: never = segment.lowering;
-              return unwritten;
-            }
-          }
+          return `<w:hyperlink${hyperlinkAttributes(segment.hyperlink)}>${segment.xml}</w:hyperlink>`;
         default: {
           const unwritten: never = segment;
           return unwritten;
@@ -995,7 +977,6 @@ const wrapTrackedInlineSegments = (
           type: "hyperlink",
           hyperlink: segment.hyperlink,
           xml: wrap(segment.xml),
-          lowering: segment.lowering,
         });
         break;
       default: {
@@ -1064,7 +1045,6 @@ const walkTrackedInlineContent = (
           type: "hyperlink",
           hyperlink: item,
           xml: emitTrackedInlineSegments(children),
-          lowering: "emit",
         });
         break;
       }
@@ -1085,16 +1065,15 @@ const walkTrackedInlineContent = (
         );
         break;
       case "inlineSdt": {
-        const wrapped = wrapTrackedInlineSegments(
-          walkTrackedInlineContent(item.content, disposition),
-          (xml) => serializeSdtWrapper(item.properties, xml),
-        );
-        // Hyperlink.children cannot carry an SDT on reopen. Defer the typed
-        // refusal until emission so enclosing revisions first enforce provenance.
-        for (const segment of wrapped) {
-          if (segment.type === "hyperlink") segment.lowering = "refuse-sdt";
-        }
-        segments.push(...wrapped);
+        // CT_RunTrackChange admits CT_SdtRun; its EG_PContent owns hyperlinks.
+        // Emit its segments locally so a link never escapes the SDT boundary.
+        segments.push({
+          type: "plain",
+          xml: serializeSdtWrapper(
+            item.properties,
+            emitTrackedInlineSegments(walkTrackedInlineContent(item.content, disposition)),
+          ),
+        });
         break;
       }
       case "complexField": {
@@ -1116,7 +1095,7 @@ const walkTrackedInlineContent = (
           if (!captured) continue;
           const wordprocessing = WORDPROCESSINGML_NAMESPACE_URIS.has(captured.namespaceUri ?? "");
           const name = getLocalName(captured.name);
-          if (wordprocessing && name === "p") continue;
+          if (wordprocessing && (name === "p" || name === "sdt")) continue;
           if (wordprocessing && name === "hyperlink") {
             throw new UnrepresentableTrackedCaptureError({
               message:

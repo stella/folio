@@ -4,6 +4,9 @@
  * PM commands for adding/removing comments and accepting/rejecting tracked changes.
  */
 
+import { resolvedPreservedXmlAttrs } from "../preservedXmlReview";
+import { canonicalFieldNode } from "../fieldRepresentation";
+
 import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
@@ -406,11 +409,28 @@ function resolveChange(
               }
             }
           }
+          const current = tr.doc.nodeAt(pos);
+          if (current) {
+            const attrs = resolvedPreservedXmlAttrs(node, current.marks);
+            if (attrs !== node.attrs) tr.setNodeMarkup(pos, undefined, attrs);
+          }
           return true;
         }
 
         if (removesNode) {
           deleteRanges.push({ from: rangeFrom, to: rangeTo });
+        }
+
+        if (
+          !removesNode &&
+          keepType &&
+          node.marks.some((mark) => mark.type === keepType && matchesRevision(mark))
+        ) {
+          const retained = node.marks.filter(
+            (mark) => !(mark.type === keepType && matchesRevision(mark)),
+          );
+          const attrs = resolvedPreservedXmlAttrs(node, retained);
+          if (attrs !== node.attrs) tr.setNodeMarkup(pos, undefined, attrs);
         }
 
         if (!removeKeptMarksInBulk) {
@@ -708,6 +728,17 @@ function resolveChange(
         styleResolver,
       });
 
+      const resolvedFields: { node: PMNode; position: number }[] = [];
+      tr.doc.descendants((node, position) => {
+        const canonical = canonicalFieldNode(node);
+        if (canonical !== node) resolvedFields.push({ node: canonical, position });
+      });
+      for (const { node, position } of resolvedFields.toReversed()) {
+        const field = tr.doc.nodeAt(position);
+        if (!field) continue;
+        if (field.type === node.type) tr.setNodeMarkup(position, undefined, node.attrs, node.marks);
+        else tr.replaceWith(position, position + field.nodeSize, node);
+      }
       if (tr.steps.length > 0) {
         dispatch(tr);
       }

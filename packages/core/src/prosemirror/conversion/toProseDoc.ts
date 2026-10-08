@@ -12,6 +12,8 @@
  * - Inline properties (highest priority)
  */
 
+import { fieldRequiresStructuredContent } from "../fieldRepresentation";
+
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
@@ -106,7 +108,6 @@ import {
   type AuthoredRunFormattingCarrier,
   type MarkFactory,
 } from "../extensions/marks/markUtils";
-import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
 import { RUN_IDENTITY_MARK_NAME, hasRunIdentityPayload, runIdentityAttrs } from "../runIdentity";
 import { directionFromBidi } from "../paragraphDirection";
@@ -2748,28 +2749,7 @@ function convertField(
     createMark: runScope.createMark,
   });
 
-  const hasConvertedHyperlinkContent = inlineNodes.some((node) =>
-    node.marks.some((mark) => mark.type.name === "hyperlink"),
-  );
-  const hasConvertedPageBreakContent = inlineNodes.some(
-    (node) => node.type.name === "pageBreakRun",
-  );
-  const hasConvertedPreservedContent = inlineNodes.some(
-    (node) => node.type.name === "preservedXml",
-  );
-  // The wrapper is a mark on the field's own leaves, so collapsing the field to
-  // its display text would take the wrapper with it.
-  const hasConvertedWrapperContent = inlineNodes.some((node) =>
-    node.marks.some((mark) => mark.type.name === INLINE_WRAPPER_MARK_NAME),
-  );
-  const hasConvertedTrackedContent = inlineNodes.some((node) =>
-    node.marks.some((mark) => mark.type.name === "insertion" || mark.type.name === "deletion"),
-  );
-  const createStructuredField =
-    hasConvertedTrackedContent ||
-    hasConvertedPageBreakContent ||
-    hasConvertedPreservedContent ||
-    (hasStructuredSourceContent && (hasConvertedHyperlinkContent || hasConvertedWrapperContent));
+  const createStructuredField = fieldRequiresStructuredContent(inlineNodes);
   const resultRuns =
     field.type === "simpleField"
       ? field.content.flatMap((content) => (content.type === "run" ? [content] : []))

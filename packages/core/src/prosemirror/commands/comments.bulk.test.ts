@@ -500,7 +500,7 @@ describe("headless bulk revision resolution equivalence", () => {
     { mode: "reject", revisionType: "insertion" },
     { mode: "accept", revisionType: "deletion" },
   ] as const)(
-    "$mode fits an emptied required inline parent with the legacy position map",
+    "$mode canonicalizes an emptied field with the per-change position map",
     ({ mode, revisionType }) => {
       const field = schema.node(
         "structuredField",
@@ -531,9 +531,12 @@ describe("headless bulk revision resolution equivalence", () => {
 
       const legacyField = legacy.doc.firstChild?.firstChild;
       expect(field.childCount).toBe(1);
-      expect(legacy.doc.textContent).toBe(trailingText);
-      expect(legacyField?.type.name).toBe("structuredField");
-      expect(legacyField?.firstChild?.type.name).toBe("tab");
+      // An ordinary empty REF atom paints its existing field placeholder.
+      expect(legacy.doc.textContent).toBe(`{REF}${trailingText}`);
+      expect(legacyField?.type.name).toBe("field");
+      expect(legacyField?.childCount).toBe(0);
+      expect(legacyField?.attrs["displayText"]).toBe("");
+      expect(() => fromProseDoc(bulk.doc, createEmptyDocument())).not.toThrow();
       expect(bulk.doc.toJSON()).toEqual(legacy.doc.toJSON());
       expect(stepCountKey.getState(bulk)).toBe(1);
       expect({ anchor: bulk.selection.anchor, head: bulk.selection.head }).toEqual({

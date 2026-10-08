@@ -1,13 +1,17 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { EditorState } from "prosemirror-state";
+import { EditorState, type Command } from "prosemirror-state";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Node as PMNode } from "prosemirror-model";
 import type { ParagraphContent, SimpleField, TrackedRunChange } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
+import {
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+  resolveAllChangesInHeadlessState,
+} from "../prosemirror/commands/comments";
 import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
 import { createDocx } from "./rezip";
 import { parseDocx } from "./parser";
@@ -22,6 +26,14 @@ import {
   parseXmlDocument,
 } from "./xmlParser";
 import { TRACKED_RUN_WORDPROCESSING_CHILDREN } from "./containerChildren.gen";
+
+const applyReviewCommand = (state: EditorState, command: Command) => {
+  let resolved = state;
+  command(state, (transaction) => {
+    resolved = state.apply(transaction);
+  });
+  return resolved;
+};
 
 const FIELD_DATA =
   '<w:fldData xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">AQID</w:fldData>';
@@ -193,8 +205,49 @@ test(
             const expected = outerRemoved
               ? ""
               : `before${childKept ? "x".repeat(length) : ""}after`;
-            expect(resolveAllChangesInHeadlessState(live, mode).doc.textContent).toBe(expected);
-            expect(resolveAllChangesInHeadlessState(reopened, mode).doc.textContent).toBe(expected);
+            for (const [state, baseline] of [
+              [live, source],
+              [reopened, reopenedSource],
+            ] as const) {
+              const resolved = resolveAllChangesInHeadlessState(state, mode);
+              expect(resolved.doc.textContent).toBe(expected);
+              const reopenedResolved = await parseDocx(
+                await createDocx(fromProseDoc(resolved.doc, baseline)),
+                { preloadFonts: false },
+              );
+              expect(
+                resolveAllChangesInHeadlessState(
+                  EditorState.create({ doc: toProseDoc(reopenedResolved) }),
+                  mode,
+                ).doc.textContent,
+              ).toBe(expected);
+              let individuallyResolved = state;
+              const resolve = mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision;
+              // Resolve one revision id at a time, exercising overlapping ancestry.
+              for (let step = 0; step < 20; step++) {
+                let revisionId: number | undefined;
+                individuallyResolved.doc.descendants((node) => {
+                  const revisionMark = node.marks.find(
+                    (mark) => mark.type.name === "insertion" || mark.type.name === "deletion",
+                  );
+                  if (revisionId === undefined && revisionMark)
+                    revisionId = expectTrackedChangeMarkAttrs(revisionMark).revisionId;
+                });
+                if (revisionId === undefined) break;
+                const before = individuallyResolved.doc;
+                individuallyResolved = applyReviewCommand(
+                  individuallyResolved,
+                  resolve(revisionId),
+                );
+                expect(individuallyResolved.doc.eq(before)).toBe(false);
+                const intermediate = await parseDocx(
+                  await createDocx(fromProseDoc(individuallyResolved.doc, baseline)),
+                  { preloadFonts: false },
+                );
+                expect(toProseDoc(intermediate)).toBeDefined();
+              }
+              expect(individuallyResolved.doc.textContent).toBe(expected);
+            }
           }
           const savedAgain = await createDocx(fromProseDoc(reopened.doc, reopenedSource));
           expect(
