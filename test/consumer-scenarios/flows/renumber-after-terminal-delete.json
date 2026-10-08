@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 1785653011,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2985383154,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 3857831012,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "31617F9A",
+          "properties": {
+            "numbering": {
+              "numId": 7,
+              "level": 0
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from random flow seed 1785653011",
+  "title": "PINNED #1382, reported seed 1785653011: tracked acceptance differs from direct editing"
+}
