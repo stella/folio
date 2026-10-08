@@ -18,10 +18,10 @@ export const mapTocSelection = (
 ): TextPosition => {
   if (!sameStory(point.story, at.story)) return point;
   if (idKey(point.blockId) !== idKey(at.blockId)) return point;
-  if (point.offset === at.offset && (point.zeroWidthBefore ?? 0) === (at.zeroWidthBefore ?? 0))
-    return after;
   const split = ops.find((op) => op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK);
   if (split === undefined) return point;
+  if (point.offset === at.offset && (point.zeroWidthBefore ?? 0) === (at.zeroWidthBefore ?? 0))
+    return after;
   if (split.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK || split.newHalf !== SPLIT_HALVES.FIRST)
     return panic("TOC insertion must retain its following paragraph identity.");
   const pointGap = { offset: point.offset, zeroWidthBefore: point.zeroWidthBefore ?? 0 };
