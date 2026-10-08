@@ -21,7 +21,7 @@ import {
   serializeResolutionJoins,
 } from "./reviewResolutionProvenance";
 import { findChild, parseXmlDocument, WORDPROCESSINGML_NAMESPACE_URIS } from "./xmlParser";
-import type { Paragraph, ParagraphMarkChange } from "../types/document";
+import type { TrackedRunChange, Paragraph, ParagraphMarkChange } from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -270,3 +270,107 @@ test("save refuses provenance requiring unsupported hyperlink repartition", () =
   } satisfies Paragraph;
   expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
 });
+
+test("nested hyperlink lifting refuses enclosing resolution provenance", () => {
+  const paragraph = {
+    type: "paragraph",
+    content: [
+      {
+        type: "insertion",
+        info: { id: 35, author: "Outer Reviewer" },
+        resolutionJoins: { before: 1, after: 1, remove: 1 },
+        content: [
+          { type: "run", content: [{ type: "text", text: "before" }] },
+          {
+            type: "deletion",
+            info: { id: 37, author: "Inner Reviewer" },
+            content: [
+              {
+                type: "hyperlink",
+                anchor: "target",
+                children: [{ type: "run", content: [{ type: "text", text: "linked" }] }],
+              },
+            ],
+          },
+          { type: "run", content: [{ type: "text", text: "after" }] },
+        ],
+      },
+    ],
+  } satisfies Paragraph;
+  expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
+});
+
+test(
+  "generated nested lifting refuses provenance and unsplit revisions retain it",
+  () => {
+    assertProperty(
+      fc.property(
+        fc.array(fc.constantFrom("insertion", "deletion", "moveFrom", "moveTo"), {
+          minLength: 1,
+          maxLength: 5,
+        }),
+        fc.constantFrom("plain", "field"),
+        fc.constantFrom("linked", "unlinked"),
+        fc.constantFrom("none", "outer", "inner", "every"),
+        fc.record({
+          before: fc.integer({ min: 0, max: 4 }),
+          after: fc.integer({ min: 0, max: 4 }),
+          remove: fc.integer({ min: 0, max: 4 }),
+        }),
+        (kinds, carrier, link, provenance, joins) => {
+          const run = { type: "run", content: [{ type: "text", text: "result" }] } as const;
+          const leaf =
+            link === "linked"
+              ? {
+                  type: "hyperlink" as const,
+                  anchor: "target",
+                  children: [{ ...run, content: [...run.content] }],
+                }
+              : { ...run, content: [...run.content] };
+          let content: TrackedRunChange["content"] =
+            carrier === "field"
+              ? [
+                  {
+                    type: "simpleField",
+                    instruction: "REF target",
+                    fieldType: "REF",
+                    content: [leaf],
+                  },
+                ]
+              : [leaf];
+          let owners = 0;
+          for (const [index, kind] of kinds.entries()) {
+            const retains =
+              provenance === "every" ||
+              (provenance === "inner" && index === 0) ||
+              (provenance === "outer" && index === kinds.length - 1);
+            if (retains) owners++;
+            const nestedContent: TrackedRunChange["content"] = [
+              { type: "run", content: [{ type: "text", text: "before" }] },
+            ];
+            nestedContent.push(...content);
+            nestedContent.push({ type: "run", content: [{ type: "text", text: "after" }] });
+            content = [
+              {
+                type: kind,
+                info: { id: index + 1, author: "Reviewer" },
+                ...(retains ? { resolutionJoins: joins } : {}),
+                content: nestedContent,
+              },
+            ];
+          }
+          const paragraph: Paragraph = { type: "paragraph", content };
+          if (link === "linked" && owners > 0) {
+            expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
+            return;
+          }
+          const xml = serializeParagraph(paragraph);
+          expect(xml.match(/folio:resolutionJoins=/gu)?.length ?? 0).toBe(owners);
+          if (owners > 0) expect(xml).toContain(serializeResolutionJoins(joins));
+        },
+      ),
+      { numRuns: 80 },
+    );
+  },
+  propertyTestTimeout(10_000),
+);

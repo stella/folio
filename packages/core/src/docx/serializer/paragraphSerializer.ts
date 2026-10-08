@@ -964,7 +964,7 @@ function serializeNestedTrackedChange({
   const content = change.content.flatMap((item) =>
     item.type === "simpleField" ? trackedSimpleFieldContent(item) : [item],
   );
-  if (change.resolutionJoins !== undefined && content.some((item) => item.type === "hyperlink")) {
+  if (change.resolutionJoins !== undefined && requiresHyperlinkSegmentation(content)) {
     throw new ReviewResolutionProvenanceError({
       attribute: "resolutionJoins",
       reason: "unrepresentable",
