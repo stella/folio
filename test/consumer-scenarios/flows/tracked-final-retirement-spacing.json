@@ -21,6 +21,7 @@
     {
       "action": "story batch",
       "seed": 1352163160,
+      "atomic": false,
       "operations": [
         {
           "type": "setBlockParagraphProperties",

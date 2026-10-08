@@ -9,6 +9,7 @@
     {
       "action": "story batch",
       "seed": 4115123176,
+      "atomic": false,
       "operations": [
         {
           "type": "mergeBlockWithNext",

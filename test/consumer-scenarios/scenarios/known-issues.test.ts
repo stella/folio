@@ -36,6 +36,10 @@ import { MARKDOWN_READ_OPTIONS } from "../support/readers.ts";
 import { ENABLED_RELATIONS } from "../support/metamorphic.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
+
+// Compare cloneable document facts on both sides: structuredClone excludes
+// source-binding symbols attached to the live document by the parser.
+const documentSnapshot = (reviewer: Reviewer) => structuredClone(reviewer.toDocument());
 type Story = Parameters<Reviewer["snapshotStory"]>[0];
 
 const applyTo = (reviewer: Reviewer, story: Story, operation: Operation, mode: Mode) => {
@@ -176,7 +180,7 @@ describe("fixed findings", () => {
       operations: [{ id: "delete", type: "deleteBlock", blockId: "5E88C024" }],
     });
     assert.equal(deleted.applied.length, 1);
-    const before = structuredClone(reviewer.toDocument());
+    const before = documentSnapshot(reviewer);
     const result = reviewer.applyDocumentOperations({
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       mode: "tracked-changes",
@@ -194,14 +198,14 @@ describe("fixed findings", () => {
       result.skipped.map(({ id, reason }) => ({ id, reason })),
       [{ id: "numbering", reason: "pendingParagraphMarkDeletion" }],
     );
-    assert.deepEqual(reviewer.toDocument(), before);
+    assert.deepEqual(documentSnapshot(reviewer), before);
     await saveAndReopen(reviewer, "refused numbering of a pending deleted paragraph mark");
   });
 
   for (const atomic of [false, true]) {
     test(`delete/split overlap and a separate merge respect atomic=${atomic} (seed 118244301)`, async () => {
       const reviewer = await openReviewer(await directNumberedDocument());
-      const before = structuredClone(reviewer.toDocument());
+      const before = documentSnapshot(reviewer);
       const result = reviewer.applyDocumentOperations({
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
@@ -219,7 +223,7 @@ describe("fixed findings", () => {
             ({ id, reason }) => id === "split" && reason === "overlappingOperation",
           ),
         );
-        assert.deepEqual(reviewer.toDocument(), before);
+        assert.deepEqual(documentSnapshot(reviewer), before);
       } else {
         assert.deepEqual(
           result.applied.map(({ id }) => id),
@@ -260,7 +264,7 @@ describe("fixed findings", () => {
       });
       assert.equal(deletion.applied.length, 1);
       if (saved) reviewer = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
-      const before = structuredClone(reviewer.toDocument());
+      const before = documentSnapshot(reviewer);
       const operation = {
         id: "restyle",
         type: "setBlockParagraphProperties",
@@ -277,7 +281,7 @@ describe("fixed findings", () => {
         result.skipped.map(({ id, reason }) => ({ id, reason })),
         [{ id: "restyle", reason: "pendingParagraphMarkDeletion" }],
       );
-      assert.deepEqual(reviewer.toDocument(), before);
+      assert.deepEqual(documentSnapshot(reviewer), before);
       await saveAndReopen(reviewer, "refused restyle of a pending deleted paragraph mark");
     }
   });
