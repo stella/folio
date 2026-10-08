@@ -36,11 +36,11 @@ use proptest::{collection, prop_assert, prop_assert_eq, proptest, sample};
 use quick_xml::events::{BytesStart, Event};
 use stella_docx_kernel::{
     AttributedRevision, CommentContent, DocumentPackageProjection, DocumentStructureFacts,
-    DocxLimits, FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
-    ParagraphIdentityFacts, ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail,
-    ReviewFactLimits, ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind,
-    RevisionPayload, RevisionProjectionStatus, RevisionUnsupportedReason, RevisionView,
-    StructuralFactSet, TextFormattingSpan, TextStyle, project_docx_with_review_facts,
+    DocxLimits, FormattingProjectionStatus, InternalParagraphId, ParagraphIdentityFacts,
+    ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits,
+    ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionPayload,
+    RevisionProjectionStatus, RevisionUnsupportedReason, RevisionView, StructuralFactSet,
+    TextFormattingSpan, TextStyle, project_docx_with_review_facts,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -812,7 +812,8 @@ impl Markup {
     }
 
     fn table(&mut self, table: &Table) {
-        self.xml.push_str("<w:tbl><w:tblPr>");
+        self.xml
+            .push_str(r#"<w:tbl><w:tblPr><w:tblStyle w:val="MissingTableStyle"/>"#);
         if table.property_changes.table {
             self.change("tblPrChange", "<w:tblPr/>");
         }
@@ -997,6 +998,7 @@ enum Element {
     ParagraphProperties,
     Table,
     TableProperties,
+    TableStyle,
     TableGrid,
     Row,
     RowProperties,
@@ -1045,11 +1047,12 @@ enum Element {
 }
 
 impl Element {
-    const ALL: [Self; 49] = [
+    const ALL: [Self; 50] = [
         Self::Paragraph,
         Self::ParagraphProperties,
         Self::Table,
         Self::TableProperties,
+        Self::TableStyle,
         Self::TableGrid,
         Self::Row,
         Self::RowProperties,
@@ -1103,6 +1106,7 @@ impl Element {
             Self::ParagraphProperties => "pPr",
             Self::Table => "tbl",
             Self::TableProperties => "tblPr",
+            Self::TableStyle => "tblStyle",
             Self::TableGrid => "tblGrid",
             Self::Row => "tr",
             Self::RowProperties => "trPr",
@@ -1223,7 +1227,7 @@ impl Element {
             Self::ParagraphProperties => vec![C::Paragraph],
             Self::ParagraphPropertiesChange => vec![C::ParagraphProperties],
             Self::TableProperties | Self::TableGrid | Self::Row => vec![C::Table],
-            Self::TablePropertiesChange => vec![C::TableProperties],
+            Self::TableStyle | Self::TablePropertiesChange => vec![C::TableProperties],
             Self::TableGridChange => vec![C::TableGrid],
             Self::RowProperties | Self::Cell => vec![C::TableRow],
             Self::TableRowPropertiesChange => vec![C::TableRowProperties],
@@ -3125,7 +3129,9 @@ impl TablePropertyDocument {
             TablePlacement::CustomXml => ("<w:customXml>", "</w:customXml>"),
         };
         markup.xml.push_str(opening);
-        markup.xml.push_str("<w:tbl><w:tblPr>");
+        markup
+            .xml
+            .push_str(r#"<w:tbl><w:tblPr><w:tblStyle w:val="MissingTableStyle"/>"#);
         if self.snapshots[0] {
             markup.change("tblPrChange", "<w:tblPr/>");
         }
@@ -3275,10 +3281,7 @@ impl TablePropertyDocument {
                 RevisionProjectionStatus::Complete
             };
         if projection.document.revision_status != expected_status
-            || projection.document.formatting_status
-                != FormattingProjectionStatus::Incomplete(
-                    FormattingUnknownReason::UnsupportedStyles,
-                )
+            || projection.document.formatting_status != FormattingProjectionStatus::Complete
         {
             return Err(
                 "table projection statuses differ from their declared semantics".to_owned(),
