@@ -1,3 +1,4 @@
+import { evaluateCanonicalPage, waitForCanonicalPageReady } from "./canonicalPageNavigation";
 import { expect, type Page } from "@playwright/test";
 import { Result } from "better-result";
 import { captureCanonicalOracleFailure } from "../parity/canonicalOracleFailure";
@@ -18,8 +19,11 @@ const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const snapshot = async (page: Page) => {
   // An ended IME composition commits after the native flush settles; the
   // canonical document refuses snapshots until then (canSnapshot is false).
+  await waitForCanonicalPageReady(page);
   await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
-  const current = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
+  const current = await evaluateCanonicalPage(page, () =>
+    page.evaluate(() => globalThis.__folioCanonical?.snapshot()),
+  );
   expect(current?.active).toBe(true);
   expect(current?.composing, "native composition must end before canonical snapshots").toBe(false);
   expect(current?.projectionMatchesCanonical).toBe(true);
@@ -28,11 +32,13 @@ const snapshot = async (page: Page) => {
   return { ...current, document: current.document };
 };
 const drainErrors = (page: Page) =>
-  page.evaluate(() => {
-    const errors = globalThis.__folioCanonicalFuzzErrors;
-    if (!errors) throw new TypeError("Canonical error sink unavailable");
-    return errors.splice(0);
-  });
+  evaluateCanonicalPage(page, () =>
+    page.evaluate(() => {
+      const errors = globalThis.__folioCanonicalFuzzErrors;
+      if (!errors) throw new TypeError("Canonical error sink unavailable");
+      return errors.splice(0);
+    }),
+  );
 
 type CanonicalBrowserHistoryOptions = {
   page: Page;
@@ -47,16 +53,22 @@ type CanonicalBrowserHistoryRunOptions = CanonicalBrowserHistoryOptions & {
 
 /** Establish the first loaded owner once, outside the per-case reset barrier. */
 export const initializeCanonicalBrowserHistory = async (page: Page, source: number[]) => {
-  await page.evaluate(() => {
-    globalThis.__folioCanonicalFuzzErrors ??= [];
-  });
-  expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
-    true,
+  await evaluateCanonicalPage(page, () =>
+    page.evaluate(() => {
+      globalThis.__folioCanonicalFuzzErrors ??= [];
+    }),
   );
+  expect(
+    await evaluateCanonicalPage(page, () =>
+      page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source),
+    ),
+  ).toBe(true);
   await expect
     .poll(
       async () =>
-        typeof (await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing())),
+        typeof (await evaluateCanonicalPage(page, () =>
+          page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
+        )),
       { message: "canonical fixture must create its initial view" },
     )
     .toBe("boolean");
@@ -73,9 +85,11 @@ const runCanonicalBrowserHistory = async ({
   const beginPhase = async (phase: CanonicalFuzzPhase) => {
     observation = { phase, errors: [] };
     observations.push(observation);
-    await page.evaluate((current) => {
-      globalThis.__folioCanonicalFuzzPhase = current;
-    }, phase);
+    await evaluateCanonicalPage(page, () =>
+      page.evaluate((current) => {
+        globalThis.__folioCanonicalFuzzPhase = current;
+      }, phase),
+    );
   };
   const collectErrors = async () => {
     observation.errors = await drainErrors(page);
@@ -85,23 +99,37 @@ const runCanonicalBrowserHistory = async ({
   await beginPhase({ type: "load" });
   // Bootstrap happens outside the oracle. Ensure without reloading here so
   // the strict pre-load barrier still detects cross-case lifecycle failures.
-  expect(await page.evaluate(() => globalThis.__folioCanonical?.ensureView())).toBe(true);
+  expect(
+    await evaluateCanonicalPage(page, () =>
+      page.evaluate(() => globalThis.__folioCanonical?.ensureView()),
+    ),
+  ).toBe(true);
   await expect
     .poll(
       async () =>
-        typeof (await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing())),
+        typeof (await evaluateCanonicalPage(page, () =>
+          page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
+        )),
       { message: "canonical view must exist after initialization" },
     )
     .toBe("boolean");
   expect(
-    await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
+    await evaluateCanonicalPage(page, () =>
+      page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
+    ),
     "case must start outside native composition",
   ).toBe(false);
-  expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
-    true,
-  );
+  expect(
+    await evaluateCanonicalPage(page, () =>
+      page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source),
+    ),
+  ).toBe(true);
   expect(await collectErrors()).toEqual([]);
-  expect(await page.evaluate(() => globalThis.__folioCanonical?.select(1, 6))).toBe(true);
+  expect(
+    await evaluateCanonicalPage(page, () =>
+      page.evaluate(() => globalThis.__folioCanonical?.select(1, 6)),
+    ),
+  ).toBe(true);
   const baseline = await snapshot(page);
   expect(baseline.canUndo).toBe(false);
   expect(baseline.canRedo).toBe(false);
@@ -151,7 +179,9 @@ const runCanonicalBrowserHistory = async ({
       expect(redone.selection).toEqual(after.selection);
     }
     await beginPhase({ type: "save", index, action: action.kind });
-    const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+    const saved = await evaluateCanonicalPage(page, () =>
+      page.evaluate(() => globalThis.__folioCanonical?.save()),
+    );
     expect((await collectErrors()).filter((error) => !isCanonicalSaveFallback(error))).toEqual([]);
     if (!saved) throw new TypeError("Canonical save unavailable");
     expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
@@ -164,14 +194,18 @@ const runCanonicalBrowserHistory = async ({
   const final = await snapshot(page);
   await assertCanonicalInputTimersSettled(page);
   await beginPhase({ type: "finalSave" });
-  const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+  const saved = await evaluateCanonicalPage(page, () =>
+    page.evaluate(() => globalThis.__folioCanonical?.save()),
+  );
   expect((await collectErrors()).filter((error) => !isCanonicalSaveFallback(error))).toEqual([]);
   if (!saved) throw new TypeError("Canonical save unavailable");
   expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
   await beginPhase({ type: "reload" });
-  expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), saved)).toBe(
-    true,
-  );
+  expect(
+    await evaluateCanonicalPage(page, () =>
+      page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), saved),
+    ),
+  ).toBe(true);
   const reloaded = await snapshot(page);
   expect(await collectErrors()).toEqual([]);
   expect(reloaded.document.package.document.content).toEqual(

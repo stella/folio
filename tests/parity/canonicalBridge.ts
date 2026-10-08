@@ -213,5 +213,6 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
 });
 
 declare global {
+  var __folioCanonicalReady: boolean | undefined;
   var __folioCanonical: ReturnType<typeof buildCanonicalBridge> | undefined;
 }
