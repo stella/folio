@@ -187,7 +187,7 @@ describe("corpus operation invariants", () => {
     const changed = structuredClone(edit.document);
     const foreign = changed.package.document.comments?.find(({ id }) => id === 9101);
     if (!foreign) throw new Error("Missing foreign definition");
-    foreign.author = "Tampered";
+    foreign.author = "Changed";
     expect(
       localityStepFailures({ before, op, edit: { ...edit, document: changed } }).length,
     ).toBeGreaterThan(0);
@@ -196,7 +196,7 @@ describe("corpus operation invariants", () => {
       ...(changedRelationship.package.relationships?.values() ?? []),
     ].find(({ target }) => target === "comments.xml");
     if (!commentRelationship) throw new Error("Missing comment relationship");
-    commentRelationship.target = "tampered.xml";
+    commentRelationship.target = "other.xml";
     expect(
       localityStepFailures({ before, op, edit: { ...edit, document: changedRelationship } }).length,
     ).toBeGreaterThan(0);
@@ -222,11 +222,11 @@ describe("corpus operation invariants", () => {
       documentPart: "word/document.xml",
     };
     expect(serializedLocalityFailures({ ...localOptions, edited: parts(relXml) })).toEqual([]);
-    for (const forgedXml of [
-      relXml.replace('Target="comments.xml"', 'Target="tampered.xml"'),
-      relXml.replace('opaque="authored"', 'opaque="tampered"'),
+    for (const changedXml of [
+      relXml.replace('Target="comments.xml"', 'Target="other.xml"'),
+      relXml.replace('opaque="authored"', 'opaque="changed"'),
     ]) {
-      expect(serializedLocalityFailures({ ...localOptions, edited: parts(forgedXml) })).toContain(
+      expect(serializedLocalityFailures({ ...localOptions, edited: parts(changedXml) })).toContain(
         `sequence changed an existing comment relationship payload: ${relationshipPath}#${commentRelationship.id}`,
       );
     }

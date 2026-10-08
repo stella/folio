@@ -439,7 +439,7 @@ test("generated interior source-shaped comment histories undo and redo the compl
   );
 });
 
-test("generated forged comment inverses refuse same-text unowned run changes", () => {
+test("generated comment inverses refuse changes to unowned run fields", () => {
   assertProperty(
     fc.property(fc.string(), fc.boolean(), (attribute, bold) => {
       const document = seed("absent");
@@ -453,7 +453,7 @@ test("generated forged comment inverses refuse same-text unowned run changes", (
         throw new Error("Missing inverse");
       const entry = inverse.state.anchors.at(0);
       if (!entry) throw new Error("Missing anchor paragraph");
-      const forged = {
+      const mismatched = {
         ...inverse,
         state: {
           ...inverse.state,
@@ -465,7 +465,7 @@ test("generated forged comment inverses refuse same-text unowned run changes", (
                 const changed = structuredClone(node);
                 changed.formatting = { bold };
                 changed.preservedAttributes = [
-                  { namespace: "urn:forged", name: "stamp", value: attribute },
+                  { namespace: "urn:example:ext", name: "stamp", value: attribute },
                 ];
                 return changed;
               }),
@@ -473,7 +473,7 @@ test("generated forged comment inverses refuse same-text unowned run changes", (
           ],
         },
       };
-      expect(applyDocumentOp(created.document, forged).isErr()).toBe(true);
+      expect(applyDocumentOp(created.document, mismatched).isErr()).toBe(true);
       expect(created.document.package.document.content.at(1)).toBe(
         document.package.document.content.at(1),
       );
