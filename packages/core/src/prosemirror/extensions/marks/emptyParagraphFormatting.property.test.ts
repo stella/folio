@@ -15,6 +15,7 @@ import {
 import { toggleBold, toggleItalic } from "../../commands/formatting";
 import { singletonManager } from "../../schema";
 import { clearFormatting } from "./markUtils";
+import { expectParagraphAttrs } from "../../attrs";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
@@ -83,14 +84,23 @@ const assertRoundtrip = async (
   const saved = await saveHarnessState(view.state, base);
   const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "editing");
   expect(tokens(reopened.doc)).toEqual(tokens(view.state.doc));
-  const paragraph = saved.model.package.document.content.at(0);
-  if (paragraph?.type !== "paragraph") return panic("Missing source paragraph.");
-  expect(paragraph.formatting).toMatchObject({
-    alignment: "right",
-    keepNext: true,
-    spaceAfter: 120,
-  });
   return saved;
+};
+
+const paragraphMetadata = (doc: PMNode) => {
+  const result: unknown[] = [];
+  doc.descendants((node) => {
+    if (node.type.name !== "paragraph") return true;
+    const {
+      defaultTextFormatting: _default,
+      _originalFormatting,
+      ...attrs
+    } = expectParagraphAttrs(node);
+    const { runProperties: _runProperties, ...original } = _originalFormatting ?? {};
+    result.push({ attrs, original });
+    return false;
+  });
+  return result;
 };
 
 // ProseMirror's doPaste uses replaceSelectionWith(singleNode, true) for plain text.
@@ -124,6 +134,11 @@ test("empty paragraph formatting and explicit clearing survive typing, paste, sa
         const paragraph = saved.model.package.document.content.at(0);
         if (paragraph?.type !== "paragraph") return panic("Missing saved paragraph.");
         expect(paragraph.formatting?.runProperties?.bold).toBe(clear ? undefined : true);
+        expect(paragraph.formatting).toMatchObject({
+          alignment: "right",
+          keepNext: true,
+          spaceAfter: 120,
+        });
       }
     }
   }
@@ -157,7 +172,14 @@ test("clearing a loaded paragraph default emits a run cancellation without an em
   expect(text?.marks.some(({ type }) => type.name === "bold" || type.name === "italic")).toBe(
     false,
   );
-  await assertRoundtrip(view, base);
+  const saved = await assertRoundtrip(view, base);
+  const paragraph = saved.model.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") return panic("Missing saved paragraph.");
+  expect(paragraph.formatting).toMatchObject({
+    alignment: "right",
+    keepNext: true,
+    spaceAfter: 120,
+  });
 });
 
 test("random formatting and text edit sequences preserve authored paragraph defaults through save and reopen", async () => {
@@ -200,6 +222,7 @@ test("random formatting and text edit sequences preserve authored paragraph defa
               TextSelection.create(view.state.doc, Math.min(left, right), Math.max(left, right)),
             ),
           );
+          const metadata = paragraphMetadata(view.state.doc);
           switch (action.kind) {
             case "bold":
               toggleBold(view.state, view.dispatch);
@@ -234,6 +257,8 @@ test("random formatting and text edit sequences preserve authored paragraph defa
             default:
               panic(String(action.kind satisfies never));
           }
+          if (action.kind === "bold" || action.kind === "italic" || action.kind === "clear")
+            expect(paragraphMetadata(view.state.doc)).toEqual(metadata);
           await assertRoundtrip(view, base);
         }
       },
