@@ -188,63 +188,6 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "735c8578d9ca938a",
-      "issueOrPr": "#1359",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1359,
-        "primary": "0564a4da20f1c987",
-        "title": "Fuzz failure [735c8578d9ca938a]: consumer flow comments / direct: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked):",
-        "flow": {
-          "version": 1,
-          "kind": "random",
-          "generation": "targeted",
-          "fixture": "comments",
-          "mode": "direct",
-          "seed": 774176109,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 3421824883,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "483CD5EB"
-                }
-              ]
-            },
-            {
-              "action": "core batch",
-              "seed": 1454800376,
-              "operations": [
-                {
-                  "type": "setBlockParagraphProperties",
-                  "blockId": "5E88C024",
-                  "properties": {
-                    "styleId": "Heading2"
-                  }
-                }
-              ]
-            }
-          ],
-          "swarm": [
-            "replaceInBlock",
-            "insertBeforeBlock",
-            "deleteBlock",
-            "setBlockParagraphProperties",
-            "commentOnBlock",
-            "insertTableRow",
-            "deleteTableRow",
-            "insertTableColumn",
-            "deleteTable"
-          ],
-          "origin": "shrunk from random flow seed 774176109"
-        },
-        "type": "consumer",
-        "reportSeed": 774176109
-      }
-    },
-    {
       "fingerprint": "0564a4da20f1c987",
       "issueOrPr": "#1359",
       "firstSeen": "2026-10-02"
@@ -458,61 +401,6 @@
       "fingerprint": "9ee376a632ca2edc",
       "issueOrPr": "#1350",
       "firstSeen": "2026-10-02"
-    },
-    {
-      "fingerprint": "7ec32eb16efdfc52",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1382,
-        "primary": "ab6344ed76e83492",
-        "title": "consumer flow directNumbered / tracked-changes: tracked acceptance differs from direct editing",
-        "flow": {
-          "version": 1,
-          "kind": "random",
-          "generation": "targeted",
-          "fixture": "directNumbered",
-          "mode": "tracked-changes",
-          "seed": 1785653011,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 2985383154,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "5E88C024"
-                }
-              ]
-            },
-            {
-              "action": "core batch",
-              "seed": 3857831012,
-              "operations": [
-                {
-                  "type": "setBlockParagraphProperties",
-                  "blockId": "31617F9A",
-                  "properties": {
-                    "numbering": {
-                      "numId": 7,
-                      "level": 0
-                    }
-                  }
-                }
-              ]
-            }
-          ],
-          "weights": {
-            "version": 1,
-            "cells": {},
-            "operations": []
-          },
-          "origin": "shrunk from random flow seed 1785653011"
-        },
-        "type": "consumer",
-        "reportSeed": 1785653011,
-        "reportSeeds": [1785653011]
-      }
     },
     {
       "fingerprint": "ab6344ed76e83492",
@@ -2472,46 +2360,6 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "73c7b924a911a13a",
-      "issueOrPr": "#1384",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "type": "consumer",
-        "issue": 1384,
-        "primary": "3fd5801d7296db3e",
-        "title": "consumer flow unusedNumbering / tracked-changes: heading properties are lost",
-        "reportSeed": 1785651826,
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "unusedNumbering",
-          "mode": "tracked-changes",
-          "seed": 694344246,
-          "steps": [
-            {
-              "action": "core batch",
-              "seed": 2766522247,
-              "operations": [
-                {
-                  "type": "setBlockParagraphProperties",
-                  "blockId": "5E88C024",
-                  "properties": {
-                    "styleId": "Heading2"
-                  }
-                },
-                {
-                  "type": "deleteBlock",
-                  "blockId": "483CD5EB"
-                }
-              ]
-            }
-          ],
-          "origin": "shrunk from reseed+dropOperation of b4d3b9d93f02c1f2"
-        }
-      }
-    },
-    {
       "fingerprint": "3fd5801d7296db3e",
       "issueOrPr": "#1384",
       "firstSeen": "2026-10-02"
@@ -2595,59 +2443,6 @@
       "fingerprint": "ae64d24bcde21275",
       "issueOrPr": "#1415",
       "firstSeen": "2026-10-03"
-    },
-    {
-      "fingerprint": "ef7715a0e2fbe84d",
-      "issueOrPr": "#1518",
-      "firstSeen": "2026-10-04",
-      "acceptance": {
-        "type": "consumer",
-        "issue": 1518,
-        "primary": "51aa440b2cbd71f7",
-        "title": "consumer flow tables / tracked-changes: clearing the style of a block merged with the next keeps the heading style",
-        "reportSeed": 1492412849,
-        "flow": {
-          "version": 1,
-          "kind": "random",
-          "generation": "targeted",
-          "fixture": "tables",
-          "mode": "tracked-changes",
-          "seed": 1492412849,
-          "steps": [
-            {
-              "action": "core batch",
-              "seed": 2500319401,
-              "operations": [
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "412DDC7F",
-                  "separator": " "
-                },
-                {
-                  "type": "setBlockParagraphProperties",
-                  "blockId": "412DDC7F",
-                  "properties": {
-                    "styleId": null
-                  }
-                }
-              ]
-            }
-          ],
-          "swarm": [
-            "replaceRange",
-            "insertAfterBlock",
-            "replaceBlock",
-            "deleteBlock",
-            "mergeBlockWithNext",
-            "setBlockParagraphProperties",
-            "insertTableRow",
-            "deleteTableRow",
-            "insertTableColumn",
-            "deleteTable"
-          ],
-          "origin": "shrunk from random flow seed 1492412849"
-        }
-      }
     },
     {
       "fingerprint": "51aa440b2cbd71f7",

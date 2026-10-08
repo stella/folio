@@ -607,7 +607,7 @@ type AppliedJournalEntry = {
   version: number;
   origin: "input";
   semantic: CanonicalInputSemantic;
-  grouping: "run" | "isolated";
+  grouping: "run" | "isolated" | "compositionCorrection";
   time: number;
   boundary: number;
 };
@@ -634,8 +634,16 @@ const continuesGroup = (previous: AppliedJournalEntry, next: AppliedJournalEntry
         sameSelection(previous.postSelection, next.preSelection) &&
         samePosition(next.preSelection.anchor, next.preSelection.head)
       );
-    case "paste":
     case "composition":
+      // A late native final may correct a committed composition. New IME
+      // gestures and history/selection changes advance the grouping boundary.
+      return (
+        next.grouping === "compositionCorrection" &&
+        previous.semantic === "composition" &&
+        previous.boundary === next.boundary &&
+        sameSelection(previous.postSelection, next.preSelection)
+      );
+    case "paste":
     case "replacement":
     case "structure":
       return false;
@@ -750,9 +758,11 @@ type CanonicalReplaceTextInput = {
   to: number;
   text: string;
   story?: OpStory;
-  semantic?: CanonicalInputSemantic;
   time?: number;
-};
+} & (
+  | { semantic: "composition"; compositionPhase?: "correction" }
+  | { semantic?: Exclude<CanonicalInputSemantic, "composition">; compositionPhase?: never }
+);
 
 type CachedStoryProjection = {
   content: NonNullable<ReturnType<typeof findStoryBody>>["content"];
@@ -1002,6 +1012,7 @@ class CanonicalSession {
       text,
       story = OP_STORIES.MAIN,
       semantic = "replacement",
+      compositionPhase,
       time = Date.now(),
     }: CanonicalReplaceTextInput,
   ): Result<CanonicalCommit, CanonicalSessionError> {
@@ -1049,6 +1060,7 @@ class CanonicalSession {
       ((semantic === "typing" && from === to && from === state.selection.head) ||
         (semantic === "deleteBackward" && text.length === 0 && to === state.selection.head) ||
         (semantic === "deleteForward" && text.length === 0 && from === state.selection.head));
+    const grouping = run ? "run" : "isolated";
     return this.stage({
       state,
       story,
@@ -1067,7 +1079,7 @@ class CanonicalSession {
           version,
           origin: "input",
           semantic,
-          grouping: run ? "run" : "isolated",
+          grouping: compositionPhase === "correction" ? "compositionCorrection" : grouping,
           time,
           boundary: this.groupingBoundary,
         } as const satisfies AppliedJournalEntry;
