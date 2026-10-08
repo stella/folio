@@ -14,12 +14,12 @@ pub use projection::{
     ParagraphIdentityFacts, ParagraphIndentation, ParagraphIndentationFact,
     ParagraphOutlineLevelFact, ParagraphStructure, ProjectedParagraph, ProjectionError,
     ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
-    ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionProjectionStatus,
-    RevisionUnsupportedReason, RevisionView, SpanCoverage, StructuralFactSet,
-    StructuralFactUnknownReason, StructuralSpan, TextFormattingSpan, TextMaterialization,
-    TextStyle, extract_document_parts, extract_document_xml, is_semantic_highlight_color,
-    project_document_xml, project_document_xml_with_options, project_docx,
-    project_docx_with_options, project_docx_with_review_facts,
+    ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionPayload,
+    RevisionProjectionStatus, RevisionUnsupportedReason, RevisionView, SpanCoverage,
+    StructuralFactSet, StructuralFactUnknownReason, StructuralSpan, TextFormattingSpan,
+    TextMaterialization, TextStyle, extract_document_parts, extract_document_xml,
+    is_semantic_highlight_color, project_document_xml, project_document_xml_with_options,
+    project_docx, project_docx_with_options, project_docx_with_review_facts,
 };
 pub use semantic::{
     BlockLocation, InlineContext, PartCoverage, PartScan, RevisionKind, ScanError, ScanLimits,

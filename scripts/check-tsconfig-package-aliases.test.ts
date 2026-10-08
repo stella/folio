@@ -8,6 +8,12 @@ const PACKAGES = [
 ];
 
 describe("validateTSConfigPackageAliases", () => {
+  test("rejects an empty alias set instead of passing without checking aliases", () => {
+    const issues = validateTSConfigPackageAliases(PACKAGES, {});
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("alias validation scanned none");
+  });
+
   test("accepts a wildcard and a specific-subpath alias that target the package's own src", () => {
     const issues = validateTSConfigPackageAliases(PACKAGES, {
       "@stll/folio-core": ["packages/core/src/index.ts"],

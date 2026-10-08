@@ -6,9 +6,9 @@ use crate::{
     ParagraphAlignmentSource, ParagraphAlignmentValue, ParagraphIdentityFacts,
     ParagraphIndentationFact, ParagraphOutlineLevelFact, ParagraphStructure, ProjectedParagraph,
     ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
-    ReviewSpan, RevisionFactKind, RevisionProjectionStatus, RevisionUnsupportedReason,
-    SpanCoverage, StructuralFactSet, StructuralFactUnknownReason, StructuralSpan,
-    TextMaterialization, TextStyle, project_docx, project_docx_with_review_facts,
+    ReviewSpan, RevisionFactKind, RevisionPayload, RevisionProjectionStatus,
+    RevisionUnsupportedReason, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
+    StructuralSpan, TextMaterialization, TextStyle, project_docx, project_docx_with_review_facts,
 };
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
@@ -188,7 +188,7 @@ export type DocxAttributedRevision =
       endUtf8: number,
       endUtf16: number,
       text: string,
-      contentKind: "text" | "formatting-only",
+      contentKind: "text" | "formatting-only" | "paragraph-mark",
     ]
   | readonly [
       type: DocxRevisionKind,
@@ -540,13 +540,13 @@ fn output_revision_fact(fact: &AttributedRevision) -> Result<JsValue, String> {
         ReviewDetail::Known(content) => {
             output.set(4, JsValue::from_str("known"));
             output_review_span_fields(&output, 5, content.span)?;
-            output.set(11, JsValue::from_str(&content.text));
+            output.set(11, JsValue::from_str(content.payload.text()));
             output.set(
                 12,
-                JsValue::from_str(if content.formatting_only {
-                    "formatting-only"
-                } else {
-                    "text"
+                JsValue::from_str(match content.payload {
+                    RevisionPayload::Text(_) => "text",
+                    RevisionPayload::FormattingOnly => "formatting-only",
+                    RevisionPayload::ParagraphMark => "paragraph-mark",
                 }),
             );
         }

@@ -81,6 +81,8 @@ export const createCanonicalStoryEditor = ({
       handleTextInput: (view: EditorView, from: number, to: number, text: string) =>
         enabled() && boundary.handleTextInput(view, from, to, text),
       handleDOMEvents: {
+        keydown: (view: EditorView, event: KeyboardEvent) =>
+          enabled() && boundary.handleDOMEvents.keydown(view, event),
         beforeinput: (view: EditorView, event: InputEvent) =>
           enabled() && boundary.handleDOMEvents.beforeinput(view, event),
         mousedown: (view: EditorView) => enabled() && boundary.handleDOMEvents.mousedown(view),

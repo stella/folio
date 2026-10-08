@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "direct",
+  "seed": 774176109,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3421824883,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 1454800376,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "5E88C024",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn",
+    "deleteTable"
+  ],
+  "origin": "shrunk from random flow seed 774176109",
+  "title": "PINNED #1359, reported seed 774176109: consumer flow comments / direct: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked):"
+}

@@ -148,7 +148,14 @@ export const GENERATORS: Record<string, Generator> = {
         !inTable(block) && blocks[index + 1] !== undefined && !inTable(blocks[index + 1] as Block),
     );
     if (candidates.length === 0) return null;
-    return { type: "mergeBlockWithNext", blockId: pick.block(candidates).id, separator: " " };
+    return {
+      type: "mergeBlockWithNext",
+      blockId: pick.block(candidates).id,
+      separator: " ",
+      ...(random.chance(0.5)
+        ? { mergedParagraphProperties: paragraphProperties(blocks, random) }
+        : {}),
+    };
   },
   setBlockParagraphProperties: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = blocks.filter((block) => !inTable(block));

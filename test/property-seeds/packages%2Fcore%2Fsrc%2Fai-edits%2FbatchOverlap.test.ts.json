@@ -41,6 +41,12 @@
       "path": "111:7",
       "note": "A tracked deletion of the paragraph before a deleted, reformatted last paragraph carries the predecessor's properties over the batch's formatting.",
       "date": "2026-10-04"
+    },
+    {
+      "seed": 19,
+      "path": "150:1:1:2:2:2",
+      "note": "#1550: a separate property edit on a paragraph mark deleted by a tracked merge is refused (path at factor 5).",
+      "date": "2026-10-05"
     }
   ]
 }

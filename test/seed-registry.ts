@@ -12,7 +12,7 @@ import type { PinnedSeed } from "./property-testing";
  */
 export const PROPERTY_SEEDS_FILE = "test/property-seeds";
 const LEGACY_FILE = "test/property-seeds.json";
-const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 type SeedRegistry = Record<string, readonly PinnedSeed[]>;
 type SeedFiles = Record<string, SeedRegistry>;
