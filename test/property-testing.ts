@@ -1,4 +1,7 @@
 import fc from "fast-check";
+import { NUM_RUNS_FACTOR_ENV, numRunsFactor } from "./property-run-factor";
+
+export { propertyTestTimeout } from "./property-timeout";
 import { PROPERTY_SEEDS_FILE, readSeedRegistry, seedFileFor } from "./seed-registry";
 
 export { PROPERTY_SEEDS_FILE, seedFileFor } from "./seed-registry";
@@ -54,7 +57,6 @@ import {
  *     but is not asserted through `assertProperty`.
  */
 
-const NUM_RUNS_FACTOR_ENV = "PROPERTY_TEST_NUM_RUNS_FACTOR";
 const SEED_ENV = "PROPERTY_TEST_SEED";
 const PATH_ENV = "PROPERTY_TEST_PATH";
 const SEED_SALT_ENV = "PROPERTY_TEST_SEED_SALT";
@@ -67,18 +69,6 @@ const MAX_REPORTED_COUNTEREXAMPLE = 4_000;
 
 const SELF = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SELF), "..");
-
-const readNumRunsFactor = (raw: string | undefined): number => {
-  if (raw === undefined) {
-    return 1;
-  }
-  const parsed = Number(raw);
-  // A factor below 1 (or non-numeric) would silently weaken nightly coverage;
-  // fall back to the neutral factor instead.
-  return Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
-};
-
-const numRunsFactor = (): number => readNumRunsFactor(process.env[NUM_RUNS_FACTOR_ENV]);
 
 const readSeed = (raw: string | undefined): number | undefined => {
   if (raw === undefined || raw === "") {
@@ -649,14 +639,3 @@ const runConfiguredProperty = <Ts>(
     fc.assert(property, config);
   }
 };
-
-/**
- * Scale a per-test Bun timeout (ms) by the same nightly factor that scales
- * `numRuns`, so an expensive property whose run count grows ×N also gets ×N
- * wall-clock before it is killed. In PR CI (factor 1) the timeout is unchanged.
- *
- * ```ts
- * test("round-trip", () => { ... }, propertyTestTimeout(15_000));
- * ```
- */
-export const propertyTestTimeout = (baseMs: number): number => Math.ceil(baseMs * numRunsFactor());

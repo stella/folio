@@ -152,7 +152,7 @@ describe("an authored image transform survives a save", () => {
         propertyConfig({ numRuns: 45 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(30_000),
   );
 
   test("an authored zero rotation reaches the model", async () => {

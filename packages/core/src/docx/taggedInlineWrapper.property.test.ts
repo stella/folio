@@ -198,7 +198,7 @@ describe("a smart tag or a run-level custom-XML wrapper through parse and save",
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test(
@@ -212,7 +212,7 @@ describe("a smart tag or a run-level custom-XML wrapper through parse and save",
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test(
@@ -228,7 +228,7 @@ describe("a smart tag or a run-level custom-XML wrapper through parse and save",
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 });
 
@@ -244,7 +244,7 @@ describe("a smart tag or a run-level custom-XML wrapper through the editor", () 
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test(
@@ -258,7 +258,7 @@ describe("a smart tag or a run-level custom-XML wrapper through the editor", () 
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 });
 
