@@ -1,5 +1,5 @@
 import { panic } from "better-result";
-import type { Mark } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Transform } from "prosemirror-transform";
 
 import { expectTrackedChangeMarkAttrs } from "./attrs";
@@ -14,7 +14,11 @@ type AddTrackedDeletionMarkOptions<T extends Transform> = {
   insertionPolicy: "preserve-pending" | "retract-own";
 };
 
-/** Already deleted runs keep their revision identity and enclosing insertion path. */
+/**
+ * Already deleted runs keep their revision identity and enclosing insertion path.
+ * An own insertion containing deleted descendants is marked rather than retracted:
+ * removing its carrier would also remove another pending revision.
+ */
 export const addTrackedDeletionMark = <T extends Transform>({
   tr,
   from,
@@ -26,12 +30,18 @@ export const addTrackedDeletionMark = <T extends Transform>({
   // AddMarkStep also marks descendants of an inline atom (a structured field).
   // Restore their existing deletion marks after marking the enclosing carrier.
   const preservedDeletions: { from: number; to: number; mark: Mark }[] = [];
+  const protectedCarriers = new Set<PMNode>();
   tr.doc.nodesBetween(from, to, (node, position) => {
     const existing = node.marks.find(({ type }) => type.name === "deletion");
     if (node.isInline && existing) {
       const start = Math.max(from, position);
       const end = Math.min(to, position + node.nodeSize);
       if (start < end) preservedDeletions.push({ from: start, to: end, mark: existing });
+      const at = tr.doc.resolve(position);
+      for (let depth = 1; depth <= at.depth; depth++) {
+        const ancestor = at.node(depth);
+        if (canCarryTrackedRunMark(ancestor)) protectedCarriers.add(ancestor);
+      }
     }
     return true;
   });
@@ -56,7 +66,10 @@ export const addTrackedDeletionMark = <T extends Transform>({
             _docxRevisionAncestors: [...ancestors, trackedRevisionLayerOf(insertion, node)],
           })
         : mark;
-    const disposition = insertionPolicy === "retract-own" && ownInsertion ? "retract" : "mark";
+    const disposition =
+      insertionPolicy === "retract-own" && ownInsertion && !protectedCarriers.has(node)
+        ? "retract"
+        : "mark";
     const previous = ranges.at(-1);
     if (
       previous?.to === start &&

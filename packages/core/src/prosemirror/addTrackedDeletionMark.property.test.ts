@@ -195,3 +195,76 @@ test(
   },
   propertyTestTimeout(30_000),
 );
+
+test(
+  "nested insertion carriers preserve protected descendant revisions under both policies",
+  async () => {
+    await assertProperty(
+      fc.property(
+        fc.array(fc.constantFrom("text", "hardBreak"), { minLength: 1, maxLength: 12 }),
+        fc.constantFrom("Reviewer", "Other Reviewer"),
+        fc.constantFrom("none", "sdt"),
+        (kinds, author, wrapper) => {
+          const protectedMark = schema.mark("deletion", {
+            revisionId: 37,
+            author,
+            date: "2026-01-02T03:04:05Z",
+            initials: "OR",
+            _docxRevisionAncestors: [
+              { type: "insertion", revisionId: 36, author: "First Reviewer", outerWrapperCount: 0 },
+            ],
+          });
+          const content = kinds.map((kind) =>
+            kind === "text"
+              ? schema.text("hidden", [protectedMark])
+              : schema.node("hardBreak", null, null, [protectedMark]),
+          );
+          const field = schema.node(
+            "structuredField",
+            null,
+            [schema.text("before"), ...content, schema.text("after")],
+            [schema.mark("insertion", { revisionId: 35, author: "Reviewer" })],
+          );
+          const doc = schema.node(
+            "doc",
+            null,
+            schema.node(
+              "paragraph",
+              null,
+              wrapper === "sdt" ? schema.node("sdt", null, field) : field,
+            ),
+          );
+          for (const insertionPolicy of ["preserve-pending", "retract-own"] as const) {
+            const state = EditorState.create({ doc });
+            const live = state.apply(
+              addTrackedDeletionMark({
+                tr: state.tr,
+                from: 1,
+                to: doc.content.size - 1,
+                mark: schema.mark("deletion", { revisionId: 38, author: "Reviewer" }),
+                insertionPolicy,
+              }),
+            );
+            const protectedNodes = [];
+            live.doc.descendants((node) => {
+              const deletion = node.marks.find(({ type }) => type.name === "deletion");
+              if (deletion?.attrs["revisionId"] === 37) protectedNodes.push(deletion.toJSON());
+            });
+            const originalNodes = [];
+            doc.descendants((node) => {
+              const deletion = node.marks.find(({ type }) => type.name === "deletion");
+              if (deletion?.attrs["revisionId"] === 37) originalNodes.push(deletion.toJSON());
+            });
+            expect(protectedNodes).toEqual(originalNodes);
+            expect(live.doc.textContent).toBe(doc.textContent);
+            for (const mode of ["accept", "reject"] as const) {
+              expect(resolveAllChangesInHeadlessState(live, mode).doc.textContent).toBe("");
+            }
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
+  },
+  propertyTestTimeout(5_000),
+);
