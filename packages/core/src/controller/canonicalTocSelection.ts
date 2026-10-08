@@ -4,6 +4,7 @@ import {
   SPLIT_HALVES,
   sameStory,
   idKey,
+  compareGaps,
   type DocumentOp,
   type TextPosition,
 } from "@stll/docx-core/ops";
@@ -23,6 +24,14 @@ export const mapTocSelection = (
   if (split === undefined) return point;
   if (split.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK || split.newHalf !== SPLIT_HALVES.FIRST)
     return panic("TOC insertion must retain its following paragraph identity.");
-  if (point.offset < split.at.offset) return { ...point, blockId: split.newBlockId };
+  const pointGap = { offset: point.offset, zeroWidthBefore: point.zeroWidthBefore ?? 0 };
+  const splitGap = { offset: split.at.offset, zeroWidthBefore: split.at.zeroWidthBefore ?? 0 };
+  if (compareGaps(pointGap, splitGap) < 0) return { ...point, blockId: split.newBlockId };
+  if (point.offset === split.at.offset)
+    return {
+      ...point,
+      offset: 0,
+      zeroWidthBefore: pointGap.zeroWidthBefore - splitGap.zeroWidthBefore,
+    };
   return { ...point, offset: point.offset - split.at.offset };
 };
