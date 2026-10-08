@@ -1,4 +1,12 @@
 {
+  "native composition cancellation preserves the captured selection and journal": [
+    {
+      "seed": 1893585205,
+      "path": "0:0:0:0:0",
+      "note": "Native cancellation consumes its deletion without committing provisional text or deleting the restored selection.",
+      "date": "2026-10-08"
+    }
+  ],
   "fake-clock final input before and after expiry is idempotent and undoes as one gesture": [
     {
       "seed": 1553350806,
@@ -11,6 +19,14 @@
       "path": "1:1",
       "note": "Empty provisional replacement keeps a late final within its gesture.",
       "date": "2026-10-07"
+    }
+  ],
+  "ordinary deletion recovers a missing native compositionend as a new gesture": [
+    {
+      "seed": -1233656905,
+      "path": "0",
+      "note": "A non-composing character deletion with missing native compositionend commits the proposal and keeps deletion as a separate gesture.",
+      "date": "2026-10-08"
     }
   ]
 }
