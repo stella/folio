@@ -337,7 +337,7 @@
       "note": "Preserve edited seams for the leading paragraph of a multi-paragraph open clipboard replacement."
     }
   ],
-  "generated comment-anchor move sequences preserve marker gaps and refuse tracked transfer atomically": [
+  "generated comment-anchor move sequences retain source anchors when suggesting and move them when editing": [
     {
       "seed": -1354577293,
       "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
