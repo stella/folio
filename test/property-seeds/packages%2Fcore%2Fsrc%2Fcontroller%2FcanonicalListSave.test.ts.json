@@ -6,5 +6,19 @@
       "note": "List slices must use the production list attrs and closed edges from numberPastedHtmlLists; package relationship creation is validated separately from authored body fidelity.",
       "date": "2026-10-05"
     }
+  ],
+  "generated list edits normalize rendering and preserve exact history and save fixed points": [
+    {
+      "seed": 1529073804,
+      "path": "0:0:0",
+      "note": "List edit generator covers numbering removal, outdent, level change, split and both joins; exact history and save/reopen rendering must remain fixed points. The original pasted-list generator omitted edits after paste.",
+      "date": "2026-10-08"
+    },
+    {
+      "seed": -1909311219,
+      "path": "1:0:0:1",
+      "note": "Style numbering cancellation must clear stale inherited-numbering provenance in the canonical model, matching the serialized direct override.",
+      "date": "2026-10-08"
+    }
   ]
 }

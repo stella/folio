@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
+import type { Paragraph } from "../types/document";
 import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
@@ -24,6 +25,7 @@ import { mintListInstance } from "../docx/listNumberingInstances";
 import { createNumberingMap } from "../docx/numberingParser";
 import { listItemAttrs } from "../prosemirror/listNumbering";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
+import { normalizeCanonicalListRendering } from "./canonicalListRendering";
 import { CANONICAL_SAVE_FALLBACK_DIAGNOSTIC } from "../../../../test/canonicalSaveDiagnostics";
 
 test(
@@ -115,6 +117,185 @@ test(
             }
           }
           expect(session.document).toEqual(pasted);
+        },
+      ),
+      { numRuns: 5 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+const listEdits = [
+  "remove",
+  "outdent",
+  "level",
+  "levelOnly",
+  "idOnly",
+  "split",
+  "joinBackward",
+  "joinForward",
+] as const;
+
+const listEditParagraph = {
+  remove: 1,
+  outdent: 1,
+  level: 1,
+  levelOnly: 1,
+  idOnly: 1,
+  split: 1,
+  joinBackward: 3,
+  joinForward: 2,
+} as const satisfies Record<(typeof listEdits)[number], number>;
+
+test(
+  "generated list edits normalize rendering and preserve exact history and save fixed points",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.constantFrom("bullet", "numbered"),
+        fc.integer({ min: 1, max: 7 }),
+        fc.constantFrom("Alpha", "é", "😀", "東京"),
+        fc.constantFrom("direct", "style"),
+        fc.integer({ min: 0, max: 12 }),
+        async (kind, level, text, provenance, start) => {
+          const minted = mintListInstance(undefined, { kind, start });
+          const source = await createDocx({
+            package: {
+              numbering: minted.definitions,
+              ...(provenance === "direct"
+                ? {}
+                : {
+                    styles: {
+                      styles: [
+                        {
+                          type: "paragraph",
+                          styleId: "List",
+                          name: "List",
+                          pPr: { numPr: { kind: "reference", numId: minted.numId, ilvl: level } },
+                        },
+                      ],
+                    },
+                  }),
+              document: {
+                content: [0, level, 0, undefined].map((ilvl, index) => {
+                  const paragraph = {
+                    type: "paragraph",
+                    paraId: (index + 1).toString(16).padStart(8, "0"),
+                    content: [{ type: "run", content: [{ type: "text", text }] }],
+                  } satisfies Paragraph;
+                  if (ilvl === undefined) return paragraph;
+                  const formatting = (
+                    provenance === "direct"
+                      ? { numPr: { kind: "reference", numId: minted.numId, ilvl } }
+                      : { styleId: "List", numPr: { kind: "levelOnly", ilvl } }
+                  ) satisfies NonNullable<Paragraph["formatting"]>;
+                  return Object.assign(paragraph, { formatting });
+                }),
+              },
+            },
+          });
+          const parsed = await parseDocx(source, { preloadFonts: false });
+          const original = structuredClone(parsed);
+          const exercised = new Set<string>();
+          for (const edit of listEdits) {
+            const session = createCanonicalSession(parsed).unwrap();
+            let state = EditorState.create({ schema, doc: session.projection.doc });
+            const index = listEditParagraph[edit];
+            let position = 1;
+            for (let previous = 0; previous < index; previous++)
+              position += state.doc.child(previous).nodeSize;
+            if (edit === "joinForward") position += state.doc.child(index).content.size;
+            state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position)));
+            const before = session.document;
+            const beforeProjection = state.doc.toJSON();
+            const beforeSelection = state.selection.toJSON();
+            const at = session.projection.inputAddressAt(position).unwrap();
+            const commit = (() => {
+              switch (edit) {
+                case "remove":
+                  return session.prepareIntent(state, {
+                    type: "formatParagraph",
+                    at,
+                    patch: { numPr: { kind: "none" } },
+                  });
+                case "outdent":
+                case "level":
+                  return session.prepareIntent(state, {
+                    type: "formatParagraph",
+                    at,
+                    patch: {
+                      numPr: {
+                        kind: "reference",
+                        numId: minted.numId,
+                        ilvl: edit === "outdent" ? level - 1 : level + 1,
+                      },
+                    },
+                  });
+                case "levelOnly":
+                  return session.prepareIntent(state, {
+                    type: "formatParagraph",
+                    at,
+                    patch: {
+                      numPr: { kind: "levelOnly", ilvl: level + 1 },
+                    },
+                  });
+                case "idOnly":
+                  return session.prepareIntent(state, {
+                    type: "formatParagraph",
+                    at,
+                    patch: {
+                      numPr: { kind: "reference", numId: minted.numId },
+                    },
+                  });
+                case "split":
+                  return session.prepareSplit(state);
+                case "joinBackward":
+                  return session.prepareJoin(state, "backward");
+                case "joinForward":
+                  return session.prepareJoin(state, "forward");
+                default: {
+                  const unreachable: never = edit;
+                  return unreachable;
+                }
+              }
+            })().unwrap();
+            state = publishCanonicalProjection({ session, state, commit }).unwrap().state;
+            const after = session.document;
+            const afterProjection = state.doc.toJSON();
+            const afterSelection = state.selection.toJSON();
+            expect(normalizeCanonicalListRendering(after).document).toBe(after);
+            expect(structuredClone(parsed)).toEqual(original);
+            for (const transition of ["edited", "undo", "redo"] as const) {
+              if (transition !== "edited") {
+                state = publishCanonicalProjection({
+                  session,
+                  state,
+                  commit: (transition === "undo"
+                    ? session.prepareUndo(state)
+                    : session.prepareRedo(state)
+                  ).unwrap(),
+                }).unwrap().state;
+                expect(session.document).toEqual(transition === "undo" ? before : after);
+                expect(state.doc.toJSON()).toEqual(
+                  transition === "undo" ? beforeProjection : afterProjection,
+                );
+                expect(state.selection.toJSON()).toEqual(
+                  transition === "undo" ? beforeSelection : afterSelection,
+                );
+              }
+              for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
+                const snapshot = session.captureSaveSnapshot();
+                const saved = await serializeCanonicalSave({ snapshot, options: { mode } });
+                const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+                expect(structuredClone(reopened.package.document.content)).toEqual(
+                  structuredClone(snapshot.document.package.document.content),
+                );
+                expect(reopened.package.numbering).toEqual(snapshot.document.package.numbering);
+              }
+            }
+            exercised.add(edit);
+          }
+          expect([...exercised].toSorted()).toEqual([...listEdits].toSorted());
         },
       ),
       { numRuns: 5 },

@@ -11,6 +11,8 @@ import {
   outlineLevelStatedValue,
   paragraphNumberingSlots,
   sameEffectiveParagraphNumbering,
+  mergeParagraphNumbering,
+  paragraphNumberingLevel,
   type ParagraphNumberingOverride,
 } from "@stll/docx-core/model";
 import { serializeSequenceChildren } from "@stll/docx-core/schema";
@@ -455,7 +457,21 @@ export const modelParagraphFormattingEmission = (
               numberingChangeXml,
               numberingInsertionXml,
             })
-          : serializeNumbering({ numPr, numberingChangeXml, numberingInsertionXml }),
+          : serializeNumbering({
+              numPr:
+                numPr?.kind === "reference" &&
+                numPrFromStyle?.kind === "reference" &&
+                numPr.numId === numPrFromStyle.numId
+                  ? {
+                      kind: "levelOnly",
+                      ilvl:
+                        paragraphNumberingLevel(mergeParagraphNumbering(numPrFromStyle, numPr)) ??
+                        0,
+                    }
+                  : numPr,
+              numberingChangeXml,
+              numberingInsertionXml,
+            }),
       ],
       ["suppressLineNumbers", serializeOnOffElement(suppressLineNumbers, "suppressLineNumbers")],
       ["pBdr", serializeParagraphBorders(borders)],

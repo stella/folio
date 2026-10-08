@@ -1,3 +1,4 @@
+import { normalizeCanonicalListRendering } from "./canonicalListRendering";
 import { restoreCanonicalSelection } from "./canonicalSelection";
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import { mapTocSelection } from "./canonicalTocSelection";
@@ -1504,6 +1505,9 @@ class CanonicalSession {
         : Result.ok(stagedApplied);
     if (applied.isErr()) return refuse(applied.error.message);
     if (applied.value.inverse.length === 0) return noChange("The intent makes no document change.");
+    const normalized = normalizeCanonicalListRendering(applied.value.document);
+    applied.value.document = normalized.document;
+    applied.value.inverse = normalized.inverse.concat(applied.value.inverse);
     const changed = changedStories({
       document: applied.value.document,
       previous: this.currentDocument,
@@ -1688,7 +1692,7 @@ export const createCanonicalSession = (
   const unsupported = unsupportedSeedReason(document);
   if (unsupported !== null) return refuse(unsupported);
   const owned = cloneDocumentWithParagraphPropertySources(document);
-  const normalized = normalizeForOps(owned);
+  const normalized = normalizeForOps(normalizeCanonicalListRendering(owned).document);
   preservePropertySources({ target: normalized, source: owned });
   const validated = validateOpsDocument(normalized);
   if (validated.isErr()) return refuse(validated.error.message);
