@@ -11,6 +11,12 @@
       "path": "0",
       "note": "Full-test shard found the same obsolete comment-tab expectation.",
       "date": "2026-10-08"
+    },
+    {
+      "seed": 701289676,
+      "path": "0",
+      "note": "Comment geometry merge-group replay retains the exact source comment start before its tab.",
+      "date": "2026-10-08"
     }
   ]
 }
