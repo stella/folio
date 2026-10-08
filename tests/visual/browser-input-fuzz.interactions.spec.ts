@@ -36,7 +36,7 @@ import {
   writeFailureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
 import { clipboardHtmlProjection } from "./clipboardHtmlProjection";
-import { BROWSER_INPUT_REGRESSIONS } from "./browserInputRegressions";
+import { BROWSER_INPUT_REGRESSIONS, PINNED_BROWSER_INPUT_TAG } from "./browserInputRegressions";
 
 declare global {
   var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
@@ -332,20 +332,27 @@ for (const [index, trace] of paintedTargetReplays.entries()) {
 const isBrowserShape = (shape: string): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
   Object.hasOwn(BROWSER_SHAPE_TARGETS, shape);
 
-for (const { seed, path, fingerprint, trace } of BROWSER_INPUT_REGRESSIONS) {
-  test(`regression seed ${seed} path ${path} / ${fingerprint}`, async ({ page }) => {
-    const source = await shapeArrayBuffer(trace.shape);
-    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-    const edited = await runMode(page, source, baseline, trace, false);
-    const suggested = await runMode(page, source, baseline, trace, true);
-    const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
-    accepting.acceptAll();
-    expect(project(await reopenSaved(await accepting.toBuffer()))).toEqual(edited.blocks);
-    const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
-    rejecting.rejectAll();
-    expect(project(await reopenSaved(await rejecting.toBuffer()))).toEqual(baseline);
-  });
-}
+test.describe("pinned browser input", () => {
+  test.setTimeout(60_000);
+  for (const { seed, path, fingerprint, trace } of BROWSER_INPUT_REGRESSIONS) {
+    test(
+      `regression seed ${seed} path ${path} / ${fingerprint}`,
+      { tag: PINNED_BROWSER_INPUT_TAG },
+      async ({ page }) => {
+        const source = await shapeArrayBuffer(trace.shape);
+        const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+        const edited = await runMode(page, source, baseline, trace, false);
+        const suggested = await runMode(page, source, baseline, trace, true);
+        const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+        accepting.acceptAll();
+        expect(project(await reopenSaved(await accepting.toBuffer()))).toEqual(edited.blocks);
+        const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+        rejecting.rejectAll();
+        expect(project(await reopenSaved(await rejecting.toBuffer()))).toEqual(baseline);
+      },
+    );
+  }
+});
 
 const browserAcceptances = knownFailures.known.flatMap(({ fingerprint, acceptance }) => {
   if (acceptance?.type !== "browser") return [];

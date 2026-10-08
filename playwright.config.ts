@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { PINNED_BROWSER_INPUT_TAG } from "./tests/visual/browserInputRegressions";
 import { PLAYGROUND_HOSTS } from "./tests/parity/playgroundHosts";
 
 const vuePlaygroundPort = new URL(PLAYGROUND_HOSTS.vue).port;
@@ -41,6 +42,13 @@ const managedConfig = defineConfig({
       testMatch: /(?:interactions|editing-flows)\.spec\.ts/u,
       testIgnore:
         /(?:(?:canonical-)?browser-input|ai-human-interleaving)-fuzz\.interactions\.spec\.ts/u,
+    },
+    {
+      name: "browser-input-pinned",
+      use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
+      testMatch: /browser-input-fuzz\.interactions\.spec\.ts/u,
+      grep: new RegExp(PINNED_BROWSER_INPUT_TAG, "u"),
+      workers: 1,
     },
     {
       name: "browser-fuzzer",

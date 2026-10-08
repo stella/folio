@@ -1,5 +1,7 @@
 import { BROWSER_PASTE_PAYLOADS, type BrowserInputTrace } from "./browserInputTrace";
 
+export const PINNED_BROWSER_INPUT_TAG = "@pinned-browser-input";
+
 /** Exact findings stay as standing traces even when generator choices change. */
 export const BROWSER_NOTES_SEED_197 = {
   seed: 197,
