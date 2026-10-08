@@ -552,7 +552,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const result = createCanonicalSession(document, deps.getStyles());
     if (result.isErr()) {
       editorSession = { type: "refused", reason: result.error.message, documentIdentity };
-      refuse(result.error.message);
+      refuse(result.error.message, result.error.gap);
       return false;
     }
     editorSession = { type: "canonical", session: result.value };
@@ -602,7 +602,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const session = editorSession.session;
     const result = publishCanonicalProjection({ state: view.state, commit, session });
     if (result.isErr()) {
-      refuse(result.error.message);
+      refuse(result.error.message, result.error.gap);
       return false;
     }
     const staged = result.value;
@@ -622,7 +622,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const prepared =
       direction === "undo" ? session.prepareUndo(view.state) : session.prepareRedo(view.state);
     if (prepared.isErr()) {
-      if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+      if (prepared.error.reason !== "noChange") refuse(prepared.error.message, prepared.error.gap);
       return false;
     }
     return publishCommit(prepared.value);
@@ -656,7 +656,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       );
     const prepared = prepareCanonicalCommands(editorSession.session, view.state, intents);
     if (prepared.isErr()) {
-      if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+      if (prepared.error.reason !== "noChange") refuse(prepared.error.message, prepared.error.gap);
       return false;
     }
     return publishCommit(prepared.value);
@@ -700,7 +700,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       const state = view.state;
       const selection = session.projection.selectionAt(state);
       if (selection.isErr()) {
-        refuse(selection.error.message);
+        refuse(selection.error.message, selection.error.gap);
         return;
       }
       let prepared;
@@ -758,11 +758,11 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           const from = session.projection.addressAt(state.selection.from);
           const to = session.projection.addressAt(state.selection.to);
           if (from.isErr()) {
-            refuse(from.error.message);
+            refuse(from.error.message, from.error.gap);
             return;
           }
           if (to.isErr()) {
-            refuse(to.error.message);
+            refuse(to.error.message, to.error.gap);
             return;
           }
           prepared = session.prepareIntent(state, {
@@ -782,7 +782,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         }
       }
       if (prepared.isErr()) {
-        if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+        if (prepared.error.reason !== "noChange")
+          refuse(prepared.error.message, prepared.error.gap);
         return;
       }
       publishCommit(prepared.value);
@@ -796,7 +797,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       if (deps.getReadOnly() || editorSession.type !== "canonical") return false;
       const begun = editorSession.session.beginComposition();
       if (begun.isErr()) {
-        refuse(begun.error.message);
+        refuse(begun.error.message, begun.error.gap);
         return false;
       }
       return true;
@@ -834,7 +835,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         semantic: "replacement",
       });
       if (prepared.isErr()) {
-        refuse(prepared.error.message);
+        refuse(prepared.error.message, prepared.error.gap);
         return true;
       }
       const copied = Result.try({
@@ -861,7 +862,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       const rule = prepareCanonicalAutoformat(editorSession.session, view.state, intent);
       const prepared = rule ?? editorSession.session.prepareReplace(view.state, intent);
       if (prepared.isErr()) {
-        if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+        if (prepared.error.reason !== "noChange")
+          refuse(prepared.error.message, prepared.error.gap);
         return;
       }
       const session = editorSession.session;
@@ -1016,7 +1018,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           slice,
         });
         if (prepared.isErr()) {
-          if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+          if (prepared.error.reason !== "noChange")
+            refuse(prepared.error.message, prepared.error.gap);
         } else publishCommit(prepared.value);
         return true;
       },
@@ -1057,7 +1060,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
             : { pasteTarget: target }),
         });
         if (prepared.isErr()) {
-          if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+          if (prepared.error.reason !== "noChange")
+            refuse(prepared.error.message, prepared.error.gap);
         } else publishCommit(prepared.value);
         return true;
       },
@@ -1142,7 +1146,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           plain,
         });
         if (prepared.isErr()) {
-          if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+          if (prepared.error.reason !== "noChange")
+            refuse(prepared.error.message, prepared.error.gap);
           return false;
         }
         return publishCommit(prepared.value);
@@ -1308,7 +1313,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     }
     const staged = publishCanonicalProjection({ state: storyView.state, commit, session });
     if (staged.isErr()) {
-      refuse(staged.error.message);
+      refuse(staged.error.message, staged.error.gap);
       return false;
     }
     storyView.updateState(staged.value.state);
@@ -1364,7 +1369,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         resolution,
       });
       if (prepared.isErr()) {
-        if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+        if (prepared.error.reason !== "noChange")
+          refuse(prepared.error.message, prepared.error.gap);
         return false;
       }
       return publishCommit(prepared.value);
@@ -1419,7 +1425,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
             ? session.prepareUndo(storyView.state, story)
             : session.prepareRedo(storyView.state, story);
         if (prepared.isErr()) {
-          refuse(prepared.error.message);
+          refuse(prepared.error.message, prepared.error.gap);
           return false;
         }
         return publishStoryCommit(storyView, prepared.value);
@@ -1429,7 +1435,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly()) return false;
         const prepared = editorSession.session.prepareOperations(view.state, ops);
         if (prepared.isErr()) {
-          refuse(prepared.error.message);
+          refuse(prepared.error.message, prepared.error.gap);
           return false;
         }
         return publishCommit(prepared.value);
@@ -1440,7 +1446,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         if (editorSession.type !== "canonical" || editorSession.session.isComposing) return null;
         const result = editorSession.session.projectStory(story);
         if (result.isErr()) {
-          refuse(result.error.message);
+          refuse(result.error.message, result.error.gap);
           return null;
         }
         return result.value.doc;
@@ -1450,7 +1456,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         const session = editorSession.session;
         const prepared = session.prepareReplace(storyView.state, { ...intent, story });
         if (prepared.isErr()) {
-          refuse(prepared.error.message);
+          refuse(prepared.error.message, prepared.error.gap);
           return false;
         }
         return publishStoryCommit(storyView, prepared.value);

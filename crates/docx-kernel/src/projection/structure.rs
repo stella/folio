@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ProjectionError;
 use crate::projection::numbering::NumberingCatalog;
+use crate::projection::review::ReviewPoint;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StructuralFactUnknownReason {
@@ -286,24 +287,17 @@ pub(super) struct ParagraphProperties {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct RawBlockPoint {
-    pub paragraph: usize,
-    pub utf8: u32,
-    pub utf16: u32,
-}
-
-#[derive(Clone, Debug)]
 pub(super) struct RawBookmarkRange {
     pub id: u32,
     pub name: String,
-    pub start: RawBlockPoint,
-    pub end: RawBlockPoint,
+    pub start: ReviewPoint,
+    pub end: ReviewPoint,
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct RawInternalReference {
     pub reference_id: String,
-    pub source: RawBlockPoint,
+    pub source: ReviewPoint,
 }
 
 #[derive(Clone, Debug)]
@@ -998,7 +992,7 @@ fn materialize_references(
     for reference in references {
         fact_budget.consume(1)?;
         facts.push(InternalReferenceFact {
-            paragraph_ordinal: reference.source.paragraph,
+            paragraph_ordinal: reference.source.paragraph_ordinal,
             reference_id: reference.reference_id.clone(),
             role: InternalReferenceRole::Source,
             span: StructuralSpan {
@@ -1046,32 +1040,34 @@ fn materialize_references(
 
 fn segment_range(
     texts: &[&str],
-    start: &RawBlockPoint,
-    end: &RawBlockPoint,
+    start: &ReviewPoint,
+    end: &ReviewPoint,
     mut visit: impl FnMut(usize, StructuralSpan) -> Result<(), ProjectionError>,
 ) -> Result<(), ProjectionError> {
-    if start.paragraph > end.paragraph || end.paragraph >= texts.len() {
+    if start.paragraph_ordinal > end.paragraph_ordinal || end.paragraph_ordinal >= texts.len() {
         return Err(ProjectionError::InvalidDocumentXml);
     }
-    if start.paragraph == end.paragraph && (start.utf8 > end.utf8 || start.utf16 > end.utf16) {
+    if start.paragraph_ordinal == end.paragraph_ordinal
+        && (start.utf8 > end.utf8 || start.utf16 > end.utf16)
+    {
         return Err(ProjectionError::InvalidDocumentXml);
     }
     for (paragraph, text) in texts
         .iter()
         .enumerate()
-        .take(end.paragraph.saturating_add(1))
-        .skip(start.paragraph)
+        .take(end.paragraph_ordinal.saturating_add(1))
+        .skip(start.paragraph_ordinal)
     {
         let text_utf8 =
             u32::try_from(text.len()).map_err(|_| ProjectionError::InvalidDocumentXml)?;
         let text_utf16 = u32::try_from(text.encode_utf16().count())
             .map_err(|_| ProjectionError::InvalidDocumentXml)?;
-        let (start_utf8, start_utf16) = if paragraph == start.paragraph {
+        let (start_utf8, start_utf16) = if paragraph == start.paragraph_ordinal {
             (start.utf8, start.utf16)
         } else {
             (0, 0)
         };
-        let (end_utf8, end_utf16) = if paragraph == end.paragraph {
+        let (end_utf8, end_utf16) = if paragraph == end.paragraph_ordinal {
             (end.utf8, end.utf16)
         } else {
             (text_utf8, text_utf16)
@@ -1083,8 +1079,8 @@ fn segment_range(
         {
             return Err(ProjectionError::InvalidDocumentXml);
         }
-        let continues_before = paragraph > start.paragraph;
-        let continues_after = paragraph < end.paragraph;
+        let continues_before = paragraph > start.paragraph_ordinal;
+        let continues_after = paragraph < end.paragraph_ordinal;
         let coverage = match (continues_before, continues_after) {
             (false, false) => SpanCoverage::Complete,
             (true, false) => SpanCoverage::ContinuesBefore,

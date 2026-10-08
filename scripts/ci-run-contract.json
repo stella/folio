@@ -146,15 +146,15 @@
     },
     {
       "run": "bun run build",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run check:build-reproducibility",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun scripts/api-surface-budget.ts --self-test\nbun run api:check\nbun run api:budget\n",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     }
   ],
   "validate-dist": [

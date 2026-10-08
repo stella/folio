@@ -82,7 +82,13 @@ const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
 };
 
 /** Omit wholly style-sourced numbering; a changed reference stays authored in full. */
-const directNumbering = (numPr: Numbering, numPrFromStyle: Numbering): Numbering => {
+const directNumberingOf = ({
+  numPr,
+  numPrFromStyle,
+}: {
+  numPr: Numbering;
+  numPrFromStyle: Numbering;
+}): Numbering => {
   if (numPr === undefined || numPrFromStyle === undefined) return numPr;
   if (numPr.kind !== numPrFromStyle.kind) return numPr;
   switch (numPr.kind) {
@@ -117,10 +123,10 @@ const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts =>
     assert.ok(node?.type.name === "paragraph", `Live block ${block.id} has no paragraph`);
     facts.direct.set(
       block.id,
-      directNumbering(
-        readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined,
-        readParagraphNumberingAttr(node.attrs["numPrFromStyle"]) ?? undefined,
-      ),
+      directNumberingOf({
+        numPr: readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined,
+        numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]) ?? undefined,
+      }),
     );
   }
   return facts;
@@ -194,7 +200,7 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
           for (const content of block.content) visitInline(content);
           if (block.paraId === undefined) break;
           const { numPr, numPrFromStyle } = block.formatting ?? {};
-          direct.set(block.paraId, directNumbering(numPr, numPrFromStyle));
+          direct.set(block.paraId, directNumberingOf({ numPr, numPrFromStyle }));
           break;
         }
         case "table":
@@ -225,8 +231,30 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
   return { styles, direct };
 };
 
-export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFacts> =>
-  numberingFactsFromDocument(await parseDocx(toArrayBuffer(bytes), { preloadFonts: false }));
+export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFacts> => {
+  const facts = numberingFactsFromDocument(
+    await parseDocx(toArrayBuffer(bytes), { preloadFonts: false }),
+  );
+  // Unsaved positional identities come from the same owner as every reader anchor.
+  const reviewer = await openReviewer(bytes);
+  for (const { handle } of reviewer.listStories()) {
+    const snapshot = reviewer.snapshotStory(handle);
+    assert.ok(snapshot, "A discovered story must have a snapshot");
+    const doc = sourceDocumentOf(snapshot);
+    const { anchors, blocks } = snapshot;
+    for (const block of blocks) {
+      if (block.kind === "diagnostic" || facts.direct.has(block.id)) continue;
+      const anchor = anchors[block.id];
+      assert.ok(anchor, `Block ${block.id} must have an anchor`);
+      const node = doc.nodeAt(anchor.from);
+      assert.ok(node?.type.name === "paragraph", `Block ${block.id} must have a paragraph`);
+      const numPr = readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined;
+      const numPrFromStyle = readParagraphNumberingAttr(node.attrs["numPrFromStyle"]) ?? undefined;
+      facts.direct.set(block.id, directNumberingOf({ numPr, numPrFromStyle }));
+    }
+  }
+  return facts;
+};
 
 type TableLocation = {
   outerTableIndex: number;

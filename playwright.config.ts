@@ -1,10 +1,13 @@
 import { defineConfig } from "@playwright/test";
+import { PLAYGROUND_HOSTS } from "./tests/parity/playgroundHosts";
 
-const reactPlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
-const vuePlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+const vuePlaygroundPort = new URL(PLAYGROUND_HOSTS.vue).port;
 
-export default defineConfig({
+const managedConfig = defineConfig({
+  globalSetup: ["./tests/parity/previewSetup.ts", "./tests/parity/playgroundSetup.ts"],
   testDir: "./tests/visual",
+  // Bun unit tests share helper directories; browser projects discover only specs.
+  testMatch: /\.spec\.ts$/u,
   // A stray test.only must fail CI instead of silently running one test.
   forbidOnly: !!process.env["CI"],
   timeout: 30_000,
@@ -16,7 +19,7 @@ export default defineConfig({
     },
   },
   use: {
-    baseURL: `http://localhost:${reactPlaygroundPort}`,
+    baseURL: PLAYGROUND_HOSTS.react,
     browserName: "chromium",
     viewport: { width: 1280, height: 900 },
     // Consistent rendering across machines
@@ -34,16 +37,19 @@ export default defineConfig({
   projects: [
     {
       name: "interactions",
+      use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
       testMatch: /(?:interactions|editing-flows)\.spec\.ts/u,
       testIgnore:
         /(?:(?:canonical-)?browser-input|ai-human-interleaving)-fuzz\.interactions\.spec\.ts/u,
     },
     {
       name: "browser-fuzzer",
+      use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
       testMatch: /(?:canonical-)?browser-input-fuzz\.interactions\.spec\.ts/u,
     },
     {
       name: "interleaving-fuzzer",
+      use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
       testMatch: /ai-human-interleaving-fuzz\.interactions\.spec\.ts/u,
     },
     // Measure/paint parity compares two numbers read from the SAME browser in
@@ -84,25 +90,42 @@ export default defineConfig({
       testIgnore: /(?:cross-host|host-api)-flow\.spec\.ts/u,
     },
   ],
-  // Start both playground dev servers automatically (reused if already running).
-  // The React server backs the visual/interaction suites; the Vue server backs
-  // the parity project. Both boot for any run — `reuseExistingServer` keeps a
-  // manually-started dev server in place.
+  // Build fresh workspace sources before serving static previews. Never reuse
+  // an existing server: it could be a dev server that reloads on dependency discovery.
   webServer: [
     {
-      command: "bun --filter @stll/playground dev",
-      url: `http://localhost:${reactPlaygroundPort}`,
-      reuseExistingServer: true,
+      command:
+        "bun scripts/playground-build.ts packages/playground && bun --filter @stll/playground preview",
+      stdout: "pipe",
+      stderr: "pipe",
+      url: PLAYGROUND_HOSTS.react,
+      reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command: "bun --filter @stll/playground-vue dev",
+      command:
+        "bun scripts/playground-build.ts packages/playground-vue && bun --filter @stll/playground-vue preview",
       env: {
         FOLIO_PLAYGROUND_PORT: String(vuePlaygroundPort),
       },
-      url: `http://localhost:${vuePlaygroundPort}`,
-      reuseExistingServer: true,
+      stdout: "pipe",
+      stderr: "pipe",
+      url: PLAYGROUND_HOSTS.vue,
+      reuseExistingServer: false,
       timeout: 120_000,
     },
   ],
+});
+
+export const PLAYGROUND_SERVERS = managedConfig.webServer;
+
+const serverMode = process.env["FOLIO_PLAYGROUND_SERVER_MODE"] ?? "managed-preview";
+if (serverMode !== "managed-preview" && serverMode !== "existing-preview") {
+  throw new TypeError(`Unknown playground server mode: ${serverMode}`);
+}
+export const PLAYGROUND_SERVER_MODE = serverMode;
+
+export default defineConfig({
+  ...managedConfig,
+  webServer: serverMode === "managed-preview" ? PLAYGROUND_SERVERS : [],
 });
