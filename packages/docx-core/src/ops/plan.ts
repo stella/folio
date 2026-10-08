@@ -18,10 +18,11 @@ import {
   idKey,
   packageIdentityKeys,
 } from "./ids";
-import { paragraphLength } from "./offsets";
+import { isRangeBoundary, paragraphLength } from "./offsets";
 import {
   compareGaps,
   isCommentAnchor,
+  isParagraphContent,
   type Gap,
   type LeafSpan,
   leafSpans,
@@ -337,7 +338,7 @@ const earlierGap = (left: Gap, right: Gap): Gap => (compareGaps(left, right) <= 
 
 /**
  * The stretches of a range to delete directly and with tracking, in document
- * order. A comment anchor ends a stretch; a tracked stretch runs across
+ * order. A retained range or comment anchor ends a stretch; a tracked stretch runs across
  * deleted content, which it leaves alone, and one holding nothing else is
  * dropped.
  */
@@ -360,6 +361,10 @@ export const replacementDeletionSegments = ({
     const start = laterGap(span.before, from);
     const end = earlierGap(span.after, to);
     if (compareGaps(start, end) >= 0) continue;
+    if (isParagraphContent(span.node) && isRangeBoundary(span.node)) {
+      open = undefined;
+      continue;
+    }
     let plan: LeafPlan = isCommentAnchor(span.node) ? "anchor" : "direct";
     if (mode.type === "suggesting") plan = leafPlan(span, mode.author);
     else if (span.ancestors.some(isRemovedRevisionNode)) plan = "untouched";
