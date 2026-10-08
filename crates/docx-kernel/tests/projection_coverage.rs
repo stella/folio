@@ -394,13 +394,17 @@ fn document() -> impl Strategy<Value = Document> {
     (
         collection::vec(block(2, 3), 1..6),
         proptest::bool::weighted(0.1),
+        proptest::option::weighted(0.3, tracked()),
     )
-        .prop_map(|(blocks, section_change)| {
+        .prop_map(|(blocks, section_change, terminal_mark)| {
             let mut document = Document {
                 blocks,
                 section_change,
             };
             sanitize_document(&mut document);
+            if let Some(Block::Paragraph(paragraph)) = document.blocks.last_mut() {
+                paragraph.mark = terminal_mark;
+            }
             document
         })
 }
@@ -408,11 +412,23 @@ fn document() -> impl Strategy<Value = Document> {
 /// Scopes placements to the suite, then numbers comment
 /// and bookmark ids in document order.
 fn sanitize_document(document: &mut Document) {
+    scope_document(document);
+    let mut ids = Ids::default();
+    number_blocks(&mut document.blocks, &mut ids);
+}
+
+/// Paragraph marks are generated on the final direct body paragraph.
+fn scope_document(document: &mut Document) {
+    let terminal_mark = document.blocks.last().and_then(|block| match block {
+        Block::Paragraph(paragraph) => paragraph.mark,
+        _ => None,
+    });
     document.section_change = false;
     sanitize_blocks(&mut document.blocks, false);
     end_with_paragraph(&mut document.blocks);
-    let mut ids = Ids::default();
-    number_blocks(&mut document.blocks, &mut ids);
+    if let Some(Block::Paragraph(paragraph)) = document.blocks.last_mut() {
+        paragraph.mark = terminal_mark;
+    }
 }
 
 fn sanitize_blocks(blocks: &mut Vec<Block>, inside_wrapper: bool) {
@@ -466,9 +482,6 @@ fn sanitize_inlines(inlines: &mut Vec<Inline>, scope: InlineScope) {
         match &mut inline {
             Inline::Run(run) => {
                 run.property_change = false;
-                if run.content == RunContent::EndnoteReference {
-                    run.content = RunContent::FootnoteReference;
-                }
             }
             Inline::ProofErr => {}
             Inline::Revision(revision) => {
@@ -1280,7 +1293,6 @@ const DEFAULT_ARM: &[Element] = &[
     Element::SectionProperties,
     Element::CustomXml,
     Element::SmartTag,
-    Element::EndnoteReference,
     Element::ProofErr,
 ];
 
@@ -1543,22 +1555,15 @@ const EXCLUDED_ROWS: &[(Element, Context)] = &[
     (Element::ComplexField, Context::Deletion),
     (Element::ComplexField, Context::MoveFrom),
     (Element::ComplexField, Context::MoveTo),
-    (Element::Insertion, Context::ParagraphMarkProperties),
     (Element::Insertion, Context::TableRowProperties),
-    (Element::Deletion, Context::ParagraphMarkProperties),
     (Element::Deletion, Context::TableRowProperties),
-    (Element::MoveFrom, Context::ParagraphMarkProperties),
-    (Element::MoveTo, Context::ParagraphMarkProperties),
     (Element::DeletedInstruction, Context::Run),
-    (Element::EndnoteReference, Context::Run),
     (Element::Textbox, Context::Run),
-    (Element::RunProperties, Context::ParagraphProperties),
     (Element::RunPropertiesChange, Context::RunProperties),
     (
         Element::RunPropertiesChange,
         Context::ParagraphMarkProperties,
     ),
-    (Element::ParagraphProperties, Context::Paragraph),
     (
         Element::ParagraphPropertiesChange,
         Context::ParagraphProperties,
@@ -2376,11 +2381,14 @@ fn insert_probe(document: &mut Document, target: usize, position: usize, probe: 
 /// revision, as accept-all and reject-all do. Removed content keeps
 /// its comment and bookmark markers, which collapse to the removal point.
 /// Returns `None` for shapes the reference model does not describe:
-/// structural table revisions, and a removed paragraph mark with no
-/// following sibling paragraph.
+/// structural table revisions, and paragraph joins across containers.
 fn apply_revisions(document: &Document, view: RevisionView) -> Option<Document> {
+    let mut blocks = document.blocks.clone();
+    if let Some(Block::Paragraph(paragraph)) = blocks.last_mut() {
+        paragraph.mark = None;
+    }
     Some(Document {
-        blocks: apply_blocks(&document.blocks, view, false)?,
+        blocks: apply_blocks(&blocks, view, false)?,
         section_change: false,
     })
 }
@@ -2574,8 +2582,7 @@ fn valid_in_revision(inline: &Inline) -> bool {
 
 fn require_scoped_placements(document: &Document) -> Result<(), String> {
     let mut scoped = document.clone();
-    scoped.section_change = false;
-    sanitize_blocks(&mut scoped.blocks, false);
+    scope_document(&mut scoped);
     let actual = write_document(document, &BTreeSet::new());
     let expected = write_document(&scoped, &BTreeSet::new());
     if actual != expected {
@@ -2739,3 +2746,47 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
+
+fn single(document_body: &str, view: RevisionView) -> DocumentPackageProjection {
+    let xml = format!(r#"<w:document xmlns:w="{W}"><w:body>{document_body}</w:body></w:document>"#);
+    project_xml(&xml, &format!(r#"<w:comments xmlns:w="{W}"/>"#), view)
+}
+
+#[test]
+fn moved_paragraph_marks_join_like_deleted_and_inserted_marks() {
+    for (mark, view, expected) in [
+        ("del", RevisionView::Current, &["ab"][..]),
+        ("del", RevisionView::Original, &["a", "b"]),
+        ("moveFrom", RevisionView::Current, &["ab"]),
+        ("moveFrom", RevisionView::Original, &["a", "b"]),
+        ("ins", RevisionView::Current, &["a", "b"]),
+        ("ins", RevisionView::Original, &["ab"]),
+        ("moveTo", RevisionView::Current, &["a", "b"]),
+        ("moveTo", RevisionView::Original, &["ab"]),
+    ] {
+        let projection = single(
+            &format!(
+                r#"<w:p><w:pPr><w:rPr><w:{mark} w:id="1" w:author="A"/></w:rPr></w:pPr><w:r><w:t>a</w:t></w:r></w:p><w:p><w:r><w:t>b</w:t></w:r></w:p>"#
+            ),
+            view,
+        );
+        let texts = projection
+            .document
+            .paragraphs
+            .iter()
+            .map(|paragraph| paragraph.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(texts, expected, "{mark} in {view:?}");
+    }
+}
+
+#[test]
+fn endnote_references_materialize_like_footnote_references() {
+    for view in VIEWS {
+        let projection = single(
+            r#"<w:p><w:r><w:t>a</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r><w:r><w:endnoteReference w:id="1"/></w:r><w:r><w:t>z</w:t></w:r></w:p>"#,
+            view,
+        );
+        assert_eq!(projection.document.paragraphs[0].text, "a\u{0002}\u{0002}z");
+    }
+}
