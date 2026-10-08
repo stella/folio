@@ -5728,8 +5728,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           noteEditorRef.current?.close();
         },
         getHfView(rId: string) {
-          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
-            return null;
           return hfPMsRef.current?.getView(rId) ?? null;
         },
         ensureView(options?: { focus?: boolean }) {

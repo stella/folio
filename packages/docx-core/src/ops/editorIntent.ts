@@ -452,11 +452,16 @@ const paragraphAt = (document: Document, at: TextPosition) =>
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(at.blockId),
   )?.paragraph;
 
+/** Zero-width markers and empty leaves never supply the formatting of typed content. */
+const visibleFormattingSpans = (paragraph: Paragraph) =>
+  leafSpans(paragraph.content).filter(
+    ({ ancestors, before, after }) =>
+      after.offset > before.offset && !ancestors.some(isRemovedRevisionNode),
+  );
+
 /** Capture authored formatting before deletion, using only visible runs. */
 const formattingAt = (paragraph: Paragraph, offset: number): TextFormatting | undefined => {
-  const spans = leafSpans(paragraph.content).filter(
-    ({ ancestors }) => !ancestors.some(isRemovedRevisionNode),
-  );
+  const spans = visibleFormattingSpans(paragraph);
   const span =
     spans.find(({ before, after }) => before.offset <= offset && offset < after.offset) ??
     spans.findLast(({ after }) => after.offset <= offset) ??
@@ -474,10 +479,7 @@ const authoredFormatting = (
     panic("A validated input paragraph must exist when reading authored formatting.");
   const collapsed = from.blockId === to.blockId && from.offset === to.offset;
   if (!collapsed) return formattingAt(paragraph, from.offset);
-  const left = leafSpans(paragraph.content).some(
-    ({ ancestors, before }) =>
-      !ancestors.some(isRemovedRevisionNode) && before.offset < from.offset,
-  );
+  const left = visibleFormattingSpans(paragraph).some(({ before }) => before.offset < from.offset);
   if (left) return formattingAt(paragraph, from.offset - 1);
   const group = editorParagraphGroups(document, from.story).find(({ paragraphs }) =>
     paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(from.blockId)),
