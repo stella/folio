@@ -35,12 +35,12 @@ use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
 use proptest::{collection, prop_assert, prop_assert_eq, proptest, sample};
 use quick_xml::events::{BytesStart, Event};
 use stella_docx_kernel::{
-    AttributedRevision, CommentContent, DocumentPackageProjection, DocxLimits,
-    FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
+    AttributedRevision, CommentContent, DocumentPackageProjection, DocumentStructureFacts,
+    DocxLimits, FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
     ParagraphIdentityFacts, ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail,
     ReviewFactLimits, ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind,
-    RevisionPayload, RevisionProjectionStatus, RevisionView, StructuralFactSet, TextFormattingSpan,
-    TextStyle, project_docx_with_review_facts,
+    RevisionPayload, RevisionProjectionStatus, RevisionUnsupportedReason, RevisionView,
+    StructuralFactSet, TextFormattingSpan, TextStyle, project_docx_with_review_facts,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -1334,7 +1334,6 @@ const UNGENERATED_DISPATCH: &[&str] = &[
 /// Generated elements the parser handles through its default arm: they are
 /// transparent containers or markers whose content the walk still visits.
 const DEFAULT_ARM: &[Element] = &[
-    Element::TableProperties,
     Element::SectionProperties,
     Element::SmartTag,
     Element::ProofErr,
@@ -3062,7 +3061,13 @@ struct TablePropertyDocument {
     rows: Vec<Vec<Vec<&'static str>>>,
     snapshots: [bool; 4],
     placement: TablePlacement,
-    strict: bool,
+    namespace: NamespaceProfile,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum NamespaceProfile {
+    Transitional,
+    Strict,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -3087,24 +3092,26 @@ fn table_property_document() -> impl Strategy<Value = TablePropertyDocument> {
             TablePlacement::ContentControl,
             TablePlacement::CustomXml,
         ]),
-        any::<bool>(),
+        sample::select(vec![
+            NamespaceProfile::Transitional,
+            NamespaceProfile::Strict,
+        ]),
     )
         .prop_map(
-            |(rows, snapshots, placement, strict)| TablePropertyDocument {
+            |(rows, snapshots, placement, namespace)| TablePropertyDocument {
                 rows,
                 snapshots,
                 placement,
-                strict,
+                namespace,
             },
         )
 }
 
 impl TablePropertyDocument {
     fn xml(&self) -> String {
-        let namespace = if self.strict {
-            "http://purl.oclc.org/ooxml/wordprocessingml/main"
-        } else {
-            W
+        let namespace = match self.namespace {
+            NamespaceProfile::Strict => "http://purl.oclc.org/ooxml/wordprocessingml/main",
+            NamespaceProfile::Transitional => W,
         };
         let mut markup = Markup {
             xml: format!(r#"<w:document xmlns:w="{namespace}"><w:body>"#),
@@ -3226,7 +3233,11 @@ impl TablePropertyDocument {
         }
         let paragraphs = &projection.document.paragraphs;
         if paragraphs.iter().enumerate().any(|(ordinal, paragraph)| {
-            paragraph.ordinal != ordinal || !paragraph.formatting.is_empty()
+            paragraph.ordinal != ordinal
+                || paragraph.style_id.is_some()
+                || paragraph.package_paragraph_id.is_some()
+                || paragraph.alignment.is_some()
+                || !paragraph.formatting.is_empty()
         }) {
             return Err("table paragraph ordinals or direct formatting differ".to_owned());
         }
@@ -3242,6 +3253,18 @@ impl TablePropertyDocument {
                 != structures
         {
             return Err("table text or coordinates differ from the generated cells".to_owned());
+        }
+        let empty_structure = DocumentStructureFacts {
+            bookmarks: StructuralFactSet::Known(Vec::new()),
+            internal_references: StructuralFactSet::Known(Vec::new()),
+            indentation: StructuralFactSet::Known(Vec::new()),
+            numbering_hierarchy: StructuralFactSet::Known(Vec::new()),
+            outline_levels: StructuralFactSet::Known(Vec::new()),
+        };
+        if projection.document.structural_facts != empty_structure
+            || projection.review_facts.comments != ReviewFactSet::Known(Vec::new())
+        {
+            return Err("table annotations and paragraph properties are empty".to_owned());
         }
         let expected_status =
             if view == RevisionView::Original && self.snapshots.iter().any(|present| *present) {
@@ -3308,7 +3331,7 @@ fn table_property_revisions_cover_distinct_rows_and_cells() {
         ],
         snapshots: [true; 4],
         placement: TablePlacement::Body,
-        strict: false,
+        namespace: NamespaceProfile::Transitional,
     };
     for view in VIEWS {
         document.check(view).unwrap();
