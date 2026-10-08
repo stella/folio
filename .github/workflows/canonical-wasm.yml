@@ -10,6 +10,7 @@ on:
       - "rust-toolchain.toml"
       - "package.json"
       - "bun.lock"
+      - "packages/docx-core/package.json"
       - "packages/docx-core/src/generated/**"
       - "scripts/build-docx-kernel-wasm.ts"
       - "scripts/lib/rust-wasm-artifact.ts"
