@@ -791,6 +791,43 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  browser-input-pinned:
+    name: Pinned browser input replays
+    needs: ci-plan
+    if: needs.ci-plan.outputs.interactions_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: |
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
+          bunx playwright install --with-deps chromium
+
+      - name: Run only standing browser input regressions
+        run: bunx playwright test --project=browser-input-pinned --workers=1
+
+      - name: Upload failed pinned replay artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-pinned-browser-input-failure
+          path: test-results/
+          retention-days: 7
+
   interactions:
     name: Interaction e2e (playground)
     needs: ci-plan
@@ -1016,6 +1053,7 @@ jobs:
       - typecheck-budget
       - container-contract
       - docx-kernel
+      - browser-input-pinned
       - interactions
       - differential
       - consumer-scenarios
@@ -1050,6 +1088,7 @@ jobs:
             "typecheck-budget":{"area":"typecheck_budget_required","depth":"full"},
             "container-contract":{"area":"container_contract_required","depth":"full"},
             "docx-kernel":{"area":"docx_kernel_required","depth":"full"},
+            "browser-input-pinned":{"area":"interactions_required"},
             "interactions":{"area":"interactions_required","depth":"full"},
             "differential":{"area":"differential_required","depth":"full"},
             "consumer-scenarios":{"area":"consumer_scenarios_required","depth":"full"},

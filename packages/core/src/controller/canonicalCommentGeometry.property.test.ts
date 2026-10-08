@@ -227,6 +227,19 @@ test("comment ranges retain their context across paragraph boundaries", () => {
   const document = {
     package: {
       document: {
+        comments: [
+          {
+            id: 1,
+            author: "Reviewer",
+            content: [
+              {
+                type: "paragraph",
+                paraId: "20000001",
+                content: [{ type: "run", content: [{ type: "text", text: "Comment" }] }],
+              },
+            ],
+          },
+        ],
         content: [
           {
             type: "paragraph",
