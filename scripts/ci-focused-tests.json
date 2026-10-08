@@ -1,5 +1,6 @@
 [
   "scripts/host-api-flow.test.ts",
+  "scripts/shared-docx-fixtures.test.ts",
   "scripts/editor-scroll-root.test.ts",
   "scripts/scroll-root-fixture.test.ts",
   "packages/core/src/paged-layout/editorScrollRoot.test.ts",
