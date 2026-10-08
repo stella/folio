@@ -29,6 +29,7 @@ import {
   resolveDefaultParagraphStyle,
 } from "../../docx/defaultParagraphStyle";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
+import { mergeParagraphNumbering } from "../../docx/numberingReference";
 import { cascadeStyleTextFormatting } from "./styleToggleCascade";
 
 /**
@@ -189,35 +190,30 @@ export class StyleResolver {
     return this.resolveParagraphStyleCascade(styleId, tableParagraphOverlay);
   }
 
+  private resolveParagraphFormatting(
+    styleId: string | undefined | null,
+    tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
+  ): ParagraphFormatting | undefined {
+    const [defaults, overlay, style] = paragraphFormattingLayers({
+      resolver: this,
+      styleId,
+      tableParagraphOverlay,
+    });
+    let formatting = defaults ? { ...defaults } : undefined;
+    for (const layer of [overlay, style]) {
+      formatting = mergeParagraphFormatting(formatting, layer) ?? formatting;
+    }
+    return formatting;
+  }
+
   private resolveParagraphStyleCascade(
     styleId: string | undefined | null,
     tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
   ): ResolvedParagraphStyle {
     const result: ResolvedParagraphStyle = {};
-
-    // Layer 1: document defaults
-    if (this.docDefaults?.pPr) {
-      result.paragraphFormatting = { ...this.docDefaults.pPr };
-    }
-    // Layer 2: modeled enclosing-table paragraph fields (cell paragraphs only;
-    // undefined for everything else, a no-op here).
-    if (tableParagraphOverlay) {
-      const merged = mergeParagraphFormatting(result.paragraphFormatting, tableParagraphOverlay);
-      if (merged !== undefined) {
-        result.paragraphFormatting = merged;
-      }
-    }
-
-    // Layer 3: the paragraph's own style chain (Normal when absent or unknown).
-    const style = styleId
-      ? (this.stylesById.get(styleId) ?? this.defaultParagraphStyle)
-      : this.defaultParagraphStyle;
-    if (style?.pPr) {
-      const merged = mergeParagraphFormatting(result.paragraphFormatting, style.pPr);
-      if (merged) {
-        result.paragraphFormatting = merged;
-      }
-    }
+    const paragraphFormatting = this.resolveParagraphFormatting(styleId, tableParagraphOverlay);
+    if (paragraphFormatting) result.paragraphFormatting = paragraphFormatting;
+    const style = paragraphStyleFor(this, styleId);
     const runFormatting = cascadeStyleTextFormatting([
       { formatting: this.docDefaults?.rPr, type: "defaults" },
       { formatting: style?.rPr, type: "style" },
@@ -375,3 +371,39 @@ export class StyleResolver {
 export function createStyleResolver(styleDefinitions: StyleDefinitions | undefined): StyleResolver {
   return new StyleResolver(styleDefinitions);
 }
+
+const paragraphStyleFor = (resolver: StyleResolver, styleId: string | undefined | null) =>
+  (styleId ? resolver.getStyle(styleId) : undefined) ?? resolver.getDefaultParagraphStyle();
+
+type ParagraphFormattingLayersOptions = {
+  resolver: StyleResolver;
+  styleId: string | undefined | null;
+  tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined;
+};
+
+const paragraphFormattingLayers = ({
+  resolver,
+  styleId,
+  tableParagraphOverlay,
+}: ParagraphFormattingLayersOptions) =>
+  [
+    resolver.getDocDefaults()?.pPr,
+    tableParagraphOverlay,
+    paragraphStyleFor(resolver, styleId)?.pPr,
+  ] as const;
+
+/** The same ordered paragraph tiers, without unrelated run or paragraph fields. */
+export const resolveStyleParagraphNumbering = (
+  resolver: StyleResolver,
+  styleId: string | undefined | null,
+) => {
+  let numbering: ParagraphFormatting["numPr"];
+  for (const layer of paragraphFormattingLayers({
+    resolver,
+    styleId,
+    tableParagraphOverlay: undefined,
+  })) {
+    numbering = mergeParagraphNumbering(numbering, layer?.numPr);
+  }
+  return numbering;
+};

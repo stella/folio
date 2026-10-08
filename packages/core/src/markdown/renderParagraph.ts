@@ -54,8 +54,7 @@ export function renderParagraphBlock(
 ): RenderedParagraph {
   // Every paragraph advances the list counter, whatever it renders as: the
   // items after a numbered heading continue from its number.
-  const inherited = ctx.styleEngine.resolveParagraphStyle(para.formatting?.styleId)
-    .paragraphFormatting?.numPr;
+  const inherited = ctx.paragraphNumbering(para.formatting?.styleId);
   const numPrFromStyle = inherited ?? para.formatting?.numPrFromStyle;
   const numPr = mergeParagraphNumbering(numPrFromStyle, para.formatting?.numPr);
   let list = para.listRendering;
