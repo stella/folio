@@ -37,8 +37,11 @@ export function escapeInline(text: string): string {
  * line.
  */
 export function escapeTableCell(text: string): string {
-  return text.replace(/\|/gu, "&#124;").replace(/\r?\n/gu, "<br>");
+  return inlineBreaksToHtml(text.replace(/\|/gu, "&#124;"));
 }
+
+/** Single-line Markdown blocks express inline breaks without their two-space syntax. */
+export const inlineBreaksToHtml = (text: string): string => text.replace(/ *\r?\n/gu, "<br>");
 
 /**
  * Hyperlink URLs in inline form need parens balanced; we URL-encode the

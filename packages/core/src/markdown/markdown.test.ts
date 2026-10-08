@@ -120,6 +120,76 @@ describe("toMarkdown — block structure", () => {
     propertyTestTimeout(30_000),
   );
 
+  test("generated heading breaks preserve one Markdown block", async () => {
+    await assertProperty(
+      fc.property(
+        fc.array(fc.constantFrom("line", "page", "column", "tab", "softHyphen"), {
+          minLength: 1,
+          maxLength: 8,
+        }),
+        fc.integer({ min: 1, max: 6 }),
+        fc.boolean(),
+        fc.record({ bold: fc.boolean(), italic: fc.boolean(), strike: fc.boolean() }),
+        (breaks, level, numbered, formatting) => {
+          const content: Run["content"] = [{ type: "text", text: "First" }];
+          for (const kind of breaks) {
+            switch (kind) {
+              case "line":
+              case "page":
+              case "column":
+                content.push({ type: "break", breakType: kind === "line" ? "textWrapping" : kind });
+                break;
+              case "tab":
+              case "softHyphen":
+                content.push({ type: kind });
+                break;
+              default: {
+                const unhandled: never = kind;
+                throw new Error(`Unhandled break ${unhandled}`);
+              }
+            }
+            content.push({ type: "text", text: "Next" });
+          }
+          for (const code of [false, true]) {
+            const rendered = md([
+              para(
+                [
+                  {
+                    type: "run",
+                    content,
+                    formatting: code ? { fontFamily: { ascii: "Consolas" } } : formatting,
+                  },
+                ],
+                {
+                  styleId: `Heading${level}`,
+                  ...(numbered ? { listRendering: list(0, false, "1.") } : {}),
+                },
+              ),
+              para([run("Tail.")]),
+            ]);
+            expect(rendered.split("\n\n")).toHaveLength(2);
+            expect(rendered.split("\n\n").at(0)).not.toContain("\n");
+            expect(rendered.match(/<br>/gu)?.length ?? 0).toBe(
+              breaks.reduce(
+                (count, kind) =>
+                  count +
+                  {
+                    line: 1,
+                    page: 2,
+                    column: 1,
+                    tab: 0,
+                    softHyphen: 0,
+                  }[kind],
+                0,
+              ),
+            );
+          }
+        },
+      ),
+      { seed: 1634001732, numRuns: 60 },
+    );
+  });
+
   test("a whitespace heading keeps its visible list label", () => {
     expect(
       md([para([run(" ")], { styleId: "Heading1", listRendering: list(0, false, "1.") })]),

@@ -410,8 +410,13 @@ function pieceOf(
   const leadLen = inner.length - inner.trimStart().length;
   const trailLen = inner.length - inner.trimEnd().length;
   const core = inner.slice(leadLen, inner.length - trailLen);
+  // CommonMark normalizes newlines inside code spans; keep breaks outside them.
+  const markedCore = core
+    .split(/( *\n)/gu)
+    .map((part, index) => (index % 2 === 0 && part ? applyMarks(part, marks) : part))
+    .join("");
   const text = core
-    ? `${inner.slice(0, leadLen)}${applyMarks(core, marks)}${inner.slice(inner.length - trailLen)}`
+    ? `${inner.slice(0, leadLen)}${markedCore}${inner.slice(inner.length - trailLen)}`
     : inner;
   return { text, marks: new Set() };
 }
