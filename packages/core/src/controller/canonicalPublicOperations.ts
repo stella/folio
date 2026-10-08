@@ -79,13 +79,44 @@ export type CanonicalPublicOperationOptions = Omit<
   "view" | "createUndoHandle" | "createCommentId"
 >;
 
+type CommentOperation = {
+  [Operation in FolioDocumentOperation as Operation["type"]]: "comment" extends keyof Operation
+    ? Operation
+    : never;
+}[FolioDocumentOperation["type"]];
+
 type ResolvedOperation = {
-  operation: FolioDocumentOperation;
   intents: readonly EditorIntent[];
-  comment?: { text: string; from: TextPosition; to: TextPosition };
   normalizations: readonly FolioAIEditNormalization[];
   from: number;
   to: number;
+} & (
+  | { type: "plain"; operation: FolioDocumentOperation }
+  | {
+      type: "commented";
+      operation: CommentOperation;
+      comment: { text: string; from: TextPosition; to: TextPosition };
+    }
+);
+
+type ResolveCommentOptions = {
+  operation: FolioDocumentOperation;
+  from: TextPosition;
+  to: TextPosition;
+};
+
+const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
+  if ("comment" in operation && operation.comment !== undefined) {
+    return {
+      type: "commented",
+      operation,
+      comment: { text: operation.comment.text, from, to },
+    } as const satisfies Pick<
+      Extract<ResolvedOperation, { type: "commented" }>,
+      "type" | "operation" | "comment"
+    >;
+  }
+  return { type: "plain", operation } as const;
 };
 
 type CanonicalPublicOperationsOptions = {
@@ -336,7 +367,8 @@ export class CanonicalPublicOperations {
     const appliedById = new Map<string, FolioDocumentOperationResult["applied"][number]>();
     const allocate = createEditorIntentIdAllocator();
     const date = options.revisionStamp?.date ?? new Date().toISOString();
-    for (const { operation, intents, comment, normalizations: adjustments } of resolved) {
+    for (const resolvedOperation of resolved) {
+      const { operation, intents, normalizations: adjustments } = resolvedOperation;
       const compiled = compilePublicIntents({
         document,
         intents,
@@ -356,52 +388,62 @@ export class CanonicalPublicOperations {
       let nextDocument = compiled.value.document;
       const operationOps = [...compiled.value.ops];
       let commentId: number | undefined;
-      if (comment) {
-        const id = freshCommentId(nextDocument);
-        const before = findStoryBody(document, story)?.content.find(
-          (block) => block.type === "paragraph" && block.paraId === comment.from.blockId,
-        );
-        const after = findStoryBody(nextDocument, story)?.content.find(
-          (block) => block.type === "paragraph" && block.paraId === comment.from.blockId,
-        );
-        if (id.isErr() || before?.type !== "paragraph" || after?.type !== "paragraph") {
-          refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
-          skip(
-            operation.id,
-            "unsupportedBlock",
-            id.isErr() ? id.error.message : "The comment anchor no longer exists.",
+      switch (resolvedOperation.type) {
+        case "plain":
+          break;
+        case "commented": {
+          const { comment } = resolvedOperation;
+          const id = freshCommentId(nextDocument);
+          const before = findStoryBody(document, story)?.content.find(
+            (block) => block.type === "paragraph" && block.paraId === comment.from.blockId,
           );
-          continue;
-        }
-        const to = {
-          ...comment.to,
-          offset: comment.to.offset + paragraphLength(after) - paragraphLength(before),
-        };
-        const commented = compileCanonicalComments({
-          document: nextDocument,
-          command: {
-            type: "create",
-            comment: {
-              id: id.value,
-              author: options.author ?? "AI",
-              date,
-              done: false,
-              content: canonicalCommentBody(nextDocument, comment.text),
+          const after = findStoryBody(nextDocument, story)?.content.find(
+            (block) => block.type === "paragraph" && block.paraId === comment.from.blockId,
+          );
+          if (id.isErr() || before?.type !== "paragraph" || after?.type !== "paragraph") {
+            refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
+            skip(
+              operation.id,
+              "unsupportedBlock",
+              id.isErr() ? id.error.message : "The comment anchor no longer exists.",
+            );
+            continue;
+          }
+          const to = {
+            ...comment.to,
+            offset: comment.to.offset + paragraphLength(after) - paragraphLength(before),
+          };
+          const commented = compileCanonicalComments({
+            document: nextDocument,
+            command: {
+              type: "create",
+              comment: {
+                id: id.value,
+                author: options.author ?? "AI",
+                date,
+                done: false,
+                content: canonicalCommentBody(nextDocument, comment.text),
+              },
+              anchor:
+                to.offset === comment.from.offset
+                  ? { kind: "point", at: comment.from }
+                  : { kind: "range", from: comment.from, to },
             },
-            anchor:
-              to.offset === comment.from.offset
-                ? { kind: "point", at: comment.from }
-                : { kind: "range", from: comment.from, to },
-          },
-        });
-        if (commented.isErr()) {
-          refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
-          skip(operation.id, "unsupportedBlock", commented.error.message);
-          continue;
+          });
+          if (commented.isErr()) {
+            refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
+            skip(operation.id, "unsupportedBlock", commented.error.message);
+            continue;
+          }
+          nextDocument = commented.value.document;
+          operationOps.push(...commented.value.ops);
+          commentId = id.value;
+          break;
         }
-        nextDocument = commented.value.document;
-        operationOps.push(...commented.value.ops);
-        commentId = id.value;
+        default: {
+          const unreachable: never = resolvedOperation;
+          panic(`Unknown resolved operation ${unreachable}`);
+        }
       }
       if (operationOps.length === 0) {
         skip(operation.id, "noopOperation");
@@ -626,21 +668,17 @@ export class CanonicalPublicOperations {
     const from = projection.value.addressAt(range.from);
     const to = projection.value.addressAt(range.to);
     if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
-    const comment =
-      "comment" in operation && operation.comment !== undefined
-        ? { text: operation.comment.text, from: from.value, to: to.value }
-        : undefined;
+    const resolvedComment = resolveComment({ operation, from: from.value, to: to.value });
     if (operation.type === "commentOnBlock" || operation.type === "commentOnRange")
       return Result.ok({
-        operation,
+        ...resolvedComment,
         intents: [],
         normalizations: [],
-        ...(comment === undefined ? {} : { comment }),
         from: range.from,
         to: range.to,
       });
     if (
-      comment === undefined &&
+      resolvedComment.type === "plain" &&
       operation.type !== "splitBlock" &&
       operation.type !== "formatRange" &&
       operation.type !== "mergeBlockWithNext" &&
@@ -805,9 +843,8 @@ export class CanonicalPublicOperations {
     if (structural) claimedTo = paragraph.start + paragraph.node.content.size;
     if (nextParagraph) claimedTo = nextParagraph.start + nextParagraph.node.content.size;
     return Result.ok({
-      operation,
+      ...resolvedComment,
       intents,
-      ...(comment === undefined ? {} : { comment }),
       normalizations,
       from: structural ? paragraph.start : range.from,
       to: claimedTo,

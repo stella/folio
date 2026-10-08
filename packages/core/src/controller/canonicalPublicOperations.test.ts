@@ -350,3 +350,22 @@ test("generated attached comments publish and undo atomically in direct and trac
     { numRuns: 30, seed: 20261008 },
   );
 });
+
+test.each(["splitBlock", "mergeBlockWithNext"] as const)(
+  "the public parser refuses an attached comment on %s",
+  (type) => {
+    const editor = setup();
+    const initial = editor.session.document;
+    const operation = {
+      id: "structural",
+      type,
+      blockId: "12345678",
+      comment: { text: "review" },
+      ...(type === "splitBlock" ? { offset: 2 } : {}),
+    };
+    expect(() => editor.apply([operation])).toThrow("comment: unexpected property");
+    expect(editor.session.document).toBe(initial);
+    expect(editor.session.version).toBe(0);
+    expect(editor.session.canUndo).toBe(false);
+  },
+);
