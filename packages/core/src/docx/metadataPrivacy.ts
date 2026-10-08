@@ -1,3 +1,4 @@
+import { writeZipPart } from "@stll/docx-core/zip";
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
@@ -260,7 +261,7 @@ export const rewriteDocxMetadataPrivacy = async (
   }
   // Write back under the entry's original name/casing so a non-conventional
   // producer doesn't end up with two core-properties-shaped parts.
-  zip.file(coreProperties.name, rewritten.xml);
+  writeZipPart({ zip, path: coreProperties.name, data: rewritten.xml });
   return {
     buffer: await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" }),
     privacyReport: {
