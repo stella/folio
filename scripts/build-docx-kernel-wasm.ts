@@ -47,6 +47,10 @@ const maximumParagraphAlignmentBrotliBytes = 1024;
 const maximumReviewRelocationBytes = 2 * 1024;
 const maximumReviewRelocationBrotliBytes = 1024;
 
+// Review-fact relocation across joins and hidden annotations has a bounded
+// allowance so later projection growth cannot consume it silently.
+const maximumReviewFactRelocationBytes = 2 * 1024;
+
 const kernel = {
   label: "DOCX kernel",
   crate: "stella-docx-kernel",
@@ -66,7 +70,8 @@ const kernel = {
     maximumBookmarkBoundaryBytes +
     maximumNumberingStructureBytes +
     maximumParagraphAlignmentBytes +
-    maximumReviewRelocationBytes,
+    maximumReviewRelocationBytes +
+    maximumReviewFactRelocationBytes,
   maximumBrotliBytes:
     100 * 1024 +
     maximumReviewDetailBrotliBytes +
