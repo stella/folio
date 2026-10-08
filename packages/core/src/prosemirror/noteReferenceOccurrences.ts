@@ -12,6 +12,11 @@ export class NoteReferenceReplayDefect extends TaggedError("NoteReferenceReplayD
   message: string;
 }> {}
 
+const NOTE_OCCURRENCE_REPLAY_META = "noteReferenceOccurrenceReplay";
+export const markNoteReferenceReplay = (transaction: Transaction): void => {
+  transaction.setMeta(NOTE_OCCURRENCE_REPLAY_META, true);
+};
+
 const NOTE_OCCURRENCE_REPORT_META = "noteReferenceOccurrenceReport";
 export const noteReferenceTransactionIssue = (
   transaction: Transaction,
@@ -147,10 +152,11 @@ export const noteReferenceOccurrencePlugin = () => {
       if (!transaction.docChanged) return true;
       const result = validate(transaction.doc);
       if (result.isOk()) return true;
-      // y-prosemirror marks remote/history origin explicitly. Never veto a replay:
-      // a broken replicated state is a defect, not a local edit refusal.
-      const sync: unknown = transaction.getMeta("y-sync$");
-      const replay = isHistoryTransaction(transaction) || sync !== undefined;
+      // The collaboration owner identifies its actual plugin key; never guess it.
+      // A broken replicated state is a defect, not a local edit refusal.
+      const replay =
+        isHistoryTransaction(transaction) ||
+        transaction.getMeta(NOTE_OCCURRENCE_REPLAY_META) === true;
       transaction.setMeta(
         NOTE_OCCURRENCE_REPORT_META,
         replay ? new NoteReferenceReplayDefect({ message: result.error.message }) : result.error,

@@ -6,6 +6,7 @@ import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { schema } from "../../prosemirror/schema";
 import {
   applyAttrSchemaMigrations,
+  FolioYjsNoteReferenceSchemaError,
   readYjsAttrSchemaVersion,
   readYjsParagraphSourceContract,
   withParagraphSourceContract,
@@ -101,14 +102,20 @@ const readProseMirrorDocument = (yjsUpdate: Uint8Array) => {
       }
       return withParagraphSourceContract(initProseMirrorDoc(fragment, schema).doc, contract);
     },
-    catch: (cause) =>
-      cause instanceof FolioYjsDocxMaterializationError
-        ? cause
-        : new FolioYjsDocxMaterializationError({
-            code: "invalid_update",
-            message: "Yjs update is not a valid Folio collaboration snapshot.",
-            cause,
-          }),
+    catch: (cause) => {
+      if (cause instanceof FolioYjsDocxMaterializationError) return cause;
+      if (cause instanceof FolioYjsNoteReferenceSchemaError)
+        return new FolioYjsDocxMaterializationError({
+          code: "stale_attr_schema",
+          message: cause.message,
+          cause,
+        });
+      return new FolioYjsDocxMaterializationError({
+        code: "invalid_update",
+        message: "Yjs update is not a valid Folio collaboration snapshot.",
+        cause,
+      });
+    },
   });
   ydoc.destroy();
   if (parsed.isOk()) {

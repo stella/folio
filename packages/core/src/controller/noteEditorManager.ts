@@ -352,15 +352,17 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           : buildInitialState(proseDocument, styles, numbering, manager, externalPlugins),
         dispatchTransaction(transaction) {
           if (canonical.dispatch(transaction)) return;
-          view.updateState(view.state.apply(transaction));
+          const nextState = view.state.apply(transaction);
+          const docChanged = !nextState.doc.eq(view.state.doc);
+          view.updateState(nextState);
           const noteIssue = noteReferenceTransactionIssue(transaction);
           if (noteIssue)
             deps.onSessionRefusal?.(noteIssue.message, CANONICAL_GAP.dispatch, noteIssue);
           const mountedStory = mounted.get(key);
-          if (mountedStory && transaction.docChanged) mountedStory.dirty = true;
+          if (mountedStory && docChanged) mountedStory.dirty = true;
           deps.onTransaction?.({
             ...storyKey,
-            docChanged: transaction.docChanged,
+            docChanged,
             selectionChanged: transaction.selectionSet,
             view,
           });

@@ -628,7 +628,7 @@ const renamePageBreakRunOwnerMarkAttr: AttrSchemaMigrationStep = (fragment) => {
 };
 
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -655,7 +655,9 @@ const ATTR_SCHEMA_MIGRATIONS = {
   8: mintSectionPropertiesFromBreakType,
   9: dropUnstatedPlaceholderFlags,
   10: renamePageBreakRunOwnerMarkAttr,
-  11: "current",
+  // Note occurrence attribution is a cutover: the preflight below never backfills it.
+  11: stampMarkerOnly,
+  12: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -668,7 +670,48 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 11 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 12 satisfies CurrentAttrSchemaVersion;
+
+export class FolioYjsNoteReferenceSchemaError extends TaggedError(
+  "FolioYjsNoteReferenceSchemaError",
+)<{
+  message: string;
+  schemaVersion: FolioYjsAttrSchemaVersion;
+  requiredSchemaVersion: FolioYjsAttrSchemaVersion;
+}> {}
+
+/** Check before any migration mutates the snapshot or any PM builder can drop text. */
+const requireNoteOccurrenceAttribution = (
+  fragment: Y.XmlFragment,
+  schemaVersion: FolioYjsAttrSchemaVersion,
+): void => {
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    for (const child of node.toArray()) {
+      if (typeof child === "string") continue;
+      if (!isXmlText(child)) {
+        visit(child);
+        continue;
+      }
+      for (const op of child.toDelta()) {
+        const attributes: unknown = op.attributes;
+        if (!isRecord(attributes) || attributes["footnoteRef"] == null) continue;
+        const reference = attributes["footnoteRef"];
+        if (
+          isRecord(reference) &&
+          typeof reference["occurrenceId"] === "string" &&
+          reference["occurrenceId"].length > 0
+        )
+          continue;
+        throw new FolioYjsNoteReferenceSchemaError({
+          schemaVersion,
+          requiredSchemaVersion: FOLIO_YJS_ATTR_SCHEMA_VERSION,
+          message: `Yjs schema ${schemaVersion} has unattributed note references; schema ${FOLIO_YJS_ATTR_SCHEMA_VERSION} requires occurrence identities. Rebuild the collaboration state from the saved DOCX.`,
+        });
+      }
+    }
+  };
+  visit(fragment);
+};
 
 /**
  * The steps that carry a snapshot written under `fromVersion` up to
@@ -702,6 +745,7 @@ export const applyAttrSchemaMigrations = (
   fragment: Y.XmlFragment,
   fromVersion: FolioYjsAttrSchemaVersion,
 ): number => {
+  requireNoteOccurrenceAttribution(fragment, fromVersion);
   if (fromVersion === FOLIO_YJS_ATTR_SCHEMA_VERSION) {
     return 0;
   }

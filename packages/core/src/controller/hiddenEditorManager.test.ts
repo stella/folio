@@ -1,3 +1,6 @@
+import * as Y from "yjs";
+import { FolioYjsNoteReferenceSchemaError } from "../prosemirror/yjsDocumentMetadata";
+import { loadCollaborationModules } from "./collaborationModules";
 import * as documentOps from "@stll/docx-core/ops";
 import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
 import { assertExactModel } from "../../../../test/exactModel";
@@ -30,6 +33,7 @@ import {
 
 import {
   createHiddenEditorManager,
+  createHiddenEditorState,
   createHiddenEditorClipboardHandlers,
   type HiddenEditorManagerDeps,
   type HiddenProseMirrorRemoteSelection,
@@ -231,12 +235,14 @@ test("hidden manager accepts an invalid remote note-reference replay and reports
   const host = document.createElement("div");
   document.body.append(host);
   const source = await sourceWithNoteReference();
+  const modules = await loadCollaborationModules();
   const refusals: { reason: string; gap: unknown; error: Error | undefined }[] = [];
   const { deps } = makeDeps({
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
     getExtensionManager: () => singletonManager,
+    getCollaborationModules: () => modules,
     onSessionRefusal: (reason, gap, error) => refusals.push({ reason, gap, error }),
   });
   const manager = createHiddenEditorManager(deps);
@@ -247,7 +253,7 @@ test("hidden manager accepts an invalid remote note-reference replay and reports
     const before = view.state;
     const remotePartialFormatting = before.tr
       .addMark(3, 4, before.schema.marks.italic?.create() ?? panic("Expected italic mark"))
-      .setMeta("y-sync$", { isChangeOrigin: true });
+      .setMeta(modules.yProseMirror.ySyncPluginKey, { isChangeOrigin: true });
 
     expect(() => view.dispatch(remotePartialFormatting)).not.toThrow();
     expect(view.state).not.toBe(before);
@@ -1446,3 +1452,40 @@ test.each([
     }
   },
 );
+
+test("legacy note snapshot refuses before the collaboration builder runs", async () => {
+  const modules = await loadCollaborationModules();
+  const source = await sourceWithNoteReference();
+  const ydoc = new Y.Doc();
+  const text = new Y.XmlText();
+  text.insert(0, "123123", { footnoteRef: { id: "123", noteType: "footnote" } });
+  const paragraph = new Y.XmlElement("paragraph");
+  paragraph.insert(0, [text]);
+  const fragment = ydoc.getXmlFragment("prosemirror");
+  fragment.insert(0, [paragraph]);
+  ydoc.getMap("folio:document-metadata").set("attrSchemaVersion", 11);
+  const before = Y.encodeStateAsUpdate(ydoc);
+  const build = spyOn(modules.yProseMirror, "initProseMirrorDoc");
+  expect(() =>
+    createHiddenEditorState({
+      document: source,
+      manager: singletonManager,
+      collaboration: { yXmlFragment: fragment, shouldSeed: false },
+      collaborationModules: modules,
+    }),
+  ).toThrow(FolioYjsNoteReferenceSchemaError);
+  expect(build).not.toHaveBeenCalled();
+  expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
+  build.mockRestore();
+  ydoc.destroy();
+  const fresh = createHiddenEditorState({ document: source, manager: singletonManager });
+  const ids: string[] = [];
+  fresh.doc.descendants((node) => {
+    for (const mark of node.marks) {
+      if (mark.type.name === "footnoteRef") ids.push(mark.attrs["occurrenceId"]);
+    }
+  });
+  expect(ids).toHaveLength(1);
+  expect(ids.at(0)).toEqual(expect.any(String));
+  expect(ids.at(0)).not.toBe("");
+});

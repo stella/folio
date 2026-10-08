@@ -1,4 +1,7 @@
-import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
+import {
+  markNoteReferenceReplay,
+  noteReferenceTransactionIssue,
+} from "../prosemirror/noteReferenceOccurrences";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import {
   CANONICAL_GAP,
@@ -955,6 +958,9 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           lastInputRule = undefined;
           editorSession.session.breakUndoGroup();
         }
+        const modules = deps.getCollaborationModules();
+        if (modules && transaction.getMeta(modules.yProseMirror.ySyncPluginKey) !== undefined)
+          markNoteReferenceReplay(transaction);
         const applied = view.state.applyTransaction(transaction);
         const noteIssue = noteReferenceTransactionIssue(transaction);
         if (noteIssue)

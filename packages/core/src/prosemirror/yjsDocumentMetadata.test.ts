@@ -13,6 +13,7 @@ import {
   applyAttrSchemaMigrations,
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
   FolioYjsAttrSchemaVersionError,
+  FolioYjsNoteReferenceSchemaError,
   attrSchemaMigrationSteps,
   readYjsAttrSchemaVersion,
   writeYjsDocumentMetadata,
@@ -330,4 +331,34 @@ describe("the section break's one carrier against stored snapshots", () => {
     expect(attrSchemaMigrationSteps(8)).toHaveLength(FOLIO_YJS_ATTR_SCHEMA_VERSION - 8);
     expect(attrSchemaMigrationSteps(0)).toHaveLength(FOLIO_YJS_ATTR_SCHEMA_VERSION);
   });
+});
+
+describe("note-reference occurrence schema cutover", () => {
+  test.each([0, 11, FOLIO_YJS_ATTR_SCHEMA_VERSION] as const)(
+    "refuses unattributed references at schema %s before migration mutates anything",
+    (version) => {
+      const ydoc = new Y.Doc();
+      const text = new Y.XmlText();
+      text.insert(0, "123123", { footnoteRef: { id: "123", noteType: "footnote" } });
+      const paragraph = new Y.XmlElement("paragraph");
+      paragraph.insert(0, [text]);
+      const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+      fragment.insert(0, [paragraph]);
+      ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, version);
+      const before = Y.encodeStateAsUpdate(ydoc);
+      let transactions = 0;
+      ydoc.on("afterTransaction", () => {
+        transactions += 1;
+      });
+      expect(() => applyAttrSchemaMigrations(ydoc, fragment, version)).toThrow(
+        FolioYjsNoteReferenceSchemaError,
+      );
+      expect(() => applyAttrSchemaMigrations(ydoc, fragment, version)).toThrow(
+        `Yjs schema ${version}`,
+      );
+      expect(transactions).toBe(0);
+      expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
+      ydoc.destroy();
+    },
+  );
 });

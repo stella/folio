@@ -713,3 +713,28 @@ describe("migrateFolioYjsSnapshot failures", () => {
     );
   });
 });
+
+test.each([11, FOLIO_YJS_ATTR_SCHEMA_VERSION])(
+  "offline migration refuses unattributed note identities at schema %s",
+  (version) => {
+    const ydoc = new Y.Doc();
+    const text = new Y.XmlText();
+    text.insert(0, "123123", { footnoteRef: { id: "123", noteType: "footnote" } });
+    const paragraph = new Y.XmlElement("paragraph");
+    paragraph.insert(0, [text]);
+    ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [paragraph]);
+    ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, version);
+    const result = migrateFolioYjsSnapshot(Y.encodeStateAsUpdate(ydoc));
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error.code).toBe("unsupported_version");
+      expect(result.error.message).toContain(`Yjs schema ${version}`);
+      expect(result.error.cause).toMatchObject({
+        _tag: "FolioYjsNoteReferenceSchemaError",
+        schemaVersion: version,
+        requiredSchemaVersion: FOLIO_YJS_ATTR_SCHEMA_VERSION,
+      });
+    }
+    ydoc.destroy();
+  },
+);

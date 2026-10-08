@@ -62,6 +62,7 @@ const sourceDocument = async (kind: Kind) => {
 const tokens = (doc: PMNode) => {
   const result: unknown[] = [];
   doc.descendants((node) => {
+    if (node.type.name === "paragraph") result.push({ type: "paragraph" });
     if (!node.isText) return;
     const ref = node.marks.find((mark) => mark.type.name === "footnoteRef");
     const revision = node.marks.find(
@@ -217,8 +218,21 @@ test("arbitrary digit splits preserve adjacent occurrences and whole-unit revisi
 
 test("random public edits keep occurrences saveable or visibly refuse before commit", async () => {
   const base = await sourceDocument("footnote");
+  const reference = createHarnessState(base, "editing").doc.nodeAt(FROM);
+  if (!reference) return panic("Missing copy source occurrence.");
+  const referenceSlice = new Slice(Fragment.from(reference), 0, 0);
   const editAction = fc.record({
-    kind: fc.constantFrom("bold", "delete", "type", "paste", "undo", "redo"),
+    kind: fc.constantFrom(
+      "bold",
+      "delete",
+      "type",
+      "paste",
+      "pasteReference",
+      "split",
+      "join",
+      "undo",
+      "redo",
+    ),
     left: fc.nat(15),
     right: fc.nat(15),
   });
@@ -229,15 +243,23 @@ test("random public edits keep occurrences saveable or visibly refuse before com
       async (mode, actions) => {
         const view = new HeadlessEditorView(createHarnessState(base, mode));
         for (const action of actions) {
-          const size = view.state.doc.child(0).content.size;
-          const left = 1 + (action.left % (size + 1));
-          const right = 1 + (action.right % (size + 1));
+          const positions: number[] = [];
+          view.state.doc.descendants((node, position) => {
+            if (!node.isTextblock) return true;
+            for (let offset = 0; offset <= node.content.size; offset += 1)
+              positions.push(position + 1 + offset);
+            return false;
+          });
+          const left = positions.at(action.left % positions.length);
+          const right = positions.at(action.right % positions.length);
+          if (left === undefined || right === undefined) return panic("Missing edit endpoint.");
           view.state = view.state.apply(
             view.state.tr.setSelection(
               TextSelection.create(view.state.doc, Math.min(left, right), Math.max(left, right)),
             ),
           );
           const before = view.state;
+          const transactionCount = view.transactions.length;
           const attempt = Result.try({
             try: () => {
               switch (action.kind) {
@@ -249,6 +271,12 @@ test("random public edits keep occurrences saveable or visibly refuse before com
                   return view.typeText("x");
                 case "paste":
                   return view.paste(new Slice(Fragment.from(view.state.schema.text("x")), 0, 0));
+                case "pasteReference":
+                  return view.paste(referenceSlice);
+                case "split":
+                  return view.pressKey("Enter");
+                case "join":
+                  return view.pressKey("Backspace");
                 case "undo":
                   return singletonManager.requireCommand("undo")()(view.state, view.dispatch);
                 case "redo":
@@ -260,7 +288,8 @@ test("random public edits keep occurrences saveable or visibly refuse before com
             catch: (error) => error,
           });
           expect(attempt.isOk()).toBe(true);
-          const transaction = view.transactions.at(-1);
+          const transaction =
+            view.transactions.length > transactionCount ? view.transactions.at(-1) : undefined;
           const refusal = transaction && noteReferenceTransactionIssue(transaction);
           if (refusal) {
             expect(refusal).toBeInstanceOf(NoteReferenceEditRefusal);

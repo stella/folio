@@ -363,16 +363,17 @@ export const createHeaderFooterEditorManager = (
         dispatchTransaction(transaction) {
           if (canonical.dispatch(transaction)) return;
           const nextState = view.state.apply(transaction);
+          const docChanged = !nextState.doc.eq(view.state.doc);
           const noteIssue = noteReferenceTransactionIssue(transaction);
           if (noteIssue)
             deps.onSessionRefusal?.(noteIssue.message, CANONICAL_GAP.dispatch, noteIssue);
           view.updateState(nextState);
           const mountedPart = mounted.get(part.rId);
-          if (mountedPart && transaction.docChanged) {
+          if (mountedPart && docChanged) {
             mountedPart.dirty = true;
           }
           deps.onTransaction?.({
-            docChanged: transaction.docChanged,
+            docChanged,
             kind: part.kind,
             rId: part.rId,
             selectionChanged: transaction.selectionSet,
