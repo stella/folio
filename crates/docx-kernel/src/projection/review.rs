@@ -73,8 +73,39 @@ pub struct ReviewSpan {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RevisionContent {
     pub span: ReviewSpan,
-    pub text: String,
-    pub formatting_only: bool,
+    pub payload: RevisionPayload,
+}
+
+/// What a located revision covers.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RevisionPayload {
+    /// Non-empty text inside the revision element, including text of nested
+    /// revisions.
+    Text(String),
+    /// The revision element covers no text, such as a property change.
+    FormattingOnly,
+    /// A tracked paragraph mark (`w:pPr/w:rPr/w:ins` and its siblings). The
+    /// span is zero-width at the mark: the end of its paragraph, or the join
+    /// point when the selected view removes the paragraph break.
+    ParagraphMark,
+}
+
+impl RevisionPayload {
+    pub(super) fn from_text(text: String) -> Self {
+        if text.is_empty() {
+            Self::FormattingOnly
+        } else {
+            Self::Text(text)
+        }
+    }
+
+    #[must_use]
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Text(text) => text,
+            Self::FormattingOnly | Self::ParagraphMark => "",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -205,7 +236,7 @@ fn bound_revision_details(
     };
     let detail_bytes = facts.iter().try_fold(0_usize, |total, fact| {
         let bytes = match &fact.content {
-            ReviewDetail::Known(content) => content.text.len(),
+            ReviewDetail::Known(content) => content.payload.text().len(),
             ReviewDetail::Unknown(_) => 0,
         };
         total.checked_add(bytes)

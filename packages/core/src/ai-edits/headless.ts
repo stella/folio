@@ -1,3 +1,4 @@
+import { getHeaderFooterText, getEndnoteText, getFootnoteText } from "../docx/storyPlainText";
 import JSZip from "jszip";
 import { rebindDrawingImageRelationship } from "../docx/drawingRelationships";
 import {
@@ -56,13 +57,8 @@ import {
 import { createReply } from "../docx/replyToComment";
 import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
 import { attemptSelectiveSave } from "../docx/selectiveSave";
-import { getHeaderFooterText } from "../docx/headerFooterParser";
-import {
-  getEndnoteText,
-  getFootnoteText,
-  isSeparatorEndnote,
-  isSeparatorFootnote,
-} from "../docx/footnoteParser";
+
+import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";

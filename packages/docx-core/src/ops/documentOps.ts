@@ -9,7 +9,7 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
  */
 
 export { captureDocumentOp } from "./wire";
-export { defaultInsertionGap, zeroWidthLeavesAt } from "./leaves";
+export { defaultInsertionGap, zeroWidthLeavesAt, inlineLeafSpans } from "./leaves";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
 export {

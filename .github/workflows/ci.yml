@@ -90,7 +90,8 @@ jobs:
   # stella/.github ci-plan action; `.github/ci-plan.json` holds folio's areas.
   # Pull requests plan by changed path. Merge groups select every area.
   # Suite depth depends only on the event; the shared planner supplies path
-  # scopes and trust. Drafts plan nothing until marked ready for review.
+  # scopes and trust. API preflight derives publication paths from manifests.
+  # Drafts plan nothing until marked ready for review.
   ci-plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
     runs-on: ubuntu-latest
@@ -103,6 +104,8 @@ jobs:
     outputs:
       suite_depth: ${{ github.event_name == 'merge_group' && 'full' || 'fast' }}
       trusted: ${{ steps.plan.outputs.trusted }}
+      browser_discovery_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).browser_discovery }}
+      api_required: ${{ github.event_name == 'merge_group' || steps.api-plan.outputs.api_required == 'true' }}
       code_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).code }}
       typecheck_budget_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).typecheck_budget }}
       container_contract_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).container_contract }}
@@ -112,11 +115,42 @@ jobs:
       consumer_scenarios_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
       packaged_consumer_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).packaged_consumer }}
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: package.json
+      - name: Select published API preflight
+        id: api-plan
+        if: github.event_name == 'pull_request'
+        run: bun scripts/ci-api-plan.ts --base "$API_BASE" --head "$API_HEAD"
+        env:
+          API_BASE: ${{ github.event.pull_request.base.sha }}
+          API_HEAD: ${{ github.event.pull_request.head.sha }}
       - name: Plan changed-path scopes
         id: plan
         uses: stella/.github/.github/actions/ci-plan@37bfa04a893d1ae2b9d28379cf68e8360781c8bc # v1.8.0
         with:
           policy-file: .github/ci-plan.json
+
+  browser-discovery:
+    name: Browser test discovery
+    needs: ci-plan
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.ci-plan.outputs.browser_discovery_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Discover every Node Playwright project without browsers
+        run: bun scripts/ci-browser-discovery.ts
 
   property-areas:
     name: Properties of the changed areas (5x runs)
@@ -134,7 +168,7 @@ jobs:
           fetch-depth: 0 # need history to compute the merge base with the target branch
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -162,7 +196,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -183,16 +217,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -203,6 +230,9 @@ jobs:
       # byte-preserving --write mode; CI keeps it in check-only mode.
       - name: Lockfile workspace-version check
         run: bun run check:lockfile-versions
+
+      - name: Lockfile override-range check
+        run: bun run check:lockfile-overrides
 
       - name: Lockfile deduplication check
         run: bun run check:dedupe
@@ -373,16 +403,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -392,7 +415,7 @@ jobs:
   build-api:
     name: Build reproducibility and API reports
     needs: ci-plan
-    if: needs.ci-plan.outputs.code_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
+    if: needs.ci-plan.outputs.api_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -400,30 +423,20 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
       - name: Build
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run build
 
       - name: Reproducible package builds (all published packages)
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:build-reproducibility
 
       - name: API surface report
         id: api-surface-report
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: |
           bun scripts/api-surface-budget.ts --self-test
           bun run api:check
@@ -451,16 +464,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -480,16 +486,9 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -528,16 +527,9 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -576,16 +568,9 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -624,16 +609,9 @@ jobs:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-
-      - name: Restore Bun download cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -671,7 +649,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -693,7 +671,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -728,7 +706,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -823,7 +801,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -841,7 +819,7 @@ jobs:
       # Behaviour specs only (assert document content + editor state). The
       # screenshot baselines (rendering.spec) and perf budgets
       # (editing-performance.spec) are env-specific, so they are not run here;
-      # the `interactions` Playwright project starts the playground dev server
+      # the `interactions` Playwright project builds and starts static previews
       # via the config's webServer.
       - name: Run interaction specs
         run: bun run test:interactions
@@ -868,6 +846,14 @@ jobs:
       - name: Run editor-web webview check
         run: bun --filter @stll/folio-editor-web test:e2e
 
+      - name: Upload failed interaction artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-interactions-failure
+          path: test-results/
+          retention-days: 7
+
   differential:
     name: Differential parser parity (folio vs python-docx + Open XML SDK)
     needs: ci-plan
@@ -878,7 +864,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -916,7 +902,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -978,7 +964,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
 
@@ -1021,6 +1007,7 @@ jobs:
       - lint
       - typecheck
       - build-api
+      - browser-discovery
       - validate-dist
       - tests-1
       - tests-2
@@ -1050,10 +1037,11 @@ jobs:
           JOB_SCOPES: >-
             {"changeset":{"event":"pull_request"},
             "property-areas":{"event":"pull_request","area":"code_required"},
+            "browser-discovery":{"event":"pull_request","area":"browser_discovery_required"},
             "docs-format":{"area":"code_required","value":"false"},
             "lint":{"area":"code_required"},
             "typecheck":{"area":"code_required"},
-            "build-api":{"area":"code_required","depth":"full"},
+            "build-api":{"area":"api_required"},
             "validate-dist":{"area":"code_required","depth":"full"},
             "tests-1":{"area":"code_required"},
             "tests-2":{"area":"code_required"},

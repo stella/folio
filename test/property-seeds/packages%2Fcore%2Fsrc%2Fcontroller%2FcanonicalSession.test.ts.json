@@ -43,10 +43,30 @@
       "date": "2026-10-03"
     },
     {
+      "seed": 1905709808,
+      "path": "89:3:2:3:8:4:2:0:1:3:0:0:0:0:0:3:1:0:0:0:0:0:2:2:1:1:0:0:0:6:0:0:5",
+      "note": "Cancelling all same-author insertions leaves no revisions to resolve; resolution remains atomic and creates no journal entry.",
+      "date": "2026-10-05"
+    },
+    {
       "seed": -643323180,
       "path": "63:7:7:9:4:5:4:4:10:9:12:8:6:6:8:12:10:10:9:10:17:15:12:12:12:15:17",
       "note": "Same-author insertion/deletion histories can cancel every revision before review; empty resolution must refuse atomically while semantic equivalence and exact edit history remain checked.",
       "date": "2026-10-05"
+    }
+  ],
+  "direction reversal deletes the adjacent visible character across retained deletion runs and bookmarks": [
+    {
+      "seed": 197,
+      "path": "2:0",
+      "note": "Paired-bookmark source fixture is refused before input; explicit counterexample backward, length 1, bookmarks true, NBSP, own insertion (example path 2:0).",
+      "date": "2026-10-07"
+    },
+    {
+      "seed": 197,
+      "path": "2:0:1:1",
+      "note": "Visible deletion endpoints preserve paired bookmark ownership around a retained deletion.",
+      "date": "2026-10-08"
     }
   ]
 }

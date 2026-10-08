@@ -105,6 +105,16 @@
         "scripts/packaged-consumer-*.ts",
         "scripts/prepare-publish.ts"
       ]
+    },
+    "browser_discovery": {
+      "paths": [
+        "tests/visual/**",
+        "tests/parity/**",
+        "**/playwright*.config.*",
+        "packages/playground*/**",
+        "packages/editor-web/e2e/**",
+        "!**/*.md"
+      ]
     }
   }
 }

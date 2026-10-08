@@ -49,6 +49,7 @@ import { toMarkdown } from "@stll/folio-core/markdown";
 import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperation,
   type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
@@ -470,12 +471,95 @@ const placement = (operation: AnyOperation, preRows: readonly Row[]): [number, n
   }
 };
 
+const PARAGRAPH_PROPERTY_REPLAY = {
+  replaceInBlock: "other",
+  replaceRange: "other",
+  commentOnRange: "other",
+  formatRange: "other",
+  insertAfterBlock: "other",
+  insertBeforeBlock: "other",
+  replaceBlock: "restyle",
+  deleteBlock: "other",
+  splitBlock: "other",
+  mergeBlockWithNext: "other",
+  setBlockParagraphProperties: "patch",
+  insertTable: "other",
+  deleteTable: "other",
+  commentOnBlock: "other",
+  insertSignatureTable: "other",
+  insertTableRow: "other",
+  deleteTableRow: "other",
+  insertTableColumn: "other",
+  deleteTableColumn: "other",
+  mergeTableCells: "other",
+  splitTableCell: "other",
+} as const satisfies Record<FolioDocumentOperation["type"], "patch" | "restyle" | "other">;
+
+const isOperationType = (type: string): type is FolioDocumentOperation["type"] =>
+  Object.hasOwn(PARAGRAPH_PROPERTY_REPLAY, type);
+
+type SequentialGroupsOptions = {
+  applied: readonly AnyOperation[];
+  preRows: readonly Row[];
+  mode: Mode;
+};
+
 /** The one-at-a-time groups, in the batch contract's order. */
-export const sequentialGroups = (
-  applied: readonly AnyOperation[],
-  preRows: readonly Row[],
-): AnyOperation[][] => {
+export const sequentialGroups = ({
+  applied,
+  preRows,
+  mode,
+}: SequentialGroupsOptions): AnyOperation[][] => {
   const indexed = applied.map((operation, index) => ({ operation, index }));
+  const deleted = new Set(
+    applied.filter((operation) => operation.type === "deleteBlock").map(blockIdOf),
+  );
+  const containers = new Map<string, Row[]>();
+  for (const row of preRows) {
+    const key = row.table
+      ? `${row.table.tableIndex}:${row.table.rowIndex}:${row.table.cellIndex}`
+      : "story";
+    const rows = containers.get(key) ?? [];
+    rows.push(row);
+    containers.set(key, rows);
+  }
+  const retiringCarriers = new Set<string>();
+  for (const [container, rows] of containers) {
+    const last = rows.at(-1);
+    if (!last || (container === "story" && last !== preRows.at(-1))) continue;
+    const appended = applied.some(
+      (operation) => operation.type === "insertAfterBlock" && blockIdOf(operation) === last.id,
+    );
+    if (appended || !deleted.has(last.id)) continue;
+    const carrier = rows.findLast((row) => !deleted.has(row.id));
+    if (carrier) retiringCarriers.add(carrier.id);
+  }
+  const beforeFinalBreakRetirement = (operation: AnyOperation): boolean => {
+    if (!isOperationType(operation.type)) {
+      throw new Error(`Sequential replay has no policy for ${operation.type}`);
+    }
+    if (mode !== "tracked-changes" || !retiringCarriers.has(blockIdOf(operation) ?? "")) {
+      return false;
+    }
+    const disposition = PARAGRAPH_PROPERTY_REPLAY[operation.type];
+    switch (disposition) {
+      case "patch":
+        return true;
+      case "restyle":
+        return (
+          operation["styleId"] !== undefined &&
+          operation["styleId"] !== preRows.find((row) => row.id === blockIdOf(operation))?.styleId
+        );
+      case "other":
+        return false;
+      default: {
+        const unhandled: never = disposition;
+        throw new Error(`Unhandled paragraph property replay policy: ${unhandled}`);
+      }
+    }
+  };
+  const earlyProperties = applied.filter(beforeFinalBreakRetirement);
+  const earlyIds = new Set(earlyProperties.map(({ id }) => id));
   const isColumnEdit = (operation: AnyOperation): boolean =>
     operation.type === "insertTableColumn" || operation.type === "deleteTableColumn";
   const rest = indexed
@@ -483,6 +567,7 @@ export const sequentialGroups = (
       ({ operation }) =>
         !INSERTIONS.has(operation.type) &&
         !ANNOTATIONS.has(operation.type) &&
+        !earlyIds.has(operation.id) &&
         !isColumnEdit(operation),
     )
     .toSorted((left, right) => {
@@ -520,6 +605,9 @@ export const sequentialGroups = (
     // Insertions sharing a gap keep their input order, which is the batch's
     // own contract, so they are stated together the same way.
     ...(insertions.length > 0 ? [insertions] : []),
+    // A tracked batch retires final breaks only after admissible property edits.
+    // Separate deletions retire them immediately, so replay those edits first.
+    ...earlyProperties.map((one) => [one]),
     ...rest.map(({ operation }) => [operation]),
     ...columns.map(({ operation }) => [operation]),
   ];
@@ -915,7 +1003,7 @@ export const startRelations = async ({
     }
     const oneByOne = cloneReviewer(pre);
     const problems: string[] = [];
-    for (const group of sequentialGroups(applied, preRows)) {
+    for (const group of sequentialGroups({ applied, preRows, mode: batchMode })) {
       const snapshot = story.type === "main" ? oneByOne.snapshot() : oneByOne.snapshotStory(story);
       if (!snapshot) throw new Error(`${context}: the story disappeared before sequential replay`);
       const rows = snapshot.blocks as unknown as Row[];

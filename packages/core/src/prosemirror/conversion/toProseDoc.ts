@@ -14,6 +14,7 @@
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
+import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
 import { mergeParagraphNumbering, PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { ParseContext } from "../../docx/parseContext";
@@ -289,7 +290,7 @@ type BookmarkBoundaryCount = {
  * Each endpoint is converted at its own structural position, so a range may
  * start outside a hyperlink and end inside it (or the inverse).
  */
-const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<number> => {
+export const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<number> => {
   const counts = new Map<number, BookmarkBoundaryCount>();
   let position = 0;
   const countBoundary = (id: number, type: "start" | "end"): void => {
@@ -3958,10 +3959,10 @@ function convertRunContent(
       ];
 
     case "noBreakHyphen":
-      return [schema.text("‑", marks)];
+      return [schema.text(HYPHEN_TEXT_CARRIERS.noBreakHyphen, marks)];
 
     case "softHyphen":
-      return [schema.text("­", marks)];
+      return [schema.text(HYPHEN_TEXT_CARRIERS.softHyphen, marks)];
 
     case "symbol":
       return [schema.node("symbol", { font: content.font, char: content.char }).mark(marks)];

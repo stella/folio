@@ -67,6 +67,9 @@ describe("canonical command descriptors", () => {
       singletonManager.requireCommand("setTabs")([{ position: 720, alignment: "left" }]),
       singletonManager.requireCommand("addTabStop")(1440, "right", "dot"),
       singletonManager.requireCommand("removeTabStop")(720),
+      singletonManager.requireCommand("setHyperlink")("example.com", "Tip"),
+      singletonManager.requireCommand("removeHyperlink")(),
+      singletonManager.requireCommand("insertHyperlink")("Link", "#anchor"),
     ];
     const document = state.doc;
     const selection = state.selection;
@@ -80,6 +83,30 @@ describe("canonical command descriptors", () => {
       expect(state.selection).toBe(selection);
       expect(state.storedMarks).toBe(storedMarks);
     }
+  });
+
+  test("hyperlink descriptors omit absent optional fields", () => {
+    const state = stateWithSelection();
+    for (const tooltip of [undefined, "", "Tip"]) {
+      for (const command of [
+        singletonManager.requireCommand("setHyperlink")("example.com", tooltip),
+        singletonManager.requireCommand("insertHyperlink")("Link", "#anchor", tooltip),
+      ]) {
+        const intents = getCanonicalCommandIntents(command, state);
+        expect(intents).toHaveLength(1);
+        for (const intent of intents ?? []) {
+          expect(Object.values(intent).includes(undefined)).toBe(false);
+          expect(Object.hasOwn(intent, "tooltip")).toBe(Boolean(tooltip));
+        }
+      }
+    }
+    const removal = getCanonicalCommandIntents(
+      singletonManager.requireCommand("removeHyperlink")(),
+      state,
+    );
+    expect(removal).toHaveLength(1);
+    for (const intent of removal ?? [])
+      expect(Object.values(intent).includes(undefined)).toBe(false);
   });
 
   test("numbering command descriptors retain their start value", () => {

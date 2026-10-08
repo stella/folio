@@ -373,7 +373,7 @@ export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP
 export const documentStories: (document: Document_2) => OpStory[];
 
 // @public
-export type EditorIntent = {
+export type EditorIntent = HyperlinkEditorIntent | {
     type: "table";
     operation: TableIntentOperation;
 } | {
@@ -483,6 +483,13 @@ export type HeaderFooterStory = {
 
 // @public
 export const INHERIT_RUN_PROPS = "inherit";
+
+// @public
+export const inlineLeafSpans: (items: readonly InlineNode[]) => {
+    node: InlineNode;
+    before: Gap;
+    after: Gap;
+}[];
 
 // @public
 export type InlineSlice = {

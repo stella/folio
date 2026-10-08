@@ -15,7 +15,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
-import { getDocumentText } from "../../packages/core/src/docx/documentParser";
+import { getDocumentText } from "../../packages/core/src/docx/storyPlainText";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../../packages/playground/src/playgroundStatus";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
