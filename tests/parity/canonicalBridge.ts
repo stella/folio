@@ -1,5 +1,6 @@
 import { TextSelection } from "prosemirror-state";
 import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
+import { singletonManager } from "@stll/folio-core/prosemirror/schema";
 import type { BrowserDragTarget } from "../visual/browserDragTarget";
 import { canonicalTextSelection } from "./canonicalTextSelection";
 import { waitForCanonicalLoadOwner } from "./canonicalLoadOwner";
@@ -23,6 +24,18 @@ type CanonicalPlaygroundRef = {
   loadDocumentBuffer: (buffer: Uint8Array) => Promise<void>;
   save: () => Promise<ArrayBuffer | null>;
 };
+
+export type CanonicalHyperlinkAction =
+  | { type: "setHyperlink"; from: number; to: number; href: string; tooltip?: string }
+  | { type: "removeHyperlink"; from: number; to: number }
+  | {
+      type: "insertHyperlink";
+      from: number;
+      to: number;
+      text: string;
+      href: string;
+      tooltip?: string;
+    };
 
 /** Private interaction-test bridge shared by both playgrounds. */
 export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null) => ({
@@ -171,6 +184,31 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     editor.setSelection(from, to);
     editor.focus();
     return true;
+  },
+  executeHyperlink: (action: CanonicalHyperlinkAction) => {
+    const editor = getRef()?.getEditor();
+    if (!editor) return false;
+    editor.setSelection(action.from, action.to);
+    switch (action.type) {
+      case "setHyperlink":
+        return editor.executeCommand(
+          singletonManager.requireCommand("setHyperlink")(action.href, action.tooltip),
+        );
+      case "removeHyperlink":
+        return editor.executeCommand(singletonManager.requireCommand("removeHyperlink")());
+      case "insertHyperlink":
+        return editor.executeCommand(
+          singletonManager.requireCommand("insertHyperlink")(
+            action.text,
+            action.href,
+            action.tooltip,
+          ),
+        );
+      default: {
+        const unreachable: never = action;
+        return unreachable;
+      }
+    }
   },
 });
 

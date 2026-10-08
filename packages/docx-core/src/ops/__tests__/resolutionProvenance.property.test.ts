@@ -1024,13 +1024,22 @@ test("generated replacements preserve input affinity around zero-width leaves", 
           }
         }
         const expected = [..."a".repeat(from), ..."edited", ..."a".repeat(width - to)];
-        if (markerAt <= from || markerAt >= to) {
+        if (kind === "bookmark" || markerAt <= from || markerAt >= to) {
           let markerIndex = markerAt;
           if (markerAt > from || (markerAt === from && kind === "bookmark"))
             markerIndex = from + "edited".length + Math.max(0, markerAt - to);
           expected.splice(markerIndex, 0, "marker");
         }
         expect(actual).toStrictEqual(expected);
+        if (kind === "bookmark")
+          expect(
+            paragraph.content.filter(
+              (node) => node.type === "bookmarkStart" || node.type === "bookmarkEnd",
+            ),
+          ).toStrictEqual([
+            { type: "bookmarkStart", id: 7, name: "range" },
+            { type: "bookmarkEnd", id: 7 },
+          ]);
       },
     ),
     { numRuns: 50 },

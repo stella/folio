@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
+import { CanonicalSessionRefusalError } from "../packages/core/src/controller/hiddenEditorManager";
 import { CanonicalSaveDiagnosticError } from "../packages/core/src/docx/canonicalSave";
 import type { SaveDiagnostic } from "../packages/core/src/docx/saveDiagnostics";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
@@ -100,6 +101,43 @@ test(
               const record = canonicalOracleFailureRecord({ marker, failure, flow: [] });
               expect(record.error.length).toBeLessThan(5_000);
               expect(JSON.parse(JSON.stringify(record)).observations).toEqual(observations);
+            }
+          }
+        }),
+        { numRuns: 20 },
+      );
+    } finally {
+      globalThis.__folioCanonicalFuzzErrors = previousErrors;
+      globalThis.__folioCanonicalFuzzPhase = previousPhase;
+    }
+  },
+  propertyTestTimeout(5_000),
+);
+
+test(
+  "refusal records preserve every gap and phase without becoming save fallbacks",
+  () => {
+    const previousErrors = globalThis.__folioCanonicalFuzzErrors;
+    const previousPhase = globalThis.__folioCanonicalFuzzPhase;
+    try {
+      assertProperty(
+        fc.property(fc.string({ maxLength: 80 }), (message) => {
+          for (const gap of Object.values(CANONICAL_GAP)) {
+            for (const phase of [...Object.values(PHASES), undefined]) {
+              const errors: CanonicalFuzzError[] = [];
+              globalThis.__folioCanonicalFuzzErrors = errors;
+              globalThis.__folioCanonicalFuzzPhase = phase;
+              recordCanonicalFuzzError(new CanonicalSessionRefusalError({ message, gap }));
+              expect(errors).toEqual([
+                {
+                  status: "refusal",
+                  type: "CanonicalSessionRefusalError",
+                  message,
+                  gap,
+                  phase: phase ?? null,
+                },
+              ]);
+              expect(errors.some(isCanonicalSaveFallback)).toBe(false);
             }
           }
         }),

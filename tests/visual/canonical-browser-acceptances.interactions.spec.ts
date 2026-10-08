@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "../parity/canonicalTest";
 import { createCanonicalSession } from "../../packages/core/src/controller/canonicalSession";
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { parseDocx } from "../../packages/core/src/docx/parser";

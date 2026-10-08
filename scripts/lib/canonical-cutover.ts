@@ -208,6 +208,7 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
       const lines = part.split("\n");
       const aliases = new Set<string>();
       const safeSelectors = new Set<string>();
+      const gapRelays = new Set<string>();
       const selectorsIn = (node: ts.Node): boolean => {
         if (sessionName.test(node.getText())) return true;
         let found = false;
@@ -221,6 +222,17 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
       const collectAliases = (node: ts.Node) => {
         if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
           const initial = node.initializer;
+          if (
+            ts.isArrowFunction(initial) &&
+            initial.parameters.some(
+              (parameter) =>
+                parameter.type &&
+                ts.isTypeReferenceNode(parameter.type) &&
+                (parameter.type.typeName.getText() === "CanonicalGap" ||
+                  imports.get(parameter.type.typeName.getText())?.endsWith(":CanonicalGap")),
+            )
+          )
+            gapRelays.add(node.name.text);
           if (
             (ts.isIdentifier(initial) ||
               ts.isPropertyAccessExpression(initial) ||
@@ -339,6 +351,24 @@ export const inspectCanonicalSources = (sources: readonly CanonicalSource[]) => 
           node.arguments.length !== 2
         )
           failures.push(`${file}: session refusal handler must receive its gap id`);
+        if (ts.isCallExpression(node) && gapRelays.has(node.expression.getText())) {
+          const message = node.arguments.at(0);
+          const gap = node.arguments.at(1);
+          if (
+            message &&
+            (ts.isPropertyAccessExpression(message) || ts.isElementAccessExpression(message)) &&
+            memberKey(message) === "message" &&
+            memberKey(message.expression) === "error"
+          ) {
+            if (
+              !gap ||
+              !(ts.isPropertyAccessExpression(gap) || ts.isElementAccessExpression(gap)) ||
+              memberKey(gap) !== "gap" ||
+              gap.expression.getText() !== message.expression.getText()
+            )
+              failures.push(`${file}: canonical error relay must forward the original gap id`);
+          }
+        }
         if (ts.isNewExpression(node) && isRefusal(primitiveName(node.expression) ?? "")) {
           const payload = node.arguments?.at(0);
           if (

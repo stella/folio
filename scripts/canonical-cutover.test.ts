@@ -136,6 +136,27 @@ describe("canonical cutover guard", () => {
       expect(failuresOf(fixture).length).toBeGreaterThan(0);
   });
 
+  test("gap-aware error relays cannot discard or replace an error's capability", () => {
+    assertProperty(
+      fc.property(
+        fc.constantFrom("prepared", "result", "address"),
+        fc.boolean(),
+        (name, bracket) => {
+          const relay =
+            "const forward = (message: string, gap: CanonicalGap = CANONICAL_GAP.dispatch) => {};";
+          const error = bracket ? `${name}["error"]` : `${name}.error`;
+          const message = bracket ? `${error}["message"]` : `${error}.message`;
+          const gap = bracket ? `${error}["gap"]` : `${error}.gap`;
+          expect(failuresOf(`${relay} forward(${message}, ${gap});`)).toEqual([]);
+          for (const argument of ["", ", CANONICAL_GAP.dispatch", ", other.error.gap"])
+            expect(failuresOf(`${relay} forward(${message}${argument});`)).toContain(
+              "packages/react/src/fixture.tsx: canonical error relay must forward the original gap id",
+            );
+        },
+      ),
+    );
+  });
+
   test("mutation primitives require their actual capability markers", () => {
     const fixtures = [
       {

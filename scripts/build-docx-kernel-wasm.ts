@@ -47,6 +47,14 @@ const maximumParagraphAlignmentBrotliBytes = 1024;
 const maximumReviewRelocationBytes = 2 * 1024;
 const maximumReviewRelocationBrotliBytes = 1024;
 
+// Review-fact relocation across joins and hidden annotations has a bounded
+// allowance so later projection growth cannot consume it silently.
+const maximumReviewFactRelocationBytes = 2 * 1024;
+// Table property revision spans have a separate allowance based on their
+// measured raw and compressed artifact growth, rounded to 512-byte increments.
+const maximumTablePropertyRevisionSpansBytes = 2560;
+const maximumTablePropertyRevisionSpansBrotliBytes = 1024;
+
 const kernel = {
   label: "DOCX kernel",
   crate: "stella-docx-kernel",
@@ -66,7 +74,9 @@ const kernel = {
     maximumBookmarkBoundaryBytes +
     maximumNumberingStructureBytes +
     maximumParagraphAlignmentBytes +
-    maximumReviewRelocationBytes,
+    maximumReviewRelocationBytes +
+    maximumReviewFactRelocationBytes +
+    maximumTablePropertyRevisionSpansBytes,
   maximumBrotliBytes:
     100 * 1024 +
     maximumReviewDetailBrotliBytes +
@@ -77,7 +87,8 @@ const kernel = {
     maximumBookmarkBoundaryBrotliBytes +
     maximumNumberingStructureBrotliBytes +
     maximumParagraphAlignmentBrotliBytes +
-    maximumReviewRelocationBrotliBytes,
+    maximumReviewRelocationBrotliBytes +
+    maximumTablePropertyRevisionSpansBrotliBytes,
 } as const satisfies RustWasmArtifact;
 
 await buildRustWasmArtifact(kernel, mode);

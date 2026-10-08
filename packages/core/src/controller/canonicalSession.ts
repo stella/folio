@@ -2,7 +2,7 @@ import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import { TextSelection, type EditorState, type Transaction } from "prosemirror-state";
+import { AllSelection, TextSelection, type EditorState, type Transaction } from "prosemirror-state";
 import {
   applyDocumentOps,
   combineEdits,
@@ -14,7 +14,6 @@ import {
   normalizeForOps,
   OP_STORIES,
   packageParagraphIds,
-  paragraphLogicalText,
   validateOpsDocument,
   createEditorIntentIdAllocator,
   findStoryBody,
@@ -26,6 +25,12 @@ import {
   type TextPosition,
   type TouchedBlocks,
 } from "@stll/docx-core/ops";
+import {
+  canonicalInlineSourceIssue,
+  canonicalNativeCells,
+  projectCanonicalInline,
+  type CanonicalInlineGap,
+} from "./canonicalInlineProjection";
 import { hasIllegalXmlCharacters } from "@stll/docx-core";
 
 import { splitsGraphemeCluster, splitsSurrogatePair } from "../ai-edits/character-boundaries";
@@ -35,11 +40,13 @@ import {
   copyParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
+import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
 import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import {
   toProseDoc,
   headerFooterToProseDoc,
   footnoteToProseDoc,
+  collectPairedBookmarkIds,
 } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, StyleDefinitions } from "../types/document";
 
@@ -155,7 +162,11 @@ const operationChangesBodyProjection = (op: DocumentOp): boolean => {
   }
 };
 
-export type CanonicalSelection = { anchor: TextPosition; head: TextPosition };
+export type CanonicalSelection = {
+  type: "text" | "all";
+  anchor: TextPosition;
+  head: TextPosition;
+};
 export type CanonicalOrigin = "input" | "undo" | "redo";
 export type CanonicalSessionMode = { type: "editing" } | { type: "suggesting"; author: string };
 export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
@@ -164,7 +175,7 @@ type ParagraphAddress = {
   blockId: string;
   start: number;
   text: string;
-  boundaries: readonly (readonly number[])[];
+  boundaries: readonly (readonly CanonicalInlineGap[])[];
   node: PMNode;
   source: Paragraph;
 };
@@ -175,7 +186,7 @@ type CanonicalProjectionOptions = {
   story: OpStory;
 };
 
-/** Paragraph gaps map logical UTF-16 units and zero-width note marks to PM positions. */
+/** Paragraph gaps bind logical units and source zero-width ordinals to PM positions. */
 class CanonicalProjection {
   readonly doc: PMNode;
   readonly story: OpStory;
@@ -196,17 +207,23 @@ class CanonicalProjection {
     );
     if (paragraph === undefined) return refuse("The input is outside a plain paragraph.");
     const relative = position - paragraph.start;
-    const offset = paragraph.boundaries.findIndex((gaps) => gaps.includes(relative));
-    if (offset < 0) return refuse("The input splits a note reference.");
+    const offset = paragraph.boundaries.findIndex((gaps) =>
+      gaps.some((gap) => gap.position === relative),
+    );
+    if (offset < 0) return refuse("The input splits an indivisible inline element.");
     if (splitsSurrogatePair(paragraph.text, offset)) {
       return refuse("The input would split a surrogate pair.");
     }
     const gaps = paragraph.boundaries.at(offset) ?? panic("Missing canonical boundary");
+    const gap =
+      gaps.find((entry) => entry.position === relative) ?? panic("Missing canonical native gap");
     return Result.ok({
       story: this.story,
       blockId: paragraph.blockId,
       offset,
-      ...(gaps.length > 1 ? { zeroWidthBefore: gaps.indexOf(relative) } : {}),
+      ...(gaps.length > 1 || gap.zeroWidthBefore > 0
+        ? { zeroWidthBefore: gap.zeroWidthBefore }
+        : {}),
     });
   }
 
@@ -215,16 +232,16 @@ class CanonicalProjection {
     if (address.isErr()) return address;
     const paragraph = this.paragraph(address.value.blockId);
     if (paragraph === undefined) panic("Input lost its paragraph.");
-    let offset = address.value.offset;
+    let destination = position;
     paragraph.node.forEach((node, start) => {
       if (
         node.marks.some((mark) => mark.type.name === "deletion") &&
-        offset > start &&
-        offset < start + node.nodeSize
+        position > paragraph.start + start &&
+        position < paragraph.start + start + node.nodeSize
       )
-        offset = start + node.nodeSize;
+        destination = paragraph.start + start + node.nodeSize;
     });
-    return Result.ok({ ...address.value, offset });
+    return destination === position ? address : this.addressAt(destination);
   }
 
   positionAt(address: TextPosition): Result<number, CanonicalSessionError> {
@@ -240,21 +257,29 @@ class CanonicalProjection {
       return refuse("The canonical selection is outside a plain paragraph.");
     }
     const gaps = paragraph.boundaries.at(address.offset) ?? panic("Missing canonical boundary");
-    const gapIndex = address.zeroWidthBefore ?? gaps.length - 1;
-    if (!Number.isInteger(gapIndex) || gapIndex < 0 || gapIndex >= gaps.length)
+    const ordinal =
+      address.zeroWidthBefore ?? (gaps.at(-1) ?? panic("Missing canonical gap")).zeroWidthBefore;
+    const gap = gaps.find(({ zeroWidthBefore }) => zeroWidthBefore === ordinal);
+    if (!Number.isInteger(ordinal) || ordinal < 0 || ordinal > (gaps.at(-1)?.zeroWidthBefore ?? 0))
       return refuse("The canonical selection is outside a paragraph gap.");
-    return Result.ok(paragraph.start + (gaps.at(gapIndex) ?? panic("Missing canonical gap")));
+    if (gap === undefined)
+      return refuse(
+        "This source gap is inside a collapsed or erased inline boundary and has no editor position.",
+      );
+    return Result.ok(paragraph.start + gap.position);
   }
 
   selectionAt(state: EditorState): Result<CanonicalSelection, CanonicalSessionError> {
-    if (!(state.selection instanceof TextSelection)) {
+    if (!(state.selection instanceof TextSelection) && !(state.selection instanceof AllSelection)) {
       return refuse("Canonical input requires a text selection.");
     }
-    const anchor = this.addressAt(state.selection.anchor);
+    const range = canonicalSelectionRange(state);
+    const type = state.selection instanceof AllSelection ? "all" : "text";
+    const anchor = this.addressAt(type === "all" ? range.from : state.selection.anchor);
     if (anchor.isErr()) return anchor;
-    const head = this.addressAt(state.selection.head);
+    const head = this.addressAt(type === "all" ? range.to : state.selection.head);
     if (head.isErr()) return head;
-    return Result.ok({ anchor: anchor.value, head: head.value });
+    return Result.ok({ type, anchor: anchor.value, head: head.value });
   }
 
   paragraph(blockId: string): ParagraphAddress | undefined {
@@ -321,44 +346,29 @@ const preservePropertySources = ({
   copyDocumentParagraphPropertySourceContract(target, source);
 };
 
-const supportsTextContent = (content: Paragraph["content"]): boolean => {
-  const valid = (value: unknown): boolean => {
-    if (typeof value !== "object" || value === null) return true;
-    if (Array.isArray(value)) return value.every(valid);
-    if ("type" in value && value.type === "renderedPageBreak") return false;
-    if (
-      "type" in value &&
-      value.type === "text" &&
-      "text" in value &&
-      typeof value.text === "string"
-    )
-      return !hasIllegalXmlCharacters(value.text) && !/[\t\r\n]/u.test(value.text);
-    return Object.values(value).every(valid);
-  };
-  return content.every(valid);
-};
-
-const supportsSeed = (document: Document, stories = documentStories(document)): boolean => {
-  return stories.every((story) => {
+const unsupportedSeedReason = (
+  document: Document,
+  stories = documentStories(document),
+): string | null => {
+  for (const story of stories) {
     const body = findStoryBody(document, story);
     if (story !== OP_STORIES.MAIN && (story.kind === "footnote" || story.kind === "endnote")) {
       const notes =
         story.kind === "footnote" ? document.package.footnotes : document.package.endnotes;
       const note = notes?.find(({ id }) => id === story.id);
-      if (note?.noteType !== undefined && note.noteType !== "normal") return true;
+      if (note?.noteType !== undefined && note.noteType !== "normal") continue;
     }
     const content = body?.content;
-    return (
-      content !== undefined &&
-      content.length > 0 &&
-      content.every(
-        (paragraph) =>
-          paragraph.type === "paragraph" &&
-          paragraph.reviewCarrier === undefined &&
-          supportsTextContent(paragraph.content),
-      )
-    );
-  });
+    if (!content || content.length === 0)
+      return "Canonical sessions require a nonempty paragraph story.";
+    for (const paragraph of content) {
+      if (paragraph.type !== "paragraph" || paragraph.reviewCarrier !== undefined)
+        return "Canonical sessions currently require plain paragraphs and supported inline atoms.";
+      const issue = canonicalInlineSourceIssue(paragraph.content);
+      if (issue !== null) return issue;
+    }
+  }
+  return null;
 };
 
 type ProjectStoryOptions = {
@@ -396,6 +406,7 @@ const project = ({
       }),
   });
   if (converted.isErr()) return converted;
+  const pairedBookmarkIds = collectPairedBookmarkIds(body.content);
   const paragraphs: ParagraphAddress[] = [];
   let failure: CanonicalSessionError | undefined;
   converted.value.forEach((node, offset, index) => {
@@ -408,53 +419,24 @@ const project = ({
       });
       return;
     }
-    let text = "";
-    let renderedText = "";
-    let renderedSize = 0;
-    const boundaries: number[][] = [[0]];
-    node.descendants((child) => {
-      if (child.isText) {
-        const value = child.text ?? "";
-        if (child.marks.some(({ type }) => type.name === "footnoteRef")) {
-          text += "\uFFFC";
-          renderedSize += value.length;
-          boundaries.push([renderedSize]);
-        } else {
-          for (const unit of value.split("")) {
-            text += unit;
-            renderedSize += 1;
-            boundaries.push([renderedSize]);
-          }
-        }
-        renderedText += value;
-        return false;
-      }
-      if (!child.isLeaf) return true;
-      renderedSize += child.nodeSize;
-      if (child.type.name === "noteMarker") {
-        const gaps = boundaries.at(-1) ?? panic("Missing canonical note gap");
-        gaps.push(renderedSize);
-      } else {
-        text += "\uFFFC";
-        boundaries.push([renderedSize]);
-      }
-      return false;
-    });
-    if (
-      node.type.name !== "paragraph" ||
-      node.attrs["paraId"] !== source.paraId ||
-      text !== paragraphLogicalText(source) ||
-      node.textContent !== renderedText ||
-      node.content.size !== renderedSize
-    ) {
+    if (node.type.name !== "paragraph" || node.attrs["paraId"] !== source.paraId) {
       failure = new CanonicalSessionError({
         gap: CANONICAL_GAP.dispatch,
         reason: "refused",
-        message: "The paragraph cannot be projected as plain text.",
+        message: "The projection changed paragraph structure.",
       });
       return;
     }
-    paragraphs.push({ blockId: source.paraId, start: offset + 1, text, boundaries, node, source });
+    const inline = projectCanonicalInline({ source, paragraph: node, pairedBookmarkIds });
+    if (inline.isErr()) {
+      failure = new CanonicalSessionError({
+        gap: CANONICAL_GAP.dispatch,
+        reason: "refused",
+        message: inline.error.message,
+      });
+      return;
+    }
+    paragraphs.push({ blockId: source.paraId, start: offset + 1, ...inline.value, node, source });
   });
   if (failure !== undefined) return Result.err(failure);
   if (paragraphs.length !== body.content.length) {
@@ -465,6 +447,9 @@ const project = ({
 
 const intentStory = (intent: EditorIntent): OpStory => {
   switch (intent.type) {
+    case "setHyperlink":
+    case "removeHyperlink":
+    case "insertHyperlink":
     case "replaceFragment":
     case "moveFragment":
     case "replaceText":
@@ -508,7 +493,9 @@ const samePosition = (left: TextPosition, right: TextPosition): boolean =>
   (left.zeroWidthBefore ?? 0) === (right.zeroWidthBefore ?? 0);
 
 const sameSelection = (left: CanonicalSelection, right: CanonicalSelection): boolean =>
-  samePosition(left.anchor, right.anchor) && samePosition(left.head, right.head);
+  left.type === right.type &&
+  samePosition(left.anchor, right.anchor) &&
+  samePosition(left.head, right.head);
 
 type AppliedJournalEntry = {
   type: "applied";
@@ -786,6 +773,9 @@ class CanonicalSession {
       case "setList":
       case "formatParagraph":
         return false;
+      case "setHyperlink":
+      case "removeHyperlink":
+      case "insertHyperlink":
       case "replaceFragment":
       case "moveFragment":
         return true;
@@ -963,14 +953,19 @@ class CanonicalSession {
     });
     if (compiled.isErr()) return refuse(compiled.error.message);
     const { ops, selection: caret } = compiled.value;
-    const postSelection = { anchor: caret, head: caret };
+    const postSelection = { type: "text", anchor: caret, head: caret } as const;
     const preDocument = this.currentDocument;
     const isCaret = state.selection.empty;
+    const deletion =
+      isCaret &&
+      text.length === 0 &&
+      (semantic === "deleteBackward" || semantic === "deleteForward")
+        ? deletionRange(state, semantic === "deleteBackward" ? "backward" : "forward")
+        : null;
     const run =
       isCaret &&
       ((semantic === "typing" && from === to && from === state.selection.head) ||
-        (semantic === "deleteBackward" && text.length === 0 && to === state.selection.head) ||
-        (semantic === "deleteForward" && text.length === 0 && from === state.selection.head));
+        (deletion?.isOk() && deletion.value.from === from && deletion.value.to === to));
     const grouping = run ? "run" : "isolated";
     return this.stage({
       state,
@@ -1053,6 +1048,20 @@ class CanonicalSession {
       edits.push(imported.value);
     }
     for (const intent of intents) {
+      if (
+        this.mode.type === "suggesting" &&
+        (intent.type === "setHyperlink" ||
+          intent.type === "removeHyperlink" ||
+          intent.type === "insertHyperlink")
+      ) {
+        return Result.err(
+          new CanonicalSessionError({
+            gap: CANONICAL_GAP.trackedHyperlinkResolution,
+            reason: "refused",
+            message: "Hyperlink suggestions require serializable wrapper review provenance.",
+          }),
+        );
+      }
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
@@ -1065,11 +1074,17 @@ class CanonicalSession {
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
       if (
+        intent.type !== "setHyperlink" &&
+        intent.type !== "removeHyperlink" &&
         intent.type !== "formatRun" &&
         intent.type !== "formatParagraph" &&
         intent.type !== "setList"
       ) {
-        postSelection = { anchor: compiled.value.selection, head: compiled.value.selection };
+        postSelection = {
+          type: "text",
+          anchor: compiled.value.selection,
+          head: compiled.value.selection,
+        };
       }
     }
     const stagedApplied = {
@@ -1236,7 +1251,7 @@ class CanonicalSession {
     return this.prepareJournalledOps({
       state,
       ops,
-      postSelection: { anchor: caret, head: caret },
+      postSelection: { type: "text", anchor: caret, head: caret },
       stagedApplied: applied.value,
     });
   }
@@ -1378,8 +1393,8 @@ class CanonicalSession {
       document: applied.value.document,
       previous: this.currentDocument,
     });
-    if (!supportsSeed(applied.value.document, changed))
-      return refuse("The operations produce unsupported canonical story content.");
+    const unsupported = unsupportedSeedReason(applied.value.document, changed);
+    if (unsupported !== null) return refuse(unsupported);
     preservePropertySources({
       target: applied.value.document,
       source: this.currentDocument,
@@ -1442,14 +1457,30 @@ class CanonicalSession {
     if (sameStory(selection.anchor.story, story) && sameStory(selection.head.story, story)) {
       const anchor = projected.value.positionAt(selection.anchor);
       const head = projected.value.positionAt(selection.head);
-      if (anchor.isOk() && head.isOk())
-        transaction.setSelection(TextSelection.create(transaction.doc, anchor.value, head.value));
-      else
-        transaction.setSelection(
-          TextSelection.near(
-            transaction.doc.resolve(Math.min(state.selection.anchor, transaction.doc.content.size)),
-          ),
-        );
+      switch (selection.type) {
+        case "all":
+          transaction.setSelection(new AllSelection(transaction.doc));
+          break;
+        case "text":
+          if (anchor.isOk() && head.isOk()) {
+            transaction.setSelection(
+              TextSelection.create(transaction.doc, anchor.value, head.value),
+            );
+            break;
+          }
+          transaction.setSelection(
+            TextSelection.near(
+              transaction.doc.resolve(
+                Math.min(state.selection.anchor, transaction.doc.content.size),
+              ),
+            ),
+          );
+          break;
+        default: {
+          const exhaustive: never = selection.type;
+          return panic(`Unknown canonical selection type: ${exhaustive}`);
+        }
+      }
     }
     transaction.setMeta(CANONICAL_PROJECTION_META, {
       type: "canonical",
@@ -1530,11 +1561,8 @@ export const createCanonicalSession = (
   document: Document,
   styles?: StyleDefinitions | null,
 ): Result<CanonicalSession, CanonicalSessionError> => {
-  if (!supportsSeed(document)) {
-    return refuse(
-      "Canonical sessions currently require plain paragraphs and supported inline atoms.",
-    );
-  }
+  const unsupported = unsupportedSeedReason(document);
+  if (unsupported !== null) return refuse(unsupported);
   const owned = cloneDocumentWithParagraphPropertySources(document);
   const normalized = normalizeForOps(owned);
   preservePropertySources({ target: normalized, source: owned });
@@ -1567,23 +1595,50 @@ const visibleDeletionContext = (state: EditorState) => {
   while (last + 1 < state.doc.childCount && hasDeletedParagraphMark(state.doc.child(last)))
     last += 1;
   let text = "";
-  const physicalGaps: number[] = [];
+  const physicalStarts: number[] = [];
+  const physicalEnds: number[] = [];
   let visibleOffset = 0;
+  let issue: CanonicalSessionError | undefined;
   state.doc.forEach((paragraph, paragraphOffset, paragraphIndex) => {
     if (paragraphIndex < first || paragraphIndex > last) return;
-    paragraph.forEach((node, offset) => {
-      if (node.marks.some((mark) => mark.type.name === "deletion")) return;
-      const value = node.isText ? (node.text ?? "") : "\uFFFC";
+    const native = canonicalNativeCells(paragraph);
+    if (native.isErr()) {
+      issue = new CanonicalSessionError({
+        gap: CANONICAL_GAP.dispatch,
+        reason: "refused",
+        message: native.error.message,
+      });
+      return;
+    }
+    for (const cell of native.value) {
+      if (
+        cell.type === "zeroWidth" ||
+        cell.node.marks.some((mark) => mark.type.name === "deletion")
+      )
+        continue;
+      const value = cell.type === "text" ? cell.text : "\uFFFC";
+      const from = paragraphOffset + 1 + cell.from;
+      const to = paragraphOffset + 1 + cell.to;
+      if (cell.type !== "text" && selection.from > from && selection.from < to) {
+        issue = new CanonicalSessionError({
+          gap: CANONICAL_GAP.dispatch,
+          reason: "refused",
+          message: "Character deletion cannot start inside an inline atom.",
+        });
+        return;
+      }
       for (let unit = 0; unit < value.length; unit += 1) {
-        const position = paragraphOffset + 1 + offset + unit;
-        physicalGaps[text.length] = position;
+        const position = from + (cell.type === "text" ? unit : 0);
+        physicalStarts.push(position);
         text += value.charAt(unit);
-        physicalGaps.push(position + (node.isText ? 1 : node.nodeSize));
+        physicalEnds.push(cell.type === "text" ? position + 1 : to);
         if (position < selection.from) visibleOffset += 1;
       }
-    });
+    }
   });
-  return { text, physicalGaps, visibleOffset };
+  return issue === undefined
+    ? Result.ok({ text, physicalStarts, physicalEnds, visibleOffset })
+    : Result.err(issue);
 };
 
 export const isCanonicalJoinBoundary = (
@@ -1591,7 +1646,9 @@ export const isCanonicalJoinBoundary = (
   direction: "backward" | "forward",
 ): boolean => {
   if (!(state.selection instanceof TextSelection) || !state.selection.empty) return false;
-  const { text, visibleOffset } = visibleDeletionContext(state);
+  const context = visibleDeletionContext(state);
+  if (context.isErr()) return false;
+  const { text, visibleOffset } = context.value;
   return visibleOffset === (direction === "backward" ? 0 : text.length);
 };
 
@@ -1610,7 +1667,9 @@ export const deletionRange = (
     direction === "backward" ? parent.childBefore(offset).node : parent.childAfter(offset).node;
   if (adjacent?.type.name === "noteMarker")
     return refuse("Automatic note marks cannot be deleted as characters.");
-  const { text, physicalGaps, visibleOffset } = visibleDeletionContext(state);
+  const context = visibleDeletionContext(state);
+  if (context.isErr()) return context;
+  const { text, physicalStarts, physicalEnds, visibleOffset } = context.value;
   if (splitsSurrogatePair(text, visibleOffset))
     return refuse("The deletion would split a surrogate pair.");
   if (splitsGraphemeCluster(text, visibleOffset))
@@ -1622,11 +1681,8 @@ export const deletionRange = (
     return refuse("There is no visible character to delete in this paragraph.");
   let boundary = visibleOffset + (direction === "backward" ? -1 : 1);
   while (splitsGraphemeCluster(text, boundary)) boundary += direction === "backward" ? -1 : 1;
-  const position = physicalGaps.at(boundary);
-  if (position === undefined) panic("Canonical deletion lost a grapheme boundary.");
-  return Result.ok(
-    direction === "backward"
-      ? { from: position, to: selection.to }
-      : { from: selection.from, to: position },
-  );
+  const from = physicalStarts.at(direction === "backward" ? boundary : visibleOffset);
+  const to = physicalEnds.at((direction === "backward" ? visibleOffset : boundary) - 1);
+  if (from === undefined || to === undefined) panic("Canonical deletion lost a grapheme boundary.");
+  return Result.ok({ from, to });
 };
