@@ -20,11 +20,6 @@ const REFUSAL_ROWS = {
     gap: CANONICAL_GAP.trackedHyperlinkResolution,
     message: "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
   },
-  commentProjection: {
-    id: CANONICAL_GAP.storyContentProjection,
-    gap: CANONICAL_GAP.storyContentProjection,
-    message: "The paragraph cannot be projected as plain text.",
-  },
   fieldProjection: {
     id: CANONICAL_GAP.storyContentProjection,
     gap: CANONICAL_GAP.storyContentProjection,
@@ -108,8 +103,6 @@ export const canonicalRefusalCaseId = ({ shape, operation, placement, mode }: Re
   `${shape} › ${operation} @ ${placement} [${mode}]`;
 
 export const STORY_PROJECTION_REFUSAL_CASES = [
-  { shape: "comments", mode: "editing", operation: "key:Enter", placement: "paragraph" },
-  { shape: "comments", mode: "editing", operation: "host:cut", placement: "paragraph" },
   {
     shape: "fields-links-bookmarks",
     mode: "suggesting",
@@ -143,7 +136,6 @@ export const STORY_PROJECTION_REFUSAL_CASES = [
 ] as const satisfies readonly RefusalCase[];
 
 const STORY_PROJECTION_ROWS = {
-  comments: REFUSAL_ROWS.commentProjection,
   "fields-links-bookmarks": REFUSAL_ROWS.fieldProjection,
 } as const satisfies Record<
   (typeof STORY_PROJECTION_REFUSAL_CASES)[number]["shape"],

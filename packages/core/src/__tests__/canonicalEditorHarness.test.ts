@@ -379,10 +379,7 @@ test.each(STORY_PROJECTION_REFUSAL_CASES)(
           gap: CANONICAL_GAP.storyContentProjection,
           row: CANONICAL_GAP.storyContentProjection,
           expectation: "declared",
-          message:
-            shape === "comments"
-              ? "The paragraph cannot be projected as plain text."
-              : "The operations produce unsupported canonical story content.",
+          message: "The operations produce unsupported canonical story content.",
         },
       ]);
       assertExactModel(driver.snapshot(), before);

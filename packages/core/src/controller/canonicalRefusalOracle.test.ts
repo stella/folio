@@ -64,6 +64,33 @@ test("TOC generation has an editing descriptor and a precise suggesting refusal 
   expect(result?.violations).toEqual([]);
 });
 
+test.each(["key:Enter", "host:cut"])(
+  "comment geometry keeps %s strict in both modes",
+  async (id) => {
+    const operation = CONFORMANCE_OPERATIONS.find((candidate) => candidate.id === id);
+    if (!operation) throw new TypeError("Comment geometry control operation is absent");
+    const cases = EDITOR_MODES.map(
+      (mode) =>
+        ({
+          shape: "comments",
+          operation: id,
+          placement: "paragraph",
+          mode,
+        }) as const,
+    );
+    const rows = declareCanonicalRefusalCases(cases);
+    expect([...rows.values()]).toEqual([[], []]);
+    const result = await runConformanceCase({
+      shape: documentShape("comments"),
+      operation,
+      placement: "paragraph",
+      refusalCases: rows,
+    });
+    expect(result?.runs).toEqual({ editing: "changed", suggesting: "changed" });
+    expect(result?.violations).toEqual([]);
+  },
+);
+
 test.each(EDITOR_MODES)(
   "table activation contracts match the declared fixture features in %s",
   (mode) => {
