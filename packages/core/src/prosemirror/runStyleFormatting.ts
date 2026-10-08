@@ -34,6 +34,11 @@ export const hasDirectRunFormatting = (formatting: TextFormatting | undefined): 
   );
 };
 
+/** A stated run property or character style establishes paragraph-mark suppression. */
+export const isParagraphMarkSuppressionEligible = (
+  formatting: TextFormatting | undefined,
+): boolean => hasDirectRunFormatting(formatting) || formatting?.styleId !== undefined;
+
 export const stripParagraphMarkOnlyFormatting = (
   formatting: TextFormatting,
 ): TextFormatting | undefined => {

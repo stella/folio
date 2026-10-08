@@ -22,6 +22,7 @@ import {
   hasAuthoredRunFormattingProvenance,
 } from "./runFormattingProvenance";
 import {
+  isParagraphMarkSuppressionEligible,
   paragraphFormattingForRun,
   resolveEffectiveRunStyleFormatting,
   suppressParagraphMarkFormatting,
@@ -939,7 +940,11 @@ export function marksToTextFormatting(
       inheritedFormatting: suppressedInheritedFormatting,
       observedFormatting: formatting,
     });
-    if (formattingAuthorshipCost(suppressed) < formattingAuthorshipCost(reconciled)) {
+    // The reader must see a stated run property to apply this suppression context.
+    if (
+      isParagraphMarkSuppressionEligible(suppressed) &&
+      formattingAuthorshipCost(suppressed) < formattingAuthorshipCost(reconciled)
+    ) {
       reconciled = suppressed;
     }
   }
