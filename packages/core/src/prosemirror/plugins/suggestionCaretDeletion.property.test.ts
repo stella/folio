@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { DOMParser } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
+import { EditorView } from "prosemirror-view";
 import fc from "fast-check";
 import { panic } from "better-result";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
@@ -15,13 +16,13 @@ import {
   resolveAllChanges,
   summarizeState,
 } from "../../__tests__/editorHarness";
-import { BROWSER_INPUT_REGRESSIONS } from "../../../../../tests/visual/browserInputRegressions";
+import { BROWSER_NOTES_SEED_197 } from "../../../../../tests/visual/browserInputRegressions";
 
 beforeAll(() => GlobalRegistrator.register());
 afterAll(() => GlobalRegistrator.unregister());
 
 test("browser notes seed 197 paste and caret deletion replay", async () => {
-  const regression = BROWSER_INPUT_REGRESSIONS.at(0) ?? panic("Missing seed-197 trace.");
+  const regression = BROWSER_NOTES_SEED_197;
   const base = await parseShapeDocument(
     new Uint8Array(await shapeArrayBuffer(regression.trace.shape)),
   );
@@ -30,9 +31,14 @@ test("browser notes seed 197 paste and caret deletion replay", async () => {
     const view = new HeadlessEditorView(createHarnessState(base, mode));
     const paste = (source: string) => {
       let html = source;
-      for (const plugin of view.state.plugins) {
-        const transform = plugin.props.transformPastedHTML;
-        if (transform) html = transform.call(plugin, html, view as never);
+      const pasteView = new EditorView(document.createElement("div"), { state: view.state });
+      try {
+        for (const plugin of pasteView.state.plugins) {
+          const transform = plugin.props.transformPastedHTML;
+          if (transform) html = transform.call(plugin, html, pasteView);
+        }
+      } finally {
+        pasteView.destroy();
       }
       const host = document.createElement("div");
       host.innerHTML = html;
@@ -182,13 +188,18 @@ test(
       expect(tracked.state.doc.textContent.includes(character)).toBe(ownership !== "own");
       const retainedMarkers: string[] = [];
       let retainedDeletedText = "";
+      let retainedForeignInsertion = "";
+      const foreignInsertion = ownership === "other" ? insertion.at(0) : undefined;
       tracked.state.doc.descendants((node) => {
         if (node.type.name === "bookmarkBoundary") retainedMarkers.push(node.attrs["type"]);
         if (node.isText && node.marks.some((mark) => mark.eq(priorDeletion)))
           retainedDeletedText += node.text;
+        if (node.isText && foreignInsertion && node.marks.some((mark) => mark.eq(foreignInsertion)))
+          retainedForeignInsertion += node.text;
       });
       expect(retainedMarkers).toEqual(markers ? ["start", "end"] : []);
       expect(retainedDeletedText).toContain("x".repeat(deletedLength));
+      expect(retainedForeignInsertion).toBe(ownership === "other" ? character : "");
     };
     // Every direction and ownership gets the full marker/run-length boundary matrix.
     for (const direction of ["forward", "backward"] as const)

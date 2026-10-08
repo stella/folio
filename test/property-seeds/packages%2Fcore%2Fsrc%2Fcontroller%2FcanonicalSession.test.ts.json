@@ -48,12 +48,5 @@
       "note": "Same-author insertion/deletion histories can cancel every revision before review; empty resolution must refuse atomically while semantic equivalence and exact edit history remain checked.",
       "date": "2026-10-05"
     }
-  ],
-  "direction reversal deletes the adjacent visible character across retained deletion runs and bookmarks": [
-    {
-      "seed": 197,
-      "note": "Paired-bookmark source fixture is refused before input; explicit counterexample backward, length 1, bookmarks true, NBSP, own insertion (example path 2:0).",
-      "date": "2026-10-07"
-    }
   ]
 }
