@@ -40,6 +40,12 @@ const canonicalSnapshot = async (page: Page) => {
   return { ...current, document: current.document };
 };
 
+const canonicalVersion = async (page: Page) => {
+  const version = await page.evaluate(() => globalThis.__folioCanonical?.committedVersion());
+  if (typeof version !== "number") throw new TypeError("Canonical version unavailable.");
+  return version;
+};
+
 const hasTrackedInsertion = (value: unknown, author: string): boolean => {
   if (Array.isArray(value)) return value.some((entry) => hasTrackedInsertion(entry, author));
   if (value === null || typeof value !== "object") return false;
@@ -115,9 +121,22 @@ for (const adapter of adapters) {
       `.paged-editor__hidden-hf-pm [data-hf-r-id="${headerRId}"] .ProseMirror`,
     );
     await expect(headerEditor).toBeAttached();
+    const headerVersion = await canonicalVersion(page);
     await page.keyboard.press("End");
     await page.keyboard.type(" header tracked");
     await expect(header).toContainText("header tracked");
+    // Only a published canonical operation advances the shared journal version.
+    expect(await canonicalVersion(page)).toBeGreaterThan(headerVersion);
+    expect(
+      hasTrackedInsertion(
+        await page.evaluate(
+          (rId) =>
+            globalThis.__folioCanonical?.snapshot().document?.package.headers?.get(rId)?.content,
+          headerRId,
+        ),
+        "Folio User",
+      ),
+    ).toBe(true);
     await page.keyboard.press(`${MODIFIER}+z`);
     await expect(header).not.toContainText("header tracked");
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
@@ -134,9 +153,21 @@ for (const adapter of adapters) {
       `.paged-editor__hidden-hf-pm [data-hf-r-id="${footerRId}"] .ProseMirror`,
     );
     await expect(footerEditor).toBeAttached();
+    const footerVersion = await canonicalVersion(page);
     await page.keyboard.press("End");
     await page.keyboard.type(" footer tracked");
     await expect(footer).toContainText("footer tracked");
+    expect(await canonicalVersion(page)).toBeGreaterThan(footerVersion);
+    expect(
+      hasTrackedInsertion(
+        await page.evaluate(
+          (rId) =>
+            globalThis.__folioCanonical?.snapshot().document?.package.footers?.get(rId)?.content,
+          footerRId,
+        ),
+        "Folio User",
+      ),
+    ).toBe(true);
     await page.keyboard.press(`${MODIFIER}+z`);
     await expect(footer).not.toContainText("footer tracked");
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
