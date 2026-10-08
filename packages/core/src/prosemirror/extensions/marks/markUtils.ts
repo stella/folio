@@ -6,6 +6,7 @@
  */
 
 import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
+import { canonicalSelectionRange } from "../../canonicalSelectionRange";
 import type { RunPropsPatch } from "@stll/docx-core/ops";
 
 import type { Attrs, MarkType, Mark, Schema } from "prosemirror-model";
@@ -344,7 +345,8 @@ function createMarkWithMergedAttrs(
 type CanonicalSetMarkFormattingOptions = { state: EditorState; type: MarkType; attrs: MarkAttrs };
 const canonicalSetMarkFormatting = ({ state, type, attrs }: CanonicalSetMarkFormattingOptions) => {
   const markType = documentMarkType(state, type);
-  const { from, to, empty } = state.selection;
+  const { empty } = state.selection;
+  const { from, to } = canonicalSelectionRange(state);
   if (empty) {
     const current = markType.isInSet(state.storedMarks ?? state.selection.$from.marks());
     return canonicalRunFormatting(

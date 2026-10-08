@@ -115,6 +115,12 @@ export const canonicalInlineSourceIssue = (
           return "Canonical text requires valid XML characters and explicit tab or break elements.";
         break;
       case "container": {
+        if (
+          (item.type === "insertion" || item.type === "deletion") &&
+          item.resolutionJoins !== undefined &&
+          item.content.some((child) => child.type === "hyperlink")
+        )
+          return "Canonical editing cannot preserve hyperlink wrapper review provenance.";
         const children = sourceContainerChildren(item);
         const issue = canonicalInlineSourceIssue(children, context);
         if (issue !== null) return issue;

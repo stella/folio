@@ -1434,32 +1434,39 @@ describe("canonical tracked input", () => {
           for (const resolution of ["accept", "reject"] as const) {
             const resolved = createCanonicalSession(suggested).unwrap();
             let state = stateFor(resolved);
-            const beforeResolution = resolved.document;
-            const beforeState = state;
-            const beforeVersion = resolved.version;
+            const before = {
+              document: resolved.document,
+              projection: resolved.projection,
+              selection: resolved.selection,
+              version: resolved.version,
+              canUndo: resolved.canUndo,
+              canRedo: resolved.canRedo,
+            };
             const prepared = resolved.prepareResolve(state, {
               revisionIds: [...revisions],
               resolution,
             });
-            if (prepared.isErr()) {
-              // Same-author insertions can all be cancelled before review begins.
+            if (revisions.size === 0) {
+              expect(prepared.isErr()).toBe(true);
+              if (prepared.isOk()) panic("Empty review unexpectedly committed");
               expect(prepared.error.reason).toBe("noChange");
-              expect(revisions.size).toBe(0);
-              expect(resolved.document).toBe(beforeResolution);
-              expect(state).toBe(beforeState);
-              expect(resolved.version).toBe(beforeVersion);
-              expect(resolved.canUndo).toBe(false);
-              expect(resolved.canRedo).toBe(false);
-            } else state = accept(state, prepared.value);
+              expect(resolved.document).toBe(before.document);
+              expect(resolved.projection).toBe(before.projection);
+              expect(resolved.selection).toEqual(before.selection);
+              expect(resolved.version).toBe(before.version);
+              expect(resolved.canUndo).toBe(before.canUndo);
+              expect(resolved.canRedo).toBe(before.canRedo);
+            } else state = accept(state, prepared.unwrap());
             const expected = resolution === "accept" ? direct.document : snapshots.at(0);
             if (expected === undefined) panic("The resolution oracle lost its baseline.");
             expect(canonicalReviewBlocks(resolved.document.package.document.content)).toEqual(
               canonicalReviewBlocks(expected.package.document.content),
             );
-            if (prepared.isErr()) continue;
-            state = accept(state, resolved.prepareUndo(state).unwrap());
-            expect(resolved.document).toStrictEqual(suggested);
-            state = accept(state, resolved.prepareRedo(state).unwrap());
+            if (revisions.size > 0) {
+              state = accept(state, resolved.prepareUndo(state).unwrap());
+              expect(resolved.document).toStrictEqual(suggested);
+              state = accept(state, resolved.prepareRedo(state).unwrap());
+            }
             expect(state.doc.eq(resolved.projection.doc)).toBe(true);
           }
           for (let index = snapshots.length - 2; index >= 0; index -= 1) {

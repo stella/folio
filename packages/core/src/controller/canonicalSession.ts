@@ -2,7 +2,7 @@ import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import { TextSelection, type EditorState, type Transaction } from "prosemirror-state";
+import { AllSelection, TextSelection, type EditorState, type Transaction } from "prosemirror-state";
 import {
   applyDocumentOps,
   combineEdits,
@@ -39,6 +39,7 @@ import {
   copyParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
+import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
 import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import {
   toProseDoc,
@@ -159,7 +160,11 @@ const operationChangesBodyProjection = (op: DocumentOp): boolean => {
   }
 };
 
-export type CanonicalSelection = { anchor: TextPosition; head: TextPosition };
+export type CanonicalSelection = {
+  type: "text" | "all";
+  anchor: TextPosition;
+  head: TextPosition;
+};
 export type CanonicalOrigin = "input" | "undo" | "redo";
 export type CanonicalSessionMode = { type: "editing" } | { type: "suggesting"; author: string };
 export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
@@ -223,17 +228,16 @@ class CanonicalProjection {
     if (address.isErr()) return address;
     const paragraph = this.paragraph(address.value.blockId);
     if (paragraph === undefined) panic("Input lost its paragraph.");
-    const relative = position - paragraph.start;
-    let target = position;
+    let destination = position;
     paragraph.node.forEach((node, start) => {
       if (
         node.marks.some((mark) => mark.type.name === "deletion") &&
-        relative > start &&
-        relative < start + node.nodeSize
+        position > paragraph.start + start &&
+        position < paragraph.start + start + node.nodeSize
       )
-        target = paragraph.start + start + node.nodeSize;
+        destination = paragraph.start + start + node.nodeSize;
     });
-    return target === position ? address : this.addressAt(target);
+    return destination === position ? address : this.addressAt(destination);
   }
 
   positionAt(address: TextPosition): Result<number, CanonicalSessionError> {
@@ -262,14 +266,16 @@ class CanonicalProjection {
   }
 
   selectionAt(state: EditorState): Result<CanonicalSelection, CanonicalSessionError> {
-    if (!(state.selection instanceof TextSelection)) {
+    if (!(state.selection instanceof TextSelection) && !(state.selection instanceof AllSelection)) {
       return refuse("Canonical input requires a text selection.");
     }
-    const anchor = this.addressAt(state.selection.anchor);
+    const range = canonicalSelectionRange(state);
+    const type = state.selection instanceof AllSelection ? "all" : "text";
+    const anchor = this.addressAt(type === "all" ? range.from : state.selection.anchor);
     if (anchor.isErr()) return anchor;
-    const head = this.addressAt(state.selection.head);
+    const head = this.addressAt(type === "all" ? range.to : state.selection.head);
     if (head.isErr()) return head;
-    return Result.ok({ anchor: anchor.value, head: head.value });
+    return Result.ok({ type, anchor: anchor.value, head: head.value });
   }
 
   paragraph(blockId: string): ParagraphAddress | undefined {
@@ -436,6 +442,9 @@ const project = ({
 
 const intentStory = (intent: EditorIntent): OpStory => {
   switch (intent.type) {
+    case "setHyperlink":
+    case "removeHyperlink":
+    case "insertHyperlink":
     case "replaceFragment":
     case "moveFragment":
     case "replaceText":
@@ -479,7 +488,9 @@ const samePosition = (left: TextPosition, right: TextPosition): boolean =>
   (left.zeroWidthBefore ?? 0) === (right.zeroWidthBefore ?? 0);
 
 const sameSelection = (left: CanonicalSelection, right: CanonicalSelection): boolean =>
-  samePosition(left.anchor, right.anchor) && samePosition(left.head, right.head);
+  left.type === right.type &&
+  samePosition(left.anchor, right.anchor) &&
+  samePosition(left.head, right.head);
 
 type AppliedJournalEntry = {
   type: "applied";
@@ -757,6 +768,9 @@ class CanonicalSession {
       case "setList":
       case "formatParagraph":
         return false;
+      case "setHyperlink":
+      case "removeHyperlink":
+      case "insertHyperlink":
       case "replaceFragment":
       case "moveFragment":
         return true;
@@ -934,7 +948,7 @@ class CanonicalSession {
     });
     if (compiled.isErr()) return refuse(compiled.error.message);
     const { ops, selection: caret } = compiled.value;
-    const postSelection = { anchor: caret, head: caret };
+    const postSelection = { type: "text", anchor: caret, head: caret } as const;
     const preDocument = this.currentDocument;
     const isCaret = state.selection.empty;
     const run =
@@ -1024,6 +1038,20 @@ class CanonicalSession {
       edits.push(imported.value);
     }
     for (const intent of intents) {
+      if (
+        this.mode.type === "suggesting" &&
+        (intent.type === "setHyperlink" ||
+          intent.type === "removeHyperlink" ||
+          intent.type === "insertHyperlink")
+      ) {
+        return Result.err(
+          new CanonicalSessionError({
+            gap: CANONICAL_GAP.trackedHyperlinkResolution,
+            reason: "refused",
+            message: "Hyperlink suggestions require serializable wrapper review provenance.",
+          }),
+        );
+      }
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
@@ -1036,11 +1064,17 @@ class CanonicalSession {
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
       if (
+        intent.type !== "setHyperlink" &&
+        intent.type !== "removeHyperlink" &&
         intent.type !== "formatRun" &&
         intent.type !== "formatParagraph" &&
         intent.type !== "setList"
       ) {
-        postSelection = { anchor: compiled.value.selection, head: compiled.value.selection };
+        postSelection = {
+          type: "text",
+          anchor: compiled.value.selection,
+          head: compiled.value.selection,
+        };
       }
     }
     const stagedApplied = {
@@ -1207,7 +1241,7 @@ class CanonicalSession {
     return this.prepareJournalledOps({
       state,
       ops,
-      postSelection: { anchor: caret, head: caret },
+      postSelection: { type: "text", anchor: caret, head: caret },
       stagedApplied: applied.value,
     });
   }
@@ -1413,14 +1447,30 @@ class CanonicalSession {
     if (sameStory(selection.anchor.story, story) && sameStory(selection.head.story, story)) {
       const anchor = projected.value.positionAt(selection.anchor);
       const head = projected.value.positionAt(selection.head);
-      if (anchor.isOk() && head.isOk())
-        transaction.setSelection(TextSelection.create(transaction.doc, anchor.value, head.value));
-      else
-        transaction.setSelection(
-          TextSelection.near(
-            transaction.doc.resolve(Math.min(state.selection.anchor, transaction.doc.content.size)),
-          ),
-        );
+      switch (selection.type) {
+        case "all":
+          transaction.setSelection(new AllSelection(transaction.doc));
+          break;
+        case "text":
+          if (anchor.isOk() && head.isOk()) {
+            transaction.setSelection(
+              TextSelection.create(transaction.doc, anchor.value, head.value),
+            );
+            break;
+          }
+          transaction.setSelection(
+            TextSelection.near(
+              transaction.doc.resolve(
+                Math.min(state.selection.anchor, transaction.doc.content.size),
+              ),
+            ),
+          );
+          break;
+        default: {
+          const exhaustive: never = selection.type;
+          return panic(`Unknown canonical selection type: ${exhaustive}`);
+        }
+      }
     }
     transaction.setMeta(CANONICAL_PROJECTION_META, {
       type: "canonical",

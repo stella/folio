@@ -1,0 +1,18 @@
+{
+  "hyperlink intents have exact inverses and refuse unrepresentable suggestions": [
+    {
+      "seed": -631454281,
+      "path": "0:0:0",
+      "note": "Revision resolution fixture must use actual applied revisionIds, not an unsupported all target.",
+      "date": "2026-10-04"
+    }
+  ],
+  "cross-paragraph hyperlinks preserve formatting and marker identities through exact inverses": [
+    {
+      "seed": -1172200651,
+      "path": "0:0",
+      "note": "Paragraph identity fixture must stay in the valid signed OOXML hex range; retain case-insensitive endpoint and marker coverage.",
+      "date": "2026-10-04"
+    }
+  ]
+}

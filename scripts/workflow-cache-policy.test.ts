@@ -206,6 +206,33 @@ test("every committed workflow and composite action follows the shared cache pol
   expect(problems).toEqual([]);
 });
 
+test("the guard rejects reverting every committed shared setup to raw Bun setup", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  let mutations = 0;
+  for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({ cwd: root })) {
+    const workflow: unknown = Bun.YAML.parse(readFileSync(`${root}/${file}`, "utf8"));
+    if (!isRecord(workflow) || !isRecord(workflow["jobs"])) panic(`Invalid workflow ${file}`);
+    for (const [name, job] of Object.entries(workflow["jobs"])) {
+      if (!isRecord(job) || !Array.isArray(job["steps"])) continue;
+      for (const [index, step] of job["steps"].entries()) {
+        if (!isRecord(step) || typeof step["uses"] !== "string") continue;
+        if (!step["uses"].startsWith("stella/.github/actions/setup-bun-cached@")) continue;
+        const steps = job["steps"].map((candidate: unknown, candidateIndex: number) =>
+          candidateIndex === index ? { ...step, uses: raw.uses } : candidate,
+        );
+        expect(
+          cacheProblems({
+            ...workflow,
+            jobs: { ...workflow["jobs"], [name]: { ...job, steps } },
+          }),
+        ).toContain(`${name}: raw Bun setup needs the shared install-cache action`);
+        mutations += 1;
+      }
+    }
+  }
+  expect(mutations).toBeGreaterThan(0);
+});
+
 test("publishing tokens and their artifact chain reject cached Bun setup", () => {
   const rawSetup = {
     uses: "oven-sh/setup-bun@fixture",
