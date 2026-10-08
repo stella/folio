@@ -36,6 +36,8 @@ import type { FolioParityBridge } from "../../../scripts/parity/bridge-contract"
 
 export type { FolioParityBridge } from "../../../scripts/parity/bridge-contract";
 
+import { browserTestBridge } from "../../../tests/visual/browserTestBridge";
+
 import { CollaborationApp } from "./CollaborationApp";
 import { recordCanonicalFuzzError } from "../../../tests/parity/canonicalFuzzErrors";
 import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
@@ -810,6 +812,7 @@ export function App() {
   const trackChangesOn = editorMode === "suggesting";
 
   useEffect(() => {
+    globalThis.__folioBrowserTestBridge = browserTestBridge;
     globalThis.__folioPlayground = {
       getEditorRef: () => editorRef.current,
     };
@@ -820,6 +823,7 @@ export function App() {
       (kind) => clipboardCallbackCountsRef.current[kind],
     );
     return () => {
+      globalThis.__folioBrowserTestBridge = undefined;
       globalThis.__folioPlayground = undefined;
       globalThis.__folioCanonical = undefined;
       globalThis.__folioParity = undefined;

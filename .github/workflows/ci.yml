@@ -819,7 +819,7 @@ jobs:
       # Behaviour specs only (assert document content + editor state). The
       # screenshot baselines (rendering.spec) and perf budgets
       # (editing-performance.spec) are env-specific, so they are not run here;
-      # the `interactions` Playwright project starts the playground dev server
+      # the `interactions` Playwright project builds and starts static previews
       # via the config's webServer.
       - name: Run interaction specs
         run: bun run test:interactions
@@ -845,6 +845,14 @@ jobs:
       # webview's Content Security Policy against a fake extension.
       - name: Run editor-web webview check
         run: bun --filter @stll/folio-editor-web test:e2e
+
+      - name: Upload failed interaction artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-interactions-failure
+          path: test-results/
+          retention-days: 7
 
   differential:
     name: Differential parser parity (folio vs python-docx + Open XML SDK)

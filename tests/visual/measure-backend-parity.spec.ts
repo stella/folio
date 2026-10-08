@@ -39,23 +39,13 @@
  * mode actually admits, rather than averaging the two into one tolerance that
  * would describe neither.
  *
- * Registering the faces here rather than relying on the page's own loading is
- * what buys that property: `bundledFontSource.ts` already states it, that a
- * face the browser resolves through its own font list is a face nobody
- * measured. It also sidesteps a live defect: the playground's `@font-face`
- * rules point at the realpath of bun's global link cache, which is outside the
- * dev server's `fs.allow` root, so every bundled face 403s and the page paints
- * system fallbacks. The face descriptors still come from folio's own rules, so
- * the family names, weights and subset ranges stay folio's; only the host part
- * of the URL is repaired.
+ * Registering the faces under a separate family ensures both measurements use
+ * the same bytes. Descriptors and asset URLs come from the playground's CSS.
  *
  * The sfnt/WOFF reader below is inlined on purpose rather than imported from
  * `packages/core/src/fonts/sfnt`. A spec that read the font through the very
  * parser whose advances it is checking would prove nothing about that parser.
  */
-
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
 
@@ -126,14 +116,6 @@ const WEIGHTS = [400, 700] as const;
 const SIZES_PT = [9, 11, 22] as const;
 
 const PT_TO_PX = 96 / 72;
-
-/**
- * Where the bundled faces live, relative to the config root. The same files
- * `createBundledFontSource` reads off disk; the workspace symlink is used
- * rather than the realpath because the dev server serves what is under its
- * root, and the realpath is in bun's global cache.
- */
-const FONTSOURCE_WORKSPACE_DIR = path.join("packages", "react", "node_modules", "@fontsource");
 
 /**
  * Strings carrying the `liga` clusters. Kept separate because one test measures
@@ -296,7 +278,6 @@ type SampleRequest = {
   weights: readonly number[];
   sizesPx: readonly number[];
   corpus: readonly string[];
-  fontsourceBaseUrl: string;
 };
 
 /**
@@ -309,7 +290,7 @@ const collectAdvanceSamples = async (
   page: Page,
   request: SampleRequest,
 ): Promise<AdvanceSample[]> =>
-  page.evaluate(async ({ families, weights, sizesPx, corpus, fontsourceBaseUrl }) => {
+  page.evaluate(async ({ families, weights, sizesPx, corpus }) => {
     /**
      * The faces are registered under their own family name rather than the
      * bundled one, so the page's existing `@font-face` rules for that family
@@ -526,19 +507,15 @@ const collectAdvanceSamples = async (
             ranges.length === 0 || wantedCodePoints.some((codePoint) => covers(ranges, codePoint));
           if (!needed) continue;
 
+          // Fetch the emitted CSS asset URL, which works in both dev and preview.
           // SAFETY: group 2 is mandatory in a regex that matched.
-          const withinPackage = /@fontsource\/(.+)$/u.exec(source[2]!);
-          if (withinPackage === null) {
-            throw new Error(`@font-face src is not an @fontsource file: ${source[2]!}`);
-          }
-          // SAFETY: group 1 is mandatory in a regex that matched.
-          const url = `${fontsourceBaseUrl}/${withinPackage[1]!}`;
+          const url = source[2]!;
           const response = await fetch(url);
           if (!response.ok) throw new Error(`${url} responded ${String(response.status)}`);
           const buffer = await response.arrayBuffer();
 
-          // Parse before registering: the dev server answers an unknown `/@fs`
-          // path with the SPA fallback, so a 200 is not proof of a font, and
+          // Parse before registering: an SPA fallback can return 200 for a missing
+          // asset, so a successful response is not proof of a font, and
           // the reader's signature check is what turns that into a clear
           // failure rather than "invalid font data".
           const tables = await readWoffTables(buffer);
@@ -691,22 +668,6 @@ const attachReport = async (testInfo: TestInfo, lines: readonly string[]): Promi
   });
 };
 
-/**
- * The dev server serves any file under the repository through `/@fs`. The
- * repository is located from the config file rather than from `rootDir`, which
- * Playwright sets to the test directory, or from the cwd, which belongs to
- * whoever invoked the run.
- */
-const fontsourceBaseUrlFor = (testInfo: TestInfo): string => {
-  const { configFile } = testInfo.config;
-  if (configFile === undefined) throw new Error("no playwright config file to locate the repo");
-  // A URL path, not a filesystem path: `pathToFileURL` supplies the leading
-  // separator and the percent-encoding, and turns a drive path into one the
-  // dev server can route.
-  const { pathname } = pathToFileURL(path.join(path.dirname(configFile), FONTSOURCE_WORKSPACE_DIR));
-  return `/@fs${pathname}`;
-};
-
 const BUNDLED_FAMILIES = SUBSTITUTED_FAMILIES.map((entry) => entry.bundled);
 const SIZES_PX = SIZES_PT.map((pt) => pt * PT_TO_PX);
 
@@ -721,7 +682,6 @@ test.describe("measure-backend parity", () => {
       weights: [...WEIGHTS],
       sizesPx: SIZES_PX,
       corpus: [...CORPUS],
-      fontsourceBaseUrl: fontsourceBaseUrlFor(testInfo),
     });
 
     // Exact, not `> 0`: if face resolution ever silently drops a family or a
@@ -761,7 +721,6 @@ test.describe("measure-backend parity", () => {
       weights: [...WEIGHTS],
       sizesPx: SIZES_PX,
       corpus: [UNSHAPED_STRING],
-      fontsourceBaseUrl: fontsourceBaseUrlFor(testInfo),
     });
 
     /**
@@ -820,7 +779,6 @@ test.describe("measure-backend parity", () => {
       weights: [...WEIGHTS],
       sizesPx: SIZES_PX,
       corpus: [...LIGATURE_STRINGS],
-      fontsourceBaseUrl: fontsourceBaseUrlFor(testInfo),
     });
 
     /**
