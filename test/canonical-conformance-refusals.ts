@@ -142,6 +142,9 @@ const STORY_PROJECTION_ROWS = {
   HarnessRefusalRow
 >;
 
+// The fixture source/heading collector assertion binds this applicability set.
+export const TOC_HEADING_SHAPES = ["style-numbered-headings", "outline-level-numbered"] as const;
+
 /** Every declared case has an explicit expectation, including supported cases with no rows. */
 export const canonicalConformanceRefusalRows = (key: RefusalCase): readonly HarnessRefusalRow[] => {
   if (key.shape === "tables") return [REFUSAL_ROWS.tableActivation];
@@ -154,7 +157,9 @@ export const canonicalConformanceRefusalRows = (key: RefusalCase): readonly Harn
   );
   if (projection) return [STORY_PROJECTION_ROWS[projection.shape]];
   if (key.operation === "command:generateTOC")
-    return key.mode === "suggesting" ? [REFUSAL_ROWS.hyperlinkSuggestion] : [];
+    return key.mode === "suggesting" && TOC_HEADING_SHAPES.some((shape) => shape === key.shape)
+      ? [REFUSAL_ROWS.hyperlinkSuggestion]
+      : [];
   const range = ["word", "paragraph", "cross-paragraph", "document", "node"].includes(
     key.placement,
   );

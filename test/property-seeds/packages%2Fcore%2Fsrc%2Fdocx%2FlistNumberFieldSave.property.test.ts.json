@@ -1,0 +1,16 @@
+{
+  "saving generated paragraphs whose list markers hold LISTNUM fields > every field goes back where it stood and the markers stay as they were": [
+    {
+      "seed": 1612036858,
+      "path": "0",
+      "note": "Keep the source comment start before its tab; obsolete editor normalization moved the expected range.",
+      "date": "2026-10-08"
+    },
+    {
+      "seed": -1786877485,
+      "path": "0",
+      "note": "Full-test shard found the same obsolete comment-tab expectation.",
+      "date": "2026-10-08"
+    }
+  ]
+}

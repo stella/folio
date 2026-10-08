@@ -200,10 +200,7 @@ const expectSavedFields = async (
 ): Promise<void> => {
   const xml = await documentXmlOf(saved.bytes);
   for (const spec of SPECS) {
-    const expected = expectedTokens(
-      { ...spec, body: bodies[spec.paraId] ?? spec.body },
-      saved.rewritten(spec.paraId),
-    );
+    const expected = expectedTokens({ ...spec, body: bodies[spec.paraId] ?? spec.body });
     expect(inlineTokens(paragraphMarkupOf(xml, spec.paraId))).toEqual(expected);
   }
   // The cached result keeps the run properties it was authored with.
@@ -719,9 +716,7 @@ const expectSaved = async (
 ): Promise<void> => {
   const xml = await documentXmlOf(saved.bytes);
   for (const spec of specs) {
-    expect(inlineTokens(paragraphMarkupOf(xml, spec.paraId))).toEqual(
-      expectedTokens(spec, saved.rewritten(spec.paraId)),
-    );
+    expect(inlineTokens(paragraphMarkupOf(xml, spec.paraId))).toEqual(expectedTokens(spec));
   }
 
   const reopened = await openDocx(saved.bytes);

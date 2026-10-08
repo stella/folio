@@ -141,22 +141,7 @@ const resultRun = (field: FieldSpec): string => {
 
 type MarkupIds = { next: number; comments: number[] };
 
-type FieldMarkup = {
-  field: FieldSpec;
-  /**
-   * Write the comment start behind the tab rather than ahead of it. The
-   * editor anchors a comment to what can carry its mark, and a tab on the
-   * line cannot, so a comment that opens right ahead of one opens right
-   * behind it once the paragraph has been through the editor. That is how
-   * any paragraph is projected, with or without a list-number field.
-   */
-  commentBehindTab: boolean;
-};
-
-const fieldXml = (
-  { field, commentBehindTab }: FieldMarkup,
-  ids: MarkupIds,
-): { inline: string; trailing: string } => {
+const fieldXml = (field: FieldSpec, ids: MarkupIds): { inline: string; trailing: string } => {
   let gap = "";
   let comment = "";
   let trailing = "";
@@ -190,7 +175,8 @@ const fieldXml = (
     resultRun(field) +
     `<w:r><w:fldChar w:fldCharType="end"/></w:r>` +
     gap +
-    (commentBehindTab && field.tab ? tab + comment : comment + tab);
+    comment +
+    tab;
   return { inline, trailing };
 };
 
@@ -216,21 +202,17 @@ export const foldedFieldsOf = (spec: ParagraphSpec): FieldSpec[] => {
 type ParagraphMarkupOptions = {
   /** Inline markup to use in place of what the spec would write. */
   authored?: string | undefined;
-  /** The paragraph as it stands once it has been through the editor and written again. */
-  throughEditor?: boolean;
 };
 
 const paragraphXml = (
   spec: ParagraphSpec,
   ids: MarkupIds,
-  { authored, throughEditor = false }: ParagraphMarkupOptions = {},
+  { authored }: ParagraphMarkupOptions = {},
 ): string => {
-  const folded = foldedFieldsOf(spec).length;
   let inline = "";
   let trailing = "";
-  for (const [index, field] of spec.fields.entries()) {
-    // A folded tab is a capture, which carries the comment's mark as text does.
-    const built = fieldXml({ field, commentBehindTab: throughEditor && index >= folded }, ids);
+  for (const field of spec.fields) {
+    const built = fieldXml(field, ids);
     inline += built.inline;
     trailing += built.trailing;
   }
@@ -338,13 +320,9 @@ export const paragraphMarkupOf = (documentXml: string, paraId: string): string =
   return paragraph;
 };
 
-/**
- * What {@link inlineTokens} reads off a paragraph authored from `spec`: as it
- * was authored, or, with `throughEditor`, as a save writes it once the
- * paragraph has been through the editor.
- */
-export const expectedTokens = (spec: ParagraphSpec, throughEditor = false): string[] =>
-  inlineTokens(paragraphXml(spec, { next: 1, comments: [] }, { throughEditor }));
+/** Exact authored range order, including comment marks carried by tabs. */
+export const expectedTokens = (spec: ParagraphSpec): string[] =>
+  inlineTokens(paragraphXml(spec, { next: 1, comments: [] }));
 
 /** The cached display the marker shows for `fields`, joined as the marker joins it. */
 export const cachedDisplay = (fields: readonly FieldSpec[]): string =>

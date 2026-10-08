@@ -1,9 +1,14 @@
+import { createBuiltInStyleIndex } from "../docx/builtInStyles";
+import { collectHeadings } from "../utils/headingCollector";
+import { parseShapeDocument } from "../__tests__/editorHarness";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { expect, spyOn, test } from "bun:test";
 import { Result } from "better-result";
 import type { Command } from "prosemirror-state";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import {
   canonicalRefusalCaseId,
+  TOC_HEADING_SHAPES,
   declareCanonicalRefusalCases,
 } from "../../../../test/canonical-conformance-refusals";
 import * as canonicalStructure from "./canonicalStructure";
@@ -238,4 +243,41 @@ test("unsupported note insertion has an explicit ledger-keyed conformance contra
       expectation: "declared",
     })),
   );
+});
+
+test("TOC refusal applicability matches every fixture's source headings", async () => {
+  const headingShapes: string[] = [];
+  for (const shape of DOCUMENT_SHAPES) {
+    const source = await parseShapeDocument(await shape.build());
+    const definitions = source.package.styles;
+    const styles = createBuiltInStyleIndex(definitions?.styles ?? [], definitions?.docDefaults);
+    if (collectHeadings(toProseDoc(source), styles).length > 0) headingShapes.push(shape.id);
+  }
+  expect(headingShapes.toSorted()).toEqual([...TOC_HEADING_SHAPES].toSorted());
+});
+
+test("TOC without source headings remains a strict no-change command in both modes", async () => {
+  const operation = CONFORMANCE_OPERATIONS.find(({ id }) => id === "command:generateTOC");
+  if (!operation) throw new TypeError("TOC conformance command is absent");
+  const cases = EDITOR_MODES.map(
+    (mode) =>
+      ({
+        shape: "plain-markdown",
+        operation: operation.id,
+        placement: "caret-middle",
+        mode,
+      }) as const,
+  );
+  const rows = declareCanonicalRefusalCases(cases);
+  expect([...rows.values()]).toEqual([[], []]);
+  const result = await runConformanceCase({
+    shape: documentShape("plain-markdown"),
+    operation,
+    placement: "caret-middle",
+    refusalCases: rows,
+  });
+  expect(result?.violations).toEqual([]);
+  // The driver calls a false command verdict "refused", including a no-change command.
+  expect(result?.runs).toEqual({ editing: "refused", suggesting: "refused" });
+  expect(result?.refusals).toEqual([]);
 });
