@@ -2218,6 +2218,8 @@ const fn paragraph_break_is_removed(
     )
 }
 
+// Share the compiled coalescer between run projection and paragraph joins.
+#[inline(never)]
 fn append_formatting_span(spans: &mut Vec<TextFormattingSpan>, span: TextFormattingSpan) {
     if let Some(adjacent) = spans
         .iter_mut()
