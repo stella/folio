@@ -1,7 +1,7 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
-import type { Node as PMNode } from "prosemirror-model";
+import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
 import { assertProperty, propertyTestTimeout } from "../../../../../../test/property-testing";
 import { createEmptyDocument } from "../../../utils/createDocument";
@@ -29,6 +29,26 @@ const sourceDocument = async () => {
     },
   ];
   return parseShapeDocument(new Uint8Array(await createDocx(source)));
+};
+
+const formattedClipboard = async () => {
+  const source = createEmptyDocument({ initialText: "x" });
+  source.package.document.content = [
+    {
+      type: "paragraph",
+      content: [
+        {
+          type: "run",
+          formatting: { bold: true },
+          content: [{ type: "text", text: "x" }],
+        },
+      ],
+    },
+  ];
+  const parsed = await parseShapeDocument(new Uint8Array(await createDocx(source)));
+  const text = createHarnessState(parsed, "editing").doc.firstChild?.firstChild;
+  if (!text?.isText) return panic("Missing parser-produced clipboard text.");
+  return new Slice(Fragment.from(text), 0, 0);
 };
 
 const tokens = (doc: PMNode) => {
@@ -84,25 +104,26 @@ const paste = (view: HeadlessEditorView) =>
 
 test("empty paragraph formatting and explicit clearing survive typing, paste, save and reopen", async () => {
   const base = await sourceDocument();
+  const clipboard = await formattedClipboard();
   for (const mode of ["editing", "suggesting"] as const) {
-    for (const input of ["type", "paste"] as const) {
+    for (const input of ["formattedPaste", "type", "paste"] as const) {
       for (const clear of [false, true]) {
         const view = new HeadlessEditorView(createHarnessState(base, mode));
         expect(toggleBold(view.state, view.dispatch)).toBe(true);
-        expect(view.state.doc.firstChild?.attrs._originalFormatting?.runProperties?.bold).toBe(
-          true,
-        );
         if (clear) {
           expect(clearFormatting(view.state, view.dispatch)).toBe(true);
-          expect(
-            view.state.doc.firstChild?.attrs._originalFormatting?.runProperties,
-          ).toBeUndefined();
         }
         if (input === "type") view.typeText("x");
-        else paste(view);
+        else if (input === "paste") paste(view);
+        else view.paste(clipboard);
         const text = view.state.doc.firstChild?.firstChild;
-        expect(text?.marks.some(({ type }) => type.name === "bold")).toBe(!clear);
-        await assertRoundtrip(view, base);
+        expect(text?.marks.some(({ type }) => type.name === "bold")).toBe(
+          input === "formattedPaste" || !clear,
+        );
+        const saved = await assertRoundtrip(view, base);
+        const paragraph = saved.model.package.document.content.at(0);
+        if (paragraph?.type !== "paragraph") return panic("Missing saved paragraph.");
+        expect(paragraph.formatting?.runProperties?.bold).toBe(clear ? undefined : true);
       }
     }
   }
