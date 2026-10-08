@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 717860451,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3365509225,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "412DDC7F",
+          "text": "Warranty notice period supplier delivery delivery invoice."
+        }
+      ]
+    },
+    {
+      "action": "new reviewer",
+      "seed": 1214237427
+    },
+    {
+      "action": "accept one",
+      "seed": 3293991728
+    },
+    {
+      "action": "reject all",
+      "seed": 3166109334
+    },
+    {
+      "action": "core batch",
+      "seed": 2184879436,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "mistake",
+      "seed": 702707851
+    },
+    {
+      "action": "reject one",
+      "seed": 1902437994
+    }
+  ],
+  "swarm": [
+    "commentOnRange",
+    "replaceBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTableRow",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from insert+delete of 3611723579ddaf3b",
+  "title": "PINNED #1520, seed 717860451: accepted paragraph joins keep reader block boundaries"
+}

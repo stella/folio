@@ -17,6 +17,7 @@ import { listLabelAttrsFromRendering } from "../prosemirror/listLabels";
 import type { ParagraphAttrs } from "../prosemirror/schema/nodes";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
 import { renderParagraphInline } from "./renderRuns";
+import { inlineBreaksToHtml } from "./escape";
 import type { RenderContext } from "./types";
 
 /** Markdown has six heading levels; Word has nine. */
@@ -65,8 +66,10 @@ export function renderParagraphBlock(
       return { markdown: "", isListItem: false };
     }
     const hashes = "#".repeat(Math.min(MAX_MARKDOWN_HEADING_LEVEL, headingLevel + 1));
+    // ATX headings occupy one source line; physical newlines create new blocks.
+    const headingInline = inlineBreaksToHtml(inline);
     return {
-      markdown: label ? `${hashes} ${label} ${inline}` : `${hashes} ${inline}`,
+      markdown: label ? `${hashes} ${label} ${headingInline}` : `${hashes} ${headingInline}`,
       isListItem: false,
     };
   }
