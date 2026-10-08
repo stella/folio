@@ -11,6 +11,7 @@ import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, parseDocx } from "@stll/foli
 import type { FolioAIBlockParagraphProperties } from "@stll/folio-core/ai-edits/types";
 
 import { runFlow } from "../support/fuzz.ts";
+import { modelPendingTextEffect } from "../support/pending-text-oracle.ts";
 
 import {
   decimalLevel,
@@ -446,7 +447,8 @@ const expectedPendingLoads = (
   const textByBlock = new Map(savedText);
   return records.map(({ suggestionId, anchor, operation }) => {
     const text = textByBlock.get(anchor.blockId);
-    assert.ok(text !== undefined, `Saved proposal ${suggestionId} has no anchor`);
+    if (text === undefined)
+      return { status: "stale", suggestionId, reason: "missingAnchor" } as const;
     if (hashFolioAIBlockText(normalizeFolioAIBlockText(text)) !== anchor.originalTextHash)
       return { status: "stale", suggestionId, reason: "textChanged" } as const;
     if (
@@ -457,36 +459,7 @@ const expectedPendingLoads = (
         anchor.selectedTextHash
     )
       return { status: "stale", suggestionId, reason: "textChanged" } as const;
-    switch (operation.type) {
-      case "replaceRange": {
-        const { startOffset, endOffset } = operation.range;
-        assert.ok(startOffset >= 0 && endOffset >= startOffset && endOffset <= text.length);
-        textByBlock.set(
-          anchor.blockId,
-          text.slice(0, startOffset) + operation.replace + text.slice(endOffset),
-        );
-        break;
-      }
-      case "replaceInBlock": {
-        const start = text.indexOf(operation.find);
-        assert.ok(start >= 0);
-        assert.equal(start, text.lastIndexOf(operation.find), "Pinned replacement must be unique");
-        textByBlock.set(
-          anchor.blockId,
-          text.slice(0, start) + operation.replace + text.slice(start + operation.find.length),
-        );
-        break;
-      }
-      case "insertAfterBlock":
-      case "insertBeforeBlock":
-      case "formatRange":
-      case "commentOnRange":
-      case "setBlockParagraphProperties":
-        // These operations preserve the existing anchor's text.
-        break;
-      default:
-        assert.fail(`Pinned proposal text effect is not modeled: ${operation.type}`);
-    }
+    modelPendingTextEffect(operation, textByBlock);
     return { status: "restaged", suggestionId } as const;
   });
 };
@@ -521,7 +494,7 @@ test(
             // Proposals are host-owned, outside DOCX until explicitly accepted.
             assert.ok(!rowsOf(reopened).some((row) => row.text === text));
             const savedText = new Map(
-              Object.entries(reopened.snapshot().anchors).map(([id, anchor]) => [id, anchor.text]),
+              reopened.snapshot().blocks.map((block) => [block.id, block.text]),
             );
             const expectedLoads = expectedPendingLoads(records, savedText);
             // Positive control: change the saved paragraph itself, not a load result.
@@ -535,7 +508,7 @@ test(
             ];
             const changed = await openReviewer(await packDocument(changedDocument));
             const changedText = new Map(
-              Object.entries(changed.snapshot().anchors).map(([id, anchor]) => [id, anchor.text]),
+              changed.snapshot().blocks.map((block) => [block.id, block.text]),
             );
             const staleControl = expectedPendingLoads([proposal], changedText);
             assert.deepEqual(staleControl, [
