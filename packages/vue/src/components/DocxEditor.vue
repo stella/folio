@@ -630,8 +630,12 @@ provideFolioUI(props.components);
 const isDark = useColorMode();
 provideDocxPortalClass(isDark);
 
+const canonicalAuthoritySession = computed(() =>
+  usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting),
+);
+
 function notifyDocumentChange(doc: Document): void {
-  if (!usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting)) {
+  if (!canonicalAuthoritySession.value) {
     props.onChange?.(doc);
     emit("change", doc);
     emit("update:document", doc);
@@ -663,9 +667,6 @@ function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
 
 const editorMode = ref<EditorMode>(props.mode);
 const readOnly = computed(() => props.readOnly || editorMode.value === "viewing");
-const canonicalAuthoritySession = computed(() =>
-  usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting),
-);
 
 // Review controls (mirrors React's `useEditorMode` display state + toggle):
 //  - `showReviewControls` gates the toolbar's track-changes toggle + markup
