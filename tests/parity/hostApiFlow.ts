@@ -1,5 +1,5 @@
 import fc from "fast-check";
-import regressionSeeds from "../../test/property-seeds/scripts%2Fhost-api-flow.test.ts.json";
+import regressionSeeds from "../../test/property-seeds/scripts%2Fhost-api-flow.test.ts.json" with { type: "json" };
 import {
   PAGED_SCROLL_NAVIGATION_CASES,
   SCROLL_NAVIGATION_CASES,
