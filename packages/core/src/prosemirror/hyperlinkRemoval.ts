@@ -13,6 +13,7 @@
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
+import { TaggedError } from "better-result";
 
 import { BUILT_IN_STYLE_NAME } from "../docx/builtInStyles";
 import type { RunPropertyChange, TextFormatting } from "../types/document";
@@ -31,6 +32,33 @@ import { paragraphRunStyleContextAt } from "./runStyleFormatting";
 type LinkedPiece = { from: number; to: number; node: PMNode };
 type LinkedRange = { from: number; to: number; pieces: LinkedPiece[] };
 
+export class HyperlinkRemovalRefusal extends TaggedError("HyperlinkRemovalRefusal")<{
+  message: string;
+}> {}
+
+const partialInlineRefusal = () =>
+  new HyperlinkRemovalRefusal({
+    message: "Hyperlink removal cannot split an indivisible inline element.",
+  });
+
+type HyperlinkRemovalRangeOptions = { doc: PMNode; from: number; to: number };
+
+/** Canonical inline elements have no addressable interior gaps. */
+export const assertHyperlinkRemovalRange = ({
+  doc,
+  from,
+  to,
+}: HyperlinkRemovalRangeOptions): void => {
+  for (const position of [from, to]) {
+    const resolved = doc.resolve(position);
+    for (let depth = 1; depth <= resolved.depth; depth += 1) {
+      const node = resolved.node(depth);
+      if (node.isInline && node.marks.some(({ type }) => type.name === "hyperlink"))
+        throw partialInlineRefusal();
+    }
+  }
+};
+
 /** Contiguous stretches of linked, not yet deleted, inline content in [`from`, `to`) of `doc`. */
 const linkedRanges = (doc: PMNode, from: number, to: number): LinkedRange[] => {
   const ranges: LinkedRange[] = [];
@@ -47,6 +75,8 @@ const linkedRanges = (doc: PMNode, from: number, to: number): LinkedRange[] => {
     if (start >= end) {
       return true;
     }
+    if (!node.isText && (start !== position || end !== position + node.nodeSize))
+      throw partialInlineRefusal();
     // Non-text cut offsets address content, not the atom's outer node size.
     const piece = {
       from: start,
@@ -133,6 +163,7 @@ export const removeHyperlinkInRange = (
   from: number,
   to: number,
 ): Transaction => {
+  assertHyperlinkRemovalRange({ doc: tr.doc, from, to });
   const { schema } = state;
   const hyperlinkType = schema.marks["hyperlink"];
   if (!hyperlinkType) {

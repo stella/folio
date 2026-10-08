@@ -15,7 +15,7 @@ import {
   normalizeUserUrl,
   sanitizeExternalUrl,
 } from "../../../utils/urlSecurity";
-import { removeHyperlinkInRange } from "../../hyperlinkRemoval";
+import { assertHyperlinkRemovalRange, removeHyperlinkInRange } from "../../hyperlinkRemoval";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { isMarkActive } from "./markUtils";
@@ -229,6 +229,7 @@ export const HyperlinkExtension = createMarkExtension({
     const removalRange = (state: EditorState) => {
       const { empty, $from } = state.selection;
       const { from, to } = canonicalSelectionRange(state);
+      assertHyperlinkRemovalRange({ doc: state.doc, from, to });
       if (!empty) return { from, to };
       const linkMark = $from.marks().find((mark) => mark.type === documentHyperlinkType(state));
       if (!linkMark) return undefined;
