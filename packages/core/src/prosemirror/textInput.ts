@@ -69,7 +69,7 @@ export const dispatchEditorTextInput = <TView extends TextInputDispatchTarget<TV
 // Browser replacement operations (spellcheck/autocorrect) may target text other
 // than the current selection. Ordinary typing uses the model selection, whose
 // mark boundary is unambiguous even when the DOM caret is inside the left span.
-const replacementSelection = (view: EditorView, event: InputEvent) => {
+export const getEditorInputTargetRange = (view: EditorView, event: InputEvent) => {
   if (typeof event.getTargetRanges !== "function") return null;
   const ranges = event.getTargetRanges();
   if (ranges.length !== 1) return null;
@@ -109,7 +109,7 @@ export const handleEditorBeforeInput = (view: EditorView, event: InputEvent): bo
   if (text === null) return false;
   const selection =
     event.inputType === "insertReplacementText"
-      ? replacementSelection(view, event)
+      ? getEditorInputTargetRange(view, event)
       : view.state.selection;
   if (!selection) return false;
   event.preventDefault();

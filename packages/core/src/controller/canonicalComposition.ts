@@ -204,6 +204,24 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     get active() {
       return state.type !== "committed";
     },
+    matchesCancellationRange: (view: EditorView, range: { from: number; to: number }) => {
+      if (state.type === "committed" || state.view !== view) return false;
+      const text = selectedText(state.baseline, view.state);
+      if (text === null || text.length === 0) return false;
+      const from = state.baseline.selection.from;
+      if (range.from !== from || range.to !== from + text.length) return false;
+      // A one-character Backspace can target the whole proposal too. Native
+      // cancellation selects that proposal; ordinary deletion leaves a caret.
+      const selection = view.dom.ownerDocument.getSelection();
+      if (!selection || selection.rangeCount !== 1) return false;
+      const selected = selection.getRangeAt(0);
+      if (!view.dom.contains(selected.startContainer) || !view.dom.contains(selected.endContainer))
+        return false;
+      return (
+        view.posAtDOM(selected.startContainer, selected.startOffset) === range.from &&
+        view.posAtDOM(selected.endContainer, selected.endOffset) === range.to
+      );
+    },
     start: (view: EditorView) => {
       if (state.type !== "committed") return;
       if (!options.begin()) return;
