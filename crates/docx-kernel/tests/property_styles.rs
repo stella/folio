@@ -16,6 +16,15 @@ use stella_docx_kernel::{
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
+#[derive(Clone, Copy, Debug)]
+enum ParagraphSelection {
+    Omitted,
+    Missing,
+    Character,
+    Table,
+    Explicit,
+}
+
 const NAMESPACE: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 fn package(document: &str, styles: &str) -> Vec<u8> {
@@ -36,7 +45,7 @@ fn package(document: &str, styles: &str) -> Vec<u8> {
 
 fn styles_xml(definitions: &str, default_bold: bool) -> String {
     format!(
-        r#"<w:styles xmlns:w="{NAMESPACE}"><w:docDefaults><w:rPrDefault><w:rPr><w:b w:val="{default_bold}"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:ind w:start="100"/><w:outlineLvl w:val="2"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Default"><w:rPr><w:b/></w:rPr><w:pPr><w:ind w:start="300"/><w:outlineLvl w:val="4"/></w:pPr></w:style>{definitions}</w:styles>"#
+        r#"<w:styles xmlns:w="{NAMESPACE}"><w:docDefaults><w:rPrDefault><w:rPr><w:b w:val="{default_bold}"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:ind w:start="100"/><w:outlineLvl w:val="2"/><w:jc w:val="left"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Default"><w:rPr><w:b/></w:rPr><w:pPr><w:ind w:start="300"/><w:outlineLvl w:val="4"/><w:jc w:val="center"/></w:pPr></w:style>{definitions}</w:styles>"#
     )
 }
 
@@ -77,14 +86,16 @@ proptest! {
         paragraph_toggles in proptest::collection::vec(proptest::bool::ANY, 1..17),
         character_toggles in proptest::collection::vec(proptest::bool::ANY, 1..17),
         default_bold in proptest::bool::ANY,
-        paragraph_selection in 0u8..3,
+        paragraph_selection in proptest::sample::select(vec![ParagraphSelection::Omitted, ParagraphSelection::Missing, ParagraphSelection::Character, ParagraphSelection::Table, ParagraphSelection::Explicit]),
         character_missing in proptest::bool::ANY,
     ) {
-        let definitions = format!("{}{}", chain("paragraph", "P", &paragraph_toggles, false), chain("character", "C", &character_toggles, false));
+        let definitions = format!(r#"{}{}<w:style w:type="table" w:styleId="WrongTable"><w:rPr><w:b/></w:rPr></w:style>"#, chain("paragraph", "P", &paragraph_toggles, false), chain("character", "C", &character_toggles, false));
         let paragraph_style = match paragraph_selection {
-            0 => String::new(),
-            1 => r#"<w:pStyle w:val="MissingParagraph"/>"#.to_owned(),
-            _ => format!(r#"<w:pStyle w:val="P{}"/>"#, paragraph_toggles.len() - 1),
+            ParagraphSelection::Omitted => String::new(),
+            ParagraphSelection::Missing => r#"<w:pStyle w:val="MissingParagraph"/>"#.to_owned(),
+            ParagraphSelection::Character => r#"<w:pStyle w:val="C0"/>"#.to_owned(),
+            ParagraphSelection::Table => r#"<w:pStyle w:val="WrongTable"/>"#.to_owned(),
+            ParagraphSelection::Explicit => format!(r#"<w:pStyle w:val="P{}"/>"#, paragraph_toggles.len() - 1),
         };
         let character_style = if character_missing {
             r#"<w:rStyle w:val="MissingCharacter"/>"#.to_owned()
@@ -98,9 +109,8 @@ proptest! {
         ).unwrap();
         prop_assert_eq!(projection.formatting_status, FormattingProjectionStatus::Complete);
         let paragraph_bold = match paragraph_selection {
-            0 => true,
-            1 => false,
-            _ => paragraph_toggles.iter().filter(|value| **value).count() % 2 == 1,
+            ParagraphSelection::Explicit => paragraph_toggles.iter().filter(|value| **value).count() % 2 == 1,
+            _ => true,
         };
         let character_bold = !character_missing && character_toggles.iter().filter(|value| **value).count() % 2 == 1;
         let expected_bold = default_bold ^ paragraph_bold ^ character_bold;
@@ -115,17 +125,26 @@ proptest! {
             return Ok(());
         };
         let expected_start = match paragraph_selection {
-            0 => 300,
-            1 => 100,
-            _ => i32::try_from(499 + paragraph_toggles.len()).unwrap(),
+            ParagraphSelection::Explicit => i32::try_from(499 + paragraph_toggles.len()).unwrap(),
+            _ => 300,
         };
         prop_assert_eq!(indentation.first().unwrap().value.start_twips, Some(expected_start));
         let StructuralFactSet::Known(outline) = &projection.structural_facts.outline_levels else {
             prop_assert!(false, "bounded style chains keep outline levels known");
             return Ok(());
         };
-        prop_assert_eq!(outline.first().unwrap().outline_level, match paragraph_selection { 0 => 4, 1 => 2, _ => 1 });
-        prop_assert_eq!(projection.structural_facts.numbering_hierarchy, StructuralFactSet::Known(Vec::new()));
+        prop_assert_eq!(outline.first().unwrap().outline_level, match paragraph_selection { ParagraphSelection::Explicit => 1, _ => 4 });
+        prop_assert_eq!(&projection.structural_facts.numbering_hierarchy, &StructuralFactSet::Known(Vec::new()));
+        if !matches!(paragraph_selection, ParagraphSelection::Explicit) {
+            let omitted = project_docx(
+                &package(&document_xml("", &character_style), &styles_xml(&definitions, default_bold)),
+                DocxLimits::default(),
+                |facts| InternalParagraphId::new(format!("paragraph-{}", facts.ordinal)),
+            ).unwrap();
+            prop_assert_eq!(&projection.structural_facts, &omitted.structural_facts);
+            prop_assert_eq!(&projection.paragraphs.first().unwrap().formatting, &omitted.paragraphs.first().unwrap().formatting);
+            prop_assert_eq!(&projection.paragraphs.first().unwrap().alignment, &omitted.paragraphs.first().unwrap().alignment);
+        }
     }
 
     #[test]

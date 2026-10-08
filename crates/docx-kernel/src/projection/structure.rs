@@ -661,24 +661,24 @@ impl StyleSheet {
         &self,
         explicit_style_id: Option<&str>,
     ) -> Result<Option<&ResolvedParagraphStyle>, ()> {
-        let Some(style_id) = explicit_style_id.or(self.default_style_id.as_deref()) else {
+        let Some(style_id) = explicit_style_id
+            .filter(|id| {
+                self.styles
+                    .get(*id)
+                    .is_some_and(|style| style.kind == StyleKind::Paragraph)
+            })
+            .or(self.default_style_id.as_deref())
+        else {
             return Ok(None);
         };
-        if !self
-            .styles
-            .get(style_id)
-            .is_some_and(|style| style.kind == StyleKind::Paragraph)
-        {
-            return Ok(None);
-        }
         self.resolved_paragraph_styles
             .get(style_id)
             .map(Some)
             .ok_or(())
     }
 
-    /// Missing explicit styles contribute no properties; omitted styles select
-    /// the default. Cyclic inheritance cannot supply an effective alignment.
+    /// Missing, wrong-kind, and omitted paragraph references select the default.
+    /// Cyclic inheritance cannot supply an effective alignment.
     fn style_alignment(&self, direct: &ParagraphProperties) -> Option<ParagraphAlignmentSetting> {
         let table = self.table_style(&direct.table_style).ok()?;
         self.paragraph_style(direct.style_id.as_deref())
