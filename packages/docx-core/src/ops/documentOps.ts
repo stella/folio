@@ -9,7 +9,8 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
  */
 
 export { captureDocumentOp } from "./wire";
-export { defaultInsertionGap, zeroWidthLeavesAt, inlineLeafSpans } from "./leaves";
+export { compareGaps, defaultInsertionGap, inlineLeafSpans, zeroWidthLeavesAt } from "./leaves";
+export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
 export {
@@ -152,6 +153,6 @@ export {
   type TouchedBlocks,
 } from "./types";
 
-export { packageParagraphIds } from "./ids";
+export { idKey, packageParagraphIds } from "./ids";
 
 export { commentDocumentIssue, freshCommentId } from "./comments";

@@ -179,43 +179,47 @@ const operationFor = ({ edit }: GeneratedCase, blockId: string): FolioAIEditOper
 const STORY_PARTS = ["word/document.xml", "word/footnotes.xml", "word/endnotes.xml"] as const;
 
 describe("a save leaves every note part's comment ranges balanced", () => {
-  test("over generated spans, marker placements and edits", async () => {
-    await fc.assert(
-      fc.asyncProperty(generatedCase, async (generated) => {
-        const source = await createDocx(buildDocument(generated));
-        const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Editor" });
-        const story = { type: generated.noteKind, noteId: NOTE_ID } as const;
-        const target = reviewer.snapshotStory(story)?.blocks[generated.edit.blockIndex];
-        expect(target).toBeDefined();
-        if (!target) {
-          return;
-        }
-
-        reviewer.applyDocumentOperationsToStory({
-          story,
-          batch: {
-            version: 1,
-            operations: [operationFor(generated, target.id)],
-            mode: generated.edit.mode,
-          },
-        });
-
-        const saved = await reviewer.toBuffer();
-        const zip = await JSZip.loadAsync(saved);
-        const parts = await Promise.all(
-          STORY_PARTS.map(async (part) => ({ part, xml: await zip.file(part)?.async("text") })),
-        );
-        for (const { part, xml } of parts) {
-          if (xml === undefined) {
-            continue;
+  test(
+    "over generated spans, marker placements and edits",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(generatedCase, async (generated) => {
+          const source = await createDocx(buildDocument(generated));
+          const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Editor" });
+          const story = { type: generated.noteKind, noteId: NOTE_ID } as const;
+          const target = reviewer.snapshotStory(story)?.blocks[generated.edit.blockIndex];
+          expect(target).toBeDefined();
+          if (!target) {
+            return;
           }
-          expect({ part, unbalanced: [...unbalancedCommentRangeIds(xml)] }).toEqual({
-            part,
-            unbalanced: [],
+
+          reviewer.applyDocumentOperationsToStory({
+            story,
+            batch: {
+              version: 1,
+              operations: [operationFor(generated, target.id)],
+              mode: generated.edit.mode,
+            },
           });
-        }
-      }),
-      propertyConfig({ numRuns: 60 }),
-    );
-  }, 180_000);
+
+          const saved = await reviewer.toBuffer();
+          const zip = await JSZip.loadAsync(saved);
+          const parts = await Promise.all(
+            STORY_PARTS.map(async (part) => ({ part, xml: await zip.file(part)?.async("text") })),
+          );
+          for (const { part, xml } of parts) {
+            if (xml === undefined) {
+              continue;
+            }
+            expect({ part, unbalanced: [...unbalancedCommentRangeIds(xml)] }).toEqual({
+              part,
+              unbalanced: [],
+            });
+          }
+        }),
+        propertyConfig({ numRuns: 60 }),
+      );
+    },
+    propertyTestTimeout(180_000),
+  );
 });

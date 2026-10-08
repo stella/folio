@@ -141,6 +141,7 @@ export type DocxRevisionKind =
 | "rPrChange"
 | "sectPrChange"
 | "tblPrChange"
+| "tblPrExChange"
 | "trPrChange"
 | "tcPrChange"
 | "tblGridChange"

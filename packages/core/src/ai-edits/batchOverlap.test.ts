@@ -955,18 +955,22 @@ describe("two paragraph-property operations on one block", () => {
 });
 
 describe("a random batch with overlapping, nested and duplicate targets", () => {
-  test("refuses each conflict and applies the rest as one at a time would", async () => {
-    await assertProperty(
-      fc.asyncProperty(
-        fc.array(operationArbitrary, { minLength: 2, maxLength: 7 }),
-        fc.constantFrom(...MODES),
-        async (generated, mode) => {
-          expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
-        },
-      ),
-      { numRuns: 150 },
-    );
-  }, 300_000);
+  test(
+    "refuses each conflict and applies the rest as one at a time would",
+    async () => {
+      await assertProperty(
+        fc.asyncProperty(
+          fc.array(operationArbitrary, { minLength: 2, maxLength: 7 }),
+          fc.constantFrom(...MODES),
+          async (generated, mode) => {
+            expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
+          },
+        ),
+        { numRuns: 150 },
+      );
+    },
+    propertyTestTimeout(300_000),
+  );
 });
 
 describe("a merge retracting an inserted break before the last paragraph the batch deletes", () => {

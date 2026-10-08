@@ -280,43 +280,51 @@ describe("a table content control keeps its wrapper", () => {
     }
   }, 60_000);
 
-  test("a row-level control survives every declared sibling, on every leg", async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.constantFrom(...TABLE_SIBLINGS),
-        fc.constantFrom(...LEG_VALUES),
-        async (sibling, leg) => {
-          const saved = await savedDocumentXml(tableWithRowControl(sibling), leg);
+  test(
+    "a row-level control survives every declared sibling, on every leg",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom(...TABLE_SIBLINGS),
+          fc.constantFrom(...LEG_VALUES),
+          async (sibling, leg) => {
+            const saved = await savedDocumentXml(tableWithRowControl(sibling), leg);
 
-          expect({ leg, ...controlSurvives(saved) }).toEqual({ leg, ...ALL_PRESENT });
-          // The control still holds the row it held, and only that row: a walk
-          // that spliced would leave the wrapper empty or swallow the sibling.
-          expect(insideFirstControl(saved)).toContain("<w:t>controlled</w:t>");
-          expect(insideFirstControl(saved)).not.toContain("<w:t>plain</w:t>");
-        },
-      ),
-      propertyConfig({ numRuns: 60 }),
-    );
-    // Each run builds, parses and repacks a package; sixty of them do not fit
-    // the default five-second budget on a loaded machine.
-  }, 120_000);
+            expect({ leg, ...controlSurvives(saved) }).toEqual({ leg, ...ALL_PRESENT });
+            // The control still holds the row it held, and only that row: a walk
+            // that spliced would leave the wrapper empty or swallow the sibling.
+            expect(insideFirstControl(saved)).toContain("<w:t>controlled</w:t>");
+            expect(insideFirstControl(saved)).not.toContain("<w:t>plain</w:t>");
+          },
+        ),
+        propertyConfig({ numRuns: 60 }),
+      );
+      // Each run builds, parses and repacks a package; sixty of them do not fit
+      // the default five-second budget on a loaded machine.
+    },
+    propertyTestTimeout(120_000),
+  );
 
-  test("a cell-level control survives every declared sibling, on every leg", async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.constantFrom(...ROW_SIBLINGS),
-        fc.constantFrom(...LEG_VALUES),
-        async (sibling, leg) => {
-          const saved = await savedDocumentXml(tableWithCellControl(sibling), leg);
+  test(
+    "a cell-level control survives every declared sibling, on every leg",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom(...ROW_SIBLINGS),
+          fc.constantFrom(...LEG_VALUES),
+          async (sibling, leg) => {
+            const saved = await savedDocumentXml(tableWithCellControl(sibling), leg);
 
-          expect({ leg, ...controlSurvives(saved) }).toEqual({ leg, ...ALL_PRESENT });
-          expect(insideFirstControl(saved)).toContain("<w:t>controlled</w:t>");
-          expect(insideFirstControl(saved)).not.toContain("<w:t>plain</w:t>");
-        },
-      ),
-      propertyConfig({ numRuns: 60 }),
-    );
-  }, 120_000);
+            expect({ leg, ...controlSurvives(saved) }).toEqual({ leg, ...ALL_PRESENT });
+            expect(insideFirstControl(saved)).toContain("<w:t>controlled</w:t>");
+            expect(insideFirstControl(saved)).not.toContain("<w:t>plain</w:t>");
+          },
+        ),
+        propertyConfig({ numRuns: 60 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
   test("saving is a fixed point: the second save writes what the first did", async () => {
     for (const body of [tableWithRowControl(""), tableWithCellControl("")]) {

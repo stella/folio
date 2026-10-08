@@ -36,5 +36,13 @@
       "note": "Merge/split generator must distinguish refused vertical-group targets from successful horizontal owner splits",
       "date": "2026-10-02"
     }
+  ],
+  "table semantic allocation excludes lifetime-retired paragraph ids": [
+    {
+      "seed": 623598809,
+      "path": "0:0:0",
+      "note": "Extend semantic allocation with lifetime reservations; the initial insert-column fixture omitted required width, then the reservation oracle exposed package-only allocation.",
+      "date": "2026-10-04"
+    }
   ]
 }

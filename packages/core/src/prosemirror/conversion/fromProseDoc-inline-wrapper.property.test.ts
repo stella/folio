@@ -161,7 +161,7 @@ describe("a wrapper tree the editor gives back", () => {
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test(
@@ -180,7 +180,7 @@ describe("a wrapper tree the editor gives back", () => {
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test("keeps two adjacent wrappers apart", () => {

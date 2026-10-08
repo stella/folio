@@ -1,3 +1,4 @@
+import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
 import { assertExactModel } from "../../../../test/exactModel";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { describe, expect, spyOn, test } from "bun:test";
@@ -1162,6 +1163,49 @@ test(
   propertyTestTimeout(30_000),
 );
 
+test("TOC view helper publishes through the controller and keeps handled refusal atomic", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Heading" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected TOC heading fixture");
+  paragraph.paraId = "12345678";
+  paragraph.formatting = { outlineLevel: { kind: "heading", level: 0 } };
+  const gaps: unknown[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    onSessionRefusal: (_reason, gap) => gaps.push(gap),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (view === null) panic("Expected TOC controller view");
+    const before = manager.api.getCanonicalDocument();
+    manager.api.setSelection(8);
+    expect(insertTableOfContentsInView(view, { title: "Contents" })).toBe(true);
+    const accepted = manager.api.getCanonicalDocument();
+    expect(accepted?.package.document.content).toHaveLength(3);
+    expect(manager.api.undo()).toBe(true);
+    expect(manager.api.getCanonicalDocument()).toEqual(before);
+    expect(manager.api.redo()).toBe(true);
+    expect(manager.api.getCanonicalDocument()).toEqual(accepted);
+    expect(manager.api.setCanonicalMode({ type: "suggesting", author: "Reviewer" })).toBe(true);
+    const state = view.state;
+    expect(insertTableOfContentsInView(view, { title: "Contents" })).toBe(false);
+    expect(view.state).toBe(state);
+    expect(manager.api.getCanonicalDocument()).toEqual(accepted);
+    expect(gaps).toEqual([CANONICAL_GAP.trackedHyperlinkResolution]);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
 const SECONDARY_PUBLIC_STORIES = {
   header: { kind: "header", rId: "rIdSecondary" },
   footer: { kind: "footer", rId: "rIdSecondary" },

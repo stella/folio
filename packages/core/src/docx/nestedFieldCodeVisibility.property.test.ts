@@ -182,27 +182,31 @@ const sentinelsPresent = (text: string, depth: number): number[] =>
   );
 
 describe("nested field-code visibility oracle", () => {
-  test("every reader shows exactly the result-region sentinels", async () => {
-    await fc.assert(
-      fc.asyncProperty(generatedCase, async (generated) => {
-        const { xml, visibleLevels } = buildNestedFieldXml(generated);
-        const expected = visibleLevels
-          .map((visible, level) => (visible ? level : null))
-          .filter((level): level is number => level !== null);
+  test(
+    "every reader shows exactly the result-region sentinels",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(generatedCase, async (generated) => {
+          const { xml, visibleLevels } = buildNestedFieldXml(generated);
+          const expected = visibleLevels
+            .map((visible, level) => (visible ? level : null))
+            .filter((level): level is number => level !== null);
 
-        const buffer = await createDocx(xml);
+          const buffer = await createDocx(xml);
 
-        const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
-        const mainText = reviewer.getContent().at(0)?.text ?? "";
-        expect(sentinelsPresent(mainText, generated.depth)).toEqual(expected);
+          const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+          const mainText = reviewer.getContent().at(0)?.text ?? "";
+          expect(sentinelsPresent(mainText, generated.depth)).toEqual(expected);
 
-        const footnote = reviewer.listStories().find(({ handle }) => handle.type === "footnote");
-        expect(sentinelsPresent(footnote?.text ?? "", generated.depth)).toEqual(expected);
+          const footnote = reviewer.listStories().find(({ handle }) => handle.type === "footnote");
+          expect(sentinelsPresent(footnote?.text ?? "", generated.depth)).toEqual(expected);
 
-        const markdown = await docxToMarkdown(buffer);
-        expect(sentinelsPresent(markdown, generated.depth)).toEqual(expected);
-      }),
-      propertyConfig({ numRuns: 200 }),
-    );
-  }, 180_000);
+          const markdown = await docxToMarkdown(buffer);
+          expect(sentinelsPresent(markdown, generated.depth)).toEqual(expected);
+        }),
+        propertyConfig({ numRuns: 200 }),
+      );
+    },
+    propertyTestTimeout(180_000),
+  );
 });
