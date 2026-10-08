@@ -106,6 +106,7 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
     undoCanonicalDocumentOperations: (handle) =>
       deps.getEditorApi()?.undoCanonicalDocumentOperations(handle) ?? null,
     getCanonicalComments: () => deps.getEditorApi()?.getCanonicalComments() ?? null,
+    getCanonicalCommittedVersion: () => deps.getEditorApi()?.getCanonicalCommittedVersion() ?? null,
     getCanonicalDocument: () => deps.getEditorApi()?.getCanonicalDocument() ?? null,
 
     setCanonicalMode: (mode) => deps.getEditorApi()?.setCanonicalMode(mode) ?? false,

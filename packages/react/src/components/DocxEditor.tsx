@@ -1054,10 +1054,20 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     size: 4,
     color: { rgb: "000000" },
   });
-  const canonicalComments = pagedEditorRef.current?.getEditor().getCanonicalComments() ?? null;
-  const canonicalCommentsSnapshotRef = useRef<string | null>(
-    canonicalComments === null ? null : JSON.stringify(canonicalComments),
+  const canonicalCommentApi = pagedEditorRef.current?.getEditor();
+  const canonicalCommentsVersion = canonicalCommentApi?.getCanonicalCommittedVersion() ?? null;
+  const canonicalComments = useMemo(
+    () =>
+      canonicalCommentsVersion === null
+        ? null
+        : (canonicalCommentApi?.getCanonicalComments() ?? null),
+    [canonicalCommentApi, canonicalCommentsVersion],
   );
+  const canonicalCommentsSerialized = useMemo(
+    () => (canonicalComments === null ? null : JSON.stringify(canonicalComments)),
+    [canonicalComments],
+  );
+  const canonicalCommentsSnapshotRef = useRef<string | null>(canonicalCommentsSerialized);
   const lastControlledCommentsRef = useRef<string | undefined>(undefined);
 
   const {
@@ -1094,8 +1104,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     committedComments: canonicalComments,
   });
   const comments = canonicalComments ?? legacyComments;
-  const canonicalCommentsSerialized =
-    canonicalComments === null ? null : JSON.stringify(canonicalComments);
   const commentDraftMode = usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
     ? "canonical"
     : "prosemirror";
@@ -1634,7 +1642,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     const requested = JSON.stringify(legacyComments);
     // Internal journal changes cannot reapply an unchanged host value.
     if (lastControlledCommentsRef.current === requested) return;
-    if (JSON.stringify(canonicalComments) === requested) {
+    if (canonicalCommentsSerialized === requested) {
       lastControlledCommentsRef.current = requested;
       return;
     }
@@ -1662,14 +1670,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   useEffect(() => {
     if (canonicalComments === null) return;
     const nextComments = canonicalComments;
-    const serialized = JSON.stringify(nextComments);
+    const serialized = canonicalCommentsSerialized;
     if (canonicalCommentsSnapshotRef.current === null) {
       canonicalCommentsSnapshotRef.current = serialized;
       return;
     }
     if (canonicalCommentsSnapshotRef.current === serialized) return;
     canonicalCommentsSnapshotRef.current = serialized;
-    onCommentsChange?.(nextComments);
+    onCommentsChange?.(structuredClone(nextComments));
   }, [canonicalCommentsSerialized, onCommentsChange]);
 
   const selectFindMatch = useCallback((match: FindMatch): boolean => {

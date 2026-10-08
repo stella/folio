@@ -1455,3 +1455,59 @@ test.each([
     }
   },
 );
+
+test("committed version keys survive composition and distinguish document loads", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Versioned" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Missing version fixture.");
+  paragraph.paraId = "75100000";
+  let identity = "first";
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    getDocumentIdentity: () => identity,
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const initial = manager.api.getCanonicalCommittedVersion();
+    expect(initial).not.toBeNull();
+    manager.api.setSelection(2);
+    expect(manager.api.getCanonicalCommittedVersion()).toBe(initial);
+    expect(manager.api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
+    expect(manager.api.getCanonicalCommittedVersion()).toBe(initial);
+    expect(manager.api.getCanonicalDocument).toThrow(
+      "Composition must finish before taking a snapshot.",
+    );
+    manager.api.updateCanonicalInputLifecycle("endComposition");
+    expect(manager.api.getCanonicalCommittedVersion()).toBe(initial);
+    const view = manager.getView() ?? panic("Missing versioned view.");
+    view.dom.dispatchEvent(
+      new InputEvent("beforeinput", {
+        inputType: "insertText",
+        data: "x",
+        cancelable: true,
+      }),
+    );
+    const committed = manager.api.getCanonicalCommittedVersion();
+    expect(committed).not.toBe(initial);
+    expect(manager.api.undo()).toBe(true);
+    const undone = manager.api.getCanonicalCommittedVersion();
+    expect(undone).not.toBe(initial);
+    expect(undone).not.toBe(committed);
+    expect(manager.api.redo()).toBe(true);
+    expect(manager.api.getCanonicalCommittedVersion()).not.toBe(undone);
+    identity = "second";
+    manager.syncExternalDocument();
+    expect(manager.api.getCanonicalCommittedVersion()).not.toBe(initial);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
