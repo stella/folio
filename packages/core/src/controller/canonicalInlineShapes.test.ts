@@ -37,15 +37,11 @@ const fixturesFor = (text: string) => [
     .map((factory) => factory(text))
     .flat(),
 ];
-const refusalExpected = ({
-  item,
-  variant,
-}: CanonicalInlineShapeFixture<ParagraphContent | RunContent>) =>
+const refusalExpected = ({ item }: CanonicalInlineShapeFixture<ParagraphContent | RunContent>) =>
   item.type === "inlineSdt" ||
   item.type === "fieldChar" ||
   item.type === "instrText" ||
-  item.type === "renderedPageBreak" ||
-  ((item.type === "commentRangeStart" || item.type === "commentRangeEnd") && variant === "filled");
+  item.type === "renderedPageBreak";
 
 const checkShape = (fixture: CanonicalInlineShapeFixture<ParagraphContent | RunContent>) => {
   const source = normalizeForOps(canonicalInlineShapeDocument(fixture));
