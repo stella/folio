@@ -1281,13 +1281,6 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
 
   const publishStoryCommit = (storyView: EditorView, commit: CanonicalCommit): boolean => {
     if (!view || editorSession.type !== "canonical") return false;
-    if (deps.getEditingMode?.() === "suggesting") {
-      refuse(
-        "Suggesting is unavailable in the experimental canonical session.",
-        CANONICAL_GAP.suggesting,
-      );
-      return false;
-    }
     const session = editorSession.session;
     const bodyTransaction = view.state.tr;
     if (!bodyTransaction.doc.eq(commit.bodyProjection.doc))
@@ -1418,6 +1411,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       applyCanonicalStoryHistory: ({ view: storyView, story, direction }) => {
         if (story === OP_STORIES.MAIN && storyView === view) return history(direction);
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly()) return false;
+        syncCanonicalMode();
         const session = editorSession.session;
         if (direction === "undo" ? !session.canUndo : !session.canRedo) return false;
         const prepared =
@@ -1453,6 +1447,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       },
       replaceCanonicalStoryText: ({ view: storyView, story, intent }) => {
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly()) return false;
+        syncCanonicalMode();
         const session = editorSession.session;
         const prepared = session.prepareReplace(storyView.state, { ...intent, story });
         if (prepared.isErr()) {

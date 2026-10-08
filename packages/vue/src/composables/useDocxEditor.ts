@@ -163,6 +163,7 @@ import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter"
 // ============================================================================
 
 const DEFAULT_PAGE_GAP = 24;
+const DEFAULT_SUGGESTION_AUTHOR = "User";
 /** Delay before converting PM state back to the Folio document model. */
 const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 
@@ -533,6 +534,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     onSelectiveSaveTripwire,
   } = options;
   const headerFooterHost = hiddenHeaderFooterContainer ?? hiddenContainer;
+  const getSuggestionAuthor = () => toValue(author) ?? DEFAULT_SUGGESTION_AUTHOR;
 
   // ---- Reactive state -----------------------------------------------------
   // `docModel` (not `document`) so the global `document` stays reachable for the
@@ -914,7 +916,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getReadOnly: () => toValue(readOnly),
     getExperimentalSession: () => toValue(experimentalSession),
     getEditingMode: () => toValue(editorMode) ?? "editing",
-    getSuggestionAuthor: () => toValue(author) ?? "User",
+    getSuggestionAuthor,
     onSessionRefusal: (message, gap) => {
       onError?.(new CanonicalSessionRefusalError({ gap, message }));
     },
@@ -1099,10 +1101,15 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   function syncSuggestionMode(view: EditorView): void {
     const active = toValue(editorMode) === "suggesting";
-    setSuggestionMode(active, view.state, view.dispatch, toValue(author));
+    setSuggestionMode(active, view.state, view.dispatch, getSuggestionAuthor());
   }
 
-  watch([() => toValue(editorMode), () => toValue(author)], () => {
+  watch([() => toValue(editorMode), getSuggestionAuthor], () => {
+    editor.setCanonicalMode(
+      toValue(editorMode) === "suggesting"
+        ? { type: "suggesting", author: getSuggestionAuthor() }
+        : { type: "editing" },
+    );
     const view = editorView.value;
     if (view) {
       syncSuggestionMode(view);

@@ -1,3 +1,4 @@
+import * as documentOps from "@stll/docx-core/ops";
 import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
 import { assertExactModel } from "../../../../test/exactModel";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -602,9 +603,12 @@ test("canonical suggesting uses the current author and preserves explicit mode a
 
 test.each([
   { kind: "header", rId: "rIdHeader1" },
-  { kind: "footer", rId: "rIdFooter1" },
+  { kind: "footer", rId: "rIdFooter1", hdrFtrType: "default" },
+  { kind: "footer", rId: "rIdFooterFirst", hdrFtrType: "first" },
+  { kind: "footer", rId: "rIdFooterEven", hdrFtrType: "even" },
   { kind: "footnote", id: 12 },
-] as const)("a mode change refuses direct secondary commits and history in %s", (story) => {
+  { kind: "endnote", id: 13 },
+] as const)("a host mode change tracks secondary commits and shared history in %s", (story) => {
   GlobalRegistrator.register();
   const host = document.createElement("div");
   const storyHost = document.createElement("div");
@@ -626,21 +630,27 @@ test.each([
     ]);
   else if (story.kind === "footer")
     source.package.footers = new Map([
-      [story.rId, { type: "footer", hdrFtrType: "default", content }],
+      [story.rId, { type: "footer", hdrFtrType: story.hdrFtrType, content }],
     ]);
-  else source.package.footnotes = [{ type: "footnote", id: story.id, content }];
+  else if (story.kind === "footnote")
+    source.package.footnotes = [{ type: "footnote", id: story.id, content }];
+  else source.package.endnotes = [{ type: "endnote", id: story.id, content }];
   let mode: "editing" | "suggesting" = "editing";
   const reasons: string[] = [];
+  let readOnly = false;
   const { deps } = makeDeps({
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
     getExperimentalSession: () => "canonical",
+    getReadOnly: () => readOnly,
+    getSuggestionAuthor: () => "Story author",
     getEditingMode: () => mode,
     onSessionRefusal: (reason) => reasons.push(reason),
   });
   const manager = createHiddenEditorManager(deps);
   let storyView: EditorView | undefined;
+  const compilation = spyOn(documentOps, "compileEditorIntent");
   try {
     manager.ensureView();
     const projection = manager.api.getCanonicalStoryProjection(story);
@@ -659,26 +669,61 @@ test.each([
     expect(committedState.doc.textContent).toBe("Story!");
     expect(manager.api.canUndo()).toBe(true);
     mode = "suggesting";
+    compilation.mockClear();
     const committedEnd = storyView.state.doc.content.size - 1;
     expect(
       manager.api.replaceCanonicalStoryText({
         view: storyView,
         story,
-        intent: { from: committedEnd, to: committedEnd, text: "untracked" },
+        intent: { from: committedEnd, to: committedEnd, text: "😀 tracked" },
+      }),
+    ).toBe(true);
+    expect(compilation.mock.calls.at(-1)?.[1].mode.type).toBe("suggesting");
+    expect(storyView.state.doc.textContent).toBe("Story!😀 tracked");
+    expect(storyView.state.doc.nodeAt(committedEnd)?.marks).toContainEqual(
+      expect.objectContaining({ attrs: expect.objectContaining({ author: "Story author" }) }),
+    );
+    const tracked = manager.api.getCanonicalDocument();
+    expect(tracked?.package.document.content).toEqual(accepted?.package.document.content);
+    expect(
+      manager.api.applyCanonicalStoryHistory({ view: storyView, story, direction: "undo" }),
+    ).toBe(true);
+    expect(manager.api.getCanonicalDocument()).toEqual(accepted);
+    expect(storyView.state.doc).toEqual(committedState.doc);
+    expect(manager.api.canUndo()).toBe(true);
+    expect(manager.api.canRedo()).toBe(true);
+    expect(
+      manager.api.applyCanonicalStoryHistory({ view: storyView, story, direction: "redo" }),
+    ).toBe(true);
+    expect(manager.api.getCanonicalDocument()).toEqual(tracked);
+    const trackedState = storyView.state;
+    // Admission failures must not publish a partial story or journal entry.
+    readOnly = true;
+    expect(
+      manager.api.replaceCanonicalStoryText({
+        view: storyView,
+        story,
+        intent: { from: committedEnd, to: committedEnd, text: "blocked" },
       }),
     ).toBe(false);
     expect(
       manager.api.applyCanonicalStoryHistory({ view: storyView, story, direction: "undo" }),
     ).toBe(false);
-    expect(manager.api.getCanonicalDocument()).toEqual(accepted);
-    expect(storyView.state).toBe(committedState);
+    readOnly = false;
+    expect(
+      manager.api.replaceCanonicalStoryText({
+        view: storyView,
+        story,
+        intent: { from: committedEnd, to: committedEnd, text: "\n" },
+      }),
+    ).toBe(false);
+    expect(manager.api.getCanonicalDocument()).toEqual(tracked);
+    expect(storyView.state).toBe(trackedState);
     expect(manager.api.canUndo()).toBe(true);
     expect(manager.api.canRedo()).toBe(false);
-    expect(reasons).toEqual([
-      "Suggesting is unavailable in the experimental canonical session.",
-      "Suggesting is unavailable in the experimental canonical session.",
-    ]);
+    expect(reasons).toHaveLength(1);
   } finally {
+    compilation.mockRestore();
     storyView?.destroy();
     manager.destroyView();
     host.remove();

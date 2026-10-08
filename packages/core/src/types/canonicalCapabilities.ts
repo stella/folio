@@ -2,7 +2,6 @@
 export const CANONICAL_GAP = {
   authorityRouting: "authority-routing",
   commands: "command-descriptors",
-  suggesting: "adapter-suggesting",
   trackedHyperlinkResolution: "tracked-hyperlink-resolution",
   comments: "comment-model-edits",
   modelEdits: "direct-model-edits",
@@ -64,12 +63,6 @@ export const CANONICAL_CAPABILITIES = {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary: "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
-  },
-  [CANONICAL_GAP.suggesting]: {
-    owner: "adapters",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary: "Adapter suggesting controls and tracked secondary-story edits remain gated.",
   },
   [CANONICAL_GAP.comments]: {
     owner: "adapters",
