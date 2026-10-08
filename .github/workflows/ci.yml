@@ -90,7 +90,8 @@ jobs:
   # stella/.github ci-plan action; `.github/ci-plan.json` holds folio's areas.
   # Pull requests plan by changed path. Merge groups select every area.
   # Suite depth depends only on the event; the shared planner supplies path
-  # scopes and trust. Drafts plan nothing until marked ready for review.
+  # scopes and trust. API preflight derives publication paths from manifests.
+  # Drafts plan nothing until marked ready for review.
   ci-plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
     runs-on: ubuntu-latest
@@ -103,6 +104,8 @@ jobs:
     outputs:
       suite_depth: ${{ github.event_name == 'merge_group' && 'full' || 'fast' }}
       trusted: ${{ steps.plan.outputs.trusted }}
+      browser_discovery_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).browser_discovery }}
+      api_required: ${{ github.event_name == 'merge_group' || steps.api-plan.outputs.api_required == 'true' }}
       code_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).code }}
       typecheck_budget_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).typecheck_budget }}
       container_contract_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).container_contract }}
@@ -112,11 +115,42 @@ jobs:
       consumer_scenarios_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
       packaged_consumer_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).packaged_consumer }}
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: package.json
+      - name: Select published API preflight
+        id: api-plan
+        if: github.event_name == 'pull_request'
+        run: bun scripts/ci-api-plan.ts --base "$API_BASE" --head "$API_HEAD"
+        env:
+          API_BASE: ${{ github.event.pull_request.base.sha }}
+          API_HEAD: ${{ github.event.pull_request.head.sha }}
       - name: Plan changed-path scopes
         id: plan
         uses: stella/.github/.github/actions/ci-plan@37bfa04a893d1ae2b9d28379cf68e8360781c8bc # v1.8.0
         with:
           policy-file: .github/ci-plan.json
+
+  browser-discovery:
+    name: Browser test discovery
+    needs: ci-plan
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.ci-plan.outputs.browser_discovery_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Discover every Node Playwright project without browsers
+        run: bun scripts/ci-browser-discovery.ts
 
   property-areas:
     name: Properties of the changed areas (5x runs)
@@ -381,7 +415,7 @@ jobs:
   build-api:
     name: Build reproducibility and API reports
     needs: ci-plan
-    if: needs.ci-plan.outputs.code_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
+    if: needs.ci-plan.outputs.api_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -396,16 +430,13 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Build
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run build
 
       - name: Reproducible package builds (all published packages)
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:build-reproducibility
 
       - name: API surface report
         id: api-surface-report
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: |
           bun scripts/api-surface-budget.ts --self-test
           bun run api:check
@@ -968,6 +999,7 @@ jobs:
       - lint
       - typecheck
       - build-api
+      - browser-discovery
       - validate-dist
       - tests-1
       - tests-2
@@ -997,10 +1029,11 @@ jobs:
           JOB_SCOPES: >-
             {"changeset":{"event":"pull_request"},
             "property-areas":{"event":"pull_request","area":"code_required"},
+            "browser-discovery":{"event":"pull_request","area":"browser_discovery_required"},
             "docs-format":{"area":"code_required","value":"false"},
             "lint":{"area":"code_required"},
             "typecheck":{"area":"code_required"},
-            "build-api":{"area":"code_required","depth":"full"},
+            "build-api":{"area":"api_required"},
             "validate-dist":{"area":"code_required","depth":"full"},
             "tests-1":{"area":"code_required"},
             "tests-2":{"area":"code_required"},
