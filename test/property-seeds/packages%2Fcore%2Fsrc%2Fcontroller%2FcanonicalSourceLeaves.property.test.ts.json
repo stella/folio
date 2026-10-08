@@ -12,7 +12,7 @@
       "seed": 1390871223,
       "path": "0:0:0",
       "date": "2026-10-05",
-      "note": "Omitted field run leaves now carry the dedicated story-content-projection capability rather than generic dispatch; bind the generated activation oracle to that exact typed refusal."
+      "note": "Raw field leaves are rejected at source activation before native projection, matching the source-union shape matrix's precise dispatch refusal."
     }
   ]
 }

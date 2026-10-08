@@ -47,9 +47,10 @@ test(
               if (result.isErr())
                 expect(result.error).toMatchObject({
                   name: "CanonicalSessionError",
-                  gap: CANONICAL_GAP.storyContentProjection,
+                  gap: CANONICAL_GAP.dispatch,
                   reason: "refused",
-                  message: "The paragraph cannot be projected as plain text.",
+                  message:
+                    "Canonical editing cannot preserve unstructured field instructions; a structured field is required.",
                 });
               expect(document).toEqual(unchanged);
             }
