@@ -1,0 +1,16 @@
+{
+  "paragraph snapshots and resolution preserve authored indentation through provenance materialization": [
+    {
+      "seed": 1074976563,
+      "path": "2:0:0:0:0:0:0",
+      "note": "Captured paragraph sources keep their document-level contract when constructing the edited ProseMirror fixture.",
+      "date": "2026-10-08"
+    },
+    {
+      "seed": -182878021,
+      "path": "2:0:0:0:0:0",
+      "note": "Captured paragraph sources keep their document-level contract when constructing the edited ProseMirror fixture.",
+      "date": "2026-10-08"
+    }
+  ]
+}

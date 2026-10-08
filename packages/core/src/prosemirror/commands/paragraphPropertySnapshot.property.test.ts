@@ -90,7 +90,8 @@ test(
                 detectVariables: false,
               })
             : fixture;
-          const node = toProseDoc(document, { styles: document.package.styles }).firstChild;
+          const prose = toProseDoc(document, { styles: document.package.styles });
+          const node = prose.firstChild;
           if (node === null) panic("Snapshot fixture has no paragraph.");
           const attrs = expectParagraphAttrs(node);
           const before = paragraphPropertiesSnapshot(node);
@@ -124,7 +125,7 @@ test(
           );
           for (const decision of ["reject", "accept"] as const) {
             let state = EditorState.create({
-              doc: node.type.schema.node("doc", null, [changed]),
+              doc: prose.type.create(prose.attrs, [changed]),
               plugins: [createDocumentStylesPlugin(document.package.styles)],
             });
             const expected =
