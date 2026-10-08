@@ -8,6 +8,7 @@
  */
 
 import JSZip from "jszip";
+import { generateDocxFixture } from "./validatedDocxFixture";
 
 export type PanelLayoutReview = "none" | "changes-only" | "comment-and-changes";
 export type PanelLayoutSections = "portrait" | "landscape-then-portrait";
@@ -142,5 +143,5 @@ export const buildPanelLayoutDocument = (
   if (review === "comment-and-changes") {
     zip.file("word/comments.xml", COMMENTS_XML, options);
   }
-  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  return generateDocxFixture(zip, `panel-layout:${review}:${sections}`);
 };

@@ -283,28 +283,32 @@ describe("a slot that survives its representative value survives the rest of its
   for (const [container, subjects] of [...byContainer].sort(([left], [right]) =>
     left.localeCompare(right),
   )) {
-    test(`w:${container}`, async () => {
-      for (const subject of subjects) {
-        const { values } = valuesForType(space.index, subject.slot.typeQName);
-        await assertProperty(
-          fc.asyncProperty(fc.constantFrom(...values), async (value) => {
-            const candidate: Subject = { kind: "attribute", slot: subject.slot, value };
-            const outcome = await runSurvivalLaws(space, candidate);
-            if (outcome.unrepresentable !== null) {
-              return;
-            }
-            const recorded =
-              value === subject.value ? undefined : baseline.valueLosses[valueKey(candidate)];
-            const measured =
-              outcome.laws[SURVIVAL_LAWS.parse] === false
-                ? "threw"
-                : (outcome.mechanism ?? undefined);
-            const slot = valueKey(candidate).replaceAll(`{${WML_NAMESPACE}}`, "w:");
-            expect({ slot, measured }).toEqual({ slot, measured: recorded });
-          }),
-          { numRuns: Math.min(values.length, 8) },
-        );
-      }
-    }, 120_000);
+    test(
+      `w:${container}`,
+      async () => {
+        for (const subject of subjects) {
+          const { values } = valuesForType(space.index, subject.slot.typeQName);
+          await assertProperty(
+            fc.asyncProperty(fc.constantFrom(...values), async (value) => {
+              const candidate: Subject = { kind: "attribute", slot: subject.slot, value };
+              const outcome = await runSurvivalLaws(space, candidate);
+              if (outcome.unrepresentable !== null) {
+                return;
+              }
+              const recorded =
+                value === subject.value ? undefined : baseline.valueLosses[valueKey(candidate)];
+              const measured =
+                outcome.laws[SURVIVAL_LAWS.parse] === false
+                  ? "threw"
+                  : (outcome.mechanism ?? undefined);
+              const slot = valueKey(candidate).replaceAll(`{${WML_NAMESPACE}}`, "w:");
+              expect({ slot, measured }).toEqual({ slot, measured: recorded });
+            }),
+            { numRuns: Math.min(values.length, 8) },
+          );
+        }
+      },
+      propertyTestTimeout(120_000),
+    );
   }
 });

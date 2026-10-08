@@ -1,5 +1,13 @@
 # @stll/folio-nuxt
 
+## 0.3.19
+
+### Patch Changes
+
+- [#1564](https://github.com/stella/folio/pull/1564) [`1a2a8da`](https://github.com/stella/folio/commit/1a2a8da9cf0b04f73f024f096288b7449c6874c4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Require prosemirror-view 1.42.6 or later (GHSA-c8x8-7fp4-3x9w) and, in folio-core, DOMPurify 3.4.16 or later.
+- Updated dependencies [[`0bff91e`](https://github.com/stella/folio/commit/0bff91e2ad29558196660ee48004d0dedffbab7a), [`57ed3d6`](https://github.com/stella/folio/commit/57ed3d6263fc2f8869bfae01f5f7cf60a7d85e94), [`b746a0d`](https://github.com/stella/folio/commit/b746a0d300c3c7418be8382a6ee97097eda3b7ec), [`7565793`](https://github.com/stella/folio/commit/756579312a2aadda47cf01704a57be1bea6cdf40), [`1a2a8da`](https://github.com/stella/folio/commit/1a2a8da9cf0b04f73f024f096288b7449c6874c4)]:
+  - @stll/folio-vue@0.22.1
+
 ## 0.3.18
 
 ### Patch Changes

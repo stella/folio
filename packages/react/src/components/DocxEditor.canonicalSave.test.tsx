@@ -20,6 +20,7 @@ import {
   withCanonicalParagraphIds,
 } from "@stll/folio-core/controller/canonicalOperations";
 import * as headerFooterHook from "./hooks/useHeaderFooterEditor";
+import { propertyTestTimeout } from "../../../../test/property-testing";
 import { reviewDifferences } from "../../../../test/reviewDifferences";
 import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
 import { CANONICAL_SAVE_FALLBACK_DIAGNOSTIC } from "../../../../test/canonicalSaveDiagnostics";
@@ -920,4 +921,6 @@ test.each(CANONICAL_SAVE_SEEDS)(
       container.remove();
     }
   },
+  // Each generated history saves and reparses several committed versions.
+  propertyTestTimeout(30_000),
 );

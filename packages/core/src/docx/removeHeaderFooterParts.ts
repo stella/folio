@@ -1,3 +1,4 @@
+import { writeZipPart } from "@stll/docx-core/zip";
 import type JSZip from "jszip";
 import { OOXML_NS } from "@stll/docx-utils";
 import { panic } from "better-result";
@@ -101,17 +102,18 @@ export const removeResolvedHeaderFooterParts = async ({
     }
   }
   const compressionOptions = { level: compressionLevel };
-  zip.file(
-    DOCUMENT_RELS_PATH,
-    withoutChildren(
+  writeZipPart({
+    zip,
+    path: DOCUMENT_RELS_PATH,
+    data: withoutChildren(
       relsXml,
       (child) =>
         getNamespaceUri(child) === OOXML_NS.pr &&
         getLocalName(child.name) === "Relationship" &&
         removedIds.has(getAttribute(child, null, "Id") ?? ""),
     ),
-    { compression: "DEFLATE", compressionOptions },
-  );
+    options: { compression: "DEFLATE", compressionOptions },
+  });
   if (document.package.relationships) {
     document.package.relationships = new Map(document.package.relationships);
     for (const id of removedIds) document.package.relationships.delete(id);
@@ -135,15 +137,16 @@ export const removeResolvedHeaderFooterParts = async ({
   const contentTypes = zip.file("[Content_Types].xml");
   if (!contentTypes) return panic("The package has no content types");
   const contentTypesXml = await contentTypes.async("text");
-  zip.file(
-    "[Content_Types].xml",
-    withoutChildren(
+  writeZipPart({
+    zip,
+    path: "[Content_Types].xml",
+    data: withoutChildren(
       contentTypesXml,
       (child) =>
         getNamespaceUri(child) === OOXML_NS.ct &&
         getLocalName(child.name) === "Override" &&
         candidates.has((getAttribute(child, null, "PartName") ?? "").replace(/^\//u, "")),
     ),
-    { compression: "DEFLATE", compressionOptions },
-  );
+    options: { compression: "DEFLATE", compressionOptions },
+  });
 };

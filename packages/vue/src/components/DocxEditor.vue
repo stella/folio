@@ -316,10 +316,7 @@
             </div>
 
             <InlineHeaderFooterEditor
-              v-if="
-                hfEdit &&
-                !usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting)
-              "
+              v-if="hfEdit"
               :edit="hfEdit"
               :get-view="getActiveHeaderFooterView"
               @close="handleHfSave"

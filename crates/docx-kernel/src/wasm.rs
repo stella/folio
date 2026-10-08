@@ -159,6 +159,7 @@ export type DocxRevisionKind =
     | "rPrChange"
     | "sectPrChange"
     | "tblPrChange"
+    | "tblPrExChange"
     | "trPrChange"
     | "tcPrChange"
     | "tblGridChange"
@@ -520,6 +521,7 @@ fn output_revision_fact(fact: &AttributedRevision) -> Result<JsValue, String> {
             RevisionFactKind::RunPropertiesChange => "rPrChange",
             RevisionFactKind::SectionPropertiesChange => "sectPrChange",
             RevisionFactKind::TablePropertiesChange => "tblPrChange",
+            RevisionFactKind::TablePropertiesExceptionChange => "tblPrExChange",
             RevisionFactKind::TableRowPropertiesChange => "trPrChange",
             RevisionFactKind::TableCellPropertiesChange => "tcPrChange",
             RevisionFactKind::TableGridChange => "tblGridChange",

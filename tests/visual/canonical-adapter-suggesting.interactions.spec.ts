@@ -40,6 +40,12 @@ const canonicalSnapshot = async (page: Page) => {
   return { ...current, document: current.document };
 };
 
+const canonicalVersion = async (page: Page) => {
+  const version = await page.evaluate(() => globalThis.__folioCanonical?.committedVersion());
+  if (typeof version !== "number") throw new TypeError("Canonical version unavailable.");
+  return version;
+};
+
 const hasTrackedInsertion = (value: unknown, author: string): boolean => {
   if (Array.isArray(value)) return value.some((entry) => hasTrackedInsertion(entry, author));
   if (value === null || typeof value !== "object") return false;
@@ -108,7 +114,6 @@ for (const adapter of adapters) {
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
     expect((await canonicalSnapshot(page)).document.package.document.content).toEqual(bodyModel);
 
-    const originalBodyJSON = JSON.stringify(bodyModel);
     const header = page.locator(".layout-page-header").first();
     await header.dblclick();
     await expect(page.locator(".hf-inline-editor")).toBeVisible();
@@ -116,16 +121,27 @@ for (const adapter of adapters) {
       `.paged-editor__hidden-hf-pm [data-hf-r-id="${headerRId}"] .ProseMirror`,
     );
     await expect(headerEditor).toBeAttached();
+    const headerVersion = await canonicalVersion(page);
     await page.keyboard.press("End");
     await page.keyboard.type(" header tracked");
     await expect(header).toContainText("header tracked");
+    // Only a published canonical operation advances the shared journal version.
+    expect(await canonicalVersion(page)).toBeGreaterThan(headerVersion);
+    expect(
+      hasTrackedInsertion(
+        await page.evaluate(
+          (rId) =>
+            globalThis.__folioCanonical?.snapshot().document?.package.headers?.get(rId)?.content,
+          headerRId,
+        ),
+        "Folio User",
+      ),
+    ).toBe(true);
     await page.keyboard.press(`${MODIFIER}+z`);
     await expect(header).not.toContainText("header tracked");
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
     await expect(header).toContainText("header tracked");
-    expect(JSON.stringify((await canonicalSnapshot(page)).document.package.document.content)).toBe(
-      originalBodyJSON,
-    );
+    expect((await canonicalSnapshot(page)).document.package.document.content).toEqual(bodyModel);
     await page.getByRole("button", { name: "Options", exact: false }).click();
     await page.getByRole("button", { name: "Close header editing" }).click();
 
@@ -137,15 +153,27 @@ for (const adapter of adapters) {
       `.paged-editor__hidden-hf-pm [data-hf-r-id="${footerRId}"] .ProseMirror`,
     );
     await expect(footerEditor).toBeAttached();
+    const footerVersion = await canonicalVersion(page);
     await page.keyboard.press("End");
     await page.keyboard.type(" footer tracked");
     await expect(footer).toContainText("footer tracked");
+    expect(await canonicalVersion(page)).toBeGreaterThan(footerVersion);
+    expect(
+      hasTrackedInsertion(
+        await page.evaluate(
+          (rId) =>
+            globalThis.__folioCanonical?.snapshot().document?.package.footers?.get(rId)?.content,
+          footerRId,
+        ),
+        "Folio User",
+      ),
+    ).toBe(true);
     await page.keyboard.press(`${MODIFIER}+z`);
     await expect(footer).not.toContainText("footer tracked");
     await page.keyboard.press(`${MODIFIER}+Shift+z`);
     await expect(footer).toContainText("footer tracked");
     const beforeSave = await canonicalSnapshot(page);
-    expect(JSON.stringify(beforeSave.document.package.document.content)).toBe(originalBodyJSON);
+    expect(beforeSave.document.package.document.content).toEqual(bodyModel);
 
     const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
     if (!saved) throw new TypeError("Canonical save unavailable.");
@@ -161,6 +189,7 @@ for (const adapter of adapters) {
     );
     expect(hasTrackedInsertion(savedHeader?.content, "Folio User")).toBe(true);
     expect(hasTrackedInsertion(savedFooter?.content, "Folio User")).toBe(true);
-    expect(JSON.stringify(reopened.package.document.content)).toBe(originalBodyJSON);
+    // Parsed source captures are symbol properties outside the snapshot wire model.
+    expect(JSON.parse(JSON.stringify(reopened.package.document.content))).toEqual(bodyModel);
   });
 }

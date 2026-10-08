@@ -230,7 +230,7 @@ describe("independent table forward oracles", () => {
         { numRuns: NUM_RUNS },
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(30_000),
   );
 
   test(
@@ -340,7 +340,7 @@ describe("independent table forward oracles", () => {
         { numRuns: NUM_RUNS },
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(30_000),
   );
 
   test(
@@ -436,7 +436,7 @@ describe("independent table forward oracles", () => {
         { numRuns: NUM_RUNS },
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(30_000),
   );
 
   test(
@@ -504,7 +504,7 @@ describe("independent table forward oracles", () => {
         { numRuns: NUM_RUNS },
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(30_000),
   );
 
   test("indexed markup and existing reviews have consistent refusals across topology edits", () => {
