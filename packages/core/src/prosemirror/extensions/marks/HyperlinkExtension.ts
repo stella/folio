@@ -247,27 +247,6 @@ export const HyperlinkExtension = createMarkExtension({
       });
       return selected;
     };
-    const canonicalRemovalRange = (state: EditorState) => {
-      const { empty, $from } = state.selection;
-      const { from, to } = canonicalSelectionRange(state);
-      if (!empty) return { from, to };
-      const linkMark = $from.marks().find((mark) => mark.type === documentHyperlinkType(state));
-      if (!linkMark) return undefined;
-      let contiguous: { from: number; to: number } | undefined;
-      let selected: typeof contiguous;
-      $from.parent.forEach((node, offset) => {
-        if (!node.isText || !node.marks.some((mark) => mark.eq(linkMark))) {
-          contiguous = undefined;
-          return;
-        }
-        const start = $from.start() + offset;
-        const end = start + node.nodeSize;
-        if (contiguous?.to === start) contiguous.to = end;
-        else contiguous = { from: start, to: end };
-        if (start <= from && from <= end) selected = contiguous;
-      });
-      return selected;
-    };
     const removeHyperlink = withCanonicalCommand(
       (state, dispatch) => {
         const range = removalRange(state);
@@ -277,7 +256,7 @@ export const HyperlinkExtension = createMarkExtension({
         return true;
       },
       (state) => {
-        const range = canonicalRemovalRange(state);
+        const range = removalRange(state);
         if (!range) return [];
         const hyperlinkStyleId = getDocumentBuiltInStyles(state).styleIdForBuiltInName(
           BUILT_IN_STYLE_NAME.hyperlink,
