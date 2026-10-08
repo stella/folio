@@ -207,9 +207,10 @@ export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFact
     const snapshot = reviewer.snapshotStory(handle);
     assert.ok(snapshot, "A discovered story must have a snapshot");
     const doc = sourceDocumentOf(snapshot);
-    for (const block of snapshot.blocks) {
+    const { anchors, blocks } = snapshot;
+    for (const block of blocks) {
       if (block.kind === "diagnostic" || facts.direct.has(block.id)) continue;
-      const anchor = snapshot.anchors[block.id];
+      const anchor = anchors[block.id];
       assert.ok(anchor, `Block ${block.id} must have an anchor`);
       const node = doc.nodeAt(anchor.from);
       assert.ok(node?.type.name === "paragraph", `Block ${block.id} must have a paragraph`);
