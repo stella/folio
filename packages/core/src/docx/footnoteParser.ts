@@ -31,7 +31,6 @@ import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import type { NumberingMap } from "./numberingParser";
 import type { ParseContext } from "./parseContext";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
-import { blockPlainText } from "./blockPlainText";
 import { parseParagraph } from "./paragraphParser";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
@@ -450,22 +449,6 @@ export { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertie
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
-
-/**
- * Get plain text content of a footnote.
- *
- * Uses the accepted tracked-change view and recurses through every note block.
- */
-export function getFootnoteText(footnote: Footnote): string {
-  return blockPlainText(footnote.content);
-}
-
-/**
- * Get plain text content of an endnote.
- */
-export function getEndnoteText(endnote: Endnote): string {
-  return blockPlainText(endnote.content);
-}
 
 /**
  * Check if a footnote is a separator (not regular content)
