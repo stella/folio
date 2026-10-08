@@ -473,6 +473,11 @@ const validateNodeAttrs = (
           const hasInlineWrapper = node.content.content.some((child) =>
             child.marks.some((mark) => mark.type.name === INLINE_WRAPPER_MARK_NAME),
           );
+          const hasTrackedChild = node.content.content.some((child) =>
+            child.marks.some(
+              (mark) => mark.type.name === "insertion" || mark.type.name === "deletion",
+            ),
+          );
           if (fieldAttrs.value.fieldKind === "complex" && !hasPageBreakCarrier) {
             issues.push({
               path: `${path}.content`,
@@ -487,12 +492,13 @@ const validateNodeAttrs = (
             !hasStructuredHyperlink &&
             !hasPageBreakCarrier &&
             !hasPreservedCapture &&
-            !hasInlineWrapper
+            !hasInlineWrapper &&
+            !hasTrackedChild
           ) {
             issues.push({
               path: `${path}.content`,
               message:
-                "Structured simple fields require hyperlink, page-break, preserved or wrapper content.",
+                "Structured simple fields require hyperlink, page-break, preserved, wrapper or tracked content.",
             });
           }
           // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach

@@ -294,7 +294,7 @@ describe("serializeParagraph tracked-change hardening", () => {
     });
   });
 
-  test("refuses a tracked simple field whose structured result cannot become run-level field content", () => {
+  test("lowers a tracked hyperlink field with the revision inside the hyperlink", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
       content: [
@@ -318,9 +318,10 @@ describe("serializeParagraph tracked-change hardening", () => {
         },
       ],
     };
-    expect(() => serializeParagraph(paragraph)).toThrow(
-      "A tracked simple field with hyperlink result content cannot be serialized as valid OOXML.",
-    );
+    const xml = serializeParagraph(paragraph);
+    expect(xml).not.toContain("<w:fldSimple");
+    expect(xml).toContain('<w:hyperlink w:anchor="_page"><w:del ');
+    expect(xml).toContain("<w:delText>1</w:delText>");
   });
 
   test("keeps a complex field inside its authored revision wrapper through the editor model", () => {

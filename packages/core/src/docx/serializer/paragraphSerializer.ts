@@ -22,6 +22,7 @@ import type {
   Paragraph,
   PreservedInline,
   ParagraphContent,
+  TrackedRunChange,
   ParagraphFormatting,
   ParagraphMarkChange,
   Run,
@@ -588,25 +589,7 @@ function serializeSimpleField(field: SimpleField): string {
     ...fieldStateAttributes(field),
   ];
 
-  const contentXml = field.content
-    .map((item): string => {
-      switch (item.type) {
-        case "run":
-          return serializeRun(item);
-        case "hyperlink":
-          return serializeHyperlink(item);
-        // A transparent wrapper the field's cached result was authored inside.
-        case "inlineWrapper":
-          return serializeParagraphContent(item);
-        case "preservedInline":
-          return item.xml;
-        default: {
-          const unwritten: never = item;
-          return unwritten;
-        }
-      }
-    })
-    .join("");
+  const contentXml = field.content.map((item) => serializeParagraphContent(item)).join("");
 
   return `<w:fldSimple ${attrs.join(" ")}>${contentXml}</w:fldSimple>`;
 }
@@ -705,32 +688,31 @@ function serializeRemovedPreservedInline(item: PreservedInline): string {
   return item.xml;
 }
 
-class UnrepresentableTrackedSimpleFieldError extends TaggedError(
-  "UnrepresentableTrackedSimpleFieldError",
-)<{ message: string; contentType: SimpleField["content"][number]["type"] }> {}
-
-/** A revision can contain run-level field characters, but not `w:fldSimple`. */
-function serializeTrackedSimpleField(field: SimpleField): string {
-  const fieldResult: Run[] = [];
-  for (const item of field.content) {
-    if (item.type !== "run") {
-      throw new UnrepresentableTrackedSimpleFieldError({
-        message: `A tracked simple field with ${item.type} result content cannot be serialized as valid OOXML.`,
-        contentType: item.type,
-      });
-    }
-    fieldResult.push(item);
-  }
-  return serializeComplexField({
-    type: "complexField",
-    instruction: field.instruction,
-    fieldType: field.fieldType,
-    fieldCode: [],
-    fieldResult,
-    ...(field.fldLock !== undefined && { fldLock: field.fldLock }),
-    ...(field.dirty !== undefined && { dirty: field.dirty }),
+/** Lower a tracked field into run-level structure before revision/link segmentation. */
+const trackedSimpleFieldContent = (field: SimpleField): TrackedRunChange["content"] => {
+  const formatting = field.content.find((item) => item.type === "run")?.formatting;
+  const structuralRun = (content: Run["content"]): Run => ({
+    type: "run",
+    content,
+    ...(formatting && { formatting }),
   });
-}
+  return [
+    structuralRun([
+      {
+        type: "fieldChar",
+        charType: "begin",
+        ...(field.fldLock !== undefined && { fldLock: field.fldLock }),
+        ...(field.dirty !== undefined && { dirty: field.dirty }),
+      },
+    ]),
+    ...(field.instruction.length
+      ? [structuralRun([{ type: "instrText", text: field.instruction }])]
+      : []),
+    structuralRun([{ type: "fieldChar", charType: "separate" }]),
+    ...field.content,
+    structuralRun([{ type: "fieldChar", charType: "end" }]),
+  ];
+};
 
 /**
  * Serialize an inline SDT (w:sdt).
@@ -882,10 +864,25 @@ function serializeTrackedChange(
   tag: "ins" | "del" | "moveFrom" | "moveTo",
   change: Insertion | Deletion | MoveFrom | MoveTo,
 ): string {
-  if (
-    change.resolutionJoins !== undefined &&
-    change.content.some((item) => item.type === "hyperlink")
-  ) {
+  return serializeNestedTrackedChange({ tag, change, enclosing: [] });
+}
+
+type SerializeNestedTrackedChangeOptions = {
+  tag: "ins" | "del" | "moveFrom" | "moveTo";
+  change: Insertion | Deletion | MoveFrom | MoveTo;
+  enclosing: readonly { open: string; close: string }[];
+};
+
+/** Carry all enclosing revisions inside a hyperlink when segmenting nested changes. */
+function serializeNestedTrackedChange({
+  tag,
+  change,
+  enclosing,
+}: SerializeNestedTrackedChangeOptions): string {
+  const content = change.content.flatMap((item) =>
+    item.type === "simpleField" ? trackedSimpleFieldContent(item) : [item],
+  );
+  if (change.resolutionJoins !== undefined && content.some((item) => item.type === "hyperlink")) {
     throw new ReviewResolutionProvenanceError({
       attribute: "resolutionJoins",
       reason: "unrepresentable",
@@ -914,9 +911,7 @@ function serializeTrackedChange(
       case "simpleField":
       case "complexField": {
         const xml =
-          item.type === "simpleField"
-            ? serializeTrackedSimpleField(item)
-            : serializeComplexField(item);
+          item.type === "simpleField" ? serializeSimpleField(item) : serializeComplexField(item);
         return disposition === "removed" ? rewriteRunTextAsDeleted(xml) : xml;
       }
       case "mathEquation":
@@ -956,12 +951,16 @@ function serializeTrackedChange(
 
   const open = `<w:${tag} ${attrs}>`;
   const close = `</w:${tag}>`;
-  const wrap = (inner: string): string => (inner.length === 0 ? "" : `${open}${inner}${close}`);
+  const wrap = (inner: string): string => {
+    let xml = `${open}${inner}${close}`;
+    for (const ancestor of enclosing.toReversed()) xml = `${ancestor.open}${xml}${ancestor.close}`;
+    return xml;
+  };
 
   // An empty wrapper is a marker in its own right (a paragraph mark's
   // revision, a move end), so it survives the segmentation below.
-  if (change.content.length === 0) {
-    return `${open}${close}`;
+  if (content.length === 0) {
+    return wrap("");
   }
 
   // `w:hyperlink` may not appear inside a revision wrapper; the nesting runs
@@ -977,7 +976,23 @@ function serializeTrackedChange(
       pending.length = 0;
     }
   };
-  for (const item of change.content) {
+  for (const item of content) {
+    if (
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
+    ) {
+      flushPending();
+      segments.push(
+        serializeNestedTrackedChange({
+          tag: trackedChangeTag(item),
+          change: item,
+          enclosing: [...enclosing, { open, close }],
+        }),
+      );
+      continue;
+    }
     if (item.type === "hyperlink") {
       flushPending();
       const childrenXml = item.children
@@ -986,9 +1001,7 @@ function serializeTrackedChange(
       // Always the full wrapper, never `wrap`: a linked run range that is
       // empty still has to say it was inserted or deleted, or reopening the
       // package finds a plain hyperlink.
-      segments.push(
-        `<w:hyperlink${hyperlinkAttributes(item)}>${open}${childrenXml}${close}</w:hyperlink>`,
-      );
+      segments.push(`<w:hyperlink${hyperlinkAttributes(item)}>${wrap(childrenXml)}</w:hyperlink>`);
       continue;
     }
     pending.push(serializeWrappedItem(item));

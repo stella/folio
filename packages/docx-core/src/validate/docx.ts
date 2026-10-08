@@ -805,7 +805,7 @@ const validateFieldChild = (
   // A transparent wrapper constrains how its content is laid out, never what
   // the content may be, so its children are validated as the paragraph content
   // they are.
-  if (child.type === "inlineWrapper") {
+  if (child.type !== "hyperlink") {
     validateParagraphContent(child, path, ctx);
     return;
   }

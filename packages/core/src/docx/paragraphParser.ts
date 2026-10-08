@@ -90,6 +90,7 @@ import {
   isHyperlinkContent,
   isInlineSdtContent,
   isTrackedChangeWrapperChild,
+  isSimpleFieldContent,
 } from "./inlineWrapperContent";
 import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
@@ -824,7 +825,7 @@ function parseSimpleField(
   //
   // `CT_SimpleField` is `EG_PContent` plus `w:fldData`, so a field's cached
   // result may hold everything a paragraph may: a bookmark around the result,
-  // a proofing error, a nested revision. folio models the run and the link;
+  // a proofing error, a nested revision. folio models runs, links, transparent wrappers and revisions;
   // the rest is markup it carries at its source position rather than markup
   // it drops.
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
@@ -870,6 +871,42 @@ const fieldInlineWrapper =
     context.push(parseFieldInlineWrapper(element, child, context));
   };
 
+/** Read a field's revision with the same ownership rules as a paragraph revision. */
+const fieldTrackedChange =
+  (type: TrackedChangeWrapperType): ChildReader<SimpleFieldChildContext> =>
+  (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    const parsedContent = parseParagraphContents(
+      child,
+      styles,
+      theme,
+      null,
+      rels,
+      media,
+      previews,
+      type === "deletion" || type === "moveFrom" ? "deletion" : "default",
+      inScopeXmlns,
+    );
+    // Field children outside the typed revision model keep their authored XML.
+    // Do not hoist their boundaries into a container that cannot carry them.
+    if (parsedContent.length === 0 || !parsedContent.every(isTrackedChangeWrapperChild)) {
+      push(preserveInlineChild(child));
+      return;
+    }
+    const contents: ParagraphContent[] = [];
+    pushTrackedChangeWrapper({
+      contents,
+      type,
+      info: parseTrackedChangeInfo(child),
+      resolutionJoins: parseResolutionJoins(child),
+      content: parsedContent,
+      preserveEmpty: true,
+    });
+    for (const content of contents) {
+      if (!isSimpleFieldContent(content)) panic("A parsed field revision must be a field child");
+      push(content);
+    }
+  };
+
 /**
  * What a `w:fldSimple` does with every child its content model declares.
  *
@@ -905,18 +942,18 @@ const SIMPLE_FIELD_CHILD_HANDLERS = {
   customXmlMoveFromRangeStart: CAPTURE,
   customXmlMoveToRangeEnd: CAPTURE,
   customXmlMoveToRangeStart: CAPTURE,
-  del: CAPTURE,
+  del: fieldTrackedChange("deletion"),
   // The field's own custom data (`CT_Text`), meaningful only to the
   // producer that wrote it, so it travels as the bytes it arrived as.
   fldData: CAPTURE,
   fldSimple: (child, { push }) => {
     push(preserveInlineChild(child));
   },
-  ins: CAPTURE,
-  moveFrom: CAPTURE,
+  ins: fieldTrackedChange("insertion"),
+  moveFrom: fieldTrackedChange("moveFrom"),
   moveFromRangeEnd: CAPTURE,
   moveFromRangeStart: CAPTURE,
-  moveTo: CAPTURE,
+  moveTo: fieldTrackedChange("moveTo"),
   moveToRangeEnd: CAPTURE,
   moveToRangeStart: CAPTURE,
   permEnd: CAPTURE,
