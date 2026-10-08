@@ -43,9 +43,16 @@ fn package(document: &str, styles: &str) -> Vec<u8> {
     archive.finish().unwrap().into_inner()
 }
 
-fn styles_xml(definitions: &str, default_bold: bool) -> String {
+fn styles_xml(
+    definitions: &str,
+    default_bold: bool,
+    default_paragraph_bold: Option<bool>,
+) -> String {
+    let default_style = default_paragraph_bold.map_or_else(String::new, |bold| {
+        format!(r#"<w:style w:type="paragraph" w:default="1" w:styleId="Default"><w:rPr><w:b w:val="{bold}"/></w:rPr><w:pPr><w:ind w:start="300"/><w:outlineLvl w:val="4"/><w:jc w:val="center"/></w:pPr></w:style>"#)
+    });
     format!(
-        r#"<w:styles xmlns:w="{NAMESPACE}"><w:docDefaults><w:rPrDefault><w:rPr><w:b w:val="{default_bold}"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:ind w:start="100"/><w:outlineLvl w:val="2"/><w:jc w:val="left"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Default"><w:rPr><w:b/></w:rPr><w:pPr><w:ind w:start="300"/><w:outlineLvl w:val="4"/><w:jc w:val="center"/></w:pPr></w:style>{definitions}</w:styles>"#
+        r#"<w:styles xmlns:w="{NAMESPACE}"><w:docDefaults><w:rPrDefault><w:rPr><w:b w:val="{default_bold}"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:ind w:start="100"/><w:outlineLvl w:val="2"/><w:jc w:val="left"/></w:pPr></w:pPrDefault></w:docDefaults>{default_style}{definitions}</w:styles>"#
     )
 }
 
@@ -86,6 +93,7 @@ proptest! {
         paragraph_toggles in proptest::collection::vec(proptest::bool::ANY, 1..17),
         character_toggles in proptest::collection::vec(proptest::bool::ANY, 1..17),
         default_bold in proptest::bool::ANY,
+        default_paragraph_bold in proptest::option::of(proptest::bool::ANY),
         paragraph_selection in proptest::sample::select(vec![ParagraphSelection::Omitted, ParagraphSelection::Missing, ParagraphSelection::Character, ParagraphSelection::Table, ParagraphSelection::Explicit]),
         character_missing in proptest::bool::ANY,
     ) {
@@ -103,14 +111,14 @@ proptest! {
             format!(r#"<w:rStyle w:val="C{}"/>"#, character_toggles.len() - 1)
         };
         let projection = project_docx(
-            &package(&document_xml(&paragraph_style, &character_style), &styles_xml(&definitions, default_bold)),
+            &package(&document_xml(&paragraph_style, &character_style), &styles_xml(&definitions, default_bold, default_paragraph_bold)),
             DocxLimits::default(),
             |facts| InternalParagraphId::new(format!("paragraph-{}", facts.ordinal)),
         ).unwrap();
         prop_assert_eq!(projection.formatting_status, FormattingProjectionStatus::Complete);
         let paragraph_bold = match paragraph_selection {
             ParagraphSelection::Explicit => paragraph_toggles.iter().filter(|value| **value).count() % 2 == 1,
-            _ => true,
+            _ => default_paragraph_bold.unwrap_or(false),
         };
         let character_bold = !character_missing && character_toggles.iter().filter(|value| **value).count() % 2 == 1;
         let expected_bold = default_bold ^ paragraph_bold ^ character_bold;
@@ -126,18 +134,18 @@ proptest! {
         };
         let expected_start = match paragraph_selection {
             ParagraphSelection::Explicit => i32::try_from(499 + paragraph_toggles.len()).unwrap(),
-            _ => 300,
+            _ => default_paragraph_bold.map_or(100, |_| 300),
         };
         prop_assert_eq!(indentation.first().unwrap().value.start_twips, Some(expected_start));
         let StructuralFactSet::Known(outline) = &projection.structural_facts.outline_levels else {
             prop_assert!(false, "bounded style chains keep outline levels known");
             return Ok(());
         };
-        prop_assert_eq!(outline.first().unwrap().outline_level, match paragraph_selection { ParagraphSelection::Explicit => 1, _ => 4 });
+        prop_assert_eq!(outline.first().unwrap().outline_level, match paragraph_selection { ParagraphSelection::Explicit => 1, _ => default_paragraph_bold.map_or(2, |_| 4) });
         prop_assert_eq!(&projection.structural_facts.numbering_hierarchy, &StructuralFactSet::Known(Vec::new()));
         if !matches!(paragraph_selection, ParagraphSelection::Explicit) {
             let omitted = project_docx(
-                &package(&document_xml("", &character_style), &styles_xml(&definitions, default_bold)),
+                &package(&document_xml("", &character_style), &styles_xml(&definitions, default_bold, default_paragraph_bold)),
                 DocxLimits::default(),
                 |facts| InternalParagraphId::new(format!("paragraph-{}", facts.ordinal)),
             ).unwrap();
@@ -158,7 +166,7 @@ proptest! {
         let paragraph_style = if character_cycle { String::new() } else { format!(r#"<w:pStyle w:val="{style}"/>"#) };
         let character_style = if character_cycle { format!(r#"<w:rStyle w:val="{style}"/>"#) } else { String::new() };
         let projection = project_docx(
-            &package(&document_xml(&paragraph_style, &character_style), &styles_xml(&chain(kind, prefix, &toggles, true), false)),
+            &package(&document_xml(&paragraph_style, &character_style), &styles_xml(&chain(kind, prefix, &toggles, true), false, Some(true))),
             DocxLimits::default(),
             |facts| InternalParagraphId::new(format!("paragraph-{}", facts.ordinal)),
         ).unwrap();
