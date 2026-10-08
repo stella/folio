@@ -555,3 +555,40 @@ test("generated tracked and controlled comment anchors allocate exact package-ow
     { testFile: import.meta.path, seed: 20261009, numRuns: 24 },
   );
 });
+
+test.each([
+  ["point", 1],
+  ["point", 2],
+  ["range", 1],
+  ["range", 2],
+] as const)(
+  "a reply below %s-anchored loaded replies %i deep takes the anchored ancestor's markers",
+  (kind, depth) => {
+    const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 };
+    const document = exact(seed("present"), {
+      type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+      comment: comment(100, "00000010", "root"),
+      anchor: kind === "point" ? { kind, at } : { kind, from: at, to: { ...at, offset: 4 } },
+    });
+    // Loaded replies own no body markers; the package accepts them under an anchored root.
+    let parentId = 100;
+    for (let level = 1; level <= depth; level += 1) {
+      const loaded: Comment = { ...comment(100 + level, `0000001${level}`, "loaded"), parentId };
+      document.package.document.comments = [...(document.package.document.comments ?? []), loaded];
+      parentId = loaded.id;
+    }
+    expect(commentDocumentIssue(document)).toBeUndefined();
+    const ownsAnchor = (current: Document, id: number) =>
+      anchorSequence(current).some((node) => "id" in node && node.id === id);
+    expect(ownsAnchor(document, parentId)).toBe(false);
+    const replyId = 100 + depth + 1;
+    const replied = exact(document, {
+      type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+      comment: comment(replyId, "00000019", "child"),
+      anchor: { kind: "reply", parentId },
+    });
+    const created = replied.package.document.comments?.find(({ id }) => id === replyId);
+    expect(created?.parentId).toBe(parentId);
+    expect(ownsAnchor(replied, replyId)).toBe(true);
+  },
+);

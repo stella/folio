@@ -589,7 +589,21 @@ const create = (
       if (!comments.some(({ id }) => id === parentId))
         return fail(op, "The parent comment does not exist.");
       comment = { ...comment, parentId: op.anchor.parentId };
-      const parentAnchors = anchorsIn(document).filter(({ node }) => anchorId(node) === parentId);
+      // Loaded replies may carry no body markers of their own; the thread is
+      // anchored by its nearest anchored ancestor, as for any unanchored reply.
+      const anchors = anchorsIn(document);
+      const parentById = new Map(comments.map(({ id, parentId: owner }) => [id, owner]));
+      const visited = new Set<number>();
+      let anchorOwner: number | undefined = parentId;
+      let parentAnchors: typeof anchors = [];
+      while (anchorOwner !== undefined && !visited.has(anchorOwner)) {
+        visited.add(anchorOwner);
+        const owner = anchorOwner;
+        parentAnchors = anchors.filter(({ node }) => anchorId(node) === owner);
+        if (parentAnchors.length > 0) break;
+        const next = parentById.get(owner);
+        anchorOwner = typeof next === "number" && parentById.has(next) ? next : undefined;
+      }
       if (parentAnchors.length === 0)
         return fail(op, "The parent comment has no representable owned anchors.");
       positions = parentAnchors.toReversed().map(({ story, blockId, node, after }) => {
