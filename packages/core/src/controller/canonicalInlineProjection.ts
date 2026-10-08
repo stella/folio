@@ -13,6 +13,7 @@ import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
 import { readPreservedXmlAttrs } from "../prosemirror/attrs/index";
 import { PRESERVED_XML_LEVELS } from "../prosemirror/schema/nodes";
 import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "../prosemirror/trackedRunInlineAtoms";
+import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
 
 type SourceKind = ParagraphContent["type"] | RunContent["type"];
 type SourcePolicy = "container" | "leaf" | "text" | "rawField" | "control" | "layout";
@@ -353,20 +354,32 @@ export const projectCanonicalInline = (
       case "text":
         for (let unit = 0; unit < cell.text.length; unit += 1) {
           span = spans.at(index);
-          if (
-            !span ||
-            span.node.type !== "text" ||
-            span.node.text.charAt(consumed) !== cell.text.charAt(unit)
-          )
+          if (!span)
             return refuse(
-              `Canonical editing cannot map ${span?.node.type ?? "missing source text"} to native text positions.`,
+              "Canonical editing cannot map missing source text to native text positions.",
             );
+          let value: string;
+          switch (span.node.type) {
+            case "text":
+              value = span.node.text;
+              break;
+            case "softHyphen":
+            case "noBreakHyphen":
+              value = HYPHEN_TEXT_CARRIERS[span.node.type];
+              break;
+            default:
+              return refuse(
+                `Canonical editing cannot map ${span.node.type} to native text positions.`,
+              );
+          }
+          if (value.charAt(consumed) !== cell.text.charAt(unit))
+            return refuse("Canonical editing cannot preserve the source text carrier.");
           consumed += 1;
           addGap(cell.from + unit + 1, {
             offset: span.before.offset + consumed,
             zeroWidthBefore: 0,
           });
-          if (consumed === span.node.text.length) {
+          if (consumed === value.length) {
             index += 1;
             consumed = 0;
           }

@@ -27,6 +27,7 @@ import {
 } from "@stll/docx-core/ops";
 import {
   canonicalInlineSourceIssue,
+  canonicalNativeCells,
   projectCanonicalInline,
   type CanonicalInlineGap,
 } from "./canonicalInlineProjection";
@@ -203,7 +204,7 @@ class CanonicalProjection {
     const offset = paragraph.boundaries.findIndex((gaps) =>
       gaps.some((gap) => gap.position === relative),
     );
-    if (offset < 0) return refuse("The input splits a note reference.");
+    if (offset < 0) return refuse("The input splits an indivisible inline element.");
     if (splitsSurrogatePair(paragraph.text, offset)) {
       return refuse("The input would split a surrogate pair.");
     }
@@ -937,11 +938,16 @@ class CanonicalSession {
     const postSelection = { anchor: caret, head: caret };
     const preDocument = this.currentDocument;
     const isCaret = state.selection.empty;
+    const deletion =
+      isCaret &&
+      text.length === 0 &&
+      (semantic === "deleteBackward" || semantic === "deleteForward")
+        ? deletionRange(state, semantic === "deleteBackward" ? "backward" : "forward")
+        : null;
     const run =
       isCaret &&
       ((semantic === "typing" && from === to && from === state.selection.head) ||
-        (semantic === "deleteBackward" && text.length === 0 && to === state.selection.head) ||
-        (semantic === "deleteForward" && text.length === 0 && from === state.selection.head));
+        (deletion?.isOk() && deletion.value.from === from && deletion.value.to === to));
     const grouping = run ? "run" : "isolated";
     return this.stage({
       state,
@@ -1535,23 +1541,50 @@ const visibleDeletionContext = (state: EditorState) => {
   while (last + 1 < state.doc.childCount && hasDeletedParagraphMark(state.doc.child(last)))
     last += 1;
   let text = "";
-  const physicalGaps: number[] = [];
+  const physicalStarts: number[] = [];
+  const physicalEnds: number[] = [];
   let visibleOffset = 0;
+  let issue: CanonicalSessionError | undefined;
   state.doc.forEach((paragraph, paragraphOffset, paragraphIndex) => {
     if (paragraphIndex < first || paragraphIndex > last) return;
-    paragraph.forEach((node, offset) => {
-      if (node.marks.some((mark) => mark.type.name === "deletion")) return;
-      const value = node.isText ? (node.text ?? "") : "\uFFFC";
+    const native = canonicalNativeCells(paragraph);
+    if (native.isErr()) {
+      issue = new CanonicalSessionError({
+        gap: CANONICAL_GAP.dispatch,
+        reason: "refused",
+        message: native.error.message,
+      });
+      return;
+    }
+    for (const cell of native.value) {
+      if (
+        cell.type === "zeroWidth" ||
+        cell.node.marks.some((mark) => mark.type.name === "deletion")
+      )
+        continue;
+      const value = cell.type === "text" ? cell.text : "\uFFFC";
+      const from = paragraphOffset + 1 + cell.from;
+      const to = paragraphOffset + 1 + cell.to;
+      if (cell.type === "unit" && selection.from > from && selection.from < to) {
+        issue = new CanonicalSessionError({
+          gap: CANONICAL_GAP.dispatch,
+          reason: "refused",
+          message: "Character deletion cannot start inside an inline atom.",
+        });
+        return;
+      }
       for (let unit = 0; unit < value.length; unit += 1) {
-        const position = paragraphOffset + 1 + offset + unit;
-        physicalGaps[text.length] = position;
+        const position = from + (cell.type === "text" ? unit : 0);
+        physicalStarts.push(position);
         text += value.charAt(unit);
-        physicalGaps.push(position + (node.isText ? 1 : node.nodeSize));
+        physicalEnds.push(cell.type === "text" ? position + 1 : to);
         if (position < selection.from) visibleOffset += 1;
       }
-    });
+    }
   });
-  return { text, physicalGaps, visibleOffset };
+  return issue === undefined
+    ? Result.ok({ text, physicalStarts, physicalEnds, visibleOffset })
+    : Result.err(issue);
 };
 
 export const isCanonicalJoinBoundary = (
@@ -1559,7 +1592,9 @@ export const isCanonicalJoinBoundary = (
   direction: "backward" | "forward",
 ): boolean => {
   if (!(state.selection instanceof TextSelection) || !state.selection.empty) return false;
-  const { text, visibleOffset } = visibleDeletionContext(state);
+  const context = visibleDeletionContext(state);
+  if (context.isErr()) return false;
+  const { text, visibleOffset } = context.value;
   return visibleOffset === (direction === "backward" ? 0 : text.length);
 };
 
@@ -1578,7 +1613,9 @@ export const deletionRange = (
     direction === "backward" ? parent.childBefore(offset).node : parent.childAfter(offset).node;
   if (adjacent?.type.name === "noteMarker")
     return refuse("Automatic note marks cannot be deleted as characters.");
-  const { text, physicalGaps, visibleOffset } = visibleDeletionContext(state);
+  const context = visibleDeletionContext(state);
+  if (context.isErr()) return context;
+  const { text, physicalStarts, physicalEnds, visibleOffset } = context.value;
   if (splitsSurrogatePair(text, visibleOffset))
     return refuse("The deletion would split a surrogate pair.");
   if (splitsGraphemeCluster(text, visibleOffset))
@@ -1590,11 +1627,8 @@ export const deletionRange = (
     return refuse("There is no visible character to delete in this paragraph.");
   let boundary = visibleOffset + (direction === "backward" ? -1 : 1);
   while (splitsGraphemeCluster(text, boundary)) boundary += direction === "backward" ? -1 : 1;
-  const position = physicalGaps.at(boundary);
-  if (position === undefined) panic("Canonical deletion lost a grapheme boundary.");
-  return Result.ok(
-    direction === "backward"
-      ? { from: position, to: selection.to }
-      : { from: selection.from, to: position },
-  );
+  const from = physicalStarts.at(direction === "backward" ? boundary : visibleOffset);
+  const to = physicalEnds.at((direction === "backward" ? visibleOffset : boundary) - 1);
+  if (from === undefined || to === undefined) panic("Canonical deletion lost a grapheme boundary.");
+  return Result.ok({ from, to });
 };

@@ -1,0 +1,10 @@
+{
+  "input inside retained deletion maps through preceding zero-width source markers": [
+    {
+      "seed": 197,
+      "path": "0:0",
+      "note": "Source logical offsets must not be compared with native child positions after zero-width bookmarks.",
+      "date": "2026-10-08"
+    }
+  ]
+}

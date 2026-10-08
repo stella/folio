@@ -14,6 +14,7 @@
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
+import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
 import { mergeParagraphNumbering, PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { ParseContext } from "../../docx/parseContext";
@@ -3958,10 +3959,10 @@ function convertRunContent(
       ];
 
     case "noBreakHyphen":
-      return [schema.text("‑", marks)];
+      return [schema.text(HYPHEN_TEXT_CARRIERS.noBreakHyphen, marks)];
 
     case "softHyphen":
-      return [schema.text("­", marks)];
+      return [schema.text(HYPHEN_TEXT_CARRIERS.softHyphen, marks)];
 
     case "symbol":
       return [schema.node("symbol", { font: content.font, char: content.char }).mark(marks)];
