@@ -19,6 +19,12 @@ import path from "node:path";
 
 import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { commitSeed, hash32 } from "../test/commit-seed";
+import {
+  duplicatePropertyDriverIds,
+  propertyDriverIds,
+  propertyDriverAnalysis,
+  propertyDriverReferenceProblems,
+} from "../test/property-driver-ids";
 import { parseFailureRecord } from "./fuzz-failure-issues";
 import {
   assertKnownProperty,
@@ -42,24 +48,24 @@ const registryDriverProblems = (
   readSource = (file: string) => readFileSync(path.join(REPO_ROOT, file), "utf8"),
 ): string[] => {
   const problems: string[] = [];
+  const analyses = new Map<string, ReturnType<typeof propertyDriverAnalysis>>();
   for (const [key, entries] of Object.entries(registry)) {
     const separator = key.indexOf("::");
     const file = key.slice(0, separator);
-    const title = key.slice(separator + 2);
-    let lines: string[] = [];
-    try {
-      lines = readSource(file).split("\n");
-    } catch {
-      problems.push(`${key}: no such file`);
-      continue;
+    const id = key.slice(separator + 2);
+    let analysis = analyses.get(file);
+    if (analysis === undefined) {
+      try {
+        analysis = propertyDriverAnalysis(readSource(file), file);
+      } catch {
+        problems.push(`${key}: no such file`);
+        continue;
+      }
+      analyses.set(file, analysis);
+      problems.push(...analysis.problems.map((problem) => `${file}::${problem}`));
     }
-    const sites = lines.flatMap((text, index) =>
-      /\bassert(?:Pinned|Known)?Property\(/.test(text) && !/^\s*(?:\*|\/\/|import)/.test(text)
-        ? [index + 1]
-        : [],
-    );
-    if (!sites.some((line) => enclosingTitles(lines, line).at(-1) === title)) {
-      problems.push(`${key}: no registry driver call inside a test with that title`);
+    if (analysis.calls.filter((call) => call.id === id && call.argumentCount === 2).length !== 1) {
+      problems.push(`${key}: property ID must select exactly one registry driver`);
     }
     for (const pinned of entries) {
       if (!Number.isInteger(pinned.seed) || (pinned.seed | 0) !== pinned.seed) {
@@ -172,10 +178,9 @@ process.stdout.write(JSON.stringify(Object.keys(readSeedRegistry()).length));`,
       fixture,
       `import { test } from "bun:test";
 import fc from "fast-check";
-import ts from "typescript";
 import { assertProperty } from "../property-testing";
 test("nightly replay fixture", () => {
-  assertProperty(fc.property(fc.constant(false), (value) => value), { seed: 33, numRuns: 1 });
+  assertProperty(fc.property(fc.constant(false), (value) => value), { seed: 33, numRuns: 1, id: "nightly replay fixture" });
 });
 `,
     );
@@ -313,6 +318,26 @@ describe("pinned regression seeds", () => {
     overridePinnedSeedsForTesting(undefined);
   });
 
+  describe("nested presentation", () => {
+    test("a display rename keeps the logical property pin", () => {
+      withEnv({});
+      overridePinnedSeedsForTesting({
+        [`${FILE}::stable nested property`]: [entry(101)],
+      });
+      const seen: number[] = [];
+      assertProperty(
+        fc.property(fc.integer(), (value) => {
+          seen.push(value);
+        }),
+        { id: "stable nested property", seed: 5, numRuns: 2 },
+      );
+      expect(seen).toEqual([
+        ...fc.sample(fc.integer(), { seed: 101, numRuns: 2 }),
+        ...fc.sample(fc.integer(), { seed: 5, numRuns: 2 }),
+      ]);
+    });
+  });
+
   test("replay the pinned seeds before the generated runs", () => {
     withEnv({});
     const pinned = [entry(101), entry(202)];
@@ -326,7 +351,7 @@ describe("pinned regression seeds", () => {
       fc.property(fc.integer({ min: 0, max: 1_000_000 }), (value) => {
         seen.push(value);
       }),
-      { numRuns: 3, seed: 5 },
+      { numRuns: 3, seed: 5, id: "replay the pinned seeds before the generated runs" },
     );
     expect(seen).toEqual([...drawnBy(101), ...drawnBy(202), ...drawnBy(5)]);
   });
@@ -341,7 +366,7 @@ describe("pinned regression seeds", () => {
       fc.asyncProperty(fc.nat(), async () => {
         runs += 1;
       }),
-      { numRuns: 2 },
+      { numRuns: 2, id: "replay the pinned seeds for an async property too" },
     );
     expect(runs).toBe(2 * 2);
   });
@@ -360,7 +385,11 @@ describe("pinned regression seeds", () => {
           cases += 1;
           return true;
         }),
-        { seed: 202, numRuns: 1 },
+        {
+          seed: 202,
+          numRuns: 1,
+          id: "a pinned replay rejects when its raw property run completes zero cases",
+        },
       ),
     ).toThrow(/Fuzz infrastructure: Fuzz run interrupted or executed zero cases/);
     expect(cases).toBe(0);
@@ -376,7 +405,12 @@ describe("pinned regression seeds", () => {
           cases += 1;
           return true;
         }),
-        { seed: 202, path: "0:1", numRuns: 1 },
+        {
+          seed: 202,
+          path: "0:1",
+          numRuns: 1,
+          id: "a generated pass rejects when its raw property run completes zero cases",
+        },
       ),
     ).toThrow(/Fuzz infrastructure: Fuzz run interrupted or executed zero cases/);
     expect(cases).toBe(0);
@@ -393,7 +427,10 @@ describe("pinned regression seeds", () => {
       fc.property(fc.nat(), () => {
         runs += 1;
       }),
-      { numRuns: 200 },
+      {
+        numRuns: 200,
+        id: "pinned-only assertions never draw a fresh pass or scale its case count",
+      },
     );
     expect(runs).toBe(pinned.length);
   });
@@ -401,9 +438,12 @@ describe("pinned regression seeds", () => {
   test("pinned-only assertions fail when no fixed seed is registered", () => {
     withEnv({});
     overridePinnedSeedsForTesting({});
-    expect(() => assertPinnedProperty(fc.property(fc.nat(), () => true))).toThrow(
-      /No fixed regression seeds/,
-    );
+    expect(() =>
+      assertPinnedProperty(
+        fc.property(fc.nat(), () => true),
+        { id: "pinned-only assertions fail when no fixed seed is registered" },
+      ),
+    ).toThrow(/No fixed regression seeds/);
   });
 
   test("fuzz health brackets pinned and generated runs", async () => {
@@ -411,6 +451,7 @@ describe("pinned regression seeds", () => {
     const pinned = [entry(101), entry(202)];
     overridePinnedSeedsForTesting({
       [`${FILE}::fuzz health brackets pinned and generated runs`]: pinned,
+      [`${FILE}::fuzz health brackets async pinned and generated runs`]: pinned,
     });
     const logged: string[] = [];
     const logger = spyOn(console, "log").mockImplementation((line: unknown) => {
@@ -419,11 +460,11 @@ describe("pinned regression seeds", () => {
     try {
       assertProperty(
         fc.property(fc.constant(1), () => true),
-        { numRuns: 1 },
+        { numRuns: 1, id: "fuzz health brackets pinned and generated runs" },
       );
       await assertProperty(
         fc.asyncProperty(fc.constant(1), async () => true),
-        { numRuns: 1 },
+        { numRuns: 1, id: "fuzz health brackets async pinned and generated runs" },
       );
     } finally {
       logger.mockRestore();
@@ -448,7 +489,12 @@ describe("pinned regression seeds", () => {
       fc.property(fc.nat({ max: 10 }), (value) => {
         seen.push(value);
       }),
-      { numRuns: 2, seed: 5, examples: [[99]] },
+      {
+        numRuns: 2,
+        seed: 5,
+        examples: [[99]],
+        id: "explicit examples do not shift a pinned replay path",
+      },
     );
     expect(seen.at(0)).toBe(fc.sample(fc.nat({ max: 10 }), { seed: 101, numRuns: 1 }).at(0));
     expect(seen).toContain(99);
@@ -481,9 +527,12 @@ describe("pinned regression seeds", () => {
         },
       ],
     });
-    expect(() => assertProperty(fc.property(fc.nat(), () => true))).toThrow(
-      /remove expectedFailure/,
-    );
+    expect(() =>
+      assertProperty(
+        fc.property(fc.nat(), () => true),
+        { id: "expected seed fails if its bug is fixed" },
+      ),
+    ).toThrow(/remove expectedFailure/);
   });
 
   test("expected seed accepts only its recorded fingerprint", () => {
@@ -504,6 +553,7 @@ describe("pinned regression seeds", () => {
         fc.property(fc.nat(), () => {
           throw new Error("different bug");
         }),
+        { id: "expected seed accepts only its recorded fingerprint" },
       ),
     ).toThrow(/different bug/);
   });
@@ -528,7 +578,13 @@ describe("pinned regression seeds", () => {
         }
         generated += 1;
       }),
-      { seed: 5, numRuns: 2, examples: [[-1]], reporter: () => {} },
+      {
+        seed: 5,
+        numRuns: 2,
+        examples: [[-1]],
+        reporter: () => {},
+        id: "matching expected seed runs once and the generated pass stays independent",
+      },
     );
     expect(replays).toBe(1);
     expect(generated).toBe(6);
@@ -547,7 +603,7 @@ describe("pinned regression seeds", () => {
         fc.property(fc.constant(1), () => {
           throw new Error("known bug");
         }),
-        { seed: 5, numRuns: 1 },
+        { seed: 5, numRuns: 1, id: "expected seed does not excuse a failing generated pass" },
       ),
     ).toThrow(/Property failed/);
   });
@@ -565,6 +621,7 @@ describe("pinned regression seeds", () => {
         fc.asyncProperty(fc.nat(), async () => true),
         {
           asyncReporter: async () => {},
+          id: "async expected seed cannot bypass its ratchet with a reporter",
         },
       ),
     ).rejects.toThrow(/remove expectedFailure/);
@@ -579,8 +636,14 @@ describe("pinned regression seeds", () => {
         fc.property(fc.constant(1), () => {
           throw bug;
         }),
-        [recordedFailure(title, bug), recordedFailure(title, new Error("fixed cause"))],
-        { numRuns: 2 },
+        {
+          numRuns: 2,
+          expectedFailures: [
+            recordedFailure(title, bug),
+            recordedFailure(title, new Error("fixed cause")),
+          ],
+          id: "known kind fails when one recorded cause is fixed",
+        },
       ),
     ).toThrow(/fixed: set this kind to holds/);
   });
@@ -595,16 +658,24 @@ describe("pinned regression seeds", () => {
       fc.property(fc.integer(), (value) => {
         throw value === 1 ? first : second;
       }),
-      expected,
-      { numRuns: 2, examples: [[1], [2]] },
+      {
+        numRuns: 2,
+        examples: [[1], [2]],
+        expectedFailures: expected,
+        id: "known kind requires witnesses for every cause and propagates new failures",
+      },
     );
     expect(() =>
       assertKnownProperty(
         fc.property(fc.constant(1), () => {
           throw new Error("unexpected cause");
         }),
-        expected,
-        { numRuns: 1, reporter: () => {} },
+        {
+          numRuns: 1,
+          reporter: () => {},
+          expectedFailures: expected,
+          id: "known kind propagates unexpected failures",
+        },
       ),
     ).toThrow(/Property failed/);
   });
@@ -618,8 +689,14 @@ describe("pinned regression seeds", () => {
         fc.property(fc.constantFrom("holds", "known"), () => {
           throw bug;
         }),
-        [{ ...recordedFailure(title, bug), matches: ([kind]) => kind === "known" }],
-        { numRuns: 1, examples: [["holds"]] },
+        {
+          numRuns: 1,
+          examples: [["holds"]],
+          expectedFailures: [
+            { ...recordedFailure(title, bug), matches: ([kind]) => kind === "known" },
+          ],
+          id: "known fingerprint assigned to another kind cannot suppress its failure",
+        },
       ),
     ).toThrow(/Property failed/);
   });
@@ -633,22 +710,36 @@ describe("pinned regression seeds", () => {
         fc.property(fc.constantFrom("first", "second"), () => {
           throw bug;
         }),
-        [
-          { ...recordedFailure(title, bug), matches: ([kind]) => kind === "first" },
-          { ...recordedFailure(title, bug), matches: ([kind]) => kind === "second" },
-        ],
-        { numRuns: 1, examples: [["first"]] },
+        {
+          numRuns: 1,
+          examples: [["first"]],
+          expectedFailures: [
+            { ...recordedFailure(title, bug), matches: ([kind]) => kind === "first" },
+            { ...recordedFailure(title, bug), matches: ([kind]) => kind === "second" },
+          ],
+          id: "shared fingerprint requires a witness for each declared owner",
+        },
       ),
     ).toThrow(/fixed: set this kind to holds/);
     assertKnownProperty(
       fc.property(fc.constantFrom("first", "second"), () => {
         throw bug;
       }),
-      [
-        { ...recordedFailure(title, bug), matches: ([kind]) => kind === "first" },
-        { ...recordedFailure(title, bug), matches: ([kind]) => kind === "second" },
-      ],
-      { numRuns: 2, examples: [["first"], ["second"]] },
+      {
+        numRuns: 2,
+        examples: [["first"], ["second"]],
+        expectedFailures: [
+          {
+            ...recordedFailure("shared fingerprint sees every declared owner", bug),
+            matches: ([kind]) => kind === "first",
+          },
+          {
+            ...recordedFailure("shared fingerprint sees every declared owner", bug),
+            matches: ([kind]) => kind === "second",
+          },
+        ],
+        id: "shared fingerprint sees every declared owner",
+      },
     );
   });
 
@@ -669,8 +760,11 @@ describe("pinned regression seeds", () => {
         .afterEach(() => {
           after += 1;
         }),
-      [recordedFailure(title, bug)],
-      { numRuns: 2 },
+      {
+        numRuns: 2,
+        expectedFailures: [recordedFailure(title, bug)],
+        id: "async known property executes hooks and requires a generated witness",
+      },
     );
     expect(before).toBe(2);
     expect(after).toBe(2);
@@ -678,6 +772,40 @@ describe("pinned regression seeds", () => {
 
   test(`every ${PROPERTY_SEEDS_FILE} entry names a test that asserts through a registry driver`, () => {
     expect(registryDriverProblems(readPinnedSeeds())).toEqual([]);
+  });
+
+  test("every imported property driver declares a literal ID in its options", () => {
+    const result = Bun.spawnSync(
+      [
+        "rg",
+        "-l",
+        "property-testing",
+        "--glob",
+        "*.ts",
+        "--glob",
+        "*.tsx",
+        "--glob",
+        "!*.typecheck.ts",
+        "packages",
+        "scripts",
+        "test",
+        "tests",
+      ],
+      { cwd: REPO_ROOT },
+    );
+    expect(result.exitCode).toBe(0);
+    const files = new TextDecoder().decode(result.stdout).trim().split("\n");
+    const calls = files.flatMap((file) => {
+      const analysis = propertyDriverAnalysis(
+        readFileSync(path.join(REPO_ROOT, file), "utf8"),
+        file,
+      );
+      expect(analysis.problems).toEqual([]);
+      expect(duplicatePropertyDriverIds(analysis.calls)).toEqual([]);
+      return analysis.calls.map(({ id, argumentCount }) => ({ file, id, argumentCount }));
+    });
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.filter(({ id, argumentCount }) => !id?.trim() || argumentCount !== 2)).toEqual([]);
   });
 });
 
@@ -741,7 +869,7 @@ describe("per-test-file seed registry", () => {
               expect(seedFileFor(testFileForSeedFile(file))).toBe(file);
           },
         ),
-        { numRuns: 80 },
+        { numRuns: 80, id: "split and join preserve generated registries" },
       );
     },
     propertyTestTimeout(10_000),
@@ -780,7 +908,7 @@ describe("per-test-file seed registry", () => {
     }
   });
 
-  test("driver guards reject absent files and orphan test titles", () => {
+  test("driver guards reject absent files and orphan property IDs", () => {
     const entries = [{ seed: 7, note: "sample", date: "2026-10-03" }];
     const registry = { "scripts/probe.test.ts::title": entries };
     expect(
@@ -789,12 +917,123 @@ describe("per-test-file seed registry", () => {
       }),
     ).toContain("scripts/probe.test.ts::title: no such file");
     expect(
-      registryDriverProblems(registry, () => 'test("other", () => {\n  assertProperty(p);\n});'),
+      registryDriverProblems(
+        registry,
+        () =>
+          'import { assertProperty } from "../test/property-testing"; test("title", () => { assertProperty(p, { id: "other" }); });',
+      ),
     ).toContain(
-      "scripts/probe.test.ts::title: no registry driver call inside a test with that title",
+      "scripts/probe.test.ts::title: property ID must select exactly one registry driver",
     );
     expect(
-      registryDriverProblems(registry, () => 'test("title", () => {\n  assertProperty(p);\n});'),
+      registryDriverProblems(
+        registry,
+        () =>
+          'import { assertProperty } from "../test/property-testing"; describe("outer", () => { test("different display", () => { assertProperty(p, { id: "title" }); }); });',
+      ),
     ).toEqual([]);
+  });
+
+  test("driver guards reject duplicate IDs across driver kinds and import forms", () => {
+    const prefix =
+      'import { assertProperty as check } from "../test/property-testing";\nimport * as properties from "../test/property-testing";\n';
+    for (const driver of ["assertProperty", "assertKnownProperty", "assertPinnedProperty"]) {
+      const source =
+        prefix + `check(p, { id: "stable" });\nproperties.${driver}(p, { id: "stable" });`;
+      expect(
+        duplicatePropertyDriverIds(propertyDriverIds(source, "scripts/probe.test.ts")),
+      ).toEqual(["stable: duplicate property ID at lines 3 and 4"]);
+      expect(
+        registryDriverProblems(
+          { "scripts/probe.test.ts::stable": [{ seed: 7, note: "sample", date: "2026-10-03" }] },
+          () => source,
+        ),
+      ).toEqual([
+        "scripts/probe.test.ts::stable: property ID must select exactly one registry driver",
+      ]);
+      expect(
+        duplicatePropertyDriverIds(
+          propertyDriverIds(
+            source.replace('id: "stable" });\nproperties.', 'id: "distinct" });\nproperties.'),
+            "scripts/probe.test.ts",
+          ),
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  test("driver guards reject escaped values while respecting lexical scope and type references", () => {
+    const prefix =
+      'import { assertProperty as check } from "../test/property-testing";\nimport * as properties from "../test/property-testing";\n';
+    const direct = 'check(p, { id: "stable" });';
+    for (const escaped of [
+      "const alias = check; alias(p, { id: 'stable' });",
+      "consume(check);",
+      "const drivers = { check };",
+      "export { check };",
+      "const alias = properties.assertProperty; alias(p, { id: 'stable' });",
+      "const { assertProperty: alias } = properties; alias(p, { id: 'stable' });",
+      "const alias = properties; alias.assertProperty(p, { id: 'stable' });",
+      "properties['assertProperty'](p, { id: 'stable' });",
+    ]) {
+      const source = prefix + direct + escaped;
+      expect(propertyDriverReferenceProblems(source, "scripts/probe.test.ts")).toHaveLength(1);
+      expect(
+        registryDriverProblems(
+          { "scripts/probe.test.ts::stable": [{ seed: 7, note: "sample", date: "2026-10-03" }] },
+          () => source,
+        ).length,
+      ).toBeGreaterThan(0);
+    }
+    const source =
+      prefix +
+      direct +
+      `
+      type Driver = typeof check;
+      type Namespace = typeof properties;
+      properties.assertPinnedProperty(p, { id: "pinned" });
+      function local(check, properties) {
+        check(p, { id: "stable" });
+        properties.assertProperty(p, { id: "stable" });
+      }
+    `;
+    expect(propertyDriverReferenceProblems(source, "scripts/probe.test.ts")).toEqual([]);
+    expect(propertyDriverIds(source, "scripts/probe.test.ts").map(({ id }) => id)).toEqual([
+      "stable",
+      "pinned",
+    ]);
+  });
+
+  test("ID discovery follows imported aliases and ignores strings, declarations and unrelated functions", () => {
+    const source = `
+      import { assertProperty as check } from "../test/property-testing";
+      import * as properties from "../test/property-testing";
+      check(p, { id: "aliased" });
+      properties.assertPinnedProperty(p, { id: "pinned" });
+      const fixture = 'check(p, { id: "string" })';
+      function assertProperty(p) {}
+      assertProperty(p);
+    `;
+    expect(propertyDriverIds(source, "probe.test.ts").map(({ id }) => id)).toEqual([
+      "aliased",
+      "pinned",
+    ]);
+    const prefix = 'import { assertProperty } from "../test/property-testing"; ';
+    expect(
+      propertyDriverIds(
+        prefix + 'assertProperty(p, { ...parameters, "id": "final" })',
+        "probe.test.ts",
+      ).at(0)?.id,
+    ).toBe("final");
+    for (const call of [
+      "assertProperty(p)",
+      "assertProperty(p, {})",
+      "assertProperty(p, { id: computed })",
+      'assertProperty(p, { id: "first", id: "second" })',
+      'assertProperty(p, { id: "first", id })',
+      'assertProperty(p, { id: "first", ...override })',
+      'assertProperty(p, { id: "first", [key]: "override" })',
+    ])
+      expect(propertyDriverIds(prefix + call, "probe.test.ts").at(0)?.id).toBeUndefined();
   });
 });
