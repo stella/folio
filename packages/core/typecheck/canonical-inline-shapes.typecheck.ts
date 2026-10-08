@@ -102,10 +102,14 @@ export const CANONICAL_PARAGRAPH_SHAPE_FACTORIES = {
     }),
     paragraphFixture({ type: "hyperlink", href: "https://empty.example/", children: [] }, "empty"),
   ],
-  bookmarkStart: (text = "x") =>
-    rangeFixtures({ item: bookmarkStart, start: bookmarkStart, end: bookmarkEnd, text }),
-  bookmarkEnd: (text = "x") =>
-    rangeFixtures({ item: bookmarkEnd, start: bookmarkStart, end: bookmarkEnd, text }),
+  bookmarkStart: (text = "x") => [
+    ...rangeFixtures({ item: bookmarkStart, start: bookmarkStart, end: bookmarkEnd, text }),
+    paragraphFixture(bookmarkStart, "unpaired"),
+  ],
+  bookmarkEnd: (text = "x") => [
+    ...rangeFixtures({ item: bookmarkEnd, start: bookmarkStart, end: bookmarkEnd, text }),
+    paragraphFixture(bookmarkEnd, "unpaired"),
+  ],
   commentRangeStart: (text = "x") =>
     rangeFixtures({ item: commentStart, start: commentStart, end: commentEnd, text }),
   commentRangeEnd: (text = "x") =>

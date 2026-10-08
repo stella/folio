@@ -338,14 +338,39 @@ const sameSourceMarker = (
   }
 };
 
+type CanonicalInlineProjectionArgs = {
+  source: Paragraph;
+  paragraph: PMNode;
+  pairedBookmarkIds: ReadonlySet<number>;
+};
+
 /** Bind rendered gaps to the operation owner's source leaf ordinals, including collapsed pairs. */
-export const projectCanonicalInline = (
-  source: Paragraph,
-  paragraph: PMNode,
-): Result<InlineProjection, InlineProjectionError> => {
+export const projectCanonicalInline = ({
+  source,
+  paragraph,
+  pairedBookmarkIds,
+}: CanonicalInlineProjectionArgs): Result<InlineProjection, InlineProjectionError> => {
   const native = canonicalNativeCells(paragraph);
   if (native.isErr()) return native;
   const spans = inlineLeafSpans(source.content);
+  const erasedBookmarks = new Set<ParagraphContent | RunContent>();
+  const collectErasedBookmarks = (
+    items: readonly (ParagraphContent | RunContent)[],
+    context: "paragraph" | "nested",
+  ): void => {
+    for (const item of items) {
+      if (item.type === "bookmarkStart" || item.type === "bookmarkEnd") {
+        if (context === "paragraph" && !pairedBookmarkIds.has(item.id)) erasedBookmarks.add(item);
+        continue;
+      }
+      if (CANONICAL_SOURCE_INLINE_POLICIES[item.type] !== "container") continue;
+      collectErasedBookmarks(
+        sourceContainerChildren(item),
+        item.type === "run" || item.type === "inlineWrapper" ? context : "nested",
+      );
+    }
+  };
+  collectErasedBookmarks(source.content, "paragraph");
   const text = paragraphLogicalText(source);
   const boundaries: CanonicalInlineGap[][] = Array.from({ length: text.length + 1 }, () => []);
   let index = 0;
@@ -355,18 +380,21 @@ export const projectCanonicalInline = (
     if (!gaps) panic(`Source leaf offset ${gap.offset} exceeds paragraph ${source.paraId}.`);
     const existing = gaps.findIndex((entry) => entry.position === position);
     const entry = { position, zeroWidthBefore: gap.zeroWidthBefore };
-    // Erased source containers share a native seam: keep its right-affine source gap.
+    // Erased source leaves share a native seam: keep its right-affine source gap.
     if (existing < 0) gaps.push(entry);
     else gaps[existing] = entry;
   };
-  const consumeErasedContainers = (position: number | null) => {
+  const consumeErasedLeaves = (position: number | null) => {
     while (consumed === 0) {
       const span = spans.at(index);
       if (
         !span ||
         span.before.offset !== span.after.offset ||
-        CANONICAL_SOURCE_INLINE_POLICIES[span.node.type] !== "container" ||
-        sourceContainerChildren(span.node).length !== 0
+        !(
+          erasedBookmarks.has(span.node) ||
+          (CANONICAL_SOURCE_INLINE_POLICIES[span.node.type] === "container" &&
+            sourceContainerChildren(span.node).length === 0)
+        )
       )
         break;
       index += 1;
@@ -375,7 +403,7 @@ export const projectCanonicalInline = (
   };
   addGap(0, { offset: 0, zeroWidthBefore: 0 });
   for (const cell of native.value) {
-    consumeErasedContainers(cell.from);
+    consumeErasedLeaves(cell.from);
     let span = spans.at(index);
     if (!span)
       return refuse(`Canonical editing cannot map native ${cell.node.type.name} to a source leaf.`);
@@ -386,7 +414,7 @@ export const projectCanonicalInline = (
     switch (cell.type) {
       case "zeroWidth":
         for (const marker of cell.sources) {
-          consumeErasedContainers(null);
+          consumeErasedLeaves(null);
           span = spans.at(index);
           if (
             !span ||
@@ -424,7 +452,7 @@ export const projectCanonicalInline = (
         break;
       case "text":
         for (let unit = 0; unit < cell.text.length; unit += 1) {
-          consumeErasedContainers(cell.from + unit);
+          consumeErasedLeaves(cell.from + unit);
           span = spans.at(index);
           if (!span)
             return refuse(
@@ -461,7 +489,7 @@ export const projectCanonicalInline = (
         cell satisfies never;
     }
   }
-  consumeErasedContainers(paragraph.content.size);
+  consumeErasedLeaves(paragraph.content.size);
   const missing = spans.at(index);
   if (missing || consumed !== 0)
     return refuse(

@@ -46,6 +46,7 @@ import {
   toProseDoc,
   headerFooterToProseDoc,
   footnoteToProseDoc,
+  collectPairedBookmarkIds,
 } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, StyleDefinitions } from "../types/document";
 
@@ -263,7 +264,7 @@ class CanonicalProjection {
       return refuse("The canonical selection is outside a paragraph gap.");
     if (gap === undefined)
       return refuse(
-        "This source gap is inside a collapsed range or an empty inline container and has no editor position.",
+        "This source gap is inside a collapsed or erased inline boundary and has no editor position.",
       );
     return Result.ok(paragraph.start + gap.position);
   }
@@ -405,6 +406,7 @@ const project = ({
       }),
   });
   if (converted.isErr()) return converted;
+  const pairedBookmarkIds = collectPairedBookmarkIds(body.content);
   const paragraphs: ParagraphAddress[] = [];
   let failure: CanonicalSessionError | undefined;
   converted.value.forEach((node, offset, index) => {
@@ -425,7 +427,7 @@ const project = ({
       });
       return;
     }
-    const inline = projectCanonicalInline(source, node);
+    const inline = projectCanonicalInline({ source, paragraph: node, pairedBookmarkIds });
     if (inline.isErr()) {
       failure = new CanonicalSessionError({
         gap: CANONICAL_GAP.dispatch,

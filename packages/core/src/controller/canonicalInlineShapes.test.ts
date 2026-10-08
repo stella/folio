@@ -9,7 +9,11 @@ import {
   validateOpsDocument,
 } from "@stll/docx-core/ops";
 import { schema } from "../prosemirror/schema";
-import { footnoteToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import {
+  footnoteToProseDoc,
+  toProseDoc,
+  collectPairedBookmarkIds,
+} from "../prosemirror/conversion/toProseDoc";
 import type { ParagraphContent, RunContent } from "../types/document";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -80,7 +84,11 @@ const checkShape = (fixture: CanonicalInlineShapeFixture<ParagraphContent | RunC
     if (paragraph.type !== "paragraph") panic("Fixture contains a nonparagraph");
     const native = projection.doc.nodeAt(start - 1);
     if (native === null) panic("Fixture native paragraph is absent");
-    const mapped = projectCanonicalInline(paragraph, native).unwrap();
+    const mapped = projectCanonicalInline({
+      source: paragraph,
+      paragraph: native,
+      pairedBookmarkIds: collectPairedBookmarkIds(body.content),
+    }).unwrap();
     expect(mapped.text).toBe(paragraphLogicalText(paragraph));
     for (let position = 0; position <= native.content.size; position += 1) {
       if (mapped.boundaries.some((gaps) => gaps.some((gap) => gap.position === position))) continue;

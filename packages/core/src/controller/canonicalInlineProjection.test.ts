@@ -12,7 +12,7 @@ import type {
   Footnote,
   Endnote,
 } from "../types/document";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { toProseDoc, collectPairedBookmarkIds } from "../prosemirror/conversion/toProseDoc";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { projectCanonicalInline } from "./canonicalInlineProjection";
 import { createCanonicalSession } from "./canonicalSession";
@@ -108,7 +108,11 @@ test("generated collapsed and paired markers retain exact source gap ordinals", 
     const source = { type: "paragraph", paraId: "12345678", content } satisfies Paragraph;
     const document = documentFor(source);
     const native = toProseDoc(document).child(0);
-    const mapped = projectCanonicalInline(source, native).unwrap();
+    const mapped = projectCanonicalInline({
+      source,
+      paragraph: native,
+      pairedBookmarkIds: collectPairedBookmarkIds([source]),
+    }).unwrap();
     expect(mapped.text).toBe(paragraphLogicalText(source));
     expect(mapped.text).toBe("LR");
     expect(mapped.boundaries).toEqual([
@@ -157,7 +161,11 @@ test("generated nonempty bookmark and move ranges preserve native gap geometry",
       } satisfies Paragraph;
       const document = documentFor(source);
       const native = toProseDoc(document).child(0);
-      const mapped = projectCanonicalInline(source, native).unwrap();
+      const mapped = projectCanonicalInline({
+        source,
+        paragraph: native,
+        pairedBookmarkIds: collectPairedBookmarkIds([source]),
+      }).unwrap();
       expect(mapped.text).toBe(paragraphLogicalText(source));
       expect(native.content.size).toBe(mapped.text.length + 2);
       expect(mapped.boundaries.at(1)).toEqual([
@@ -185,7 +193,6 @@ test("generated nonempty bookmark and move ranges preserve native gap geometry",
 test("source markers with no native boundary receive typed activation refusals", () => {
   const contents = [
     [run("L"), PAIRS.commentRangeStart[0], run("x"), PAIRS.commentRangeStart[1], run("R")],
-    [run("L"), PAIRS.bookmarkStart[0], run("R")],
   ] satisfies ParagraphContent[][];
   for (const content of contents) {
     const source = { type: "paragraph", paraId: "12345678", content } satisfies Paragraph;
@@ -234,7 +241,11 @@ test("generated erased containers keep unique source seams beside text and colla
         native.forEach((node) => nativeKinds.push(node.type.name));
         expect(nativeKinds).toContain("rangeAnchor");
       }
-      const mapped = projectCanonicalInline(source, native).unwrap();
+      const mapped = projectCanonicalInline({
+        source,
+        paragraph: native,
+        pairedBookmarkIds: collectPairedBookmarkIds([source]),
+      }).unwrap();
       expect(mapped.text).toBe("LR");
       const zeroWidth = (paragraph: Paragraph) =>
         inlineLeafSpans(paragraph.content)
@@ -322,7 +333,11 @@ test("adjacent note-reference carriers preserve every source unit after identica
     } satisfies Document;
     const session = createCanonicalSession(document).unwrap();
     const native = session.projection.doc.child(0);
-    const mapped = projectCanonicalInline(paragraph, native).unwrap();
+    const mapped = projectCanonicalInline({
+      source: paragraph,
+      paragraph: native,
+      pairedBookmarkIds: collectPairedBookmarkIds([paragraph]),
+    }).unwrap();
     expect(mapped.text).toBe(`L${"\uFFFC".repeat(count)}R`);
     const renderedNodes: string[] = [];
     native.forEach((node) => {
@@ -391,4 +406,95 @@ test("adjacent field atoms retain separate source-unit boundaries", () => {
         );
       }
     }
+});
+
+test("story-owned eligibility preserves unpaired and cross-paragraph bookmark source gaps", () => {
+  const cases = [
+    { placement: "root", partner: "absent" },
+    { placement: "wrapper", partner: "absent" },
+    { placement: "root", partner: "otherParagraph" },
+    { placement: "wrapper", partner: "otherParagraph" },
+    { placement: "hyperlink", partner: "otherParagraph" },
+    { placement: "revision", partner: "otherParagraph" },
+  ] as const;
+  const check = (endpoint: "start" | "end", { placement, partner }: (typeof cases)[number]) => {
+    const pair = PAIRS.bookmarkStart;
+    const marker = endpoint === "start" ? pair[0] : pair[1];
+    const opposite = endpoint === "start" ? pair[1] : pair[0];
+    const wrap = (item: ParagraphContent): ParagraphContent => {
+      switch (placement) {
+        case "root":
+          return item;
+        case "wrapper":
+          return { type: "inlineWrapper", kind: "smartTag", element: "value", content: [item] };
+        case "hyperlink":
+          return { type: "hyperlink", href: "https://example.test/", children: [item] };
+        case "revision":
+          return {
+            type: "insertion",
+            info: { id: item.type === "bookmarkStart" ? 44 : 45, author: "Reviewer" },
+            content: [item],
+          };
+      }
+    };
+    const source = {
+      type: "paragraph",
+      paraId: "12345678",
+      content: [run("L"), wrap(marker), run("R")],
+    } satisfies Paragraph;
+    const other = {
+      type: "paragraph",
+      paraId: "22345678",
+      content: [run("P"), wrap(opposite), run("Q")],
+    } satisfies Paragraph;
+    const pairedContent = endpoint === "start" ? [source, other] : [other, source];
+    const content = partner === "absent" ? [source] : pairedContent;
+    const document = { package: { document: { content } } } satisfies Document;
+    const eligible = collectPairedBookmarkIds(content);
+    expect(eligible.has(marker.id)).toBe(partner === "otherParagraph");
+    const session = createCanonicalSession(document).unwrap();
+    const sourceIndex = content.indexOf(source);
+    const native = session.projection.doc.child(sourceIndex);
+    const start = sourceIndex === 0 ? 1 : 1 + session.projection.doc.child(0).nodeSize;
+    const mapped = projectCanonicalInline({
+      source,
+      paragraph: native,
+      pairedBookmarkIds: eligible,
+    }).unwrap();
+    const represented =
+      partner === "otherParagraph" || placement === "hyperlink" || placement === "revision";
+    expect(native.content.size).toBe(represented ? 3 : 2);
+    const current = session.projection.paragraph(source.paraId);
+    expect(current).toBeDefined();
+    if (!current) panic("Bookmark fixture lost its source paragraph.");
+    expect(
+      inlineLeafSpans(current.source.content)
+        .filter(({ node }) => node.type === marker.type)
+        .map(({ node }) => node),
+    ).toEqual([marker]);
+    for (const [offset, gaps] of mapped.boundaries.entries())
+      for (const gap of gaps) {
+        const address = session.projection.addressAt(start + gap.position).unwrap();
+        expect(address.offset).toBe(offset);
+        expect(address.zeroWidthBefore ?? 0).toBe(gap.zeroWidthBefore);
+        expect(session.projection.positionAt(address).unwrap()).toBe(start + gap.position);
+      }
+    const before = session.projection.positionAt({
+      story: OP_STORIES.MAIN,
+      blockId: source.paraId,
+      offset: 1,
+      zeroWidthBefore: 0,
+    });
+    expect(before.isOk()).toBe(represented);
+    const after = session.projection
+      .positionAt({ story: OP_STORIES.MAIN, blockId: source.paraId, offset: 1, zeroWidthBefore: 1 })
+      .unwrap();
+    expect(session.projection.addressAt(after).unwrap().zeroWidthBefore).toBe(1);
+  };
+  for (const endpoint of ["start", "end"] as const)
+    for (const scenario of cases) check(endpoint, scenario);
+  assertProperty(fc.property(fc.constantFrom("start", "end"), fc.constantFrom(...cases), check), {
+    seed: -1133252633,
+    numRuns: 40,
+  });
 });
