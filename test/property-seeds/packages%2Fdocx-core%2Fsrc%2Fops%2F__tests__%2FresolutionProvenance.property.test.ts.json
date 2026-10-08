@@ -196,6 +196,12 @@
       "path": "0:0:8:0:0:0",
       "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 382187231,
+      "path": "1:2:6",
+      "note": "Preserve a paired bookmark inside replaced content at the input-affine source gap.",
+      "date": "2026-10-08"
     }
   ],
   "generated retained source identities survive a later pending formatting action": [
