@@ -419,6 +419,13 @@ export type HeaderFooterStory = {
 export const INHERIT_RUN_PROPS = "inherit";
 
 // @public
+export const inlineLeafSpans: (items: readonly InlineNode[]) => {
+    node: InlineNode;
+    before: Gap;
+    after: Gap;
+}[];
+
+// @public
 export type InlineSlice = {
     content: readonly ParagraphContent[];
     openStart: number;

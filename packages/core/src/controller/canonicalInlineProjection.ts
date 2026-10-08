@@ -310,15 +310,29 @@ export const projectCanonicalInline = (
   const addGap = (position: number, gap: { offset: number; zeroWidthBefore: number }) => {
     const gaps = boundaries.at(gap.offset);
     if (!gaps) panic(`Source leaf offset ${gap.offset} exceeds paragraph ${source.paraId}.`);
-    if (
-      !gaps.some(
-        (entry) => entry.position === position && entry.zeroWidthBefore === gap.zeroWidthBefore,
+    const existing = gaps.findIndex((entry) => entry.position === position);
+    const entry = { position, zeroWidthBefore: gap.zeroWidthBefore };
+    // Erased source containers share a native seam: keep its right-affine source gap.
+    if (existing < 0) gaps.push(entry);
+    else gaps[existing] = entry;
+  };
+  const consumeErasedContainers = (position: number | null) => {
+    while (consumed === 0) {
+      const span = spans.at(index);
+      if (
+        !span ||
+        span.before.offset !== span.after.offset ||
+        CANONICAL_SOURCE_INLINE_POLICIES[span.node.type] !== "container" ||
+        sourceContainerChildren(span.node).length !== 0
       )
-    )
-      gaps.push({ position, zeroWidthBefore: gap.zeroWidthBefore });
+        break;
+      index += 1;
+      if (position !== null) addGap(position, span.after);
+    }
   };
   addGap(0, { offset: 0, zeroWidthBefore: 0 });
   for (const cell of native.value) {
+    consumeErasedContainers(cell.from);
     let span = spans.at(index);
     if (!span)
       return refuse(`Canonical editing cannot map native ${cell.node.type.name} to a source leaf.`);
@@ -329,6 +343,7 @@ export const projectCanonicalInline = (
     switch (cell.type) {
       case "zeroWidth":
         for (const marker of cell.sources) {
+          consumeErasedContainers(null);
           span = spans.at(index);
           if (
             !span ||
@@ -358,6 +373,7 @@ export const projectCanonicalInline = (
         break;
       case "text":
         for (let unit = 0; unit < cell.text.length; unit += 1) {
+          consumeErasedContainers(cell.from + unit);
           span = spans.at(index);
           if (
             !span ||
@@ -382,6 +398,7 @@ export const projectCanonicalInline = (
         cell satisfies never;
     }
   }
+  consumeErasedContainers(paragraph.content.size);
   const missing = spans.at(index);
   if (missing || consumed !== 0)
     return refuse(
