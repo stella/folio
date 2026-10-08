@@ -198,14 +198,14 @@ proptest! {
         );
         let definitions = format!("{}{}", default_properties(false), table_definitions);
         let projection = project(&table(&name, paragraph), &definitions);
-        if selection != TableSelection::Missing {
+        if selection == TableSelection::Missing {
+            let plain = project(&table("", paragraph), &default_properties(false));
+            prop_assert_eq!(projection, plain);
+        } else {
             prop_assert_eq!(projection.formatting_status, FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles));
             prop_assert_eq!(&projection.structural_facts.indentation, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
             prop_assert_eq!(&projection.structural_facts.outline_levels, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
             prop_assert_eq!(&projection.structural_facts.numbering_hierarchy, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
-        } else {
-            let plain = project(&table("", paragraph), &default_properties(false));
-            prop_assert_eq!(projection, plain);
         }
     }
 
