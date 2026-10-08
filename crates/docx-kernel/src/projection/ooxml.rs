@@ -96,10 +96,25 @@ impl RevisionProjectionStatus {
     }
 }
 
+/// How a tracked paragraph mark changes the paragraph break. A moved-away
+/// mark (`w:moveFrom`) behaves like a deleted one and a moved-here mark
+/// (`w:moveTo`) like an inserted one, in both review views.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ParagraphMarkRevision {
-    Insertion,
-    Deletion,
+    /// `w:ins` or `w:moveTo`: the break exists only in the current view.
+    Added,
+    /// `w:del` or `w:moveFrom`: the break exists only in the original view.
+    Removed,
+}
+
+impl ParagraphMarkRevision {
+    fn from_element(name: &[u8]) -> Option<Self> {
+        match name {
+            b"ins" | b"moveTo" => Some(Self::Added),
+            b"del" | b"moveFrom" => Some(Self::Removed),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -109,7 +124,7 @@ pub(super) enum TextControl {
     PageBreak,
     ColumnBreak,
     CarriageReturn,
-    FootnoteReference,
+    NoteReference,
     SoftHyphen,
     NoBreakHyphen,
 }
@@ -126,7 +141,8 @@ impl TextControl {
                 Self::PageBreak => "\u{000c}",
                 Self::ColumnBreak => "\u{000e}",
                 Self::CarriageReturn => "\r",
-                Self::FootnoteReference => "\u{0002}",
+                // Footnote and endnote reference marks both materialize as U+0002.
+                Self::NoteReference => "\u{0002}",
                 Self::SoftHyphen => "\u{001f}",
                 Self::NoBreakHyphen => "\u{001e}",
             }),
@@ -135,7 +151,7 @@ impl TextControl {
                 Self::LineBreak | Self::PageBreak | Self::ColumnBreak | Self::CarriageReturn => {
                     Some("\n")
                 }
-                Self::FootnoteReference => None,
+                Self::NoteReference => None,
                 Self::SoftHyphen => Some("\u{00ad}"),
                 Self::NoBreakHyphen => Some("\u{2011}"),
             },
@@ -1159,17 +1175,9 @@ impl ProjectionState {
                     Frame::Other
                 } else if self.inside_paragraph_mark_properties() {
                     if let Some(paragraph) = self.current_paragraph.as_mut() {
-                        match name {
-                            b"ins" => {
-                                paragraph.paragraph_mark_revision =
-                                    Some(ParagraphMarkRevision::Insertion);
-                            }
-                            b"del" => {
-                                paragraph.paragraph_mark_revision =
-                                    Some(ParagraphMarkRevision::Deletion);
-                            }
-                            _ => {}
-                        }
+                        paragraph.paragraph_mark_revision =
+                            ParagraphMarkRevision::from_element(name)
+                                .or(paragraph.paragraph_mark_revision);
                         paragraph
                             .paragraph_mark_review_indices
                             .extend(attributed_revision);
@@ -1273,13 +1281,13 @@ impl ProjectionState {
                 self.append_text_control(TextControl::CarriageReturn)?;
                 Frame::Other
             }
-            b"footnoteReference" => {
+            b"footnoteReference" | b"endnoteReference" => {
                 let visible =
                     attribute(reader, element, b"customMarkFollows")?.is_none_or(|value| {
                         matches!(value.to_ascii_lowercase().as_str(), "0" | "false" | "off")
                     });
                 if visible {
-                    self.append_text_control(TextControl::FootnoteReference)?;
+                    self.append_text_control(TextControl::NoteReference)?;
                 }
                 Frame::Other
             }
@@ -2159,11 +2167,8 @@ const fn paragraph_break_is_removed(
 ) -> bool {
     matches!(
         (revision, view),
-        (Some(ParagraphMarkRevision::Deletion), RevisionView::Current)
-            | (
-                Some(ParagraphMarkRevision::Insertion),
-                RevisionView::Original
-            )
+        (Some(ParagraphMarkRevision::Removed), RevisionView::Current)
+            | (Some(ParagraphMarkRevision::Added), RevisionView::Original)
     )
 }
 
