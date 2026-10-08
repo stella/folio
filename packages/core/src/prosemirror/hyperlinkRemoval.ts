@@ -47,7 +47,12 @@ const linkedRanges = (doc: PMNode, from: number, to: number): LinkedRange[] => {
     if (start >= end) {
       return true;
     }
-    const piece = { from: start, to: end, node: node.cut(start - position, end - position) };
+    // Non-text cut offsets address content, not the atom's outer node size.
+    const piece = {
+      from: start,
+      to: end,
+      node: node.isText ? node.cut(start - position, end - position) : node,
+    };
     const last = ranges.at(-1);
     if (last && last.to === start) {
       last.to = end;
