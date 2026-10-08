@@ -318,13 +318,27 @@ describe("property test budgets", () => {
       "test.each([1])",
       "it.each([1])",
       "test.concurrent.each([1])",
-    ])
+    ]) {
       expect(
         budgetRequiringSites(
           "probe.ts",
           `${callee}("x", () => { fc.assert(p, propertyConfig()); }, propertyTestTimeout(NaN));`,
         ),
       ).toEqual([{ site: "probe.ts:1", declaresBudget: false }]);
+      expect(
+        budgetRequiringSites(
+          "probe.ts",
+          `${callee}("x", () => { fc.assert(p, propertyConfig()); }, propertyTestTimeout(30_000));`,
+        ),
+      ).toEqual([{ site: "probe.ts:1", declaresBudget: true }]);
+      expect(
+        budgetRequiringSites(
+          "probe.ts",
+          `setDefaultTimeout(propertyTestTimeout(15_000));
+${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
+        ),
+      ).toEqual([{ site: "probe.ts:2", declaresBudget: true }]);
+    }
   });
 
   test("a scaled own budget overrides a plain example-test default", () => {
