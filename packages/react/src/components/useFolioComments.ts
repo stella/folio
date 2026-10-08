@@ -195,18 +195,17 @@ export function useFolioComments({
     to: number;
   } | null>(null);
 
-  // Extract comments from document model on initial load (uncontrolled only).
+  // Initialize sidebar state from the authoritative comments on first load.
   const commentsLoadedRef = useRef(false);
   useEffect(() => {
-    if (isControlledComments || commentsLoadedRef.current) {
+    if (commentsLoadedRef.current || (committedComments == null && isControlledComments)) {
       return;
     }
-    if (!doc) {
-      return;
-    }
-    const bodyComments = doc.package.document.comments;
+    const bodyComments = committedComments ?? doc?.package.document.comments;
     if (bodyComments && bodyComments.length > 0) {
-      setComments(bodyComments);
+      if (committedComments == null && doc?.package.document.comments) {
+        setComments(doc.package.document.comments);
+      }
       setVisibleCommentAuthors(null);
       setActiveCommentId(null);
       // Open only when the sidebar has a card to show, never on an empty panel.
@@ -215,7 +214,7 @@ export function useFolioComments({
       }
       commentsLoadedRef.current = true;
     }
-  }, [autoOpenReviewSidebar, doc, isControlledComments, setComments]);
+  }, [autoOpenReviewSidebar, committedComments, doc, isControlledComments, setComments]);
 
   const listedComments = committedComments ?? comments;
 

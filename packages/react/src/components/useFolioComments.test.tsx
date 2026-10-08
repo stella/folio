@@ -299,6 +299,27 @@ describe("useFolioComments committed canonical comments", () => {
     });
   }
 
+  for (const { name, commentsProp } of hostModes) {
+    test(`${name}: loaded canonical threads open the sidebar once when enabled`, () => {
+      const committed = { current: [makeComment(41)] };
+      const harness = mount({ commentsProp, committed, autoOpenReviewSidebar: true });
+      expect(harness.hook.showCommentsSidebar).toBe(true);
+      act(() => harness.hook.setShowCommentsSidebar(false));
+      committed.current = [makeComment(41), makeComment(42)];
+      harness.rerender();
+      expect(harness.hook.showCommentsSidebar).toBe(false);
+    });
+
+    test(`${name}: disabled auto-open and resolved canonical threads keep the sidebar closed`, () => {
+      const committed = { current: [makeComment(41)] };
+      expect(mount({ commentsProp, committed }).hook.showCommentsSidebar).toBe(false);
+      committed.current = [{ ...makeComment(41), done: true }];
+      expect(
+        mount({ commentsProp, committed, autoOpenReviewSidebar: true }).hook.showCommentsSidebar,
+      ).toBe(false);
+    });
+  }
+
   test("without a canonical list the host comments stay the source", () => {
     const hostComment = makeComment(7);
     const harness = mount({ commentsProp: [hostComment], committed: { current: null } });
