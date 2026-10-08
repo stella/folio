@@ -24,6 +24,7 @@ import {
   rebuildNode,
   type Gap,
   type InlineNode,
+  type LeafSpan,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
 import { applyFormattingPatch } from "./patch";
@@ -61,14 +62,19 @@ const anchorId = (node: InlineNode): number | undefined => {
       return undefined;
   }
 };
-const anchorsIn = (document: Document) =>
-  documentStories(document).flatMap((story) =>
-    storyParagraphs(storyBody(document, story)).flatMap(({ paragraph }) =>
-      leafSpans(paragraph.content).flatMap((span) =>
-        isCommentAnchor(span.node) ? [{ story, blockId: paragraph.paraId ?? "", ...span }] : [],
-      ),
-    ),
-  );
+type StoryAnchorSpan = LeafSpan & { story: OpStory; blockId: string };
+const anchorsIn = (document: Document) => {
+  const anchors: StoryAnchorSpan[] = [];
+  for (const story of documentStories(document)) {
+    for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
+      for (const span of leafSpans(paragraph.content)) {
+        if (isCommentAnchor(span.node))
+          anchors.push({ story, blockId: paragraph.paraId ?? "", ...span });
+      }
+    }
+  }
+  return anchors;
+};
 
 /**
  * Root comments without any owned source anchor. Loaded packages may carry
@@ -167,42 +173,52 @@ const capture = (
   addressed: CommentState["anchors"],
 ): CommentState => {
   const body = document.package.document;
+  const relationships: CommentState["relationships"][number][] = [];
+  let relationshipIndex = 0;
+  for (const [key, relationship] of document.package.relationships ?? []) {
+    if (isCommentRelationship(relationship.type))
+      relationships.push({ index: relationshipIndex, key, relationship });
+    relationshipIndex += 1;
+  }
+  const records: CommentState["records"][number][] = [];
+  for (const [index, comment] of (body.comments ?? []).entries()) {
+    if (ids.has(comment.id)) records.push({ index, comment });
+  }
+  const anchors: CommentState["anchors"][number][] = [];
+  for (const { story, blockId } of addressed) {
+    const found = findStoryBody(document, story);
+    const paragraph =
+      found &&
+      storyParagraphs(found).find(
+        ({ paragraph: value }) => idKey(value.paraId ?? "") === idKey(blockId),
+      )?.paragraph;
+    if (paragraph) anchors.push({ story, blockId, content: paragraph.content });
+  }
   return {
     relationshipPresence: propertyPresence(document.package, "relationships"),
-    relationships: [...(document.package.relationships ?? [])].flatMap(
-      ([key, relationship], index) =>
-        isCommentRelationship(relationship.type) ? [{ index, key, relationship }] : [],
-    ),
+    relationships,
     listPresence: propertyPresence(body, "comments"),
-    records: (body.comments ?? []).flatMap((comment, index) =>
-      ids.has(comment.id) ? [{ index, comment }] : [],
-    ),
-    anchors: addressed.flatMap(({ story, blockId }) => {
-      const found = findStoryBody(document, story);
-      const paragraph =
-        found &&
-        storyParagraphs(found).find(
-          ({ paragraph: value }) => idKey(value.paraId ?? "") === idKey(blockId),
-        )?.paragraph;
-      return paragraph ? [{ story, blockId, content: paragraph.content }] : [];
-    }),
+    records,
+    anchors,
   };
 };
 
-const changedAnchors = (before: Document, after: Document): CommentState["anchors"] =>
-  documentStories(before).flatMap((story) => {
+const changedAnchors = (before: Document, after: Document): CommentState["anchors"] => {
+  const anchors: CommentState["anchors"][number][] = [];
+  for (const story of documentStories(before)) {
     const next = new Map(
       storyParagraphs(storyBody(after, story)).map(({ paragraph }) => [
         idKey(paragraph.paraId ?? ""),
         paragraph,
       ]),
     );
-    return storyParagraphs(storyBody(before, story)).flatMap(({ paragraph }) =>
-      paragraph.content !== next.get(idKey(paragraph.paraId ?? ""))?.content
-        ? [{ story, blockId: paragraph.paraId ?? "", content: paragraph.content }]
-        : [],
-    );
-  });
+    for (const { paragraph } of storyParagraphs(storyBody(before, story))) {
+      if (paragraph.content !== next.get(idKey(paragraph.paraId ?? ""))?.content)
+        anchors.push({ story, blockId: paragraph.paraId ?? "", content: paragraph.content });
+    }
+  }
+  return anchors;
+};
 
 const scaffoldDelta = (before: CommentState, after: CommentState): NewIds => {
   const old = new Set(identityKeysIn(before.anchors));
