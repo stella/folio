@@ -1,6 +1,6 @@
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import type { OpStory } from "@stll/docx-core/ops";
-import type { Transaction } from "prosemirror-state";
+import { TextSelection, type Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalInputBoundary } from "./canonicalInput";
@@ -35,6 +35,22 @@ export const createCanonicalStoryEditor = ({
     const accepted = getApi()?.applyCanonicalStoryHistory({ view, story, direction }) ?? false;
     if (accepted && !view.isDestroyed) onSelectionChange();
     return accepted;
+  };
+  const syncNativeSelection = (view: EditorView) => {
+    if (boundary.isComposing || view.composing || !(view.state.selection instanceof TextSelection))
+      return;
+    const selection = view.dom.ownerDocument.getSelection();
+    if (
+      !selection?.anchorNode ||
+      !selection.focusNode ||
+      !view.dom.contains(selection.anchorNode) ||
+      !view.dom.contains(selection.focusNode)
+    )
+      return;
+    const anchor = view.posAtDOM(selection.anchorNode, selection.anchorOffset);
+    const head = view.posAtDOM(selection.focusNode, selection.focusOffset);
+    if (anchor === view.state.selection.anchor && head === view.state.selection.head) return;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, anchor, head)));
   };
   const boundary = createCanonicalInputBoundary({
     breakUndoGroup: () => {
@@ -83,6 +99,16 @@ export const createCanonicalStoryEditor = ({
       handleDOMEvents: {
         keydown: (view: EditorView, event: KeyboardEvent) =>
           enabled() && boundary.handleDOMEvents.keydown(view, event),
+        // Native navigation completes before keyup; synchronize it before typing
+        // rather than waiting for the asynchronous selection observer.
+        keyup: (view: EditorView, event: KeyboardEvent) => {
+          if (enabled() && /^(?:Arrow|Home$|End$|Page)/u.test(event.key)) syncNativeSelection(view);
+          return false;
+        },
+        mouseup: (view: EditorView) => {
+          if (enabled()) syncNativeSelection(view);
+          return false;
+        },
         beforeinput: (view: EditorView, event: InputEvent) =>
           enabled() && boundary.handleDOMEvents.beforeinput(view, event),
         mousedown: (view: EditorView) => enabled() && boundary.handleDOMEvents.mousedown(view),
