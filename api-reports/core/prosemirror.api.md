@@ -106,7 +106,7 @@ export const clearTextColor: Command;
 export const continueNumbering: Command;
 
 // @public
-export function createDocumentStylesPlugin(styles: import__stll_docx_core_model.StyleDefinitions | StyleResolver | null | undefined): Plugin_2;
+export function createDocumentStylesPlugin(styles: DocumentStylesInput): Plugin_2;
 
 // @public
 export function createEmptyDoc(): Node_2;
