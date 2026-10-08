@@ -638,34 +638,20 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const [anchorPositions, setAnchorPositions] =
     useState<Map<string, number>>(EMPTY_ANCHOR_POSITIONS);
 
-  const {
-    editingMode,
-    readOnly,
-    trackChangesOn,
-    toggleTrackChanges: toggleTrackChangesUnrestricted,
-    displayMode,
-    setDisplayMode,
-  } = useEditorMode({
-    modeProp,
-    onModeChange,
-    readOnlyProp,
-  });
+  const { editingMode, readOnly, trackChangesOn, toggleTrackChanges, displayMode, setDisplayMode } =
+    useEditorMode({
+      modeProp,
+      onModeChange,
+      readOnlyProp,
+    });
 
-  const toggleTrackChanges = useCallback(() => {
-    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.suggesting) && !trackChangesOn) {
-      const error = new CanonicalSessionRefusalError({
-        gap: CANONICAL_GAP.suggesting,
-        message: canonicalRefusalMessage(
-          CANONICAL_GAP.suggesting,
-          "Canonical sessions do not support suggesting mode.",
-        ),
-      });
-      toast(error.message);
-      onError?.(error);
-      return;
-    }
-    toggleTrackChangesUnrestricted();
-  }, [experimentalSession, trackChangesOn, onError, toggleTrackChangesUnrestricted]);
+  useEffect(() => {
+    pagedEditorRef.current
+      ?.getEditor()
+      .setCanonicalMode(
+        editingMode === "suggesting" ? { type: "suggesting", author } : { type: "editing" },
+      );
+  }, [editingMode, author]);
 
   // Debounce timer for extractTrackedChanges (avoid full doc walk on every keystroke)
   const extractTrackedChangesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -552,223 +552,256 @@ test.each(["in-place resolution", "in-place content", "during composition"] as c
   },
 );
 
-test("Vue canonical stories share history and save headers, first-page footer, notes and section properties", async () => {
-  const container = document.createElement("div");
-  const hidden = document.createElement("div");
-  const pages = document.createElement("div");
-  const notes = document.createElement("div");
-  document.body.append(container, hidden, pages, notes);
-  const errors: Error[] = [];
-  const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
-  const app = createApp(
-    defineComponent({
-      setup() {
-        holder.editor = useDocxEditor({
-          hiddenContainer: shallowRef(hidden),
-          pagesContainer: shallowRef(pages),
-          noteEditorContainer: shallowRef(notes),
-          experimentalSession: "canonical",
-          featureFlags: () => ({ selectiveSave: true }),
-          onError: (error) => errors.push(error),
-        });
-        return () => h("div");
-      },
-    }),
-  );
-  app.mount(container);
-  try {
-    const adapter = holder.editor ?? panic("Expected mounted Vue editor");
-    const source =
-      createEmptyHeaderFooter(createEmptyDocument({ initialText: "Body" }), "header", false) ??
-      panic("Expected document with header");
-    const rId =
-      [...(source.package.headers?.keys() ?? [])].at(0) ?? panic("Expected header identity");
-    await adapter.loadBuffer(await createDocx(source));
-    const header = adapter.getHeaderFooterView(rId) ?? panic("Expected canonical header view");
-    expect(
-      header.state.doc.eq(
-        adapter.editor.getCanonicalStoryProjection({ kind: "header", rId }) ??
-          panic("Expected header projection"),
-      ),
-    ).toBe(true);
-    header.dom.dispatchEvent(
-      new InputEvent("beforeinput", {
-        bubbles: true,
-        cancelable: true,
-        inputType: "insertText",
-        data: "Header",
-      }),
-    );
-    expect(errors).toEqual([]);
-    expect(header.state.doc.textContent).toBe("Header");
-    expect(adapter.isDirty.value).toBe(true);
-    expect(
-      adapter.editor.applyCanonicalStoryHistory({
-        view: header,
-        story: { kind: "header", rId },
-        direction: "undo",
-      }),
-    ).toBe(true);
-    expect(header.state.doc.textContent).toBe("");
-    expect(
-      adapter.editor.applyCanonicalStoryHistory({
-        view: header,
-        story: { kind: "header", rId },
-        direction: "redo",
-      }),
-    ).toBe(true);
-    expect(header.state.doc.textContent).toBe("Header");
-
-    const beforeFooter = adapter.getDocument() ?? panic("Expected canonical document");
-    const footerOp = createCanonicalHeaderFooterOperation({
-      document: beforeFooter,
-      position: "footer",
-      referenceType: "first",
-    });
-    expect(adapter.editor.applyCanonicalOperations([footerOp])).toBe(true);
-    const footer =
-      adapter.getHeaderFooterView(footerOp.story.rId) ?? panic("Expected first-page footer view");
-    footer.dom.dispatchEvent(
-      new InputEvent("beforeinput", {
-        bubbles: true,
-        cancelable: true,
-        inputType: "insertText",
-        data: "First footer",
-      }),
-    );
-    expect(footer.state.doc.textContent).toBe("First footer");
-
-    const beforeNote = adapter.getDocument() ?? panic("Expected canonical document");
-    const paragraph = beforeNote.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph" || !paragraph.paraId)
-      panic("Expected addressed body paragraph");
-    expect(
-      adapter.editor.applyCanonicalOperations([
-        {
-          type: DOCUMENT_OP_TYPES.ADD_NOTE,
-          at: { story: "main", blockId: paragraph.paraId, offset: 4 },
-          note: {
-            type: "footnote",
-            id: 1,
-            content: withCanonicalParagraphIds([{ type: "paragraph", content: [] }], beforeNote),
-          },
+test.each([
+  { source: "provided", author: "Vue reviewer" },
+  { source: "omitted", author: "User" },
+])(
+  "Vue canonical stories with $source author share history and save headers, first-page footer, notes and section properties",
+  async (fixture) => {
+    const container = document.createElement("div");
+    const hidden = document.createElement("div");
+    const pages = document.createElement("div");
+    const notes = document.createElement("div");
+    document.body.append(container, hidden, pages, notes);
+    const errors: Error[] = [];
+    const editorMode = shallowRef<"editing" | "suggesting" | "viewing">("editing");
+    const author = shallowRef(fixture.author);
+    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
+    const app = createApp(
+      defineComponent({
+        setup() {
+          holder.editor = useDocxEditor({
+            hiddenContainer: shallowRef(hidden),
+            pagesContainer: shallowRef(pages),
+            noteEditorContainer: shallowRef(notes),
+            experimentalSession: "canonical",
+            editorMode,
+            ...(fixture.source === "provided" ? { author } : {}),
+            featureFlags: () => ({ selectiveSave: true }),
+            onError: (error) => errors.push(error),
+          });
+          return () => h("div");
         },
-      ]),
-    ).toBe(true);
-    adapter.openNoteStory({ kind: "footnote", noteId: 1 });
-    const note = adapter.getActiveNoteView() ?? panic("Expected canonical footnote view");
-    note.dom.dispatchEvent(
-      new InputEvent("beforeinput", {
-        bubbles: true,
-        cancelable: true,
-        inputType: "insertText",
-        data: "Note",
       }),
     );
-    expect(note.state.doc.textContent).toBe("Note");
-    expect(
-      adapter.editor.applyCanonicalStoryHistory({
-        view: note,
-        story: { kind: "footnote", id: 1 },
-        direction: "undo",
-      }),
-    ).toBe(true);
-    expect(note.state.doc.textContent).toBe("");
-    expect(
-      adapter.editor.applyCanonicalStoryHistory({
-        view: note,
-        story: { kind: "footnote", id: 1 },
-        direction: "redo",
-      }),
-    ).toBe(true);
-    expect(note.state.doc.textContent).toBe("Note");
-
-    const controls = usePageSetupControls({
-      editorView: adapter.editorView,
-      getDocument: adapter.getDocument,
-      readOnly: shallowRef(false),
-      stateTick: shallowRef(0),
-      reLayout: adapter.reLayout,
-      onChange: () => panic("Canonical section writes must use the journal"),
-      applySectionProperties: (properties) => {
-        const current = adapter.getDocument() ?? panic("Expected canonical document");
-        expect(
-          adapter.editor.applyCanonicalOperations([
-            createCanonicalSectionPropertiesOperation(current, properties),
-          ]),
-        ).toBe(true);
-        return "applied";
-      },
-    });
-    controls.handlePageSetupApply({ marginLeft: 720, footnotePr: { numStart: 2 } });
-    const canonical = adapter.getDocument() ?? panic("Expected canonical document");
-    expect(canonical.package.document.finalSectionProperties?.marginLeft).toBe(720);
-    expect(canonical.package.document.finalSectionProperties?.titlePg).toBe(true);
-    const saved = await adapter.save();
-    if (!saved) panic("Expected canonical story save");
-    const reopened = await parseDocx(await saved.arrayBuffer(), {
-      preloadFonts: false,
-      detectVariables: false,
-    });
-    expect(reviewDifferences(canonical, reopened)).toEqual({ messages: [], omitted: 0 });
-    expect(reopened.package.document.finalSectionProperties).toEqual(
-      canonical.package.document.finalSectionProperties,
-    );
-    expect([...(reopened.package.headers?.keys() ?? [])].sort()).toEqual(
-      [...(canonical.package.headers?.keys() ?? [])].sort(),
-    );
-    expect([...(reopened.package.footers?.keys() ?? [])].sort()).toEqual(
-      [...(canonical.package.footers?.keys() ?? [])].sort(),
-    );
-    for (const [identity, part] of canonical.package.headers ?? []) {
-      expect(canonicalReviewBlocks(reopened.package.headers?.get(identity)?.content ?? [])).toEqual(
-        canonicalReviewBlocks(part.content),
+    app.mount(container);
+    try {
+      const adapter = holder.editor ?? panic("Expected mounted Vue editor");
+      const source =
+        createEmptyHeaderFooter(createEmptyDocument({ initialText: "Body" }), "header", false) ??
+        panic("Expected document with header");
+      const rId =
+        [...(source.package.headers?.keys() ?? [])].at(0) ?? panic("Expected header identity");
+      await adapter.loadBuffer(await createDocx(source));
+      editorMode.value = "suggesting";
+      await nextTick();
+      const bodyView = adapter.editorView.value ?? panic("Expected canonical body view");
+      bodyView.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertText",
+          data: "!",
+        }),
       );
-    }
-    for (const [identity, part] of canonical.package.footers ?? []) {
-      expect(canonicalReviewBlocks(reopened.package.footers?.get(identity)?.content ?? [])).toEqual(
-        canonicalReviewBlocks(part.content),
-      );
-    }
-    expect((reopened.package.footnotes ?? []).map(({ id }) => id)).toEqual(
-      (canonical.package.footnotes ?? []).map(({ id }) => id),
-    );
-    for (const part of canonical.package.footnotes ?? []) {
+      let foundSuggestion = false;
+      bodyView.state.doc.descendants((node) => {
+        if (node.isText && node.marks.some((mark) => mark.attrs["author"] === fixture.author)) {
+          foundSuggestion = true;
+        }
+      });
+      expect(foundSuggestion).toBe(true);
+      const header = adapter.getHeaderFooterView(rId) ?? panic("Expected canonical header view");
       expect(
-        canonicalReviewBlocks(
-          reopened.package.footnotes?.find(({ id }) => id === part.id)?.content ?? [],
+        header.state.doc.eq(
+          adapter.editor.getCanonicalStoryProjection({ kind: "header", rId }) ??
+            panic("Expected header projection"),
         ),
-      ).toEqual(canonicalReviewBlocks(part.content));
+      ).toBe(true);
+      header.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertText",
+          data: "Header",
+        }),
+      );
+      expect(errors).toEqual([]);
+      expect(header.state.doc.textContent).toBe("Header");
+      expect(adapter.isDirty.value).toBe(true);
+      expect(
+        adapter.editor.applyCanonicalStoryHistory({
+          view: header,
+          story: { kind: "header", rId },
+          direction: "undo",
+        }),
+      ).toBe(true);
+      expect(header.state.doc.textContent).toBe("");
+      expect(
+        adapter.editor.applyCanonicalStoryHistory({
+          view: header,
+          story: { kind: "header", rId },
+          direction: "redo",
+        }),
+      ).toBe(true);
+      expect(header.state.doc.textContent).toBe("Header");
+
+      const beforeFooter = adapter.getDocument() ?? panic("Expected canonical document");
+      const footerOp = createCanonicalHeaderFooterOperation({
+        document: beforeFooter,
+        position: "footer",
+        referenceType: "first",
+      });
+      expect(adapter.editor.applyCanonicalOperations([footerOp])).toBe(true);
+      const footer =
+        adapter.getHeaderFooterView(footerOp.story.rId) ?? panic("Expected first-page footer view");
+      footer.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertText",
+          data: "First footer",
+        }),
+      );
+      expect(footer.state.doc.textContent).toBe("First footer");
+
+      const beforeNote = adapter.getDocument() ?? panic("Expected canonical document");
+      const paragraph = beforeNote.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph" || !paragraph.paraId)
+        panic("Expected addressed body paragraph");
+      expect(
+        adapter.editor.applyCanonicalOperations([
+          {
+            type: DOCUMENT_OP_TYPES.ADD_NOTE,
+            at: { story: "main", blockId: paragraph.paraId, offset: 4 },
+            note: {
+              type: "footnote",
+              id: 1,
+              content: withCanonicalParagraphIds([{ type: "paragraph", content: [] }], beforeNote),
+            },
+          },
+        ]),
+      ).toBe(true);
+      adapter.openNoteStory({ kind: "footnote", noteId: 1 });
+      const note = adapter.getActiveNoteView() ?? panic("Expected canonical footnote view");
+      note.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertText",
+          data: "Note",
+        }),
+      );
+      expect(note.state.doc.textContent).toBe("Note");
+      expect(
+        adapter.editor.applyCanonicalStoryHistory({
+          view: note,
+          story: { kind: "footnote", id: 1 },
+          direction: "undo",
+        }),
+      ).toBe(true);
+      expect(note.state.doc.textContent).toBe("");
+      expect(
+        adapter.editor.applyCanonicalStoryHistory({
+          view: note,
+          story: { kind: "footnote", id: 1 },
+          direction: "redo",
+        }),
+      ).toBe(true);
+      expect(note.state.doc.textContent).toBe("Note");
+
+      const controls = usePageSetupControls({
+        editorView: adapter.editorView,
+        getDocument: adapter.getDocument,
+        readOnly: shallowRef(false),
+        stateTick: shallowRef(0),
+        reLayout: adapter.reLayout,
+        onChange: () => panic("Canonical section writes must use the journal"),
+        applySectionProperties: (properties) => {
+          const current = adapter.getDocument() ?? panic("Expected canonical document");
+          expect(
+            adapter.editor.applyCanonicalOperations([
+              createCanonicalSectionPropertiesOperation(current, properties),
+            ]),
+          ).toBe(true);
+          return "applied";
+        },
+      });
+      controls.handlePageSetupApply({ marginLeft: 720, footnotePr: { numStart: 2 } });
+      const canonical = adapter.getDocument() ?? panic("Expected canonical document");
+      expect(canonical.package.document.finalSectionProperties?.marginLeft).toBe(720);
+      expect(canonical.package.document.finalSectionProperties?.titlePg).toBe(true);
+      const saved = await adapter.save();
+      if (!saved) panic("Expected canonical story save");
+      const reopened = await parseDocx(await saved.arrayBuffer(), {
+        preloadFonts: false,
+        detectVariables: false,
+      });
+      expect(reviewDifferences(canonical, reopened)).toEqual({ messages: [], omitted: 0 });
+      expect(reopened.package.document.content).toEqual(canonical.package.document.content);
+      expect(reopened.package.document.finalSectionProperties).toEqual(
+        canonical.package.document.finalSectionProperties,
+      );
+      expect([...(reopened.package.headers?.keys() ?? [])].sort()).toEqual(
+        [...(canonical.package.headers?.keys() ?? [])].sort(),
+      );
+      expect([...(reopened.package.footers?.keys() ?? [])].sort()).toEqual(
+        [...(canonical.package.footers?.keys() ?? [])].sort(),
+      );
+      for (const [identity, part] of canonical.package.headers ?? []) {
+        expect(
+          canonicalReviewBlocks(reopened.package.headers?.get(identity)?.content ?? []),
+        ).toEqual(canonicalReviewBlocks(part.content));
+      }
+      for (const [identity, part] of canonical.package.footers ?? []) {
+        expect(
+          canonicalReviewBlocks(reopened.package.footers?.get(identity)?.content ?? []),
+        ).toEqual(canonicalReviewBlocks(part.content));
+      }
+      expect((reopened.package.footnotes ?? []).map(({ id }) => id)).toEqual(
+        (canonical.package.footnotes ?? []).map(({ id }) => id),
+      );
+      for (const part of canonical.package.footnotes ?? []) {
+        expect(
+          canonicalReviewBlocks(
+            reopened.package.footnotes?.find(({ id }) => id === part.id)?.content ?? [],
+          ),
+        ).toEqual(canonicalReviewBlocks(part.content));
+      }
+      expect(adapter.isDirty.value).toBe(false);
+      expect(
+        adapter.editor.applyCanonicalOperations(
+          removeCanonicalHeaderFooterOperations({ document: canonical, position: "header", rId }),
+        ),
+      ).toBe(true);
+      const withoutHeader = await adapter.save();
+      if (!withoutHeader) panic("Expected saved header removal");
+      const removed = await parseDocx(await withoutHeader.arrayBuffer(), {
+        preloadFonts: false,
+        detectVariables: false,
+      });
+      expect(removed.package.headers?.has(rId) ?? false).toBe(false);
+      expect(removed.package.document.finalSectionProperties?.headerReferences ?? []).toEqual([]);
+      expect(errors).toHaveLength(2);
+      for (const error of errors) {
+        expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
+        if (!(error instanceof CanonicalSaveDiagnosticError))
+          panic("Expected typed save diagnostic");
+        expect(error.gap).toBe("pm-save-projection");
+        expect(error.diagnostic).toEqual({
+          type: "selectiveSaveRefused",
+          part: "word/document.xml",
+        });
+      }
+    } finally {
+      app.unmount();
+      container.remove();
+      hidden.remove();
+      pages.remove();
+      notes.remove();
     }
-    expect(adapter.isDirty.value).toBe(false);
-    expect(
-      adapter.editor.applyCanonicalOperations(
-        removeCanonicalHeaderFooterOperations({ document: canonical, position: "header", rId }),
-      ),
-    ).toBe(true);
-    const withoutHeader = await adapter.save();
-    if (!withoutHeader) panic("Expected saved header removal");
-    const removed = await parseDocx(await withoutHeader.arrayBuffer(), {
-      preloadFonts: false,
-      detectVariables: false,
-    });
-    expect(removed.package.headers?.has(rId) ?? false).toBe(false);
-    expect(removed.package.document.finalSectionProperties?.headerReferences ?? []).toEqual([]);
-    expect(errors).toHaveLength(2);
-    for (const error of errors) {
-      expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
-      if (!(error instanceof CanonicalSaveDiagnosticError)) panic("Expected typed save diagnostic");
-      expect(error.gap).toBe("pm-save-projection");
-      expect(error.diagnostic).toEqual({ type: "selectiveSaveRefused", part: "word/document.xml" });
-    }
-  } finally {
-    app.unmount();
-    container.remove();
-    hidden.remove();
-    pages.remove();
-    notes.remove();
-  }
-});
+  },
+);
 
 test.each(CANONICAL_SAVE_SEEDS)(
   "generated canonical history %s saves independently of PM trackers",
