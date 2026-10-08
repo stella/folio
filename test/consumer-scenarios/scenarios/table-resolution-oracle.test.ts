@@ -12,7 +12,7 @@ import {
 } from "../support/oracle.ts";
 import { sequentialGroups } from "../support/metamorphic.ts";
 import { FIXTURES, openReviewer } from "../support/documents.ts";
-import { coreBatch, GENERATORS, supports } from "../support/operations.ts";
+import { coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
 
 type CellLocation = { rowIndex: number; column: number; columnSpan?: number; tableIndex?: number };
@@ -361,19 +361,23 @@ describe("table operation source coordinates", () => {
         { id: "insert-col-tie", type: "insertTableColumn", blockId: "t0r0c0" },
         { id: "insert-other-table", type: "insertTableColumn", blockId: "t1c0", position: "after" },
       ];
-      const ordered = sequentialGroups(operations, rows).flatMap((group) => group);
-      assert.deepEqual(
-        ordered.map(({ id }) => id),
-        [
-          "row",
-          "insert-other-table",
-          "insert-col-last",
-          "insert-col-tie",
-          "delete-col-2",
-          "delete-col-0",
-        ],
-        `table width ${width}`,
-      );
+      for (const mode of MODES) {
+        const ordered = sequentialGroups({ applied: operations, preRows: rows, mode }).flatMap(
+          (group) => group,
+        );
+        assert.deepEqual(
+          ordered.map(({ id }) => id),
+          [
+            "row",
+            "insert-other-table",
+            "insert-col-last",
+            "insert-col-tie",
+            "delete-col-2",
+            "delete-col-0",
+          ],
+          `${mode} / table width ${width}`,
+        );
+      }
     }
   });
 
