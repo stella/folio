@@ -81,7 +81,7 @@ const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
   }
 };
 
-/** Keep only the numbering slots that differ from the style. */
+/** Omit wholly style-sourced numbering; a changed reference stays authored in full. */
 const directNumbering = (numPr: Numbering, numPrFromStyle: Numbering): Numbering => {
   if (numPr === undefined || numPrFromStyle === undefined) return numPr;
   if (numPr.kind !== numPrFromStyle.kind) return numPr;
@@ -90,9 +90,7 @@ const directNumbering = (numPr: Numbering, numPrFromStyle: Numbering): Numbering
       return undefined;
     case "reference":
       if (numPrFromStyle.kind !== "reference" || numPr.numId !== numPrFromStyle.numId) return numPr;
-      return (numPr.ilvl ?? 0) === (numPrFromStyle.ilvl ?? 0)
-        ? undefined
-        : { kind: "levelOnly", ilvl: numPr.ilvl ?? 0 };
+      return (numPr.ilvl ?? 0) === (numPrFromStyle.ilvl ?? 0) ? undefined : numPr;
     case "levelOnly":
       return numPrFromStyle.kind === "levelOnly" && numPr.ilvl === numPrFromStyle.ilvl
         ? undefined

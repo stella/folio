@@ -217,7 +217,15 @@ test(
       },
       {
         properties: { numbering: { numId: 900, level: 1 } },
-        direct: { kind: "levelOnly", ilvl: 1 },
+        direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
+      },
+      {
+        properties: { numbering: { numId: 900, level: 0 } },
+        direct: undefined,
+      },
+      {
+        properties: { listLevel: 1 },
+        direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
       },
       { properties: { numbering: null }, direct: { kind: "none" } },
       { properties: { styleId: "Heading3" }, direct: undefined },
@@ -267,6 +275,11 @@ test(
           assert.equal(pre.numberingSource.type, "live");
           if (pre.numberingSource.type !== "live") throw new Error("Expected live provenance");
           const facts = pre.numberingSource.facts;
+          assert.equal(facts.styles.get("Heading2"), undefined, "Requested heading is unnumbered");
+          assert.deepEqual(
+            facts.styles.get("OracleList"),
+            paragraphNumberingFromSlots({ numId: 900, ilvl: 0 }),
+          );
           for (const row of pre.rows.filter((candidate) => candidate.kind !== "diagnostic"))
             assert.ok(facts.direct.has(row.id));
           assert.deepEqual(facts.direct.get(anchor.id), direct);
@@ -344,16 +357,24 @@ test(
           assert.ok(changed);
           assert.deepEqual(
             changed.listReference,
-            direct?.kind === "none" ? undefined : { numId: 901, level: direct?.ilvl ?? 0 },
+            direct?.kind === "none"
+              ? undefined
+              : {
+                  numId: direct?.kind === "reference" ? direct.numId : 901,
+                  level: direct?.ilvl ?? 0,
+                },
           );
-          if (direct?.kind === "levelOnly") {
+          if (direct?.kind === "reference") {
             assert.match(
               compareWithModel(
                 styleModel,
                 rowsOf(reviewer, story).map((row) =>
                   row.id === anchor.id
                     ? Object.assign({}, row, {
-                        listReference: { numId: 900, level: direct.ilvl },
+                        listReference: {
+                          numId: direct.numId === 900 ? 901 : 900,
+                          level: direct.ilvl ?? 0,
+                        },
                       })
                     : row,
                 ),
@@ -438,10 +459,21 @@ test(
             const reopened = await openReviewer(bytes);
             // Proposals are host-owned, outside DOCX until explicitly accepted.
             assert.ok(!rowsOf(reopened).some((row) => row.text === text));
+            const baseline = reopened.snapshot();
+            // Earlier review resolutions may change an older proposal's anchor.
+            // Derive staleness from the saved baseline, never from the load result.
+            const expectedLoads = records.map(({ suggestionId, anchor }) => {
+              const savedAnchor = baseline.anchors[anchor.blockId];
+              assert.ok(savedAnchor, `Saved proposal ${suggestionId} has no anchor`);
+              return savedAnchor.textHash === anchor.originalTextHash
+                ? { status: "restaged", suggestionId }
+                : { status: "stale", suggestionId, reason: "textChanged" };
+            });
             const loaded = reopened.loadPendingSuggestions(JSON.parse(JSON.stringify(records)));
+            assert.deepEqual(loaded, expectedLoads);
             assert.deepEqual(
-              loaded,
-              records.map(({ suggestionId }) => ({ status: "restaged", suggestionId })),
+              loaded.find(({ suggestionId }) => suggestionId === proposal.suggestionId),
+              { status: "restaged", suggestionId: proposal.suggestionId },
             );
             const restored = rowsOf(reopened).find((row) => row.text === text);
             assert.ok(restored);
