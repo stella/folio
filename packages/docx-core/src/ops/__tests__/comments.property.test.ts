@@ -7,7 +7,12 @@ import { opSeedArbitrary } from "./documentArbitraries";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import { type Comment, type Document, type Paragraph } from "../../model/document";
+import {
+  PARAGRAPH_MARK_CHANGE_KINDS,
+  type Comment,
+  type Document,
+  type Paragraph,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { allocateCommentAnchorIds, planTrackedDeletion } from "../plan";
 import { commentDocumentIssue, freshCommentId, orphanRootCommentIds } from "../comments";
@@ -194,6 +199,67 @@ test("revision association derives the legacy parent relation and anchors withou
   ).toBe(true);
   expect(freshCommentId(changed).unwrap()).toBe(101);
 });
+
+test("revision-associated comments on empty paragraph marks preserve undo and redo", () => {
+  const document = seed("absent");
+  const first = document.package.document.content.at(0);
+  if (first?.type !== "paragraph") throw new Error("Missing paragraph");
+  first.content = [];
+  first.pPrMark = { kind: "ins", info: { id: 7, author: "Reviewer" } };
+  const changed = exact(document, {
+    type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+    comment: comment(100, "00000010", "review"),
+    anchor: { kind: "revision", story: OP_STORIES.MAIN, revisionId: 7 },
+  });
+  expect(changed.package.document.comments?.at(0)?.parentId).toBe(7);
+  expect(anchorSequence(changed)).toEqual([{ type: "commentReference", id: 100 }]);
+});
+
+test.each([...PARAGRAPH_MARK_CHANGE_KINDS, "properties" as const])(
+  "generated paragraph revision comments preserve exact history for %s",
+  (revisionKind) => {
+    assertProperty(
+      fc.property(
+        fc.constantFrom("main" as const, "header" as const, "note" as const),
+        fc.constantFrom("", "text", "longer text"),
+        (storyKind, text) => {
+          const document = seed("absent");
+          const stories = {
+            main: OP_STORIES.MAIN,
+            header: { kind: "header", rId: "rIdHeader" },
+            note: { kind: "footnote", id: 1 },
+          } as const satisfies Record<typeof storyKind, OpStory>;
+          const story = stories[storyKind];
+          const first = storyParagraphs(storyBody(document, story)).at(0)?.paragraph;
+          if (!first) throw new Error("Missing paragraph");
+          first.content = text === "" ? [] : paragraph("00000001", text).content;
+          const info = { id: 7, author: "Reviewer" };
+          if (revisionKind === "properties") {
+            first.propertyChanges = [{ type: "paragraphPropertyChange", info }];
+          } else {
+            first.pPrMark = { kind: revisionKind, info };
+          }
+          const changed = exact(document, {
+            type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+            comment: comment(100, "00000010", "review"),
+            anchor: { kind: "revision", story, revisionId: 7 },
+          });
+          expect(changed.package.document.comments?.at(0)?.parentId).toBe(7);
+          expect(anchorSequence(changed)).toEqual(
+            text === ""
+              ? [{ type: "commentReference", id: 100 }]
+              : [
+                  { type: "commentRangeStart", id: 100 },
+                  { type: "commentRangeEnd", id: 100 },
+                  { type: "commentReference", id: 100 },
+                ],
+          );
+        },
+      ),
+      { seed: 20261008, numRuns: 30 },
+    );
+  },
+);
 
 test("comment inverses refuse changed owned text and preserve unrelated package identity", () => {
   const document = seed("absent");

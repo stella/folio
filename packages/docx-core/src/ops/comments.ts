@@ -22,6 +22,7 @@ import {
   leafSpans,
   mergeAlike,
   rebuildNode,
+  type Gap,
   type InlineNode,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
@@ -523,41 +524,35 @@ const revisionRange = (
 ): { from: TextPosition; to: TextPosition } | undefined => {
   const body = findStoryBody(document, story);
   if (!body) return undefined;
-  const spans = storyParagraphs(body).flatMap(({ paragraph }) =>
-    leafSpans(paragraph.content).flatMap((span) => {
-      const selected =
-        paragraph.propertyChanges?.some(({ info }) => info.id === revisionId) ||
-        paragraph.pPrMark?.info.id === revisionId ||
-        [span.node, ...span.ancestors].some(
-          (node) =>
-            ((node.type === "insertion" ||
-              node.type === "deletion" ||
-              node.type === "moveFrom" ||
-              node.type === "moveTo") &&
-              node.info.id === revisionId) ||
-            (node.type === "run" &&
-              node.propertyChanges?.some(({ info }) => info.id === revisionId)),
-        );
-      return selected
-        ? [
-            {
-              from: {
-                story,
-                blockId: paragraph.paraId ?? "",
-                offset: span.before.offset,
-                zeroWidthBefore: span.before.zeroWidthBefore,
-              },
-              to: {
-                story,
-                blockId: paragraph.paraId ?? "",
-                offset: span.after.offset,
-                zeroWidthBefore: span.after.zeroWidthBefore,
-              },
-            },
-          ]
-        : [];
-    }),
-  );
+  const spans = storyParagraphs(body).flatMap(({ paragraph }) => {
+    const leaves = leafSpans(paragraph.content);
+    const position = (gap: Gap): TextPosition => ({
+      story,
+      blockId: paragraph.paraId ?? "",
+      offset: gap.offset,
+      zeroWidthBefore: gap.zeroWidthBefore,
+    });
+    if (
+      paragraph.propertyChanges?.some(({ info }) => info.id === revisionId) ||
+      paragraph.pPrMark?.info.id === revisionId
+    ) {
+      const start = leaves.at(0)?.before ?? { offset: 0, zeroWidthBefore: 0 };
+      const end = leaves.at(-1)?.after ?? start;
+      return [{ from: position(start), to: position(end) }];
+    }
+    return leaves.flatMap((span) => {
+      const selected = [span.node, ...span.ancestors].some(
+        (node) =>
+          ((node.type === "insertion" ||
+            node.type === "deletion" ||
+            node.type === "moveFrom" ||
+            node.type === "moveTo") &&
+            node.info.id === revisionId) ||
+          (node.type === "run" && node.propertyChanges?.some(({ info }) => info.id === revisionId)),
+      );
+      return selected ? [{ from: position(span.before), to: position(span.after) }] : [];
+    });
+  });
   const first = spans.at(0);
   const last = spans.at(-1);
   return first && last ? { from: first.from, to: last.to } : undefined;
@@ -656,6 +651,14 @@ const create = (
       range = revisionRange(document, op.anchor.story, op.anchor.revisionId);
       if (!range) return fail(op, "The associated revision has no representable source range.");
       comment = { ...comment, parentId: op.anchor.revisionId };
+      if (
+        range.from.blockId === range.to.blockId &&
+        range.from.offset === range.to.offset &&
+        range.from.zeroWidthBefore === range.to.zeroWidthBefore
+      ) {
+        positions = [{ at: range.from, content: [{ type: "commentReference", id: comment.id }] }];
+        range = undefined;
+      }
       break;
     }
     case "point":
