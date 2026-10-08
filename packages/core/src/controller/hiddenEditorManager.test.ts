@@ -192,7 +192,7 @@ test("hidden manager refuses a local partial note-reference edit before committi
   const host = document.createElement("div");
   document.body.append(host);
   const source = await sourceWithNoteReference();
-  const refusals: { reason: string; gap: unknown; error?: Error }[] = [];
+  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] = [];
   const { deps } = makeDeps({
     getHost: () => host,
     getDocument: () => source,
@@ -231,7 +231,7 @@ test("hidden manager accepts an invalid remote note-reference replay and reports
   const host = document.createElement("div");
   document.body.append(host);
   const source = await sourceWithNoteReference();
-  const refusals: { reason: string; gap: unknown; error?: Error }[] = [];
+  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] = [];
   const { deps } = makeDeps({
     getHost: () => host,
     getDocument: () => source,
@@ -268,7 +268,7 @@ test("hidden manager history remains usable around a refused partial note-refere
   const host = document.createElement("div");
   document.body.append(host);
   const source = await sourceWithNoteReference();
-  const refusals: { reason: string; gap: unknown; error?: Error }[] = [];
+  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] = [];
   const { deps } = makeDeps({
     getHost: () => host,
     getDocument: () => source,
