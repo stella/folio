@@ -96,7 +96,7 @@ export type CommentAnchor = {
 };
 
 // @public
-export const commentDocumentIssue: (document: Document_2) => string | undefined;
+export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
 
 // @public
 export type CommentState = {
