@@ -52,19 +52,13 @@ const drivesFastCheck = (node: ts.CallExpression): boolean =>
   callsFastCheck(node) || callsAssertHelper(node);
 
 /** `test(...)`, `it(...)`, and their `.each` / `.skip` / `.failing` forms. */
-const isTestCall = (node: ts.CallExpression): boolean => {
-  const callee = node.expression;
-  if (ts.isIdentifier(callee)) return TEST_CALLEES.has(callee.text);
-  if (!ts.isPropertyAccessExpression(callee)) return false;
-  const owner = callee.expression;
-  if (ts.isIdentifier(owner)) return TEST_CALLEES.has(owner.text);
-  return (
-    ts.isCallExpression(owner) &&
-    ts.isPropertyAccessExpression(owner.expression) &&
-    ts.isIdentifier(owner.expression.expression) &&
-    TEST_CALLEES.has(owner.expression.expression.text)
-  );
+const isTestExpression = (expression: ts.Expression): boolean => {
+  if (ts.isIdentifier(expression)) return TEST_CALLEES.has(expression.text);
+  if (ts.isPropertyAccessExpression(expression) || ts.isCallExpression(expression))
+    return isTestExpression(expression.expression);
+  return false;
 };
+const isTestCall = (node: ts.CallExpression): boolean => isTestExpression(node.expression);
 
 const isAsyncTest = (call: ts.CallExpression): boolean => {
   const body = call.arguments[1];
@@ -98,14 +92,84 @@ const passesNumRuns = (call: ts.CallExpression): boolean => {
   );
 };
 
-const declaresOwnBudget = (call: ts.CallExpression, sourceFile: ts.SourceFile): boolean => {
-  const timeout = call.arguments.at(-1);
-  if (timeout === undefined || call.arguments.length < 3) return false;
-  return timeout.getText(sourceFile).includes(`${BUDGET_HELPER}(`);
+/** Resolve literal or constant numeric budgets without evaluating test code. */
+const budgetDeclarations = (sourceFile: ts.SourceFile) => {
+  const constants = new Map<string, ts.Expression[]>();
+  const collect = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isVariableDeclarationList(node.parent) &&
+      (node.parent.flags & ts.NodeFlags.Const) !== 0
+    ) {
+      const existing = constants.get(node.name.text);
+      if (existing) existing.push(node.initializer);
+      else constants.set(node.name.text, [node.initializer]);
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(sourceFile);
+  const numericValue = (
+    expression: ts.Expression,
+    resolving = new Set<string>(),
+  ): number | undefined => {
+    if (ts.isNumericLiteral(expression)) return Number(expression.text);
+    if (ts.isParenthesizedExpression(expression))
+      return numericValue(expression.expression, resolving);
+    if (ts.isPrefixUnaryExpression(expression)) {
+      const operand = numericValue(expression.operand, resolving);
+      if (operand === undefined) return undefined;
+      if (expression.operator === ts.SyntaxKind.MinusToken) return -operand;
+      if (expression.operator === ts.SyntaxKind.PlusToken) return operand;
+      return undefined;
+    }
+    if (!ts.isIdentifier(expression) || resolving.has(expression.text)) return undefined;
+    const declarations = constants.get(expression.text);
+    const initializer = declarations?.length === 1 ? declarations.at(0) : undefined;
+    if (initializer === undefined) return undefined;
+    return numericValue(initializer, new Set([...resolving, expression.text]));
+  };
+  const validBudget = (expression: ts.Expression | undefined): boolean => {
+    if (
+      !expression ||
+      !ts.isCallExpression(expression) ||
+      !ts.isIdentifier(expression.expression) ||
+      expression.expression.text !== BUDGET_HELPER ||
+      expression.arguments.length !== 1
+    )
+      return false;
+    const argument = expression.arguments.at(0);
+    if (argument === undefined) return false;
+    const value = numericValue(argument);
+    return value !== undefined && Number.isFinite(value) && value > 0;
+  };
+  let fileBudget: "absent" | "valid" | "invalid" = "absent";
+  for (const statement of sourceFile.statements) {
+    if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression))
+      continue;
+    const call = statement.expression;
+    if (!ts.isIdentifier(call.expression) || call.expression.text !== "setDefaultTimeout") continue;
+    if (fileBudget === "invalid") continue;
+    const timeout = call.arguments.at(0);
+    const usesHelper =
+      timeout !== undefined &&
+      ts.isCallExpression(timeout) &&
+      ts.isIdentifier(timeout.expression) &&
+      timeout.expression.text === BUDGET_HELPER;
+    if (!usesHelper) {
+      fileBudget = "absent";
+      continue;
+    }
+    fileBudget = validBudget(timeout) ? "valid" : "invalid";
+  }
+  const validTestBudget = (testCall: ts.CallExpression): boolean => {
+    if (fileBudget === "invalid") return false;
+    if (testCall.arguments.length >= 3) return validBudget(testCall.arguments.at(-1));
+    return fileBudget === "valid";
+  };
+  return validTestBudget;
 };
-
-const declaresFileBudget = (sourceText: string): boolean =>
-  new RegExp(`setDefaultTimeout\\(\\s*${BUDGET_HELPER}\\(`).test(sourceText);
 
 /**
  * `ts.sys.readDirectory` deduplicates by real path, so the workspace symlinks
@@ -124,7 +188,7 @@ type BudgetRequiringSite = { site: string; declaresBudget: boolean };
 
 const budgetRequiringSites = (file: string, sourceText: string): BudgetRequiringSite[] => {
   const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
-  const fileBudget = declaresFileBudget(sourceText);
+  const validTestBudget = budgetDeclarations(sourceFile);
   const sites: BudgetRequiringSite[] = [];
   const visit = (node: ts.Node, enclosingTest: ts.CallExpression | null): void => {
     const nextTest = ts.isCallExpression(node) && isTestCall(node) ? node : enclosingTest;
@@ -137,7 +201,7 @@ const budgetRequiringSites = (file: string, sourceText: string): BudgetRequiring
       const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
       sites.push({
         site: `${file}:${String(line + 1)}`,
-        declaresBudget: fileBudget || declaresOwnBudget(nextTest, sourceFile),
+        declaresBudget: validTestBudget(nextTest),
       });
     }
     ts.forEachChild(node, (child) => {
@@ -213,6 +277,102 @@ const scanRepository = (): BudgetRequiringSite[] =>
   });
 
 describe("property test budgets", () => {
+  test("invalid fixture budgets cannot acquire a declared allowance", () => {
+    const fixture = "test/__fixtures__/property-test-budgets.invalid.ts";
+    const source = ts.sys.readFile(path.join(REPO_ROOT, fixture));
+    if (source === undefined) panic("Cannot read invalid budget fixture.");
+    const sites = budgetRequiringSites(fixture, source);
+    expect(sites).toHaveLength(8);
+    expect(sites.every(({ declaresBudget }) => !declaresBudget)).toBe(true);
+  });
+
+  test("invalid explicit budgets override a valid file default", () => {
+    const body = "() => { fc.assert(p, propertyConfig()); }";
+    for (const budget of [
+      "propertyTestTimeout()",
+      "propertyTestTimeout(NaN)",
+      "propertyTestTimeout(1e999)",
+      "propertyTestTimeout('30000')",
+      "propertyTestTimeout(0)",
+      "propertyTestTimeout(-1)",
+      "propertyTestTimeout(dynamicBudget)",
+      "'propertyTestTimeout(30_000)'",
+      "30_000",
+    ]) {
+      expect(
+        budgetRequiringSites(
+          "probe.ts",
+          `setDefaultTimeout(propertyTestTimeout(30_000));
+ test("x", ${body}, ${budget});`,
+        ),
+      ).toEqual([{ site: "probe.ts:2", declaresBudget: false }]);
+    }
+  });
+
+  test("every supported test registration form rejects an invalid budget", () => {
+    for (const callee of [
+      "test",
+      "it",
+      "test.skip",
+      "test.failing",
+      "test.each([1])",
+      "it.each([1])",
+      "test.concurrent.each([1])",
+    ]) {
+      expect(
+        budgetRequiringSites(
+          "probe.ts",
+          `${callee}("x", () => { fc.assert(p, propertyConfig()); }, propertyTestTimeout(NaN));`,
+        ),
+      ).toEqual([{ site: "probe.ts:1", declaresBudget: false }]);
+      expect(
+        budgetRequiringSites(
+          "probe.ts",
+          `${callee}("x", () => { fc.assert(p, propertyConfig()); }, propertyTestTimeout(30_000));`,
+        ),
+      ).toEqual([{ site: "probe.ts:1", declaresBudget: true }]);
+      expect(
+        budgetRequiringSites(
+          "probe.ts",
+          `setDefaultTimeout(propertyTestTimeout(15_000));
+${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
+        ),
+      ).toEqual([{ site: "probe.ts:2", declaresBudget: true }]);
+    }
+  });
+
+  test("a scaled own budget overrides a plain example-test default", () => {
+    expect(
+      budgetRequiringSites(
+        "probe.ts",
+        `setDefaultTimeout(120_000);
+      test("x", () => { fc.assert(p, propertyConfig()); }, propertyTestTimeout(30_000));`,
+      ),
+    ).toEqual([{ site: "probe.ts:2", declaresBudget: true }]);
+  });
+
+  test("numeric constants resolve while cyclic or ambiguous budgets refuse", () => {
+    const body = "() => { fc.assert(p, propertyConfig()); }";
+    expect(
+      budgetRequiringSites(
+        "probe.ts",
+        `const BASE = 30_000; const BUDGET = BASE; test("x", ${body}, propertyTestTimeout(BUDGET));`,
+      ),
+    ).toEqual([{ site: "probe.ts:1", declaresBudget: true }]);
+    for (const declarations of [
+      "const BASE = BUDGET; const BUDGET = BASE;",
+      "const BASE = NaN;",
+      "const BASE = '30000';",
+      "const BASE = 30_000; { const BASE = 15_000; }",
+    ])
+      expect(
+        budgetRequiringSites(
+          "probe.ts",
+          `${declarations} test("x", ${body}, propertyTestTimeout(BASE));`,
+        ),
+      ).toEqual([{ site: "probe.ts:1", declaresBudget: false }]);
+  });
+
   test("reads where a budget-requiring site states its budget", () => {
     const body = "async () => { await fc.assert(p, propertyConfig({ numRuns: 40 })); }";
     expect(

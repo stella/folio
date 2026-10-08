@@ -273,7 +273,7 @@ describe("an edit to one paragraph stays local without authored paraIds", () => 
         propertyConfig({ numRuns: 60 }),
       );
     },
-    PROPERTY_TIMEOUT_MS,
+    propertyTestTimeout(PROPERTY_TIMEOUT_MS),
   );
 
   test(
@@ -299,6 +299,6 @@ describe("an edit to one paragraph stays local without authored paraIds", () => 
         propertyConfig({ numRuns: 60 }),
       );
     },
-    PROPERTY_TIMEOUT_MS,
+    propertyTestTimeout(PROPERTY_TIMEOUT_MS),
   );
 });

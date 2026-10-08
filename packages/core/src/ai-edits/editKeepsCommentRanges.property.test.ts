@@ -234,114 +234,121 @@ const commentPlainText = (comment: Comment | undefined): string =>
     .join("");
 
 describe("an edit leaves every comment and bookmark range balanced and anchored", () => {
-  test("over generated documents and operations", async () => {
-    await fc.assert(
-      fc.asyncProperty(generatedCase, async (raw) => {
-        const generated = toCase(raw);
-        const source = await createDocx(buildDocument(generated));
-        const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Editor" });
-        const target = reviewer.snapshot().blocks[generated.edit.blockIndex];
-        expect(target).toBeDefined();
-        if (!target) {
-          return;
-        }
-        reviewer.applyOperations([operationFor(generated.edit, target.id)], {
-          mode: generated.edit.mode,
-        });
-
-        const saved = await reviewer.toBuffer();
-        const zip = await JSZip.loadAsync(saved);
-        const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
-        const rels = (await zip.file("word/_rels/document.xml.rels")?.async("text")) ?? "";
-
-        const commentSpans = assertBalancedRanges(xml, "commentRange");
-        assertBalancedRanges(xml, "bookmark");
-
-        const survivingParagraphs = new Map(
-          Array.from({ length: PARAGRAPH_COUNT }, (_, index) => index)
-            .map((index) => [index, findParagraphOffsets(xml, paraId(index))] as const)
-            .filter(([, offsets]) => offsets !== null),
-        );
-
-        // A link survives a replacement of the text it wrapped, and still
-        // wraps it: the mark is non-inclusive like `comment`, and was lost the
-        // same way.
-        for (const [index, linked] of generated.linkedParagraphs.entries()) {
-          const offsets = survivingParagraphs.get(index);
-          if (!linked || !offsets) {
-            continue;
+  test(
+    "over generated documents and operations",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(generatedCase, async (raw) => {
+          const generated = toCase(raw);
+          const source = await createDocx(buildDocument(generated));
+          const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Editor" });
+          const target = reviewer.snapshot().blocks[generated.edit.blockIndex];
+          expect(target).toBeDefined();
+          if (!target) {
+            return;
           }
-          const paragraph = xml.slice(offsets.start, offsets.end);
-          const visible = [...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
-            .map(([, part]) => part ?? "")
-            .join("");
-          const inside = [...paragraph.matchAll(/<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gu)]
-            .map(([, part]) => part ?? "")
-            .join("");
-          const insideVisible = [...inside.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
-            .map(([, part]) => part ?? "")
-            .join("");
-          expect({
-            index,
-            target: rels.includes(linkTarget(index)),
-            wrapsItsText: visible.length === 0 || insideVisible === visible,
-          }).toEqual({ index, target: true, wrapsItsText: true });
-        }
+          reviewer.applyOperations([operationFor(generated.edit, target.id)], {
+            mode: generated.edit.mode,
+          });
 
-        // A note reference marks its own number, not prose, so it follows the
-        // text it sat in rather than being carried onto a replacement — which
-        // would serialize the replacement as a bare reference and lose it.
-        if (generated.noteRefParagraph !== null) {
-          const offsets = survivingParagraphs.get(generated.noteRefParagraph);
-          const replacedIt =
-            generated.edit.kind === "replaceInBlock" &&
-            generated.edit.blockIndex === generated.noteRefParagraph;
-          if (offsets && replacedIt) {
-            expect(xml.slice(offsets.start, offsets.end)).toContain(
-              "Superseded wording throughout.",
-            );
+          const saved = await reviewer.toBuffer();
+          const zip = await JSZip.loadAsync(saved);
+          const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+          const rels = (await zip.file("word/_rels/document.xml.rels")?.async("text")) ?? "";
+
+          const commentSpans = assertBalancedRanges(xml, "commentRange");
+          assertBalancedRanges(xml, "bookmark");
+
+          const survivingParagraphs = new Map(
+            Array.from({ length: PARAGRAPH_COUNT }, (_, index) => index)
+              .map((index) => [index, findParagraphOffsets(xml, paraId(index))] as const)
+              .filter(([, offsets]) => offsets !== null),
+          );
+
+          // A link survives a replacement of the text it wrapped, and still
+          // wraps it: the mark is non-inclusive like `comment`, and was lost the
+          // same way.
+          for (const [index, linked] of generated.linkedParagraphs.entries()) {
+            const offsets = survivingParagraphs.get(index);
+            if (!linked || !offsets) {
+              continue;
+            }
+            const paragraph = xml.slice(offsets.start, offsets.end);
+            const visible = [...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
+              .map(([, part]) => part ?? "")
+              .join("");
+            const inside = [
+              ...paragraph.matchAll(/<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gu),
+            ]
+              .map(([, part]) => part ?? "")
+              .join("");
+            const insideVisible = [...inside.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
+              .map(([, part]) => part ?? "")
+              .join("");
+            expect({
+              index,
+              target: rels.includes(linkTarget(index)),
+              wrapsItsText: visible.length === 0 || insideVisible === visible,
+            }).toEqual({ index, target: true, wrapsItsText: true });
           }
-        }
 
-        const reparsed = await parseDocx(saved, { preloadFonts: false });
-        const authored = new Map(
-          (reparsed.package.document.comments ?? []).map((entry) => [entry.id, entry]),
-        );
+          // A note reference marks its own number, not prose, so it follows the
+          // text it sat in rather than being carried onto a replacement — which
+          // would serialize the replacement as a bare reference and lose it.
+          if (generated.noteRefParagraph !== null) {
+            const offsets = survivingParagraphs.get(generated.noteRefParagraph);
+            const replacedIt =
+              generated.edit.kind === "replaceInBlock" &&
+              generated.edit.blockIndex === generated.noteRefParagraph;
+            if (offsets && replacedIt) {
+              expect(xml.slice(offsets.start, offsets.end)).toContain(
+                "Superseded wording throughout.",
+              );
+            }
+          }
 
-        for (const [id, { author, text, first, last }] of generated.comments.entries()) {
-          const covered = Array.from({ length: last - first + 1 }, (_, offset) => first + offset)
-            .map((index) => survivingParagraphs.get(index))
-            .filter((offsets) => offsets !== undefined && offsets !== null);
-          if (covered.length === 0) {
-            // Every character the comment covered is gone, and the comment
-            // with it: no definition, no marker; its reference run went with
-            // that content.
+          const reparsed = await parseDocx(saved, { preloadFonts: false });
+          const authored = new Map(
+            (reparsed.package.document.comments ?? []).map((entry) => [entry.id, entry]),
+          );
+
+          for (const [id, { author, text, first, last }] of generated.comments.entries()) {
+            const covered = Array.from({ length: last - first + 1 }, (_, offset) => first + offset)
+              .map((index) => survivingParagraphs.get(index))
+              .filter((offsets) => offsets !== undefined && offsets !== null);
+            if (covered.length === 0) {
+              // Every character the comment covered is gone, and the comment
+              // with it: no definition, no marker; its reference run went with
+              // that content.
+              expect({ id, kept: authored.has(id), anchored: commentSpans.has(id) }).toEqual({
+                id,
+                kept: false,
+                anchored: false,
+              });
+              continue;
+            }
+
             expect({ id, kept: authored.has(id), anchored: commentSpans.has(id) }).toEqual({
               id,
-              kept: false,
-              anchored: false,
+              kept: true,
+              anchored: true,
             });
-            continue;
+            expect(authored.get(id)?.author).toBe(author);
+            expect(commentPlainText(authored.get(id))).toBe(text);
+
+            // The range still reaches the surviving ends of its original span.
+            const span = commentSpans.get(id);
+            expect({
+              id,
+              opensInTime: (span?.first ?? Number.POSITIVE_INFINITY) < (covered.at(0)?.end ?? -1),
+              closesInTime:
+                (span?.last ?? -1) > (covered.at(-1)?.start ?? Number.POSITIVE_INFINITY),
+            }).toEqual({ id, opensInTime: true, closesInTime: true });
           }
-
-          expect({ id, kept: authored.has(id), anchored: commentSpans.has(id) }).toEqual({
-            id,
-            kept: true,
-            anchored: true,
-          });
-          expect(authored.get(id)?.author).toBe(author);
-          expect(commentPlainText(authored.get(id))).toBe(text);
-
-          // The range still reaches the surviving ends of its original span.
-          const span = commentSpans.get(id);
-          expect({
-            id,
-            opensInTime: (span?.first ?? Number.POSITIVE_INFINITY) < (covered.at(0)?.end ?? -1),
-            closesInTime: (span?.last ?? -1) > (covered.at(-1)?.start ?? Number.POSITIVE_INFINITY),
-          }).toEqual({ id, opensInTime: true, closesInTime: true });
-        }
-      }),
-      propertyConfig({ numRuns: 40 }),
-    );
-  }, 180_000);
+        }),
+        propertyConfig({ numRuns: 40 }),
+      );
+    },
+    propertyTestTimeout(180_000),
+  );
 });
