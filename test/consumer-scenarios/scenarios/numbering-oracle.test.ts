@@ -499,6 +499,21 @@ test(
             const expectedLoads = expectedPendingLoads(records, savedText);
             const loaded = reopened.loadPendingSuggestions(JSON.parse(JSON.stringify(records)));
             assert.deepEqual(loaded, expectedLoads);
+            // Pin both sides of sequential replay: a later anchor is stale, while
+            // the second replacement depends on the first replacement's text effect.
+            for (const pinned of [
+              { status: "stale", suggestionId: "op-1", reason: "textChanged" },
+              { status: "restaged", suggestionId: "s-2" },
+            ] as const) {
+              assert.deepEqual(
+                expectedLoads.find(({ suggestionId }) => suggestionId === pinned.suggestionId),
+                pinned,
+              );
+              assert.deepEqual(
+                loaded.find(({ suggestionId }) => suggestionId === pinned.suggestionId),
+                pinned,
+              );
+            }
             // Earlier proposals may change this anchor during replay. Stage the success
             // control against the saved baseline instead of requiring a stale record to load.
             const staging = await openReviewer(bytes);
