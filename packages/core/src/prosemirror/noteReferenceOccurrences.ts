@@ -33,6 +33,9 @@ type Occurrence = { id: string; node: PMNode; text: string; from: number; to: nu
 
 /** Identity establishes boundaries; text only validates the already bounded unit. */
 const readOccurrences = (paragraph: PMNode) => {
+  const referenceType = paragraph.type.schema.marks["footnoteRef"];
+  if (!referenceType || !paragraph.rangeHasMark(0, paragraph.content.size, referenceType))
+    return Result.ok([]);
   const occurrences: Occurrence[] = [];
   const seen = new Set<string>();
   let previous: Occurrence | undefined;
@@ -83,8 +86,13 @@ const readOccurrences = (paragraph: PMNode) => {
 
 /** Saving asserts the edit-owner invariant and emits each occurrence once. */
 export const coalesceNoteReferenceOccurrences = (paragraph: PMNode): PMNode => {
+  if (saveOccurrenceValidator?.cachedIds(paragraph)?.length === 0) return paragraph;
+  const referenceType = paragraph.type.schema.marks["footnoteRef"];
+  if (!referenceType || !paragraph.rangeHasMark(0, paragraph.content.size, referenceType))
+    return paragraph;
   const result = readOccurrences(paragraph);
   if (result.isErr()) return panic(result.error.message);
+  if (result.value.every(({ node, from, to }) => node.nodeSize === to - from)) return paragraph;
   const byStart = new Map(result.value.map((occurrence) => [occurrence.from, occurrence]));
   const nodes: PMNode[] = [];
   let through = -1;
@@ -136,17 +144,31 @@ const createOccurrenceValidator = () => {
     cache.set(node, result);
     return result;
   };
-  return validate;
+  return {
+    validate,
+    cachedIds: (node: PMNode) => {
+      const facts = cache.get(node);
+      return facts?.isOk() ? facts.value : undefined;
+    },
+    validateSave: (doc: PMNode) => {
+      // Compose cached subtree facts anew on every save, including cross-subtree uniqueness.
+      cache.delete(doc);
+      return validate(doc);
+    },
+  };
 };
 
+// Saving reuses immutable subtrees just as the edit guard does. Weak keys do not retain documents.
+let saveOccurrenceValidator: ReturnType<typeof createOccurrenceValidator> | undefined;
 export const assertNoteReferenceOccurrences = (doc: PMNode): void => {
-  const result = createOccurrenceValidator()(doc);
+  const validate = (saveOccurrenceValidator ??= createOccurrenceValidator());
+  const result = validate.validateSave(doc);
   if (result.isErr()) panic(result.error.message);
 };
 
 /** Production edit boundary: refuse before committing an unsaveable occurrence. */
 export const noteReferenceOccurrencePlugin = () => {
-  const validate = createOccurrenceValidator();
+  const { validate } = createOccurrenceValidator();
   return new Plugin({
     filterTransaction(transaction) {
       if (!transaction.docChanged) return true;

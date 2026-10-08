@@ -18,6 +18,8 @@ import {
 import { toggleBold } from "../commands/formatting";
 import {
   NoteReferenceEditRefusal,
+  coalesceNoteReferenceOccurrences,
+  assertNoteReferenceOccurrences,
   noteReferenceTransactionIssue,
 } from "../noteReferenceOccurrences";
 import { singletonManager } from "../schema";
@@ -344,4 +346,25 @@ test("DOM and clipboard preserve unit attribution while pasted occurrences get f
   expect(nextMark?.attrs.occurrenceId).not.toBe(reference.attrs.occurrenceId);
   expect(occurrences(view.state.doc).size).toBe(4);
   await assertRoundtrip(view.state, base);
+});
+
+test("saving reuses complete occurrence paragraphs while changed roots still validate uniqueness", async () => {
+  const base = await sourceDocument("footnote");
+  const state = createHarnessState(base, "editing");
+  const paragraph = state.doc.child(0);
+  expect(coalesceNoteReferenceOccurrences(paragraph)).toBe(paragraph);
+  const plain = state.schema.node("paragraph", null, state.schema.text("Plain"));
+  expect(coalesceNoteReferenceOccurrences(plain)).toBe(plain);
+  assertNoteReferenceOccurrences(state.doc);
+  assertNoteReferenceOccurrences(state.doc);
+  // Both children are already validated, but the new root duplicates their occurrence identities.
+  const duplicate = state.doc.copy(Fragment.fromArray([paragraph, paragraph]));
+  expect(() => assertNoteReferenceOccurrences(duplicate)).toThrow(
+    "Separate note references require distinct occurrence identities",
+  );
+  const partial = state.tr.addMark(FROM, FROM + 1, state.schema.mark("italic"));
+  expect(() => assertNoteReferenceOccurrences(partial.doc)).toThrow(
+    "different formatting or revision owners",
+  );
+  expect(state.doc.child(0)).toBe(paragraph);
 });
