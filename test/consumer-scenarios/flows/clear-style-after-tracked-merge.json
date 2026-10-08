@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 1492412849,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2500319401,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " "
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": {
+            "styleId": null
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "insertAfterBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn",
+    "deleteTable"
+  ],
+  "origin": "shrunk from random flow seed 1492412849",
+  "title": "PINNED #1518, reported seed 1492412849: clearing the style of a block merged with the next keeps the heading style"
+}

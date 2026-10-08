@@ -20,8 +20,6 @@ export const FINDINGS = {
     "Legacy generateTOC replaces existing _Toc bookmark names while prior TOC hyperlinks and PAGEREF instructions keep those names",
   LEGACY_PARAGRAPH_TAB_EDITS_LOST:
     "legacy paragraph tab commands edit PM attrs, but imported paragraph serialization retains original tabs; canonical descriptors retire this defect for canonical sessions",
-  TERMINAL_DELETE_BATCH_FORMATTING:
-    "accepting a tracked batch with preceding paragraph formatting and terminal deletion loses the requested formatting",
   INSERT_AFTER_PENDING_MERGE:
     "insertAfterBlock on a block whose tracked merge with the next is pending lists the new paragraph between them, but accepting joins the new paragraph onto the merged block and leaves the block the merge named apart",
   MARKDOWN_DROPS_TEXT_BOX:
@@ -70,10 +68,7 @@ export const KNOWN_FAILING_FLOWS: readonly {
   generation?: "targeted" | "legacy";
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
-}[] = [
-  { seed: 18568319, steps: 16, finding: "TERMINAL_DELETE_BATCH_FORMATTING" },
-  { seed: 18568230, steps: 16, finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES" },
-];
+}[] = [{ seed: 18568230, steps: 16, finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES" }];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
@@ -81,7 +76,6 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
     /legacy TOC regeneration preserves previously referenced bookmark names/u,
   LEGACY_PARAGRAPH_TAB_EDITS_LOST:
     /legacy (?:setTabs|addTabStop|removeTabStop) serialization retains original paragraph tabs/u,
-  TERMINAL_DELETE_BATCH_FORMATTING: /directAlignment is undefined, expected "center"/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
   REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
@@ -122,7 +116,18 @@ export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
  * a paragraph id minted from a hash of the fixture's document.xml, so a
  * change to how the fixture serializes detaches every flow on it.
  */
-export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]>> = {};
+export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]>> = {
+  // The separate patch intentionally refuses pendingParagraphMarkDeletion;
+  // known-issues.test.ts asserts the refusal and unchanged document explicitly.
+  "restyle-paragraph-pending-deletion.json": [1],
+  // Renumbering the preceding mark after terminal deletion has the same refusal.
+  "renumber-after-terminal-delete.json": [1],
+  // The recorded seed now draws atomic=true; the overlapping split refuses
+  // the whole batch. known-issues.test.ts checks atomic and non-atomic intent.
+  "delete-split-and-merge.json": [0],
+  // The original recorded flow starts by accepting a change before any exists.
+  "tracked-final-retirement-spacing.json": [0],
+};
 
 /**
  * requested-outcome.test.ts collisions (fixture / mode / collision) that

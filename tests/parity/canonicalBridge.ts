@@ -39,6 +39,13 @@ export type CanonicalHyperlinkAction =
 
 /** Private interaction-test bridge shared by both playgrounds. */
 export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null) => ({
+  nativeComposing: () => getRef()?.getEditor()?.getView()?.composing ?? null,
+  ensureView: () => {
+    const ref = getRef();
+    if (!ref) return false;
+    ref.ensureEditorView();
+    return true;
+  },
   load: async (bytes: number[]) => {
     const ref = getRef();
     if (!ref) return false;
@@ -98,6 +105,7 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     );
     return {
       active: canonical !== null && canonical !== undefined,
+      composing: editor?.getView()?.composing ?? null,
       document: ref?.getDocument() ?? null,
       projectionJSON: state?.doc.toJSON() ?? null,
       canonicalProjectionJSON: canonicalProjection?.toJSON() ?? null,

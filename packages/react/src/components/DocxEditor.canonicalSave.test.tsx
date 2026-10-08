@@ -22,6 +22,7 @@ import {
 import * as headerFooterHook from "./hooks/useHeaderFooterEditor";
 import { reviewDifferences } from "../../../../test/reviewDifferences";
 import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
+import { CANONICAL_SAVE_FALLBACK_DIAGNOSTIC } from "../../../../test/canonicalSaveDiagnostics";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
 import {
@@ -361,7 +362,7 @@ test("canonical header edits and new footer and note stories survive adapter sav
       expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
       if (!(error instanceof CanonicalSaveDiagnosticError)) panic("Expected typed save diagnostic");
       expect(error.gap).toBe("pm-save-projection");
-      expect(error.diagnostic).toEqual({ type: "selectiveSaveRefused", part: "word/document.xml" });
+      expect(error.diagnostic).toEqual(CANONICAL_SAVE_FALLBACK_DIAGNOSTIC);
     }
     expect(editor.current?.hasPendingChanges()).toBe(false);
   } finally {
@@ -742,7 +743,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
           expect(errors.length).toBe(errorsBeforeSerialization);
           callbackCount += diagnostics.length;
           for (const diagnostic of diagnostics) {
-            expect(diagnostic).toEqual({ type: "selectiveSaveRefused", part: "word/document.xml" });
+            expect(diagnostic).toEqual(CANONICAL_SAVE_FALLBACK_DIAGNOSTIC);
           }
           if (!repeated) panic("Expected repeated canonical serialization");
           expect(
@@ -784,10 +785,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
         expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
         if (!(error instanceof CanonicalSaveDiagnosticError))
           panic("Expected typed save diagnostic");
-        expect(error.diagnostic).toEqual({
-          type: "selectiveSaveRefused",
-          part: "word/document.xml",
-        });
+        expect(error.diagnostic).toEqual(CANONICAL_SAVE_FALLBACK_DIAGNOSTIC);
         expect(error.gap).toBe("pm-save-projection");
       }
     } finally {

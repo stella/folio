@@ -1,0 +1,10 @@
+{
+  "generated whitespace-only headings do not emit extra Markdown blocks": [
+    {
+      "seed": 717860451,
+      "path": "0:0:0:0:0",
+      "note": "Consumer flow #1520 leaves a whitespace-only heading after tracked merge resolution; heading fixtures previously covered only nonempty text.",
+      "date": "2026-10-05"
+    }
+  ]
+}

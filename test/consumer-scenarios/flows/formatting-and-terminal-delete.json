@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 18568319,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1970440226,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "31617F9A",
+          "properties": {
+            "alignment": "center"
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from original main generator flow seed 18568319",
+  "title": "PINNED seed 18568319: formatting before terminal deletion survives tracked acceptance"
+}

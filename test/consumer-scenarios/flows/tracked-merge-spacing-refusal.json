@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 835638732,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 4115123176,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "7B806329",
+          "separator": " "
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "7B806329",
+          "properties": {
+            "spacing": {
+              "spaceBefore": 120,
+              "spaceAfter": 120
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from random flow seed 835638732",
+  "title": "PINNED #1567, reported seed 835638732: pending tracked merge refuses a separate spacing patch"
+}

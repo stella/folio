@@ -1,3 +1,4 @@
+import { getDocumentText } from "./storyPlainText";
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
@@ -5,7 +6,7 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { compareDocx } from "../compare/compare";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { getAllParagraphs, getAllTables, getDocumentText } from "./documentParser";
+import { getAllParagraphs, getAllTables } from "./documentParser";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { docxToMarkdown } from "./server/docxToMarkdown";

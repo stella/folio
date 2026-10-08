@@ -1,3 +1,4 @@
+import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
 import {
   CANONICAL_GAP,
   usesCanonicalSession,
@@ -92,7 +93,7 @@ import {
 } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
+
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
 import type {

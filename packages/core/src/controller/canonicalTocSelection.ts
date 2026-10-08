@@ -4,6 +4,8 @@ import {
   SPLIT_HALVES,
   sameStory,
   idKey,
+  compareGaps,
+  mapTocBookmarkPosition,
   type DocumentOp,
   type TextPosition,
 } from "@stll/docx-core/ops";
@@ -16,13 +18,25 @@ export const mapTocSelection = (
   { at, after, ops }: TocSelectionMapping,
 ): TextPosition => {
   if (!sameStory(point.story, at.story)) return point;
+  // An address without an ordinal had no zero-width leaves at its offset before the TOC; the
+  // markers the TOC adds would otherwise absorb it, so pin it before them.
+  point = mapTocBookmarkPosition({ ...point, zeroWidthBefore: point.zeroWidthBefore ?? 0 }, ops);
+  at = mapTocBookmarkPosition({ ...at, zeroWidthBefore: at.zeroWidthBefore ?? 0 }, ops);
   if (idKey(point.blockId) !== idKey(at.blockId)) return point;
-  if (point.offset === at.offset && (point.zeroWidthBefore ?? 0) === (at.zeroWidthBefore ?? 0))
-    return after;
   const split = ops.find((op) => op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK);
   if (split === undefined) return point;
+  if (point.offset === at.offset && (point.zeroWidthBefore ?? 0) === (at.zeroWidthBefore ?? 0))
+    return after;
   if (split.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK || split.newHalf !== SPLIT_HALVES.FIRST)
     return panic("TOC insertion must retain its following paragraph identity.");
-  if (point.offset < split.at.offset) return { ...point, blockId: split.newBlockId };
+  const pointGap = { offset: point.offset, zeroWidthBefore: point.zeroWidthBefore ?? 0 };
+  const splitGap = { offset: split.at.offset, zeroWidthBefore: split.at.zeroWidthBefore ?? 0 };
+  if (compareGaps(pointGap, splitGap) < 0) return { ...point, blockId: split.newBlockId };
+  if (point.offset === split.at.offset)
+    return {
+      ...point,
+      offset: 0,
+      zeroWidthBefore: pointGap.zeroWidthBefore - splitGap.zeroWidthBefore,
+    };
   return { ...point, offset: point.offset - split.at.offset };
 };

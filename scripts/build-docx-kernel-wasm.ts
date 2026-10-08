@@ -41,6 +41,19 @@ const maximumNumberingStructureBrotliBytes = 5 * 1024;
 // silently consume it.
 const maximumParagraphAlignmentBytes = 2 * 1024;
 const maximumParagraphAlignmentBrotliBytes = 1024;
+// Locating tracked paragraph marks and translating review locations across
+// view paragraph joins has its own allowance so later projection work cannot
+// silently consume it.
+const maximumReviewRelocationBytes = 2 * 1024;
+const maximumReviewRelocationBrotliBytes = 1024;
+
+// Review-fact relocation across joins and hidden annotations has a bounded
+// allowance so later projection growth cannot consume it silently.
+const maximumReviewFactRelocationBytes = 2 * 1024;
+// Table property revision spans have a separate allowance based on their
+// measured raw and compressed artifact growth, rounded to 512-byte increments.
+const maximumTablePropertyRevisionSpansBytes = 2560;
+const maximumTablePropertyRevisionSpansBrotliBytes = 1024;
 
 const kernel = {
   label: "DOCX kernel",
@@ -60,7 +73,10 @@ const kernel = {
     maximumPreparedStylesBytes +
     maximumBookmarkBoundaryBytes +
     maximumNumberingStructureBytes +
-    maximumParagraphAlignmentBytes,
+    maximumParagraphAlignmentBytes +
+    maximumReviewRelocationBytes +
+    maximumReviewFactRelocationBytes +
+    maximumTablePropertyRevisionSpansBytes,
   maximumBrotliBytes:
     100 * 1024 +
     maximumReviewDetailBrotliBytes +
@@ -70,7 +86,9 @@ const kernel = {
     maximumPreparedStylesBrotliBytes +
     maximumBookmarkBoundaryBrotliBytes +
     maximumNumberingStructureBrotliBytes +
-    maximumParagraphAlignmentBrotliBytes,
+    maximumParagraphAlignmentBrotliBytes +
+    maximumReviewRelocationBrotliBytes +
+    maximumTablePropertyRevisionSpansBrotliBytes,
 } as const satisfies RustWasmArtifact;
 
 await buildRustWasmArtifact(kernel, mode);

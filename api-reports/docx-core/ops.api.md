@@ -76,6 +76,9 @@ export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
 
 // @public
+export const compareGaps: (left: Gap, right: Gap) => number;
+
+// @public
 export const compileEditorIntent: (document: Document_2, input: CompileEditorIntentOptions) => Result<CompiledEditorIntent, DocumentOpRefusal>;
 
 // @public
@@ -310,7 +313,7 @@ export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP
 export const documentStories: (document: Document_2) => OpStory[];
 
 // @public
-export type EditorIntent = HyperlinkEditorIntent | {
+export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "table";
     operation: TableIntentOperation;
 } | {
@@ -376,13 +379,15 @@ export type EditorIntent = HyperlinkEditorIntent | {
 
 // @public
 export type EditorIntentMode = {
+    reservedBlockIds?: ReadonlySet<string>;
+} & ({
     type: "editing";
     newIds?: NewIds;
 } | {
     type: "suggesting";
     revision: RevisionStamp;
     newIds: NewIds;
-};
+});
 
 // @public
 export const editorParagraphGroups: (document: Document_2, story: OpStory) => {
@@ -416,7 +421,17 @@ export type HeaderFooterStory = {
 };
 
 // @public
+export const idKey: (id: string) => string;
+
+// @public
 export const INHERIT_RUN_PROPS = "inherit";
+
+// @public
+export const inlineLeafSpans: (items: readonly InlineNode[]) => {
+    node: InlineNode;
+    before: Gap;
+    after: Gap;
+}[];
 
 // @public
 export type InlineSlice = {
@@ -515,6 +530,9 @@ export type JoinInlineOp = {
     at: TextPosition;
     depth: number;
 };
+
+// @public
+export const mapTocBookmarkPosition: (position: TextPosition, ops: readonly DocumentOp[]) => TextPosition;
 
 // @public
 export const MAX_BATCH_WIRE_BYTES: number;
