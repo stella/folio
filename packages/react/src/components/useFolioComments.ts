@@ -92,6 +92,12 @@ type UseFolioCommentsOptions = {
   commentsProp?: Comment[] | undefined;
   /** Fires whenever the comments array changes (controlled and uncontrolled). */
   onCommentsChange?: ((comments: Comment[]) => void) | undefined;
+  /**
+   * Comments the canonical session has committed. When present, the sidebar
+   * lists and filters these instead of the host or internal array, so canonical
+   * creation, resolution and deletion show without waiting for host feedback.
+   */
+  committedComments?: readonly Comment[] | null | undefined;
 };
 
 export function useFolioComments({
@@ -101,6 +107,7 @@ export function useFolioComments({
   editorContentRef,
   commentsProp,
   onCommentsChange,
+  committedComments,
 }: UseFolioCommentsOptions) {
   const [showCommentsSidebar, setShowCommentsSidebar] = useState(false);
   const [visibleCommentAuthors, setVisibleCommentAuthors] = useState<Set<string> | null>(null);
@@ -210,10 +217,12 @@ export function useFolioComments({
     }
   }, [autoOpenReviewSidebar, doc, isControlledComments, setComments]);
 
+  const listedComments = committedComments ?? comments;
+
   const commentAuthors = useMemo(() => {
     const seen = new Set<string>();
     const authors: string[] = [];
-    for (const comment of comments) {
+    for (const comment of listedComments) {
       const commentAuthor = getCommentAuthorKey(comment.author);
       if (!seen.has(commentAuthor)) {
         seen.add(commentAuthor);
@@ -221,7 +230,7 @@ export function useFolioComments({
       }
     }
     return authors;
-  }, [comments]);
+  }, [listedComments]);
 
   const visibleCommentAuthorSet = useMemo(
     () => visibleCommentAuthors ?? new Set(commentAuthors),
@@ -230,31 +239,31 @@ export function useFolioComments({
 
   const visibleCommentIds = useMemo(() => {
     const ids = new Set<number>([PENDING_COMMENT_ID]);
-    for (const comment of comments) {
+    for (const comment of listedComments) {
       if (visibleCommentAuthorSet.has(getCommentAuthorKey(comment.author))) {
         ids.add(comment.id);
       }
     }
     return ids;
-  }, [comments, visibleCommentAuthorSet]);
+  }, [listedComments, visibleCommentAuthorSet]);
 
   const visibleComments = useMemo(() => {
     const visibleRootIds = new Set<number>();
-    for (const comment of comments) {
+    for (const comment of listedComments) {
       const parentId = getCommentParentId(comment);
       if (parentId === null || parentId === undefined || !visibleCommentIds.has(comment.id)) {
         continue;
       }
       visibleRootIds.add(parentId);
     }
-    return comments.filter((comment) => {
+    return listedComments.filter((comment) => {
       const parentId = getCommentParentId(comment);
       if (parentId !== null && parentId !== undefined) {
         return visibleCommentIds.has(comment.id);
       }
       return visibleCommentIds.has(comment.id) || visibleRootIds.has(comment.id);
     });
-  }, [comments, visibleCommentIds]);
+  }, [listedComments, visibleCommentIds]);
 
   const activeCommentVisible = activeCommentId !== null && visibleCommentIds.has(activeCommentId);
 

@@ -1105,6 +1105,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     editorContentRef,
     commentsProp,
     onCommentsChange,
+    committedComments: canonicalComments,
   });
   const comments = canonicalComments ?? legacyComments;
   const canonicalCommentsSerialized =

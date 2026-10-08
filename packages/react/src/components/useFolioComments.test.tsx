@@ -49,6 +49,8 @@ type MountOptions = {
   /** Painted content root the highlight sync reads its anchors from. */
   editorContent?: HTMLElement;
   onChildLayout?: (hook: Hook) => void;
+  /** Canonical committed comments, read on every render like the editor does. */
+  committed?: { current: readonly Comment[] | null };
 };
 
 const makeComment = (id: number): Comment => ({
@@ -65,6 +67,7 @@ const mount = ({
   onCommentsChange,
   editorContent,
   onChildLayout,
+  committed,
 }: MountOptions = {}): Harness => {
   let latest: Hook | null = null;
   let bump: (() => void) | null = null;
@@ -82,6 +85,7 @@ const mount = ({
       editorContentRef: { current: editorContent ?? null },
       commentsProp,
       onCommentsChange,
+      committedComments: committed?.current,
     });
     return <Child hook={latest} />;
   };
@@ -262,5 +266,42 @@ describe("useFolioComments auto-open", () => {
     const resolved = { ...makeComment(1), done: true };
     const reply = { ...makeComment(2), parentId: 1 };
     expect(openOnLoad([resolved, reply])).toBe(false);
+  });
+});
+
+describe("useFolioComments committed canonical comments", () => {
+  const hostModes = [
+    { name: "uncontrolled", commentsProp: undefined },
+    { name: "controlled with unchanged host props", commentsProp: [] as Comment[] },
+  ] as const;
+
+  for (const { name, commentsProp } of hostModes) {
+    test(`${name}: the sidebar lists canonical creation, resolution and deletion`, () => {
+      const committed: { current: readonly Comment[] | null } = { current: [] };
+      const harness = mount({ commentsProp, committed });
+      expect(harness.hook.visibleComments).toEqual([]);
+
+      const created = makeComment(41);
+      committed.current = [created];
+      harness.rerender();
+      expect(harness.hook.visibleComments).toEqual([created]);
+      expect(harness.hook.commentAuthors).toEqual(["Reviewer"]);
+
+      const resolved = { ...created, done: true };
+      committed.current = [resolved];
+      harness.rerender();
+      expect(harness.hook.visibleComments).toEqual([resolved]);
+
+      committed.current = [];
+      harness.rerender();
+      expect(harness.hook.visibleComments).toEqual([]);
+      expect(harness.hook.commentAuthors).toEqual([]);
+    });
+  }
+
+  test("without a canonical list the host comments stay the source", () => {
+    const hostComment = makeComment(7);
+    const harness = mount({ commentsProp: [hostComment], committed: { current: null } });
+    expect(harness.hook.visibleComments).toEqual([hostComment]);
   });
 });
