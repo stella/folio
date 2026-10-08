@@ -1,5 +1,6 @@
 /** One editor intent, compiled to direct or tracked document operations. */
 import { compileHyperlinkIntent, type HyperlinkEditorIntent } from "./hyperlinkIntent";
+import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import { cloneModel } from "./modelClone";
 import { INSERTION_SEAM_POLICIES } from "../model/content";
 import { Result, panic } from "better-result";
@@ -93,6 +94,7 @@ export type { TableIntentOperation } from "./types";
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
   | HyperlinkEditorIntent
+  | GenerateTOCIntent
   | { type: "table"; operation: TableIntentOperation }
   | {
       type: "replaceFragment";
@@ -140,9 +142,13 @@ export type EditorIntent =
   | { type: "joinParagraphs"; story: OpStory; blockId: string; nextBlockId: string };
 
 /** Revision metadata and every fresh identity are supplied before compilation. */
-export type EditorIntentMode =
+export type EditorIntentMode = {
+  /** Identities consumed during this editor lifetime, including undone insertions. */
+  reservedBlockIds?: ReadonlySet<string>;
+} & (
   | { type: "editing"; newIds?: NewIds }
-  | { type: "suggesting"; revision: RevisionStamp; newIds: NewIds };
+  | { type: "suggesting"; revision: RevisionStamp; newIds: NewIds }
+);
 
 type CompileEditorIntentOptions = {
   intent: EditorIntent;
@@ -187,6 +193,14 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
         toId: intent.at.blockId,
         fromOffset: undefined,
         toOffset: undefined,
+      };
+    case "generateTOC":
+      return {
+        story: intent.at.story,
+        fromId: intent.at.blockId,
+        toId: intent.at.blockId,
+        fromOffset: intent.at.offset,
+        toOffset: intent.at.offset,
       };
     case "setList": {
       const first = intent.items.at(0);
@@ -811,6 +825,13 @@ export const compileEditorIntent = (
   let selection: TextPosition;
   const editedSeams: TextPosition[] = [];
   switch (intent.type) {
+    case "generateTOC": {
+      const compiled = compileGenerateTOCIntent(document, intent, mode);
+      if (compiled.isErr()) return compiled;
+      ops = compiled.value.ops;
+      selection = compiled.value.selection;
+      break;
+    }
     case "setHyperlink":
     case "removeHyperlink":
     case "insertHyperlink":
@@ -1406,7 +1427,9 @@ export const compileEditorIntent = (
       if (located.isErr()) return Result.err(located.error);
       const demand = tableEditParagraphDemand(located.value, operation);
       if (demand.isErr()) return Result.err(demand.error);
-      const occupied = new Set(packageParagraphIds(document.package).map(idKey));
+      const occupied = new Set(
+        [...packageParagraphIds(document.package), ...(mode.reservedBlockIds ?? [])].map(idKey),
+      );
       const newBlockIds: string[] = [];
       for (let nextId = 1; newBlockIds.length < demand.value; nextId += 1) {
         if (nextId >= 0x8000_0000)

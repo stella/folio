@@ -63,7 +63,7 @@ export const CANONICAL_CAPABILITIES = {
     owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Hyperlink suggestions require serializable wrapper review provenance.",
+    summary: "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
   },
   [CANONICAL_GAP.suggesting]: {
     owner: "adapters",
