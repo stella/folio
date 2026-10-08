@@ -962,7 +962,7 @@ describe("document operations", () => {
       children: [{ type: "run", content: [{ type: "text", text: "link" }] }],
     });
   });
-  test("marker-only cut and move distinguish explicit gaps at equal text offsets", () => {
+  test("planned marker-only replacement retains boundaries while explicit cut and editing move distinguish gaps", () => {
     const original = normalizeForOps({
       package: {
         document: {
@@ -994,32 +994,56 @@ describe("document operations", () => {
         ],
       },
     ] satisfies Paragraph[];
-    for (const intent of [
-      { type: "replaceText", from, to, text: "" },
+    const replacement = compileEditorIntent(original, {
+      intent: { type: "replaceText", from, to, text: "" },
+      mode: { type: "editing" },
+    }).unwrap();
+    expect(replacement.ops).toEqual([]);
+    assertExactModel(applyDocumentOps(original, replacement.ops).unwrap().document, original);
+    const intent = {
+      type: "moveFragment",
+      from,
+      to,
+      target: { ...from, zeroWidthBefore: 4 },
+      paragraphs: copied,
+      openStart: 1,
+      openEnd: 1,
+    } as const satisfies EditorIntent;
+    const allocation = allocateEditorIntentIds(original, intent);
+    const move = compileEditorIntent(original, {
+      intent,
+      mode: { type: "editing", newIds: allocation.newIds },
+    }).unwrap();
+    expect(move.ops.length).toBeGreaterThan(0);
+    const cuts = [{ type: DOCUMENT_OP_TYPES.DELETE_RANGE, from, to }] satisfies DocumentOp[];
+    for (const { ops, expected } of [
       {
-        type: "moveFragment",
-        from,
-        to,
-        target: { ...from, zeroWidthBefore: 4 },
-        paragraphs: copied,
-        openStart: 1,
-        openEnd: 1,
+        ops: cuts,
+        expected: [
+          { type: "bookmarkStart", id: 2, name: "B" },
+          { type: "bookmarkEnd", id: 2 },
+        ],
       },
-    ] as const satisfies readonly EditorIntent[]) {
-      const allocation = allocateEditorIntentIds(original, intent);
-      const plan = compileEditorIntent(original, {
-        intent,
-        mode: { type: "editing", newIds: allocation.newIds },
-      }).unwrap();
-      expect(plan.ops.length).toBeGreaterThan(0);
-      const edit = applyDocumentOps(original, plan.ops).unwrap();
+      {
+        ops: move.ops,
+        expected: [
+          { type: "bookmarkStart", id: 2, name: "B" },
+          { type: "bookmarkEnd", id: 2 },
+          { type: "bookmarkStart", id: 1, name: "A" },
+          { type: "bookmarkEnd", id: 1 },
+        ],
+      },
+    ]) {
+      const edit = applyDocumentOps(original, ops).unwrap();
       const paragraph = storyParagraphs(edit.document.package.document).at(0)?.paragraph;
       if (!paragraph) panic("Marker operation lost its paragraph.");
       expect(paragraphLogicalText(paragraph)).toBe("ab");
-      const names = paragraph.content.flatMap((item) =>
-        item.type === "bookmarkStart" ? [item.name] : [],
+      assertExactModel(
+        paragraph.content.filter(
+          (item) => item.type === "bookmarkStart" || item.type === "bookmarkEnd",
+        ),
+        expected,
       );
-      expect(names).toEqual(intent.type === "replaceText" ? ["B"] : ["B", "A"]);
       const undo = applyDocumentOps(edit.document, edit.inverse).unwrap();
       assertExactModel(undo.document, original);
       const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();

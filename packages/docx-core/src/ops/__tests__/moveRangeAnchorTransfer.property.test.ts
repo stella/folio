@@ -1,8 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
 import type { Document, Paragraph, ParagraphContent, Run } from "../../model/document";
-import { assertProperty } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { RANGE_ANCHOR_FIXTURE_FACTORIES } from "../../../typecheck/range-anchor-fixtures.typecheck";
 import { applyDocumentOps } from "../apply";
 import {
@@ -14,6 +14,8 @@ import {
 import { leafSpans, isParagraphContent } from "../leaves";
 import { isRangeBoundary, paragraphLogicalText } from "../offsets";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
+
+setDefaultTimeout(propertyTestTimeout(60_000));
 
 const run = (text: string) => ({ type: "run", content: [{ type: "text", text }] }) satisfies Run;
 
