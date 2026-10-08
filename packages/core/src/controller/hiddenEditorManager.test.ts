@@ -20,6 +20,7 @@ import { EditorState, Plugin } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
 import type { Paragraph } from "../types/document";
+import type { CanonicalCommentRequest } from "../types/canonicalComments";
 import type { FolioDocumentOperationStory } from "../document-operations";
 import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
 import { createNoteEditorManager } from "./noteEditorManager";
@@ -591,6 +592,66 @@ test("canonical keyboard formatting and breaks publish journalled intents", () =
   }
 });
 
+test("canonical comment mutation results isolate committed snapshots and history", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Start" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+  paragraph.paraId = "12345678";
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const requests = [
+      {
+        type: "create",
+        text: "Comment",
+        author: "Reviewer",
+        anchor: { kind: "selection", story: OP_STORIES.MAIN, from: 1, to: 1 },
+      },
+      { type: "update", id: 0, content: [paragraph] },
+      { type: "resolve", id: 0, status: "resolved" },
+      { type: "delete", id: 0 },
+    ] satisfies CanonicalCommentRequest[];
+    let id = 0;
+    for (const request of requests) {
+      let command = request;
+      if (request.type === "update") {
+        const content = manager.api.getCanonicalComments()?.at(0)?.content;
+        if (!content) panic("Expected committed comment content");
+        for (const block of content) block.content = [];
+        command = { type: "update", id, content };
+      } else if (request.type !== "create") command = { ...request, id };
+      const result = manager.api.applyCanonicalComment(command);
+      if (result?.status !== "applied") panic("Expected applied comment mutation");
+      if (result.commentId !== undefined) id = result.commentId;
+      const committed = manager.api.getCanonicalDocument();
+      const snapshot = manager.api.captureCanonicalSave();
+      for (const comment of result.comments) {
+        comment.author = "Changed outside the journal";
+        comment.content.length = 0;
+      }
+      result.comments.length = 0;
+      assertExactModel(manager.api.getCanonicalDocument(), committed);
+      assertExactModel(manager.api.captureCanonicalSave(), snapshot);
+      expect(manager.api.undo()).toBe(true);
+      expect(manager.api.redo()).toBe(true);
+      assertExactModel(manager.api.getCanonicalDocument(), committed);
+    }
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
 test.each(["body", "story"] as const)(
   "%s composition defers every story synchronizer while public snapshots remain blocked",
   async (owner) => {
@@ -625,7 +686,20 @@ test.each(["body", "story"] as const)(
       manager.ensureView();
       const view = manager.getView();
       if (!view) panic("Expected canonical view");
+      const comment = manager.api.applyCanonicalComment({
+        type: "create",
+        text: "Committed comment",
+        author: "Reviewer",
+        anchor: { kind: "selection", story: OP_STORIES.MAIN, from: 1, to: 1 },
+      });
+      expect(comment?.status).toBe("applied");
       const initial = manager.api.getCanonicalDocument();
+      const comments = manager.api.getCanonicalComments();
+      expect(comments).toHaveLength(1);
+      const exposed = comments?.at(0);
+      if (!exposed) panic("Expected committed comment projection");
+      exposed.content = [];
+      expect(manager.api.getCanonicalComments()?.at(0)?.content).not.toEqual([]);
       for (const synchronizer of synchronizers) synchronizer.sync();
       if (owner === "body") {
         view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
@@ -635,6 +709,7 @@ test.each(["body", "story"] as const)(
       for (const read of [manager.api.getDocument, manager.api.getCanonicalDocument])
         expect(read).toThrow("Composition must finish before taking a snapshot.");
       expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).toBeNull();
+      expect(manager.api.getCanonicalComments()).toEqual(initial?.package.document.comments);
       for (const synchronizer of synchronizers) expect(() => synchronizer.sync()).not.toThrow();
       // Synchronization cannot clear the shared pending boundary.
       expect(manager.api.getCanonicalDocument).toThrow();

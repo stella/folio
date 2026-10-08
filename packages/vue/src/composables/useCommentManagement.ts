@@ -15,9 +15,10 @@
  * from the loaded document.
  */
 
-import { computed, ref, type ComputedRef, type Ref } from "vue";
+import { computed, ref, toRaw, watch, type ComputedRef, type Ref } from "vue";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
+import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { EditorView } from "prosemirror-view";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
@@ -42,6 +43,8 @@ export type UseCommentManagementOptions = {
   commentsProp: () => Comment[] | undefined;
   /** Fires on every comment-list mutation (controlled and uncontrolled). */
   onCommentsChange: (comments: Comment[]) => void;
+  /** Reactive invalidation for the canonical document reader. */
+  canonicalTick?: Ref<number>;
   /** Re-run layout after a mutation that changed marks in the document. */
   reLayout: () => void;
 };
@@ -106,19 +109,90 @@ export function useCommentManagement(
   }
 
   const isControlled = computed(() => options.commentsProp() !== undefined);
-  const comments = computed<Comment[]>(() =>
-    isControlled.value ? (options.commentsProp() ?? []) : internalComments.value,
+  const canonicalComments = computed(() => {
+    void options.canonicalTick?.value;
+    return options.editor?.getCanonicalComments() ?? null;
+  });
+  const comments = computed<Comment[]>(
+    () =>
+      canonicalComments.value ??
+      (isControlled.value ? (options.commentsProp() ?? []) : internalComments.value),
   );
 
-  function setComments(next: Comment[]): void {
+  const lastCanonicalComments = ref<string | null>(null);
+  watch(
+    canonicalComments,
+    (next) => {
+      if (next === null) {
+        lastCanonicalComments.value = null;
+        return;
+      }
+      const serialized = JSON.stringify(next);
+      if (lastCanonicalComments.value !== null && lastCanonicalComments.value !== serialized) {
+        options.onCommentsChange(next);
+      }
+      lastCanonicalComments.value = serialized;
+    },
+    { flush: "sync" },
+  );
+
+  let lastControlledComments: string | undefined;
+  const controlledRetry = ref(0);
+  watch(
+    [
+      () => canonicalComments.value !== null,
+      // Serializing reads every nested field, so in-place reactive edits
+      // (a resolved flag, changed text) count as a new host value.
+      () => {
+        const requested = options.commentsProp();
+        return requested === undefined ? undefined : JSON.stringify(requested);
+      },
+      controlledRetry,
+    ],
+    ([ready, serialized], _previous, onCleanup) => {
+      if (!ready || serialized === undefined) {
+        lastControlledComments = undefined;
+        return;
+      }
+      // Journal changes and same-value host renders cannot replay a stale prop.
+      if (serialized === lastControlledComments) return;
+      const current = canonicalComments.value ?? [];
+      if (JSON.stringify(current) === serialized) {
+        lastControlledComments = serialized;
+        return;
+      }
+      const requested = options.commentsProp() ?? [];
+      const result = options.editor?.applyCanonicalComment({
+        type: "replace",
+        comments: toRaw(requested),
+      });
+      // Only an applied value is handled; a value deferred by composition retries.
+      if (result?.status === "applied") {
+        lastControlledComments = serialized;
+        return;
+      }
+      if (result?.status !== "refused" || result.retry !== "afterComposition") return;
+      const view = options.editor?.getView();
+      if (!view) return;
+      onCleanup(afterCanonicalCompositionSettles(view, () => (controlledRetry.value += 1)));
+    },
+    { flush: "post" },
+  );
+
+  function setComments(next: Comment[]): boolean {
+    const result = options.editor?.applyCanonicalComment({
+      type: "replace",
+      comments: toRaw(next),
+    });
+    if (result !== null && result !== undefined) return true;
     if (!isControlled.value) internalComments.value = next;
     options.onCommentsChange(next);
+    return false;
   }
 
   function appendComments(additions: Comment[]): void {
     if (additions.length === 0) return;
-    markCommentsDirty();
-    setComments([...comments.value, ...additions]);
+    if (!setComments([...comments.value, ...additions])) markCommentsDirty();
   }
 
   function pushComment(comment: Comment): void {
@@ -138,6 +212,7 @@ export function useCommentManagement(
     // `commentsDirtyRef` on document reset). Cleared unconditionally so a
     // controlled host's swap resets the flag too.
     clearCommentsDirty();
+    if (canonicalComments.value !== null) return;
     if (isControlled.value) return;
     const bodyComments = options.getDocument()?.package.document.comments;
     seedCommentAllocator(allocator, bodyComments, options.editorView.value);
@@ -148,20 +223,41 @@ export function useCommentManagement(
   }
 
   function handleReply(parentId: number, text: string): void {
+    const result = options.editor?.applyCanonicalComment({
+      type: "create",
+      text,
+      author: options.author(),
+      anchor: { kind: "reply", parentId },
+    });
+    if (result !== null && result !== undefined) return;
     pushComment(createComment(text, parentId));
   }
 
   function handleResolve(commentId: number): void {
+    const result = options.editor?.applyCanonicalComment({
+      type: "resolve",
+      id: commentId,
+      status: "resolved",
+    });
+    if (result !== null && result !== undefined) return;
     markCommentsDirty();
     setComments(comments.value.map((c) => (c.id === commentId ? { ...c, done: true } : c)));
   }
 
   function handleUnresolve(commentId: number): void {
+    const result = options.editor?.applyCanonicalComment({
+      type: "resolve",
+      id: commentId,
+      status: "open",
+    });
+    if (result !== null && result !== undefined) return;
     markCommentsDirty();
     setComments(comments.value.map((c) => (c.id === commentId ? { ...c, done: false } : c)));
   }
 
   function handleDelete(commentId: number): void {
+    const result = options.editor?.applyCanonicalComment({ type: "delete", id: commentId });
+    if (result !== null && result !== undefined) return;
     // Drop the comment and any direct replies threaded under it (matches React's
     // onCommentDelete). The orphaned comment mark left in the doc is pruned at
     // save time.
@@ -170,13 +266,20 @@ export function useCommentManagement(
   }
 
   function handleTrackedChangeReply(revisionId: number, text: string): void {
+    const result = options.editor?.applyCanonicalComment({
+      type: "create",
+      text,
+      author: options.author(),
+      anchor: { kind: "revision", story: "main", revisionId },
+    });
+    if (result !== null && result !== undefined) return;
     pushComment(createComment(text, revisionId));
   }
 
   function resolveChangeById(revisionId: number, accept: boolean): void {
     const view = options.editorView.value;
     if (!view) return;
-    if (options.editor?.getCanonicalDocument()) {
+    if (canonicalComments.value !== null && options.editor) {
       options.editor.resolveCanonicalRevisions([revisionId], accept ? "accept" : "reject");
       return;
     }

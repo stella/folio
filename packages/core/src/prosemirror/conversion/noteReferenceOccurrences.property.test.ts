@@ -358,7 +358,10 @@ test("saving reuses complete occurrence paragraphs while changed roots still val
   assertNoteReferenceOccurrences(state.doc);
   assertNoteReferenceOccurrences(state.doc);
   // Both children are already validated, but the new root duplicates their occurrence identities.
-  const duplicate = state.doc.copy(Fragment.fromArray([paragraph, paragraph]));
+  const emptyRoot = state.doc.copy(Fragment.from(plain));
+  assertNoteReferenceOccurrences(emptyRoot);
+  assertNoteReferenceOccurrences(emptyRoot);
+  const duplicate = emptyRoot.copy(Fragment.fromArray([paragraph, paragraph]));
   expect(() => assertNoteReferenceOccurrences(duplicate)).toThrow(
     "Separate note references require distinct occurrence identities",
   );

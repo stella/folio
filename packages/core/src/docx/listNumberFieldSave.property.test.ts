@@ -1119,7 +1119,11 @@ describe("a document with no LISTNUM field", () => {
 
       const parsed = await openDocx(buffer);
       const doc = toProseDoc(parsed);
-      const json = JSON.stringify(doc.toJSON());
+      // Structural occurrence identities are freshly minted on DOCX ingest and never saved.
+      // Keep the pre-identity projection oracle exact for every serialized attribute.
+      const json = JSON.stringify(doc.toJSON(), (key, value: unknown) =>
+        key === "occurrenceId" ? undefined : value,
+      );
 
       expect(json).not.toContain("foldedListNumber");
       // The fixture and the length go with the digest, so a mismatch says

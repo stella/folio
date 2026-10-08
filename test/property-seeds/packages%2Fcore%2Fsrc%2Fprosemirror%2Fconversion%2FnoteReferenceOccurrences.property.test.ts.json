@@ -21,6 +21,12 @@
       "path": "0:3:1:6:7:14:2:5:5:5:9:7:3:4:3:4:5:4:6:8:6",
       "note": "Save normalizes duplicate revision element ids; compare author/date/type ownership instead of incidental save ids.",
       "date": "2026-10-08"
+    },
+    {
+      "seed": -822915160,
+      "path": "21:3:3:8:7:9:15:15:16:15:15:15:15:15:15",
+      "note": "A whole-reference formatting edit after deletion, join, and reference paste must preserve bold through save and reopen.",
+      "date": "2026-10-08"
     }
   ]
 }

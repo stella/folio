@@ -689,7 +689,8 @@ const requireNoteOccurrenceAttribution = (
     for (const child of node.toArray()) {
       if (typeof child === "string") continue;
       if (!isXmlText(child)) {
-        visit(child);
+        // Hooks have no text descendants; only XML elements contain references.
+        if ("toArray" in child) visit(child);
         continue;
       }
       for (const op of child.toDelta()) {

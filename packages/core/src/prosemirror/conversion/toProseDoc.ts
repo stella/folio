@@ -117,6 +117,7 @@ import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import {
   getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
+  isParagraphMarkSuppressionEligible,
   resolveParagraphBodyRunFormatting,
   stripParagraphMarkFormattingForBodyRuns,
   stripParagraphMarkOnlyFormatting,
@@ -888,9 +889,7 @@ function convertParagraph(
         toggleCascade: inheritedToggleCascade,
       };
     }
-    const hasExplicitRunFormatting =
-      hasDirectRunFormatting(formatting) || formatting?.styleId !== undefined;
-    if (!hasExplicitRunFormatting) {
+    if (!isParagraphMarkSuppressionEligible(formatting)) {
       return {
         formatting: defaultRunFormatting,
         implicitCharacterStyleApplied: true,

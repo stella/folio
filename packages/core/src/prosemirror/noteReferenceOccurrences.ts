@@ -151,7 +151,10 @@ const createOccurrenceValidator = () => {
       return facts?.isOk() ? facts.value : undefined;
     },
     validateSave: (doc: PMNode) => {
-      // Compose cached subtree facts anew on every save, including cross-subtree uniqueness.
+      const facts = cache.get(doc);
+      // An immutable reference-free root has no identities to compose. Changed roots miss this cache.
+      if (facts?.isOk() && facts.value.length === 0) return facts;
+      // Compose cached subtree facts anew on every referenced save, including cross-subtree uniqueness.
       cache.delete(doc);
       return validate(doc);
     },
