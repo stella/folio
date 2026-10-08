@@ -73,6 +73,14 @@ const exemptionReason = (source: string): string | undefined => {
 export const findNormalizationWarningViolations = (
   modules: readonly NormalizationModule[],
 ): NormalizationWarningViolation[] => {
+  if (modules.length === 0) {
+    return [
+      {
+        path: `*${NORMALIZATION_MODULE_SUFFIX}`,
+        detail: "normalisation warning coverage scanned no modules; check module discovery",
+      },
+    ];
+  }
   const violations: NormalizationWarningViolation[] = [];
   for (const { path, source } of modules) {
     if (referencesWarningCodes(path, source)) {

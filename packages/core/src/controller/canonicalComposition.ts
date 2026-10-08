@@ -1,7 +1,7 @@
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { Result } from "better-result";
 
-import type { EditorState, Transaction } from "prosemirror-state";
+import { EditorState, TextSelection, type Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { CanonicalSessionError } from "./canonicalSession";
@@ -13,7 +13,13 @@ const COMPOSITION_FLUSH_DELAY_MS = 25;
 type CompositionOptions = {
   begin: () => boolean;
   end: () => void;
-  replace: (input: { from: number; to: number; text: string; semantic: "composition" }) => void;
+  replace: (input: {
+    from: number;
+    to: number;
+    text: string;
+    semantic: "composition";
+    compositionPhase?: "correction";
+  }) => void;
   refuse: (reason: string) => void;
 };
 
@@ -37,10 +43,25 @@ type CompositionFinish =
   | { type: "idle" | "cancelled" }
   | { type: "committed" | "refused"; text: string | null };
 
+type CompletedReceipt = {
+  view: EditorView;
+  state: EditorState;
+  from: number;
+  to: number;
+  text: string;
+  marks: EditorState["storedMarks"];
+};
+
+type CompletedComposition =
+  | { type: "idle" }
+  | { type: "completed"; receipt: CompletedReceipt }
+  | { type: "authorized"; receipt: CompletedReceipt; text: string };
+
 /** Native IME owns the provisional view; the captured canonical projection stays unchanged. */
 export const createCanonicalComposition = (options: CompositionOptions) => {
   let state: CompositionState = { type: "committed" };
   let authorizedNativeState: EditorState | null = null;
+  let completed: CompletedComposition = { type: "idle" };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const clearTimer = () => {
     if (timer !== undefined) clearTimeout(timer);
@@ -105,6 +126,16 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     if (!expected.doc.eq(proposed.doc)) return null;
     return { from: start + from, to: start + oldEnd, text, semantic: "composition" as const };
   };
+  const applyNative = (view: EditorView, transaction: Transaction) =>
+    Result.try({
+      try: () => view.state.applyTransaction(transaction),
+      catch: (cause) =>
+        new CanonicalSessionError({
+          gap: CANONICAL_GAP.dispatch,
+          reason: "refused",
+          message: `Composition projection failed: ${String(cause)}`,
+        }),
+    });
   const finish = (view: EditorView, commit: boolean): CompositionFinish => {
     clearTimer();
     authorizedNativeState = null;
@@ -117,6 +148,9 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     // Acceptance is validated by replacement(); payload identity depends on text,
     // including when the accepted minimal diff retains non-inclusive metadata.
     const committedText = selectedText(pending.baseline, view.state);
+    const proposed = view.state;
+    const from = pending.baseline.selection.from;
+    completed = { type: "idle" };
     state = { type: "committed" };
     if (!view.isDestroyed) {
       // Recovery may finish without a native end event (for example a refused
@@ -127,15 +161,34 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     options.end();
     if (!commit || view.isDestroyed) return { type: "cancelled" };
     if (pending.type === "refused") return { type: "refused", text: pending.text };
-    if (input?.from === input?.to && input?.text === "")
-      return { type: "committed", text: committedText };
     if (!input) {
       options.refuse(
         "Composition changed unsupported content; the canonical document was restored.",
       );
       return { type: "refused", text: committedText };
     }
-    options.replace(input);
+    if (input.from !== input.to || input.text !== "") options.replace(input);
+    if (
+      committedText !== null &&
+      !view.isDestroyed &&
+      view.state.doc.textContent === proposed.doc.textContent &&
+      from + committedText.length <= view.state.doc.content.size &&
+      view.state.doc.textBetween(from, from + committedText.length, "", "") === committedText
+    ) {
+      completed = {
+        type: "completed",
+        receipt: {
+          view,
+          state: view.state,
+          from,
+          to: from + committedText.length,
+          text: committedText,
+          marks:
+            pending.baseline.storedMarks ??
+            pending.baseline.selection.$from.marksAcross(pending.baseline.selection.$to),
+        },
+      };
+    }
     return { type: "committed", text: committedText };
   };
   const schedule = (view: EditorView) => {
@@ -181,11 +234,34 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       }
       schedule(view);
     },
+    forgetCompleted: () => {
+      completed = { type: "idle" };
+    },
+    get pendingFinal() {
+      return completed.type === "authorized";
+    },
+    authorizeLateFinal: (view: EditorView, text: string | null) => {
+      if (completed.type === "idle") return false;
+      const { receipt } = completed;
+      if (
+        view.isDestroyed ||
+        receipt.view !== view ||
+        receipt.state !== view.state ||
+        text === null
+      ) {
+        completed = { type: "idle" };
+        return false;
+      }
+      completed = { type: "authorized", receipt, text };
+      return true;
+    },
     authorizeNative: (view: EditorView) => {
       authorizedNativeState = view.state;
     },
     flushed: (view: EditorView) => {
       const authorized = authorizedNativeState;
+      // A classified late final remains bound to its state until the observer
+      // consumes it or the next gesture invalidates it, including delayed flushes.
       queueMicrotask(() => {
         if (authorizedNativeState === authorized) authorizedNativeState = null;
       });
@@ -194,6 +270,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     recover: (view: EditorView) => finish(view, true),
     cancel: (view: EditorView) => finish(view, false),
     reset: () => {
+      completed = { type: "idle" };
       if (state.type !== "committed") finish(state.view, false);
       else {
         clearTimer();
@@ -201,7 +278,74 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       }
     },
     accept: (view: EditorView, transaction: Transaction) => {
-      if (state.type === "committed") return false;
+      if (state.type === "committed") {
+        const final = completed;
+        if (final.type !== "authorized" || final.receipt.view !== view) return false;
+        completed = { type: "idle" };
+        if (view.isDestroyed || final.receipt.state !== view.state) return false;
+        const applied = applyNative(view, transaction);
+        const baseline = EditorState.create({
+          schema: final.receipt.state.schema,
+          doc: final.receipt.state.doc,
+          selection: TextSelection.create(
+            final.receipt.state.doc,
+            final.receipt.from,
+            final.receipt.to,
+          ),
+          storedMarks: final.receipt.marks,
+        });
+        const input = applied.isOk() ? replacement(baseline, applied.value.state) : null;
+        // A final can arrive as the full replacement or its minimal native diff.
+        // The captured range and full payload must match in either form.
+        if (
+          applied.isErr() ||
+          !input ||
+          input.from < final.receipt.from ||
+          input.to > final.receipt.to ||
+          selectedText(baseline, applied.value.state) !== final.text
+        ) {
+          view.updateState(final.receipt.state);
+          options.refuse(
+            applied.isErr()
+              ? applied.error.message
+              : "Final composition changed unsupported content; the canonical document was restored.",
+          );
+          return true;
+        }
+        if (final.receipt.text !== final.text)
+          options.replace({
+            from: final.receipt.from,
+            to: final.receipt.to,
+            text: final.text,
+            semantic: "composition",
+            compositionPhase: "correction",
+          });
+        if (!view.isDestroyed) view.updateState(view.state);
+        if (
+          !view.isDestroyed &&
+          view.state.doc.textContent === applied.value.state.doc.textContent &&
+          final.receipt.from + final.text.length <= view.state.doc.content.size &&
+          view.state.doc.textBetween(
+            final.receipt.from,
+            final.receipt.from + final.text.length,
+            "",
+            "",
+          ) === final.text
+        ) {
+          completed = {
+            type: "completed",
+            receipt: {
+              view,
+              state: view.state,
+              from: final.receipt.from,
+              to: final.receipt.from + final.text.length,
+              text: final.text,
+              marks: final.receipt.marks,
+            },
+          };
+        }
+        return true;
+      }
       if (state.type === "refused") {
         view.updateState(state.baseline);
         return true;
@@ -214,15 +358,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
         return true;
       }
       authorizedNativeState = null;
-      const applied = Result.try({
-        try: () => view.state.applyTransaction(transaction),
-        catch: (cause) =>
-          new CanonicalSessionError({
-            gap: CANONICAL_GAP.dispatch,
-            reason: "refused",
-            message: `Composition projection failed: ${String(cause)}`,
-          }),
-      });
+      const applied = applyNative(view, transaction);
       if (applied.isErr()) {
         view.updateState(state.baseline);
         state = {

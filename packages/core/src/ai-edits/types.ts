@@ -721,7 +721,9 @@ export type FolioAIEditSkipReason =
    * deletion is accepted. Reject that deletion first, or insert a new block
    * next to it.
    */
-  | "pendingDeletion";
+  | "pendingDeletion"
+  /** Resolve the removed paragraph mark before editing its properties separately. */
+  | "pendingParagraphMarkDeletion";
 
 export type FolioAIEditAppliedOperation = {
   id: string;

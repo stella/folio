@@ -23,6 +23,7 @@ export const CANONICAL_GAP = {
   publicSuggestedMode: "publicOps.suggestedMode",
   publicTableProjection: "publicOps.tableProjection",
   publicUnsupportedInline: "publicOps.unsupportedInline",
+  publicPendingParagraphMarkProperties: "publicOps.pendingParagraphMarkProperties",
   publicHeadlessSession: "publicOps.headlessSession",
   publicSecondaryStories: "publicOps.secondaryStories",
 } as const;
@@ -185,6 +186,14 @@ export const CANONICAL_CAPABILITIES = {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary: "Unsupported public payloads refuse with a typed compiler capability gap.",
+  },
+  [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
+    owner: "document-operations",
+    defaultSessionMutation: "pm-public-operations",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary:
+      "Separate paragraph property edits refuse while the paragraph mark is pending deletion; atomic merge properties remain supported.",
   },
   [CANONICAL_GAP.publicSecondaryStories]: {
     owner: "document-operations",

@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 118244301,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1317974444,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "3CEFFC83",
+          "offset": 9
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "origin": "collisions flow seed 118244301",
+  "title": "PINNED #1393, reported seed 118244301: saved block text differs from the requested result"
+}

@@ -19,6 +19,7 @@ import {
 } from "../prosemirror/plugins/revisionIds";
 
 import type { NumberingMap } from "../docx/numberingParser";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { formattingEquals } from "../docx/runConsolidator";
 import {
   expectParagraphAttrs,
@@ -2374,6 +2375,13 @@ const isDeletedPPrMark = (value: unknown): boolean =>
   "kind" in value &&
   (value.kind === "del" || value.kind === "moveFrom");
 
+const pendingParagraphMarkPropertyRefusal = {
+  reason: "pendingParagraphMarkDeletion",
+  canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
+  message:
+    "Resolve the pending paragraph mark deletion before editing its properties, or provide mergedParagraphProperties on the merge operation for atomic intent.",
+} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
+
 const hasRevisionMarker = (value: unknown): boolean =>
   typeof value === "object" && value !== null && "revisionId" in value;
 
@@ -2755,7 +2763,7 @@ type FinalParagraphCarryOptions = Pick<
   predecessor: { node: PMNode; position: number };
 };
 
-/** A final deletion carries properties from before later writes in its batch. */
+/** An unoccupied final carrier takes admissible writes from the finished batch. */
 const finalParagraphCarry = ({
   tr,
   at,
@@ -2766,14 +2774,20 @@ const finalParagraphCarry = ({
   numbering,
 }: FinalParagraphCarryOptions) => {
   const { node: previous, position } = predecessor;
-  const beforeBatch = resolveParagraphChangeAttrs({
-    node: previous,
-    mode: "reject",
-    boundaryCovered: true,
-    revisionSet: batchRevisionIds,
-    styleResolver,
-    numbering,
-  });
+  // An occupied survivor keeps the established revision ownership: a later
+  // batch write cannot replace the properties its pending receipt restores.
+  const beforeBatch = hasSerializableParagraphPropertyChange(
+    expectParagraphAttrs(target)._propertyChanges,
+  )
+    ? resolveParagraphChangeAttrs({
+        node: previous,
+        mode: "reject",
+        boundaryCovered: true,
+        revisionSet: batchRevisionIds,
+        styleResolver,
+        numbering,
+      })
+    : null;
   return {
     source: beforeBatch
       ? previous.type.create(beforeBatch, previous.content, previous.marks)
@@ -2965,9 +2979,9 @@ const withRetiredFinalParagraphs = ({
       // Accepted, the removed break leaves the emptied carrier, which ends
       // the container: it takes this paragraph's properties as part of the
       // same change, so the words that stay read as they did.
-      // What this batch set on the paragraph came after the break went, as
-      // one operation at a time does it: the carried properties are the
-      // ones it had before the batch changed them.
+      // Retirement completes the batch after admissible predecessor edits.
+      // Carry their current properties before deleting the owning mark so
+      // accepting the batch preserves the pending document's presentation.
       const mergedProperties = mergedPropertyTargets.some(({ position: target, mappedFrom }) => {
         const mapped = tr.mapping.slice(mappedFrom).mapResult(target);
         return !mapped.deleted && mapped.pos === at;
@@ -3829,6 +3843,9 @@ const applyFolioAIEditOperationsInternal = ({
       skipped.push({
         id: operation.id,
         reason: resolution.reason,
+        ...(resolution.canonicalRefusal !== undefined && {
+          canonicalRefusal: resolution.canonicalRefusal,
+        }),
         ...(resolution.message !== undefined && { message: resolution.message }),
       });
       continue;
@@ -4420,6 +4437,15 @@ const applyFolioAIEditOperationsInternal = ({
           panic("Resolved replaceBlock operation lost its impact discriminator");
         }
         const { changesStyle, changesText } = REPLACE_BLOCK_IMPACT[item.replaceBlockImpact];
+        // A merge earlier in the batch can delete this paragraph's mark after
+        // resolution; acceptance would discard the style edit.
+        if (
+          changesStyle &&
+          isDeletedPPrMark(tr.doc.nodeAt(tr.mapping.map(item.blockFrom, -1))?.attrs["pPrMark"])
+        ) {
+          skipped.push({ id: item.operation.id, ...pendingParagraphMarkPropertyRefusal });
+          continue;
+        }
         const revisionIdDelete = operationRevisionSeed;
         const revisionIdInsert = changesText ? operationRevisionSeed + 1 : operationRevisionSeed;
         const revisionIdBackgroundSeed = changesText
@@ -5323,6 +5349,10 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         const blockPosition = mapped.pos;
+        if (isDeletedPPrMark(liveBlock.attrs["pPrMark"])) {
+          skipped.push({ id: item.operation.id, ...pendingParagraphMarkPropertyRefusal });
+          continue;
+        }
         const appliedProperties = applyBlockParagraphProperties({
           tr,
           position: blockPosition,
@@ -7619,6 +7649,9 @@ const resolveOperationTarget = ({
   }
 
   if (operation.type === "setBlockParagraphProperties") {
+    if (isDeletedPPrMark(blockNode.attrs["pPrMark"])) {
+      return { type: "skip", ...pendingParagraphMarkPropertyRefusal };
+    }
     return {
       type: "resolved",
       operation: { operation, from: blockFrom, to: blockTo, blockFrom, blockTo, blockNode },
@@ -7698,6 +7731,9 @@ const resolveOperationTarget = ({
       operation.type === "replaceBlock" &&
       operation.styleId !== undefined &&
       operation.styleId !== (expectParagraphAttrs(blockNode).styleId ?? null);
+    if (replaceChangesStyle && isDeletedPPrMark(blockNode.attrs["pPrMark"])) {
+      return { type: "skip", ...pendingParagraphMarkPropertyRefusal };
+    }
     // Field results have atomic text spans that the replacement planner can
     // preserve or replace whole. Other structural boundaries need their own edit.
     if (
@@ -7827,6 +7863,7 @@ type OperationResolutionSkip = {
   type: "skip";
   reason: FolioAIEditSkipReason;
   message?: string;
+  canonicalRefusal?: FolioAIEditSkippedOperation["canonicalRefusal"];
 };
 
 const resolveTextInCleanBlock = (

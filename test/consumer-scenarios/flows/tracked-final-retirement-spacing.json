@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "tracked-changes",
+  "seed": 848209884,
+  "steps": [
+    {
+      "action": "accept one",
+      "seed": 2047940027
+    },
+    {
+      "action": "mistake",
+      "seed": 3879505840
+    },
+    {
+      "action": "save and reopen",
+      "seed": 3815564643
+    },
+    {
+      "action": "story batch",
+      "seed": 1352163160,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "7735D914",
+          "properties": {
+            "spacing": {
+              "spaceBefore": 120,
+              "spaceAfter": 120
+            }
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "7735D914",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "origin": "random flow seed 848209884",
+  "title": "PINNED #1567, reported seed 848209884: final paragraph retirement preserves earlier spacing edits"
+}
