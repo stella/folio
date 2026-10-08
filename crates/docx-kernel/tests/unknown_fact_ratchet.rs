@@ -54,7 +54,13 @@ fn collect_packages(directory: &Path, packages: &mut Vec<PathBuf>) {
         if name.starts_with('.') || name == "node_modules" {
             continue;
         }
-        if path.is_dir() {
+        let metadata = path.metadata().unwrap_or_else(|error| {
+            panic!(
+                "corpus entry {} has readable metadata: {error}",
+                path.display()
+            )
+        });
+        if metadata.is_dir() {
             collect_packages(&path, packages);
         } else if path
             .extension()
@@ -177,8 +183,18 @@ fn render(packages: usize, counts: &BTreeMap<Key, usize>) -> String {
     output
 }
 
-fn parse(baseline: &str) -> BTreeMap<Key, usize> {
-    baseline
+fn parse(baseline: &str) -> (usize, BTreeMap<Key, usize>) {
+    let packages = baseline
+        .lines()
+        .next()
+        .unwrap()
+        .strip_prefix("# Unknown facts across ")
+        .unwrap()
+        .strip_suffix(" committed DOCX packages; see tests/unknown_fact_ratchet.rs.")
+        .unwrap()
+        .parse::<usize>()
+        .unwrap();
+    let counts = baseline
         .lines()
         .filter(|line| !line.starts_with('#') && !line.is_empty())
         .map(|line| {
@@ -195,7 +211,73 @@ fn parse(baseline: &str) -> BTreeMap<Key, usize> {
                 count.parse().unwrap(),
             )
         })
-        .collect()
+        .collect();
+    (packages, counts)
+}
+
+fn check_baseline(
+    packages: usize,
+    counts: &BTreeMap<Key, usize>,
+    baseline: &str,
+) -> Result<(), String> {
+    let (baseline_packages, baseline_counts) = parse(baseline);
+    if packages != baseline_packages {
+        return Err(format!(
+            "corpus package count changed: {baseline_packages} -> {packages}"
+        ));
+    }
+    let mut rose = Vec::new();
+    let mut fell = Vec::new();
+    let new_keys = counts
+        .keys()
+        .filter(|key| !baseline_counts.contains_key(*key));
+    for key in baseline_counts.keys().chain(new_keys) {
+        let before = baseline_counts.get(key).copied().unwrap_or(0);
+        let after = counts.get(key).copied().unwrap_or(0);
+        if after > before {
+            rose.push(format!("{key:?}: {before} -> {after}"));
+        } else if after < before {
+            fell.push(format!("{key:?}: {before} -> {after}"));
+        }
+    }
+    if !rose.is_empty() {
+        return Err(format!("unknown facts rose:\n{}", rose.join("\n")));
+    }
+    if !fell.is_empty() {
+        return Err(format!(
+            "unknown facts fell; lower the baseline with {UPDATE}=1:\n{}",
+            fell.join("\n")
+        ));
+    }
+    Ok(())
+}
+
+proptest::proptest! {
+    /// Corpus coverage is checked even when no package has an unknown fact.
+    #[test]
+    fn corpus_coverage_requires_the_recorded_package_count(packages in 2_usize..128) {
+        let counts = BTreeMap::new();
+        let baseline = render(packages, &counts);
+        proptest::prop_assert!(check_baseline(packages, &counts, &baseline).is_ok());
+        proptest::prop_assert!(check_baseline(packages - 1, &counts, &baseline).is_err());
+        proptest::prop_assert!(check_baseline(packages + 1, &counts, &baseline).is_err());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn corpus_traversal_reports_unreadable_entry_metadata() {
+    use std::os::unix::fs::symlink;
+
+    let directory = std::env::temp_dir().join(format!("folio-census-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    symlink(directory.join("absent"), directory.join("entry")).unwrap();
+    let result = std::panic::catch_unwind(|| collect_packages(&directory, &mut Vec::new()));
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(
+        result.is_err(),
+        "every corpus entry must have readable metadata"
+    );
 }
 
 #[test]
@@ -207,27 +289,5 @@ fn unknown_fact_counts_only_fall() {
         std::fs::write(&path, render(packages, &counts)).unwrap();
         return;
     }
-    let baseline = parse(&std::fs::read_to_string(&path).unwrap());
-    let mut rose = Vec::new();
-    let mut fell = Vec::new();
-    let new_keys = counts.keys().filter(|key| !baseline.contains_key(*key));
-    for key in baseline.keys().chain(new_keys) {
-        let before = baseline.get(key).copied().unwrap_or(0);
-        let after = counts.get(key).copied().unwrap_or(0);
-        if after > before {
-            rose.push(format!("{key:?}: {before} -> {after}"));
-        } else if after < before {
-            fell.push(format!("{key:?}: {before} -> {after}"));
-        }
-    }
-    assert!(
-        rose.is_empty(),
-        "unknown facts rose; make them known or justify the new baseline:\n{}",
-        rose.join("\n")
-    );
-    assert!(
-        fell.is_empty(),
-        "unknown facts fell; lower the baseline with {UPDATE}=1:\n{}",
-        fell.join("\n")
-    );
+    check_baseline(packages, &counts, &std::fs::read_to_string(&path).unwrap()).unwrap();
 }
