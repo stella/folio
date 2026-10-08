@@ -1872,7 +1872,7 @@ describe("document operations", () => {
       { numRuns: 100 },
     );
   });
-  test("generated comment-anchor move sequences preserve marker gaps and refuse tracked transfer atomically", () => {
+  test("generated comment-anchor move sequences retain source anchors when suggesting and move them when editing", () => {
     assertProperty(
       fc.property(
         fc.array(fc.record({ target: fc.nat(), gap: fc.nat(), tracked: fc.boolean() }), {
@@ -1906,8 +1906,6 @@ describe("document operations", () => {
             edit: AppliedDocumentOp;
             ops: readonly DocumentOp[];
           }[] = [];
-          const refusals = new Map<DocumentOpRefusalReason, number>();
-          let expectedRefusals = 0;
           for (const [index, step] of steps.entries()) {
             const paragraph = storyParagraphs(document.package.document).at(0)?.paragraph;
             if (!paragraph) panic("Comment move sequence lost its paragraph.");
@@ -1966,51 +1964,48 @@ describe("document operations", () => {
               compareGaps(intent.target, start.before) >= 0 &&
               compareGaps(intent.target, end.after) <= 0;
             const compiled = compileEditorIntent(document, { intent, mode });
-            if (tracked && !inside) {
-              if (compiled.isOk()) panic("Tracked comment transfer unexpectedly compiled.");
-              refusals.set(compiled.error.reason, (refusals.get(compiled.error.reason) ?? 0) + 1);
-              expectedRefusals += 1;
-              expect(compiled.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
-              assertExactModel(document, snapshot);
-            } else {
-              if (compiled.isErr()) throw compiled.error;
-              const edit = applyDocumentOps(document, compiled.value.ops).unwrap();
-              if (inside) expect(compiled.value.ops).toEqual([]);
-              const moved = storyParagraphs(edit.document.package.document).at(0)?.paragraph;
-              if (!moved) panic("Comment move lost its result paragraph.");
-              const text = paragraphLogicalText(paragraph);
-              const remaining = text.slice(0, start.before.offset) + text.slice(end.after.offset);
-              const rebased = targetOffset > end.after.offset ? targetOffset - 1 : targetOffset;
-              expect(paragraphLogicalText(moved)).toBe(
-                inside
-                  ? text
-                  : remaining.slice(0, rebased) +
-                      text.slice(start.before.offset, end.after.offset) +
-                      remaining.slice(rebased),
-              );
+            if (compiled.isErr()) throw compiled.error;
+            const edit = applyDocumentOps(document, compiled.value.ops).unwrap();
+            if (inside) expect(compiled.value.ops).toEqual([]);
+            const moved = storyParagraphs(edit.document.package.document).at(0)?.paragraph;
+            if (!moved) panic("Comment move lost its result paragraph.");
+            const text = paragraphLogicalText(paragraph);
+            const remaining = text.slice(0, start.before.offset) + text.slice(end.after.offset);
+            const rebased = targetOffset > end.after.offset ? targetOffset - 1 : targetOffset;
+            expect(paragraphLogicalText(moved)).toBe(
+              inside || tracked
+                ? text
+                : remaining.slice(0, rebased) +
+                    text.slice(start.before.offset, end.after.offset) +
+                    remaining.slice(rebased),
+            );
+            if (tracked) {
+              assertExactModel(edit.document, snapshot);
               assertExactModel(
-                leafSpans(moved.content)
-                  .filter(({ node }) => isCommentAnchor(node))
-                  .map(({ node }) => node),
-                [
-                  { type: "commentRangeStart", id: 7 },
-                  { type: "commentRangeEnd", id: 7 },
-                  { type: "commentReference", id: 7 },
-                ],
+                leafSpans(moved.content).filter(({ node }) => isCommentAnchor(node)),
+                anchors,
               );
-              const undo = applyDocumentOps(
-                edit.document,
-                JSON.parse(JSON.stringify(edit.inverse)),
-              ).unwrap();
-              assertExactModel(undo.document, before);
-              const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();
-              assertExactModel(redo.document, edit.document);
-              journal.push({ before, edit, ops: compiled.value.ops });
-              document = redo.document;
             }
+            assertExactModel(
+              leafSpans(moved.content)
+                .filter(({ node }) => isCommentAnchor(node))
+                .map(({ node }) => node),
+              [
+                { type: "commentRangeStart", id: 7 },
+                { type: "commentRangeEnd", id: 7 },
+                { type: "commentReference", id: 7 },
+              ],
+            );
+            const undo = applyDocumentOps(
+              edit.document,
+              JSON.parse(JSON.stringify(edit.inverse)),
+            ).unwrap();
+            assertExactModel(undo.document, before);
+            const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();
+            assertExactModel(redo.document, edit.document);
+            journal.push({ before, edit, ops: compiled.value.ops });
+            document = redo.document;
           }
-          expect([...refusals.keys()]).toEqual([DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE]);
-          expect(refusals.get(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE)).toBe(expectedRefusals);
           for (const entry of journal.toReversed()) {
             document = applyDocumentOps(document, entry.edit.inverse).unwrap().document;
             assertExactModel(document, entry.before);
