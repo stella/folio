@@ -100,7 +100,7 @@ export type DocxReviewFactsWire = readonly [schemaVersion: 2, revisions: DocxRev
 export type DocxReviewUnknownReason = "invalid-document" | "invalid-comments" | "invalid-comments-extended" | "resource-limit" | "unsupported-location";
 
 // @public (undocumented)
-export type DocxRevisionKind = "insertion" | "deletion" | "moveFrom" | "moveTo" | "cellIns" | "cellDel" | "cellMerge" | "pPrChange" | "rPrChange" | "sectPrChange" | "tblPrChange" | "trPrChange" | "tcPrChange" | "tblGridChange" | "customXmlDelRangeStart" | "customXmlDelRangeEnd" | "customXmlInsRangeStart" | "customXmlInsRangeEnd" | "customXmlMoveFromRangeStart" | "customXmlMoveFromRangeEnd" | "customXmlMoveToRangeStart" | "customXmlMoveToRangeEnd";
+export type DocxRevisionKind = "insertion" | "deletion" | "moveFrom" | "moveTo" | "cellIns" | "cellDel" | "cellMerge" | "pPrChange" | "rPrChange" | "sectPrChange" | "tblPrChange" | "tblPrExChange" | "trPrChange" | "tcPrChange" | "tblGridChange" | "customXmlDelRangeStart" | "customXmlDelRangeEnd" | "customXmlInsRangeStart" | "customXmlInsRangeEnd" | "customXmlMoveFromRangeStart" | "customXmlMoveFromRangeEnd" | "customXmlMoveToRangeStart" | "customXmlMoveToRangeEnd";
 
 // @public
 export const initializeDocxProjection: (input?: InitializeDocxProjectionOptions) => Promise<void>;

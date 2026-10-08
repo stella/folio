@@ -128,6 +128,7 @@ pub enum RevisionFactKind {
     RunPropertiesChange,
     SectionPropertiesChange,
     TablePropertiesChange,
+    TablePropertiesExceptionChange,
     TableRowPropertiesChange,
     TableCellPropertiesChange,
     TableGridChange,
