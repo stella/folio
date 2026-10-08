@@ -1072,6 +1072,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const canonicalCommentsSnapshotRef = useRef<string | null>(
     canonicalComments === null ? null : JSON.stringify(canonicalComments),
   );
+  const lastControlledCommentsRef = useRef<string | undefined>(undefined);
 
   const {
     comments: legacyComments,
@@ -1638,11 +1639,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   );
 
   useEffect(() => {
-    if (commentsProp === undefined) return;
-    if (canonicalComments === null) return;
-    if (JSON.stringify(canonicalComments) === JSON.stringify(legacyComments)) {
+    if (commentsProp === undefined || canonicalComments === null) {
+      lastControlledCommentsRef.current = undefined;
       return;
     }
+    const requested = JSON.stringify(legacyComments);
+    // Internal journal changes cannot reapply an unchanged host value.
+    if (lastControlledCommentsRef.current === requested) return;
+    lastControlledCommentsRef.current = requested;
+    if (JSON.stringify(canonicalComments) === requested) return;
     applyCanonicalComment({ type: "replace", comments: legacyComments });
   }, [applyCanonicalComment, commentsProp, legacyComments, canonicalCommentsSerialized]);
 

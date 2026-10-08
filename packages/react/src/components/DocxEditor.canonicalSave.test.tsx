@@ -181,107 +181,144 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
   }
 });
 
-const collectCommentChanges = (changes: Comment[][]) => (next: Comment[]) =>
-  changes.push(structuredClone(next));
+const collectCommentChanges =
+  (changes: Comment[][], onChange: (next: Comment[]) => void) => (next: Comment[]) => {
+    changes.push(structuredClone(next));
+    onChange(next);
+  };
 const collectCommentErrors = (errors: Error[]) => (error: Error) => errors.push(error);
 
-test("canonical comments publish controlled updates, undo, and save from the package", async () => {
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  const editor = createRef<DocxEditorRef>();
-  const errors: Error[] = [];
-  const changes: Comment[][] = [];
-  const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
-  const initialComments: Comment[] = [];
-  const messages = getFolioMessages("en");
-  const onCommentsChange = collectCommentChanges(changes);
-  const onError = collectCommentErrors(errors);
-  let controlledComments = initialComments;
-  const renderEditor = () => (
-    <IntlProvider locale="en" timeZone="UTC" messages={messages}>
-      <DocxEditor
-        ref={editor}
-        documentBuffer={bytes}
-        experimentalSession="canonical"
-        comments={controlledComments}
-        onCommentsChange={onCommentsChange}
-        onError={onError}
-        showToolbar={false}
-      />
-    </IntlProvider>
-  );
-  try {
-    await act(async () => root.render(renderEditor()));
-    await act(async () => editor.current?.loadDocumentBuffer(bytes));
-    await act(async () => editor.current?.ensureEditorView({ focus: false }));
-
-    let created: CanonicalCommentResult | null = null;
-    await act(async () => {
-      created =
-        editor.current?.getEditor()?.applyCanonicalComment({
-          type: "create",
-          text: "Review this",
-          author: "Reviewer",
-          anchor: { kind: "selection", from: 1, to: 8, story: "main" },
-        }) ?? null;
+test.each(["immediate", "deferred"] as const)(
+  "canonical comments preserve %s host feedback through undo and save",
+  async (feedback) => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const editor = createRef<DocxEditorRef>();
+    const errors: Error[] = [];
+    const changes: Comment[][] = [];
+    const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
+    const initialComments: Comment[] = [];
+    const messages = getFolioMessages("en");
+    const onError = collectCommentErrors(errors);
+    let controlledComments = initialComments;
+    const onCommentsChange = collectCommentChanges(changes, (next) => {
+      if (feedback === "immediate") {
+        controlledComments = structuredClone(next);
+        root.render(renderEditor());
+      }
     });
-    expect(created?.status).toBe("applied");
-    if (created?.status !== "applied" || created.commentId === undefined) {
-      panic("Expected canonical comment creation");
-    }
-    controlledComments = created.comments;
-    await act(async () => root.render(renderEditor()));
-    expect(editor.current?.getDocument()?.package.document.comments).toEqual(controlledComments);
-
-    const revisedContent: Comment["content"] = [
-      {
-        type: "paragraph",
-        paraId:
-          created.comments[0]?.content[0]?.type === "paragraph"
-            ? created.comments[0].content[0].paraId
-            : undefined,
-        formatting: {},
-        content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "Updated" }] }],
-      },
-    ];
-    controlledComments = controlledComments.map((comment) =>
-      comment.id === created.commentId
-        ? { ...comment, done: true, content: revisedContent }
-        : comment,
+    const renderEditor = () => (
+      <IntlProvider locale="en" timeZone="UTC" messages={messages}>
+        <DocxEditor
+          ref={editor}
+          documentBuffer={bytes}
+          experimentalSession="canonical"
+          comments={controlledComments}
+          onCommentsChange={onCommentsChange}
+          onError={onError}
+          showToolbar={false}
+        />
+      </IntlProvider>
     );
-    await act(async () => root.render(renderEditor()));
-    expect(editor.current?.getDocument()?.package.document.comments).toEqual(controlledComments);
+    try {
+      await act(async () => root.render(renderEditor()));
+      await act(async () => editor.current?.loadDocumentBuffer(bytes));
+      await act(async () => editor.current?.ensureEditorView({ focus: false }));
 
-    await act(async () => {
-      expect(editor.current?.undo()).toBe(true);
-    });
-    const undoneComments = editor.current?.getDocument()?.package.document.comments ?? [];
-    expect(undoneComments.at(0)?.done).toBeFalsy();
-    expect(undoneComments.at(0)?.content).toEqual(created.comments.at(0)?.content);
-    expect(changes.at(-1)).toEqual(undoneComments);
-
-    const expected = editor.current?.getDocument() ?? panic("Expected canonical comments model");
-    for (const selective of [false, true]) {
+      let created: CanonicalCommentResult | null = null;
       await act(async () => {
-        const saved = await editor.current?.save({ selective });
-        if (!saved) panic("Expected saved canonical comments");
-        expect((await validateDocx(saved)).valid).toBe(true);
-        const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
-        expect(reopened.package.document.comments).toEqual(undoneComments);
-        expect(describePackageDifferences(expected, reopened)).toEqual({
-          messages: [],
-          omitted: 0,
-        });
+        created =
+          editor.current?.getEditor()?.applyCanonicalComment({
+            type: "create",
+            text: "Review this",
+            author: "Reviewer",
+            anchor: { kind: "selection", from: 1, to: 8, story: "main" },
+          }) ?? null;
       });
-      if (!selective) expect(errors).toEqual([]);
+      expect(created?.status).toBe("applied");
+      if (created?.status !== "applied" || created.commentId === undefined) {
+        panic("Expected canonical comment creation");
+      }
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(created.comments);
+      expect(changes.at(-1)).toEqual(created.comments);
+      // New array identity without a host value change must not undo creation.
+      controlledComments = [...controlledComments];
+      await act(async () => root.render(renderEditor()));
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(created.comments);
+      controlledComments = created.comments;
+      await act(async () => root.render(renderEditor()));
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(controlledComments);
+
+      const revisedContent: Comment["content"] = [
+        {
+          type: "paragraph",
+          paraId:
+            created.comments[0]?.content[0]?.type === "paragraph"
+              ? created.comments[0].content[0].paraId
+              : undefined,
+          formatting: {},
+          content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "Updated" }] }],
+        },
+      ];
+      controlledComments = controlledComments.map((comment) =>
+        comment.id === created.commentId
+          ? { ...comment, done: true, content: revisedContent }
+          : comment,
+      );
+      await act(async () => root.render(renderEditor()));
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(controlledComments);
+
+      await act(async () => {
+        expect(editor.current?.undo()).toBe(true);
+      });
+      const undoneComments = editor.current?.getDocument()?.package.document.comments ?? [];
+      expect(undoneComments.at(0)?.done).toBeFalsy();
+      expect(undoneComments.at(0)?.content).toEqual(created.comments.at(0)?.content);
+      expect(changes.at(-1)).toEqual(undoneComments);
+      // A stale controlled value must not replay the edit after journal undo.
+      controlledComments = [...controlledComments];
+      await act(async () => root.render(renderEditor()));
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(undoneComments);
+      await act(async () => {
+        expect(editor.current?.redo()).toBe(true);
+        expect(editor.current?.getDocument()?.package.document.comments?.at(0)?.done).toBe(true);
+      });
+      await act(async () => {
+        expect(editor.current?.undo()).toBe(true);
+      });
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(undoneComments);
+      await act(async () => {
+        expect(editor.current?.undo()).toBe(true);
+      });
+      expect(editor.current?.getDocument()?.package.document.comments ?? []).toEqual([]);
+      await act(async () => {
+        expect(editor.current?.redo()).toBe(true);
+      });
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(undoneComments);
+
+      const expected = editor.current?.getDocument() ?? panic("Expected canonical comments model");
+      for (const selective of [false, true]) {
+        await act(async () => {
+          const saved = await editor.current?.save({ selective });
+          if (!saved) panic("Expected saved canonical comments");
+          expect((await validateDocx(saved)).valid).toBe(true);
+          const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+          expect(reopened.package.document.comments).toEqual(undoneComments);
+          expect(describePackageDifferences(expected, reopened)).toEqual({
+            messages: [],
+            omitted: 0,
+          });
+        });
+        if (!selective) expect(errors).toEqual([]);
+      }
+      expect(errors).toEqual([]);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
     }
-    expect(errors).toEqual([]);
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-  }
-});
+  },
+);
 
 test("canonical header edits and new footer and note stories survive adapter save and reopen", async () => {
   const container = document.createElement("div");

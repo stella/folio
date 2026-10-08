@@ -135,12 +135,24 @@ export function useCommentManagement(
     { flush: "sync" },
   );
 
+  let lastControlledComments: string | undefined;
   watch(
     [() => canonicalComments.value !== null, () => options.commentsProp()],
     ([ready, requested]) => {
-      if (!ready || requested === undefined) return;
+      if (!ready) {
+        lastControlledComments = undefined;
+        return;
+      }
+      if (requested === undefined) {
+        lastControlledComments = undefined;
+        return;
+      }
+      const serialized = JSON.stringify(requested);
+      // Journal changes and same-value host renders cannot replay a stale prop.
+      if (serialized === lastControlledComments) return;
+      lastControlledComments = serialized;
       const current = canonicalComments.value ?? [];
-      if (JSON.stringify(current) === JSON.stringify(requested)) return;
+      if (JSON.stringify(current) === serialized) return;
       options.editor?.applyCanonicalComment({
         type: "replace",
         comments: toRaw(requested),

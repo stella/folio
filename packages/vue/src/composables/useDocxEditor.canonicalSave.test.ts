@@ -279,139 +279,166 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
   }
 });
 
-test("Vue canonical comment projection follows controlled edits, undo, callbacks, and save", async () => {
-  const container = document.createElement("div");
-  const hidden = document.createElement("div");
-  const pages = document.createElement("div");
-  document.body.append(container, hidden, pages);
-  const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
-  const holder: {
-    editor: ReturnType<typeof useDocxEditor> | null;
-    comments: ReturnType<typeof useCommentManagement> | null;
-  } = { editor: null, comments: null };
-  const controlledComments = ref<Comment[] | undefined>([]);
-  const stateTick = ref(0);
-  const changes: Comment[][] = [];
-  const app = createApp(
-    defineComponent({
-      setup() {
-        const editor = useDocxEditor({
-          hiddenContainer: shallowRef(hidden),
-          pagesContainer: shallowRef(pages),
-          experimentalSession: "canonical",
+test.each(["immediate", "deferred"] as const)(
+  "Vue canonical comments with %s host feedback preserve edits, undo, callbacks, and save",
+  async (feedback) => {
+    const container = document.createElement("div");
+    const hidden = document.createElement("div");
+    const pages = document.createElement("div");
+    document.body.append(container, hidden, pages);
+    const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
+    const holder: {
+      editor: ReturnType<typeof useDocxEditor> | null;
+      comments: ReturnType<typeof useCommentManagement> | null;
+    } = { editor: null, comments: null };
+    const controlledComments = ref<Comment[] | undefined>([]);
+    const stateTick = ref(0);
+    const changes: Comment[][] = [];
+    const app = createApp(
+      defineComponent({
+        setup() {
+          const editor = useDocxEditor({
+            hiddenContainer: shallowRef(hidden),
+            pagesContainer: shallowRef(pages),
+            experimentalSession: "canonical",
+          });
+          holder.editor = editor;
+          editor.editor.on("docChange", () => {
+            stateTick.value += 1;
+          });
+          holder.comments = useCommentManagement({
+            editor: editor.editor,
+            editorView: editor.editorView,
+            getDocument: editor.getDocument,
+            author: () => "Reviewer",
+            commentsProp: () => controlledComments.value,
+            canonicalTick: stateTick,
+            onCommentsChange: (next) => {
+              changes.push(structuredClone(next));
+              if (feedback === "immediate") controlledComments.value = structuredClone(next);
+            },
+            reLayout: () => undefined,
+          });
+          return () => h("div");
+        },
+      }),
+    );
+    app.mount(container);
+    try {
+      const adapter = holder.editor ?? panic("Expected Vue editor");
+      const management = holder.comments ?? panic("Expected Vue comment management");
+      await adapter.loadBuffer(bytes);
+      stateTick.value += 1;
+      await nextTick();
+      const created = adapter.editor.applyCanonicalComment({
+        type: "create",
+        text: "Review this",
+        author: "Reviewer",
+        anchor: { kind: "selection", from: 1, to: 8, story: "main" },
+      });
+      expect(created?.status).toBe("applied");
+      if (created?.status !== "applied" || created.commentId === undefined) {
+        panic("Expected canonical comment creation");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 275));
+      await nextTick();
+      expect(management.comments.value).toEqual(created.comments);
+      expect(changes.at(-1)).toEqual(created.comments);
+      if (feedback === "deferred") {
+        expect(controlledComments.value).toEqual([]);
+        controlledComments.value = [];
+        await nextTick();
+        expect(management.comments.value).toEqual(created.comments);
+        controlledComments.value = structuredClone(created.comments);
+        await nextTick();
+        expect(management.comments.value).toEqual(created.comments);
+      }
+
+      const revisedContent: Comment["content"] = [
+        {
+          type: "paragraph",
+          paraId:
+            created.comments[0]?.content[0]?.type === "paragraph"
+              ? created.comments[0].content[0].paraId
+              : undefined,
+          formatting: {},
+          content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "Updated" }] }],
+        },
+      ];
+      controlledComments.value = created.comments.map((comment) =>
+        comment.id === created.commentId
+          ? { ...comment, done: true, content: revisedContent }
+          : comment,
+      );
+      await nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 275));
+      await nextTick();
+      expect(adapter.getDocument()?.package.document.comments).toEqual(controlledComments.value);
+
+      expect(adapter.editor.undo()).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 275));
+      await nextTick();
+      const undone = adapter.getDocument()?.package.document.comments ?? [];
+      expect(undone.at(0)?.done).toBeFalsy();
+      expect(undone.at(0)?.content).toEqual(created.comments.at(0)?.content);
+      expect(changes.at(-1)).toEqual(undone);
+      if (feedback === "deferred") {
+        expect(controlledComments.value?.at(0)?.done).toBe(true);
+        controlledComments.value = structuredClone(controlledComments.value);
+        await nextTick();
+        expect(management.comments.value).toEqual(undone);
+        expect(adapter.editor.redo()).toBe(true);
+        expect(adapter.editor.undo()).toBe(true);
+        await nextTick();
+        expect(management.comments.value).toEqual(undone);
+        controlledComments.value = structuredClone(undone);
+        await nextTick();
+      }
+      expect(controlledComments.value).toEqual(undone);
+
+      const view = adapter.editorView.value ?? panic("Expected Vue canonical view");
+      const committedDoc = view.state.doc;
+      view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      expect(adapter.editor.getCanonicalDocument).toThrow(
+        "Composition must finish before taking a snapshot.",
+      );
+      // Every selection tick recomputes the comment projection while IME blocks snapshots.
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
+      stateTick.value += 1;
+      controlledComments.value = [...undone];
+      await nextTick();
+      expect(management.comments.value).toEqual(undone);
+      expect(adapter.editor.getCanonicalDocument).toThrow(
+        "Composition must finish before taking a snapshot.",
+      );
+      view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      await nextTick();
+      expect(view.state.doc.eq(committedDoc)).toBe(true);
+      expect(adapter.editor.getCanonicalDocument()?.package.document.comments).toEqual(undone);
+
+      const expected =
+        adapter.editor.getCanonicalDocument() ?? panic("Expected canonical comments model");
+      for (const selective of [false, true]) {
+        const saved = await adapter.save({ selective });
+        if (!saved) panic("Expected saved canonical comments");
+        const buffer = await saved.arrayBuffer();
+        expect((await validateDocx(buffer)).valid).toBe(true);
+        const reopened = await parseDocx(buffer, { preloadFonts: false, detectVariables: false });
+        expect(reopened.package.document.comments).toEqual(undone);
+        expect(describePackageDifferences(expected, reopened)).toEqual({
+          messages: [],
+          omitted: 0,
         });
-        holder.editor = editor;
-        editor.editor.on("docChange", () => {
-          stateTick.value += 1;
-        });
-        holder.comments = useCommentManagement({
-          editor: editor.editor,
-          editorView: editor.editorView,
-          getDocument: editor.getDocument,
-          author: () => "Reviewer",
-          commentsProp: () => controlledComments.value,
-          canonicalTick: stateTick,
-          onCommentsChange: (next) => {
-            changes.push(structuredClone(next));
-            controlledComments.value = structuredClone(next);
-          },
-          reLayout: () => undefined,
-        });
-        return () => h("div");
-      },
-    }),
-  );
-  app.mount(container);
-  try {
-    const adapter = holder.editor ?? panic("Expected Vue editor");
-    const management = holder.comments ?? panic("Expected Vue comment management");
-    await adapter.loadBuffer(bytes);
-    stateTick.value += 1;
-    await nextTick();
-    const created = adapter.editor.applyCanonicalComment({
-      type: "create",
-      text: "Review this",
-      author: "Reviewer",
-      anchor: { kind: "selection", from: 1, to: 8, story: "main" },
-    });
-    expect(created?.status).toBe("applied");
-    if (created?.status !== "applied" || created.commentId === undefined) {
-      panic("Expected canonical comment creation");
+      }
+    } finally {
+      app.unmount();
+      container.remove();
+      hidden.remove();
+      pages.remove();
     }
-    await new Promise((resolve) => setTimeout(resolve, 275));
-    await nextTick();
-    expect(management.comments.value).toEqual(created.comments);
-    expect(changes.at(-1)).toEqual(created.comments);
-
-    const revisedContent: Comment["content"] = [
-      {
-        type: "paragraph",
-        paraId:
-          created.comments[0]?.content[0]?.type === "paragraph"
-            ? created.comments[0].content[0].paraId
-            : undefined,
-        formatting: {},
-        content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "Updated" }] }],
-      },
-    ];
-    controlledComments.value = created.comments.map((comment) =>
-      comment.id === created.commentId
-        ? { ...comment, done: true, content: revisedContent }
-        : comment,
-    );
-    await nextTick();
-    await new Promise((resolve) => setTimeout(resolve, 275));
-    await nextTick();
-    expect(adapter.getDocument()?.package.document.comments).toEqual(controlledComments.value);
-
-    expect(adapter.editor.undo()).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 275));
-    await nextTick();
-    const undone = adapter.getDocument()?.package.document.comments ?? [];
-    expect(undone.at(0)?.done).toBeFalsy();
-    expect(undone.at(0)?.content).toEqual(created.comments.at(0)?.content);
-    expect(controlledComments.value).toEqual(undone);
-    expect(changes.at(-1)).toEqual(undone);
-
-    const view = adapter.editorView.value ?? panic("Expected Vue canonical view");
-    const committedDoc = view.state.doc;
-    view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
-    expect(adapter.editor.getCanonicalDocument).toThrow(
-      "Composition must finish before taking a snapshot.",
-    );
-    // Every selection tick recomputes the comment projection while IME blocks snapshots.
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
-    stateTick.value += 1;
-    controlledComments.value = [...undone];
-    await nextTick();
-    expect(management.comments.value).toEqual(undone);
-    expect(adapter.editor.getCanonicalDocument).toThrow(
-      "Composition must finish before taking a snapshot.",
-    );
-    view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    await nextTick();
-    expect(view.state.doc.eq(committedDoc)).toBe(true);
-    expect(adapter.editor.getCanonicalDocument()?.package.document.comments).toEqual(undone);
-
-    const expected =
-      adapter.editor.getCanonicalDocument() ?? panic("Expected canonical comments model");
-    for (const selective of [false, true]) {
-      const saved = await adapter.save({ selective });
-      if (!saved) panic("Expected saved canonical comments");
-      const buffer = await saved.arrayBuffer();
-      expect((await validateDocx(buffer)).valid).toBe(true);
-      const reopened = await parseDocx(buffer, { preloadFonts: false, detectVariables: false });
-      expect(reopened.package.document.comments).toEqual(undone);
-      expect(describePackageDifferences(expected, reopened)).toEqual({ messages: [], omitted: 0 });
-    }
-  } finally {
-    app.unmount();
-    container.remove();
-    hidden.remove();
-    pages.remove();
-  }
-});
+  },
+);
 
 test("Vue canonical stories share history and save headers, first-page footer, notes and section properties", async () => {
   const container = document.createElement("div");
