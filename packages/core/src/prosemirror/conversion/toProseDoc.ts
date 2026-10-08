@@ -2597,7 +2597,7 @@ function convertField(
     // Use formatting from the first run that has it.
     fieldFormatting ??= run.formatting;
     fieldPropertyChanges ??= run.propertyChanges;
-    if (!hasStructuredSourceContent) {
+    if (field.type !== "simpleField" && !hasStructuredSourceContent) {
       return;
     }
     into.push(

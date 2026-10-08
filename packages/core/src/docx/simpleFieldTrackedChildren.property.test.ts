@@ -3,7 +3,12 @@ import fc from "fast-check";
 import { EditorState, type Command } from "prosemirror-state";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Node as PMNode } from "prosemirror-model";
-import type { ParagraphContent, SimpleField, TrackedRunChange } from "../types/document";
+import type {
+  ParagraphContent,
+  RunContent,
+  SimpleField,
+  TrackedRunChange,
+} from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -325,3 +330,79 @@ test("tracked fields refuse captures without a valid lowered home", () => {
     ).toThrow(/tracked field/i);
   }
 });
+
+test(
+  "simple field non-text results survive resolution and save reopen",
+  async () => {
+    const nonTextResults = [
+      { type: "tab" },
+      { type: "break", breakType: "textWrapping" },
+      { type: "symbol", font: "Wingdings", char: "F0A7" },
+    ] as const satisfies readonly RunContent[];
+    await assertProperty(
+      fc.asyncProperty(
+        fc.array(fc.constantFrom(...nonTextResults), { minLength: 1, maxLength: 6 }),
+        fc.constantFrom("insertion", "deletion"),
+        async (results, kind) => {
+          const source = createEmptyDocument();
+          source.package.document.content = [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "simpleField",
+                  instruction: "REF target",
+                  fieldType: "REF",
+                  content: [
+                    { type: "run", content: [...results] },
+                    {
+                      type: kind,
+                      info: { id: 37, author: "Reviewer" },
+                      content: [{ type: "run", content: [{ type: "text", text: "tracked" }] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ];
+          for (const mode of ["accept", "reject"] as const) {
+            const state = EditorState.create({ doc: toProseDoc(source) });
+            const resolved = resolveAllChangesInHeadlessState(state, mode);
+            const individual = applyReviewCommand(
+              state,
+              (mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision)(37),
+            );
+            for (const reviewed of [resolved, individual]) {
+              for (const document of [
+                fromProseDoc(reviewed.doc, source),
+                await parseDocx(await createDocx(fromProseDoc(reviewed.doc, source)), {
+                  preloadFonts: false,
+                }),
+              ]) {
+                const paragraph = document.package.document.content.at(0);
+                if (paragraph?.type !== "paragraph")
+                  throw new TypeError("Missing reviewed paragraph");
+                const field = paragraph.content.find((child) => child.type === "simpleField");
+                if (field?.type !== "simpleField") throw new TypeError("Missing reviewed field");
+                const runChildren = field.content.flatMap((child) =>
+                  child.type === "run" ? child.content : [],
+                );
+                expect(runChildren.filter((child) => child.type !== "text")).toEqual(results);
+                expect(
+                  runChildren
+                    .flatMap((child) => (child.type === "text" ? [child.text] : []))
+                    .join(""),
+                ).toBe((mode === "accept") === (kind === "insertion") ? "tracked" : "");
+                expect(toProseDoc(document).content.firstChild?.firstChild?.type.name).toBe(
+                  "structuredField",
+                );
+              }
+            }
+          }
+        },
+      ),
+      { numRuns: 20 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);

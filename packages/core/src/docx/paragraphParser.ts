@@ -657,7 +657,6 @@ const linkedRevisionContent = (
       case "deletion":
       case "moveFrom":
       case "moveTo":
-      case "inlineWrapper":
         content.push({ ...item, content: linkedRevisionContent(item.content, linkOver) });
         break;
       case "inlineSdt":

@@ -950,8 +950,7 @@ describe("fromProseDoc", () => {
       name: "plain structured simple-field child",
       nodeType: "structuredField",
       fieldKind: "simple",
-      message:
-        "Structured simple fields require hyperlink, page-break, preserved, wrapper or tracked content.",
+      message: "Structured simple fields require non-text, hyperlink, wrapper or tracked content.",
     },
     {
       name: "structured complex-field child",

@@ -28,7 +28,7 @@ const restoreDeletedText = (node: XmlElement): XmlElement => {
   )
     return node;
   return cloneElement(node, {
-    ...(renamed !== node.name ? { name: renamed } : {}),
+    ...(renamed !== undefined && renamed !== node.name ? { name: renamed } : {}),
     ...(elements ? { elements } : {}),
   });
 };

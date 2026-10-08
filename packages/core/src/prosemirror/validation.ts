@@ -476,7 +476,7 @@ const validateNodeAttrs = (
             issues.push({
               path: `${path}.content`,
               message:
-                "Structured simple fields require hyperlink, page-break, preserved, wrapper or tracked content.",
+                "Structured simple fields require non-text, hyperlink, wrapper or tracked content.",
             });
           }
           // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach

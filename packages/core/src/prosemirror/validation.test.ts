@@ -390,7 +390,7 @@ describe("ProseMirror document validation", () => {
     );
   });
 
-  test("rejects structured simple field children without a hyperlink", () => {
+  test("rejects text-only structured simple field children", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.node(
@@ -407,7 +407,7 @@ describe("ProseMirror document validation", () => {
     ]);
 
     expect(validateProseMirrorDocument(doc).issues.map((issue) => issue.message)).toContain(
-      "Structured simple fields require hyperlink, page-break, preserved, wrapper or tracked content.",
+      "Structured simple fields require non-text, hyperlink, wrapper or tracked content.",
     );
   });
 
