@@ -1080,6 +1080,51 @@
       "firstSeen": "2026-10-02"
     },
     {
+      "fingerprint": "e8b856d27e9e3cbd",
+      "issueOrPr": "#1353",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1393,
+        "primary": "e7615859f49be4f2",
+        "title": "consumer flow directNumbered / tracked-changes: saved block text differs from the requested result",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "directNumbered",
+          "mode": "tracked-changes",
+          "seed": 118244301,
+          "steps": [
+            {
+              "action": "story batch",
+              "atomic": false,
+              "seed": 1317974444,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "3CEFFC83"
+                },
+                {
+                  "type": "splitBlock",
+                  "blockId": "3CEFFC83",
+                  "offset": 9
+                },
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "412DDC7F",
+                  "separator": " "
+                }
+              ]
+            }
+          ],
+          "origin": "collisions flow seed 118244301"
+        },
+        "type": "consumer",
+        "reportSeed": 118244301,
+        "reportSeeds": [118244301]
+      }
+    },
+    {
       "fingerprint": "e7615859f49be4f2",
       "issueOrPr": "#1353",
       "firstSeen": "2026-10-02"

@@ -21,6 +21,7 @@ const snapshot = async (page: Page) => {
   await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
   const current = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
   expect(current?.active).toBe(true);
+  expect(current?.composing, "native composition must end before canonical snapshots").toBe(false);
   expect(current?.projectionMatchesCanonical).toBe(true);
   expect(current?.projectionJSON).toEqual(current?.canonicalProjectionJSON);
   if (!current?.document) throw new TypeError("Canonical document unavailable");
@@ -44,6 +45,23 @@ type CanonicalBrowserHistoryRunOptions = CanonicalBrowserHistoryOptions & {
   observations: CanonicalFuzzObservation[];
 };
 
+/** Establish the first loaded owner once, outside the per-case reset barrier. */
+export const initializeCanonicalBrowserHistory = async (page: Page, source: number[]) => {
+  await page.evaluate(() => {
+    globalThis.__folioCanonicalFuzzErrors ??= [];
+  });
+  expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
+    true,
+  );
+  await expect
+    .poll(
+      async () =>
+        typeof (await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing())),
+      { message: "canonical fixture must create its initial view" },
+    )
+    .toBe("boolean");
+};
+
 const runCanonicalBrowserHistory = async ({
   page,
   source,
@@ -65,6 +83,20 @@ const runCanonicalBrowserHistory = async ({
   };
   await assertCanonicalInputTimersSettled(page);
   await beginPhase({ type: "load" });
+  // Bootstrap happens outside the oracle. Ensure without reloading here so
+  // the strict pre-load barrier still detects cross-case lifecycle failures.
+  expect(await page.evaluate(() => globalThis.__folioCanonical?.ensureView())).toBe(true);
+  await expect
+    .poll(
+      async () =>
+        typeof (await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing())),
+      { message: "canonical view must exist after initialization" },
+    )
+    .toBe("boolean");
+  expect(
+    await page.evaluate(() => globalThis.__folioCanonical?.nativeComposing()),
+    "case must start outside native composition",
+  ).toBe(false);
   expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
     true,
   );

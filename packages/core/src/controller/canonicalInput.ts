@@ -153,6 +153,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       return true;
     },
     handleKeyDown: (view: EditorView, event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) return false;
       beginGesture();
       if (composition.active) {
         if (event.key === "Escape") {
@@ -272,6 +273,15 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       return true;
     },
     handleDOMEvents: {
+      keydown: (view: EditorView, event: KeyboardEvent) => {
+        // Mark native IME keys handled without preventing their browser default;
+        // they must not fall through to PM or extension keyboard shortcuts.
+        if (event.isComposing || event.keyCode === 229) return true;
+        if (!composition.active || event.key !== "Escape") return false;
+        event.preventDefault();
+        composition.cancel(view);
+        return true;
+      },
       compositionstart: (view: EditorView) => {
         beginGesture();
         composition.start(view);
@@ -311,10 +321,23 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         }
         // A new, non-composition event recovers an IME missing compositionend.
         if (composition.active) {
-          const refusedNativeCommit = composition.status === "refused" && view.composing;
-          composition.recover(view);
+          // A plain input after native compositionend belongs to typing,
+          // even when its text equals the preceding composition payload.
+          const nativeFinal =
+            view.composing &&
+            (event.inputType === "insertText" || event.inputType === "insertReplacementText");
+          const nativeStillComposing = view.composing;
+          const recovered = composition.recover(view);
           proposal = { type: "idle" };
-          if (refusedNativeCommit) {
+          // Missing-end recovery terminates the captured gesture once. Only
+          // its still-native final may be consumed; subsequent typing is separate.
+          if (
+            nativeFinal &&
+            ((recovered.type === "refused" && nativeStillComposing) ||
+              ((recovered.type === "committed" || recovered.type === "refused") &&
+                recovered.text !== null &&
+                recovered.text === event.data))
+          ) {
             event.preventDefault();
             return true;
           }

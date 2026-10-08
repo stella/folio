@@ -125,6 +125,7 @@ import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/Jo
 import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
 import {
   carryParagraphProperties,
+  carriedParagraphProperties,
   paragraphLeftAfter,
   propertiesSetInBatch,
   recordReplacedParagraphProperties,
@@ -580,6 +581,8 @@ const writesParagraphPropertyChange = (item: ResolvedOperation): boolean => {
     );
   }
   if (item.operation.type === "mergeBlockWithNext") {
+    // An implicit carry reuses an existing receipt; only an explicit patch
+    // can allocate another paragraph-property revision after the carry.
     return item.operation.mergedParagraphProperties !== undefined;
   }
   return (
@@ -1055,6 +1058,16 @@ const preserveRunFormattingAcrossTrackedStyleChange = ({
   return { tr, revisionIds };
 };
 
+const appendParagraphPropertyChange = (
+  existing: readonly ParagraphPropertyChangeAttrs[] | null | undefined,
+  change: ParagraphPropertyChangeAttrs,
+): ParagraphPropertyChangeAttrs[] => {
+  if (change.info.provenance !== "suggested" && hasSerializableParagraphPropertyChange(existing)) {
+    panic("A paragraph-property write must resolve its occupied revision slot first");
+  }
+  return [...(existing ?? []), change];
+};
+
 /**
  * Apply one paragraph-property patch to a live node. A tracked patch stores
  * the complete previous pPr: a partial snapshot cannot distinguish a property
@@ -1109,7 +1122,7 @@ const applyBlockParagraphProperties = ({
   const nextAttrs = {
     ...node.attrs,
     ...patch,
-    ...(change ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] } : {}),
+    ...(change ? { _propertyChanges: appendParagraphPropertyChange(existing, change) } : {}),
   };
   const bridgeResult =
     preserveRunFormatting && revisionInfo
@@ -1211,7 +1224,7 @@ const applyReplaceBlockStyleId = ({
   const nextAttrs = {
     ...block.attrs,
     ...patch,
-    ...(change ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] } : {}),
+    ...(change ? { _propertyChanges: appendParagraphPropertyChange(existing, change) } : {}),
   };
   const bridgeResult =
     preserveRunFormatting && revisionInfo
@@ -2712,6 +2725,19 @@ const crossesBatchDeletion = ({
   return false;
 };
 
+type CanRetractFinalBreakOptions = { predecessor: PMNode; target: PMNode };
+
+const canRetractFinalBreak = ({ predecessor, target }: CanRetractFinalBreakOptions) => {
+  if (target.type !== predecessor.type) return false;
+  const formattingChanges =
+    JSON.stringify(paragraphPropertiesBeforePendingChanges(target)) !==
+    JSON.stringify(paragraphPropertiesSnapshot(predecessor));
+  return !(
+    formattingChanges &&
+    hasSerializableParagraphPropertyChange(expectParagraphAttrs(predecessor)._propertyChanges)
+  );
+};
+
 /** Pending retirements, read after the merge has mapped any inserted separator. */
 const pendingRemovedFinalBreakPositions = (
   tr: Transaction,
@@ -2725,6 +2751,145 @@ const pendingRemovedFinalBreakPositions = (
     positions.add(predecessor.position);
   }
   return positions;
+};
+
+type FinalParagraphCarryOptions = Pick<
+  RetireFinalParagraphsOptions,
+  "tr" | "batchRevisionIds" | "styleResolver" | "numbering"
+> & {
+  at: number;
+  target: PMNode;
+  predecessor: { node: PMNode; position: number };
+};
+
+/** Deferred final deletion carries admissible predecessor writes from the finished batch. */
+const finalParagraphCarry = ({
+  tr,
+  at,
+  target,
+  predecessor,
+  batchRevisionIds,
+}: FinalParagraphCarryOptions) => {
+  const { node: previous, position } = predecessor;
+  return {
+    source: previous,
+    keep: crossesBatchDeletion({
+      doc: tr.doc,
+      from: position + previous.nodeSize,
+      to: at,
+      batchRevisionIds,
+    })
+      ? new Set<string>()
+      : propertiesSetInBatch(target, batchRevisionIds),
+  };
+};
+
+type DeferredParagraphPropertyWriteOptions = Omit<
+  FinalParagraphCarryOptions,
+  "at" | "target" | "predecessor"
+> & {
+  deletions: readonly DeletedFinalParagraph[];
+  targets: readonly PMNode[];
+  mergedPropertyTargets: readonly BatchParagraphPosition[];
+};
+
+/** Deferred retirement still owns a slot before a later explicit formatting merge. */
+const hasDeferredParagraphPropertyWrite = ({
+  tr,
+  deletions,
+  targets,
+  mergedPropertyTargets,
+  batchRevisionIds,
+  styleResolver,
+  numbering,
+}: DeferredParagraphPropertyWriteOptions) => {
+  for (const deletion of deletions) {
+    const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
+    const target = tr.doc.nodeAt(at);
+    if (!target) continue;
+    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    if (!predecessor) continue;
+    const mark: unknown = predecessor.node.attrs["pPrMark"];
+    if (
+      mark == null &&
+      mergedPropertyTargets.some(({ position, mappedFrom }) => {
+        const mapped = tr.mapping.slice(mappedFrom).mapResult(position);
+        return !mapped.deleted && mapped.pos === at;
+      })
+    )
+      continue;
+    const writeTarget =
+      mark == null ? target : tr.doc.nodeAt(predecessor.position + predecessor.node.nodeSize);
+    if (!writeTarget || !targets.includes(writeTarget)) continue;
+    if (
+      mark != null &&
+      !(
+        isInsertedPPrMark(mark) &&
+        canRetractFinalBreak({ predecessor: predecessor.node, target: writeTarget })
+      )
+    )
+      continue;
+    const transfer =
+      mark == null
+        ? finalParagraphCarry({
+            tr,
+            at,
+            target,
+            predecessor,
+            batchRevisionIds,
+            styleResolver,
+            numbering,
+          })
+        : { source: predecessor.node, keep: propertiesSetInBatch(writeTarget, batchRevisionIds) };
+    if (
+      JSON.stringify(paragraphPropertiesSnapshot(writeTarget)) !==
+      JSON.stringify(carriedParagraphProperties({ ...transfer, target: writeTarget }))
+    )
+      return true;
+  }
+  return false;
+};
+
+type ParagraphPropertyRevisionTargetsOptions = {
+  item: ResolvedOperation;
+  tr: Transaction;
+  deletedFinalParagraphs: readonly DeletedFinalParagraph[];
+};
+
+/** The paragraph a merge leaves owns its properties, even across pending deleted breaks. */
+const paragraphPropertyRevisionTargets = ({
+  item,
+  tr,
+  deletedFinalParagraphs,
+}: ParagraphPropertyRevisionTargetsOptions): PMNode[] => {
+  const position = tr.mapping.map(item.blockFrom, item.operation.type === "replaceBlock" ? -1 : 1);
+  const source = tr.doc.nodeAt(position) ?? item.blockNode;
+  const targets = source.type.name === "paragraph" ? [source] : [];
+  if (item.operation.type !== "mergeBlockWithNext") return targets;
+
+  const removedBreakPositions = pendingRemovedFinalBreakPositions(tr, deletedFinalParagraphs);
+  // A preceding inserted break will retract into the emptied final carrier
+  // before this operation when executed alone. Include that eventual writer
+  // in preflight without changing the established deferred mutation order.
+  for (const deletion of deletedFinalParagraphs) {
+    const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
+    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    if (!predecessor || !isInsertedPPrMark(predecessor.node.attrs["pPrMark"])) continue;
+    const target = tr.doc.nodeAt(predecessor.position + predecessor.node.nodeSize);
+    if (!target) continue;
+    if (canRetractFinalBreak({ predecessor: predecessor.node, target }))
+      removedBreakPositions.add(predecessor.position);
+  }
+  const survivorPosition = paragraphLeftAfter({
+    doc: tr.doc,
+    paragraphPos: position,
+    removedBreakPositions,
+  });
+  const survivor = survivorPosition === null ? null : tr.doc.nodeAt(survivorPosition);
+  if (survivor?.type.name === "paragraph") {
+    targets.push(survivor);
+  }
+  return targets;
 };
 
 /**
@@ -2809,21 +2974,18 @@ const withRetiredFinalParagraphs = ({
         carryParagraphProperties({
           tr,
           position: at,
-          source: previous,
+          ...finalParagraphCarry({
+            tr,
+            at,
+            target: emptied,
+            predecessor,
+            batchRevisionIds,
+            styleResolver,
+            numbering,
+          }),
           styleResolver,
           numbering,
           revision: { id: revisionId, author, date, ...revisionExtras },
-          // A paragraph this batch deleted between the two runs after the
-          // carrier's own edits, one at a time, and carries the predecessor's
-          // properties over whatever the batch set on the carrier.
-          keep: crossesBatchDeletion({
-            doc: tr.doc,
-            from: position + previous.nodeSize,
-            to: at,
-            batchRevisionIds,
-          })
-            ? new Set()
-            : propertiesSetInBatch(emptied, batchRevisionIds),
         });
       }
       resolvedOperationIds.add(operationId);
@@ -2832,16 +2994,8 @@ const withRetiredFinalParagraphs = ({
     }
     if (isInsertedPPrMark(mark)) {
       const following = tr.doc.nodeAt(position + previous.nodeSize);
-      if (following?.type.name !== emptied.type.name) {
-        continue;
-      }
-      const previousFormatting = paragraphPropertiesBeforePendingChanges(following);
-      const formattingChanges =
-        JSON.stringify(previousFormatting) !==
-        JSON.stringify(paragraphPropertiesSnapshot(previous));
-      const existing = expectParagraphAttrs(previous)._propertyChanges;
-      if (formattingChanges && hasSerializableParagraphPropertyChange(existing)) {
-        // One w:pPrChange per paragraph: the emptied paragraph stays.
+      if (!following || !canRetractFinalBreak({ predecessor: previous, target: following })) {
+        // One w:pPrChange per paragraph: an occupied predecessor keeps the emptied target.
         continue;
       }
       joinAtParagraphMark({
@@ -3970,13 +4124,30 @@ const applyFolioAIEditOperationsInternal = ({
     }
     continueSharedRevisionIds();
     if (mode === "tracked-changes" && writesParagraphPropertyChange(item)) {
-      const livePosition = tr.mapping.map(item.blockFrom);
-      const liveBlock = tr.doc.nodeAt(livePosition) ?? item.blockNode;
-      const propertyChanges =
-        liveBlock.type.name === "paragraph"
-          ? expectParagraphAttrs(liveBlock)._propertyChanges
-          : undefined;
-      if (hasSerializableParagraphPropertyChange(propertyChanges)) {
+      const appliedIds = new Set(applied.map(({ id }) => id));
+      const pendingDeletions = deletedFinalParagraphs.filter(({ operationId }) =>
+        appliedIds.has(operationId),
+      );
+      const targets = paragraphPropertyRevisionTargets({
+        item,
+        tr,
+        deletedFinalParagraphs: pendingDeletions,
+      });
+      if (
+        targets.some((target) =>
+          hasSerializableParagraphPropertyChange(expectParagraphAttrs(target)._propertyChanges),
+        ) ||
+        (item.operation.type === "mergeBlockWithNext" &&
+          hasDeferredParagraphPropertyWrite({
+            tr,
+            deletions: pendingDeletions,
+            targets,
+            mergedPropertyTargets,
+            batchRevisionIds: new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? [])),
+            styleResolver,
+            numbering,
+          }))
+      ) {
         skipped.push({ id: item.operation.id, reason: "pendingParagraphPropertyChange" });
         continue;
       }

@@ -15,7 +15,10 @@ import {
 import { parseBrowserInputTraceConfig } from "./browserInputTrace";
 import { BROWSER_FUZZ_BUDGET, checkWithBoundedShrink } from "../../test/bounded-async-fuzz";
 import { canonicalBrowserTraceArbitrary } from "./canonicalBrowserTrace";
-import { checkCanonicalBrowserHistory } from "./canonicalBrowserHistoryOracle";
+import {
+  checkCanonicalBrowserHistory,
+  initializeCanonicalBrowserHistory,
+} from "./canonicalBrowserHistoryOracle";
 import { canonicalOracleFailureRecord } from "../parity/canonicalOracleFailure";
 import type {} from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
@@ -38,6 +41,7 @@ for (const seed of config.seeds) {
       globalThis.__folioCanonicalFuzzErrors = [];
     });
     const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
+    await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
     const { verdict } = await checkWithBoundedShrink({
       arbitrary: canonicalBrowserTraceArbitrary,
       evaluate: async (actions) => {

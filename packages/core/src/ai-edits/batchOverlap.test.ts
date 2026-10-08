@@ -1099,8 +1099,38 @@ describe("a merge retracting an inserted break before the last paragraph the bat
                 }
               }
             }
-            // A paragraph with a pending property change refuses merged properties.
-            const refused = alignedA === "tracked" && extra === "mergedProperties" ? ["merge"] : [];
+            // The final deletion precedes this merge, even when its property
+            // carry is deferred until batch finalization. Different B/C
+            // alignments occupy C's slot; the old standalone merge appended a
+            // second receipt there. Equal B/C alignments allocate no receipt.
+            const deletionOccupiesSurvivor = alignments.at(-2) !== alignments.at(-1);
+            const refused =
+              extra === "mergedProperties" && (alignedA === "tracked" || deletionOccupiesSurvivor)
+                ? ["merge"]
+                : [];
+            if (extra === "mergedProperties" && alignedA === "direct" && deletionOccupiesSurvivor) {
+              const sequential = await prepare("tracked-changes", origin, alignedA, alignments);
+              const operations = batchOf(extra, sequential);
+              const deletion = operations.find(({ id }) => id === "delete");
+              const merge = operations.find(({ id }) => id === "merge");
+              if (!deletion || !merge)
+                throw new TypeError("The merge-capacity fixture lost its operations.");
+              expect(sequential.session.apply("tracked-changes", [deletion]).skipped).toEqual([]);
+              let survivorReceipts = 0;
+              sequential.session.state.doc.descendants((node) => {
+                if (node.attrs["paraId"] !== sequential.c) return;
+                const changes: unknown = node.attrs["_propertyChanges"];
+                survivorReceipts = Array.isArray(changes) ? changes.length : 0;
+              });
+              // Positive control: this is the occupied writer, not just a
+              // differing alignment that the retirement never actually carries.
+              expect(survivorReceipts).toBe(1);
+              const beforeMerge = sequential.session.state.doc.toJSON();
+              expect(sequential.session.apply("tracked-changes", [merge]).skipped).toEqual([
+                { id: "merge", reason: "pendingParagraphPropertyChange" },
+              ]);
+              expect(sequential.session.state.doc.toJSON()).toEqual(beforeMerge);
+            }
             expect(result.skipped.map(({ id }) => id).toSorted()).toEqual(refused);
             if (view(batch.session) !== view(oracle.session)) {
               problems.push(
