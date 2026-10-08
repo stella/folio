@@ -8,16 +8,18 @@ import {
   areaOf,
   propertyBatches,
   propertyFiles,
+  propertyFileProfile,
   runPropertyBatches,
   selectPropertyFiles,
   shardPropertyFiles,
   touchedAreas,
 } from "./property-areas";
 
-const makePropertyFile = (repoPath: string) => ({
+const makePropertyFile = (repoPath: string, weightMs = 5_000) => ({
   area: areaOf(repoPath) as string,
   packageDir: repoPath.split("/").slice(0, 2).join("/"),
   file: repoPath,
+  weightMs,
 });
 
 const ALL = [
@@ -91,12 +93,83 @@ describe("property areas", () => {
         const shard = { index, total };
         const files = shardPropertyFiles(inventory, shard);
         expect(shardPropertyFiles(inventory.toReversed(), shard)).toEqual(files);
+        const totalWeight = inventory.reduce((sum, file) => sum + file.weightMs, 0);
+        const heaviest = Math.max(...inventory.map(({ weightMs }) => weightMs));
+        expect(files.reduce((sum, file) => sum + file.weightMs, 0)).toBeLessThanOrEqual(
+          Math.ceil(totalWeight / total) + heaviest,
+        );
         for (const { file } of files) exercised.push(file);
       }
       expect(exercised.toSorted()).toEqual(inventory.map(({ file }) => file).toSorted());
       expect(new Set(exercised).size).toBe(exercised.length);
     }
     expect(shardPropertyFiles([], { index: 1, total: 4 })).toEqual([]);
+  });
+
+  test("weighted shards spread heavy files with stable filename and shard ties", () => {
+    const files = [
+      makePropertyFile("packages/docx-core/src/ops/apply.property.test.ts", 2_400_000),
+      makePropertyFile("packages/docx-core/src/ops/trackedTables.property.test.ts", 2_400_000),
+      ...Array.from({ length: 20 }, (_, index) =>
+        makePropertyFile(
+          `packages/core/src/docx/light-${String(index).padStart(2, "0")}.test.ts`,
+          30_000,
+        ),
+      ),
+    ];
+    const shards = Array.from({ length: 4 }, (_, position) =>
+      shardPropertyFiles(files, { index: position + 1, total: 4 }),
+    );
+    const total = files.reduce((sum, file) => sum + file.weightMs, 0);
+    const heaviest = Math.max(...files.map(({ weightMs }) => weightMs));
+    for (const [position, shard] of shards.entries()) {
+      expect(shardPropertyFiles(files.toReversed(), { index: position + 1, total: 4 })).toEqual(
+        shard,
+      );
+      expect(shard.reduce((sum, file) => sum + file.weightMs, 0)).toBeLessThanOrEqual(
+        Math.ceil(total / 4) + heaviest,
+      );
+    }
+    expect(shards.at(0)?.some(({ file }) => file.endsWith("apply.property.test.ts"))).toBe(true);
+    expect(shards.at(1)?.some(({ file }) => file.endsWith("trackedTables.property.test.ts"))).toBe(
+      true,
+    );
+    expect(
+      shards
+        .flatMap((shard) => shard)
+        .map(({ file }) => file)
+        .toSorted(),
+    ).toEqual(files.map(({ file }) => file).toSorted());
+    const equal = ALL.map((file) => Object.assign({}, file, { weightMs: 5_000 }));
+    for (const [position, file] of equal.toSorted((a, b) => a.file.localeCompare(b.file)).entries())
+      expect(shardPropertyFiles(equal, { index: position + 1, total: 4 })).toEqual([file]);
+  });
+
+  test("the expensive operation properties are separated when their area is selected", () => {
+    const inventory = propertyFiles();
+    const selected = selectPropertyFiles(["packages/docx-core/src/ops/apply.ts"], inventory);
+    const shards = Array.from({ length: 4 }, (_, position) =>
+      shardPropertyFiles(selected, { index: position + 1, total: 4 }),
+    );
+    const bucketOf = (file: string) =>
+      shards.findIndex((shard) => shard.some((entry) => entry.file === file));
+    const applyBucket = bucketOf("packages/docx-core/src/ops/__tests__/apply.property.test.ts");
+    const trackedBucket = bucketOf(
+      "packages/docx-core/src/ops/__tests__/trackedTables.property.test.ts",
+    );
+    expect(applyBucket).toBeGreaterThanOrEqual(0);
+    expect(trackedBucket).toBeGreaterThanOrEqual(0);
+    expect(applyBucket).not.toBe(trackedBucket);
+  });
+
+  test("invalid scheduling weights fail rather than silently skewing shards", () => {
+    for (const weight of [0, -1, Number.NaN, Number.POSITIVE_INFINITY])
+      expect(() =>
+        shardPropertyFiles([makePropertyFile("packages/core/src/docx/a.test.ts", weight)], {
+          index: 1,
+          total: 4,
+        }),
+      ).toThrow();
   });
 
   test("invalid shards fail rather than silently skipping properties", () => {
@@ -169,10 +242,60 @@ describe("property areas", () => {
       area: "scripts",
       packageDir: ".",
       file: "scripts/container-survival.property.test.ts",
+      weightMs: 5_000,
     };
     expect(selectPropertyFiles(["scripts/container-survival-census.ts"], [rootProperty])).toEqual([
       rootProperty,
     ]);
+  });
+});
+
+describe("property scheduling profiles", () => {
+  const profileSource = (text: string) => propertyFileProfile({ file: "probe.test.ts", text });
+  test("sums per-test budgets and applies the file default to unbudgeted drivers", () => {
+    const profile = profileSource(`
+      const BASE_BUDGET = 30_000;
+      setDefaultTimeout(propertyTestTimeout(BASE_BUDGET));
+      test("default", () => { assertProperty(p); fc.assert(q); });
+      test("explicit", () => { fc.check(r); }, propertyTestTimeout(10_000));
+    `);
+    expect(profile).toEqual({ drivers: 3, weightMs: 70_000, missingBudgets: 0 });
+  });
+
+  test("comments, strings and plain examples do not become property drivers", () => {
+    expect(
+      profileSource(`
+      // assertProperty(p)
+      test("plain", () => { const text = "fc.assert(p)"; });
+    `),
+    ).toEqual({ drivers: 0, weightMs: 0, missingBudgets: 0 });
+  });
+
+  test("missing budgets use the documented Bun default estimate without altering execution", () => {
+    expect(profileSource("test('p', () => assertProperty(p));")).toEqual({
+      drivers: 1,
+      weightMs: 5_000,
+      missingBudgets: 0,
+    });
+    expect(profileSource("test('p', () => assertProperty(p), propertyTestTimeout());")).toEqual({
+      drivers: 1,
+      weightMs: 5_000,
+      missingBudgets: 1,
+    });
+  });
+
+  test("unknown, non-positive and non-finite stated budgets refuse profiling", () => {
+    for (const expression of ["unknownBudget", "0", "-1", "1e999", "computeBudget()"])
+      expect(() =>
+        profileSource(`test('p', () => assertProperty(p), propertyTestTimeout(${expression}));`),
+      ).toThrow();
+    expect(() =>
+      profileSource(`
+      const FIRST = SECOND;
+      const SECOND = FIRST;
+      test('p', () => assertProperty(p), propertyTestTimeout(FIRST));
+    `),
+    ).toThrow();
   });
 });
 
@@ -192,6 +315,7 @@ describe("property batch execution", () => {
               area: "scripts",
               packageDir: ".",
               file: `scripts/example-${index}.property.test.ts`,
+              weightMs: 5_000,
             })),
           ];
           const batches = propertyBatches(selected);
@@ -233,7 +357,7 @@ describe("property batch execution", () => {
     const batches = propertyBatches([
       ...ALL,
       makePropertyFile("packages/docx-core/src/model/extra.property.test.ts"),
-      { area: "scripts", packageDir: ".", file: "scripts/extra.property.test.ts" },
+      { area: "scripts", packageDir: ".", file: "scripts/extra.property.test.ts", weightMs: 5_000 },
     ]);
     const releases = new Map<(typeof batches)[number], (code: number) => void>();
     const active = new Set<(typeof batches)[number]>();
