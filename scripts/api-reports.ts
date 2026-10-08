@@ -31,8 +31,7 @@ import {
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { isStaleDeclaration } from "./lib/api-report-diff";
-import { renderApiReportDrift } from "./lib/api-report-drift";
+import { isStaleDeclaration, renderReportDiff } from "./lib/api-report-diff";
 import { PUBLISHED_PACKAGES, type PublishedPackage } from "./lib/published-packages";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
@@ -338,10 +337,9 @@ if (allDrifted.length > 0) {
   for (const { pkg, entry } of allDrifted) {
     console.error(`\n--- api-reports/${pkg.slug}/${entry.slug}.api.md (${entry.key})`);
     console.error(
-      renderApiReportDrift({
-        baselinePath: path.join(reportDirFor(pkg), `${entry.slug}.api.md`),
-        candidatePath: path.join(tempDirFor(pkg), `${entry.slug}.api.md`),
-        reportPath: `api-reports/${pkg.slug}/${entry.slug}.api.md`,
+      renderReportDiff({
+        baseline: readFileSync(path.join(reportDirFor(pkg), `${entry.slug}.api.md`), "utf8"),
+        candidate: readFileSync(path.join(tempDirFor(pkg), `${entry.slug}.api.md`), "utf8"),
         maxLines: MAX_DIFF_LINES_PER_ENTRY,
       }),
     );
