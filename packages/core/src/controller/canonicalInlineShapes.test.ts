@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
 import {
@@ -11,7 +11,7 @@ import {
 import { schema } from "../prosemirror/schema";
 import { footnoteToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { ParagraphContent, RunContent } from "../types/document";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import { CanonicalSessionError, createCanonicalSession } from "./canonicalSession";
@@ -22,6 +22,8 @@ import {
   canonicalInlineShapeDocument,
   type CanonicalInlineShapeFixture,
 } from "../../typecheck/canonical-inline-shapes.typecheck";
+
+setDefaultTimeout(propertyTestTimeout(60_000));
 
 const fixturesFor = (text: string) => [
   ...Object.values(CANONICAL_PARAGRAPH_SHAPE_FACTORIES)

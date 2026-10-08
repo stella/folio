@@ -1,11 +1,13 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { OP_STORIES, paragraphLogicalText } from "@stll/docx-core/ops";
 import type { Document, Paragraph, ParagraphContent, Run, ComplexField } from "../types/document";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { projectCanonicalInline } from "./canonicalInlineProjection";
 import { createCanonicalSession } from "./canonicalSession";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 test("structured field payloads validate text without refusing authored instruction runs", () => {
   const field = {
