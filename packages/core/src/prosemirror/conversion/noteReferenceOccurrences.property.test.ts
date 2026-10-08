@@ -157,6 +157,8 @@ test("retracted adjacent note occurrences preserve multiplicity and ownership th
     await assertRoundtrip(rejected, bases[kind]);
     await assertRoundtrip(resolveAllChanges(view.state, "accept"), bases[kind]);
   };
+  // Retraction joins equal note IDs; the save/reopen oracle must retain both occurrences.
+  // Ablating structural identities loses one label (L123123R becomes L123R).
   await check("footnote", "forward", ["live", "ownInsertion", "live"]);
   await assertProperty(
     fc.asyncProperty(
