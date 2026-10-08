@@ -1,16 +1,18 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { assertProperty } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 
 import {
   dependencyCruiseCoverageIssue,
   dependencyCruiseOutputIssue,
   MINIMUM_CRUISED_MODULES,
 } from "./check-dependency-cruise";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const fixtureDirectories: string[] = [];
 afterEach(() => {
