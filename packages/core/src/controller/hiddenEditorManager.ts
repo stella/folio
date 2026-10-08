@@ -907,8 +907,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const extensionManager = deps.getExtensionManager();
     const externalPlugins = deps.getExternalPlugins();
 
-    if (!seedSession(document)) return;
     input.reset();
+    if (!seedSession(document)) return;
     const initialState = (() => {
       if (editorSession.type === "canonical") return canonicalState(editorSession.session);
       if (precomputedInitialState && !collaboration) return precomputedInitialState;
@@ -1064,6 +1064,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       handleScrollToSelection: suppressHiddenEditorScrollToSelection,
       // Prevent focus handling from interfering with visual layer
       handleDOMEvents: {
+        keydown: (pmView, event) =>
+          editorSession.type === "canonical" ? input.handleDOMEvents.keydown(pmView, event) : false,
         focus: () => false,
         blur: (pmView) =>
           editorSession.type === "canonical" ? input.handleDOMEvents.blur(pmView) : false,
@@ -1227,12 +1229,12 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       return;
     }
 
+    // Finish the previous input owner before adopting the new session.
+    input.reset();
     if (!seedSession(document)) {
       destroyView();
       return;
     }
-
-    input.reset();
 
     // Update tracking state
     isInitialized = true;

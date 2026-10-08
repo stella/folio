@@ -1,6 +1,7 @@
+import { getTextBoxText } from "./storyPlainText";
 import { describe, expect, test } from "bun:test";
 
-import { getTextBoxText, parseTextBox } from "./textBoxParser";
+import { parseTextBox } from "./textBoxParser";
 import { parseXmlDocument } from "./xmlParser";
 
 const NAMESPACES = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"`;

@@ -327,7 +327,12 @@ const coreBatchStep = async (
   operations: readonly Operation[],
   entry: string,
 ): Promise<number> => {
-  const batch = { ...coreBatch(operations, flow.mode), atomic: flow.random.chance(0.5) };
+  const drawnAtomic = flow.random.chance(0.5);
+  const atomic = flow.planned?.atomic ?? drawnAtomic;
+  const traced = flow.trace.at(-1);
+  if (traced === undefined) throw new Error("A core batch has no recorded flow step");
+  traced.atomic = atomic;
+  const batch = { ...coreBatch(operations, flow.mode), atomic };
   const done = record(flow, `${entry} (atomic: ${batch.atomic}) ${JSON.stringify(operations)}`);
   const pre = await capture(flow.reviewer, flow.mode, { story, step: flow.session });
   const result =

@@ -19,8 +19,8 @@ use stella_docx_kernel::{
     ParagraphAlignmentSource, ParagraphIdentityFacts, ParagraphOutlineLevelFact,
     ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits,
     ReviewFactSet, ReviewFactUnknownReason, ReviewPoint, ReviewSpan, RevisionContent,
-    RevisionFactKind, RevisionProjectionStatus, RevisionUnsupportedReason, RevisionView,
-    SpanCoverage, StructuralFactSet, StructuralFactUnknownReason, TextFormattingSpan,
+    RevisionFactKind, RevisionPayload, RevisionProjectionStatus, RevisionUnsupportedReason,
+    RevisionView, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason, TextFormattingSpan,
     TextMaterialization, TextStyle, extract_document_parts, extract_document_xml,
     project_document_xml, project_document_xml_with_options, project_docx,
     project_docx_with_options, project_docx_with_review_facts,
@@ -2770,8 +2770,7 @@ fn fuses_document_projection_with_attributed_revisions_and_comment_threads() {
                     utf16: 3,
                 },
             },
-            text: "new".to_owned(),
-            formatting_only: false,
+            payload: RevisionPayload::Text("new".to_owned()),
         })
     );
     assert_eq!(revisions[1].kind, RevisionFactKind::Deletion);
@@ -2790,8 +2789,7 @@ fn fuses_document_projection_with_attributed_revisions_and_comment_threads() {
                     utf16: 3,
                 },
             },
-            text: "old".to_owned(),
-            formatting_only: false,
+            payload: RevisionPayload::Text("old".to_owned()),
         })
     );
 
@@ -2887,8 +2885,10 @@ fn whitespace_only_revision_content_is_not_formatting_only() {
     let ReviewDetail::Known(content) = &revisions[0].content else {
         panic!("inline revision content should be known");
     };
-    assert_eq!(content.text, " \t\u{000b}\u{00a0}\u{2003}");
-    assert!(!content.formatting_only);
+    assert_eq!(
+        content.payload,
+        RevisionPayload::Text(" \t\u{000b}\u{00a0}\u{2003}".to_owned())
+    );
 }
 
 #[test]
@@ -2924,10 +2924,8 @@ fn nested_revision_text_populates_every_enclosing_fact_under_one_budget() {
     let ReviewDetail::Known(inner) = &revisions[1].content else {
         panic!("the inner revision should have textual content");
     };
-    assert_eq!(outer.text, "ABC");
-    assert_eq!(inner.text, "B");
-    assert!(!outer.formatting_only);
-    assert!(!inner.formatting_only);
+    assert_eq!(outer.payload, RevisionPayload::Text("ABC".to_owned()));
+    assert_eq!(inner.payload, RevisionPayload::Text("B".to_owned()));
     assert_eq!(
         project(3).review_facts.revisions,
         ReviewFactSet::Unknown(ReviewFactUnknownReason::ResourceLimit)

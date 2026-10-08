@@ -170,7 +170,7 @@ endParagraphOrdinal: number,
 endUtf8: number,
 endUtf16: number,
 text: string,
-contentKind: "text" | "formatting-only",
+contentKind: "text" | "formatting-only" | "paragraph-mark",
 ]
 | readonly [
 type: DocxRevisionKind,
