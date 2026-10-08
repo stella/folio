@@ -124,7 +124,9 @@ export const createDocumentStyleContextPlugin = (styles: DocumentStylesInput): P
  * fresh resolver. Accepts a pre-built resolver too, for callers that already
  * have one.
  */
-export function createDocumentStylesPlugin(styles: DocumentStylesInput): Plugin {
+export function createDocumentStylesPlugin(
+  styles: StyleDefinitions | StyleResolver | null | undefined,
+): Plugin {
   return new Plugin({
     ...documentStyleContextSpec(styles),
     // A paragraph an edit creates reads its style cascade the way a loaded
