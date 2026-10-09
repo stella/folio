@@ -36,5 +36,21 @@
       "note": "An empty native composition lifecycle must cancel without deleting the captured selection.",
       "date": "2026-10-09"
     }
+  ],
+  "native carrier identity omission preserves the canonical suffix and history": [
+    {
+      "seed": 1725929815,
+      "path": "0:0",
+      "note": "Carrier-wide identity omission preserves the committed suffix; provisional state is inspected through the projection without taking a forbidden composition snapshot.",
+      "date": "2026-10-09"
+    }
+  ],
+  "native carrier saves equal direct canonical replacements": [
+    {
+      "seed": 841257463,
+      "path": "0",
+      "note": "Saved document equality excludes independently generated package modification timestamps.",
+      "date": "2026-10-09"
+    }
   ]
 }
