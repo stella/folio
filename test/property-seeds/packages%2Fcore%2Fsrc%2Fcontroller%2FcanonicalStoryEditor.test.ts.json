@@ -1,0 +1,10 @@
+{
+  "${story.kind} typing addresses the native caret before selection observation": [
+    {
+      "seed": 2392,
+      "path": "0:0:1:0:0",
+      "note": "Native typing uses its current caret before asynchronous model selection observation.",
+      "date": "2026-10-08"
+    }
+  ]
+}

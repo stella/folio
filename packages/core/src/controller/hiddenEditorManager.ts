@@ -2,6 +2,9 @@ import {
   markNoteReferenceReplay,
   noteReferenceTransactionIssue,
 } from "../prosemirror/noteReferenceOccurrences";
+
+import { restoreCanonicalSelection } from "./canonicalSelection";
+import { createCanonicalSectionPropertiesOperation } from "./canonicalOperations";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import {
   CANONICAL_GAP,
@@ -61,7 +64,10 @@ import {
   ensureParaIdsInDoc,
   ensureParaIdsInState,
 } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
-import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import {
+  createDocumentStylesPlugin,
+  createDocumentStyleContextPlugin,
+} from "../prosemirror/plugins/documentStyles";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
 import { createTextInputPlugin } from "../prosemirror/textInput";
@@ -509,6 +515,8 @@ export const createHiddenEditorClipboardHandlers = (
 });
 
 export type HiddenEditorManager = {
+  /** Whether the canonical owner still holds a provisional composition. */
+  isCanonicalComposing: () => boolean;
   /** Request the view (sets the requested flag, then attempts creation). */
   ensureView: () => void;
   /** Re-attempt a previously-requested-but-deferred creation (no-op otherwise). */
@@ -526,6 +534,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
   let view: EditorView | null = null;
   let releaseCommandOwner: (() => void) | undefined;
   let editorSession: EditorSession = { type: "prosemirror" };
+  let canonicalSessionEpoch = 0;
   let modeOverride: CanonicalSessionMode | null = null;
   const syncCanonicalMode = (): void => {
     if (editorSession.type !== "canonical") return;
@@ -565,6 +574,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       return false;
     }
     editorSession = { type: "canonical", session: result.value };
+    canonicalSessionEpoch += 1;
     modeOverride = null;
     syncCanonicalMode();
     return true;
@@ -574,7 +584,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       doc: session.projection.doc,
       plugins: [
         createParagraphChangeTrackerPlugin(),
-        createDocumentStylesPlugin(deps.getStyles() ?? session.document.package.styles),
+        createDocumentStyleContextPlugin(deps.getStyles() ?? session.document.package.styles),
         createDocumentNumberingPlugin(session.document.package.numbering),
         ...[
           ...(deps.getExtensionManager()?.getPlugins() ?? []),
@@ -606,12 +616,15 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         ),
       ],
     });
-  const publishCommit = (commit: CanonicalCommit): boolean => {
+  const publishCommit = (
+    commit: CanonicalCommit,
+    reportRefusal: typeof refuse = refuse,
+  ): boolean => {
     if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return false;
     const session = editorSession.session;
     const result = publishCanonicalProjection({ state: view.state, commit, session });
     if (result.isErr()) {
-      refuse(result.error.message, result.error.gap);
+      reportRefusal(result.error.message, result.error.gap);
       return false;
     }
     const staged = result.value;
@@ -1302,6 +1315,22 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         bodyTransaction.doc.content.size,
         commit.bodyProjection.doc.content,
       );
+    if (
+      commit.selection.anchor.story === OP_STORIES.MAIN &&
+      commit.selection.head.story === OP_STORIES.MAIN
+    ) {
+      if (
+        !restoreCanonicalSelection({
+          transaction: bodyTransaction,
+          projection: commit.bodyProjection,
+          selection: commit.selection,
+          unavailable: { type: "refuse" },
+        })
+      ) {
+        refuse("The canonical body history selection is unavailable.");
+        return false;
+      }
+    }
     markPackageChange(bodyTransaction);
     bodyTransaction.setMeta("addToHistory", false);
     const bodyStaged = Result.try(() => view?.state.applyTransaction(bodyTransaction));
@@ -1351,11 +1380,18 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     return executor;
   };
 
+  const isCanonicalModelSessionRequested = () =>
+    usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting);
+
   const api = createHiddenEditorApi({
     getView: () => view,
     getDocumentContext: () => (editorSession.type === "refused" ? null : deps.getDocumentContext()),
     getCanonicalComments: () =>
       editorSession.type === "canonical" ? editorSession.session.getCommittedComments() : null,
+    getCanonicalCommittedVersion: () =>
+      editorSession.type === "canonical"
+        ? `${canonicalSessionEpoch}:${editorSession.session.version}`
+        : null,
     isCanonicalSaveCurrent: (version) =>
       editorSession.type === "canonical" &&
       !editorSession.session.isComposing &&
@@ -1394,6 +1430,36 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           }
         : null,
     canonicalOperations: {
+      applyCanonicalSectionProperties: (patch) => {
+        ensureView();
+        const fail = (message: string) => {
+          refuse(message, CANONICAL_GAP.sectionProperties);
+          return { status: "refused", gap: CANONICAL_GAP.sectionProperties, message } as const;
+        };
+        if (editorSession.type === "refused") return fail(editorSession.reason);
+        if (editorSession.type !== "canonical") {
+          if (isCanonicalModelSessionRequested())
+            return fail("The canonical document is not ready for section changes.");
+          return null;
+        }
+        if (!view || deps.getReadOnly() || isDestroying)
+          return fail("The document is not editable.");
+        const session = editorSession.session;
+        if (session.isComposing)
+          return fail("Section properties cannot change during composition.");
+        const prepared = session.prepareOperations(view.state, [
+          createCanonicalSectionPropertiesOperation(session.document, patch),
+        ]);
+        if (prepared.isErr()) return fail(prepared.error.message);
+        let failureMessage = "The section projection could not publish.";
+        if (
+          !publishCommit(prepared.value, (message) => {
+            failureMessage = message;
+          })
+        )
+          return fail(failureMessage);
+        return { status: "applied", version: session.version };
+      },
       applyCanonicalComment: (request) => {
         ensureView();
         const fail = (message: string, retry: "afterComposition" | "never" = "never") => {
@@ -1403,7 +1469,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         };
         if (editorSession.type === "refused") return fail(editorSession.reason);
         if (editorSession.type !== "canonical") {
-          if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.comments))
+          if (isCanonicalModelSessionRequested())
             return fail("The canonical document is not ready for comment changes.");
           return null;
         }
@@ -1566,5 +1632,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     getView: () => view,
     isInitialized: () => isInitialized,
     api,
+    isCanonicalComposing: () =>
+      editorSession.type === "canonical" && editorSession.session.isComposing,
   };
 };
