@@ -43,6 +43,7 @@ export type DocxProjectionFactSet<T> =
 | readonly [status: "known", items: readonly T[]]
 | readonly [status: "unknown", reason: DocxProjectionUnknownReason];
 export type DocxProjectionUnknownReason =
+| "paragraph-fragment"
 | "document-part-only"
 | "styles-part-unavailable"
 | "unsupported-styles"
@@ -119,6 +120,16 @@ paragraphs: readonly DocxProjectionParagraph[],
 structuralFacts: DocxProjectionStructuralFacts,
 revisionStatus: DocxProjectionRevisionStatus,
 formattingStatus: DocxProjectionFormattingStatus,
+];
+type DocxParagraphFragmentFacts<T extends readonly unknown[]> = {
+    readonly [Key in keyof T]: readonly [status: "unknown", reason: "paragraph-fragment"];
+};
+export type DocxParagraphFragmentWire = readonly [
+schemaVersion: DocxProjectionWire[0],
+paragraphs: readonly [DocxProjectionParagraph],
+structuralFacts: DocxParagraphFragmentFacts<DocxProjectionStructuralFacts>,
+revisionStatus: DocxProjectionWire[3],
+formattingStatus: DocxProjectionWire[4],
 ];
 export type DocxReviewUnknownReason =
 | "invalid-document"
@@ -273,6 +284,14 @@ export function projectCompressedDocxWithReviewFacts(bytes: Uint8Array): DocxPac
  */
 export function projectMainDocumentXml(bytes: Uint8Array): DocxProjectionWire;
 
+/**
+ * Projects one bounded paragraph fragment with unknown document structural facts.
+ *
+ * # Errors
+ * Returns a JavaScript `Error` for malformed input or a resource-limit violation.
+ */
+export function projectParagraphFragment(bytes: Uint8Array): DocxParagraphFragmentWire;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -281,6 +300,7 @@ export interface InitOutput {
     readonly projectCompressedDocxWithReadableReviewFacts: (a: number, b: number, c: number) => void;
     readonly projectCompressedDocxWithReviewFacts: (a: number, b: number, c: number) => void;
     readonly projectMainDocumentXml: (a: number, b: number, c: number) => void;
+    readonly projectParagraphFragment: (a: number, b: number, c: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
 }

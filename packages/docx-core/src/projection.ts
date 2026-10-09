@@ -3,11 +3,13 @@ import { TaggedError } from "better-result";
 import initializeRuntime, {
   projectCompressedDocx as projectCompressedDocxInWasm,
   projectMainDocumentXml as projectMainDocumentXmlInWasm,
+  projectParagraphFragment as projectParagraphFragmentInWasm,
   projectCompressedDocxWithReadableReviewFacts as projectCompressedDocxWithReadableReviewFactsInWasm,
   projectCompressedDocxWithReviewFacts as projectCompressedDocxWithReviewFactsInWasm,
   type DocxAttributedComment,
   type DocxAttributedRevision,
   type DocxPackageProjectionWire,
+  type DocxParagraphFragmentWire,
   type DocxProjectionAlignment,
   type DocxProjectionAlignmentSource,
   type DocxProjectionAlignmentValue,
@@ -38,6 +40,7 @@ export type {
   DocxAttributedComment,
   DocxAttributedRevision,
   DocxPackageProjectionWire,
+  DocxParagraphFragmentWire,
   DocxProjectionAlignment,
   DocxProjectionAlignmentSource,
   DocxProjectionAlignmentValue,
@@ -151,6 +154,14 @@ export const projectMainDocumentXml = (bytes: Uint8Array): Promise<DocxProjectio
   projectWith({
     bytes,
     project: projectMainDocumentXmlInWasm,
+    message: DOCUMENT_PROJECTION_FAILURE_MESSAGE,
+  });
+
+/** Projects one Flat OPC paragraph; document structural facts remain unknown. */
+export const projectParagraphFragment = (bytes: Uint8Array): Promise<DocxParagraphFragmentWire> =>
+  projectWith({
+    bytes,
+    project: projectParagraphFragmentInWasm,
     message: DOCUMENT_PROJECTION_FAILURE_MESSAGE,
   });
 
