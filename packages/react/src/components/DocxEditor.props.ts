@@ -53,6 +53,7 @@ import type { BlockRect } from "@stll/folio-core/paged-layout/blockGeometry";
 import type { FontDefinition } from "../paged-editor/hostFonts";
 import type { PagedEditorRef } from "../paged-editor/PagedEditor";
 import type { FolioUIComponents } from "../ui/folio-ui";
+import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import type { FontOption } from "./ui/FontPicker";
 import type { DocumentLoadState } from "./hooks/useDocumentLoader";
 // `EditorMode` is owned by `./hooks/useEditorMode`. Re-imported here for use
@@ -254,6 +255,10 @@ export type DocxEditorProps = {
    * panel widths, not from fixed breakpoints.
    */
   showOutline?: boolean;
+  /** Maximum heading depth shown in the outline. Defaults to 2 (Heading 1–2). */
+  outlineDepth?: OutlineDepth;
+  /** Called when the outline depth selector changes. */
+  onOutlineDepthChange?: (depth: OutlineDepth) => void;
   /** Whether to show print button in toolbar (default: true) */
   showPrintButton?: boolean;
   /** Callback when print is triggered */

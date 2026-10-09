@@ -61,3 +61,33 @@ export const HEADING_COLLECTOR_DOCUMENT = schema.node("doc", null, [
     outlineLevel: BODY_TEXT_OUTLINE_LEVEL,
   }),
 ]);
+
+export const HEADING_COLLECTOR_RUN_IN_DOCUMENT = schema.node("doc", null, [
+  schema.node("paragraph", { styleId: "Heading1" }, [
+    schema.text("Run-in prefix: "),
+    schema.text("Article 7. ", [schema.mark("bold"), schema.mark("runIdentity", { id: 1 })]),
+    schema.text("Scope", [schema.mark("bold"), schema.mark("runIdentity", { id: 2 })]),
+    schema.text(" The parties agree to the following terms."),
+    schema.text(" Later emphasized words", [schema.mark("bold")]),
+  ]),
+  paragraph("Heading2", "Single run remains the fallback title"),
+  schema.node("paragraph", { styleId: "Heading1" }),
+  schema.node("paragraph", { styleId: "Heading1" }, [
+    schema.text("   ", [schema.mark("bold")]),
+    schema.text("Visible fallback after an empty formatted span"),
+  ]),
+  schema.node("paragraph", { styleId: "Heading2" }, [
+    schema.text("Plain prefix: "),
+    schema.text("Underlined title", [
+      schema.mark("underline"),
+      schema.mark("runIdentity", { id: 3 }),
+    ]),
+    schema.text(" and more", [schema.mark("underline"), schema.mark("runIdentity", { id: 4 })]),
+    schema.text(" body follows"),
+  ]),
+  schema.node("paragraph", { styleId: "Heading1" }, [
+    schema.text("Bold run", [schema.mark("bold")]),
+    schema.text(" Underline run", [schema.mark("underline")]),
+    schema.text(" unformatted body"),
+  ]),
+]);

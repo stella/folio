@@ -341,6 +341,10 @@ export const messages: FolioMessages = {
     "editor": {
       "editing": "Redagavimas",
       "editingDescription": "Redaguokite dokumentą tiesiogiai",
+      "outlineDepthAll": "Visi lygiai",
+      "outlineDepthLabel": "Rodyti antraštes",
+      "outlineDepthThree": "1–3 lygiai",
+      "outlineDepthTwo": "1–2 lygiai",
       "outlineTitle": "Struktūra",
       "showDocumentOutline": "Dokumento struktūra",
       "suggesting": "Keitimų sekimas",

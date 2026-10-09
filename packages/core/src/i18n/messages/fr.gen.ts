@@ -341,6 +341,10 @@ export const messages: FolioMessages = {
     "editor": {
       "editing": "Modification",
       "editingDescription": "Modifier directement le document",
+      "outlineDepthAll": "Tous les niveaux",
+      "outlineDepthLabel": "Afficher les titres",
+      "outlineDepthThree": "Niveaux 1–3",
+      "outlineDepthTwo": "Niveaux 1–2",
       "outlineTitle": "Plan",
       "showDocumentOutline": "Plan du document",
       "suggesting": "Suivi des modifications",

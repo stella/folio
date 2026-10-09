@@ -9,6 +9,11 @@
 export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
 export { mergeDocumentContent } from "./utils/mergeDocumentContent";
 export {
+  DEFAULT_OUTLINE_DEPTH,
+  filterHeadingsByDepth,
+  type OutlineDepth,
+} from "./utils/outlineDepth";
+export {
   extractDocumentStyleSet,
   extractDocumentStyleSetFromDocx,
   inspectDocumentStyles,

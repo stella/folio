@@ -17,6 +17,57 @@ export type HeadingInfo = {
   pageNumber?: number | null;
 };
 
+const RUN_IN_TITLE_MARKS = new Set(["bold", "underline"]);
+
+type RunInTitleCapture =
+  | { status: "searching" }
+  | { status: "collecting"; format: string; text: string }
+  | { status: "complete"; text: string };
+
+const runInTitleFormat = (child: PMNode): string | undefined => {
+  const marks = child.marks
+    .map(({ type }) => type.name)
+    .filter((name) => RUN_IN_TITLE_MARKS.has(name))
+    .sort();
+  return marks.length > 0 ? marks.join("+") : undefined;
+};
+
+const headingText = (paragraph: PMNode): string => {
+  let text = "";
+  let capture: RunInTitleCapture = { status: "searching" };
+
+  // ProseMirror can split one authored run into adjacent text nodes when
+  // comment or run-identity marks differ, so collect the emphasized span by
+  // formatting rather than treating every text node as a DOCX run.
+  for (let childIndex = 0; childIndex < paragraph.childCount; childIndex += 1) {
+    const child = paragraph.child(childIndex);
+    if (!child.isText) {
+      if (capture.status === "collecting") {
+        capture = { status: "complete", text: capture.text };
+      }
+      continue;
+    }
+
+    const childText = child.text || "";
+    text += childText;
+    const format = runInTitleFormat(child);
+    if (capture.status === "searching" && format !== undefined) {
+      capture = { status: "collecting", format, text: childText };
+      continue;
+    }
+    if (capture.status !== "collecting") {
+      continue;
+    }
+    capture =
+      format === capture.format
+        ? { status: "collecting", format: capture.format, text: capture.text + childText }
+        : { status: "complete", text: capture.text };
+  }
+
+  const formattedText = capture.status === "searching" ? "" : capture.text.trim();
+  return (formattedText || text).trim();
+};
+
 /**
  * Collect all headings from a ProseMirror document, in document order.
  *
@@ -43,13 +94,7 @@ export function collectHeadings(doc: PMNode, styles: BuiltInStyleIndex): Heading
     if (level === undefined) {
       return;
     }
-    let text = "";
-    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-    node.forEach((child) => {
-      if (child.isText) {
-        text += child.text || "";
-      }
-    });
+    const text = headingText(node);
     if (text.trim()) {
       headings.push({ text: text.trim(), level, pmPos: pos });
     }

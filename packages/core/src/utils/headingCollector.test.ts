@@ -7,11 +7,25 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { createHeadingCollectorOoxmlFixture } from "./fixtures/headingCollectorOoxml";
 import {
   HEADING_COLLECTOR_DOCUMENT,
+  HEADING_COLLECTOR_RUN_IN_DOCUMENT,
   HEADING_COLLECTOR_STYLES,
 } from "./fixtures/headingCollector.synthetic";
 import { collectHeadings } from "./headingCollector";
 
 describe("document outline collection", () => {
+  test("uses the first formatted run as the title and handles empty paragraphs", () => {
+    const styles = createBuiltInStyleIndex(HEADING_COLLECTOR_STYLES);
+    const headings = collectHeadings(HEADING_COLLECTOR_RUN_IN_DOCUMENT, styles);
+
+    expect(headings.map(({ text, level }) => [text, level])).toEqual([
+      ["Article 7. Scope", 0],
+      ["Single run remains the fallback title", 1],
+      ["Visible fallback after an empty formatted span", 0],
+      ["Underlined title and more", 1],
+      ["Bold run", 0],
+    ]);
+  });
+
   test("collects heading semantics without inferring headings from numbering or typography", () => {
     const styles = createBuiltInStyleIndex(HEADING_COLLECTOR_STYLES);
     const headings = collectHeadings(HEADING_COLLECTOR_DOCUMENT, styles);

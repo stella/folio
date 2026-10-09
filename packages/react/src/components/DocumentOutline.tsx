@@ -21,6 +21,7 @@ import { PanelLeftOpenIcon, XIcon } from "lucide-react";
 import { useTranslations } from "use-intl";
 
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
+import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { useFolioUI } from "../ui/folio-ui";
 import type { OutlineItem } from "../ui/folio-ui";
 import { headingId } from "./hooks/useActiveHeading";
@@ -38,6 +39,9 @@ const SURFACE_WIDTH = {
 
 export type DocumentOutlineProps = {
   headings: HeadingInfo[];
+  available: boolean;
+  outlineDepth: OutlineDepth;
+  onOutlineDepthChange: (depth: OutlineDepth) => void;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   /** Total ProseMirror document content size — drives proportional tick
    *  placement when pages are virtualised. */
@@ -58,6 +62,9 @@ export type DocumentOutlineProps = {
 
 export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
   headings,
+  available,
+  outlineDepth,
+  onOutlineDepthChange,
   scrollContainerRef,
   docSize,
   activeId,
@@ -115,7 +122,7 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
 
   const resolvePct = useCallback((id: string) => pctById.get(id) ?? null, [pctById]);
 
-  if (headings.length < 2) {
+  if (!available) {
     return null;
   }
 
@@ -171,19 +178,40 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
       style={{ width }}
     >
       <div className="folio-outline-header">
-        <span className="folio-outline-title">{t("editor.outlineTitle")}</span>
-        {surface === "expanded" && onClose && (
-          <button
-            aria-label={t("common.closeDialog")}
-            className="folio-outline-icon-button"
-            onClick={onClose}
-            style={controlMinimumStyle}
-            title={t("common.closeDialog")}
-            type="button"
+        <div className="folio-outline-heading-row">
+          <span className="folio-outline-title">{t("editor.outlineTitle")}</span>
+          {surface === "expanded" && onClose && (
+            <button
+              aria-label={t("common.closeDialog")}
+              className="folio-outline-icon-button"
+              onClick={onClose}
+              style={controlMinimumStyle}
+              title={t("common.closeDialog")}
+              type="button"
+            >
+              <XIcon aria-hidden="true" size={16} />
+            </button>
+          )}
+        </div>
+        <label className="folio-outline-depth-control">
+          <span>{t("editor.outlineDepthLabel")}</span>
+          <select
+            aria-label={t("editor.outlineDepthLabel")}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              if (value === "all") {
+                onOutlineDepthChange("all");
+                return;
+              }
+              onOutlineDepthChange(value === "3" ? 3 : 2);
+            }}
+            value={outlineDepth}
           >
-            <XIcon aria-hidden="true" size={16} />
-          </button>
-        )}
+            <option value={2}>{t("editor.outlineDepthTwo")}</option>
+            <option value={3}>{t("editor.outlineDepthThree")}</option>
+            <option value="all">{t("editor.outlineDepthAll")}</option>
+          </select>
+        </label>
       </div>
       {rail}
     </nav>
