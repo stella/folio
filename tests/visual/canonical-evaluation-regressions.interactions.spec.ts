@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./canonicalTimerProbe";
-import { waitForCanonicalPageReady } from "./canonicalPageNavigation";
+import { evaluateCanonicalPage, waitForCanonicalPageReady } from "./canonicalPageNavigation";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
@@ -20,6 +20,7 @@ import {
   initializeCanonicalBrowserHistory,
 } from "./canonicalBrowserHistoryOracle";
 import { CANONICAL_EVALUATION_HISTORY_REPLAY } from "./canonicalBrowserTrace";
+import { driveBrowserIme } from "./browserImeDriver";
 import { canonicalHistoryReplayActions, runCanonicalHistoryReplay } from "./canonicalHistoryReplay";
 
 test("canonical structural gestures and toolbar operations preserve each intermediate history state", async ({
@@ -216,5 +217,47 @@ test("canonical history load survives browser collection while its evaluation is
     ).toBeGreaterThan(0);
   } finally {
     await cdp.detach();
+  }
+});
+
+test("native composition updates preserve a loaded projection through cancellation", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/?session=canonical");
+  await page.waitForSelector(".layout-page");
+  const source = await canonicalLoadFixture(
+    await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" })),
+  );
+  await loadReady(page, source);
+  await select(page, 1, 6);
+  await clearRefusals(page);
+  const before = await snapshot(page);
+  const evidence = await evaluateCanonicalPage(page, () =>
+    page.evaluateHandle(() => {
+      const stop = globalThis.__folioCanonical?.observeInput();
+      if (!stop) throw new TypeError("Canonical input evidence requires an active view.");
+      return stop;
+    }),
+  );
+  try {
+    await driveBrowserIme(page, {
+      kind: "imeReplacement",
+      updates: ["shall", "café 東京 é"],
+      completion: "cancel",
+    });
+    await expectNoRefusals(page);
+    const after = await snapshot(page);
+    expect(after?.document).toEqual(before?.document);
+    expect(after?.projectionJSON).toEqual(before?.projectionJSON);
+    expect(after?.selection).toEqual(before?.selection);
+    expect(after?.canUndo).toBe(before?.canUndo);
+    expect(after?.canRedo).toBe(before?.canRedo);
+  } finally {
+    const records = await evidence.evaluate((stop) => stop());
+    await testInfo.attach("canonical-input-transactions", {
+      body: JSON.stringify(records, null, 2),
+      contentType: "application/json",
+    });
+    await evidence.dispose();
   }
 });

@@ -1,4 +1,4 @@
-import { TextSelection } from "prosemirror-state";
+import { TextSelection, type Transaction } from "prosemirror-state";
 import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
 import { singletonManager } from "@stll/folio-core/prosemirror/schema";
 import type { BrowserDragTarget } from "../visual/browserDragTarget";
@@ -39,6 +39,30 @@ export type CanonicalHyperlinkAction =
 
 /** Private interaction-test bridge shared by both playgrounds. */
 export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null) => ({
+  observeInput: () => {
+    const view = getRef()?.getEditor()?.getView();
+    if (!view) return null;
+    const record = (transaction: Transaction) => ({
+      before: view.state.doc.toJSON(),
+      proposed: transaction.doc.toJSON(),
+      selection: view.state.selection.toJSON(),
+      proposedSelection: transaction.selection.toJSON(),
+      storedMarks: view.state.storedMarks?.map((mark) => mark.toJSON()) ?? null,
+      steps: transaction.steps.map((step) => step.toJSON()),
+      composition: transaction.getMeta("composition") ?? null,
+      composing: view.composing,
+    });
+    const records: ReturnType<typeof record>[] = [];
+    const dispatch = view.dispatch;
+    view.dispatch = (transaction) => {
+      records.push(record(transaction));
+      dispatch(transaction);
+    };
+    return () => {
+      view.dispatch = dispatch;
+      return records;
+    };
+  },
   nativeComposing: () => getRef()?.getEditor()?.getView()?.composing ?? null,
   ensureView: () => {
     const ref = getRef();
