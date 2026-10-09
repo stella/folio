@@ -38,7 +38,10 @@ import { getDocumentNumbering } from "./plugins/documentNumbering";
 import { makeRevisionInfo, SUGGESTION_META } from "./plugins/suggestionMode";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "./schema/nodes";
 import { directParagraphIndentation } from "./paragraphIndentation";
-import { listAttrsFromNumbering, listLevelIndentAttrPatch } from "./styles/resolvedStyleAttrs";
+import {
+  listAttrsFromNumbering,
+  listIndentationProvenancePatch,
+} from "./styles/resolvedStyleAttrs";
 import { listRenderingFor, recordsListRendering } from "./listRendering";
 
 const PARAGRAPH_NODE = "paragraph";
@@ -351,7 +354,13 @@ export const listItemAttrs = (
 ): Record<string, unknown> => ({
   ...attrs,
   ...listAttrsFromNumbering({ numId, ilvl }, numbering),
-  ...listLevelIndentAttrPatch(directParagraphIndentation(attrs), { numId, ilvl }, numbering),
+  ...listIndentationProvenancePatch({
+    direct: directParagraphIndentation(attrs),
+    styleFormatting: attrs._styleResolvedFormatting,
+    numberingSource: "paragraph",
+    numPr: { numId, ilvl },
+    numbering,
+  }),
   // Counted from the paragraph's own inline fields; the list does not change them.
   listImplicitChildLevelAdvances: attrs["listImplicitChildLevelAdvances"] ?? null,
   listFoldedMarkerSuffix: attrs["listFoldedMarkerSuffix"] ?? undefined,

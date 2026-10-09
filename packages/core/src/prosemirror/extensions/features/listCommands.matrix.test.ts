@@ -24,10 +24,13 @@
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
 import { EditorState, TextSelection, type Command, type Transaction } from "prosemirror-state";
 
+import { assertProperty, propertyTestTimeout } from "../../../../../../test/property-testing";
 import { ensureParaIds } from "../../../docx/ensureParaIds";
 import { parseDocx } from "../../../docx/parser";
+import { paragraphFormattingWithAuthoredIndentation } from "../../../docx/paragraphPropertySource";
 import { createDocx, repackDocx } from "../../../docx/rezip";
 import { attemptSelectiveSave } from "../../../docx/selectiveSave";
 import { FolioDocxReviewer } from "../../../ai-edits/headless";
@@ -89,6 +92,8 @@ const styleNumberedHeadings = (): Document => {
 
 const HOST_DECIMAL_NUM_ID = 901;
 const HOST_BULLET_NUM_ID = 902;
+const TOGGLE_BACK_KINDS = ["bullet", "decimal"] as const;
+const TOGGLE_BACK_FORMATTING = ["absent", "direct-zero", "direct", "styled"] as const;
 
 /**
  * A host-prepared package: an unused decimal and an unused bullet instance,
@@ -703,6 +708,98 @@ describe("list changes while suggesting", () => {
     expect(paragraphAttrsOf(editor, "Plain one")["numPr"]).toBeNull();
     expect(paragraphAttrsOf(editor, "Plain one")["_propertyChanges"]).toBeNull();
   });
+
+  test(
+    "toggle-on then toggle-off preserves authored indentation without tracking a net change",
+    async () => {
+      await assertProperty(
+        fc.asyncProperty(fc.integer({ min: 100, max: 10_000 }), async (base) => {
+          for (const kind of TOGGLE_BACK_KINDS) {
+            for (const formatting of TOGGLE_BACK_FORMATTING) {
+              const model = hostPreparedLists("Intro paragraph.\n\nTarget paragraph\n\nTail.");
+              const numbering = model.package.numbering;
+              if (!numbering) throw new Error("host list definitions must be present");
+              const abstractNumId = kind === "bullet" ? 901 : 900;
+              const abstract = numbering.abstractNums.find(
+                ({ abstractNumId: id }) => id === abstractNumId,
+              );
+              const level = abstract?.levels.find(({ ilvl }) => ilvl === 0);
+              if (!level) throw new Error("host list level zero must be present");
+              level.pPr = {
+                indentLeft: base + 100,
+                indentFirstLine: -(base + 110),
+                hangingIndent: true,
+              };
+
+              const target = targetParagraph(model);
+              if (formatting === "direct-zero") {
+                target.formatting = {
+                  ...target.formatting,
+                  indentLeft: 0,
+                  indentFirstLine: 0,
+                };
+              } else if (formatting === "direct") {
+                target.formatting = {
+                  ...target.formatting,
+                  indentLeft: base + 200,
+                  indentFirstLine: base + 210,
+                };
+              } else if (formatting === "styled") {
+                const styles = model.package.styles;
+                if (!styles) throw new Error("Markdown styles must be present");
+                model.package.styles = {
+                  ...styles,
+                  styles: [
+                    ...styles.styles,
+                    {
+                      type: "paragraph",
+                      styleId: "ToggleIndent",
+                      pPr: { indentLeft: base + 300, indentFirstLine: base + 310 },
+                    },
+                  ],
+                };
+                target.formatting = { ...target.formatting, styleId: "ToggleIndent" };
+              }
+
+              const session = await sessionOf(model, "suggesting");
+              const { editor } = session;
+              const beforeAttrs = paragraphAttrsOf(editor, "Target paragraph");
+              const toggle = kind === "bullet" ? toggleBulletList : toggleNumberedList;
+              expect(run(editor, "Target paragraph", toggle)).toBe(true);
+              expect(run(editor, "Target paragraph", toggle)).toBe(true);
+
+              expect(paragraphAttrsOf(editor, "Target paragraph")["numPr"]).toBeNull();
+              expect(paragraphAttrsOf(editor, "Target paragraph")["_propertyChanges"]).toBeNull();
+              expect(paragraphAttrsOf(editor, "Target paragraph")["indentLeft"]).toBe(
+                beforeAttrs["indentLeft"],
+              );
+
+              const saved = fromProseDoc(editor.state.doc, session.document);
+              const reopened = await parseDocx(await repackDocx(saved), {
+                preloadFonts: false,
+                detectVariables: false,
+              });
+              const paragraph = targetParagraph(reopened);
+              expect(paragraph.propertyChanges).toBeUndefined();
+              expect(paragraphNumberingReferenceId(paragraph.formatting?.numPr)).toBeUndefined();
+              const authored = paragraphFormattingWithAuthoredIndentation(paragraph);
+              expect(authored?.indentLeft).toBe(target.formatting?.indentLeft);
+              expect(authored?.indentFirstLine).toBe(target.formatting?.indentFirstLine);
+              const reopenedAttrs = expectParagraphAttrs(
+                toProseDoc(reopened, {
+                  styles: reopened.package.styles,
+                  theme: reopened.package.theme,
+                }).child(1),
+              );
+              expect(reopenedAttrs.indentLeft).toBe(beforeAttrs["indentLeft"]);
+            }
+          }
+        }),
+        { numRuns: 8 },
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
 
   test("a typed marker becomes a list and leaves no typing behind", async () => {
     const session = await sessionOf(fromMarkdown("Plain two"), "suggesting");

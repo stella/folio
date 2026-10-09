@@ -63,6 +63,7 @@ import {
 } from "./__tests__/listNumberFieldFixture";
 import { repackDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
+import { visitDocxParagraphs } from "./paragraphTraversal";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -1104,9 +1105,24 @@ const FIXTURES: readonly Pinned[] = [
 
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 
+const uneditedParagraphMarkup = ({ package: pkg }: Document): string[] => {
+  const paragraphs: string[] = [];
+  visitDocxParagraphs(
+    {
+      documentBody: pkg.document,
+      headers: pkg.headers,
+      footers: pkg.footers,
+      footnotes: pkg.footnotes,
+      endnotes: pkg.endnotes,
+    },
+    (paragraph) => paragraphs.push(serializeParagraph(paragraph)),
+  );
+  return paragraphs;
+};
+
 describe("a document with no LISTNUM field", () => {
   for (const { path, projection, saved } of FIXTURES) {
-    test(`${path} projects and saves as it did`, async () => {
+    test(`${path} preserves its editor projection`, async () => {
       const buffer = await Bun.file(new URL(`../../../../${path}`, import.meta.url)).arrayBuffer();
       expect(/LISTNUM/iu.test(await documentXmlOf(buffer))).toBe(false);
 
@@ -1115,17 +1131,18 @@ describe("a document with no LISTNUM field", () => {
       const json = JSON.stringify(doc.toJSON());
 
       expect(json).not.toContain("foldedListNumber");
-      // The fixture and the length go with the digest, so a mismatch says
-      // which document moved and whether it grew or shrank.
       expect({
         fixture: path,
         length: json.length,
         ...("digest" in projection ? { digest: sha256(json) } : {}),
       }).toEqual({ fixture: path, ...projection });
+    });
 
-      const written = await documentXmlOf(
-        await repackDocx(fromProseDoc(doc, parsed), { updateModifiedDate: false }),
-      );
+    test(`${path} preserves saved XML bytes independently of editor metadata`, async () => {
+      const buffer = await Bun.file(new URL(`../../../../${path}`, import.meta.url)).arrayBuffer();
+      const parsed = await openDocx(buffer);
+      const rebuilt = fromProseDoc(toProseDoc(parsed), parsed);
+      const written = await documentXmlOf(await repackDocx(rebuilt, { updateModifiedDate: false }));
       if ("file" in saved) {
         const reference = await Bun.file(
           new URL(`./__tests__/__fixtures__/list-number-invisible/${saved.file}`, import.meta.url),
@@ -1137,6 +1154,15 @@ describe("a document with no LISTNUM field", () => {
           ...saved,
         });
       }
+    });
+
+    test(`${path} preserves every unedited paragraph across all stories`, async () => {
+      const buffer = await Bun.file(new URL(`../../../../${path}`, import.meta.url)).arrayBuffer();
+      const parsed = await openDocx(buffer);
+      const before = uneditedParagraphMarkup(parsed);
+      expect(before.length).toBeGreaterThan(0);
+      const rebuilt = fromProseDoc(toProseDoc(parsed), parsed);
+      expect(uneditedParagraphMarkup(rebuilt)).toEqual(before);
     });
   }
 });

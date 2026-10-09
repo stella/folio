@@ -169,11 +169,11 @@ export function listAttrsFromNumbering(
 /**
  * The numbering level's indentation a directly numbered paragraph reads as its
  * own where it states none: the load path folds the level's `w:ind` into the
- * paragraph (a direct `w:ind` wins per group, left vs first line/hanging), so
- * a paragraph a command numbers carries it too, and the save writes it where a
- * reopen reads it back.
+ * paragraph (a direct `w:ind` wins per group, left vs first line/hanging).
+ * Keep this projection private: callers use the paired provenance helper so
+ * effective level values cannot be mistaken for authored indentation.
  */
-export function listLevelIndentAttrPatch(
+function listLevelIndentAttrPatch(
   stated: DirectParagraphIndentation | undefined,
   numPr: { numId: number; ilvl: number },
   numbering: NumberingMap | null | undefined,
