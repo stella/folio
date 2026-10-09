@@ -256,7 +256,15 @@ test.each(["editing", "suggesting"] as const)(
 );
 
 for (const mode of ["editing", "suggesting"] as const) {
-  for (const shape of ["notes", "comments", "image"] as const) {
+  for (const shape of [
+    "notes",
+    "comments",
+    "image",
+    "single-decimal-list",
+    "single-bullet-list",
+    "mixed-lists",
+    "outline-level-numbered",
+  ] as const) {
     test(`copied ${shape} blocks use the resource preflight and saved canonical authority in ${mode}`, async () => {
       const source = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer(shape)));
       const driver = createCanonicalEditorHarness(source, mode);
@@ -269,7 +277,7 @@ for (const mode of ["editing", "suggesting"] as const) {
         const before = driver.snapshot();
         const state = driver.state;
         driver.paste(slice);
-        if (shape !== "image") {
+        if (shape === "notes" || shape === "comments") {
           expect(driver.refusals).toHaveLength(1);
           expect(driver.refusals.at(0)).toMatchObject({
             expectation: "declared",
@@ -282,6 +290,7 @@ for (const mode of ["editing", "suggesting"] as const) {
           return;
         }
         expect(driver.refusals).toEqual([]);
+        expect(driver.state.doc.eq(state.doc)).toBe(false);
         const edited = driver.snapshot();
         const saved = await saveCanonicalHarnessDocument(edited);
         const reopened = await parseShapeDocument(saved.bytes);

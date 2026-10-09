@@ -22,8 +22,6 @@ import {
 } from "../packages/core/src/controller/canonicalSession";
 import { EditorState as PMEditorState } from "prosemirror-state";
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
-import { canonicalClipboardStoryPartRefusal } from "../packages/core/src/controller/canonicalClipboard";
-import { proseDocToBlocks } from "../packages/core/src/prosemirror/conversion/fromProseDoc";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import { serializeCanonicalSave } from "../packages/core/src/docx/canonicalSave";
 import type { CanonicalSaveSnapshot } from "../packages/core/src/types/canonicalSave";
@@ -268,20 +266,23 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
           message: "Clipboard tables and embedded blocks require canonical table editing.",
         };
       if (row === undefined) {
-        const paragraphType = editorView.state.schema.nodes["paragraph"];
-        if (paragraphType === undefined) panic("Canonical clipboard schema lost paragraphs");
-        const content = inlineOnly ? paragraphType.create(null, slice.content) : slice.content;
-        const blocks = proseDocToBlocks(
-          editorView.state.schema.topNodeType.create(null, content),
-          [],
-        );
-        for (const block of blocks) {
-          if (block.type !== "paragraph") continue;
-          const refusal = canonicalClipboardStoryPartRefusal(block);
-          if (refusal === undefined) continue;
-          row = { id: "clipboard-story-parts", gap: refusal.gap, message: refusal.message };
-          break;
-        }
+        // Read clipboard carriers independently of the production preflight.
+        // A numbered paragraph alone never imports another story's payload.
+        let importsStoryParts = false;
+        slice.content.descendants((node) => {
+          if (
+            node.type.name === "commentReference" ||
+            node.marks.some(({ type }) => type.name === "comment" || type.name === "footnoteRef")
+          )
+            importsStoryParts = true;
+        });
+        if (importsStoryParts)
+          row = {
+            id: "clipboard-story-parts",
+            gap: CANONICAL_GAP.dispatch,
+            message:
+              "Clipboard comments and note references require importing their source story parts.",
+          };
       }
       const rows = row ? [row] : caseRefusalRows;
       withRefusalRows(rows, () =>
