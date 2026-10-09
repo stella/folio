@@ -1,3 +1,4 @@
+import { evaluateCanonicalPage } from "./canonicalPageNavigation";
 import { expect } from "@playwright/test";
 import { test } from "./canonicalTimerProbe";
 import fc from "fast-check";
@@ -37,9 +38,11 @@ for (const seed of config.seeds) {
     let completed = 0;
     await page.goto("/?session=canonical");
     await page.waitForSelector(".layout-page");
-    await page.evaluate(() => {
-      globalThis.__folioCanonicalFuzzErrors = [];
-    });
+    await evaluateCanonicalPage(page, () =>
+      page.evaluate(() => {
+        globalThis.__folioCanonicalFuzzErrors = [];
+      }),
+    );
     const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
     await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
     const { verdict } = await checkWithBoundedShrink({

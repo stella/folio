@@ -114,6 +114,7 @@ collaborationAwareness?.setLocalStateField("user", {
 onMounted(() => {
   void loadFromQuery();
   globalThis.__folioCanonical = buildCanonicalBridge(() => editorRef.value);
+  globalThis.__folioCanonicalReady = true;
   globalThis.__folioScrollParity = scrollParityHost;
   globalThis.__folioParity = buildParityBridge(
     () => editorRef.value,
@@ -158,6 +159,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  globalThis.__folioCanonicalReady = false;
   globalThis.__folioCanonical = undefined;
   globalThis.__folioParity = undefined;
   globalThis.__folioScrollParity = undefined;
