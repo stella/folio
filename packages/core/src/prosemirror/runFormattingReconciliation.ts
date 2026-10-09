@@ -9,6 +9,7 @@ import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 import {
   getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
+  isParagraphMarkSuppressionEligible,
   paragraphFormattingForRun,
   resolveEffectiveRunStyleFormatting,
   type ParagraphRunStyleContext,
@@ -85,15 +86,18 @@ export const reconcileRunFormattingMarks = ({
     ...(styleResolver !== undefined ? { styleResolver } : {}),
   });
   const effectiveFormatting = mergeTextFormatting(inheritedFormatting, authoredFormatting);
-  const paragraphMarkOverrides = getParagraphMarkSuppressionOverrides({
-    directFormatting: authoredFormatting,
-    paragraphMarkFormatting: context.paragraphMarkFormatting,
-    suppressedFormatting: paragraphFormatting,
-  });
+  const paragraphMarkOverrides = isParagraphMarkSuppressionEligible(authoredFormatting)
+    ? getParagraphMarkSuppressionOverrides({
+        directFormatting: authoredFormatting,
+        paragraphMarkFormatting: context.paragraphMarkFormatting,
+        suppressedFormatting: paragraphFormatting,
+      })
+    : undefined;
   const overrideFormatting = mergeTextFormatting(paragraphMarkOverrides, authoredFormatting);
   const formattingMarks = textFormattingToMarks(effectiveFormatting, node.type.schema, {
     overrideFormatting,
     directFormatting: authoredFormatting,
+    authoredCarrier: "preserve",
   });
 
   return Mark.setFrom([

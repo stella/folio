@@ -14,7 +14,10 @@ import {
 import { resolveEmptyFieldResultRuns } from "../prosemirror/emptyFieldResultRuns";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
 import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
-import { reconstructRejectedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
+import {
+  reconstructRejectedRunFormattingMarks,
+  restoreHistoricalRunFormatting,
+} from "../prosemirror/runPropertyChangeResolution";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import {
   paragraphRunStyleContext,
@@ -99,6 +102,19 @@ const resolveInlineNode = ({
 }: ResolveInlineNodeOptions): PMNode | null => {
   let marks: readonly Mark[] = node.marks;
   let attrs = node.attrs;
+  if (
+    context.mode === "reject" &&
+    node.marks.some(
+      (mark) =>
+        mark.type === context.keepType && expectTrackedChangeMarkAttrs(mark)._historicalFormatting,
+    )
+  ) {
+    marks = restoreHistoricalRunFormatting({
+      node,
+      paragraphContext: resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
+      styleResolver: context.styleResolver,
+    });
+  }
   const runPropertyChangeMark = marks.find((mark) => mark.type.name === "runPropertyChange");
   if (runPropertyChangeMark) {
     const { changes } = expectRunPropertyChangeMarkAttrs(runPropertyChangeMark);
