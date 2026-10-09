@@ -337,6 +337,10 @@
     "editor": {
       "editing": "Redigeerimine",
       "editingDescription": "Redigeerige dokumenti otse",
+      "outlineDepthAll": "Kõik tasemed",
+      "outlineDepthLabel": "Kuva pealkirju",
+      "outlineDepthThree": "Tasemed 1–3",
+      "outlineDepthTwo": "Tasemed 1–2",
       "outlineTitle": "Liigendus",
       "showDocumentOutline": "Dokumendi liigendus",
       "suggesting": "Muutuste jälitus",

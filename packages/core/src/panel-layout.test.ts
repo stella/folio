@@ -21,16 +21,59 @@ const input = fc.record({
 }) satisfies fc.Arbitrary<PanelLayoutInput>;
 
 /** Presentations from least to most room taken beside the page. */
-const OUTLINE_RANK = { none: 0, drawer: 1, rail: 2, column: 3 } as const satisfies Record<
-  OutlinePresentation,
-  number
->;
+const OUTLINE_RANK = {
+  none: 0,
+  drawer: 1,
+  rail: 2,
+  column: 3,
+  expanded: 4,
+} as const satisfies Record<OutlinePresentation, number>;
 const COMMENTS_RANK = { hidden: 0, drawer: 1, column: 2 } as const satisfies Record<
   CommentsPresentation,
   number
 >;
 
 describe("computePanelLayout", () => {
+  test("an explicitly opened outline reserves a track and leaves room for the document", () => {
+    for (const availableWidth of [320, 390, 480, 800, 1300]) {
+      const layout = computePanelLayout({
+        availableWidth,
+        pageWidth: 816,
+        outline: "expanded",
+        comments: "closed",
+      });
+      expect(layout.outline).toBe("expanded");
+      expect(layout.outlineTrackWidth).toBeLessThanOrEqual(PANEL_METRICS.outlineColumnWidth);
+      expect(layout.outlineTrackWidth).toBeGreaterThanOrEqual(PANEL_METRICS.controlMinimumSize);
+      expect(layout.outlineTrackWidth).toBeLessThanOrEqual(
+        Math.max(PANEL_METRICS.controlMinimumSize, (availableWidth - layout.commentsGutter) / 2),
+      );
+    }
+  });
+
+  test("an explicitly opened outline keeps comments in a drawer until both columns fit", () => {
+    const layout = computePanelLayout({
+      availableWidth: 1300,
+      pageWidth: 816,
+      outline: "expanded",
+      comments: "open",
+    });
+    expect(layout.comments).toBe("drawer");
+    expect(layout.commentsGutter).toBe(0);
+    expect(layout.outlineTrackWidth).toBe(PANEL_METRICS.outlineColumnWidth);
+
+    const columnsFit = computePanelLayout({
+      availableWidth: 1500,
+      pageWidth: 816,
+      outline: "expanded",
+      comments: "open",
+    });
+    expect(columnsFit.comments).toBe("column");
+    const totalTrackWidth =
+      columnsFit.outlineTrackWidth + 816 + 2 * PANEL_METRICS.pageMargin + columnsFit.commentsGutter;
+    expect(totalTrackWidth).toBeLessThanOrEqual(1500);
+  });
+
   test("the tracks it hands out always fit beside the page", () => {
     fc.assert(
       fc.property(input, (layoutInput) => {
@@ -89,7 +132,10 @@ describe("computePanelLayout", () => {
     fc.assert(
       fc.property(input, (layoutInput) => {
         const layout = computePanelLayout(layoutInput);
-        const hasDrawer = layout.outline === "drawer" || layout.comments === "drawer";
+        const hasDrawer =
+          layout.outline === "drawer" ||
+          layout.outline === "expanded" ||
+          layout.comments === "drawer";
         if (hasDrawer) {
           expect(layout.tier).toBe("narrow");
         } else if (layout.outline === "rail") {

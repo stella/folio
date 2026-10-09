@@ -337,6 +337,10 @@
     "editor": {
       "editing": "Editando",
       "editingDescription": "Edite o documento diretamente",
+      "outlineDepthAll": "Todos os níveis",
+      "outlineDepthLabel": "Mostrar títulos",
+      "outlineDepthThree": "Níveis 1–3",
+      "outlineDepthTwo": "Níveis 1–2",
       "outlineTitle": "Estrutura de tópicos",
       "showDocumentOutline": "Estrutura de tópicos do documento",
       "suggesting": "Controle de Alterações",

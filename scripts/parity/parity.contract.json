@@ -41,6 +41,7 @@
       "onInsertTOC",
       "onInsertTable",
       "onModeChange",
+      "onOutlineDepthChange",
       "onPaste",
       "onPrint",
       "onReadonlyEditAttempt",
@@ -51,6 +52,7 @@
       "onSelectiveSaveTripwire",
       "onSlashMenuChange",
       "onSlashMenuKeyAction",
+      "outlineDepth",
       "pageRenderer",
       "password",
       "placeholder",
@@ -75,6 +77,7 @@
     ],
     "deferredInVue": {},
     "pairedNotes": {
+      "outlineDepth": "Both adapters apply the shared heading-depth filter, default to two levels, and forward selector changes through onOutlineDepthChange; the host can control and persist the value.",
       "components": "Both wired with the full ten-primitive contract and real defaults. Vue uses monolithic, data-driven primitives where React uses compound parts, while preserving the same host-override capability. DatePickerPopover is consumed by the shared-controller-backed content-control overlay in both adapters; Button renders the Vue dropdown items. Dialog, Select, Menu, Popover, Input, Checkbox, ColorPicker, and OutlineRail remain threaded through their documented chrome consumers.",
       "featureFlags": "Both wired. React resolves the flags in handleSave (resolveSelectiveSaveFlags), and when selectiveSave is on runs attemptSelectiveSave(doc, baselineBuffer, { changedParaIds, structuralChange, hasUntrackedChanges, maxBytes }) with a full-repack fallback. Vue threads props.featureFlags into useDocxEditor via a getter and its save() runs the identical branch: resolveSelectiveSaveFlags(toValue(featureFlags)), the same shouldAttemptSelective/useSelectiveForSave gates, attemptSelectiveSave with the same ParagraphChangeTracker inputs (getChangedParagraphIds/hasStructuralChanges/hasUntrackedChanges from the shared StarterKit extension), and falls back to repackDocx (or createDocx for from-scratch docs with no originalBuffer). Divergence: React re-baselines originalBufferRef and clears tracked changes after each save; Vue keeps the original buffer as the selective baseline and does not clear, so every save diffs the full change set against the original \u2014 functionally correct output, just non-incremental across repeated saves.",
       "fonts": "Both wired. React registers host FontFace entries via paged-editor/hostFonts + a font-ready re-layout. Vue ports the same DOM-only FontFace path (packages/vue/src/utils/hostFonts.ts) and registers on mount / prop change in DocxEditor.vue, then re-measures (resetCanvasContext + clearAllCaches + reLayout), unregistering on change/unmount \u2014 mirroring React's hostFonts effect.",

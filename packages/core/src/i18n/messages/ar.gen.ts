@@ -341,6 +341,10 @@ export const messages: FolioMessages = {
     "editor": {
       "editing": "تحرير",
       "editingDescription": "تحرير المستند مباشرةً",
+      "outlineDepthAll": "كل المستويات",
+      "outlineDepthLabel": "إظهار العناوين",
+      "outlineDepthThree": "المستويات 1–3",
+      "outlineDepthTwo": "المستويان 1–2",
       "outlineTitle": "المخطط",
       "showDocumentOutline": "مخطط المستند",
       "suggesting": "تعقب التغييرات",

@@ -140,6 +140,7 @@ import { MarkdownOptions } from '@stll/folio-core/markdown';
 import { MarkdownResult } from '@stll/folio-core/markdown';
 import { Menu } from '@base-ui/react/menu';
 import { normalizeFolioAIBlockText } from '@stll/folio-core/ai-edits';
+import { OutlineDepth } from '@stll/folio-core/utils/outlineDepth';
 import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRenderer';
 import { ParagraphAlignment } from '@stll/folio-core/types/document';
 import { PictureWatermark } from '@stll/folio-core/watermark';
@@ -411,6 +412,8 @@ export type DocxEditorProps = {
     initialScrollTop?: number;
     onScrollTopChange?: (scrollTop: number) => void;
     showOutline?: boolean;
+    outlineDepth?: OutlineDepth;
+    onOutlineDepthChange?: (depth: OutlineDepth) => void;
     showPrintButton?: boolean;
     onPrint?: () => void;
     onInsertImage?: (() => void) | undefined;
@@ -865,6 +868,8 @@ export { MarkdownOptions }
 export { MarkdownResult }
 
 export { normalizeFolioAIBlockText }
+
+export { OutlineDepth }
 
 // @public
 export type OutlineItem = {

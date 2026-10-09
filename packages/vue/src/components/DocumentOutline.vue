@@ -1,6 +1,6 @@
 <template>
   <nav
-    v-if="headings.length >= 2"
+    v-if="available"
     ref="navRef"
     :aria-label="outlineLabel"
     class="folio-outline"
@@ -23,17 +23,31 @@
       <MaterialSymbol name="view_column" :size="16" aria-hidden="true" />
     </button>
     <div v-else class="folio-outline-header">
-      <span class="folio-outline-title">{{ t("editor.outlineTitle") }}</span>
-      <button
-        v-if="surface === 'drawer'"
-        type="button"
-        class="folio-outline-icon-button"
-        :aria-label="t('common.closeDialog')"
-        :title="t('common.closeDialog')"
-        @click="emit('close')"
-      >
-        <MaterialSymbol name="close" :size="16" aria-hidden="true" />
-      </button>
+      <div class="folio-outline-heading-row">
+        <span class="folio-outline-title">{{ t("editor.outlineTitle") }}</span>
+        <button
+          v-if="surface === 'drawer'"
+          type="button"
+          class="folio-outline-icon-button"
+          :aria-label="t('common.closeDialog')"
+          :title="t('common.closeDialog')"
+          @click="emit('close')"
+        >
+          <MaterialSymbol name="close" :size="16" aria-hidden="true" />
+        </button>
+      </div>
+      <label class="folio-outline-depth-control">
+        <span>{{ t("editor.outlineDepthLabel") }}</span>
+        <select
+          :aria-label="t('editor.outlineDepthLabel')"
+          :value="outlineDepth"
+          @change="onDepthChange"
+        >
+          <option :value="2">{{ t("editor.outlineDepthTwo") }}</option>
+          <option :value="3">{{ t("editor.outlineDepthThree") }}</option>
+          <option value="all">{{ t("editor.outlineDepthAll") }}</option>
+        </select>
+      </label>
     </div>
     <OutlineRail
       :items="items"
@@ -50,15 +64,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
+import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
+import { type OutlineSurface, useOutlineDrawerFocus } from "../composables/useOutlineDrawerFocus";
 import { useTranslation } from "../i18n";
 import type { OutlineItem } from "../ui/folio-ui";
 import { useFolioUI } from "../ui/folio-ui";
 import MaterialSymbol from "./ui/MaterialSymbol.vue";
-
-type OutlineSurface = "column" | "rail" | "drawer";
 
 const SURFACE_WIDTH = {
   column: PANEL_METRICS.outlineColumnWidth,
@@ -69,6 +83,8 @@ const SURFACE_WIDTH = {
 const props = withDefaults(
   defineProps<{
     headings: HeadingInfo[];
+    available: boolean;
+    outlineDepth: OutlineDepth;
     getScrollContainer: () => HTMLElement | null;
     docSize: number;
     activeId: string | null;
@@ -82,12 +98,29 @@ const emit = defineEmits<{
   navigate: [pmPos: number];
   expand: [];
   close: [];
+  outlineDepthChange: [depth: OutlineDepth];
 }>();
 
 const { t } = useTranslation();
 const { OutlineRail } = useFolioUI();
 const navRef = ref<HTMLElement | null>(null);
+const closeDrawer = () => emit("close");
+useOutlineDrawerFocus({
+  surface: () => props.surface,
+  available: () => props.available,
+  navRef,
+  onClose: closeDrawer,
+});
 const outlineLabel = computed(() => t("editor.showDocumentOutline"));
+const onDepthChange = (event: Event) => {
+  if (!(event.currentTarget instanceof HTMLSelectElement)) return;
+  const value = event.currentTarget.value;
+  if (value === "all") {
+    emit("outlineDepthChange", "all");
+    return;
+  }
+  emit("outlineDepthChange", value === "3" ? 3 : 2);
+};
 const surfaceWidth = computed(() => SURFACE_WIDTH[props.surface]);
 const items = computed<OutlineItem[]>(() =>
   props.headings.map((heading) => ({
@@ -115,36 +148,6 @@ const handleJump = (id: string) => {
   emit("navigate", Number(id));
   if (props.surface === "drawer") emit("close");
 };
-
-watch(
-  () => props.surface === "drawer" && props.headings.length >= 2,
-  async (open, _wasOpen, onCleanup) => {
-    if (!open || typeof document === "undefined") return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    let active = true;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      event.preventDefault();
-      emit("close");
-    };
-    onCleanup(() => {
-      active = false;
-      document.removeEventListener("keydown", onKeyDown);
-      if (previous?.isConnected) previous.focus({ preventScroll: true });
-    });
-    await nextTick();
-    if (!active) return;
-    const nav = navRef.value;
-    const target =
-      nav?.querySelector<HTMLElement>('[aria-current="true"]') ??
-      nav?.querySelector<HTMLElement>('ol button:not([tabindex="-1"])') ??
-      nav?.querySelector<HTMLElement>("button") ??
-      nav;
-    target?.focus({ preventScroll: true });
-    document.addEventListener("keydown", onKeyDown);
-  },
-  { immediate: true, flush: "post" },
-);
 </script>
 
 <style scoped>
@@ -181,13 +184,45 @@ watch(
 .folio-outline-header {
   display: flex;
   flex: none;
+  flex-direction: column;
+  border-bottom: 1px solid var(--doc-border);
+}
+.folio-outline-heading-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.25rem;
   min-height: 2.25rem;
   padding-block: 0.25rem;
   padding-inline: 0.75rem 0.375rem;
-  border-bottom: 1px solid var(--doc-border);
+}
+.folio-outline-depth-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  min-height: 2rem;
+  padding-block: 0.125rem;
+  padding-inline: 0.75rem 0.375rem;
+  color: var(--doc-text-muted);
+  font-size: 0.6875rem;
+}
+.folio-outline-depth-control span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.folio-outline-depth-control select {
+  flex: none;
+  min-width: 32px;
+  max-width: 60%;
+  min-height: 2rem;
+  padding-inline: 0.25rem;
+  border: 1px solid var(--doc-border);
+  border-radius: 0.25rem;
+  background: var(--doc-page);
+  color: var(--doc-text);
+  font: inherit;
 }
 .folio-outline-title {
   font-size: 0.75rem;
