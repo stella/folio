@@ -41,7 +41,7 @@ import { Fragment, Slice } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { redo, undo } from "prosemirror-history";
 import type { EditorState } from "prosemirror-state";
-import { EditorState as PMEditorState } from "prosemirror-state";
+import { EditorState as PMEditorState, TextSelection } from "prosemirror-state";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { CellSelection, TableMap } from "prosemirror-tables";
 
@@ -128,6 +128,7 @@ export const CANONICAL_TEXT_TOGGLE_OPERATIONS = [
 
 const expectsCanonicalDocumentChange = (operation: ConformanceOperation, before: EditorState) => {
   if (!CANONICAL_TEXT_TOGGLE_OPERATIONS.some((id) => id === operation.id)) return false;
+  if (!(before.selection instanceof TextSelection)) return false;
   const { from, to, empty } = before.selection;
   if (empty) return false;
   let selectedText = false;

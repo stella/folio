@@ -458,24 +458,27 @@ test.each(CANONICAL_TEXT_TOGGLE_OPERATIONS)(
   },
 );
 
-test("the text-toggle change contract does not require a document edit at a caret", async () => {
-  const id = "command:toggleItalic";
-  const operation = CONFORMANCE_OPERATIONS.find((candidate) => candidate.id === id);
-  if (!operation) throw new TypeError(`Missing text toggle operation ${id}`);
-  const shape = documentShape("plain-markdown");
-  const result = await runConformanceCase({
-    shape,
-    operation: { ...operation, run: () => false },
-    placement: "caret-middle",
-    refusalCases: declareCanonicalRefusalCases(
-      (["editing", "suggesting"] as const).map((mode) => ({
-        shape: shape.id,
-        operation: id,
-        placement: "caret-middle",
-        mode,
-      })),
-    ),
-  });
-  expect(result?.runs).toEqual({ editing: "refused", suggesting: "refused" });
-  expect(result?.violations).toEqual([]);
-});
+test.each(["caret-middle", "document"] as const)(
+  "the text-toggle change contract excludes %s",
+  async (placement) => {
+    const id = "command:toggleItalic";
+    const operation = CONFORMANCE_OPERATIONS.find((candidate) => candidate.id === id);
+    if (!operation) throw new TypeError(`Missing text toggle operation ${id}`);
+    const shape = documentShape("plain-markdown");
+    const result = await runConformanceCase({
+      shape,
+      operation: { ...operation, run: () => false },
+      placement,
+      refusalCases: declareCanonicalRefusalCases(
+        (["editing", "suggesting"] as const).map((mode) => ({
+          shape: shape.id,
+          operation: id,
+          placement,
+          mode,
+        })),
+      ),
+    });
+    expect(result?.runs).toEqual({ editing: "refused", suggesting: "refused" });
+    expect(result?.violations).toEqual([]);
+  },
+);
