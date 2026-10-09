@@ -1121,8 +1121,10 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           editorSession.type === "canonical"
             ? input.handleDOMEvents.compositionstart(pmView)
             : false,
-        compositionend: (pmView) =>
-          editorSession.type === "canonical" ? input.handleDOMEvents.compositionend(pmView) : false,
+        compositionend: (pmView, event) =>
+          editorSession.type === "canonical"
+            ? input.handleDOMEvents.compositionend(pmView, event)
+            : false,
         input: (pmView) =>
           editorSession.type === "canonical" ? input.handleDOMEvents.input(pmView) : false,
         paste: (pmView, event) => {

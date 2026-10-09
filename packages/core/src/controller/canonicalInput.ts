@@ -297,8 +297,11 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         composition.start(view);
         return false;
       },
-      compositionend: (view: EditorView) => {
-        composition.ended(view);
+      compositionend: (view: EditorView, event: Event) => {
+        composition.ended(
+          view,
+          event instanceof CompositionEvent && typeof event.data === "string" ? event.data : null,
+        );
         return false;
       },
       mousedown: (view: EditorView) => {
@@ -321,7 +324,10 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
           CANONICAL_COMPOSITION_INPUT_TYPES.some((inputType) => inputType === event.inputType)
         ) {
           if (composition.active) {
-            composition.authorizeNative(view);
+            composition.authorizeNative(
+              view,
+              event.inputType === "insertFromComposition" ? "explicitFinal" : "provisional",
+            );
             return false;
           }
           if (
@@ -356,6 +362,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
             view.composing &&
             (event.inputType === "insertText" || event.inputType === "insertReplacementText");
           const nativeStillComposing = view.composing;
+          if (nativeFinal) composition.authorizeNative(view, "explicitFinal");
           const recovered = composition.recover(view);
           composition.forgetCompleted();
           proposal = { type: "idle" };
