@@ -1335,10 +1335,10 @@
   color: var(--doc-text, inherit);
 }
 
-/* ── Side panels: outline column, rail and drawer; drawer scrim ────────
+/* ── Side panels: outline column, rail and comments drawer ────────────
    The editor lays the outline out beside the page (see
    `@stll/folio-core/panel-layout`): a column in the wide tier, a rail of heading
-   ticks in the medium tier, a drawer over the page otherwise. The list inside
+   ticks in the medium tier, or an explicitly opened width-clamped track. The list inside
    comes from the OutlineRail seam; the default one is styled here too (see
    `ui/defaults/outline-rail.tsx`). */
 .folio-outline {
@@ -1349,6 +1349,7 @@
   background: var(--doc-page);
   color: var(--doc-text);
   font-size: 0.8125rem;
+  padding-block-end: max(env(safe-area-inset-bottom, 0px), var(--document-panel-bottom-inset, 0px));
 }
 
 .folio-outline--column {
@@ -1362,18 +1363,13 @@
   z-index: 30;
   flex: none;
   align-items: center;
-  padding-block: 4px 8px;
+  padding-block-start: 4px;
+  padding-block-end: max(
+    8px,
+    env(safe-area-inset-bottom, 0px),
+    var(--document-panel-bottom-inset, 0px)
+  );
   border-inline-end: 1px solid var(--doc-border);
-}
-
-.folio-outline--drawer {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  z-index: 46;
-  max-width: calc(100% - 16px);
-  border-inline-end: 1px solid var(--doc-border);
-  box-shadow: 0 8px 28px var(--doc-shadow-md);
 }
 
 .folio-outline-header {
@@ -1389,9 +1385,13 @@
 }
 
 .folio-outline-title {
+  min-width: 0;
+  overflow: hidden;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--doc-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .folio-outline-icon-button {
@@ -1399,8 +1399,6 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
   padding: 0;
   border: 0;
   border-radius: 0.25rem;
@@ -1588,7 +1586,7 @@
   display: block;
 }
 
-/* Under an open drawer: dims the page and closes the drawer when pressed. */
+/* Under an open comments drawer: closes it when pressed. */
 .folio-panel-scrim {
   position: absolute;
   inset: 0;
@@ -1597,7 +1595,6 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .folio-outline--drawer,
   .docx-comments-sidebar[data-folio-comments-surface="drawer"],
   .folio-panel-scrim {
     animation: folio-panel-fade-in 0.16s ease-out;

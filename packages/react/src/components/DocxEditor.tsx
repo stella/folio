@@ -4595,7 +4595,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   ]);
   const openCommentThreadCount = useMemo(() => countOpenCommentThreads(comments), [comments]);
   const outlineToggle = ((): OutlineToggleState => {
-    if (panels.layout.outline !== "drawer") return "absent";
+    if (panels.layout.outline !== "drawer" && panels.layout.outline !== "expanded") {
+      return "absent";
+    }
     return panelOverlay === "outline" ? "open" : "closed";
   })();
   const panelToggles = useMemo(
@@ -5004,7 +5006,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                   data-folio-outline={panels.layout.outline}
                   data-folio-comments={panels.layout.comments}
                 >
-                  {(panels.layout.outline === "column" || panels.layout.outline === "rail") && (
+                  {panels.layout.outline !== "none" && panels.layout.outline !== "drawer" && (
                     <DocumentOutline
                       headings={outlineHeadings}
                       scrollContainerRef={scrollContainerRef}
@@ -5012,8 +5014,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                       activeId={activeHeadingId}
                       onJump={handleOutlineJump}
                       surface={panels.layout.outline}
+                      width={panels.layout.outlineTrackWidth}
                       expanded={panelOverlay === "outline"}
                       onExpand={toggleOutlineOverlay}
+                      onClose={panels.layout.outline === "expanded" ? closePanelOverlay : undefined}
                     />
                   )}
                   {/* Editor container - this is the scroll container (toolbar is above, not inside) */}
@@ -5332,20 +5336,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                   </div>
                   {/* end scroll container */}
 
-                  {panelOverlay === "outline" && (
-                    <>
-                      <PanelScrim onDismiss={closePanelOverlay} />
-                      <DocumentOutline
-                        headings={outlineHeadings}
-                        scrollContainerRef={scrollContainerRef}
-                        docSize={pagedEditorRef.current?.getView()?.state.doc.content.size ?? 0}
-                        activeId={activeHeadingId}
-                        onJump={handleOutlineJump}
-                        surface="drawer"
-                        onClose={closePanelOverlay}
-                      />
-                    </>
-                  )}
                   {commentsSurface === "drawer" && <PanelScrim onDismiss={dismissCommentsDrawer} />}
                 </div>
                 {/* end panels row */}
