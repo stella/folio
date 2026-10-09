@@ -1435,6 +1435,150 @@ describe("character style round-trip", () => {
 });
 
 describe("save stylesheet authority", () => {
+  test("package save keeps the parsed stylesheet after live source and saved output mutations", async () => {
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "ToggleHeading" },
+        content: [runText("Term")],
+      }),
+    );
+    const base = await reopenThroughDocx(input);
+    const capturedStyles = base.package.styles;
+    if (!capturedStyles) throw new Error("Expected parsed package styles");
+    const capturedStylesSnapshot = structuredClone(capturedStyles);
+    const proseDoc = toProseDoc(base, { styles: capturedStylesSnapshot });
+
+    const liveHeading = base.package.styles?.styles.find(
+      ({ styleId }) => styleId === "ToggleHeading",
+    );
+    if (!liveHeading) throw new Error("Expected the live heading style");
+    liveHeading.rPr = { bold: false };
+
+    const saved = fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } });
+    expect(saved.package.styles).toEqual(capturedStylesSnapshot);
+    const reopened = await reopenThroughDocx(saved);
+    expect(
+      findTextNode(toProseDoc(reopened), "Term").node.marks.some(
+        ({ type }) => type.name === "bold",
+      ),
+    ).toBe(true);
+
+    const savedHeading = saved.package.styles?.styles.find(
+      ({ styleId }) => styleId === "ToggleHeading",
+    );
+    if (!savedHeading) throw new Error("Expected the saved heading style");
+    expect(Object.isFrozen(saved.package.styles)).toBe(true);
+    expect(Object.isFrozen(savedHeading)).toBe(true);
+    expect(Object.isFrozen(savedHeading.rPr)).toBe(true);
+    expect(() => {
+      savedHeading.rPr = { bold: false };
+    }).toThrow(TypeError);
+    const savedAgain = fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } });
+    expect(savedAgain.package.styles).toBe(saved.package.styles);
+    expect(savedAgain.package.styles).toEqual(capturedStylesSnapshot);
+    // Callers that author additions explicitly own their mutable copy.
+    saved.package.styles = structuredClone(saved.package.styles);
+    const mutableHeading = saved.package.styles?.styles.find(
+      ({ styleId }) => styleId === "ToggleHeading",
+    );
+    if (!mutableHeading) throw new Error("Expected the caller-owned heading style");
+    mutableHeading.rPr = { bold: false };
+    expect(savedAgain.package.styles).toEqual(capturedStylesSnapshot);
+  });
+
+  test("package save appends new live style IDs beside authoritative captured definitions", async () => {
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "AddedHeading" },
+        content: [runText("Term")],
+      }),
+    );
+    const base = await reopenThroughDocx(input);
+    const liveStyles = base.package.styles;
+    if (!liveStyles) throw new Error("Expected an existing parsed stylesheet");
+    const addedStyle = {
+      styleId: "AddedHeading",
+      type: "paragraph",
+      rPr: { bold: true },
+    } as const satisfies StyleDefinitions["styles"][number];
+    liveStyles.styles.push(addedStyle);
+    const proseDoc = toProseDoc(base);
+    const saved = fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } });
+    const savedAddition = saved.package.styles?.styles.find(
+      ({ styleId }) => styleId === "AddedHeading",
+    );
+    expect(savedAddition).toEqual(addedStyle);
+    expect(savedAddition).not.toBe(addedStyle);
+    const reopened = await reopenThroughDocx(saved);
+    expect(
+      reopened.package.styles?.styles.find(({ styleId }) => styleId === "AddedHeading"),
+    ).toMatchObject(addedStyle);
+    expect(
+      findTextNode(toProseDoc(reopened), "Term").node.marks.some(
+        ({ type }) => type.name === "bold",
+      ),
+    ).toBe(true);
+  });
+
+  test("package save refuses duplicate additions before resolver and writer precedence can diverge", async () => {
+    const base = await reopenThroughDocx(
+      withStyles(
+        wrapParagraph({
+          type: "paragraph",
+          formatting: { styleId: "AddedHeading" },
+          content: [runText("Term")],
+        }),
+      ),
+    );
+    const liveStyles = base.package.styles;
+    if (!liveStyles) throw new Error("Expected an existing parsed stylesheet");
+    liveStyles.styles.push(
+      { styleId: "AddedHeading", type: "paragraph", rPr: { bold: true } },
+      { styleId: "AddedHeading", type: "paragraph", rPr: { bold: false } },
+    );
+    const proseDoc = toProseDoc(base);
+    expect(() => fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } })).toThrow(
+      "Duplicate added style ID: AddedHeading.",
+    );
+  });
+
+  test("package save retains added styles when the parsed package had no stylesheet part", async () => {
+    const input = wrapParagraph({
+      type: "paragraph",
+      formatting: { styleId: "AddedHeading" },
+      content: [runText("Term")],
+    });
+    const zip = await JSZip.loadAsync(await createDocx(input));
+    zip.remove("word/styles.xml");
+    const base = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(base.package.styles).toBeUndefined();
+    const addedStyles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "AddedHeading",
+          type: "paragraph",
+          rPr: { bold: true },
+        },
+      ],
+    };
+    base.package.styles = structuredClone(addedStyles);
+    const proseDoc = toProseDoc(base, { styles: addedStyles });
+
+    const saved = fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } });
+    expect(saved.package.styles).toEqual(addedStyles);
+    const reopened = await reopenThroughDocx(saved);
+    expect(
+      findTextNode(toProseDoc(reopened), "Term").node.marks.some(
+        ({ type }) => type.name === "bold",
+      ),
+    ).toBe(true);
+  });
+
   test.each(["absent", "different"] as const)(
     "supplied stylesheet remains authoritative after save/reopen with an %s base stylesheet",
     async (baseStyles) => {

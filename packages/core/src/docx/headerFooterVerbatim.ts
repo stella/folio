@@ -1,5 +1,5 @@
 import type { BlockContent, Document, HeaderFooter } from "../types/document";
-import { Result } from "better-result";
+import { Result, panic } from "better-result";
 import { canonicalJson } from "../utils/canonicalJson";
 
 const fingerprintBaselines = new WeakMap<HeaderFooter, { fingerprint: string; value: unknown }>();
@@ -29,11 +29,19 @@ const contentBaselines = new WeakMap<
   | {
       type: "body";
       fingerprint: { type: "pending" } | { type: "captured"; value: string };
+      kind: "mainPart";
       xml: string;
       body: Document["package"]["document"];
-      resourceStyles: Document["package"]["styles"];
+      resourceStyles: Readonly<NonNullable<Document["package"]["styles"]>> | undefined;
+      styleIds: ReadonlySet<string>;
       resourceRelationships: Document["package"]["relationships"];
       resourceMedia: ReadonlyMap<string, { data: ArrayBuffer; mimeType: string }>;
+    }
+  | {
+      type: "body";
+      kind: "noMainPart";
+      resourceStyles: Readonly<NonNullable<Document["package"]["styles"]>> | undefined;
+      styleIds: ReadonlySet<string>;
     }
 >();
 
@@ -233,24 +241,43 @@ export const clearHeaderFooterVerbatimXml = (hf: HeaderFooter): void => {
   Reflect.deleteProperty(hf, BASELINE_HANDLE);
 };
 
-/** Capture the body in the same trusted package registry as secondary stories. */
-export const captureDocumentSourceBaseline = (document: Document, xml: string): void => {
-  const body = structuredClone(document.package.document);
+/** Freeze the parsed plain-object graph once, retaining shared references. */
+const freezeSourceStyles = (value: unknown, visited = new WeakSet<object>()): void => {
+  if (typeof value !== "object" || value === null || visited.has(value)) return;
+  visited.add(value);
+  for (const child of Object.values(value)) freezeSourceStyles(child, visited);
+  Object.freeze(value);
+};
+
+/** Capture parsed resources on the same trusted handle, including an absent main part. */
+export const captureDocumentSourceBaseline = (
+  document: Document,
+  xml: string | undefined,
+): void => {
   const handle = {};
-  contentBaselines.set(handle, {
-    type: "body",
-    fingerprint: { type: "pending" },
-    xml,
-    body,
-    resourceStyles: structuredClone(document.package.styles),
-    resourceRelationships: structuredClone(document.package.relationships),
-    resourceMedia: new Map(
-      [...(document.package.media ?? [])].map(([path, media]) => [
-        path,
-        { data: media.data, mimeType: media.mimeType },
-      ]),
-    ),
-  });
+  const resourceStyles = structuredClone(document.package.styles);
+  freezeSourceStyles(resourceStyles);
+  const styleIds = new Set(resourceStyles?.styles.map(({ styleId }) => styleId));
+  if (xml === undefined) {
+    contentBaselines.set(handle, { type: "body", kind: "noMainPart", resourceStyles, styleIds });
+  } else {
+    contentBaselines.set(handle, {
+      type: "body",
+      kind: "mainPart",
+      fingerprint: { type: "pending" },
+      xml,
+      body: structuredClone(document.package.document),
+      resourceStyles,
+      styleIds,
+      resourceRelationships: structuredClone(document.package.relationships),
+      resourceMedia: new Map(
+        [...(document.package.media ?? [])].map(([path, media]) => [
+          path,
+          { data: media.data, mimeType: media.mimeType },
+        ]),
+      ),
+    });
+  }
   Object.defineProperty(document.package.document, BASELINE_HANDLE, {
     value: handle,
     enumerable: true,
@@ -261,6 +288,33 @@ export const captureDocumentSourceBaseline = (document: Document, xml: string): 
     registry.set("word/document.xml", new Map([["body", handle]]));
     packageBaselines.set(document.originalBuffer, registry);
   }
+};
+
+// Styles remain private in the same capture as the parsed document body.
+const readDocumentSourceCapture = (document: Document) => {
+  const body = document.package.document;
+  const handle =
+    BASELINE_HANDLE in body
+      ? body[BASELINE_HANDLE]
+      : document.originalBuffer &&
+        packageBaselines.get(document.originalBuffer)?.get("word/document.xml")?.get("body");
+  if (handle === undefined) return { type: "missing" } as const;
+  if (typeof handle !== "object" || handle === null) return { type: "mismatch" } as const;
+  const baseline = contentBaselines.get(handle);
+  if (!baseline || baseline.type !== "body") return { type: "mismatch" } as const;
+  return { type: "captured", baseline } as const;
+};
+
+/** Read the identity-stable, deeply frozen stylesheet without cloning or body comparison. */
+export const getDocumentSourceStyles = (
+  document: Document,
+  liveStyles?: Document["package"]["styles"],
+) => {
+  const source = readDocumentSourceCapture(document);
+  if (source.type !== "captured") return source;
+  const additions =
+    liveStyles?.styles.filter(({ styleId }) => !source.baseline.styleIds.has(styleId)) ?? [];
+  return { type: "captured", styles: source.baseline.resourceStyles, additions } as const;
 };
 
 export const getDocumentSourceBaseline = (
@@ -277,16 +331,19 @@ export const getDocumentSourceBaseline = (
       resourceRelationships: Document["package"]["relationships"];
       resourceMedia: ReadonlyMap<string, { data: ArrayBuffer; mimeType: string }>;
     } => {
-  const body = document.package.document;
-  const handle =
-    BASELINE_HANDLE in body
-      ? body[BASELINE_HANDLE]
-      : document.originalBuffer &&
-        packageBaselines.get(document.originalBuffer)?.get("word/document.xml")?.get("body");
-  if (handle === undefined) return { type: "missing" };
-  if (typeof handle !== "object" || handle === null) return { type: "mismatch" };
-  const baseline = contentBaselines.get(handle);
-  if (!baseline || baseline.type !== "body") return { type: "mismatch" };
+  const source = readDocumentSourceCapture(document);
+  if (source.type !== "captured") return source;
+  const { baseline } = source;
+  switch (baseline.kind) {
+    case "noMainPart":
+      return { type: "missing" };
+    case "mainPart":
+      break;
+    default: {
+      const unreachable: never = baseline;
+      return panic(`Unexpected document source capture: ${JSON.stringify(unreachable)}`);
+    }
+  }
   const fingerprint = JSON.stringify(baseline.body);
   // The cloned body stays private until this first read. Capture its integrity
   // fingerprint lazily so parsing alone never pays for save-only comparisons.

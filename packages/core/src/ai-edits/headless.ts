@@ -76,7 +76,7 @@ import {
   resolveAllChangesInHeadlessState,
   suggestionIdOfRevision,
 } from "../prosemirror/commands/comments";
-import { proseDocToBlocks, updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
+import { fromProseDoc, proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import {
   deleteNoteWithReference,
   noteDeletionRevisions,
@@ -2809,7 +2809,13 @@ export class FolioDocxReviewer {
             ...this.baseDocument,
             package: { ...this.baseDocument.package, styles: snapshot.importedStyles },
           };
-    const document = updateDocumentContent(sourceDocument, snapshot.mainState.doc);
+    // canonical-gap: pm-save-projection
+    const document = fromProseDoc(snapshot.mainState.doc, sourceDocument, {
+      stylesheetSource:
+        snapshot.importedStyles === undefined
+          ? { type: "package" }
+          : { type: "supplied", styles: snapshot.importedStyles },
+    });
     if (snapshot.finalSectionPropertiesOverride !== undefined) {
       document.package.document.finalSectionProperties = snapshot.finalSectionPropertiesOverride;
     }

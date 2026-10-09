@@ -886,7 +886,7 @@ export async function parseDocxWithPreviewBudget(
 
     onProgress("Complete", 100);
     captureHeaderFooterPackageBaselines(document);
-    if (raw.documentXml) captureDocumentSourceBaseline(document, raw.documentXml);
+    captureDocumentSourceBaseline(document, raw.documentXml ?? undefined);
     return document;
   } catch (error) {
     if (error instanceof DocxEncryptionError) {
