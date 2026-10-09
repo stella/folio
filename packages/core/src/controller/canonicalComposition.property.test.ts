@@ -3,6 +3,12 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import fc from "fast-check";
 import { Schema } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
+import type { Transaction } from "prosemirror-state";
+import type { Node as ProseMirrorNode } from "prosemirror-model";
+import { DOCUMENT_SHAPES, shapeArrayBuffer } from "../__tests__/documentShapes";
+import { parseDocx } from "../docx/parser";
+import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
+import { createCanonicalComposition } from "./canonicalComposition";
 import { EditorView } from "prosemirror-view";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { CANONICAL_COMPOSITION_INPUT_TYPES, createCanonicalInputBoundary } from "./canonicalInput";
@@ -15,12 +21,12 @@ import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { schema as canonicalSchema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
 
-setDefaultTimeout(propertyTestTimeout(30_000));
+setDefaultTimeout(propertyTestTimeout(60_000));
 beforeAll(() => GlobalRegistrator.register());
 afterAll(() => GlobalRegistrator.unregister());
 
-const createLateFinalRig = () => {
-  const source = createEmptyDocument({ initialText: "alpha" });
+const createLateFinalRig = (initialText = "alpha") => {
+  const source = createEmptyDocument({ initialText });
   const paragraph = source.package.document.content.at(0);
   if (!paragraph || paragraph.type !== "paragraph") throw new TypeError("Missing seed paragraph");
   paragraph.paraId = "12345678";
@@ -82,6 +88,16 @@ const createLateFinalRig = () => {
     session,
     view,
     refusals,
+    history: (direction: "undo" | "redo") =>
+      view.dom.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "z",
+          ctrlKey: true,
+          shiftKey: direction === "redo",
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
     destroy: () => {
       boundary.reset();
       view.destroy();
@@ -116,6 +132,384 @@ const createLateFinalRig = () => {
     },
   };
 };
+
+type NativeDeletionOptions = {
+  view: EditorView;
+  inputType: string;
+} & ({ type: "withoutTarget" } | { type: "caret" | "selected"; from: number; to: number });
+
+const nativeDeletion = (options: NativeDeletionOptions) => {
+  const event = new InputEvent("beforeinput", {
+    bubbles: true,
+    cancelable: true,
+    inputType: options.inputType,
+    isComposing: false,
+  });
+  if (options.type === "withoutTarget") {
+    Object.defineProperty(event, "getTargetRanges", { value: () => [] });
+    return event;
+  }
+  const start = options.view.domAtPos(options.from);
+  const end = options.view.domAtPos(options.to);
+  const target = {
+    startContainer: start.node,
+    startOffset: start.offset,
+    endContainer: end.node,
+    endOffset: end.offset,
+    collapsed: options.from === options.to,
+  } satisfies StaticRange;
+  Object.defineProperty(event, "getTargetRanges", { value: () => [target] });
+  const selection = document.getSelection();
+  if (!selection) throw new TypeError("Missing native selection");
+  if (options.type === "caret") {
+    const caret = options.view.domAtPos(options.view.state.selection.head);
+    selection.collapse(caret.node, caret.offset);
+    return event;
+  }
+  const selected = document.createRange();
+  selected.setStart(target.startContainer, target.startOffset);
+  selected.setEnd(target.endContainer, target.endOffset);
+  selection.removeAllRanges();
+  selection.addRange(selected);
+  return event;
+};
+
+test("native composition cancellation preserves the captured selection and journal", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(
+        fc.array(fc.constantFrom("契", "😀", "مرحبا", "alpha", "é"), {
+          minLength: 1,
+          maxLength: 4,
+        }),
+        fc.integer({ min: 1, max: 6 }),
+        fc.integer({ min: 1, max: 6 }),
+        (updates, anchor, head) => {
+          for (const inputType of ["deleteContentBackward", "deleteContentForward"]) {
+            for (const phase of ["provisional", "refused"]) {
+              for (const history of ["empty", "undo", "redo"] as const) {
+                const rig = createLateFinalRig();
+                try {
+                  if (history !== "empty") {
+                    const commit = rig.session
+                      .prepareReplace(rig.view.state, {
+                        from: 1,
+                        to: 6,
+                        text: "omega",
+                        semantic: "typing",
+                      })
+                      .unwrap();
+                    rig.view.updateState(
+                      publishCanonicalProjection({
+                        session: rig.session,
+                        state: rig.view.state,
+                        commit,
+                      }).unwrap().state,
+                    );
+                    if (history === "redo") rig.history("undo");
+                  }
+                  // Refused cancellation targets the restored non-empty selection.
+                  let selectedHead = head;
+                  if (phase === "refused" && anchor === head)
+                    selectedHead = head === 6 ? 5 : head + 1;
+                  rig.view.dispatch(
+                    rig.view.state.tr.setSelection(
+                      TextSelection.create(rig.view.state.doc, anchor, selectedHead),
+                    ),
+                  );
+                  const baseline = rig.view.state;
+                  const document = rig.session.document;
+                  const version = rig.session.version;
+                  const canUndo = rig.session.canUndo;
+                  const canRedo = rig.session.canRedo;
+                  rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+                  let to = baseline.selection.to;
+                  for (const text of updates) {
+                    const transaction = rig.view.state.tr
+                      .insertText(text, baseline.selection.from, to)
+                      .setMeta("composition", 1);
+                    if (phase === "refused")
+                      transaction.addMark(
+                        baseline.selection.from,
+                        baseline.selection.from + text.length,
+                        canonicalSchema.mark("bold"),
+                      );
+                    rig.view.dispatch(transaction);
+                    to =
+                      phase === "refused"
+                        ? baseline.selection.to
+                        : baseline.selection.from + text.length;
+                  }
+                  expect(rig.view.composing).toBe(true);
+                  // Chromium cancels through a non-composing deletion before
+                  // compositionend; it must not delete the restored selection.
+                  const cancel = nativeDeletion({
+                    view: rig.view,
+                    inputType,
+                    type: "selected",
+                    from: baseline.selection.from,
+                    to,
+                  });
+                  rig.view.dom.dispatchEvent(cancel);
+                  jest.advanceTimersByTime(26);
+                  expect(cancel.defaultPrevented).toBe(true);
+                  expect(rig.view.composing).toBe(false);
+                  expect(rig.boundary.isComposing).toBe(false);
+                  expect(rig.view.state.doc.eq(baseline.doc)).toBe(true);
+                  expect(rig.view.state.selection.eq(baseline.selection)).toBe(true);
+                  expect(rig.session.document).toEqual(document);
+                  expect(rig.session.version).toBe(version);
+                  expect(rig.session.canUndo).toBe(canUndo);
+                  expect(rig.session.canRedo).toBe(canRedo);
+                  expect(rig.refusals).toHaveLength(phase === "refused" ? 1 : 0);
+                  if (history !== "empty") {
+                    rig.history(history);
+                    expect(rig.view.state.doc.textContent).toBe(
+                      history === "undo" ? "alpha" : "omega",
+                    );
+                    rig.history(history === "undo" ? "redo" : "undo");
+                    expect(rig.session.document).toEqual(document);
+                  }
+                } finally {
+                  rig.destroy();
+                }
+              }
+            }
+          }
+        },
+      ),
+      { numRuns: 20 },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("ordinary deletion after native compositionend commits and undoes as a new gesture", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(fc.constantFrom("契約", "alphabet", "😀", "مرحبا", "é"), (text) => {
+        for (const delay of [0, 24, 26]) {
+          for (const inputType of ["deleteContentBackward", "deleteContentForward"]) {
+            const forward = inputType === "deleteContentForward";
+            const rig = createLateFinalRig(forward ? "alphax" : "alpha");
+            try {
+              const original = rig.session.document;
+              rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+              rig.view.dispatch(
+                rig.view.state.tr
+                  .insertText(forward ? text : `${text}x`, 1, 6)
+                  .setMeta("composition", 1),
+              );
+              rig.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+              jest.advanceTimersByTime(delay);
+              rig.view.dom.dispatchEvent(
+                new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType }),
+              );
+              jest.advanceTimersByTime(26);
+              expect(rig.view.state.doc.textContent).toBe(text);
+              expect(rig.refusals).toEqual([]);
+              rig.history("undo");
+              expect(rig.view.state.doc.textContent).toBe(`${text}x`);
+              rig.history("undo");
+              expect(rig.session.document).toEqual(original);
+              rig.history("redo");
+              expect(rig.view.state.doc.textContent).toBe(`${text}x`);
+              rig.history("redo");
+              expect(rig.view.state.doc.textContent).toBe(text);
+            } finally {
+              rig.destroy();
+            }
+          }
+        }
+      }),
+      { numRuns: 10 },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("ordinary deletion recovers a missing native compositionend as a new gesture", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(fc.constantFrom("契約", "alphabet", "😀", "مرحبا", "é", ""), (text) => {
+        for (const origin of ["keyboard", "inputOnly"]) {
+          for (const target of ["absent", "character", "selectedPartial"]) {
+            // A selected whole one-character proposal is the cancellation shape.
+            // Ordinary deletion uses a caret or selects only part of a longer proposal.
+            if (target === "selectedPartial" && text === "") continue;
+            for (const inputType of ["deleteContentBackward", "deleteContentForward"]) {
+              const forward = inputType === "deleteContentForward";
+              const rig = createLateFinalRig(forward ? "alphax" : "alpha");
+              try {
+                const original = rig.session.document;
+                rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+                rig.view.dispatch(
+                  rig.view.state.tr
+                    .insertText(forward ? text : `${text}x`, 1, 6)
+                    .setMeta("composition", 1),
+                );
+                const keydown = new KeyboardEvent("keydown", {
+                  key: forward ? "Delete" : "Backspace",
+                  bubbles: true,
+                  cancelable: true,
+                  isComposing: false,
+                });
+                if (origin === "keyboard") {
+                  rig.view.dom.dispatchEvent(keydown);
+                  expect(keydown.defaultPrevented).toBe(false);
+                }
+                const deletion = nativeDeletion(
+                  target === "absent"
+                    ? { view: rig.view, inputType, type: "withoutTarget" }
+                    : {
+                        view: rig.view,
+                        inputType,
+                        type: target === "selectedPartial" ? "selected" : "caret",
+                        from: 1 + text.length,
+                        to: 2 + text.length,
+                      },
+                );
+                rig.view.dom.dispatchEvent(deletion);
+                jest.advanceTimersByTime(26);
+                expect(
+                  rig.view.state.doc.textContent,
+                  `${origin}/${target}/${inputType}/${JSON.stringify(text)}`,
+                ).toBe(text);
+                expect(rig.refusals).toEqual([]);
+                rig.history("undo");
+                expect(
+                  rig.view.state.doc.textContent,
+                  `${origin}/${target}/${inputType}/${JSON.stringify(text)}`,
+                ).toBe(`${text}x`);
+                rig.history("undo");
+                expect(rig.session.document).toEqual(original);
+                rig.history("redo");
+                expect(
+                  rig.view.state.doc.textContent,
+                  `${origin}/${target}/${inputType}/${JSON.stringify(text)}`,
+                ).toBe(`${text}x`);
+                rig.history("redo");
+                expect(
+                  rig.view.state.doc.textContent,
+                  `${origin}/${target}/${inputType}/${JSON.stringify(text)}`,
+                ).toBe(text);
+              } finally {
+                rig.destroy();
+              }
+            }
+          }
+        }
+      }),
+      { numRuns: 10 },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("word, line and cut deletion remain explicit refusals after missing-end recovery", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(fc.constantFrom("契約", "😀", "مرحبا", "é"), (text) => {
+        for (const inputType of [
+          "deleteWordBackward",
+          "deleteWordForward",
+          "deleteSoftLineBackward",
+          "deleteSoftLineForward",
+          "deleteByCut",
+        ]) {
+          const rig = createLateFinalRig();
+          try {
+            const original = rig.session.document;
+            rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+            rig.view.dispatch(rig.view.state.tr.insertText(text, 1, 6).setMeta("composition", 1));
+            const deletion = nativeDeletion({
+              view: rig.view,
+              inputType,
+              type: "selected",
+              from: 1,
+              to: 1 + text.length,
+            });
+            rig.view.dom.dispatchEvent(deletion);
+            jest.advanceTimersByTime(26);
+            expect(deletion.defaultPrevented).toBe(true);
+            expect(rig.view.composing).toBe(false);
+            expect(rig.boundary.isComposing).toBe(false);
+            expect(rig.view.state.doc.textContent).toBe(text);
+            expect(rig.refusals.map(({ message }) => message)).toEqual([
+              `Input ${inputType} is unavailable in this session.`,
+            ]);
+            rig.history("undo");
+            expect(rig.session.document).toEqual(original);
+            expect(rig.session.canUndo).toBe(false);
+            rig.history("redo");
+            expect(rig.view.state.doc.textContent).toBe(text);
+          } finally {
+            rig.destroy();
+          }
+        }
+      }),
+      { numRuns: 10 },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("in-composition deletion edits the native proposal without cancelling its baseline", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(fc.constantFrom("契約", "alphabet", "😀", "مرحبا", "é"), (text) => {
+        for (const inputType of ["deleteContentBackward", "deleteContentForward"]) {
+          const rig = createLateFinalRig();
+          try {
+            const original = rig.session.document;
+            rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+            const transaction = rig.view.state.tr.insertText(`${text}x`, 1, 6);
+            if (inputType === "deleteContentForward")
+              transaction.setSelection(TextSelection.create(transaction.doc, 1 + text.length));
+            rig.view.dispatch(transaction.setMeta("composition", 1));
+            const deletion = new InputEvent("beforeinput", {
+              bubbles: true,
+              cancelable: true,
+              inputType,
+              isComposing: true,
+            });
+            rig.view.dom.dispatchEvent(deletion);
+            expect(deletion.defaultPrevented).toBe(false);
+            expect(rig.boundary.isComposing).toBe(true);
+            rig.view.dispatch(rig.view.state.tr.delete(1 + text.length, 2 + text.length));
+            expect(rig.view.state.doc.textContent).toBe(text);
+            expect(rig.boundary.isComposing).toBe(true);
+            rig.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+            jest.advanceTimersByTime(26);
+            expect(rig.session.document.package.document.content).not.toEqual(
+              original.package.document.content,
+            );
+            expect(rig.view.state.doc.textContent).toBe(text);
+            expect(rig.refusals).toEqual([]);
+            rig.history("undo");
+            expect(rig.session.document).toEqual(original);
+            rig.history("redo");
+            expect(rig.view.state.doc.textContent).toBe(text);
+          } finally {
+            rig.destroy();
+          }
+        }
+      }),
+      { numRuns: 10 },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
 
 test("fake-clock final input before and after expiry is idempotent and undoes as one gesture", () => {
   jest.useFakeTimers();
@@ -606,4 +1000,99 @@ test("every canonical composition exit ends native composition and admits DOM re
     ),
     { numRuns: 20 },
   );
+});
+
+// Absent from every document shape, so a positive-control edit never shares text with its range.
+const EDIT_TEXT = "☃";
+
+type TextRange = { from: number; to: number };
+
+const plainTextRanges = (doc: ProseMirrorNode): TextRange[] => {
+  const ranges: TextRange[] = [];
+  doc.descendants((node, pos) => {
+    if (node.text === undefined) return;
+    ranges.push({ from: pos, to: pos + node.text.length });
+  });
+  return ranges;
+};
+
+const loadProjections = async () => {
+  const projections = [];
+  for (const shape of DOCUMENT_SHAPES) {
+    const source = await parseDocx(await shapeArrayBuffer(shape), {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    const session = createCanonicalSession(source);
+    if (session.isOk()) projections.push({ id: shape.id, doc: session.value.projection.doc });
+  }
+  return projections;
+};
+
+const compose = (baseline: EditorState, nativeEdit: (state: EditorState) => Transaction) => {
+  const inputs: { from: number; to: number; text: string }[] = [];
+  const refusals: string[] = [];
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const view = new EditorView(mount, { state: baseline });
+  const composition = createCanonicalComposition({
+    begin: () => true,
+    end: () => {},
+    replace: ({ from, to, text }) => inputs.push({ from, to, text }),
+    refuse: (reason) => refusals.push(reason),
+  });
+  composition.start(view);
+  composition.accept(view, nativeEdit(view.state).setMeta("composition", 1));
+  composition.recover(view);
+  const state = view.state;
+  view.destroy();
+  mount.remove();
+  return { inputs, refusals, state };
+};
+
+test("a native rewrite of identical text never commits a replacement", async () => {
+  const docs = await loadProjections();
+  const executed = { markLoss: 0, textEdit: 0 };
+  assertProperty(
+    fc.property(
+      fc.constantFrom(...docs),
+      fc.nat(),
+      fc.nat(),
+      fc.nat(),
+      ({ doc }, rangeIndex, startOffset, length) => {
+        const ranges = plainTextRanges(doc);
+        const range = ranges.at(rangeIndex % ranges.length);
+        if (range === undefined) return;
+        const from = range.from + (startOffset % (range.to - range.from));
+        const to = from + 1 + (length % (range.to - from));
+        const rangeText = doc.textBetween(range.from, range.to, "", "");
+        if (
+          splitsSurrogatePair(rangeText, from - range.from) ||
+          splitsSurrogatePair(rangeText, to - range.from)
+        )
+          return;
+        const baseline = EditorState.create({
+          doc,
+          selection: TextSelection.create(doc, from, to),
+        });
+        const sameText = doc.textBetween(from, to, "", "");
+        const rewrite = (state: EditorState) => state.tr.insertText(sameText, from, to);
+        if (!baseline.apply(rewrite(baseline)).doc.eq(doc)) executed.markLoss++;
+
+        const native = compose(baseline, rewrite);
+        expect(native.inputs).toEqual([]);
+        expect(native.state.doc.eq(doc)).toBe(true);
+        expect(native.state.selection.eq(baseline.selection)).toBe(true);
+
+        // Positive control: a real text change through the same path still commits exactly.
+        const edit = compose(baseline, (state) => state.tr.insertText(EDIT_TEXT, from, to));
+        expect(edit.refusals).toEqual([]);
+        expect(edit.inputs).toEqual([{ from, to, text: EDIT_TEXT }]);
+        executed.textEdit++;
+      },
+    ),
+  );
+  expect(docs.length).toBeGreaterThan(0);
+  expect(executed.markLoss).toBeGreaterThan(0);
+  expect(executed.textEdit).toBeGreaterThan(0);
 });

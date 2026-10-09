@@ -1,8 +1,4 @@
-import {
-  CANONICAL_GAP,
-  usesCanonicalSession,
-  type CanonicalGap,
-} from "@stll/folio-core/types/canonicalCapabilities";
+import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
 /** Thin React surface over core's persistent note-story editor manager. */
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -138,17 +134,12 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
           onSessionRefusal: (reason, gap) => refusalRef.current?.(reason, gap),
           onTransaction: ({ docChanged, selectionChanged, view }) => {
             if (docChanged) {
-              if (usesCanonicalSession(sessionRef.current, CANONICAL_GAP.secondaryStories)) {
-                const canonical = canonicalApiRef.current?.()?.getCanonicalDocument();
-                if (canonical) onDocumentChangeRef.current(canonical);
-              } else {
-                const current = documentRef.current;
-                if (current) {
-                  onDocumentChangeRef.current(
-                    managerRef.current?.snapshotDocument(current) ?? current,
-                  );
-                }
-              }
+              const current =
+                canonicalApiRef.current?.()?.getCanonicalDocument() ?? documentRef.current;
+              if (current)
+                onDocumentChangeRef.current(
+                  managerRef.current?.snapshotDocument(current) ?? current,
+                );
             }
             onStoryChangeRef.current(view, docChanged, selectionChanged);
           },

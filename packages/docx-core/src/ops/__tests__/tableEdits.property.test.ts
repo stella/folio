@@ -1149,3 +1149,29 @@ describe("semantic table edit properties", () => {
     }
   });
 });
+
+test("table semantic allocation excludes lifetime-retired paragraph ids", () => {
+  assertProperty(
+    fc.property(fc.integer({ min: 2, max: 4 }), fc.boolean(), (height, nested) => {
+      const f = fixture({ width: 3, height, variant: 0, nested, empty: true, explicitGrid: true });
+      const reservedBlockIds = new Set(Array.from({ length: 20 }, (_, index) => id(index + 3)));
+      const intent = {
+        type: "table",
+        operation: {
+          type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+          ...target(f.target),
+          column: 0,
+          width: 700,
+        },
+      } as const;
+      const compiled = compileEditorIntent(f.document, {
+        intent,
+        mode: { type: "editing", reservedBlockIds },
+      }).unwrap();
+      const changed = applyDocumentOps(f.document, compiled.ops).unwrap();
+      expect(changed.touched.inserted.length).toBeGreaterThan(0);
+      expect(changed.touched.inserted.some((blockId) => reservedBlockIds.has(blockId))).toBe(false);
+    }),
+    { numRuns: 12 },
+  );
+});

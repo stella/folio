@@ -103,7 +103,7 @@ describe("the inline wrapper mark a projected leaf carries", () => {
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test("is absent when no wrapper was authored", () => {

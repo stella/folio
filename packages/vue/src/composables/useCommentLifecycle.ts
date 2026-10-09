@@ -40,6 +40,10 @@ export type UseCommentLifecycleOptions = {
   createComment: (text: string, parentId?: number) => Comment;
   /** Append a comment + emit the change (from useCommentManagement). */
   pushComment: (comment: Comment) => void;
+  /** The session kind controls whether draft highlights belong in ProseMirror. */
+  sessionKind: () => "canonical" | "prosemirror";
+  /** Null selects the legacy comment-mark route; false means canonical refusal. */
+  createCanonicalComment: (text: string, range: CommentMarkRange) => number | false | null;
   reLayout: () => void;
   showSidebar: Ref<boolean>;
   /** Highlight the freshly-added comment card in the sidebar. */
@@ -132,7 +136,10 @@ export function useCommentLifecycle(
       floatingCommentButton.value = null;
       return;
     }
-    if (!applyCommentMarkRange(view, safeRange, PENDING_COMMENT_ID, { selectEnd: true })) {
+    if (
+      options.sessionKind() === "prosemirror" &&
+      !applyCommentMarkRange(view, safeRange, PENDING_COMMENT_ID, { selectEnd: true })
+    ) {
       floatingCommentButton.value = null;
       commentSelectionRange.value = null;
       return;
@@ -155,6 +162,15 @@ export function useCommentLifecycle(
     const range = commentSelectionRange.value;
     if (!view || !range) return false;
 
+    const canonicalResult = options.createCanonicalComment(text, range);
+    if (canonicalResult !== null) {
+      if (canonicalResult === false) return false;
+      options.reLayout();
+      options.setActiveSidebarItem(`comment-${canonicalResult}`);
+      resetAddCommentState();
+      return true;
+    }
+
     const comment = options.createComment(text);
     if (!applyCommentMarkRange(view, range, comment.id, { replacePending: true })) return false;
 
@@ -167,7 +183,7 @@ export function useCommentLifecycle(
 
   function handleCancelAddComment(): void {
     const view = options.editorView.value;
-    if (view && commentSelectionRange.value) {
+    if (view && commentSelectionRange.value && options.sessionKind() === "prosemirror") {
       removePendingCommentMarkRange(view, commentSelectionRange.value);
     }
     resetAddCommentState();

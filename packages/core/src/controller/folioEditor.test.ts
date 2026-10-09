@@ -4,6 +4,7 @@ import type { EditorView } from "prosemirror-view";
 
 import type { Layout } from "../layout-engine/types";
 import type { Document } from "../types/document";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { createFolioEditor, type FolioEditorDocumentIO } from "./folioEditor";
 import { createFolioEditorEmitter } from "./folioEditorEvents";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
@@ -69,6 +70,7 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
       calls.push({ method: "getDocument", args: [] });
       return sentinelDocument;
     },
+    getCanonicalComments: () => null,
     getCanonicalDocument: () => null,
     captureCanonicalSave: () => null,
     isCanonicalSaveCurrent: () => false,
@@ -80,6 +82,8 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
     },
     applyCanonicalStoryHistory: () => false,
     applyCanonicalOperations: () => false,
+    applyCanonicalComment: () => null,
+    applyCanonicalSectionProperties: () => null,
     getCanonicalStorySelection: () => null,
     getCanonicalStoryProjection: () => null,
     replaceCanonicalStoryText: () => false,
@@ -179,10 +183,16 @@ describe("createFolioEditor", () => {
 
     expect(editor.getState()).toBeNull();
     expect(editor.updateCanonicalInputLifecycle("beginComposition")).toBe(false);
+    expect(editor.applyCanonicalSectionProperties({ marginLeft: 900 })).toEqual({
+      status: "refused",
+      gap: CANONICAL_GAP.sectionProperties,
+      message: "The editor is not ready for section changes.",
+    });
 
     const { api } = createFakeApi();
     current = api;
     expect(editor.getState()).toBe(sentinelState);
+    expect(editor.applyCanonicalSectionProperties({ marginLeft: 900 })).toBeNull();
   });
 
   test("getters yield documented defaults when there is no view", () => {

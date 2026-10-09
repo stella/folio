@@ -272,6 +272,10 @@ for (const { seed, path, kinds } of [
     if (actions === undefined) throw new TypeError("Missing canonical regression trace");
     expect(actions.length).toBeGreaterThan(0);
     expect(actions.map(({ kind }) => kind)).toEqual(kinds);
+    if (seed === 431 && path === "8")
+      expect(actions).toEqual([
+        { kind: "imeReplacement", updates: ["shall", "café 東京 é"], completion: "cancel" },
+      ]);
     await page.goto("/?session=canonical");
     await page.waitForSelector(".layout-page");
     await evaluateCanonicalPage(page, () =>
@@ -289,7 +293,13 @@ for (const { seed, path, kinds } of [
         actions,
         missing: createMissingOpBurndown(),
       });
-      expect(applied).toBeGreaterThan(0);
+      if (
+        actions.every(
+          (action) => action.kind === "imeReplacement" && action.completion === "cancel",
+        )
+      )
+        expect(applied).toBe(0);
+      else expect(applied).toBeGreaterThan(0);
     }
   });
 }

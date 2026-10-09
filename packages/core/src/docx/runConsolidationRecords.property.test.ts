@@ -227,70 +227,82 @@ describe("a merge needs the whole record to agree", () => {
 });
 
 describe("the merge rule is what parse converges on", () => {
-  test("adjacent runs merge exactly when their records agree", async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.array(runRecordArbitrary, { minLength: 2, maxLength: 5 }),
-        async (records) => {
-          const parsed = runsOf(await open(documentXml(records)));
+  test(
+    "adjacent runs merge exactly when their records agree",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.array(runRecordArbitrary, { minLength: 2, maxLength: 5 }),
+          async (records) => {
+            const parsed = runsOf(await open(documentXml(records)));
 
-          // Every surviving run's text is the concatenation of one maximal
-          // block of records that a merge may join, in order.
-          const expectedTexts: string[] = [];
-          for (const [index, record] of records.entries()) {
-            const previous = records[index - 1];
-            const joins = previous !== undefined && recordKey(record) === recordKey(previous);
-            const last = expectedTexts.at(-1);
-            if (joins && last !== undefined) {
-              expectedTexts[expectedTexts.length - 1] = last + `r${index}`;
-              continue;
+            // Every surviving run's text is the concatenation of one maximal
+            // block of records that a merge may join, in order.
+            const expectedTexts: string[] = [];
+            for (const [index, record] of records.entries()) {
+              const previous = records[index - 1];
+              const joins = previous !== undefined && recordKey(record) === recordKey(previous);
+              const last = expectedTexts.at(-1);
+              if (joins && last !== undefined) {
+                expectedTexts[expectedTexts.length - 1] = last + `r${index}`;
+                continue;
+              }
+              expectedTexts.push(`r${index}`);
             }
-            expectedTexts.push(`r${index}`);
-          }
 
-          expect(parsed.map(textOf)).toEqual(expectedTexts);
-        },
-      ),
-      propertyConfig({ numRuns: 40 }),
-    );
-  }, 120_000);
+            expect(parsed.map(textOf)).toEqual(expectedTexts);
+          },
+        ),
+        propertyConfig({ numRuns: 40 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
-  test("parse is a fixed point over arbitrary records", async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.array(runRecordArbitrary, { minLength: 1, maxLength: 5 }),
-        async (records) => {
-          const saved = await documentPartOf(await save(await open(documentXml(records))));
+  test(
+    "parse is a fixed point over arbitrary records",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.array(runRecordArbitrary, { minLength: 1, maxLength: 5 }),
+          async (records) => {
+            const saved = await documentPartOf(await save(await open(documentXml(records))));
 
-          // The second save is where a consolidation that merges more than the
-          // next parse would stops being a fixed point: the text has already
-          // been joined, so the run count can only fall again.
-          expect(await documentPartOf(await save(await open(saved)))).toBe(saved);
-        },
-      ),
-      propertyConfig({ numRuns: 25 }),
-    );
-  }, 120_000);
+            // The second save is where a consolidation that merges more than the
+            // next parse would stops being a fixed point: the text has already
+            // been joined, so the run count can only fall again.
+            expect(await documentPartOf(await save(await open(saved)))).toBe(saved);
+          },
+        ),
+        propertyConfig({ numRuns: 25 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
-  test("the text and the record survive, whatever the merge decides", async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.array(runRecordArbitrary, { minLength: 1, maxLength: 5 }),
-        async (records) => {
-          const saved = await documentPartOf(await save(await open(documentXml(records))));
+  test(
+    "the text and the record survive, whatever the merge decides",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.array(runRecordArbitrary, { minLength: 1, maxLength: 5 }),
+          async (records) => {
+            const saved = await documentPartOf(await save(await open(documentXml(records))));
 
-          expect(savedText(saved)).toBe(records.map((_, index) => `r${index}`).join(""));
-          for (const { session, rsids, sink } of records) {
-            for (const attribute of rsids) {
-              expect(saved).toContain(`w:${attribute}="${rsidValue(attribute, session)}"`);
+            expect(savedText(saved)).toBe(records.map((_, index) => `r${index}`).join(""));
+            for (const { session, rsids, sink } of records) {
+              for (const attribute of rsids) {
+                expect(saved).toContain(`w:${attribute}="${rsidValue(attribute, session)}"`);
+              }
+              for (const child of sink) {
+                expect(saved).toContain(SINK_CHILDREN[child]);
+              }
             }
-            for (const child of sink) {
-              expect(saved).toContain(SINK_CHILDREN[child]);
-            }
-          }
-        },
-      ),
-      propertyConfig({ numRuns: 25 }),
-    );
-  }, 120_000);
+          },
+        ),
+        propertyConfig({ numRuns: 25 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 });

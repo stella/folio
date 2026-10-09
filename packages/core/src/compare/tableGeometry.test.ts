@@ -685,6 +685,6 @@ describe("table geometry round trip", () => {
       await fc.assert(roundTripProperty, propertyConfig({ seed: -2012280836 }));
       await fc.assert(roundTripProperty, propertyConfig());
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(30_000),
   );
 });

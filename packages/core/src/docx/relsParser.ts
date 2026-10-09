@@ -22,6 +22,7 @@
  * - theme: theme/theme1.xml
  */
 
+import { COMMENT_PART_RELATIONSHIPS } from "@stll/docx-core/model";
 import type { Relationship, RelationshipMap, RelationshipType } from "../types";
 import { parseXmlDocument, getChildElements, getAttribute } from "./xmlParser";
 
@@ -53,8 +54,8 @@ export const RELATIONSHIP_TYPES = {
   customProperties:
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties",
   customXml: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml",
-  comments: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
-  commentsExtended: "http://schemas.microsoft.com/office/2011/relationships/commentsExtended",
+  comments: COMMENT_PART_RELATIONSHIPS.comments.type,
+  commentsExtended: COMMENT_PART_RELATIONSHIPS.commentsExtended.type,
 } as const;
 
 const STRICT_OFFICE_RELATIONSHIP_PREFIX =

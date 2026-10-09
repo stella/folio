@@ -1,7 +1,13 @@
 import { propertyTestTimeout } from "../test/property-testing";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { describe, expect, test } from "bun:test";
-import type { BlockContent, Document, Paragraph } from "../packages/docx-core/src/model/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  PreservedAttribute,
+} from "../packages/docx-core/src/model/document";
+import { OOXML_NAMESPACES } from "@stll/folio-core/docx/serializer/partNamespaces";
 import { DEFAULT_TAB_STOP_TWIPS } from "../packages/docx-core/src/model/document";
 import {
   applyDocumentOp,
@@ -10,6 +16,7 @@ import {
   INHERIT_RUN_PROPS,
   normalizeForOps,
   OP_STORIES,
+  type DocumentOp,
 } from "../packages/docx-core/src/ops/documentOps";
 import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
 import { parseDocx } from "@stll/folio-core/docx/parser";
@@ -32,6 +39,7 @@ import {
   prepareOpDocument,
   sameOpModel,
   serializedOpParts,
+  serializeOpDocument,
   seedFromBytes,
 } from "./lib/corpus-invariants/op-sequences";
 
@@ -41,6 +49,9 @@ const makeParagraph = (paraId: string, text: string) =>
     paraId,
     content: [{ type: "run", content: [{ type: "text", text }] }],
   }) satisfies Paragraph;
+
+const sourceParagraphAttributes = (value: string) =>
+  [{ namespace: OOXML_NAMESPACES.w.uri, name: "rsidR", value }] satisfies PreservedAttribute[];
 
 const documentFixture = () =>
   normalizeForOps({
@@ -138,6 +149,101 @@ const inputFor = async (buffer: ArrayBuffer): Promise<CorpusInvariantInput> => (
 });
 
 describe("corpus operation invariants", () => {
+  test("comment locality keeps foreign definitions and source stories in the oracle", () => {
+    const create = {
+      type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+      comment: {
+        id: 9100,
+        author: "Owner",
+        done: false,
+        content: [makeParagraph("60000020", "Owned")],
+      },
+      anchor: { kind: "point", at: { story: OP_STORIES.MAIN, blockId: "60000001", offset: 0 } },
+    } as const satisfies DocumentOp;
+    const source = documentFixture();
+    const sourceParagraph = source.package.document.content.at(1);
+    if (sourceParagraph?.type !== "paragraph") throw new Error("Missing source paragraph");
+    sourceParagraph.preservedAttributes = sourceParagraphAttributes("00112233");
+    const first = applyDocumentOp(source, create).unwrap().document;
+    const before = applyDocumentOp(first, {
+      ...create,
+      comment: {
+        id: 9101,
+        author: "Other",
+        done: false,
+        content: [makeParagraph("60000021", "Foreign")],
+      },
+    }).unwrap().document;
+    const op = {
+      type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+      id: 9100,
+      content: [makeParagraph("60000020", "Updated")],
+    } as const;
+    const edit = applyDocumentOp(before, op).unwrap();
+    // A serializable production-shaped control proves the oracle sees authored source attributes.
+    expect(serializeOpDocument(before)).toContain('rsidR="00112233"');
+    expect(serializeOpDocument(edit.document)).toContain('rsidR="00112233"');
+    expect(localityStepFailures({ before, op, edit })).toEqual([]);
+    const changed = structuredClone(edit.document);
+    const foreign = changed.package.document.comments?.find(({ id }) => id === 9101);
+    if (!foreign) throw new Error("Missing foreign definition");
+    foreign.author = "Changed";
+    expect(
+      localityStepFailures({ before, op, edit: { ...edit, document: changed } }).length,
+    ).toBeGreaterThan(0);
+    const changedRelationship = structuredClone(edit.document);
+    const commentRelationship = [
+      ...(changedRelationship.package.relationships?.values() ?? []),
+    ].find(({ target }) => target === "comments.xml");
+    if (!commentRelationship) throw new Error("Missing comment relationship");
+    commentRelationship.target = "other.xml";
+    expect(
+      localityStepFailures({ before, op, edit: { ...edit, document: changedRelationship } }).length,
+    ).toBeGreaterThan(0);
+    const changedSource = structuredClone(edit.document);
+    const untouched = changedSource.package.document.content.at(1);
+    if (untouched?.type !== "paragraph") throw new Error("Missing untouched source paragraph");
+    untouched.preservedAttributes = sourceParagraphAttributes("44556677");
+    expect(serializeOpDocument(changedSource)).toContain('rsidR="44556677"');
+    expect(
+      localityStepFailures({ before, op, edit: { ...edit, document: changedSource } }).length,
+    ).toBeGreaterThan(0);
+    const relationshipPath = "word/_rels/document.xml.rels";
+    const relXml = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${commentRelationship.id}" Type="${commentRelationship.type}" Target="comments.xml" opaque="authored"/></Relationships>`;
+    const packaging = `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>`;
+    const parts = (xml: string) =>
+      new Map([
+        [relationshipPath, new TextEncoder().encode(xml)],
+        ["[Content_Types].xml", new TextEncoder().encode(packaging)],
+      ]);
+    const localOptions = {
+      sequence: { steps: [{ before, op, edit }] },
+      control: parts(relXml),
+      documentPart: "word/document.xml",
+    };
+    expect(serializedLocalityFailures({ ...localOptions, edited: parts(relXml) })).toEqual([]);
+    for (const changedXml of [
+      relXml.replace('Target="comments.xml"', 'Target="other.xml"'),
+      relXml.replace('opaque="authored"', 'opaque="changed"'),
+    ]) {
+      expect(serializedLocalityFailures({ ...localOptions, edited: parts(changedXml) })).toContain(
+        `sequence changed an existing comment relationship payload: ${relationshipPath}#${commentRelationship.id}`,
+      );
+    }
+    const origin = documentFixture();
+    const inserted = applyDocumentOp(origin, create).unwrap();
+    expect(
+      localityStepFailures({
+        before: origin,
+        op: create,
+        edit: {
+          ...inserted,
+          touched: { ...inserted.touched, modified: [...inserted.touched.modified, "60000010"] },
+        },
+      }),
+    ).toContain("createComment declared a touched block outside its addressed story");
+  });
+
   test("omitted section patches do not own fields or hide foreign changes", () => {
     const before = documentFixture();
     const op = {
@@ -207,6 +313,10 @@ describe("corpus operation invariants", () => {
       const snapshot = structuredClone(document);
       const exercised = new Set<string>();
       const structuralFamilies = [
+        DOCUMENT_OP_TYPES.CREATE_COMMENT,
+        DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+        DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
+        DOCUMENT_OP_TYPES.DELETE_COMMENT,
         DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
         DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
         DOCUMENT_OP_TYPES.ADD_NOTE,
