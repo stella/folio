@@ -39,6 +39,7 @@ import { fromMarkdown } from "../markdown";
 import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
+import { compareBatchTieOrder } from "./batch-claims";
 import type { FolioAIEditSnapshot } from "./types";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
@@ -69,6 +70,27 @@ const apply = (
     mode,
     operations,
   });
+
+test.each(MODES)(
+  "equal-coordinate insertions retain their requested document order (%s)",
+  async (mode) => {
+    const reviewer = await openReviewer(
+      await paragraphsDocx([[textRun("Anchor.")], [textRun("Following.")]]),
+    );
+    const blockId = reviewer.snapshot().blocks.at(0)?.id;
+    expect(blockId).toBeDefined();
+    if (blockId === undefined) return;
+    const result = apply(reviewer, mode, [
+      { id: "first", type: "insertAfterBlock", blockId, text: "First inserted." },
+      { id: "second", type: "insertAfterBlock", blockId, text: "Second inserted." },
+    ]);
+    expect(result.skipped).toEqual([]);
+    const expected = ["Anchor.", "First inserted.", "Second inserted.", "Following."];
+    expect(blockTexts(reviewer)).toEqual(expected);
+    const saved = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
+    expect(blockTexts(saved)).toEqual(expected);
+  },
+);
 
 describe("an operation inside a block another operation of the batch deletes", () => {
   const threeClauses = () =>
@@ -478,15 +500,31 @@ const batchAgainstOneAtATime = async ({
   const insertsAfterLast = applied.some(
     ({ operation }) => operation.kind === "insertAfterBlock" && operation.block === BLOCK_COUNT - 1,
   );
+  const editsFinalBreakCarrier = applied.some(
+    ({ operation }) =>
+      operation.kind === "setBlockParagraphProperties" && operation.block === finalBreakCarrier,
+  );
   const beforeFinalBreakRetirement = ({ operation }: { operation: GeneratedOperation }) =>
     mode === "tracked-changes" &&
+    editsFinalBreakCarrier &&
     !insertsAfterLast &&
     finalBreakCarrier < BLOCK_COUNT - 1 &&
     operation.kind === "setBlockParagraphProperties" &&
-    operation.block === finalBreakCarrier;
+    operation.block >= finalBreakCarrier;
+  // Every generated property edit states the same alignment. When the carrier
+  // is edited, those identical suffix edits commute with its property transfer;
+  // replay them first so retirement does not make its revision pre-existing.
+  // Without a carrier edit, keep suffix edits after deletion: retirement would
+  // otherwise overwrite properties that the batch retains as its own edits.
+  const compareReplayOrder = (
+    left: { operation: GeneratedOperation; index: number },
+    right: { operation: GeneratedOperation; index: number },
+  ) =>
+    comparePlacement(placement(right.operation), placement(left.operation)) ||
+    compareBatchTieOrder(left.index, right.index);
   const rest = [
     ...applied.filter(({ operation }) => ANNOTATIONS.has(operation.kind)),
-    ...applied.filter(beforeFinalBreakRetirement),
+    ...applied.filter(beforeFinalBreakRetirement).toSorted(compareReplayOrder),
     ...applied
       .filter(
         (entry) =>
@@ -494,11 +532,7 @@ const batchAgainstOneAtATime = async ({
           !ANNOTATIONS.has(entry.operation.kind) &&
           !beforeFinalBreakRetirement(entry),
       )
-      .toSorted(
-        (left, right) =>
-          comparePlacement(placement(right.operation), placement(left.operation)) ||
-          right.index - left.index,
-      ),
+      .toSorted(compareReplayOrder),
   ];
   for (const entry of rest) {
     applyAlone(materializeAll([entry]));

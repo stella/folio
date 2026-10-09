@@ -1,12 +1,13 @@
 import type { Node as PMNode } from "prosemirror-model";
-import type { ParagraphFormatting, SectionProperties } from "../../types/document";
+import type { SectionProperties } from "../../types/document";
 import type { NumberingMap } from "../../docx/numberingParser";
 import { paragraphNumberingAttr } from "../numberingAttr";
 import { resolveParagraphNumbering } from "../../docx/numberingReference";
 import { expectParagraphAttrs } from "../attrs";
-import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
 import { rejectedListRenderingPatch } from "../listRendering";
+import { listIndentationProvenancePatch } from "../styles/resolvedStyleAttrs";
+import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
 import type { RunStyleResolver } from "../runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import {
@@ -71,24 +72,18 @@ export const resolveParagraphChangeAttrs = ({
         const inheritedAlignment = currentAttrs.alignmentFromStyle;
         const restoredStyleId = rejection.previousFormatting?.styleId ?? undefined;
         const sameStyle = restoredStyleId === (currentAttrs.styleId ?? undefined);
-        let previousFormattingFromStyle: ParagraphFormatting | undefined;
-        // What the restored style lends the fields a save filters, so the
-        // paragraph reads them from the style and keeps them out of its pPr.
-        let resolvedFromStyle = sameStyle ? currentAttrs._resolvedFormatting : undefined;
+        let previousFormattingFromStyle = sameStyle
+          ? currentAttrs._styleResolvedFormatting
+          : undefined;
         if (styleResolver) {
           previousFormattingFromStyle =
             styleResolver.resolveParagraphStyle(restoredStyleId).paragraphFormatting;
-          if (!sameStyle) {
-            resolvedFromStyle = styleResolvedParagraphFormatting(previousFormattingFromStyle);
-            nextAttrs["_resolvedFormatting"] = resolvedFromStyle;
-          }
         } else if (inheritedAlignment !== undefined) {
-          previousFormattingFromStyle = { alignment: inheritedAlignment };
+          previousFormattingFromStyle = {
+            ...previousFormattingFromStyle,
+            alignment: inheritedAlignment,
+          };
         }
-        const inheritedFormatting =
-          previousFormattingFromStyle === undefined && resolvedFromStyle === undefined
-            ? undefined
-            : { ...previousFormattingFromStyle, ...resolvedFromStyle };
         let styleNumbering = previousFormattingFromStyle?.numPr;
         if (!styleResolver && sameStyle) {
           styleNumbering = currentAttrs.numPrFromStyle ?? undefined;
@@ -99,6 +94,24 @@ export const resolveParagraphChangeAttrs = ({
             : paragraphNumberingAttr(resolveParagraphNumbering(styleNumbering));
         const recordedNumbering = rejection.previousFormatting?.numPr;
         const restoredNumbering = recordedNumbering ?? inheritedNumbering;
+        const restoredFormatting = paragraphRejectOriginalFormatting(
+          rejection.previousFormatting,
+          node.attrs["_originalFormatting"],
+        );
+        const indentation = listIndentationProvenancePatch({
+          direct: paragraphIndentationFromFormatting(restoredFormatting ?? undefined),
+          styleFormatting: previousFormattingFromStyle,
+          numberingSource: recordedNumbering == null ? "style" : "paragraph",
+          numPr:
+            restoredNumbering?.kind === "reference"
+              ? { numId: restoredNumbering.numId, ilvl: restoredNumbering.ilvl ?? 0 }
+              : undefined,
+          numbering,
+        });
+        const inheritedFormatting = {
+          ...previousFormattingFromStyle,
+          ...indentation._resolvedFormatting,
+        };
         Object.assign(
           nextAttrs,
           paragraphRejectAttrPatch(rejection.previousFormatting, inheritedFormatting),
@@ -114,10 +127,7 @@ export const resolveParagraphChangeAttrs = ({
             numPrFromStyle: recordedNumbering == null ? inheritedNumbering : null,
           },
         );
-        const restoredFormatting = paragraphRejectOriginalFormatting(
-          rejection.previousFormatting,
-          node.attrs["_originalFormatting"],
-        );
+        Object.assign(nextAttrs, indentation);
         nextAttrs["_originalFormatting"] = restoredFormatting;
         if (styleResolver) {
           nextAttrs["defaultTextFormatting"] =

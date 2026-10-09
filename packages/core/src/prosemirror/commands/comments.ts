@@ -4,7 +4,10 @@
  * PM commands for adding/removing comments and accepting/rejecting tracked changes.
  */
 
-import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
+import { resolvedPreservedXmlAttrs } from "../preservedXmlReview";
+import { canonicalFieldNode } from "../fieldRepresentation";
+
+import { Fragment, type Mark, type MarkType, type Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { resolveStateStory } from "../markupViewProjection";
@@ -396,11 +399,28 @@ function resolveChange(
               if (retained) tr.addMark(rangeFrom, rangeTo, retained);
             }
           }
+          const current = tr.doc.nodeAt(pos);
+          if (current) {
+            const attrs = resolvedPreservedXmlAttrs(node, current.marks);
+            if (attrs !== node.attrs) tr.setNodeMarkup(pos, undefined, attrs);
+          }
           return true;
         }
 
         if (removesNode) {
           deleteRanges.push({ from: rangeFrom, to: rangeTo });
+        }
+
+        if (
+          !removesNode &&
+          keepType &&
+          node.marks.some((mark) => mark.type === keepType && matchesRevision(mark))
+        ) {
+          const retained = node.marks.filter(
+            (mark) => !(mark.type === keepType && matchesRevision(mark)),
+          );
+          const attrs = resolvedPreservedXmlAttrs(node, retained);
+          if (attrs !== node.attrs) tr.setNodeMarkup(pos, undefined, attrs);
         }
 
         if (!removeKeptMarksInBulk) {
@@ -433,6 +453,20 @@ function resolveChange(
         rangesToDelete = coalescedDeleteRanges;
       }
       for (const range of rangesToDelete.toReversed()) {
+        const start = tr.doc.resolve(range.from);
+        const field = start.parent;
+        if (
+          field.type.name === "structuredField" &&
+          start.parentOffset === 0 &&
+          range.to === start.end()
+        ) {
+          // Canonicalize before the replacement fitter supplies a synthetic
+          // child for a required inline carrier whose result was removed.
+          const position = start.before();
+          const empty = canonicalFieldNode(field.copy(Fragment.empty));
+          tr.replaceWith(position, position + field.nodeSize, empty);
+          continue;
+        }
         tr.delete(range.from, range.to);
       }
       // A text box goes with its anchor, and before any paragraph mark joins:
@@ -698,6 +732,17 @@ function resolveChange(
         styleResolver,
       });
 
+      const resolvedFields: { node: PMNode; position: number }[] = [];
+      tr.doc.descendants((node, position) => {
+        const canonical = canonicalFieldNode(node);
+        if (canonical !== node) resolvedFields.push({ node: canonical, position });
+      });
+      for (const { node, position } of resolvedFields.toReversed()) {
+        const field = tr.doc.nodeAt(position);
+        if (!field) continue;
+        if (field.type === node.type) tr.setNodeMarkup(position, undefined, node.attrs, node.marks);
+        else tr.replaceWith(position, position + field.nodeSize, node);
+      }
       if (tr.steps.length > 0) {
         dispatch(tr);
       }

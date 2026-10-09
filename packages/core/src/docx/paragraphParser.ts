@@ -90,7 +90,9 @@ import {
   isHyperlinkContent,
   isInlineSdtContent,
   isTrackedChangeWrapperChild,
+  isSimpleFieldContent,
 } from "./inlineWrapperContent";
+import { preserveLinkedSdt } from "./linkedSdtPreservation";
 import { inlineWrapperOf } from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
 import {
@@ -632,6 +634,42 @@ type HyperlinkRevisionWalk = HyperlinkChildContext & {
   linkOver: (linkChildren: readonly Hyperlink["children"][number][]) => Hyperlink;
 };
 
+/** Preserve a link across nested revision owners, rather than dropping its shell. */
+const linkedRevisionContent = (
+  wrapped: readonly ParagraphContent[],
+  linkOver: (children: readonly Hyperlink["children"][number][]) => Hyperlink,
+): TrackedRunChange["content"] => {
+  const content: TrackedRunChange["content"] = [];
+  let linked: Hyperlink["children"][number][] = [];
+  const flushLinked = (): void => {
+    if (linked.length === 0) return;
+    content.push(linkOver(linked));
+    linked = [];
+  };
+  for (const item of wrapped) {
+    if (isHyperlinkContent(item)) {
+      linked.push(item);
+      continue;
+    }
+    flushLinked();
+    switch (item.type) {
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        content.push({ ...item, content: linkedRevisionContent(item.content, linkOver) });
+        break;
+      case "inlineSdt":
+        return panic("An SDT under a hyperlink must retain its opaque source span");
+      default:
+        if (isTrackedChangeWrapperChild(item)) content.push(item);
+        break;
+    }
+  }
+  flushLinked();
+  return content;
+};
+
 const hoistRevision =
   (wrapper: TrackedChangeWrapperType): ChildReader<HyperlinkRevisionWalk> =>
   (child, { styles, theme, rels, media, previews, inScopeXmlns, items, linkOver }) => {
@@ -645,28 +683,9 @@ const hoistRevision =
       previews,
       wrapper === "deletion" || wrapper === "moveFrom" ? "deletion" : "default",
       inScopeXmlns,
+      "hyperlink",
     );
-    // Group the runs the wrapper holds back under the link; anything else it
-    // carries stays where it sits rather than being dropped.
-    const content: TrackedRunChange["content"][number][] = [];
-    let linked: Hyperlink["children"][number][] = [];
-    const flushLinked = (): void => {
-      if (linked.length > 0) {
-        content.push(linkOver(linked));
-        linked = [];
-      }
-    };
-    for (const item of wrapped) {
-      if (isHyperlinkContent(item)) {
-        linked.push(item);
-        continue;
-      }
-      flushLinked();
-      if (isTrackedChangeWrapperChild(item)) {
-        content.push(item);
-      }
-    }
-    flushLinked();
+    const content = linkedRevisionContent(wrapped, linkOver);
     items.push({
       type: "hoistedRevision",
       wrapper,
@@ -824,7 +843,7 @@ function parseSimpleField(
   //
   // `CT_SimpleField` is `EG_PContent` plus `w:fldData`, so a field's cached
   // result may hold everything a paragraph may: a bookmark around the result,
-  // a proofing error, a nested revision. folio models the run and the link;
+  // a proofing error, a nested revision. folio models runs, links, transparent wrappers and revisions;
   // the rest is markup it carries at its source position rather than markup
   // it drops.
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
@@ -870,6 +889,42 @@ const fieldInlineWrapper =
     context.push(parseFieldInlineWrapper(element, child, context));
   };
 
+/** Read a field's revision with the same ownership rules as a paragraph revision. */
+const fieldTrackedChange =
+  (type: TrackedChangeWrapperType): ChildReader<SimpleFieldChildContext> =>
+  (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
+    const parsedContent = parseParagraphContents(
+      child,
+      styles,
+      theme,
+      null,
+      rels,
+      media,
+      previews,
+      type === "deletion" || type === "moveFrom" ? "deletion" : "default",
+      inScopeXmlns,
+    );
+    // Field children outside the typed revision model keep their authored XML.
+    // Do not hoist their boundaries into a container that cannot carry them.
+    if (parsedContent.length === 0 || !parsedContent.every(isTrackedChangeWrapperChild)) {
+      push(preserveInlineChild(child));
+      return;
+    }
+    const contents: ParagraphContent[] = [];
+    pushTrackedChangeWrapper({
+      contents,
+      type,
+      info: parseTrackedChangeInfo(child),
+      resolutionJoins: parseResolutionJoins(child),
+      content: parsedContent,
+      preserveEmpty: true,
+    });
+    for (const content of contents) {
+      if (!isSimpleFieldContent(content)) panic("A parsed field revision must be a field child");
+      push(content);
+    }
+  };
+
 /**
  * What a `w:fldSimple` does with every child its content model declares.
  *
@@ -883,7 +938,18 @@ const SIMPLE_FIELD_CHILD_HANDLERS = {
     push(parseRun(child, styles, theme, rels, media, inScopeXmlns, previews));
   },
   hyperlink: (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
-    push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns, previews));
+    for (const content of parseHyperlinkParagraphContents(
+      child,
+      rels,
+      styles,
+      theme,
+      media,
+      inScopeXmlns,
+      previews,
+    )) {
+      if (!isSimpleFieldContent(content)) panic("A parsed field hyperlink must be a field child");
+      push(content);
+    }
   },
 
   // The transparent wrappers, read as the wrappers they are: a cached field
@@ -905,18 +971,18 @@ const SIMPLE_FIELD_CHILD_HANDLERS = {
   customXmlMoveFromRangeStart: CAPTURE,
   customXmlMoveToRangeEnd: CAPTURE,
   customXmlMoveToRangeStart: CAPTURE,
-  del: CAPTURE,
+  del: fieldTrackedChange("deletion"),
   // The field's own custom data (`CT_Text`), meaningful only to the
   // producer that wrote it, so it travels as the bytes it arrived as.
   fldData: CAPTURE,
   fldSimple: (child, { push }) => {
     push(preserveInlineChild(child));
   },
-  ins: CAPTURE,
-  moveFrom: CAPTURE,
+  ins: fieldTrackedChange("insertion"),
+  moveFrom: fieldTrackedChange("moveFrom"),
   moveFromRangeEnd: CAPTURE,
   moveFromRangeStart: CAPTURE,
-  moveTo: CAPTURE,
+  moveTo: fieldTrackedChange("moveTo"),
   moveToRangeEnd: CAPTURE,
   moveToRangeStart: CAPTURE,
   permEnd: CAPTURE,
@@ -1151,7 +1217,10 @@ const FIELD_INLINE_WRAPPER_HANDLERS = {
  * `scan` is the complex-field state machine: the `w:r` handler advances it run
  * by run, and the paragraph reads what is left open once the walk is done.
  */
+type InlineParseScope = "paragraph" | "hyperlink";
+
 type ParagraphContentsWalk = {
+  inlineScope: InlineParseScope;
   styles: StyleMap | null;
   theme: Theme | null;
   rels: RelationshipMap | null;
@@ -1361,7 +1430,13 @@ const assembledFieldBeginsOf = (container: XmlElement): ReadonlySet<XmlElement> 
     }
     if (hasEnd && open.length > 0) {
       const closed = open.pop();
-      if (closed !== undefined && open.length === 0) {
+      // ComplexField represents ffData, but not fldData. Keep fldData-bearing
+      // fields as structural runs, including the captured begin child.
+      if (
+        closed !== undefined &&
+        open.length === 0 &&
+        !findWordprocessingChild(beginFieldCharOf(closed), "fldData")
+      ) {
         assembled.add(closed);
       }
     }
@@ -1377,7 +1452,10 @@ const assembledFieldBeginsOf = (container: XmlElement): ReadonlySet<XmlElement> 
  */
 const paragraphInlineWrapper =
   (element: InlineWrapperElement): ChildReader<ParagraphContentsWalk> =>
-  (child, { styles, theme, rels, media, previews, trackedContext, inScopeXmlns, contents }) => {
+  (
+    child,
+    { styles, theme, rels, media, previews, trackedContext, inScopeXmlns, inlineScope, contents },
+  ) => {
     contents.push(
       inlineWrapperOf(
         element,
@@ -1392,6 +1470,7 @@ const paragraphInlineWrapper =
           previews,
           trackedContext,
           mergeXmlnsDeclarations(inScopeXmlns, child),
+          inlineScope,
         ),
       ),
     );
@@ -1403,7 +1482,7 @@ const PARAGRAPH_CONTENT_UNDECLARED = {
   // wrapper whole would keep the bytes and lose every run inside it.
   AlternateContent: (
     child,
-    { contents, styles, theme, rels, media, previews, trackedContext, inScopeXmlns },
+    { contents, styles, theme, rels, media, previews, trackedContext, inScopeXmlns, inlineScope },
   ) => {
     const selectedBranch = selectAlternateContentBranch(child);
     if (selectedBranch) {
@@ -1418,6 +1497,7 @@ const PARAGRAPH_CONTENT_UNDECLARED = {
           previews,
           trackedContext,
           mergeXmlnsDeclarations(inScopeXmlns, child),
+          inlineScope,
         ),
       );
     }
@@ -1438,6 +1518,32 @@ const PARAGRAPH_CONTENT_UNDECLARED_NAMESPACES = {
     }
   },
 } as const satisfies Record<string, ChildReader<ParagraphContentsWalk>>;
+
+/** All revision wrappers retain typed review ownership while parsing their children. */
+const trackedParagraphRevision =
+  (type: TrackedChangeWrapperType): ChildReader<ParagraphContentsWalk> =>
+  (child, { contents, styles, theme, rels, media, previews, inScopeXmlns, inlineScope }) => {
+    const resolutionJoins = parseResolutionJoins(child);
+    const parsedContent = parseParagraphContents(
+      child,
+      styles,
+      theme,
+      null,
+      rels,
+      media,
+      previews,
+      type === "deletion" || type === "moveFrom" ? "deletion" : "default",
+      inScopeXmlns,
+      inlineScope,
+    );
+    pushTrackedChangeSegments({
+      contents,
+      type,
+      info: parseTrackedChangeInfo(child),
+      resolutionJoins,
+      parsedContent,
+    });
+  };
 
 const PARAGRAPH_CONTENT_HANDLERS = {
   r: (
@@ -1729,9 +1835,22 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     }
   },
 
-  hyperlink: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
+  hyperlink: (
+    child,
+    { contents, styles, theme, rels, media, previews, inScopeXmlns, trackedContext },
+  ) => {
+    const linkElement =
+      trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
     contents.push(
-      ...parseHyperlinkParagraphContents(child, rels, styles, theme, media, inScopeXmlns, previews),
+      ...parseHyperlinkParagraphContents(
+        linkElement,
+        rels,
+        styles,
+        theme,
+        media,
+        inScopeXmlns,
+        previews,
+      ),
     );
   },
 
@@ -1795,8 +1914,12 @@ const PARAGRAPH_CONTENT_HANDLERS = {
 
   sdt: (
     child,
-    { contents, styles, theme, rels, media, previews, trackedContext, inScopeXmlns },
+    { contents, styles, theme, rels, media, previews, trackedContext, inScopeXmlns, inlineScope },
   ) => {
+    if (inlineScope === "hyperlink") {
+      contents.push(preserveLinkedSdt(child));
+      return;
+    }
     // Structured document tag - extract properties and content
     const sdtPr = findWordprocessingChild(child, "sdtPr");
     const sdtEndPr = findWordprocessingChild(child, "sdtEndPr");
@@ -1818,6 +1941,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
         previews,
         trackedContext,
         sdtInScopeXmlns,
+        inlineScope,
       );
       const properties = parseSdtProperties(sdtPr, sdtEndPr);
       const captured = captureSdtSiblingMarkers(child);
@@ -1835,95 +1959,10 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     }
   },
 
-  ins: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
-    // Track change: insertion — parse content and wrap
-    const insInfo = parseTrackedChangeInfo(child);
-    const insContent = parseParagraphContents(
-      child,
-      styles,
-      theme,
-      null,
-      rels,
-      media,
-      previews,
-      "default",
-      inScopeXmlns,
-    );
-    pushTrackedChangeSegments({
-      contents,
-      type: "insertion",
-      info: insInfo,
-      resolutionJoins: parseResolutionJoins(child),
-      parsedContent: insContent,
-    });
-  },
-
-  del: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
-    // Track change: deletion — parse content and wrap
-    const delInfo = parseTrackedChangeInfo(child);
-    const delContent = parseParagraphContents(
-      child,
-      styles,
-      theme,
-      null,
-      rels,
-      media,
-      previews,
-      "deletion",
-      inScopeXmlns,
-    );
-    pushTrackedChangeSegments({
-      contents,
-      type: "deletion",
-      info: delInfo,
-      resolutionJoins: parseResolutionJoins(child),
-      parsedContent: delContent,
-    });
-  },
-
-  moveFrom: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
-    const moveFromInfo = parseTrackedChangeInfo(child);
-    const moveFromContent = parseParagraphContents(
-      child,
-      styles,
-      theme,
-      null,
-      rels,
-      media,
-      previews,
-      "deletion",
-      inScopeXmlns,
-    );
-    pushTrackedChangeSegments({
-      contents,
-      type: "moveFrom",
-      info: moveFromInfo,
-      resolutionJoins: parseResolutionJoins(child),
-      parsedContent: moveFromContent,
-    });
-  },
-
-  moveTo: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
-    const moveToInfo = parseTrackedChangeInfo(child);
-    const moveToContent = parseParagraphContents(
-      child,
-      styles,
-      theme,
-      null,
-      rels,
-      media,
-      previews,
-      "default",
-      inScopeXmlns,
-    );
-    pushTrackedChangeSegments({
-      contents,
-      type: "moveTo",
-      info: moveToInfo,
-      resolutionJoins: parseResolutionJoins(child),
-      parsedContent: moveToContent,
-    });
-  },
+  ins: trackedParagraphRevision("insertion"),
+  del: trackedParagraphRevision("deletion"),
+  moveFrom: trackedParagraphRevision("moveFrom"),
+  moveTo: trackedParagraphRevision("moveTo"),
 
   smartTag: paragraphInlineWrapper("smartTag"),
 
@@ -1966,6 +2005,7 @@ function parseParagraphContents(
   previews: PreviewLedger,
   trackedContext: TrackedChangeParseContext = "default",
   rootXmlns: Record<string, string> = {},
+  inlineScope: InlineParseScope = "paragraph",
 ): ParagraphContent[] {
   const contents: ParagraphContent[] = [];
   // Accumulate this container's own xmlns (a paragraph or tracked-change /
@@ -2005,6 +2045,7 @@ function parseParagraphContents(
       media,
       previews,
       trackedContext,
+      inlineScope,
       inScopeXmlns,
       contents,
       scan,

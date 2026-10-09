@@ -1,0 +1,10 @@
+{
+  "split paragraphs retain authored run defaults through typed and pasted content": [
+    {
+      "seed": 20261009,
+      "path": "0:0:0:1:1",
+      "note": "A split must carry direct contextual spacing, grid and spacing properties together with authored run defaults, including false and zero values.",
+      "date": "2026-10-09"
+    }
+  ]
+}

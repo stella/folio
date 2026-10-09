@@ -56,6 +56,8 @@ import {
   copyDocumentParagraphPropertySources,
   copyParagraphPropertyCapture,
   copyParagraphPropertySource,
+  paragraphFormattingWithAuthoredIndentation,
+  assignParagraphIndentationProjection,
   decodeTableCellParagraphSourcePayload,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
@@ -74,6 +76,7 @@ import {
   visitTableCellParagraphPropertySourceBindings,
 } from "../../docx/paragraphPropertySource";
 import { canonicalJson } from "../../utils/canonicalJson";
+import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
 import { EDITED_PREVIEW_FINGERPRINT, imageRawXmlFingerprint } from "../../docx/imageRawXml";
 import { refingerprintShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { unchangedAlternateContentXml } from "../alternateContentAttrs";
@@ -423,6 +426,27 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
   const baseFormatting = baseParagraph.formatting;
   if (!baseFormatting) {
     return;
+  }
+  const hasIndentation =
+    baseFormatting.indentLeft !== undefined ||
+    baseFormatting.indentRight !== undefined ||
+    baseFormatting.indentFirstLine !== undefined ||
+    baseFormatting.hangingIndent !== undefined;
+  if (hasIndentation) {
+    const authored = paragraphFormattingWithAuthoredIndentation(baseParagraph);
+    const inheritedIndentation =
+      authored?.indentLeft !== baseFormatting.indentLeft ||
+      authored?.indentRight !== baseFormatting.indentRight ||
+      authored?.indentFirstLine !== baseFormatting.indentFirstLine ||
+      authored?.hangingIndent !== baseFormatting.hangingIndent;
+    if (
+      inheritedIndentation &&
+      canonicalJson(modelParagraphFormattingEmission(paragraph.formatting)) ===
+        canonicalJson(modelParagraphFormattingEmission(authored))
+    ) {
+      paragraph.formatting = { ...baseFormatting };
+      return;
+    }
   }
   const { numPr, numPrFromStyle } = baseFormatting;
   if (!numPr || !numPrFromStyle || !isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)) {
@@ -1834,6 +1858,16 @@ function convertPMParagraph(
   const pFormatting = paragraphAttrsToFormatting(attrs);
   if (pFormatting) {
     paragraph.formatting = pFormatting;
+  }
+  if (attrs.numPr?.kind === "reference") {
+    const inheritedIndentation = paragraphIndentationFromFormatting(attrs._resolvedFormatting);
+    if (inheritedIndentation) {
+      assignParagraphIndentationProjection({
+        paragraph,
+        authored: pFormatting,
+        inherited: inheritedIndentation,
+      });
+    }
   }
   const listRendering = listRenderingFromAttrs(attrs);
   if (listRendering) {
@@ -4307,7 +4341,14 @@ const synchronizeFieldDisplayText = (
         visit(child);
         continue;
       }
-      if (child.type === "hyperlink" || child.type === "inlineWrapper") {
+      if (
+        child.type === "hyperlink" ||
+        child.type === "inlineWrapper" ||
+        child.type === "insertion" ||
+        child.type === "deletion" ||
+        child.type === "moveFrom" ||
+        child.type === "moveTo"
+      ) {
         visitRunsIn(child.type === "hyperlink" ? child.children : child.content, visit);
       }
     }

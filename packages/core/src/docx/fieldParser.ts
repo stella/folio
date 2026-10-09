@@ -26,6 +26,7 @@
 import type {
   FieldType,
   SimpleField,
+  ParagraphContent,
   ComplexField,
   Field,
   Run,
@@ -411,13 +412,28 @@ export function finalizeComplexField(ctx: ComplexFieldContext): ComplexField {
  * @returns The display text
  */
 export function getFieldDisplayValue(field: Field): string {
-  if (field.type === "simpleField") {
-    return field.content
-      .filter((c): c is Run => "content" in c)
-      .map((run) => getRunText(run))
+  const displayText = (content: readonly ParagraphContent[]): string =>
+    content
+      .map((child): string => {
+        switch (child.type) {
+          case "run":
+            return getRunText(child);
+          case "hyperlink":
+            return displayText(child.children);
+          case "inlineWrapper":
+          case "insertion":
+          case "deletion":
+          case "moveFrom":
+          case "moveTo":
+            return displayText(child.content);
+          case "preservedInline":
+            return child.text;
+          default:
+            return "";
+        }
+      })
       .join("");
-  }
-  return field.fieldResult.map((run) => getRunText(run)).join("");
+  return displayText(field.type === "simpleField" ? field.content : field.fieldResult);
 }
 
 /**
