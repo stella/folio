@@ -205,14 +205,14 @@ impl PartIndex {
                 let namespaces = reader
                     .resolver()
                     .bindings()
-                    .map(|(prefix, namespace)| {
+                    .map(|(prefix, bound_namespace)| {
                         let name = match prefix {
                             PrefixDeclaration::Default => b"xmlns".to_vec(),
                             PrefixDeclaration::Named(prefix) => {
                                 [b"xmlns:".as_slice(), prefix].concat()
                             }
                         };
-                        (name, namespace.as_ref().to_vec())
+                        (name, bound_namespace.as_ref().to_vec())
                     })
                     .collect::<Vec<_>>();
                 for (name, value) in &namespaces {

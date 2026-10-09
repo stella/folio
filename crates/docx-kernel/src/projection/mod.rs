@@ -249,13 +249,13 @@ where
     F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
 {
     let parts = extract_document_parts(bytes, limits)?;
-    project_parts(parts, limits, options, allocate_id)
+    project_parts(&parts, limits, options, allocate_id)
 }
 
 // Both package entry points must share dependency preparation and projection.
 #[inline(never)]
 fn project_parts<F>(
-    parts: DocumentParts,
+    parts: &DocumentParts,
     limits: DocxLimits,
     options: ProjectionOptions,
     allocate_id: F,
@@ -409,7 +409,7 @@ where
             )
         }
         flat_opc::XmlInputKind::Package => project_parts(
-            flat_opc::extract_parts(xml, limits)?,
+            &flat_opc::extract_parts(xml, limits)?,
             limits,
             ProjectionOptions::default(),
             allocate_id,
