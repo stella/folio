@@ -145,120 +145,142 @@ fn extract_optional(
 }
 
 // Index package topology only: no body search, payload projection or binary decoding.
+#[derive(Default)]
+struct PartIndex {
+    parts: HashMap<String, XmlPart>,
+    names: std::collections::HashSet<String>,
+    depth: usize,
+    root_seen: bool,
+    current_name: Option<String>,
+    current_xml: Option<XmlPart>,
+    payload_seen: bool,
+    index_bytes: usize,
+}
+
+impl PartIndex {
+    fn start(
+        &mut self,
+        reader: &mut NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+        limits: DocxLimits,
+    ) -> Result<(), ProjectionError> {
+        let (namespace, local) = reader.resolver().resolve_element(element.name());
+        if !matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref() == PACKAGE_NAMESPACE) {
+            return Err(ProjectionError::InvalidFlatOpcPackage);
+        }
+        match (self.depth, local.as_ref()) {
+            (0, b"package") if !self.root_seen => {
+                self.root_seen = true;
+                self.depth = 1;
+            }
+            (1, b"part") => {
+                let name = package_attribute(reader, element, b"name")?
+                    .ok_or(ProjectionError::InvalidFlatOpcPackage)?;
+                if !name.starts_with('/')
+                    || name.contains('\\')
+                    || name
+                        .split('/')
+                        .skip(1)
+                        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+                    || !self.names.insert(name.clone())
+                {
+                    return Err(ProjectionError::InvalidFlatOpcPackage);
+                }
+                if u64::try_from(self.names.len())
+                    .map_err(|_| ProjectionError::TooManyArchiveEntries)?
+                    > limits.maximum_entries
+                {
+                    return Err(ProjectionError::TooManyArchiveEntries);
+                }
+                self.index_bytes = self
+                    .index_bytes
+                    .checked_add(name.len())
+                    .ok_or(ProjectionError::ArchiveTooLarge)?;
+                self.current_name = Some(name);
+                self.payload_seen = false;
+                self.depth = 2;
+            }
+            (2, b"xmlData" | b"binaryData") if !self.payload_seen => {
+                self.payload_seen = true;
+                let namespaces = reader
+                    .resolver()
+                    .bindings()
+                    .map(|(prefix, namespace)| {
+                        let name = match prefix {
+                            PrefixDeclaration::Default => b"xmlns".to_vec(),
+                            PrefixDeclaration::Named(prefix) => {
+                                [b"xmlns:".as_slice(), prefix].concat()
+                            }
+                        };
+                        (name, namespace.as_ref().to_vec())
+                    })
+                    .collect::<Vec<_>>();
+                for (name, value) in &namespaces {
+                    self.index_bytes = self
+                        .index_bytes
+                        .checked_add(name.len() + value.len())
+                        .ok_or(ProjectionError::ArchiveTooLarge)?;
+                }
+                if self.index_bytes > limits.maximum_archive_bytes {
+                    return Err(ProjectionError::ArchiveTooLarge);
+                }
+                let is_xml = local.as_ref() == b"xmlData";
+                let span = reader
+                    .read_to_end(element.name())
+                    .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?;
+                if is_xml {
+                    self.current_xml = Some(XmlPart {
+                        range: usize::try_from(span.start)
+                            .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?
+                            ..usize::try_from(span.end)
+                                .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?,
+                        namespaces,
+                    });
+                }
+            }
+            _ => return Err(ProjectionError::InvalidFlatOpcPackage),
+        }
+        Ok(())
+    }
+
+    fn end(&mut self) -> Result<(), ProjectionError> {
+        if self.depth == 2 {
+            let name = self
+                .current_name
+                .take()
+                .ok_or(ProjectionError::InvalidFlatOpcPackage)?;
+            if !self.payload_seen {
+                return Err(ProjectionError::InvalidFlatOpcPackage);
+            }
+            if let Some(part) = self.current_xml.take() {
+                self.parts.insert(name, part);
+            }
+        }
+        self.depth = self
+            .depth
+            .checked_sub(1)
+            .ok_or(ProjectionError::InvalidFlatOpcPackage)?;
+        Ok(())
+    }
+}
+
 fn index_parts(
     xml: &[u8],
     limits: DocxLimits,
 ) -> Result<HashMap<String, XmlPart>, ProjectionError> {
     let mut reader = NsReader::from_reader(xml);
     reader.config_mut().check_end_names = true;
-    let mut parts = HashMap::new();
-    let mut names = std::collections::HashSet::new();
-    let mut depth = 0_usize;
-    let mut root_seen = false;
-    let mut current_name = None;
-    let mut current_xml = None;
-    let mut payload_seen = false;
-    let mut index_bytes = 0_usize;
+    let mut state = PartIndex::default();
     loop {
         match reader
             .read_event()
             .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?
         {
-            Event::Start(element) => {
-                let (namespace, local) = reader.resolver().resolve_element(element.name());
-                if !matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref() == PACKAGE_NAMESPACE)
-                {
-                    return Err(ProjectionError::InvalidFlatOpcPackage);
-                }
-                match (depth, local.as_ref()) {
-                    (0, b"package") if !root_seen => {
-                        root_seen = true;
-                        depth = 1;
-                    }
-                    (1, b"part") => {
-                        let name = package_attribute(&reader, &element, b"name")?
-                            .ok_or(ProjectionError::InvalidFlatOpcPackage)?;
-                        if !name.starts_with('/')
-                            || name.contains('\\')
-                            || name.split('/').skip(1).any(|segment| {
-                                segment.is_empty() || segment == "." || segment == ".."
-                            })
-                            || !names.insert(name.clone())
-                        {
-                            return Err(ProjectionError::InvalidFlatOpcPackage);
-                        }
-                        if u64::try_from(names.len())
-                            .map_err(|_| ProjectionError::TooManyArchiveEntries)?
-                            > limits.maximum_entries
-                        {
-                            return Err(ProjectionError::TooManyArchiveEntries);
-                        }
-                        index_bytes = index_bytes
-                            .checked_add(name.len())
-                            .ok_or(ProjectionError::ArchiveTooLarge)?;
-                        current_name = Some(name);
-                        payload_seen = false;
-                        depth = 2;
-                    }
-                    (2, b"xmlData" | b"binaryData") if !payload_seen => {
-                        payload_seen = true;
-                        let namespaces = reader
-                            .resolver()
-                            .bindings()
-                            .map(|(prefix, namespace)| {
-                                let name = match prefix {
-                                    PrefixDeclaration::Default => b"xmlns".to_vec(),
-                                    PrefixDeclaration::Named(prefix) => {
-                                        [b"xmlns:".as_slice(), prefix].concat()
-                                    }
-                                };
-                                (name, namespace.as_ref().to_vec())
-                            })
-                            .collect::<Vec<_>>();
-                        for (name, value) in &namespaces {
-                            index_bytes = index_bytes
-                                .checked_add(name.len() + value.len())
-                                .ok_or(ProjectionError::ArchiveTooLarge)?;
-                        }
-                        if index_bytes > limits.maximum_archive_bytes {
-                            return Err(ProjectionError::ArchiveTooLarge);
-                        }
-                        let is_xml = local.as_ref() == b"xmlData";
-                        let span = reader
-                            .read_to_end(element.name())
-                            .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?;
-                        if is_xml {
-                            current_xml = Some(XmlPart {
-                                range: usize::try_from(span.start)
-                                    .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?
-                                    ..usize::try_from(span.end)
-                                        .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?,
-                                namespaces,
-                            });
-                        }
-                    }
-                    _ => return Err(ProjectionError::InvalidFlatOpcPackage),
-                }
-            }
-            Event::End(_) => {
-                if depth == 2 {
-                    let name = current_name
-                        .take()
-                        .ok_or(ProjectionError::InvalidFlatOpcPackage)?;
-                    if !payload_seen {
-                        return Err(ProjectionError::InvalidFlatOpcPackage);
-                    }
-                    if let Some(part) = current_xml.take() {
-                        parts.insert(name, part);
-                    }
-                }
-                depth = depth
-                    .checked_sub(1)
-                    .ok_or(ProjectionError::InvalidFlatOpcPackage)?;
-            }
+            Event::Start(element) => state.start(&mut reader, &element, limits)?,
+            Event::End(_) => state.end()?,
             Event::Text(text) if text.as_ref().iter().all(u8::is_ascii_whitespace) => {}
             Event::Decl(_) | Event::Comment(_) | Event::PI(_) => {}
-            Event::Eof if root_seen && depth == 0 => return Ok(parts),
+            Event::Eof if state.root_seen && state.depth == 0 => return Ok(state.parts),
             _ => return Err(ProjectionError::InvalidFlatOpcPackage),
         }
     }
