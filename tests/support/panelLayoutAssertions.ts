@@ -2,8 +2,8 @@
  * Layout assertions for the editor's side panels (outline, comments), shared
  * by the playground spec and the VS Code webview spec so both hosts are held
  * to the same oracle: at every width, the page, the outline and the comments
- * occupy disjoint columns, and a panel that does not fit is a drawer that
- * opens over the page and closes on Escape or an outside press.
+ * occupy disjoint columns; comments that do not fit open as a drawer, while
+ * the outline opens in a separate track beside the document.
  */
 
 import { expect, type Locator, type Page } from "@playwright/test";
@@ -150,11 +150,7 @@ const readPanelBoxes = (page: Page): Promise<PanelBoxes> =>
     const scrollBox = scroll?.getBoundingClientRect();
     return {
       pages: [...document.querySelectorAll(".layout-page")].map(interval).filter(present),
-      outline: panelBox(
-        document.querySelector<HTMLElement>(
-          '[data-testid="folio-outline"]:not([data-folio-outline-surface="drawer"])',
-        ),
-      ),
+      outline: panelBox(document.querySelector<HTMLElement>('[data-testid="folio-outline"]')),
       comments: panelBox(
         document.querySelector<HTMLElement>('[data-folio-comments-surface="column"]'),
       ),
@@ -192,12 +188,21 @@ export const expectPanelsDoNotOverlap = async (page: Page, state: PanelState): P
   if (boxes.comments) panels.push(["comments", boxes.comments]);
   for (const card of boxes.cards) panels.push(["comment card", card]);
 
-  expect(boxes.outline !== null).toBe(state.outline === "column" || state.outline === "rail");
+  expect(boxes.outline !== null).toBe(
+    state.outline === "column" || state.outline === "rail" || state.outline === "expanded",
+  );
   expect(boxes.comments !== null).toBe(state.comments === "column");
   if (boxes.outline) {
-    const width =
-      state.outline === "rail" ? PANEL_METRICS.outlineRailWidth : PANEL_METRICS.outlineColumnWidth;
-    expect(boxes.outline.layoutWidth).toBeCloseTo(width, 0);
+    if (state.outline === "expanded") {
+      expect(boxes.outline.layoutWidth).toBeGreaterThanOrEqual(PANEL_METRICS.controlMinimumSize);
+      expect(boxes.outline.layoutWidth).toBeLessThanOrEqual(PANEL_METRICS.outlineColumnWidth);
+    } else {
+      const width =
+        state.outline === "rail"
+          ? PANEL_METRICS.outlineRailWidth
+          : PANEL_METRICS.outlineColumnWidth;
+      expect(boxes.outline.layoutWidth).toBeCloseTo(width, 0);
+    }
   }
   if (boxes.comments) {
     expect(boxes.comments.layoutWidth).toBeCloseTo(PANEL_METRICS.commentsWidth, 0);
@@ -284,26 +289,40 @@ export const expectDrawerCycle = async (
 };
 
 /**
- * Every drawer the case offers cycles open and shut: the outline drawer from
- * the toolbar (narrow) or the rail's button (medium), and the comments drawer
- * from the comments toggle.
+ * The outline opens and closes in its own track; comments retain their drawer
+ * cycle when the available width requires one.
  */
 export const expectPanelDrawers = async (page: Page, state: PanelState): Promise<void> => {
-  const outlineDrawer = page.locator('[data-folio-outline-surface="drawer"]');
+  const expandedOutline = page.locator('[data-folio-outline-surface="expanded"]');
   if (state.outline === "drawer") {
-    await expectDrawerCycle(page, {
+    await expectExpandedOutline(page, {
       opener: page.getByTestId("toolbar-outline-toggle"),
-      drawer: outlineDrawer,
+      panel: expandedOutline,
     });
   }
   if (state.outline === "rail") {
     const rail = page.locator('[data-folio-outline-surface="rail"]');
+    const expand = rail.getByTestId("folio-outline-expand");
+    const expandBox = await expand.boundingBox();
+    const ticks = await rail.locator(".folio-outline-tick").all();
+    if (!expandBox) throw new Error("outline rail trigger has no box");
+    expect(ticks.length).toBeGreaterThan(0);
+    expect(expandBox.width).toBeGreaterThanOrEqual(PANEL_METRICS.controlMinimumSize);
+    expect(expandBox.height).toBeGreaterThanOrEqual(PANEL_METRICS.controlMinimumSize);
+    for (const tick of ticks) {
+      const tickBox = await tick.boundingBox();
+      if (!tickBox) throw new Error("outline tick has no box");
+      expect(
+        expandBox.y + expandBox.height <= tickBox.y || tickBox.y + tickBox.height <= expandBox.y,
+        "outline trigger overlaps a heading tick",
+      ).toBe(true);
+    }
     const tick = rail.locator(".folio-outline-tick").first();
     await tick.hover();
     await expect(tick.locator(".folio-outline-tick-label")).toBeVisible();
-    await expectDrawerCycle(page, {
+    await expectExpandedOutline(page, {
       opener: rail.getByTestId("folio-outline-expand"),
-      drawer: outlineDrawer,
+      panel: expandedOutline,
     });
   }
   if (state.comments === "drawer") {
@@ -312,4 +331,28 @@ export const expectPanelDrawers = async (page: Page, state: PanelState): Promise
       drawer: page.locator('[data-folio-comments-surface="drawer"]'),
     });
   }
+};
+
+const expectExpandedOutline = async (
+  page: Page,
+  { opener, panel }: { opener: Locator; panel: Locator },
+): Promise<void> => {
+  await opener.focus();
+  await page.keyboard.press("Enter");
+  await expect(panel).toBeVisible();
+  await expect(page.getByTestId("folio-panel-scrim")).toBeHidden();
+  await panel.evaluate((element) => {
+    element.style.setProperty("--document-panel-bottom-inset", "48px");
+  });
+  await expect(panel).toHaveCSS("padding-block-end", "48px");
+  await expect.poll(() => readPanelState(page)).toMatchObject({ outline: "expanded" });
+  await expect.poll(() => focusIsWithin(panel)).toBe(true);
+  const state = await readPanelState(page);
+  let comments: CommentsPresentation = "hidden";
+  if (state?.comments === "column" || state?.comments === "drawer") {
+    comments = state.comments;
+  }
+  await expectPanelsDoNotOverlap(page, { tier: "narrow", outline: "expanded", comments });
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
 };

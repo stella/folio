@@ -1,3 +1,4 @@
+import { normalizeNoteOccurrenceIds } from "../../../../test/note-occurrence-oracle";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
@@ -73,7 +74,9 @@ const checkShape = (fixture: CanonicalInlineShapeFixture<ParagraphContent | RunC
     );
   const session = activated.value;
   const projection = session.projectStory(story).unwrap();
-  expect(projection.doc.eq(legacy)).toBe(true);
+  expect(normalizeNoteOccurrenceIds(projection.doc.toJSON())).toEqual(
+    normalizeNoteOccurrenceIds(legacy.toJSON()),
+  );
   expect(schema.nodeFromJSON(projection.doc.toJSON()).eq(projection.doc)).toBe(true);
   let start = 1;
   for (const paragraph of body.content) {

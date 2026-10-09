@@ -1364,19 +1364,28 @@ function handleSuggestionDelete(
     return false;
   }
 
-  const hasDeletion = nodeAfter.marks.some((m) => m.type === deletionType);
   const mapFrom = tr.mapping.maps.length;
-  if (!hasDeletion) {
-    const delAttrs =
-      findAdjacentRevisionForRange(state.doc, rangeFrom, rangeTo, "deletion", pluginState.author) ||
-      makeMarkAttrs(pluginState);
-    addTrackedDeletionMark({
-      insertionPolicy: "retract-own",
-      tr,
-      from: rangeFrom,
-      to: rangeTo,
-      mark: deletionType.create(delAttrs),
-    });
+  if (noteRange) {
+    markRangeAsDeleted(tr, state.doc, noteRange.from, noteRange.to, deletionType, pluginState);
+  } else {
+    const hasDeletion = nodeAfter.marks.some((m) => m.type === deletionType);
+    if (!hasDeletion) {
+      const delAttrs =
+        findAdjacentRevisionForRange(
+          state.doc,
+          rangeFrom,
+          rangeTo,
+          "deletion",
+          pluginState.author,
+        ) || makeMarkAttrs(pluginState);
+      addTrackedDeletionMark({
+        insertionPolicy: "retract-own",
+        tr,
+        from: rangeFrom,
+        to: rangeTo,
+        mark: deletionType.create(delAttrs),
+      });
+    }
   }
   // A retracted insertion moves the cursor with the removed characters.
   const newPos = tr.mapping.slice(mapFrom).map(isBackward ? rangeFrom : rangeTo);

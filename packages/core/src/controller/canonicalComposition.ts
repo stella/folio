@@ -10,6 +10,7 @@ import {
   setCanonicalInputTimer,
 } from "./canonicalInputTimer";
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
+import { RUN_IDENTITY_MARK_NAME } from "../prosemirror/runIdentity";
 
 type CompositionOptions = {
   begin: () => boolean;
@@ -24,19 +25,24 @@ type CompositionOptions = {
   refuse: (reason: string) => void;
 };
 
+type CompositionCompletionEvidence = "provisional" | "explicitFinal";
+type CompositionPhase =
+  | { type: "active"; completion: CompositionCompletionEvidence }
+  | { type: "ended"; data: string | null; completion: CompositionCompletionEvidence };
+
 type CompositionState =
   | { type: "committed" }
   | {
       type: "provisional";
       baseline: EditorState;
       view: EditorView;
-      phase: "active" | "ended";
+      phase: CompositionPhase;
     }
   | {
       type: "refused";
       baseline: EditorState;
       view: EditorView;
-      phase: "active" | "ended";
+      phase: CompositionPhase;
       text: string | null;
     };
 
@@ -58,6 +64,68 @@ type CompletedComposition =
   | { type: "completed"; receipt: CompletedReceipt }
   | { type: "authorized"; receipt: CompletedReceipt; text: string };
 
+type OmittedRunIdentityTolerance = { type: "omittedRunIdentity"; from: number; to: number };
+type NativeReplacementComparisonOptions = {
+  baseline: EditorState;
+  proposed: EditorState;
+  from: number;
+  to: number;
+  text: string;
+};
+const matchesNativeReplacement = ({
+  baseline,
+  proposed,
+  from,
+  to,
+  text,
+}: NativeReplacementComparisonOptions) => {
+  const expected = baseline.tr.insertText(text, from, to);
+  if (expected.doc.eq(proposed.doc)) return true;
+  if (!baseline.doc.resolve(from).sameParent(baseline.doc.resolve(to))) return false;
+  if (expected.doc.content.size !== proposed.doc.content.size) return false;
+  const markType = baseline.schema.marks[RUN_IDENTITY_MARK_NAME];
+  if (markType === undefined) return false;
+  const position = expected.doc.resolve(from);
+  const paragraph = position.parent;
+  const start = position.start();
+  const native = proposed.doc.nodeAt(start - 1);
+  if (native === null || native.type !== paragraph.type) return false;
+  let index = 0;
+  let offset = 0;
+  const missing: OmittedRunIdentityTolerance[] = [];
+  native.forEach((node, nodeOffset) => {
+    const end = nodeOffset + node.nodeSize;
+    let cursor = nodeOffset;
+    while (cursor < end && index < paragraph.childCount) {
+      const authored = paragraph.child(index);
+      const authoredEnd = offset + authored.nodeSize;
+      const overlapEnd = Math.min(end, authoredEnd);
+      if (
+        node.isText &&
+        authored.isText &&
+        markType.isInSet(authored.marks) !== undefined &&
+        markType.isInSet(node.marks) === undefined
+      ) {
+        const previous = missing.at(-1);
+        if (previous?.to === start + cursor) previous.to = start + overlapEnd;
+        else
+          missing.push({
+            type: "omittedRunIdentity",
+            from: start + cursor,
+            to: start + overlapEnd,
+          });
+      }
+      cursor = overlapEnd;
+      if (cursor === authoredEnd) {
+        offset = authoredEnd;
+        index += 1;
+      }
+    }
+  });
+  for (const range of missing) expected.removeMark(range.from, range.to, markType);
+  return expected.doc.eq(proposed.doc);
+};
+
 /** Native IME owns the provisional view; the captured canonical projection stays unchanged. */
 export const createCanonicalComposition = (options: CompositionOptions) => {
   let state: CompositionState = { type: "committed" };
@@ -78,14 +146,15 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
   const selectedReplacement = (baseline: EditorState, proposed: EditorState) => {
     const { from, to } = baseline.selection;
     const text = selectedText(baseline, proposed);
-    if (text === null || !baseline.tr.insertText(text, from, to).doc.eq(proposed.doc)) return null;
+    if (text === null || !matchesNativeReplacement({ baseline, proposed, from, to, text }))
+      return null;
     return { from, to, text, semantic: "composition" as const };
   };
   const replacement = (baseline: EditorState, proposed: EditorState) => {
     const { $from, $to } = baseline.selection;
     if (!$from.parent.isTextblock || !$to.parent.isTextblock) return null;
-    // Native replacement may drop non-inclusive run metadata across the whole
-    // captured selection even when its text shares a prefix or suffix.
+    // Native updates may omit source identity across the whole text carrier,
+    // including its untouched suffix. The captured model owns the committed identities.
     const selected = selectedReplacement(baseline, proposed);
     if (selected) {
       if (
@@ -132,8 +201,8 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     const before = previous.textBetween(0, previous.size, "", "\uFFFC");
     const after = next.content.textBetween(0, next.content.size, "", "\uFFFC");
     // Node diffs also report mark-only changes (a native rewrite can drop run
-    // identity). Narrow to the text change so the reconstruction refuses them
-    // instead of committing a same-text replacement.
+    // identity). Narrow to the text change; reconstruction still checks every
+    // semantic mark instead of committing a same-text replacement.
     while (from < oldEnd && from < newEnd && before[from] === after[from]) from++;
     while (oldEnd > from && newEnd > from && before[oldEnd - 1] === after[newEnd - 1]) {
       oldEnd--;
@@ -152,8 +221,16 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       text.length !== inserted.size
     )
       return null;
-    const expected = baseline.tr.insertText(text, start + from, start + oldEnd);
-    if (!expected.doc.eq(proposed.doc)) return null;
+    if (
+      !matchesNativeReplacement({
+        baseline,
+        proposed,
+        from: start + from,
+        to: start + oldEnd,
+        text,
+      })
+    )
+      return null;
     return { from: start + from, to: start + oldEnd, text, semantic: "composition" as const };
   };
   const applyNative = (view: EditorView, transaction: Transaction) =>
@@ -189,7 +266,15 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       view.updateState(pending.baseline);
     }
     options.end();
-    if (!commit || view.isDestroyed) return { type: "cancelled" };
+    if (
+      !commit ||
+      view.isDestroyed ||
+      (pending.phase.type === "ended" &&
+        pending.phase.data === "" &&
+        pending.phase.completion === "provisional" &&
+        committedText === "")
+    )
+      return { type: "cancelled" };
     if (pending.type === "refused") return { type: "refused", text: pending.text };
     if (!input) {
       options.refuse(
@@ -255,9 +340,14 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     start: (view: EditorView) => {
       if (state.type !== "committed") return;
       if (!options.begin()) return;
-      state = { type: "provisional", baseline: view.state, view, phase: "active" };
+      state = {
+        type: "provisional",
+        baseline: view.state,
+        view,
+        phase: { type: "active", completion: "provisional" },
+      };
     },
-    ended: (view: EditorView) => {
+    ended: (view: EditorView, data: string | null) => {
       if (state.type === "committed") return;
       switch (state.type) {
         case "provisional":
@@ -265,7 +355,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
             type: "provisional",
             baseline: state.baseline,
             view: state.view,
-            phase: "ended",
+            phase: { type: "ended", data, completion: state.phase.completion },
           };
           break;
         case "refused":
@@ -273,7 +363,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
             type: "refused",
             baseline: state.baseline,
             view: state.view,
-            phase: "ended",
+            phase: { type: "ended", data, completion: state.phase.completion },
             text: state.text,
           };
           break;
@@ -303,8 +393,14 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       completed = { type: "authorized", receipt, text };
       return true;
     },
-    authorizeNative: (view: EditorView) => {
+    authorizeNative: (view: EditorView, completion: CompositionCompletionEvidence) => {
       authorizedNativeState = view.state;
+      if (state.type !== "committed" && completion === "explicitFinal") {
+        state.phase =
+          state.phase.type === "active"
+            ? { type: "active", completion }
+            : { type: "ended", data: state.phase.data, completion };
+      }
     },
     flushed: (view: EditorView) => {
       const authorized = authorizedNativeState;
@@ -313,7 +409,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       queueMicrotask(() => {
         if (authorizedNativeState === authorized) authorizedNativeState = null;
       });
-      if (state.type !== "committed" && state.phase === "ended") schedule(view);
+      if (state.type !== "committed" && state.phase.type === "ended") schedule(view);
     },
     recover: (view: EditorView) => finish(view, true),
     cancel: (view: EditorView) => finish(view, false),

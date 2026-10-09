@@ -337,6 +337,10 @@
     "editor": {
       "editing": "编辑",
       "editingDescription": "直接编辑文档",
+      "outlineDepthAll": "所有级别",
+      "outlineDepthLabel": "显示标题",
+      "outlineDepthThree": "第 1–3 级",
+      "outlineDepthTwo": "第 1–2 级",
       "outlineTitle": "大纲",
       "showDocumentOutline": "文档大纲",
       "suggesting": "修订",

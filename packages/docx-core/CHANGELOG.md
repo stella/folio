@@ -1,5 +1,25 @@
 # @stll/docx-core
 
+## 0.33.0
+
+### Minor Changes
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route canonical comment lifecycles through semantic document operations with exact journal inverses and package-owned anchors.
+
+### Patch Changes
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Accept replies to loaded replies without own body markers, and map comment boundaries carried by marks during canonical editing.
+
+- [#1541](https://github.com/stella/folio/pull/1541) [`ce048e0`](https://github.com/stella/folio/commit/ce048e05bf6b0684462dcf1c55f1382fc035a2f9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep zero-width markers and empty runs out of canonical input formatting affinity.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Anchor revision-associated comments on empty paragraphs and preserve exact undo and redo.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicitly undefined owned story maps and section properties through lifecycle undo and redo.
+
+- [#1606](https://github.com/stella/folio/pull/1606) [`6b7f7a6`](https://github.com/stella/folio/commit/6b7f7a67d394f36189cd68028ede02d9655a5a54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve tracked child revisions in simple fields and serialize tracked hyperlink field results.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Open documents whose root comments have no source anchor in canonical sessions, keeping those comments read-only and preserved on save.
+
 ## 0.32.0
 
 ### Minor Changes

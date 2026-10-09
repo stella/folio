@@ -3,6 +3,7 @@ import * as Y from "yjs";
 
 import {
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
+  FolioYjsNoteReferenceSchemaError,
   applyAttrSchemaMigrations,
   type FolioYjsAttrSchemaVersion,
   readYjsAttrSchemaVersion,
@@ -119,6 +120,27 @@ export const migrateFolioYjsSnapshot = (
   }
 
   const fromVersion = read.value;
+  const migratedAttrs = Result.try({
+    try: () =>
+      applyAttrSchemaMigrations(
+        ydoc,
+        ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
+        fromVersion,
+      ),
+    catch: (cause) =>
+      new FolioYjsSnapshotMigrationError({
+        cause,
+        code: "unsupported_version",
+        message:
+          cause instanceof FolioYjsNoteReferenceSchemaError
+            ? cause.message
+            : "Cannot migrate the collaboration attribute schema.",
+      }),
+  });
+  if (migratedAttrs.isErr()) {
+    ydoc.destroy();
+    return Result.err(migratedAttrs.error);
+  }
   if (fromVersion === FOLIO_YJS_ATTR_SCHEMA_VERSION) {
     ydoc.destroy();
     return Result.ok({
@@ -129,11 +151,7 @@ export const migrateFolioYjsSnapshot = (
     });
   }
 
-  const paragraphsRewritten = applyAttrSchemaMigrations(
-    ydoc,
-    ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
-    fromVersion,
-  );
+  const paragraphsRewritten = migratedAttrs.value;
   const migrated = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
 

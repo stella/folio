@@ -4,17 +4,17 @@
  *
  * The editor measures the width it has once, and this module decides how
  * each panel is presented. Every track the page shares the row with is
- * counted here, so the page, the outline and the comments cannot overlap:
- * a panel either gets a track of its own or becomes a drawer the user opens
- * on purpose. A drawer takes no track.
+ * counted here, so the page, the outline and the comments cannot overlap.
+ * Explicitly opening the outline gives it a clamped track beside the viewport;
+ * comments keep their existing column-or-drawer behavior.
  *
  * Space goes to the page first, then the outline rail, then the comments
  * column, then the full outline column:
  *
  * - comments: a column when the page, the comments and the outline rail fit;
  *   otherwise a drawer.
- * - outline: a column when it fits beside the page and the comments column;
- *   otherwise a rail of heading ticks when that fits; otherwise a drawer.
+ * - outline: a column when it fits beside the page and comments; otherwise a
+ *   rail of heading ticks when that fits, or a toolbar toggle for the opened track.
  *
  * The tier names the result: `wide` when every panel has its full column,
  * `medium` when the outline is a rail, `narrow` when a panel is a drawer.
@@ -29,6 +29,8 @@ export const PANEL_METRICS = {
   outlineColumnWidth: 256,
   /** The outline rail in the `medium` tier, border included. */
   outlineRailWidth: 32,
+  /** Minimum width and height of a shared panel control. */
+  controlMinimumSize: 32,
   /** A comment card column. */
   commentsWidth: 280,
   /** Space between the page edge and the comment cards, and after them. */
@@ -44,8 +46,8 @@ export const COMMENTS_TRACK_WIDTH = PANEL_METRICS.commentsWidth + 2 * PANEL_METR
 
 export type PanelLayoutTier = "wide" | "medium" | "narrow";
 
-/** How the outline is shown: a column, a rail of ticks, a drawer, or not at all. */
-export type OutlinePresentation = "none" | "column" | "rail" | "drawer";
+/** How the outline is shown: a column, tick rail, drawer, or explicitly opened track. */
+export type OutlinePresentation = "none" | "column" | "rail" | "drawer" | "expanded";
 
 /** How the comments are shown: a column beside the page, a drawer, or not at all. */
 export type CommentsPresentation = "hidden" | "column" | "drawer";
@@ -55,8 +57,8 @@ export type PanelLayoutInput = {
   availableWidth: number;
   /** Width of the widest page at the current zoom. */
   pageWidth: number;
-  /** Whether the document has an outline to show. */
-  outline: "absent" | "available";
+  /** Whether the document outline is absent, available, or explicitly opened. */
+  outline: "absent" | "available" | "expanded";
   /** Whether the user (or the auto-open) wants the comments shown. */
   comments: "closed" | "open";
 };
@@ -87,7 +89,7 @@ export const panelLayoutThresholds = ({
 }: Omit<PanelLayoutInput, "availableWidth">): PanelLayout["thresholds"] => {
   const page = pageTrackWidth(pageWidth);
   const commentsTrack = comments === "open" ? COMMENTS_TRACK_WIDTH : 0;
-  const hasOutline = outline === "available";
+  const hasOutline = outline !== "absent";
   return {
     wide: page + commentsTrack + (hasOutline ? PANEL_METRICS.outlineColumnWidth : 0),
     medium: page + commentsTrack + (hasOutline ? PANEL_METRICS.outlineRailWidth : 0),
@@ -99,10 +101,10 @@ const OUTLINE_TRACK_WIDTH = {
   column: PANEL_METRICS.outlineColumnWidth,
   rail: PANEL_METRICS.outlineRailWidth,
   drawer: 0,
-} as const satisfies Record<OutlinePresentation, number>;
+} as const satisfies Record<Exclude<OutlinePresentation, "expanded">, number>;
 
 const tierFor = (outline: OutlinePresentation, comments: CommentsPresentation): PanelLayoutTier => {
-  if (outline === "drawer" || comments === "drawer") return "narrow";
+  if (outline === "drawer" || outline === "expanded" || comments === "drawer") return "narrow";
   if (outline === "rail") return "medium";
   return "wide";
 };
@@ -114,11 +116,13 @@ export const computePanelLayout = (input: PanelLayoutInput): PanelLayout => {
   const page = pageTrackWidth(input.pageWidth);
   const comments = ((): CommentsPresentation => {
     if (input.comments === "closed") return "hidden";
-    return availableWidth >= thresholds.medium ? "column" : "drawer";
+    const requiredWidth = input.outline === "expanded" ? thresholds.wide : thresholds.medium;
+    return availableWidth >= requiredWidth ? "column" : "drawer";
   })();
   const commentsGutter = comments === "column" ? COMMENTS_TRACK_WIDTH : 0;
   const outline = ((): OutlinePresentation => {
     if (input.outline === "absent") return "none";
+    if (input.outline === "expanded") return "expanded";
     const beside = page + commentsGutter;
     if (availableWidth >= thresholds.wide) return "column";
     if (availableWidth >= beside + PANEL_METRICS.outlineRailWidth) return "rail";
@@ -128,7 +132,13 @@ export const computePanelLayout = (input: PanelLayoutInput): PanelLayout => {
     tier: tierFor(outline, comments),
     outline,
     comments,
-    outlineTrackWidth: OUTLINE_TRACK_WIDTH[outline],
+    outlineTrackWidth:
+      outline === "expanded"
+        ? Math.min(
+            PANEL_METRICS.outlineColumnWidth,
+            Math.max(PANEL_METRICS.controlMinimumSize, (availableWidth - commentsGutter) / 2),
+          )
+        : OUTLINE_TRACK_WIDTH[outline],
     commentsGutter,
     thresholds,
   };

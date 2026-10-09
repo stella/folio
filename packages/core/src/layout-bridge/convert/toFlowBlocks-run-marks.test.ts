@@ -120,6 +120,7 @@ const schema = new Schema({
     },
     footnoteRef: {
       attrs: {
+        occurrenceId: {},
         id: { default: null },
         noteType: { default: "footnote" },
         vertAlign: { default: null },
@@ -537,7 +538,11 @@ describe("toFlowBlocks run-level OOXML marks", () => {
     // eigenpal/docx-editor#994: Word renders a bare note anchor at the
     // baseline unless the run or resolved character style says superscript.
     const footnote = toFlowBlocks(
-      buildSingleRunDoc("1", "footnoteRef", { id: 1, noteType: "footnote" }),
+      buildSingleRunDoc("1", "footnoteRef", {
+        id: 1,
+        occurrenceId: "7a60b1bb-f449-40bc-9392-6972f0d05499",
+        noteType: "footnote",
+      }),
       {},
     );
     const footnoteRun = firstRun(footnote);
@@ -545,7 +550,11 @@ describe("toFlowBlocks run-level OOXML marks", () => {
     expect(footnoteRun.superscript).toBeUndefined();
 
     const endnote = toFlowBlocks(
-      buildSingleRunDoc("i", "footnoteRef", { id: 2, noteType: "endnote" }),
+      buildSingleRunDoc("i", "footnoteRef", {
+        id: 2,
+        occurrenceId: "6097e1d3-8574-4a9e-9e8f-eb6c19463693",
+        noteType: "endnote",
+      }),
       {},
     );
     const endnoteRun = firstRun(endnote);
@@ -556,7 +565,14 @@ describe("toFlowBlocks run-level OOXML marks", () => {
   test("keeps style-derived superscript on footnote/endnote anchors", () => {
     const footnote = toFlowBlocks(
       buildRunWithMarks("1", [
-        { markName: "footnoteRef", attrs: { id: 1, noteType: "footnote" } },
+        {
+          markName: "footnoteRef",
+          attrs: {
+            id: 1,
+            occurrenceId: "7a60b1bb-f449-40bc-9392-6972f0d05499",
+            noteType: "footnote",
+          },
+        },
         { markName: "superscript" },
       ]),
       {},
@@ -570,6 +586,7 @@ describe("toFlowBlocks run-level OOXML marks", () => {
     const footnote = toFlowBlocks(
       buildSingleRunDoc("1", "footnoteRef", {
         id: 1,
+        occurrenceId: "7a60b1bb-f449-40bc-9392-6972f0d05499",
         noteType: "footnote",
         vertAlign: "superscript",
       }),
@@ -585,7 +602,14 @@ describe("toFlowBlocks run-level OOXML marks", () => {
     // same run, regardless of mark order (eigenpal/docx-editor#845).
     const blocks = toFlowBlocks(
       buildRunWithMarks("1", [
-        { markName: "footnoteRef", attrs: { id: 1, noteType: "footnote" } },
+        {
+          markName: "footnoteRef",
+          attrs: {
+            id: 1,
+            occurrenceId: "7a60b1bb-f449-40bc-9392-6972f0d05499",
+            noteType: "footnote",
+          },
+        },
         { markName: "subscript" },
       ]),
       {},
@@ -601,7 +625,12 @@ describe("toFlowBlocks run-level OOXML marks", () => {
       [
         {
           markName: "footnoteRef",
-          attrs: { id: 1, noteType: "footnote", vertAlign: "superscript" },
+          attrs: {
+            id: 1,
+            occurrenceId: "7a60b1bb-f449-40bc-9392-6972f0d05499",
+            noteType: "footnote",
+            vertAlign: "superscript",
+          },
         },
         { markName: "subscript" },
       ],
@@ -609,7 +638,12 @@ describe("toFlowBlocks run-level OOXML marks", () => {
         { markName: "subscript" },
         {
           markName: "footnoteRef",
-          attrs: { id: 1, noteType: "footnote", vertAlign: "superscript" },
+          attrs: {
+            id: 1,
+            occurrenceId: "7a60b1bb-f449-40bc-9392-6972f0d05499",
+            noteType: "footnote",
+            vertAlign: "superscript",
+          },
         },
       ],
     ] as const) {
@@ -625,6 +659,7 @@ describe("toFlowBlocks run-level OOXML marks", () => {
     const blocks = toFlowBlocks(
       buildSingleRunDoc("1", "footnoteRef", {
         id: 1,
+        occurrenceId: "7a60b1bb-f449-40bc-9392-6972f0d05499",
         noteType: "footnote",
         vertAlign: "baseline",
       }),

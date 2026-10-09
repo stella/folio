@@ -341,6 +341,10 @@ export const messages: FolioMessages = {
     "editor": {
       "editing": "Szerkesztés",
       "editingDescription": "A dokumentum közvetlen szerkesztése",
+      "outlineDepthAll": "Minden szint",
+      "outlineDepthLabel": "Címsorok megjelenítése",
+      "outlineDepthThree": "1–3. szint",
+      "outlineDepthTwo": "1–2. szint",
       "outlineTitle": "Vázlat",
       "showDocumentOutline": "Dokumentum vázlata",
       "suggesting": "Változások követése",

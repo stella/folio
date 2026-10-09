@@ -687,3 +687,26 @@ describe("materializeYjsDocx", () => {
     } satisfies Partial<FolioYjsDocxMaterializationError>);
   });
 });
+
+test("materialization surfaces the typed occurrence-schema refusal", async () => {
+  const ydoc = new Y.Doc();
+  const text = new Y.XmlText();
+  text.insert(0, "123123", { footnoteRef: { id: "123", noteType: "footnote" } });
+  const paragraph = new Y.XmlElement("paragraph");
+  paragraph.insert(0, [text]);
+  ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [paragraph]);
+  ydoc.getMap(FOLIO_YJS_METADATA_MAP_NAME).set("attrSchemaVersion", 11);
+  const update = Y.encodeStateAsUpdate(ydoc);
+  ydoc.destroy();
+  await expect(
+    materializeYjsDocx({ sourceDocx: await createEmptyDocx(), yjsUpdate: update }),
+  ).rejects.toMatchObject({
+    code: "stale_attr_schema",
+    message: expect.stringContaining("Yjs schema 11"),
+    cause: {
+      _tag: "FolioYjsNoteReferenceSchemaError",
+      schemaVersion: 11,
+      requiredSchemaVersion: FOLIO_YJS_ATTR_SCHEMA_VERSION,
+    },
+  });
+});

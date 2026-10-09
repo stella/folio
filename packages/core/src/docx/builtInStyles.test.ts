@@ -198,6 +198,39 @@ describe("heading classification by outline level", () => {
     expect(resolveHeadingLevel({ styleId: "Derived" }, index)).toBe(1);
   });
 
+  test("a built-in heading name supplies an inherited implicit outline level", () => {
+    const index = createBuiltInStyleIndex([
+      paragraphStyle({ styleId: "Heading2", name: "heading 2" }),
+      paragraphStyle({ styleId: "Clause", name: "Clause heading", basedOn: "Heading2" }),
+    ]);
+    expect(resolveHeadingLevel({ styleId: "Clause" }, index)).toBe(1);
+  });
+
+  test("a child's explicit body-text outline overrides an inherited heading name", () => {
+    const index = createBuiltInStyleIndex([
+      paragraphStyle({ styleId: "Heading2", name: "heading 2" }),
+      paragraphStyle({
+        styleId: "BodyClause",
+        name: "Body clause",
+        basedOn: "Heading2",
+        pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
+      }),
+    ]);
+    expect(resolveHeadingLevel({ styleId: "BodyClause" }, index)).toBeUndefined();
+  });
+
+  test("an explicit ancestor outline overrides a built-in heading name", () => {
+    const index = createBuiltInStyleIndex([
+      paragraphStyle({
+        styleId: "BodyBase",
+        name: "Body base",
+        pPr: { outlineLevel: BODY_TEXT_OUTLINE_LEVEL },
+      }),
+      paragraphStyle({ styleId: "HeadingChild", name: "heading 1", basedOn: "BodyBase" }),
+    ]);
+    expect(resolveHeadingLevel({ styleId: "HeadingChild" }, index)).toBeUndefined();
+  });
+
   test("a circular basedOn chain terminates", () => {
     const index = createBuiltInStyleIndex([
       paragraphStyle({ styleId: "A", name: "A", basedOn: "B" }),

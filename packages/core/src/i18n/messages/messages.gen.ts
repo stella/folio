@@ -340,6 +340,10 @@ type Messages = {
     "editor": {
       "editing": "Editing";
       "editingDescription": "Edit the document directly";
+      "outlineDepthAll": "All levels";
+      "outlineDepthLabel": "Show headings";
+      "outlineDepthThree": "Levels 1–3";
+      "outlineDepthTwo": "Levels 1–2";
       "outlineTitle": "Outline";
       "showDocumentOutline": "Document outline";
       "suggesting": "Track Changes";

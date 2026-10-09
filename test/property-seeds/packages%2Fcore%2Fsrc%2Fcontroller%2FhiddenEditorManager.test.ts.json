@@ -6,5 +6,21 @@
       "date": "2026-10-04",
       "note": "Descriptorless selection-only commands must reach the API fallback while raw document mutations remain refused."
     }
+  ],
+  "external note attribution reaches paste refusal in both session modes without mutation": [
+    {
+      "seed": 155903421,
+      "note": "Malformed external note attribution exposed parser precedence before the paste refusal boundary; retain the exact note-type counterexample across both tags and kinds.",
+      "date": "2026-10-09",
+      "path": "0"
+    }
+  ],
+  "blank note occurrence identities reach paste refusal without mutation": [
+    {
+      "seed": 1677801762,
+      "path": "0:0",
+      "note": "Retain the blank external occurrence case through both paste refusal boundaries.",
+      "date": "2026-10-09"
+    }
   ]
 }

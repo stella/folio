@@ -1,3 +1,4 @@
+import { expectFootnoteRefMarkAttrs } from "../../attrs";
 import type { Node as PMNode } from "prosemirror-model";
 
 type DeletionRange = { from: number; to: number };
@@ -17,6 +18,14 @@ export const expandNoteReferenceDeletionRange = (
     if (!node.isText || !reference) {
       return;
     }
+    const { occurrenceId } = expectFootnoteRefMarkAttrs(reference);
+    const sameOccurrence = (sibling: PMNode) =>
+      sibling.isText &&
+      sibling.marks.some(
+        (mark) =>
+          mark.type.name === "footnoteRef" &&
+          expectFootnoteRefMarkAttrs(mark).occurrenceId === occurrenceId,
+      );
     intersectsReference = true;
     const $pos = doc.resolve(pos);
     const parent = $pos.parent;
@@ -26,12 +35,12 @@ export const expandNoteReferenceDeletionRange = (
 
     for (let left = index - 1; left >= 0; left--) {
       const sibling = parent.child(left);
-      if (!sibling.isText || !sibling.marks.some((mark) => mark.eq(reference))) break;
+      if (!sameOccurrence(sibling)) break;
       referenceFrom -= sibling.nodeSize;
     }
     for (let right = index + 1; right < parent.childCount; right++) {
       const sibling = parent.child(right);
-      if (!sibling.isText || !sibling.marks.some((mark) => mark.eq(reference))) break;
+      if (!sameOccurrence(sibling)) break;
       referenceTo += sibling.nodeSize;
     }
 

@@ -144,7 +144,7 @@ import type {
   TextFormatting,
 } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
-import { type BatchClaim, BatchClaims } from "./batch-claims";
+import { type BatchClaim, BatchClaims, compareBatchTieOrder } from "./batch-claims";
 import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import { separateRevisionStretches } from "./revisionStretches";
@@ -4250,7 +4250,7 @@ const applyFolioAIEditOperationsInternal = ({
       if (leftCellShape.rectangle.right !== rightCellShape.rectangle.right) {
         return rightCellShape.rectangle.right - leftCellShape.rectangle.right;
       }
-      return right.originalIndex - left.originalIndex;
+      return compareBatchTieOrder(left.originalIndex, right.originalIndex);
     }
     const leftColumn = left.tableColumnInsertion ?? left.tableColumnDeletion;
     const rightColumn = right.tableColumnInsertion ?? right.tableColumnDeletion;
@@ -4272,12 +4272,12 @@ const applyFolioAIEditOperationsInternal = ({
       if (leftIsInsertion !== rightIsInsertion) {
         return leftIsInsertion ? -1 : 1;
       }
-      return right.originalIndex - left.originalIndex;
+      return compareBatchTieOrder(left.originalIndex, right.originalIndex);
     }
     if (left.from !== right.from) {
       return right.from - left.from;
     }
-    return right.originalIndex - left.originalIndex;
+    return compareBatchTieOrder(left.originalIndex, right.originalIndex);
   });
   for (let executionIndex = 0; executionIndex < executionOrder.length; executionIndex++) {
     const item = executionOrder[executionIndex];

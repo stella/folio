@@ -674,9 +674,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
     getExperimentalSession: () => toValue(experimentalSession),
-    onSessionRefusal: (message, gap) => {
+    onSessionRefusal: (message, gap, error) => {
       parseError.value = message;
-      onError?.(new CanonicalSessionRefusalError({ gap, message }));
+      onError?.(error ?? new CanonicalSessionRefusalError({ gap, message }));
     },
     getStyles: () => docModel.value?.package.styles ?? null,
     getTheme: () => docModel.value?.package.theme ?? null,
@@ -701,9 +701,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
     getExperimentalSession: () => toValue(experimentalSession),
-    onSessionRefusal: (message, gap) => {
+    onSessionRefusal: (message, gap, error) => {
       parseError.value = message;
-      onError?.(new CanonicalSessionRefusalError({ gap, message }));
+      onError?.(error ?? new CanonicalSessionRefusalError({ gap, message }));
     },
     getStyles: () => docModel.value?.package.styles ?? null,
     getTheme: () => docModel.value?.package.theme ?? null,
@@ -917,8 +917,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getExperimentalSession: () => toValue(experimentalSession),
     getEditingMode: () => toValue(editorMode) ?? "editing",
     getSuggestionAuthor,
-    onSessionRefusal: (message, gap) => {
-      onError?.(new CanonicalSessionRefusalError({ gap, message }));
+    onSessionRefusal: (message, gap, error) => {
+      onError?.(error ?? new CanonicalSessionRefusalError({ gap, message }));
     },
     getDocumentIdentity: () => String(loadSequence),
     getDocumentContext: () => docModel.value,

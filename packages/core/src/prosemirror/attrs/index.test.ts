@@ -958,6 +958,7 @@ describe("ProseMirror attr readers", () => {
 
   test("rejects a malformed note-reference custom-mark decision", () => {
     const mark = schema.marks.footnoteRef.create({
+      occurrenceId: "fixture-note",
       id: "7",
       customMarkFollows: "yes",
     });

@@ -341,6 +341,10 @@ export const messages: FolioMessages = {
     "editor": {
       "editing": "Úpravy",
       "editingDescription": "Upravujte dokument priamo",
+      "outlineDepthAll": "Všetky úrovne",
+      "outlineDepthLabel": "Zobraziť nadpisy",
+      "outlineDepthThree": "Úrovne 1–3",
+      "outlineDepthTwo": "Úrovne 1–2",
       "outlineTitle": "Prehľad",
       "showDocumentOutline": "Prehľad dokumentu",
       "suggesting": "Sledovanie zmien",

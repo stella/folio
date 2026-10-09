@@ -39,7 +39,8 @@ import { fromMarkdown } from "../markdown";
 import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
-import type { FolioAIEditSnapshot } from "./types";
+import { compareBatchTieOrder } from "./batch-claims";
+import type { FolioAIBlockParagraphProperties, FolioAIEditSnapshot } from "./types";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
 import { resolveStateStory } from "../prosemirror/markupViewProjection";
@@ -69,6 +70,27 @@ const apply = (
     mode,
     operations,
   });
+
+test.each(MODES)(
+  "equal-coordinate insertions retain their requested document order (%s)",
+  async (mode) => {
+    const reviewer = await openReviewer(
+      await paragraphsDocx([[textRun("Anchor.")], [textRun("Following.")]]),
+    );
+    const blockId = reviewer.snapshot().blocks.at(0)?.id;
+    expect(blockId).toBeDefined();
+    if (blockId === undefined) return;
+    const result = apply(reviewer, mode, [
+      { id: "first", type: "insertAfterBlock", blockId, text: "First inserted." },
+      { id: "second", type: "insertAfterBlock", blockId, text: "Second inserted." },
+    ]);
+    expect(result.skipped).toEqual([]);
+    const expected = ["Anchor.", "First inserted.", "Second inserted.", "Following."];
+    expect(blockTexts(reviewer)).toEqual(expected);
+    const saved = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
+    expect(blockTexts(saved)).toEqual(expected);
+  },
+);
 
 describe("an operation inside a block another operation of the batch deletes", () => {
   const threeClauses = () =>
@@ -199,11 +221,15 @@ type GeneratedOperation =
   | { kind: "splitBlock"; block: number; before: number }
   | { kind: "mergeBlockWithNext"; block: number; separator?: string }
   | {
+      kind: "setBlockParagraphProperties";
+      block: number;
+      properties: FolioAIBlockParagraphProperties;
+    }
+  | {
       kind:
         | "commentOnBlock"
         | "deleteBlock"
         | "replaceBlock"
-        | "setBlockParagraphProperties"
         | "insertAfterBlock"
         | "insertBeforeBlock";
       block: number;
@@ -328,7 +354,7 @@ const materialize = (
         id,
         type: "setBlockParagraphProperties",
         blockId,
-        properties: { alignment: "center" },
+        properties: generated.properties,
       };
     case "insertAfterBlock":
     case "insertBeforeBlock":
@@ -478,15 +504,30 @@ const batchAgainstOneAtATime = async ({
   const insertsAfterLast = applied.some(
     ({ operation }) => operation.kind === "insertAfterBlock" && operation.block === BLOCK_COUNT - 1,
   );
+  const editsFinalBreakCarrier = applied.some(
+    ({ operation }) =>
+      operation.kind === "setBlockParagraphProperties" && operation.block === finalBreakCarrier,
+  );
   const beforeFinalBreakRetirement = ({ operation }: { operation: GeneratedOperation }) =>
     mode === "tracked-changes" &&
+    editsFinalBreakCarrier &&
     !insertsAfterLast &&
     finalBreakCarrier < BLOCK_COUNT - 1 &&
     operation.kind === "setBlockParagraphProperties" &&
-    operation.block === finalBreakCarrier;
+    operation.block >= finalBreakCarrier;
+  // Replay carrier and suffix property edits before retirement makes their
+  // revision pre-existing; coordinate ties follow the planner order below.
+  // Without a carrier edit, keep suffix edits after deletion: retirement would
+  // otherwise overwrite properties that the batch retains as its own edits.
+  const compareReplayOrder = (
+    left: { operation: GeneratedOperation; index: number },
+    right: { operation: GeneratedOperation; index: number },
+  ) =>
+    comparePlacement(placement(right.operation), placement(left.operation)) ||
+    compareBatchTieOrder(left.index, right.index);
   const rest = [
     ...applied.filter(({ operation }) => ANNOTATIONS.has(operation.kind)),
-    ...applied.filter(beforeFinalBreakRetirement),
+    ...applied.filter(beforeFinalBreakRetirement).toSorted(compareReplayOrder),
     ...applied
       .filter(
         (entry) =>
@@ -494,11 +535,7 @@ const batchAgainstOneAtATime = async ({
           !ANNOTATIONS.has(entry.operation.kind) &&
           !beforeFinalBreakRetirement(entry),
       )
-      .toSorted(
-        (left, right) =>
-          comparePlacement(placement(right.operation), placement(left.operation)) ||
-          right.index - left.index,
-      ),
+      .toSorted(compareReplayOrder),
   ];
   for (const entry of rest) {
     applyAlone(materializeAll([entry]));
@@ -601,7 +638,7 @@ const KIND_SAMPLES: readonly GeneratedOperation[] = [
   { kind: "mergeBlockWithNext", block: 1 },
   { kind: "deleteBlock", block: 1 },
   { kind: "replaceBlock", block: 1 },
-  { kind: "setBlockParagraphProperties", block: 1 },
+  { kind: "setBlockParagraphProperties", block: 1, properties: { alignment: "center" } },
   { kind: "insertAfterBlock", block: 1 },
   { kind: "insertBeforeBlock", block: 1 },
 ];
@@ -614,7 +651,7 @@ const NEIGHBOUR_SAMPLES: readonly GeneratedOperation[] = [
   { kind: "splitBlock", block: 1, before: 3 },
   { kind: "replaceInBlock", block: 2, first: 0, last: 0 },
   { kind: "deleteBlock", block: 2 },
-  { kind: "setBlockParagraphProperties", block: 2 },
+  { kind: "setBlockParagraphProperties", block: 2, properties: { alignment: "center" } },
   { kind: "insertBeforeBlock", block: 2 },
   { kind: "mergeBlockWithNext", block: 0 },
   { kind: "mergeBlockWithNext", block: 2 },
@@ -645,7 +682,7 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
   const trio: readonly GeneratedOperation[] = [
     { kind: "deleteBlock", block: last },
     { kind: "insertAfterBlock", block: last },
-    { kind: "setBlockParagraphProperties", block: last },
+    { kind: "setBlockParagraphProperties", block: last, properties: { alignment: "center" } },
   ];
   const orders = [
     [0, 1, 2],
@@ -664,12 +701,12 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
         { kind: "deleteBlock", block: last },
         { kind: "insertAfterBlock", block: last },
         { kind: "splitBlock", block: 0, before: 1 },
-        { kind: "setBlockParagraphProperties", block: last },
+        { kind: "setBlockParagraphProperties", block: last, properties: { alignment: "center" } },
       ];
       // Found once the paragraph a removed break leaves became the one after it.
       const insertedBefore: GeneratedOperation[] = [
         { kind: "insertBeforeBlock", block: last },
-        { kind: "setBlockParagraphProperties", block: last },
+        { kind: "setBlockParagraphProperties", block: last, properties: { alignment: "center" } },
         { kind: "deleteBlock", block: last },
       ];
       const deletedWithEarlierEdit: GeneratedOperation[] = [
@@ -772,7 +809,7 @@ describe("a merge into blocks the batch deletes", () => {
 
   test("deleting the last block carries its predecessor's admissible batch properties", async () => {
     const generated: GeneratedOperation[] = [
-      { kind: "setBlockParagraphProperties", block: 2 },
+      { kind: "setBlockParagraphProperties", block: 2, properties: { alignment: "center" } },
       { kind: "deleteBlock", block: 3 },
       { kind: "mergeBlockWithNext", block: 0 },
     ];
@@ -806,7 +843,7 @@ describe("a merge past a break retired by the same batch", () => {
           for (const separator of ["", " · "]) {
             const trio = [
               { kind: "mergeBlockWithNext", block: merge, separator },
-              { kind: "setBlockParagraphProperties", block },
+              { kind: "setBlockParagraphProperties", block, properties: { alignment: "center" } },
               { kind: "deleteBlock", block: BLOCK_COUNT - 1 },
             ] as const satisfies readonly GeneratedOperation[];
             for (const order of orders) {
@@ -897,6 +934,14 @@ const spanArbitrary = fc
     last: Math.min(TOKEN_COUNT - 1, first + length),
   }));
 
+const paragraphPatchArbitrary = fc.oneof(
+  fc
+    .constantFrom("left" as const, "center" as const, "right" as const)
+    .map((alignment) => ({ alignment })),
+  fc.integer({ min: 0, max: 720 }).map((spaceBefore) => ({ spacing: { spaceBefore } })),
+  fc.integer({ min: 0, max: 720 }).map((indentLeft) => ({ indentation: { indentLeft } })),
+);
+
 const operationArbitrary: fc.Arbitrary<GeneratedOperation> = fc.oneof(
   fc
     .tuple(
@@ -927,7 +972,11 @@ const operationArbitrary: fc.Arbitrary<GeneratedOperation> = fc.oneof(
       ),
       fc.nat({ max: BLOCK_COUNT - 1 }),
     )
-    .map(([kind, block]) => ({ kind, block })),
+    .map(([kind, block]) =>
+      kind === "setBlockParagraphProperties"
+        ? { kind, block, properties: { alignment: "center" as const } }
+        : { kind, block },
+    ),
   fc.nat({ max: BLOCK_COUNT - 2 }).map((block) => ({ kind: "mergeBlockWithNext" as const, block })),
 );
 
@@ -964,6 +1013,74 @@ describe("a random batch with overlapping, nested and duplicate targets", () => 
           fc.constantFrom(...MODES),
           async (generated, mode) => {
             expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
+          },
+        ),
+        { numRuns: 150 },
+      );
+    },
+    propertyTestTimeout(300_000),
+  );
+});
+
+describe("a random batch with distinct paragraph-property patches", () => {
+  test(
+    "applies accepted patches in planner order against an independent replay",
+    async () => {
+      await assertProperty(
+        fc.asyncProperty(
+          fc.array(fc.tuple(operationArbitrary, paragraphPatchArbitrary), {
+            minLength: 2,
+            maxLength: 7,
+          }),
+          fc.record({
+            block: fc.nat({ max: BLOCK_COUNT - 1 }),
+            properties: fc.uniqueArray(paragraphPatchArbitrary, {
+              minLength: 2,
+              maxLength: 2,
+              selector: (patch) => JSON.stringify(patch),
+            }),
+          }),
+          fc.constantFrom(...MODES),
+          async (generated, sameBlock, mode) => {
+            const varied = generated.map(([operation, properties]) =>
+              operation.kind === "setBlockParagraphProperties"
+                ? { ...operation, properties }
+                : operation,
+            );
+            expect(await batchAgainstOneAtATime({ generated: varied, mode })).toEqual([]);
+            const ties = sameBlock.properties.map((properties) => ({
+              kind: "setBlockParagraphProperties" as const,
+              block: sameBlock.block,
+              properties,
+            }));
+            expect(await batchAgainstOneAtATime({ generated: ties, mode })).toEqual([]);
+            const batch = await freshSession();
+            const blocks = batch.snapshot().blocks.map(({ id }) => id);
+            const operations = ties.flatMap((operation, index) => {
+              const resolved = materialize(batch, blocks, operation, index);
+              return resolved === null ? [] : [resolved];
+            });
+            expect(operations).toHaveLength(2);
+            const result = batch.apply(mode, operations);
+            expect(result.applied.map(({ id }) => id)).toEqual(["op0"]);
+            expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
+              { id: "op1", reason: "overlappingOperation" },
+            ]);
+            const expected = await freshSession();
+            const first = ties.at(0);
+            if (first === undefined) throw new TypeError("Generated tie requires its first patch");
+            const expectedOperation = materialize(
+              expected,
+              expected.snapshot().blocks.map(({ id }) => id),
+              first,
+              0,
+            );
+            if (expectedOperation === null)
+              throw new TypeError("Generated first patch must resolve");
+            expected.apply("direct", [expectedOperation]);
+            expect(paragraphProjection(resolveStateStory(batch.state, "accept").resolved)).toEqual(
+              paragraphProjection(expected.state.doc),
+            );
           },
         ),
         { numRuns: 150 },

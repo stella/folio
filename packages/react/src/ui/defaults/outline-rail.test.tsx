@@ -6,6 +6,13 @@ import { afterAll, expect, test } from "bun:test";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
 
+import { createBuiltInStyleIndex } from "@stll/folio-core/docx/builtInStyles";
+import {
+  HEADING_COLLECTOR_DOCUMENT,
+  HEADING_COLLECTOR_STYLES,
+} from "@stll/folio-core/utils/fixtures/headingCollector.synthetic";
+import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
+
 import type { FolioOutlineRailProps, OutlineItem } from "../folio-ui";
 import { DefaultOutlineRail } from "./outline-rail";
 
@@ -68,6 +75,48 @@ test("shrinking the outline keeps one valid tab stop and ArrowUp moves from it",
         expect([...buttons].filter((button) => button.tabIndex === 0)).toHaveLength(1);
       }
     }
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+test("the outline panel renders only headings classified from the DOCX model", async () => {
+  const headings = collectHeadings(
+    HEADING_COLLECTOR_DOCUMENT,
+    createBuiltInStyleIndex(HEADING_COLLECTOR_STYLES),
+  );
+  const classifiedItems = headings.map(
+    ({ text, level }, index) =>
+      ({ id: `heading-${index}`, label: text, level }) satisfies OutlineItem,
+  );
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const props = {
+    items: classifiedItems,
+    scrollContainerRef: createRef<HTMLElement>(),
+    resolvePct: () => null,
+    onJump: () => {},
+    presentation: "panel",
+  } satisfies FolioOutlineRailProps;
+
+  try {
+    await act(async () => root.render(<DefaultOutlineRail {...props} />));
+
+    const labels = [...container.querySelectorAll(".folio-outline-item-label")].map(
+      (label) => label.textContent ?? "",
+    );
+    expect(labels).toHaveLength(66);
+    expect(labels).toEqual(headings.map(({ text }) => text));
+    expect(labels).not.toContain(
+      '"Synthetic Term" means a term used only by this synthetic document fixture.',
+    );
+    expect(labels).not.toContain("The parties agree that this ordinary clause remains body text.");
+    expect(labels).not.toContain("Numbered list item at level 0");
+    expect(labels).not.toContain("Numbered list item at level 1");
+    expect(labels).not.toContain("Numbered list item at level 2");
+    expect(labels).not.toContain("PLAIN BOLD CAPS");
   } finally {
     await act(async () => root.unmount());
     container.remove();

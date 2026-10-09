@@ -576,6 +576,9 @@ export const DEFAULT_AI_SUGGESTION_PRESETS: AISuggestionPreset[];
 export const DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES: readonly string[];
 
 // @public (undocumented)
+export const DEFAULT_OUTLINE_DEPTH = 2;
+
+// @public (undocumented)
 export const deriveBlockId: (input: DeriveBlockIdInput) => FolioBlockId;
 
 // @public (undocumented)
@@ -750,6 +753,9 @@ export type ExtractDocumentStyleSetOptions = {
 export function extractEmbeddedFonts(buffer: ArrayBuffer, docNonce?: string): Promise<EmbeddedFont[]>;
 
 // @public
+export const filterHeadingsByDepth: (headings: readonly HeadingInfo[], depth: OutlineDepth) => HeadingInfo[];
+
+// @public
 export type FinalParagraphMarkRevision = {
     container: string;
     paragraphIndex: number;
@@ -823,7 +829,7 @@ export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_mod
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly import__stll_docx_core_model.ParagraphAlignment[];
 
 // @public
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 11;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 12;
 
 // @public (undocumented)
 export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
@@ -1827,6 +1833,9 @@ export function mergeDocumentContent(target: import__stll_docx_core_model.Docume
 
 // @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;
+
+// @public
+export type OutlineDepth = 2 | 3 | "all";
 
 // @public (undocumented)
 export const parseFolioDocumentOperationBatch: (value: unknown) => FolioDocumentOperationBatch;

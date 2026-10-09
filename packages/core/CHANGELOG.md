@@ -1,5 +1,73 @@
 # @stll/folio-core
 
+## 0.57.0
+
+### Minor Changes
+
+- [#1542](https://github.com/stella/folio/pull/1542) [`252fde1`](https://github.com/stella/folio/commit/252fde1b45b1886ca1d3930c1b96a10419006076) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route section property edits through the shared canonical journal API.
+
+- [#1610](https://github.com/stella/folio/pull/1610) [`b7d4b4e`](https://github.com/stella/folio/commit/b7d4b4ea8be0a9f038a4fc04d60b6b2035cd00bb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reuse committed comment projections across caret and composition renders.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route canonical comment lifecycles through semantic document operations with exact journal inverses and package-owned anchors.
+
+### Patch Changes
+
+- [#1618](https://github.com/stella/folio/pull/1618) [`2cd8176`](https://github.com/stella/folio/commit/2cd817665fd773e21c18c1b5539f69f81eb4f412) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored paragraph and run formatting across splits and subsequent content edits.
+
+- [#1622](https://github.com/stella/folio/pull/1622) [`5ffa4c5`](https://github.com/stella/folio/commit/5ffa4c57efb2eb2465eb14ba7642ceee6258afb3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor inherited heading semantics, dock expanded outlines beside the document, filter outline depth, and reserve composer space with usable rail controls.
+
+- [#1602](https://github.com/stella/folio/pull/1602) [`689739e`](https://github.com/stella/folio/commit/689739eb869a23a2a04e17a651df535d42347760) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve selected text and history when a native IME replacement is cancelled.
+
+- [#1541](https://github.com/stella/folio/pull/1541) [`ce048e0`](https://github.com/stella/folio/commit/ce048e05bf6b0684462dcf1c55f1382fc035a2f9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Enable canonical suggesting controls and track secondary-story text edits with shared exact history.
+
+- [#1607](https://github.com/stella/folio/pull/1607) [`3335585`](https://github.com/stella/folio/commit/3335585d28177a3d5f73639039572988aee45431) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve canonical comment boundary geometry through native comment marks.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Accept replies to loaded replies without own body markers, and map comment boundaries carried by marks during canonical editing.
+
+- [#1546](https://github.com/stella/folio/pull/1546) [`4a3b795`](https://github.com/stella/folio/commit/4a3b7958e664cbe6fd01b562d44dabd3b13b0447) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route canonical secondary-story views, creation and history through the shared document session.
+
+- [#1609](https://github.com/stella/folio/pull/1609) [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Give restored comparison note references result-owned occurrence identities.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Apply a controlled comments value changed during composition once the composition settles, and track in-place comment edits in Vue.
+
+- [#1615](https://github.com/stella/folio/pull/1615) [`e8012d7`](https://github.com/stella/folio/commit/e8012d7338d3494d92a81f61f64668daf5b15065) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve formatting authored in empty paragraphs when text is typed or pasted and the document is saved.
+
+- [#1603](https://github.com/stella/folio/pull/1603) [`2ef9672`](https://github.com/stella/folio/commit/2ef9672231aee8010601c8e1301eb500b9e4cc24) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Remove an entire contiguous equal hyperlink at the cursor while preserving other formatting and neighboring links.
+
+- [#1609](https://github.com/stella/folio/pull/1609) [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reject empty and whitespace-only note occurrence identities consistently before paste can remint them.
+
+- [#1609](https://github.com/stella/folio/pull/1609) [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use one nonblank occurrence identity check across editing and collaboration preflight.
+
+- [#1609](https://github.com/stella/folio/pull/1609) [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve malformed note attribution through paste transforms so the edit boundary reports a refusal.
+
+- [#1611](https://github.com/stella/folio/pull/1611) [`61bb595`](https://github.com/stella/folio/commit/61bb595e93431ede47288330ee1f0dbef18978a0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Map the caret to the exact note-reference occurrence after retracting an insertion in suggesting mode.
+
+- [#1609](https://github.com/stella/folio/pull/1609) [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Parse attributed note-reference elements before generic inline formatting rules.
+
+- [#1609](https://github.com/stella/folio/pull/1609) [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve distinct note-reference occurrences through editing and save, and refuse partial occurrence changes before committing them.
+
+  Breaking collaboration schema change: attribute schema 12 requires structural note-reference occurrence identities. Snapshots with unattributed references must be re-materialized from the saved DOCX before loading; identities are never inferred from label text.
+
+- [#1621](https://github.com/stella/folio/pull/1621) [`0304b2d`](https://github.com/stella/folio/commit/0304b2d5c87d6ae1cf317da76460e6930257295d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Centralize the batch planner tie-order rule and preserve independent final-paragraph replay validation.
+
+- [#1604](https://github.com/stella/folio/pull/1604) [`0d9d1ee`](https://github.com/stella/folio/commit/0d9d1ee78e0b76e5ce6633921b37221edc567f29) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve pending deletion ownership and insertion ancestry when later tracked edits span the same runs.
+
+- [#1615](https://github.com/stella/folio/pull/1615) [`e8012d7`](https://github.com/stella/folio/commit/e8012d7338d3494d92a81f61f64668daf5b15065) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve direct run formatting and live paragraph inheritance when deleted content is restored.
+
+- [#1609](https://github.com/stella/folio/pull/1609) [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep imported note projections deterministic while preserving distinct reference occurrences.
+
+- [#1616](https://github.com/stella/folio/pull/1616) [`c76c270`](https://github.com/stella/folio/commit/c76c2703d091f73a3fd62475e9bc91cf7f538850) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Defer document-change notifications until canonical composition commits or cancels.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep structural public operations separate from operations carrying attached comments.
+
+- [#1606](https://github.com/stella/folio/pull/1606) [`6b7f7a6`](https://github.com/stella/folio/commit/6b7f7a67d394f36189cd68028ede02d9655a5a54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve tracked child revisions in simple fields and serialize tracked hyperlink field results.
+
+- [#1619](https://github.com/stella/folio/pull/1619) [`8224d92`](https://github.com/stella/folio/commit/8224d926a4c4681f115e7d9e06ff1d9d25264e05) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored and inherited indentation through tracked paragraph edits, list changes, styles, and save/reopen.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Open documents whose root comments have no source anchor in canonical sessions, keeping those comments read-only and preserved on save.
+- Updated dependencies [[`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4), [`ce048e0`](https://github.com/stella/folio/commit/ce048e05bf6b0684462dcf1c55f1382fc035a2f9), [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4), [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4), [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4), [`6b7f7a6`](https://github.com/stella/folio/commit/6b7f7a67d394f36189cd68028ede02d9655a5a54), [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4)]:
+  - @stll/docx-core@0.33.0
+
 ## 0.56.0
 
 ### Minor Changes

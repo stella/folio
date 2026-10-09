@@ -1,5 +1,39 @@
 # @stll/folio-react
 
+## 0.25.2
+
+### Patch Changes
+
+- [#1622](https://github.com/stella/folio/pull/1622) [`5ffa4c5`](https://github.com/stella/folio/commit/5ffa4c57efb2eb2465eb14ba7642ceee6258afb3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor inherited heading semantics, dock expanded outlines beside the document, filter outline depth, and reserve composer space with usable rail controls.
+
+- [#1541](https://github.com/stella/folio/pull/1541) [`ce048e0`](https://github.com/stella/folio/commit/ce048e05bf6b0684462dcf1c55f1382fc035a2f9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Enable canonical suggesting controls and track secondary-story text edits with shared exact history.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Open the review sidebar for loaded canonical comment threads when automatic opening is enabled.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - List committed canonical comments in the comments sidebar, including before host feedback arrives.
+
+- [#1541](https://github.com/stella/folio/pull/1541) [`ce048e0`](https://github.com/stella/folio/commit/ce048e05bf6b0684462dcf1c55f1382fc035a2f9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep canonical header and footer editing controls connected to their active views.
+
+- [#1546](https://github.com/stella/folio/pull/1546) [`4a3b795`](https://github.com/stella/folio/commit/4a3b7958e664cbe6fd01b562d44dabd3b13b0447) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route canonical secondary-story views, creation and history through the shared document session.
+
+- [#1542](https://github.com/stella/folio/pull/1542) [`252fde1`](https://github.com/stella/folio/commit/252fde1b45b1886ca1d3930c1b96a10419006076) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route section property edits through the shared canonical journal API.
+
+- [#1610](https://github.com/stella/folio/pull/1610) [`b7d4b4e`](https://github.com/stella/folio/commit/b7d4b4ea8be0a9f038a4fc04d60b6b2035cd00bb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reuse committed comment projections across caret and composition renders.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Apply a controlled comments value changed during composition once the composition settles, and track in-place comment edits in Vue.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve canonical comment edits and history while controlled hosts retain an unchanged comments value.
+
+- [#1609](https://github.com/stella/folio/pull/1609) [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve distinct note-reference occurrences through editing and save, and refuse partial occurrence changes before committing them.
+
+  Breaking collaboration schema change: attribute schema 12 requires structural note-reference occurrence identities. Snapshots with unattributed references must be re-materialized from the saved DOCX before loading; identities are never inferred from label text.
+
+- [#1538](https://github.com/stella/folio/pull/1538) [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Route canonical comment lifecycles through semantic document operations with exact journal inverses and package-owned anchors.
+
+- [#1616](https://github.com/stella/folio/pull/1616) [`c76c270`](https://github.com/stella/folio/commit/c76c2703d091f73a3fd62475e9bc91cf7f538850) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Defer document-change notifications until canonical composition commits or cancels.
+- Updated dependencies [[`2cd8176`](https://github.com/stella/folio/commit/2cd817665fd773e21c18c1b5539f69f81eb4f412), [`5ffa4c5`](https://github.com/stella/folio/commit/5ffa4c57efb2eb2465eb14ba7642ceee6258afb3), [`689739e`](https://github.com/stella/folio/commit/689739eb869a23a2a04e17a651df535d42347760), [`ce048e0`](https://github.com/stella/folio/commit/ce048e05bf6b0684462dcf1c55f1382fc035a2f9), [`3335585`](https://github.com/stella/folio/commit/3335585d28177a3d5f73639039572988aee45431), [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4), [`4a3b795`](https://github.com/stella/folio/commit/4a3b7958e664cbe6fd01b562d44dabd3b13b0447), [`252fde1`](https://github.com/stella/folio/commit/252fde1b45b1886ca1d3930c1b96a10419006076), [`b7d4b4e`](https://github.com/stella/folio/commit/b7d4b4ea8be0a9f038a4fc04d60b6b2035cd00bb), [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa), [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4), [`e8012d7`](https://github.com/stella/folio/commit/e8012d7338d3494d92a81f61f64668daf5b15065), [`2ef9672`](https://github.com/stella/folio/commit/2ef9672231aee8010601c8e1301eb500b9e4cc24), [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa), [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa), [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa), [`61bb595`](https://github.com/stella/folio/commit/61bb595e93431ede47288330ee1f0dbef18978a0), [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa), [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa), [`0304b2d`](https://github.com/stella/folio/commit/0304b2d5c87d6ae1cf317da76460e6930257295d), [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4), [`0d9d1ee`](https://github.com/stella/folio/commit/0d9d1ee78e0b76e5ce6633921b37221edc567f29), [`e8012d7`](https://github.com/stella/folio/commit/e8012d7338d3494d92a81f61f64668daf5b15065), [`abb50c9`](https://github.com/stella/folio/commit/abb50c9f87bc47ccd8c054e539189ff034b474aa), [`c76c270`](https://github.com/stella/folio/commit/c76c2703d091f73a3fd62475e9bc91cf7f538850), [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4), [`6b7f7a6`](https://github.com/stella/folio/commit/6b7f7a67d394f36189cd68028ede02d9655a5a54), [`8224d92`](https://github.com/stella/folio/commit/8224d926a4c4681f115e7d9e06ff1d9d25264e05), [`2ce4891`](https://github.com/stella/folio/commit/2ce489111e78badb8934d95216679c7da7b03ca4)]:
+  - @stll/folio-core@0.57.0
+
 ## 0.25.1
 
 ### Patch Changes

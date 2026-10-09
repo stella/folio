@@ -52,6 +52,7 @@ import type {
 } from "@stll/folio-core/types/document";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
+import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 import type { BlockRect } from "@stll/folio-core/paged-layout/blockGeometry";
 // `EditorMode` is owned by core's `EditorModeManager`.
@@ -247,6 +248,10 @@ export type DocxEditorProps = {
   onScrollTopChange?: (scrollTop: number) => void;
   /** Whether to show the document outline when headings exist (default: true). Its column, rail, or drawer presentation follows the available editor width. */
   showOutline?: boolean;
+  /** Maximum heading depth shown in the outline. Defaults to 2 (Heading 1–2). */
+  outlineDepth?: OutlineDepth;
+  /** Called when the outline depth selector changes. */
+  onOutlineDepthChange?: (depth: OutlineDepth) => void;
   /** Whether to show print button in toolbar (default: true) */
   showPrintButton?: boolean;
   /** Callback when print is triggered */
