@@ -32,6 +32,7 @@ import {
   isStyleSourcedParagraphNumbering,
   modelParagraphFormattingEmission,
 } from "../../internal/paragraphFormattingSerialization";
+import { getDocumentSourceBaseline } from "../../docx/headerFooterVerbatim";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
 import { normalizeFoldedListNumbers } from "../../docx/foldedListNumberFields";
@@ -681,6 +682,84 @@ export type FromProseDocOptions = {
   reuse?: ProjectionReuse;
 };
 
+type SaveStylesheetDivergence =
+  | { type: "style"; styleId: string }
+  | { type: "docDefaults" }
+  | { type: "sourceUnavailable" };
+
+class SaveStylesheetSourceMismatch extends TaggedError("SaveStylesheetSourceMismatch")<{
+  message: string;
+  divergences: readonly SaveStylesheetDivergence[];
+}> {}
+
+const assertSuppliedStylesMatchSource = (
+  styles: StyleDefinitions,
+  baseDocument: Document | undefined,
+) => {
+  if (!baseDocument?.originalBuffer) return;
+  const source = getDocumentSourceBaseline(baseDocument);
+  switch (source.type) {
+    case "missing":
+    case "mismatch":
+      throw new SaveStylesheetSourceMismatch({
+        message: "The parsed package stylesheet source is unavailable.",
+        divergences: [{ type: "sourceUnavailable" }],
+      });
+    case "captured": {
+      const sourceStyles = source.resourceStyles;
+      // Without a source styles part the saver materializes the full supplied stylesheet.
+      if (!sourceStyles) return;
+      const suppliedById = new Map(styles.styles.map((style) => [style.styleId, style]));
+      const sourceById = new Map(sourceStyles.styles.map((style) => [style.styleId, style]));
+      const divergentIds = new Set<string>();
+      for (const style of sourceStyles.styles) {
+        if (canonicalJson(style) !== canonicalJson(suppliedById.get(style.styleId)))
+          divergentIds.add(style.styleId);
+      }
+      // The append-only writer emits the first new definition for an id.
+      // The resolver must not select a different later definition for that same id.
+      for (const style of styles.styles) {
+        if (canonicalJson(style) !== canonicalJson(suppliedById.get(style.styleId)))
+          divergentIds.add(style.styleId);
+      }
+      const persistedStyles = {
+        ...sourceStyles,
+        styles: [
+          ...sourceStyles.styles,
+          ...styles.styles.filter(({ styleId }) => !sourceById.has(styleId)),
+        ],
+      };
+      const suppliedResolver = createStyleEngine(styles);
+      const persistedResolver = createStyleEngine(persistedStyles);
+      for (const [supplied, persisted] of [
+        [suppliedResolver.getDefaultParagraphStyle(), persistedResolver.getDefaultParagraphStyle()],
+        [suppliedResolver.getDefaultCharacterStyle(), persistedResolver.getDefaultCharacterStyle()],
+        [suppliedResolver.getDefaultTableStyle(), persistedResolver.getDefaultTableStyle()],
+      ]) {
+        if (supplied?.styleId === persisted?.styleId) continue;
+        if (supplied) divergentIds.add(supplied.styleId);
+        if (persisted) divergentIds.add(persisted.styleId);
+      }
+      const divergences: SaveStylesheetDivergence[] = [];
+      for (const styleId of divergentIds) divergences.push({ type: "style", styleId });
+      if (canonicalJson(styles.docDefaults) !== canonicalJson(sourceStyles.docDefaults))
+        divergences.push({ type: "docDefaults" });
+      if (divergences.length === 0) return;
+      throw new SaveStylesheetSourceMismatch({
+        message: `Supplied stylesheet differs from the parsed package: ${[
+          ...divergentIds,
+          ...(divergences.some(({ type }) => type === "docDefaults") ? ["docDefaults"] : []),
+        ].join(", ")}.`,
+        divergences,
+      });
+    }
+    default: {
+      const unreachable: never = source;
+      return panic(`Unexpected stylesheet source baseline: ${JSON.stringify(unreachable)}`);
+    }
+  }
+};
+
 const saveStylesheet = (
   source: FromProseDocOptions["stylesheetSource"],
   baseDocument: Document | undefined,
@@ -689,6 +768,7 @@ const saveStylesheet = (
     case "package":
       return baseDocument?.package.styles;
     case "supplied":
+      assertSuppliedStylesMatchSource(source.styles, baseDocument);
       return source.styles;
     default: {
       const unreachable: never = source;
@@ -699,7 +779,7 @@ const saveStylesheet = (
 
 class MissingSaveStylesheet extends TaggedError("MissingSaveStylesheet")<{
   message: string;
-}>() {}
+}> {}
 
 const assertSaveStylesheetAvailable = (pmDoc: PMNode, styles: StyleDefinitions | undefined) => {
   if (styles !== undefined) return;

@@ -14,6 +14,7 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { parseDocumentBody } from "../../docx/documentParser";
 import { parseDocx } from "../../docx/parser";
+import { cloneDocumentWithParagraphPropertySources } from "../../docx/paragraphPropertySource";
 import { createDocx } from "../../docx/rezip";
 import { serializeDocument } from "../../docx/serializer/documentSerializer";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
@@ -1458,6 +1459,179 @@ describe("save stylesheet authority", () => {
       ).toBe(true);
     },
   );
+
+  test("refuses a supplied change to a style already captured from the parsed package", async () => {
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "ToggleHeading" },
+        content: [runText("Term")],
+      }),
+    );
+    const base = await reopenThroughDocx(input);
+    const capturedStyles = base.package.styles;
+    if (!capturedStyles) {
+      throw new Error("Expected parsed package styles");
+    }
+    const divergentStyles = structuredClone(capturedStyles);
+    const heading = divergentStyles.styles.find(({ styleId }) => styleId === "ToggleHeading");
+    if (!heading) throw new Error("Expected the captured heading style");
+    heading.rPr = { bold: false };
+    base.package.styles = structuredClone(divergentStyles);
+    const proseDoc = toProseDoc(base, { styles: divergentStyles });
+    const baseBefore = cloneDocumentWithParagraphPropertySources(base).package;
+    const proseBefore = proseDoc.toJSON();
+
+    expect(() =>
+      fromProseDoc(proseDoc, base, {
+        stylesheetSource: { type: "supplied", styles: divergentStyles },
+      }),
+    ).toThrow(/Supplied stylesheet differs from the parsed package:.*ToggleHeading/);
+    expect(base.package).toEqual(baseBefore);
+    expect(proseDoc.toJSON()).toEqual(proseBefore);
+  });
+
+  test("refuses changed docDefaults captured from the parsed package", async () => {
+    const sourceStyles: StyleDefinitions = {
+      ...styles,
+      docDefaults: { rPr: { bold: true } },
+    };
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "ToggleHeading" },
+        content: [runText("Term")],
+      }),
+      sourceStyles,
+    );
+    const base = await reopenThroughDocx(input);
+    const capturedStyles = base.package.styles;
+    if (!capturedStyles) {
+      throw new Error("Expected parsed package styles");
+    }
+    const divergentStyles: StyleDefinitions = {
+      ...capturedStyles,
+      docDefaults: { rPr: { bold: false } },
+    };
+    base.package.styles = structuredClone(divergentStyles);
+    const proseDoc = toProseDoc(base, { styles: divergentStyles });
+    const baseBefore = cloneDocumentWithParagraphPropertySources(base).package;
+    const proseBefore = proseDoc.toJSON();
+
+    expect(() =>
+      fromProseDoc(proseDoc, base, {
+        stylesheetSource: { type: "supplied", styles: divergentStyles },
+      }),
+    ).toThrow(/Supplied stylesheet differs from the parsed package:.*docDefaults/);
+    expect(base.package).toEqual(baseBefore);
+    expect(proseDoc.toJSON()).toEqual(proseBefore);
+  });
+
+  test("appends a new supplied paragraph style and preserves its formatting after reopen", async () => {
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "AddedBold" },
+        content: [runText("Term")],
+      }),
+    );
+    const base = await reopenThroughDocx(input);
+    const baseStyles = base.package.styles;
+    if (!baseStyles) {
+      throw new Error("Expected parsed package styles");
+    }
+    const suppliedStyles: StyleDefinitions = {
+      ...baseStyles,
+      styles: [
+        ...baseStyles.styles,
+        { styleId: "AddedBold", type: "paragraph", rPr: { bold: true } },
+      ],
+    };
+    const proseDoc = toProseDoc(base, { styles: suppliedStyles });
+    const saved = fromProseDoc(proseDoc, base, {
+      stylesheetSource: { type: "supplied", styles: suppliedStyles },
+    });
+
+    expect(saved.package.styles?.styles.some((style) => style.styleId === "AddedBold")).toBe(true);
+    const reopened = await reopenThroughDocx(saved);
+    expect(
+      findTextNode(toProseDoc(reopened), "Term").node.marks.some(
+        ({ type }) => type.name === "bold",
+      ),
+    ).toBe(true);
+  });
+
+  test("refuses omission of an existing style definition", async () => {
+    const base = await reopenThroughDocx(withStyles(wrap(runText("Term"))));
+    const sourceStyles = base.package.styles;
+    if (!sourceStyles) throw new Error("Expected parsed package styles");
+    const suppliedStyles = {
+      ...sourceStyles,
+      styles: sourceStyles.styles.filter(({ styleId }) => styleId !== "ToggleHeading"),
+    };
+    expect(() =>
+      fromProseDoc(toProseDoc(base, { styles: suppliedStyles }), base, {
+        stylesheetSource: { type: "supplied", styles: suppliedStyles },
+      }),
+    ).toThrow(/Supplied stylesheet differs from the parsed package:.*ToggleHeading/);
+  });
+
+  test("refuses a new default whose precedence differs from append order", async () => {
+    const input = withStyles(wrap(runText("Term")), {
+      styles: [{ type: "paragraph", styleId: "SourceDefault", default: true, rPr: { bold: true } }],
+    });
+    const base = await reopenThroughDocx(input);
+    const sourceStyles = base.package.styles;
+    if (!sourceStyles) throw new Error("Expected parsed package styles");
+    const suppliedStyles: StyleDefinitions = {
+      ...sourceStyles,
+      styles: [
+        { type: "paragraph", styleId: "NewDefault", default: true, rPr: { italic: true } },
+        ...sourceStyles.styles,
+      ],
+    };
+    expect(() =>
+      fromProseDoc(toProseDoc(base, { styles: suppliedStyles }), base, {
+        stylesheetSource: { type: "supplied", styles: suppliedStyles },
+      }),
+    ).toThrow(/Supplied stylesheet differs from the parsed package:.*NewDefault/);
+  });
+
+  test("accepts a semantically matching supplied stylesheet with reordered object keys", async () => {
+    const sourceStyles: StyleDefinitions = {
+      docDefaults: { rPr: { bold: true, italic: true } },
+      styles: [
+        {
+          styleId: "ToggleHeading",
+          type: "paragraph",
+          rPr: { bold: true, italic: true },
+        },
+      ],
+    };
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "ToggleHeading" },
+        content: [runText("Term")],
+      }),
+      sourceStyles,
+    );
+    const base = await reopenThroughDocx(input);
+    const capturedStyles = base.package.styles;
+    if (!capturedStyles) throw new Error("Expected parsed package styles");
+    const suppliedStyles: StyleDefinitions = {
+      ...capturedStyles,
+      styles: capturedStyles.styles.map(({ rPr, ...style }) => ({ rPr, ...style })),
+    };
+    expect(JSON.stringify(capturedStyles)).not.toBe(JSON.stringify(suppliedStyles));
+
+    const proseDoc = toProseDoc(base, { styles: suppliedStyles });
+    const saved = fromProseDoc(proseDoc, base, {
+      stylesheetSource: { type: "supplied", styles: suppliedStyles },
+    });
+
+    expect(firstParagraph(saved).formatting?.styleId).toBe("ToggleHeading");
+  });
 });
 
 describe("unknown and malformed style references", () => {

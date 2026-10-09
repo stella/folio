@@ -70,18 +70,29 @@ describe("fromProseDoc", () => {
   });
 
   test("uses an explicit empty stylesheet for unresolved character references", () => {
-    const characterStyle = schema.mark("characterStyle", { styleId: "MissingCharacterStyle" });
-    const directFormatting = schema.mark("runFormattingOverride", { bold: true });
-    const pmDoc = schema.node("doc", undefined, [
-      schema.node("paragraph", undefined, [
-        schema.text("Authored formatting", [characterStyle, directFormatting]),
-      ]),
-    ]);
-    const baseDocument: Document = { package: { document: { content: [] } } };
-
-    const expected = proseDocToBlocks(pmDoc);
+    const styles = { styles: [] };
+    const baseDocument: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  formatting: { bold: true, styleId: "MissingCharacterStyle" },
+                  content: [{ type: "text", text: "Authored formatting" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const pmDoc = toProseDoc(baseDocument, { styles });
+    const expected = proseDocToBlocks(pmDoc, undefined, styles);
     const restored = fromProseDoc(pmDoc, baseDocument, {
-      stylesheetSource: { type: "supplied", styles: { styles: [] } },
+      stylesheetSource: { type: "supplied", styles },
     }).package.document.content;
 
     expect(expected.at(0)).toMatchObject({
@@ -2186,6 +2197,9 @@ describe("fromProseDoc", () => {
       },
     };
 
+    document.package.styles = {
+      styles: [{ type: "paragraph", styleId: "Normal", name: "Normal" }],
+    };
     const pmDoc = toProseDoc(document);
     const paragraph = pmDoc.child(0);
     const resetParagraph = schema.node(
