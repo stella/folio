@@ -381,20 +381,18 @@ type ParagraphFormattingLayersOptions = {
   tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined;
 };
 
+/** Paragraph tiers that can contribute numbering; the table overlay is spacing-only. */
+const paragraphNumberingLayers = (resolver: StyleResolver, styleId: string | undefined | null) =>
+  [resolver.getDocDefaults()?.pPr, paragraphStyleFor(resolver, styleId)?.pPr] as const;
+
 const paragraphFormattingLayers = ({
   resolver,
   styleId,
   tableParagraphOverlay,
-}: ParagraphFormattingLayersOptions) =>
-  [
-    resolver.getDocDefaults()?.pPr,
-    tableParagraphOverlay,
-    paragraphStyleFor(resolver, styleId)?.pPr,
-  ] as const;
-
-/** Paragraph tiers that can contribute numbering; the table overlay is spacing-only. */
-const paragraphNumberingLayers = (resolver: StyleResolver, styleId: string | undefined | null) =>
-  [resolver.getDocDefaults()?.pPr, paragraphStyleFor(resolver, styleId)?.pPr] as const;
+}: ParagraphFormattingLayersOptions) => {
+  const [defaults, style] = paragraphNumberingLayers(resolver, styleId);
+  return [defaults, tableParagraphOverlay, style] as const;
+};
 
 /** The same ordered paragraph tiers, without unrelated run or paragraph fields. */
 export const resolveStyleParagraphNumbering = (
