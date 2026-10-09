@@ -10,6 +10,7 @@ import type { EditorState } from "prosemirror-state";
 
 import type { Layout } from "../layout-engine/types";
 import type { Document } from "../types/document";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { DocxInput } from "../utils/docxInput";
 import type { FolioEditorEmitter } from "./folioEditorEvents";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
@@ -80,6 +81,16 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
     applyCanonicalStoryHistory: (options) =>
       deps.getEditorApi()?.applyCanonicalStoryHistory(options) ?? false,
     applyCanonicalComment: (request) => deps.getEditorApi()?.applyCanonicalComment(request) ?? null,
+    applyCanonicalSectionProperties: (patch) => {
+      const api = deps.getEditorApi();
+      if (!api)
+        return {
+          status: "refused",
+          gap: CANONICAL_GAP.sectionProperties,
+          message: "The editor is not ready for section changes.",
+        };
+      return api.applyCanonicalSectionProperties(patch);
+    },
     applyCanonicalOperations: (ops) => deps.getEditorApi()?.applyCanonicalOperations(ops) ?? false,
     getCanonicalStorySelection: (story) =>
       deps.getEditorApi()?.getCanonicalStorySelection(story) ?? null,
@@ -95,6 +106,7 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
     undoCanonicalDocumentOperations: (handle) =>
       deps.getEditorApi()?.undoCanonicalDocumentOperations(handle) ?? null,
     getCanonicalComments: () => deps.getEditorApi()?.getCanonicalComments() ?? null,
+    getCanonicalCommittedVersion: () => deps.getEditorApi()?.getCanonicalCommittedVersion() ?? null,
     getCanonicalDocument: () => deps.getEditorApi()?.getCanonicalDocument() ?? null,
 
     setCanonicalMode: (mode) => deps.getEditorApi()?.setCanonicalMode(mode) ?? false,

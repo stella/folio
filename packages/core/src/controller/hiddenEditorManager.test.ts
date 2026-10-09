@@ -13,7 +13,7 @@ import { panic } from "better-result";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { resolveCanonicalReviewRange } from "./canonicalReview";
 import { createEmptyDocument } from "../utils/createDocument";
-import { EditorState, Plugin } from "prosemirror-state";
+import { AllSelection, EditorState, NodeSelection, Plugin } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
 import type { Paragraph } from "../types/document";
@@ -543,7 +543,9 @@ test.each(["body", "story"] as const)(
       if (owner === "body") {
         view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
       } else {
+        expect(manager.isCanonicalComposing()).toBe(false);
         expect(manager.api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
+        expect(manager.isCanonicalComposing()).toBe(true);
       }
       for (const read of [manager.api.getDocument, manager.api.getCanonicalDocument])
         expect(read).toThrow("Composition must finish before taking a snapshot.");
@@ -557,6 +559,7 @@ test.each(["body", "story"] as const)(
         await new Promise<void>((resolve) => setTimeout(resolve, 40));
       } else {
         manager.api.updateCanonicalInputLifecycle("endComposition");
+        expect(manager.isCanonicalComposing()).toBe(false);
       }
       expect(manager.api.getCanonicalDocument()).toEqual(initial);
       expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).not.toBeNull();
@@ -1366,3 +1369,145 @@ test.each([
     }
   },
 );
+
+test.each([
+  { key: "Home", selectionType: "all" },
+  { key: "End", selectionType: "all" },
+  { key: "Home", selectionType: "node" },
+  { key: "End", selectionType: "node" },
+] as const)(
+  "native navigation leaves a note selection before canonical typing (%j)",
+  ({ key, selectionType }) => {
+    GlobalRegistrator.register();
+    const bodyHost = document.createElement("div");
+    const noteHost = document.createElement("div");
+    document.body.append(bodyHost, noteHost);
+    const source = createEmptyDocument({ initialText: "Body" });
+    const body = source.package.document.content.at(0);
+    if (body?.type !== "paragraph") panic("Missing body fixture.");
+    body.paraId = "74000004";
+    source.package.footnotes = [
+      { type: "footnote", id: 1, content: [secondaryParagraph("74000003")] },
+    ];
+    const { deps } = makeDeps({
+      getHost: () => bodyHost,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExperimentalSession: () => "canonical",
+    });
+    const manager = createHiddenEditorManager(deps);
+    const notes = createNoteEditorManager({
+      getHost: () => noteHost,
+      getDocument: () => source,
+      getCanonicalApi: () => manager.api,
+      getExperimentalSession: () => "canonical",
+      getStyles: () => null,
+      getTheme: () => null,
+    });
+    try {
+      manager.ensureView();
+      const view = notes.activate({ kind: "footnote", noteId: 1 }) ?? panic("Missing note view.");
+      const initialSelection =
+        selectionType === "all"
+          ? new AllSelection(view.state.doc)
+          : NodeSelection.create(view.state.doc, 0);
+      view.dispatch(view.state.tr.setSelection(initialSelection));
+      const position = key === "Home" ? 1 : view.state.doc.content.size - 1;
+      const caret = view.domAtPos(position);
+      const range = document.createRange();
+      range.setStart(caret.node, caret.offset);
+      range.collapse(true);
+      const selection = document.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      view.dom.dispatchEvent(new KeyboardEvent("keyup", { key }));
+      view.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
+          inputType: "insertText",
+          data: "x",
+          cancelable: true,
+        }),
+      );
+      expect(view.state.doc.textContent).toBe(key === "Home" ? "xSource" : "Sourcex");
+      const accepted = manager.api.getCanonicalDocument();
+      expect(
+        manager.api.applyCanonicalStoryHistory({
+          view,
+          story: { kind: "footnote", id: 1 },
+          direction: "undo",
+        }),
+      ).toBe(true);
+      expect(view.state.doc.textContent).toBe("Source");
+      expect(
+        manager.api.applyCanonicalStoryHistory({
+          view,
+          story: { kind: "footnote", id: 1 },
+          direction: "redo",
+        }),
+      ).toBe(true);
+      assertExactModel(manager.api.getCanonicalDocument(), accepted);
+    } finally {
+      notes.destroy();
+      manager.destroyView();
+      bodyHost.remove();
+      noteHost.remove();
+      GlobalRegistrator.unregister();
+    }
+  },
+);
+
+test("committed version keys survive composition and distinguish document loads", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Versioned" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Missing version fixture.");
+  paragraph.paraId = "75100000";
+  let identity = "first";
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    getDocumentIdentity: () => identity,
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const initial = manager.api.getCanonicalCommittedVersion();
+    expect(initial).not.toBeNull();
+    manager.api.setSelection(2);
+    expect(manager.api.getCanonicalCommittedVersion()).toBe(initial);
+    expect(manager.api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
+    expect(manager.api.getCanonicalCommittedVersion()).toBe(initial);
+    expect(manager.api.getCanonicalDocument).toThrow(
+      "Composition must finish before taking a snapshot.",
+    );
+    manager.api.updateCanonicalInputLifecycle("endComposition");
+    expect(manager.api.getCanonicalCommittedVersion()).toBe(initial);
+    const view = manager.getView() ?? panic("Missing versioned view.");
+    view.dom.dispatchEvent(
+      new InputEvent("beforeinput", {
+        inputType: "insertText",
+        data: "x",
+        cancelable: true,
+      }),
+    );
+    const committed = manager.api.getCanonicalCommittedVersion();
+    expect(committed).not.toBe(initial);
+    expect(manager.api.undo()).toBe(true);
+    const undone = manager.api.getCanonicalCommittedVersion();
+    expect(undone).not.toBe(initial);
+    expect(undone).not.toBe(committed);
+    expect(manager.api.redo()).toBe(true);
+    expect(manager.api.getCanonicalCommittedVersion()).not.toBe(undone);
+    identity = "second";
+    manager.syncExternalDocument();
+    expect(manager.api.getCanonicalCommittedVersion()).not.toBe(initial);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
