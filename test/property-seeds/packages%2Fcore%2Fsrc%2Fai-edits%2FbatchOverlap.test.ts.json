@@ -47,6 +47,12 @@
       "path": "150:1:1:2:2:2",
       "note": "#1550: a separate property edit on a paragraph mark deleted by a tracked merge is refused (path at factor 5).",
       "date": "2026-10-05"
+    },
+    {
+      "seed": -509341181,
+      "path": "86:5",
+      "note": "Tracked final-paragraph retirement orders deleted-paragraph properties before carrier properties.",
+      "date": "2026-10-09"
     }
   ]
 }

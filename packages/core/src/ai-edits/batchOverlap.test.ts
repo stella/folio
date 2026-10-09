@@ -39,6 +39,7 @@ import { fromMarkdown } from "../markdown";
 import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
+import { compareBatchTieOrder } from "./batch-claims";
 import type { FolioAIEditSnapshot } from "./types";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
@@ -483,10 +484,19 @@ const batchAgainstOneAtATime = async ({
     !insertsAfterLast &&
     finalBreakCarrier < BLOCK_COUNT - 1 &&
     operation.kind === "setBlockParagraphProperties" &&
-    operation.block === finalBreakCarrier;
+    operation.block >= finalBreakCarrier;
+  // Retirement carries the predecessor's properties onto the final mark.
+  // Apply properties on the deleted paragraphs before those on the carrier,
+  // so the carrier's revision cannot become a pre-existing refusal there.
+  const compareReplayOrder = (
+    left: { operation: GeneratedOperation; index: number },
+    right: { operation: GeneratedOperation; index: number },
+  ) =>
+    comparePlacement(placement(right.operation), placement(left.operation)) ||
+    compareBatchTieOrder(left.index, right.index);
   const rest = [
     ...applied.filter(({ operation }) => ANNOTATIONS.has(operation.kind)),
-    ...applied.filter(beforeFinalBreakRetirement),
+    ...applied.filter(beforeFinalBreakRetirement).toSorted(compareReplayOrder),
     ...applied
       .filter(
         (entry) =>
@@ -494,11 +504,7 @@ const batchAgainstOneAtATime = async ({
           !ANNOTATIONS.has(entry.operation.kind) &&
           !beforeFinalBreakRetirement(entry),
       )
-      .toSorted(
-        (left, right) =>
-          comparePlacement(placement(right.operation), placement(left.operation)) ||
-          right.index - left.index,
-      ),
+      .toSorted(compareReplayOrder),
   ];
   for (const entry of rest) {
     applyAlone(materializeAll([entry]));
