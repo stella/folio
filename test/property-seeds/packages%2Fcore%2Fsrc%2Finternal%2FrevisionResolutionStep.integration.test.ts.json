@@ -12,5 +12,19 @@
       "note": "revision resolution map with an inserted first paragraph and table cell",
       "date": "2026-09-28"
     }
+  ],
+  "restored historical runs preserve authorship through bulk and individual rejection": [
+    {
+      "seed": 16091615,
+      "path": "0:0:0:0:0:0:0:0:0",
+      "note": "restored unformatted historical run must not acquire paragraph-mark suppression or direct font size",
+      "date": "2026-10-09"
+    },
+    {
+      "seed": 16091615,
+      "path": "0:0:0:1:0:0:0:0:0:0:0",
+      "note": "restored direct formatting retains absent complex-script mirror provenance",
+      "date": "2026-10-09"
+    }
   ]
 }

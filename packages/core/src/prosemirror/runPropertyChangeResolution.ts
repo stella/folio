@@ -57,12 +57,12 @@ export const restoreHistoricalRunFormatting = ({
       paragraphMarkPrecedesStyle: false,
     },
     marks: node.marks,
-    styleResolver,
+    ...(styleResolver !== undefined ? { styleResolver } : {}),
   });
   return reconcileRunFormattingMarks({
     authoredFormatting,
     context: paragraphContext,
     node,
-    styleResolver,
+    ...(styleResolver !== undefined ? { styleResolver } : {}),
   });
 };
