@@ -6,9 +6,13 @@
  * PR #595, trimmed to the sync continuous path.
  */
 
+import {
+  createStyleResolver,
+  resolveStyleParagraphNumbering,
+} from "../prosemirror/styles/styleResolver";
 import { createBuiltInStyleIndex } from "../docx/builtInStyles";
 import { createListLabelCounter } from "../prosemirror/listLabels";
-import type { StyleDefinitions } from "../types/document";
+import type { ParagraphFormatting, StyleDefinitions } from "../types/document";
 import {
   createNoteReferenceNumbering,
   noteReferenceMarker,
@@ -29,7 +33,14 @@ export function newContext(
   opts: MarkdownOptions = {},
   styles?: StyleDefinitions | undefined,
 ): RenderContext {
+  const resolver = createStyleResolver(styles);
+  const numbering = new Map<string | undefined, ParagraphFormatting["numPr"]>();
   return {
+    paragraphNumbering: (styleId) => {
+      if (!numbering.has(styleId))
+        numbering.set(styleId, resolveStyleParagraphNumbering(resolver, styleId));
+      return numbering.get(styleId);
+    },
     builtInStyles: createBuiltInStyleIndex(styles?.styles ?? [], styles?.docDefaults),
     opts: {
       annotations: opts.annotations ?? "html",

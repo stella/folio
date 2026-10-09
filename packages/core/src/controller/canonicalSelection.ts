@@ -1,5 +1,5 @@
 import { panic } from "better-result";
-import { AllSelection, TextSelection, type Transaction } from "prosemirror-state";
+import { AllSelection, NodeSelection, TextSelection, type Transaction } from "prosemirror-state";
 import type { CanonicalProjection, CanonicalSelection } from "./canonicalSession";
 
 type RestoreCanonicalSelectionOptions = {
@@ -17,6 +17,21 @@ export const restoreCanonicalSelection = ({
   unavailable,
 }: RestoreCanonicalSelectionOptions): boolean => {
   switch (selection.type) {
+    case "inlineNode": {
+      const anchor = projection.positionAt(selection.anchor);
+      const head = projection.positionAt(selection.head);
+      if (anchor.isErr() || head.isErr()) return false;
+      const node = transaction.doc.nodeAt(anchor.value);
+      if (
+        !node?.isInline ||
+        !node.isAtom ||
+        !NodeSelection.isSelectable(node) ||
+        anchor.value + node.nodeSize !== head.value
+      )
+        return false;
+      transaction.setSelection(NodeSelection.create(transaction.doc, anchor.value));
+      return true;
+    }
     case "all":
       transaction.setSelection(new AllSelection(transaction.doc));
       return true;

@@ -200,3 +200,34 @@ test("failure capture retains pending diagnostics and records an unavailable bro
   expect(unavailable.errorCapture).toEqual({ status: "unavailable", message: "Page closed" });
   expect(unavailable.observations).toEqual(observations);
 });
+
+test("repeated session refusals retain their typed gap and phase without permitting save fallback", () => {
+  const previousErrors = globalThis.__folioCanonicalFuzzErrors;
+  const previousPhase = globalThis.__folioCanonicalFuzzPhase;
+  try {
+    for (const phase of Object.values(PHASES)) {
+      const errors: CanonicalFuzzError[] = [];
+      globalThis.__folioCanonicalFuzzErrors = errors;
+      globalThis.__folioCanonicalFuzzPhase = phase;
+      const error = new CanonicalSessionRefusalError({
+        message: "Command refused",
+        gap: CANONICAL_GAP.storyContentProjection,
+      });
+      recordCanonicalFuzzError(error);
+      recordCanonicalFuzzError(error);
+      expect(errors).toEqual(
+        Array.from({ length: 2 }, () => ({
+          status: "refusal",
+          type: "CanonicalSessionRefusalError",
+          gap: error.gap,
+          message: error.message,
+          phase,
+        })),
+      );
+      expect(errors.some(isCanonicalSaveFallback)).toBe(false);
+    }
+  } finally {
+    globalThis.__folioCanonicalFuzzErrors = previousErrors;
+    globalThis.__folioCanonicalFuzzPhase = previousPhase;
+  }
+});

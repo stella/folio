@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import { panic } from "better-result";
+import { declareCanonicalRefusalCases } from "../../../../../test/canonical-conformance-refusals";
 
 import {
   runConformanceCase,
+  runLegacyConformanceCase,
   type ConformanceOperation,
 } from "../../__tests__/editorCommandConformance";
-import { textblocks } from "../../__tests__/editorHarness";
+import { EDITOR_MODES, textblocks } from "../../__tests__/editorHarness";
 import { LIST_PASTE_RESOLUTION_CASES } from "../../__tests__/editorCommandConformance.listPaste";
 
 // The matrix previously tolerated every paste resolution mismatch. Cross the
@@ -20,7 +22,14 @@ test.each(
 )(
   "tracked list paste resolves like direct paste: %s",
   async (_label, { shape, operation, placement }) => {
-    const result = await runConformanceCase(shape, operation, placement);
+    const result = await runConformanceCase({
+      shape: shape,
+      operation: operation,
+      placement,
+      refusalCases: declareCanonicalRefusalCases(
+        EDITOR_MODES.map((mode) => ({ shape: shape.id, operation: operation.id, placement, mode })),
+      ),
+    });
     expect(result).not.toBeNull();
     expect(result?.violations).toEqual([]);
   },
@@ -45,7 +54,39 @@ test.each(
     ({ shape, placement }) => [`${shape.id} / ${placement}`, { shape, placement }] as const,
   ),
 )("one copied paragraph restores its properties: %s", async (_label, { shape, placement }) => {
-  const result = await runConformanceCase(shape, singleParagraphPaste, placement);
+  const result = await runConformanceCase({
+    shape: shape,
+    operation: singleParagraphPaste,
+    placement,
+    refusalCases: declareCanonicalRefusalCases(
+      EDITOR_MODES.map((mode) => ({
+        shape: shape.id,
+        operation: singleParagraphPaste.id,
+        placement,
+        mode,
+      })),
+    ),
+  });
   expect(result).not.toBeNull();
   expect(result?.violations).toEqual([]);
 });
+
+// Legacy paragraph-property transfers preserve the same strict save/readback contract.
+const legacyPasteCases = LIST_PASTE_RESOLUTION_CASES.filter(
+  ({ placement }) => placement === "cross-paragraph",
+);
+const legacySingleParagraphCases = legacyPasteCases
+  .filter(({ operation }) => operation.id === "paste:copied-blocks")
+  .map(({ shape, placement }) => ({ shape, placement, operation: singleParagraphPaste }));
+test.each(
+  [...legacyPasteCases, ...legacySingleParagraphCases].map(
+    (input) => [`${input.shape.id} / ${input.operation.id}`, input] as const,
+  ),
+)(
+  "explicit legacy cross-paragraph list paste readback: %s",
+  async (_label, { shape, operation, placement }) => {
+    const result = await runLegacyConformanceCase({ shape, operation, placement });
+    expect(result).not.toBeNull();
+    expect(result?.violations).toEqual([]);
+  },
+);

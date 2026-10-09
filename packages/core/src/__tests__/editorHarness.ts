@@ -20,6 +20,7 @@ import {
   TextSelection,
 } from "prosemirror-state";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
+import type { Command } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
@@ -63,7 +64,7 @@ const isMacPlatform =
   typeof navigator !== "undefined" && /Mac|iP(hone|[oa]d)/u.test(navigator.platform);
 
 /** The `KeyboardEvent` fields `prosemirror-keymap` reads, for a binding like `Mod-Shift-z`. */
-const keyboardEventFor = (binding: string) => {
+export const keyboardEventFor = (binding: string) => {
   const parts = binding.split(/-(?!$)/u);
   const key = parts.at(-1) ?? binding;
   const modifiers = new Set(parts.slice(0, -1));
@@ -85,6 +86,7 @@ const keyboardEventFor = (binding: string) => {
 };
 
 export class HeadlessEditorView {
+  readonly authority = "prosemirror";
   state: EditorState;
   readonly transactions: Transaction[] = [];
   readonly composing = false;
@@ -98,6 +100,8 @@ export class HeadlessEditorView {
     this.transactions.push(tr);
     this.state = this.state.apply(tr);
   };
+
+  execute = (command: Command): boolean => command(this.state, this.dispatch, this as never);
 
   /** `EditorView.someProp` over the state's plugins, in plugin order. */
   someProp(propName: string, f?: (handler: PropHandler) => unknown): unknown {

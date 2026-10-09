@@ -24,16 +24,23 @@ import {
   summarizeFeatureCoverage,
 } from "../../../../test/consumer-scenarios/support/feature-coverage";
 
+import { declareCanonicalRefusalCases } from "../../../../test/canonical-conformance-refusals";
 import { DOCUMENT_SHAPES } from "./documentShapes";
 import {
   CONFORMANCE_OPERATIONS,
   KEY_BINDING_OPERATIONS,
   REGISTRY_COMMAND_OPERATIONS,
   runConformanceCase,
+  runLegacyConformanceCase,
 } from "./editorCommandConformance";
 import { SUGGESTION_INPUT_DRIVERS, SUGGESTION_INPUT_KINDS } from "./suggestionInputKinds";
 import type { Violation } from "./editorCommandConformance";
-import { gapApplies, gapCovers, KNOWN_CONFORMANCE_GAPS } from "./editorCommandConformance.known";
+import {
+  gapApplies,
+  gapCovers,
+  KNOWN_CONFORMANCE_GAPS,
+  LEGACY_NODE_REPLACEMENTS,
+} from "./editorCommandConformance.known";
 import type { ConformanceCaseKey, KnownConformanceGap } from "./editorCommandConformance.known";
 import { EDITOR_MODES, harnessManager, SELECTION_PLACEMENTS } from "./editorHarness";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
@@ -53,7 +60,7 @@ featureCoverage.operations = CONFORMANCE_OPERATIONS.map(({ id }) => id);
 const caseId = ({ shape, operation, placement }: ConformanceCaseKey): string =>
   `${shape} › ${operation} @ ${placement}`;
 
-const CASES: ConformanceCaseKey[] = DOCUMENT_SHAPES.flatMap((shape) =>
+const MATRIX_CASES: ConformanceCaseKey[] = DOCUMENT_SHAPES.flatMap((shape) =>
   CONFORMANCE_OPERATIONS.flatMap((operation) =>
     (FULL_TIER ? SELECTION_PLACEMENTS : operation.placements).map((placement) => ({
       shape: shape.id,
@@ -62,6 +69,25 @@ const CASES: ConformanceCaseKey[] = DOCUMENT_SHAPES.flatMap((shape) =>
     })),
   ),
 ).filter((key) => FILTER === null || FILTER.test(caseId(key)));
+
+const CASES = [
+  ...new Map(
+    [
+      ...MATRIX_CASES,
+      ...LEGACY_NODE_REPLACEMENTS.map(
+        ({ operation }) => ({ shape: "image", operation, placement: "node" }) as const,
+      ),
+    ]
+      .filter((key) => FILTER === null || FILTER.test(caseId(key)))
+      .map((key) => [caseId(key), key]),
+  ).values(),
+];
+
+const declaredRefusalCases = declareCanonicalRefusalCases(
+  CASES.flatMap((key) => EDITOR_MODES.map((mode) => ({ ...key, mode }))),
+);
+const exercisedRefusalCases = new Set<string>();
+const unavailableSelectionCases = new Set<string>();
 
 const gapUsage = new Map<KnownConformanceGap, { applied: number; covered: number }>(
   KNOWN_CONFORMANCE_GAPS.map((gap) => [gap, { applied: 0, covered: 0 }]),
@@ -134,7 +160,17 @@ describe("editor command conformance", () => {
       if (!shape || !operation) {
         throw new Error(`Unknown case ${caseId(key)}`);
       }
-      const result = await runConformanceCase(shape, operation, key.placement);
+      const result = await runConformanceCase({
+        shape,
+        operation,
+        placement: key.placement,
+        refusalCases: declaredRefusalCases,
+        observeRefusalCase: (id, observation) => {
+          if (!declaredRefusalCases.has(id)) throw new TypeError(`Undeclared refusal case ${id}`);
+          if (observation === "selectionUnavailable") unavailableSelectionCases.add(id);
+          else exercisedRefusalCases.add(id);
+        },
+      });
       if (!result) {
         return;
       }
@@ -153,6 +189,18 @@ describe("editor command conformance", () => {
         }
       }
 
+      expect(result.authority).toBe("canonical");
+      // Legacy evidence has its own authority and cannot excuse a canonical violation.
+      const legacy =
+        result.violations.some(({ kind }) => kind === "silent-refusal") ||
+        KNOWN_CONFORMANCE_GAPS.some((gap) => gapApplies(gap, key)) ||
+        (key.shape === "image" &&
+          key.placement === "node" &&
+          LEGACY_NODE_REPLACEMENTS.some(
+            ({ operation: operationId }) => operationId === key.operation,
+          ))
+          ? await runLegacyConformanceCase({ shape, operation, placement: key.placement })
+          : null;
       for (const gap of KNOWN_CONFORMANCE_GAPS) {
         if (gapApplies(gap, key)) {
           const usage = gapUsage.get(gap);
@@ -161,7 +209,7 @@ describe("editor command conformance", () => {
           }
         }
       }
-      const unexpected = result.violations.filter((violation) => {
+      const unexpected = (legacy?.violations ?? []).filter((violation) => {
         const gap = KNOWN_CONFORMANCE_GAPS.find((candidate) =>
           gapCovers(candidate, key, violation.kind, violation.mode),
         );
@@ -175,8 +223,12 @@ describe("editor command conformance", () => {
         return false;
       });
       if (REPORT_PATH) {
-        appendFileSync(REPORT_PATH, `${JSON.stringify({ ...key, ...result, unexpected })}\n`);
+        appendFileSync(
+          REPORT_PATH,
+          `${JSON.stringify({ ...key, ...result, legacy, unexpected })}\n`,
+        );
       }
+      expect(result.violations.map(describeViolation)).toEqual([]);
       expect(unexpected.map(describeViolation)).toEqual([]);
     },
     60_000,
@@ -200,6 +252,14 @@ describe("editor command conformance", () => {
         `${JSON.stringify(summarizeFeatureCoverage(featureCoverage), null, 2)}\n`,
       );
     }
+    expect([...exercisedRefusalCases, ...unavailableSelectionCases].toSorted()).toEqual(
+      [...declaredRefusalCases.keys()].toSorted(),
+    );
+    expect([...exercisedRefusalCases].toSorted()).toEqual(
+      [...declaredRefusalCases.keys()]
+        .filter((id) => !unavailableSelectionCases.has(id))
+        .toSorted(),
+    );
     const declaredInThisRun = SUGGESTION_INPUT_KINDS.filter((kind) => {
       const driver = SUGGESTION_INPUT_DRIVERS[kind];
       return (

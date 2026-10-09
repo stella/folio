@@ -6,6 +6,7 @@
  * images today); they can be added later if needed.
  */
 
+import type { ParagraphFormatting } from "../types/document";
 import type { BuiltInStyleIndex } from "../docx/builtInStyles";
 import type { ListLabelCounter } from "../prosemirror/listLabels";
 import type { NoteReferenceKind, NoteReferenceNumbering } from "../utils/noteReferenceLabels";
@@ -147,6 +148,8 @@ export type RenderContext = {
   nextListLabel: ListLabelCounter;
   /** The document's styles indexed by the built-in they are; classifies headings and quotes. */
   builtInStyles: BuiltInStyleIndex;
+  /** Authoritative paragraph numbering inherited through the style cascade. */
+  paragraphNumbering: (styleId: string | undefined) => ParagraphFormatting["numPr"];
   /**
    * Active native Markdown ancestor marker widths, indexed by OOXML level.
    * Missing levels contribute no columns. Prose, headings and container

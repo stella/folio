@@ -1,0 +1,10 @@
+{
+  "canonical drivers release owned DOM across overlapping mount and teardown sequences": [
+    {
+      "seed": 1335726685,
+      "path": "0:0:0",
+      "note": "Use production-shaped paraIds in lifecycle generator so activation exercises actual mounts.",
+      "date": "2026-10-05"
+    }
+  ]
+}

@@ -20,10 +20,29 @@
  * reported. Known gaps are recorded in `editorCommandConformance.known.ts`.
  */
 
+import { panic } from "better-result";
+import { isDeepStrictEqual } from "node:util";
+import {
+  harnessRefusalProblems,
+  type HarnessRefusal,
+  type HarnessRefusalRow,
+} from "../../../../test/canonical-refusal-rows";
+import { canonicalRefusalCaseId } from "../../../../test/canonical-conformance-refusals";
+import { assertExactModel } from "../../../../test/exactModel";
+import {
+  createCanonicalHarnessCase,
+  resolveCanonicalHarnessDocument,
+  saveCanonicalHarnessDocument,
+  type CanonicalEditorHarness,
+} from "../../../../test/canonicalEditorHarness";
+import { assertValidFolioDocumentModel } from "../docx/modelValidation";
+
 import { Fragment, Slice } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { redo, undo } from "prosemirror-history";
 import type { EditorState } from "prosemirror-state";
+import { EditorState as PMEditorState, TextSelection } from "prosemirror-state";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { CellSelection, TableMap } from "prosemirror-tables";
 
 import type { DocumentShape } from "./documentShapes";
@@ -65,7 +84,7 @@ import type { BlockContent, Comment, Document } from "../types/document";
 // ============================================================================
 
 export type OperationContext = {
-  view: HeadlessEditorView;
+  view: HeadlessEditorView | CanonicalEditorHarness;
   /** The model the host saves against. Host operations may add records to it. */
   base: Document;
   /** Text of the shape's focus paragraph. */
@@ -90,8 +109,34 @@ export type ConformanceOperation = {
   run: (context: OperationContext) => boolean | undefined;
 };
 
+const commandManager = (view: OperationContext["view"]) =>
+  view.authority === "canonical" ? view.commandManager : harnessRuntimeManager(view.state);
+
 const CARET: readonly SelectionPlacement[] = ["caret-middle"];
 const RANGE: readonly SelectionPlacement[] = ["word"];
+
+// Toggling a text mark over selected text must change the document. This
+// applicability contract reads the input, never a command/planner verdict.
+export const CANONICAL_TEXT_TOGGLE_OPERATIONS = [
+  "command:toggleBold",
+  "command:toggleItalic",
+  "command:toggleUnderline",
+  "command:toggleStrike",
+  "command:toggleSuperscript",
+  "command:toggleSubscript",
+] as const;
+
+const expectsCanonicalDocumentChange = (operation: ConformanceOperation, before: EditorState) => {
+  if (!CANONICAL_TEXT_TOGGLE_OPERATIONS.some((id) => id === operation.id)) return false;
+  if (!(before.selection instanceof TextSelection)) return false;
+  const { from, to, empty } = before.selection;
+  if (empty) return false;
+  let selectedText = false;
+  before.doc.nodesBetween(from, to, (node) => {
+    if (node.isText && node.textContent.length > 0) selectedText = true;
+  });
+  return selectedText;
+};
 
 const registryCommand = (
   name: string,
@@ -103,12 +148,7 @@ const registryCommand = (
 ): ConformanceOperation => ({
   id: variant === undefined ? `command:${name}` : `command:${name}(${variant})`,
   placements,
-  run: ({ view }) =>
-    harnessRuntimeManager(view.state).requireCommand(name)(...args)(
-      view.state,
-      view.dispatch,
-      view as never,
-    ),
+  run: ({ view }) => view.execute(commandManager(view).requireCommand(name)(...args)),
 });
 
 /**
@@ -125,11 +165,7 @@ const insertNoteLikeHost = (kind: "footnote" | "endnote"): ConformanceOperation 
       const endnotes = base.package.endnotes ?? [];
       const existing = kind === "footnote" ? footnotes : endnotes;
       const id = Math.max(0, ...existing.map((note) => note.id)) + 1;
-      const applied = harnessRuntimeManager(view.state).requireCommand(name)(id)(
-        view.state,
-        view.dispatch,
-        view as never,
-      );
+      const applied = view.execute(commandManager(view).requireCommand(name)(id));
       if (applied) {
         const content: BlockContent[] = [
           {
@@ -153,10 +189,10 @@ const applyStyleLikeHost = (styleId: string): ConformanceOperation => ({
   id: `command:applyStyle(${styleId})`,
   placements: CARET,
   run: ({ view, base }) => {
-    const applyStyle = harnessRuntimeManager(view.state).requireCommand("applyStyle");
+    const applyStyle = commandManager(view).requireCommand("applyStyle");
     const styles = base.package.styles;
     if (!styles) {
-      return applyStyle(styleId)(view.state, view.dispatch, view as never);
+      return view.execute(applyStyle(styleId));
     }
     const resolver = createStyleResolver(styles);
     const resolved = resolver.resolveParagraphStyle(styleId);
@@ -173,7 +209,7 @@ const applyStyleLikeHost = (styleId: string): ConformanceOperation => ({
     if (styleName) {
       attrs.styleName = styleName;
     }
-    return applyStyle(styleId, attrs)(view.state, view.dispatch, view as never);
+    return view.execute(applyStyle(styleId, attrs));
   },
 });
 
@@ -316,7 +352,7 @@ const PASTED_PARAGRAPHS = (schemaDoc: PMNode) => {
   );
 };
 
-const PASTED_TABLE = (schemaDoc: PMNode) => {
+export const PASTED_TABLE = (schemaDoc: PMNode) => {
   const { schema } = schemaDoc.type;
   const cell = (text: string) =>
     schema.node("tableCell", null, [schema.node("paragraph", null, schema.text(text))]);
@@ -334,7 +370,7 @@ const PASTED_TABLE = (schemaDoc: PMNode) => {
   );
 };
 
-const PASTED_LIST = (schemaDoc: PMNode) => {
+export const PASTED_LIST = (schemaDoc: PMNode) => {
   const { schema } = schemaDoc.type;
   const item = (text: string, level: number) =>
     schema.node(
@@ -494,6 +530,7 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
       if (view.state.selection.empty) {
         return false;
       }
+      if (view.authority === "canonical") return view.cut();
       if (!deleteSelectionAsSuggestion(view.state, view.dispatch)) {
         view.dispatch(view.state.tr.deleteSelection());
       }
@@ -506,7 +543,7 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
     placements: RANGE,
     run: ({ view, base }) => {
       const id = nextCommentId(base, view.state.doc);
-      const applied = addCommentMark(id)(view.state, view.dispatch);
+      const applied = view.execute(addCommentMark(id));
       if (applied) {
         const comment: Comment = {
           id,
@@ -529,36 +566,38 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
     suggesting: "direct",
     placements: ["paragraph"],
     run: ({ view }) =>
-      acceptChange(view.state.selection.from, view.state.selection.to)(view.state, view.dispatch),
+      view.execute(acceptChange(view.state.selection.from, view.state.selection.to)),
   },
   {
     id: "host:rejectChange",
     suggesting: "direct",
     placements: ["paragraph"],
     run: ({ view }) =>
-      rejectChange(view.state.selection.from, view.state.selection.to)(view.state, view.dispatch),
+      view.execute(rejectChange(view.state.selection.from, view.state.selection.to)),
   },
   {
     id: "host:acceptAllChanges",
     suggesting: "direct",
     placements: CARET,
-    run: ({ view }) => acceptAllChanges()(view.state, view.dispatch),
+    run: ({ view }) =>
+      view.authority === "canonical" ? view.resolve("accept") : view.execute(acceptAllChanges()),
   },
   {
     id: "host:rejectAllChanges",
     suggesting: "direct",
     placements: CARET,
-    run: ({ view }) => rejectAllChanges()(view.state, view.dispatch),
+    run: ({ view }) =>
+      view.authority === "canonical" ? view.resolve("reject") : view.execute(rejectAllChanges()),
   },
   {
     id: "host:insertPageBreak",
     placements: CARET,
-    run: ({ view }) => insertPageBreak(view.state, view.dispatch),
+    run: ({ view }) => view.execute(insertPageBreak),
   },
   {
     id: "host:clearFormatting",
     placements: ["paragraph"],
-    run: ({ view }) => clearFormatting(view.state, view.dispatch),
+    run: ({ view }) => view.execute(clearFormatting),
   },
 ];
 
@@ -595,7 +634,6 @@ export type Violation = {
 
 type LoadedShape = {
   base: Document;
-  states: Record<EditorMode, EditorState>;
 };
 
 const loadedShapes = new Map<string, Promise<LoadedShape>>();
@@ -605,13 +643,7 @@ export const loadShape = (shape: DocumentShape): Promise<LoadedShape> => {
   if (!pending) {
     pending = (async () => {
       const base = await parseShapeDocument(await shape.build());
-      return {
-        base,
-        states: {
-          editing: createHarnessState(base, "editing"),
-          suggesting: createHarnessState(base, "suggesting"),
-        },
-      };
+      return { base };
     })();
     loadedShapes.set(shape.id, pending);
   }
@@ -630,7 +662,13 @@ const caseBase = (base: Document): Document => ({
   },
 });
 
+export type HarnessAuthority = "canonical" | "prosemirror";
+
 type ModeRun = {
+  authority: HarnessAuthority;
+  beforeModel: Document;
+  historyViolations: Violation[];
+  refusals: readonly HarnessRefusal[];
   mode: EditorMode;
   before: EditorState;
   after: EditorState;
@@ -639,14 +677,24 @@ type ModeRun = {
   error?: unknown;
 };
 
-const runMode = (
-  loaded: LoadedShape,
-  shape: DocumentShape,
-  operation: ConformanceOperation,
-  placement: SelectionPlacement,
-  mode: EditorMode,
-): ModeRun | null => {
-  const before = placeSelection(loaded.states[mode], shape.focus, placement);
+type RefusalCaseObservation = "executed" | "activationRefused" | "selectionUnavailable";
+type CanonicalCaseContract = {
+  authority: "canonical";
+  refusalCases: ReadonlyMap<string, readonly HarnessRefusalRow[]>;
+  observeRefusalCase?: (id: string, observation: RefusalCaseObservation) => void;
+};
+type CaseAuthority = CanonicalCaseContract | { authority: "prosemirror" };
+type RunModeOptions = {
+  loaded: LoadedShape;
+  shape: DocumentShape;
+  operation: ConformanceOperation;
+  placement: SelectionPlacement;
+  mode: EditorMode;
+} & CaseAuthority;
+const runMode = (options: RunModeOptions): ModeRun | null => {
+  if (options.authority === "canonical") return runCanonicalMode(options);
+  const { loaded, shape, operation, placement, mode, authority } = options;
+  const before = placeSelection(createHarnessState(loaded.base, mode), shape.focus, placement);
   if (!before) {
     return null;
   }
@@ -656,18 +704,201 @@ const runMode = (
   try {
     verdict = operation.run({ view, base, focus: shape.focus });
   } catch (error) {
-    return { mode, before, after: view.state, base, status: "threw", error };
+    return {
+      authority,
+      beforeModel: loaded.base,
+      historyViolations: [],
+      refusals: [],
+      mode,
+      before,
+      after: view.state,
+      base,
+      status: "threw",
+      error,
+    };
   }
   if (!view.state.doc.eq(before.doc)) {
-    return { mode, before, after: view.state, base, status: "changed" };
+    return {
+      authority,
+      beforeModel: loaded.base,
+      historyViolations: [],
+      refusals: [],
+      mode,
+      before,
+      after: view.state,
+      base,
+      status: "changed",
+    };
   }
   return {
+    authority,
+    beforeModel: loaded.base,
+    historyViolations: [],
+    refusals: [],
     mode,
     before,
     after: view.state,
     base,
     status: verdict === false ? "refused" : "unchanged",
   };
+};
+
+type RunCanonicalModeOptions = {
+  loaded: LoadedShape;
+  shape: DocumentShape;
+  operation: ConformanceOperation;
+  placement: SelectionPlacement;
+  mode: EditorMode;
+  refusalCases: ReadonlyMap<string, readonly HarnessRefusalRow[]>;
+  observeRefusalCase?: (id: string, observation: RefusalCaseObservation) => void;
+};
+const runCanonicalMode = ({
+  loaded,
+  shape,
+  operation,
+  placement,
+  mode,
+  refusalCases,
+  observeRefusalCase,
+}: RunCanonicalModeOptions): ModeRun | null => {
+  const refusalId = canonicalRefusalCaseId({
+    shape: shape.id,
+    operation: operation.id,
+    placement,
+    mode,
+  });
+  const expectedRows =
+    refusalCases.get(refusalId) ?? panic(`Undeclared canonical refusal case: ${refusalId}`);
+  const created = createCanonicalHarnessCase(caseBase(loaded.base), mode);
+  if (created.type === "activationRefused") {
+    if (
+      !expectedRows.some(
+        ({ gap, message }) => gap === created.refusal.gap && message === created.refusal.message,
+      )
+    )
+      panic(`Undeclared activation refusal: ${refusalId}`);
+    observeRefusalCase?.(refusalId, "activationRefused");
+    const state = PMEditorState.create({ doc: toProseDoc(loaded.base) });
+    return {
+      authority: "canonical",
+      beforeModel: loaded.base,
+      historyViolations: [],
+      refusals: [created.refusal],
+      mode,
+      before: state,
+      after: state,
+      base: loaded.base,
+      status: "refused",
+    };
+  }
+  const driver = created.driver;
+  try {
+    const placed = placeSelection(driver.state, shape.focus, placement);
+    if (!placed) {
+      observeRefusalCase?.(refusalId, "selectionUnavailable");
+      return null;
+    }
+    driver.dispatch(driver.state.tr.setSelection(placed.selection));
+    driver.expectRefusals(expectedRows);
+    const before = driver.state;
+    const beforeModel = driver.snapshot();
+    const historyViolations: Violation[] = [];
+    const expectedChange = expectsCanonicalDocumentChange(operation, before);
+    let verdict: boolean | undefined;
+    try {
+      observeRefusalCase?.(refusalId, "executed");
+      verdict = operation.run({ view: driver, base: caseBase(beforeModel), focus: shape.focus });
+    } catch (error) {
+      return {
+        authority: "canonical",
+        beforeModel,
+        historyViolations,
+        refusals: driver.refusals,
+        mode,
+        before,
+        after: driver.state,
+        base: driver.snapshot(),
+        status: "threw",
+        error,
+      };
+    }
+    const after = driver.state;
+    const base = driver.snapshot();
+    const changed = !after.doc.eq(before.doc) || !isDeepStrictEqual(base, beforeModel);
+    if (
+      expectedChange &&
+      !changed &&
+      !driver.refusals.some(({ expectation }) => expectation === "declared")
+    )
+      historyViolations.push({
+        kind: "silent-refusal",
+        mode,
+        detail: "A text mark toggle over selected text changed nothing without a declared refusal.",
+      });
+    const refusalProblems = harnessRefusalProblems({
+      rows: driver.refusalRows,
+      refusals: driver.refusals,
+    });
+    if (refusalProblems.length > 0)
+      historyViolations.push({
+        kind: "silent-refusal",
+        mode,
+        detail: refusalProblems.join("; "),
+      });
+    if (!changed && driver.refusals.length > 0) {
+      assertExactModel(base, beforeModel);
+      if (!after.selection.eq(before.selection) || driver.history.canUndo())
+        historyViolations.push({
+          kind: "undo",
+          mode,
+          detail: "A refused canonical operation changed selection or journal.",
+        });
+    }
+    if (changed) {
+      try {
+        for (let step = 0; step < 50 && driver.history.canUndo(); step++) {
+          if (!driver.history.undo())
+            panic("Canonical conformance history refused an available entry.");
+        }
+        assertExactModel(driver.snapshot(), beforeModel);
+        if (!driver.state.doc.eq(before.doc) || !driver.state.selection.eq(before.selection))
+          historyViolations.push({
+            kind: "undo",
+            mode,
+            detail: "Canonical undo lost the authored projection or selection.",
+          });
+        for (let step = 0; step < 50 && driver.history.canRedo(); step++) {
+          if (!driver.history.redo())
+            panic("Canonical conformance history refused an available entry.");
+        }
+        assertExactModel(driver.snapshot(), base);
+        if (!driver.state.doc.eq(after.doc) || !driver.state.selection.eq(after.selection))
+          historyViolations.push({
+            kind: "redo",
+            mode,
+            detail: "Canonical redo lost the authored projection or selection.",
+          });
+      } catch (error) {
+        historyViolations.push({ kind: "undo", mode, detail: errorText(error) });
+      }
+    }
+    let status: ModeRun["status"] = "unchanged";
+    if (changed) status = "changed";
+    else if (verdict === false || driver.refusals.length > 0) status = "refused";
+    return {
+      authority: "canonical",
+      beforeModel,
+      historyViolations,
+      refusals: driver.refusals,
+      mode,
+      before,
+      after,
+      base,
+      status,
+    };
+  } finally {
+    driver.dispose();
+  }
 };
 
 const errorText = (error: unknown): string =>
@@ -786,13 +1017,45 @@ const exhaustHistory = (state: EditorState, command: typeof undo): EditorState =
 
 type Observation = { summary: ContentSummary; markdown: string };
 
-const observe = (state: EditorState, base: Document): Observation => ({
+type ResolvedSnapshotOptions = {
+  run: ModeRun;
+  phase: "before" | "after";
+  decision: "accept" | "reject";
+};
+const resolvedSnapshot = ({ run, phase, decision }: ResolvedSnapshotOptions) => {
+  const state = phase === "before" ? run.before : run.after;
+  const model = phase === "before" ? run.beforeModel : run.base;
+  if (run.authority === "prosemirror")
+    return [resolveAllChanges(state, decision), run.base, run.authority] as const;
+  const resolved = resolveCanonicalHarnessDocument(model, decision);
+  return [resolved.state, resolved.model, run.authority] as const;
+};
+
+const observe = (
+  state: EditorState,
+  base: Document,
+  authority: HarnessAuthority = "prosemirror",
+): Observation => ({
   summary: summarizeState(state),
-  markdown: modelMarkdown(fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } })),
+  markdown: modelMarkdown(
+    authority === "canonical"
+      ? base
+      : fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
+  ),
 });
 
-const observeReopened = async (state: EditorState, base: Document): Promise<Observation> => {
-  const { bytes } = await saveHarnessState(state, base);
+const saveRunState = (state: EditorState, base: Document, authority: HarnessAuthority) => {
+  if (authority === "prosemirror") return saveHarnessState(state, base);
+  assertValidFolioDocumentModel(base, "Canonical conformance snapshot is invalid");
+  return saveCanonicalHarnessDocument(base);
+};
+
+const observeReopened = async (
+  state: EditorState,
+  base: Document,
+  authority: HarnessAuthority = "prosemirror",
+): Promise<Observation> => {
+  const { bytes } = await saveRunState(state, base, authority);
   const reopened = await readBack(bytes);
   return { summary: reopened.summary, markdown: reopened.markdown };
 };
@@ -835,7 +1098,7 @@ const checkChangedState = async (run: ModeRun, violations: Violation[]): Promise
   }
   let saved: Awaited<ReturnType<typeof saveHarnessState>> | null = null;
   try {
-    saved = await saveHarnessState(after, base);
+    saved = await saveRunState(after, base, run.authority);
   } catch (error) {
     violations.push({ kind: "invalid-model", mode, detail: errorText(error) });
   }
@@ -863,6 +1126,7 @@ const checkChangedState = async (run: ModeRun, violations: Violation[]): Promise
     }
   }
 
+  if (run.authority === "canonical") return;
   try {
     const undone = exhaustHistory(after, undo);
     if (!undone.doc.eq(before.doc)) {
@@ -895,23 +1159,38 @@ export type CaseResult = {
   runs: Partial<Record<EditorMode, ModeRun["status"]>>;
   violations: Violation[];
   cellSelection: boolean;
+  authority: HarnessAuthority;
+  refusals: readonly HarnessRefusal[];
 };
 
-export const runConformanceCase = async (
-  shape: DocumentShape,
-  operation: ConformanceOperation,
-  placement: SelectionPlacement,
+type ConformanceCaseOptions = {
+  shape: DocumentShape;
+  operation: ConformanceOperation;
+  placement: SelectionPlacement;
+};
+
+/** The standing lane always drives the canonical owner. */
+export const runConformanceCase = (
+  options: ConformanceCaseOptions & Omit<CanonicalCaseContract, "authority">,
+) => runCaseWithAuthority({ ...options, authority: "canonical" });
+
+/** Explicit replay for legacy plugin regressions and pinned known failures. */
+export const runLegacyConformanceCase = (options: ConformanceCaseOptions) =>
+  runCaseWithAuthority({ ...options, authority: "prosemirror" });
+
+type RunCaseWithAuthorityOptions = ConformanceCaseOptions & CaseAuthority;
+const runCaseWithAuthority = async (
+  options: RunCaseWithAuthorityOptions,
 ): Promise<CaseResult | null> => {
+  const { shape, operation, authority } = options;
   const loaded = await loadShape(shape);
   const runs: Partial<Record<EditorMode, ModeRun>> = {};
   for (const mode of EDITOR_MODES) {
-    const run = runMode(loaded, shape, operation, placement, mode);
-    if (!run) {
-      return null;
-    }
+    const run = runMode({ ...options, loaded, mode });
+    if (!run) continue;
     runs[mode] = run;
   }
-  const violations: Violation[] = [];
+  const violations: Violation[] = Object.values(runs).flatMap((run) => run.historyViolations);
   const editing = runs.editing;
   const suggesting = runs.suggesting;
   if (!editing || !suggesting) {
@@ -932,7 +1211,8 @@ export const runConformanceCase = async (
   // claimed key) and leaves the document as it was is refusing just as silently.
   if (
     editing.status === "changed" &&
-    (suggesting.status === "refused" || suggesting.status === "unchanged")
+    (suggesting.status === "refused" || suggesting.status === "unchanged") &&
+    !suggesting.refusals.some(({ expectation }) => expectation === "declared")
   ) {
     violations.push({
       kind: "silent-refusal",
@@ -944,17 +1224,22 @@ export const runConformanceCase = async (
   if (suggesting.status === "changed") {
     try {
       const rejectedOriginal = observe(
-        resolveAllChanges(suggesting.before, "reject"),
-        suggesting.base,
+        ...resolvedSnapshot({ run: suggesting, phase: "before", decision: "reject" }),
       );
-      const rejected = observe(resolveAllChanges(suggesting.after, "reject"), suggesting.base);
+      const rejected = observe(
+        ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "reject" }),
+      );
       const rejectDifference = compareObservations(rejectedOriginal, rejected);
       if (rejectDifference && operation.suggesting !== "direct") {
         violations.push({ kind: "reject-mismatch", mode: "suggesting", detail: rejectDifference });
       }
       if (editing.status === "changed") {
-        const acceptedEditing = observe(resolveAllChanges(editing.after, "accept"), editing.base);
-        const accepted = observe(resolveAllChanges(suggesting.after, "accept"), suggesting.base);
+        const acceptedEditing = observe(
+          ...resolvedSnapshot({ run: editing, phase: "after", decision: "accept" }),
+        );
+        const accepted = observe(
+          ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "accept" }),
+        );
         const acceptDifference = compareObservations(acceptedEditing, accepted);
         if (acceptDifference) {
           violations.push({
@@ -966,12 +1251,10 @@ export const runConformanceCase = async (
       }
       if (operation.suggesting !== "direct") {
         const reopenedOriginal = await observeReopened(
-          resolveAllChanges(suggesting.before, "reject"),
-          suggesting.base,
+          ...resolvedSnapshot({ run: suggesting, phase: "before", decision: "reject" }),
         );
         const reopenedRejected = await observeReopened(
-          resolveAllChanges(suggesting.after, "reject"),
-          suggesting.base,
+          ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "reject" }),
         );
         const reopenedRejectDifference = compareObservations(reopenedOriginal, reopenedRejected);
         if (reopenedRejectDifference && !rejectDifference) {
@@ -983,12 +1266,10 @@ export const runConformanceCase = async (
         }
         if (editing.status === "changed") {
           const reopenedEditing = await observeReopened(
-            resolveAllChanges(editing.after, "accept"),
-            editing.base,
+            ...resolvedSnapshot({ run: editing, phase: "after", decision: "accept" }),
           );
           const reopenedAccepted = await observeReopened(
-            resolveAllChanges(suggesting.after, "accept"),
-            suggesting.base,
+            ...resolvedSnapshot({ run: suggesting, phase: "after", decision: "accept" }),
           );
           const reopenedAcceptDifference = compareObservations(reopenedEditing, reopenedAccepted);
           if (reopenedAcceptDifference) {
@@ -1013,5 +1294,7 @@ export const runConformanceCase = async (
     runs: { editing: editing.status, suggesting: suggesting.status },
     violations,
     cellSelection,
+    authority,
+    refusals: [editing, suggesting].flatMap((run) => run.refusals),
   };
 };

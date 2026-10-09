@@ -576,6 +576,84 @@ describe("canonical session", () => {
     expect(session.document).toStrictEqual(final);
     expect(session.projection.doc.eq(state.doc)).toBe(true);
   });
+  test("transparent wrappers inherit bookmark projection policy from their owner", () => {
+    const wrap = [
+      (content: Paragraph["content"]) =>
+        ({
+          type: "inlineWrapper",
+          kind: "smartTag",
+          element: "test",
+          content,
+        }) satisfies Paragraph["content"][number],
+      (content: Paragraph["content"]) =>
+        ({
+          type: "inlineWrapper",
+          kind: "customXml",
+          element: "test",
+          content,
+        }) satisfies Paragraph["content"][number],
+      (content: Paragraph["content"]) =>
+        ({
+          type: "inlineWrapper",
+          kind: "bidi",
+          control: "embedding",
+          direction: "rtl",
+          content,
+        }) satisfies Paragraph["content"][number],
+    ];
+    for (const makeWrapper of wrap) {
+      for (let depth = 1; depth <= 3; depth++) {
+        for (const paired of [false, true]) {
+          const markers = [
+            { type: "bookmarkStart", id: 71, name: "Bookmark" },
+            { type: "run", content: [{ type: "text", text: "X" }] },
+            { type: "bookmarkEnd", id: paired ? 71 : 72 },
+          ] satisfies Paragraph["content"];
+          let wrapper = makeWrapper(markers);
+          for (let level = 1; level < depth; level++) wrapper = makeWrapper([wrapper]);
+          const cases = [
+            { content: [wrapper], size: paired ? 3 : 1 },
+            ...(paired
+              ? ([
+                  {
+                    content: [
+                      { type: "insertion", info: { id: 1, author: "Test" }, content: [wrapper] },
+                    ],
+                    size: 3,
+                  },
+                  {
+                    content: [
+                      { type: "hyperlink", href: "https://example.test", children: [wrapper] },
+                    ],
+                    size: 3,
+                  },
+                ] satisfies { content: Paragraph["content"]; size: number }[])
+              : []),
+          ];
+          for (const { content, size } of cases) {
+            const source = seed("X");
+            const paragraph = source.package.document.content.at(0);
+            if (paragraph?.type !== "paragraph") panic("The projection fixture has no paragraph");
+            paragraph.content = content;
+            // Bind the address oracle to actual conversion: transparent
+            // paragraph wrappers drop orphan boundaries and preserve pairs.
+            const converted = toProseDoc(source);
+            expect(converted.firstChild?.content.size).toBe(size);
+            const session = createCanonicalSession(source).unwrap();
+            expect(session.projection.doc.eq(converted)).toBe(true);
+            expect(session.projection.doc.firstChild?.textContent).toBe("X");
+            for (const offset of [0, 1]) {
+              const position = session.projection
+                .positionAt({ story: OP_STORIES.MAIN, blockId: "12345678", offset })
+                .unwrap();
+              expect(session.projection.addressAt(position).unwrap().offset).toBe(offset);
+            }
+          }
+        }
+      }
+    }
+  });
+
   test.each(["footnote", "endnote"] as const)(
     "%s marker gaps map exactly and insertion after a marker preserves it through history",
     (kind) => {

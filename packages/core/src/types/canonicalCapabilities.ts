@@ -3,12 +3,14 @@ export const CANONICAL_GAP = {
   authorityRouting: "authority-routing",
   commands: "command-descriptors",
   trackedHyperlinkResolution: "tracked-hyperlink-resolution",
+  storyContentProjection: "story-content-projection",
   comments: "comment-model-edits",
   modelEdits: "direct-model-edits",
   sectionProperties: "section-properties",
   watermark: "watermark-model-edits",
   collaboration: "collaboration-session",
   dispatch: "unclassified-transactions",
+  tableActivation: "table-session-activation",
   save: "pm-save-projection",
   resourceReplacement: "canonical-resource-replacement",
   history: "pm-history",
@@ -61,7 +63,15 @@ export const CANONICAL_CAPABILITIES = {
     owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
+    summary:
+      "Hyperlink and TOC suggestions and edits intersecting review identities require serializable wrapper review provenance.",
+  },
+  [CANONICAL_GAP.storyContentProjection]: {
+    owner: "controller",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary:
+      "Unsupported inline, field and review content cannot be projected after canonical edits.",
   },
   [CANONICAL_GAP.comments]: {
     owner: "adapters",
@@ -100,6 +110,12 @@ export const CANONICAL_CAPABILITIES = {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary: "Unclassified native and plugin mutations are refused at the projection boundary.",
+  },
+  [CANONICAL_GAP.tableActivation]: {
+    owner: "controller",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary: "Canonical session activation requires table projection and cell addressing.",
   },
   [CANONICAL_GAP.save]: {
     owner: "controller",

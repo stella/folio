@@ -1,0 +1,18 @@
+{
+  "generated hyphen leaves retain their strict projection and address roundtrip": [
+    {
+      "seed": 1848666693,
+      "path": "0:1:0:0:1",
+      "date": "2026-10-05",
+      "note": "Adjacent projected hyphens merge into one text node; consuming nodeSize for each source leaf lost per-leaf semantic gaps."
+    }
+  ],
+  "generated omitted run leaves refuse activation without throwing or mutating their source": [
+    {
+      "seed": 1390871223,
+      "path": "0:0:0",
+      "date": "2026-10-05",
+      "note": "Raw field leaves are rejected at source activation before native projection, matching the source-union shape matrix's precise dispatch refusal."
+    }
+  ]
+}

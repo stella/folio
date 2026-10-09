@@ -42,6 +42,7 @@ import { DRAWING_ANCHOR_FLAG_KEYS } from "../../docx/drawingAnchor";
 import { isSerializablePreservedAttribute } from "../../docx/attributeRemainder";
 import { isFoldedListNumber } from "../../docx/foldedListNumberFields";
 import { GRAPHIC_FRAME_LOCK_KEYS } from "../../docx/graphicFrameLocks";
+import { PICTURE_NAME_DOM_ATTRIBUTES } from "../imagePictureNames";
 import { paragraphNumberingFromAttrValue } from "../numberingAttr";
 import { outlineLevelFromAttrValue } from "../outlineLevelAttr";
 import { allowsDirectDrawingEdit, isDrawingRawXmlMode } from "../../docx/imageRawXml";
@@ -911,6 +912,16 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
 
   requiredString(attrs, "src", "image.attrs.src", issues);
   optionalString(attrs, "docPrName", "image.attrs.docPrName", issues);
+  optionalNestedRecord(
+    attrs,
+    "pictureNames",
+    "image.attrs.pictureNames",
+    issues,
+    (names, path, nestedIssues) => {
+      for (const key of Object.keys(PICTURE_NAME_DOM_ATTRIBUTES))
+        optionalString(names, key, `${path}.${key}`, nestedIssues);
+    },
+  );
   optionalString(attrs, "alt", "image.attrs.alt", issues);
   optionalString(attrs, "title", "image.attrs.title", issues);
   optionalString(attrs, "rId", "image.attrs.rId", issues);

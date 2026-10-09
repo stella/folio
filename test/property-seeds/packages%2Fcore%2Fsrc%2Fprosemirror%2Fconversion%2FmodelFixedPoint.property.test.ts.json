@@ -13,6 +13,12 @@
       "path": "6:0:0:1:1:1:1:1:1:1:1",
       "note": "Retain generated source rendering and exact rejection behavior reported by stack CI.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": -1715044072,
+      "path": "6:0:0:1:1:1:1:1:1:1:1:0",
+      "note": "No-op rebuild must retain parsed effective list indentation while source emission stays authored.",
+      "date": "2026-10-05"
     }
   ]
 }

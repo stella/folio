@@ -13,6 +13,7 @@ import { copyParagraphIndentationProjection } from "../docx/paragraphPropertySou
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
+import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
 import type {
   Paragraph,
   Run,
@@ -242,6 +243,31 @@ const importNumbering = ({
   });
 };
 
+/** Imported comments and notes require copying their source story parts. */
+export const canonicalClipboardStoryPartRefusal = (
+  paragraph: Paragraph,
+): CanonicalSessionError | undefined => {
+  let requiresStory = false;
+  visitInlineContentSlots(paragraph, ({ item }) => {
+    if (
+      item.type === "commentRangeStart" ||
+      item.type === "commentRangeEnd" ||
+      item.type === "commentReference"
+    )
+      requiresStory = true;
+  });
+  visitParagraphRuns(paragraph, (run) => {
+    if (run.content.some((item) => item.type === "footnoteRef" || item.type === "endnoteRef"))
+      requiresStory = true;
+  });
+  if (!requiresStory) return undefined;
+  return new CanonicalSessionError({
+    gap: CANONICAL_GAP.dispatch,
+    reason: "refused",
+    message: "Clipboard comments and note references require importing their source story parts.",
+  });
+};
+
 /** Clipboard slices are input payloads; their paragraph identities and private captures are not owners. */
 type PrepareCanonicalPasteOptions = {
   session: CanonicalSession;
@@ -311,11 +337,10 @@ export const prepareCanonicalPaste = ({
   }
   if (moveTarget === undefined && (plain || sourceDocument === undefined))
     flattenClipboardStyleReferences(paragraphs);
-  const from = session.projection.addressAt(
-    pasteTarget ?? moveSource?.from ?? state.selection.from,
-  );
+  const selectionRange = canonicalSelectionRange(state);
+  const from = session.projection.addressAt(pasteTarget ?? moveSource?.from ?? selectionRange.from);
   if (from.isErr()) return from;
-  const to = session.projection.addressAt(pasteTarget ?? moveSource?.to ?? state.selection.to);
+  const to = session.projection.addressAt(pasteTarget ?? moveSource?.to ?? selectionRange.to);
   if (to.isErr()) return to;
   let styles = session.document.package.styles;
   let styleIds: ReadonlyMap<string, string> | undefined;
@@ -425,23 +450,8 @@ export const prepareCanonicalPaste = ({
   // retain their relationship only when its resolved source belongs to this package.
   for (const paragraph of paragraphs) {
     if (moveTarget === undefined) {
-      let requiresStory = false;
-      visitInlineContentSlots(paragraph, ({ item }) => {
-        if (
-          item.type === "commentRangeStart" ||
-          item.type === "commentRangeEnd" ||
-          item.type === "commentReference"
-        )
-          requiresStory = true;
-      });
-      visitParagraphRuns(paragraph, (run) => {
-        if (run.content.some((item) => item.type === "footnoteRef" || item.type === "endnoteRef"))
-          requiresStory = true;
-      });
-      if (requiresStory)
-        return refuse(
-          "Clipboard comments and note references require importing their source story parts.",
-        );
+      const storyPartRefusal = canonicalClipboardStoryPartRefusal(paragraph);
+      if (storyPartRefusal !== undefined) return Result.err(storyPartRefusal);
       const links: Extract<Paragraph["content"][number], { type: "hyperlink" }>[] = [];
       visitInlineContentSlots(paragraph, ({ item }) => {
         if (item.type === "hyperlink") links.push(item);
@@ -463,7 +473,7 @@ export const prepareCanonicalPaste = ({
       if (plain)
         item.formatting = marksToTextFormatting(
           state.storedMarks ??
-            state.doc.resolve(pasteTarget ?? moveSource?.from ?? state.selection.from).marks(),
+            state.doc.resolve(pasteTarget ?? moveSource?.from ?? selectionRange.from).marks(),
         );
       for (const child of item.content) {
         if (child.type !== "drawing") continue;

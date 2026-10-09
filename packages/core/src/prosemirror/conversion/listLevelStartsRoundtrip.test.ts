@@ -28,7 +28,7 @@ import {
 import { computeListRendering, getCachedNumberingMap } from "../../docx/numberingParser";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
-import { listRenderingDefinitionsMatch } from "./listRenderingDefinition";
+import { listRenderingDefinitionsMatch } from "../../docx/listRendering";
 
 type FixtureOptions = {
   /** `w:start` for abstract level 0. */

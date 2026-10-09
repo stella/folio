@@ -5,6 +5,11 @@ import { captureCanonicalOracleFailure } from "../parity/canonicalOracleFailure"
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
+import {
+  canonicalBrowserRefusalRows,
+  matchCanonicalRefusalRow,
+  validateHarnessRefusalRows,
+} from "../../test/canonical-refusal-rows";
 import { BROWSER_INPUT_ACTION_DISPOSITIONS, type BrowserInputAction } from "./browserInputTrace";
 import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
 import { assertCanonicalInputTimersSettled } from "./canonicalTimerProbe";
@@ -141,9 +146,18 @@ const runCanonicalBrowserHistory = async ({
     await driveCanonicalBrowserInput(page, action);
     const after = await snapshot(page);
     const errors = await collectErrors();
+    const rows = canonicalBrowserRefusalRows(action);
+    validateHarnessRefusalRows(rows);
+    if (rows.length > 0) expect(errors.length).toBeGreaterThan(0);
     for (const error of errors) {
+      expect(error.status).toBe("refusal");
       expect(error.type).toBe("CanonicalSessionRefusalError");
-      missing.record(action.kind);
+      if (error.status !== "refusal") throw new TypeError(error.message);
+      const matchedRow = matchCanonicalRefusalRow({ rows, refusal: error });
+      expect(matchedRow).toBeDefined();
+      if (!matchedRow)
+        throw new TypeError("Canonical browser refusal did not match a declared row.");
+      missing.record(matchedRow.gap);
     }
     if (action.kind === "imeReplacement" && action.completion === "cancel") {
       expect(after.document).toEqual(before.document);
@@ -155,6 +169,7 @@ const runCanonicalBrowserHistory = async ({
     if (errors.length > 0) {
       expect(after.document).toEqual(before.document);
       expect(after.projectionJSON).toEqual(before.projectionJSON);
+      expect(after.selection).toEqual(before.selection);
       expect(after.canUndo).toBe(before.canUndo);
       expect(after.canRedo).toBe(before.canRedo);
       continue;

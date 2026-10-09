@@ -2,12 +2,57 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 
 import playwright from "../playwright.config";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const PROPERTY_FILE = "test/canonical-session.fuzz.ts";
 const BROWSER_FILE = "canonical-browser-input-fuzz.interactions.spec.ts";
+const replayCallDefects = (text: string) => {
+  const source = ts.createSourceFile("replay.ts", text, ts.ScriptTarget.Latest, true);
+  const required = new Set<string>();
+  const calls: ts.CallExpression[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isTypeAliasDeclaration(node) && node.name.text === "RunFuzzOptions") {
+      if (!ts.isTypeLiteralNode(node.type)) throw new TypeError("Missing replay options fields.");
+      for (const member of node.type.members) {
+        if (ts.isPropertySignature(member) && !member.questionToken)
+          required.add(member.name.getText(source));
+      }
+    }
+    if (ts.isCallExpression(node) && node.expression.getText(source) === "runMode")
+      calls.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  if (required.size === 0 || calls.length === 0) throw new TypeError("Missing replay contract.");
+  return calls.flatMap((call) => {
+    const options = call.arguments.at(0);
+    if (call.arguments.length !== 1 || !options || !ts.isObjectLiteralExpression(options))
+      return [call.getText(source)];
+    const keys = new Set(
+      options.properties.flatMap((property) =>
+        ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)
+          ? [property.name.getText(source)]
+          : [],
+      ),
+    );
+    return [...required].every((key) => keys.has(key)) ? [] : [call.getText(source)];
+  });
+};
+
+test("every browser replay caller supplies the declared options contract", () => {
+  expect(
+    replayCallDefects(
+      readFileSync(path.join(ROOT, "tests/visual/browser-input-fuzz.interactions.spec.ts"), "utf8"),
+    ),
+  ).toEqual([]);
+  const contract = "type RunFuzzOptions = { page: Page; authority: Authority };";
+  expect(replayCallDefects(`${contract} runMode(page, source);`)).toHaveLength(1);
+  expect(replayCallDefects(`${contract} runMode({ page });`)).toHaveLength(1);
+  expect(replayCallDefects(`${contract} runMode({ page, authority });`)).toEqual([]);
+});
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const workflow = (name: string): Record<string, unknown> => {

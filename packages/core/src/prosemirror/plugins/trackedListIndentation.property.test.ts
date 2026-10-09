@@ -7,7 +7,7 @@ import { createDocx } from "../../docx/rezip";
 import { documentShape, type DocumentShape } from "../../__tests__/documentShapes";
 import {
   CONFORMANCE_OPERATIONS,
-  runConformanceCase,
+  runLegacyConformanceCase,
   type ConformanceOperation,
 } from "../../__tests__/editorCommandConformance";
 import {
@@ -186,11 +186,11 @@ test(
             shape: documentShape(entry.shape),
             indentation,
           });
-          const result = await runConformanceCase(
+          const result = await runLegacyConformanceCase({
             shape,
-            operationById(entry.operation),
-            entry.placement,
-          );
+            operation: operationById(entry.operation),
+            placement: entry.placement,
+          });
           expect(result, `${entry.shape} / ${entry.operation}`).not.toBeNull();
           expect(result?.violations, `${entry.shape} / ${entry.operation}`).toEqual([]);
         }

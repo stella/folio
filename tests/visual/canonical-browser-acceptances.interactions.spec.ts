@@ -6,7 +6,10 @@ import { parseDocx } from "../../packages/core/src/docx/parser";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import type { BrowserInputAction } from "./browserInputTrace";
 import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
-import { canonicalBrowserAcceptances } from "./canonical-browser-acceptance-traces";
+import {
+  canonicalBrowserAcceptances,
+  canonicalBrowserSourceRefusals,
+} from "./canonical-browser-acceptance-traces";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import type {} from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
@@ -43,10 +46,7 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
       // Temporary source limits include tables (#1474) and images; these traces
       // exercise the canonical path automatically as source support expands.
       if (eligibility.isErr()) {
-        expect(eligibility.error.name).toBe("CanonicalSessionError");
-        expect(eligibility.error.message).toBe(
-          "Canonical sessions currently require plain paragraphs and supported inline atoms.",
-        );
+        expect(eligibility.error).toMatchObject(canonicalBrowserSourceRefusals[trace.shape]);
         missing.record(`source:${trace.shape}`);
         await info.attach("canonical-missing-ops", {
           body: JSON.stringify({ seed, mode, missing: missing.rows() }),

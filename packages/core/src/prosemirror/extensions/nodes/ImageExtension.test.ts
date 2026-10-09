@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { DOMParser, DOMSerializer } from "prosemirror-model";
+import { acquireHarnessDom } from "../../../../../../test/harnessDom";
+import { expectImageAttrs } from "../../attrs";
 
 import { schema } from "../../schema";
 
@@ -63,3 +66,50 @@ describe("ImageExtension border serialization", () => {
     });
   });
 });
+
+// Earlier generated clipboard cases always supplied a drawing name, so they
+// never exercised the schema's null default or distinguished an empty name.
+test.each([undefined, null, "", "null", "Drawing name"])(
+  "HTML clipboard keeps drawing name %j without inventing optional image metadata",
+  (docPrName) => {
+    const releaseDom = acquireHarnessDom();
+    try {
+      const image = schema.node("image", {
+        src: "data:image/png;base64,",
+        ...(docPrName === undefined ? {} : { docPrName }),
+      });
+      const host = document.createElement("div");
+      host.append(
+        DOMSerializer.fromSchema(schema).serializeNode(schema.node("paragraph", null, [image])),
+      );
+      const element = host.querySelector("img");
+      if (element === null) throw new TypeError("Clipboard image has no HTML element.");
+      expect(element.getAttribute("data-doc-pr-name")).toBe(docPrName ?? null);
+      for (const attribute of [
+        "alt",
+        "title",
+        "width",
+        "height",
+        "data-rid",
+        "data-css-float",
+        "data-transform",
+        "data-opacity",
+        "data-brightness",
+        "data-contrast",
+        "data-border-width",
+        "data-border-color",
+        "data-border-style",
+        "data-picture-name",
+        "data-picture-alt",
+        "data-picture-title",
+      ]) {
+        expect(element.getAttribute(attribute)).toBeNull();
+      }
+      const parsed = DOMParser.fromSchema(schema).parseSlice(host).content.firstChild?.firstChild;
+      if (parsed?.type.name !== "image") throw new TypeError("Clipboard parse lost its image.");
+      expect(expectImageAttrs(parsed).docPrName).toBe(docPrName ?? undefined);
+    } finally {
+      releaseDom();
+    }
+  },
+);

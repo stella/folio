@@ -5,7 +5,7 @@ import { Fragment, Slice } from "prosemirror-model";
 import { DOCUMENT_SHAPES } from "../../__tests__/documentShapes";
 import {
   EXTRA_OPERATIONS,
-  runConformanceCase,
+  runLegacyConformanceCase,
   type ConformanceOperation,
 } from "../../__tests__/editorCommandConformance";
 import { TEXTBLOCK_SELECTION_PLACEMENTS } from "../../__tests__/editorHarness";
@@ -18,7 +18,11 @@ describe("tracked paste resolution", () => {
   test.each(TEXTBLOCK_SELECTION_PLACEMENTS)(
     "copied revisions resolve like direct paste at %s",
     async (placement) => {
-      const result = await runConformanceCase(trackedShape, copiedBlocks, placement);
+      const result = await runLegacyConformanceCase({
+        shape: trackedShape,
+        operation: copiedBlocks,
+        placement,
+      });
       expect(result).not.toBeNull();
       expect(result?.violations).toEqual([]);
     },
@@ -67,7 +71,11 @@ test.each(nestedCases)(
         return undefined;
       },
     } as const satisfies ConformanceOperation;
-    const result = await runConformanceCase(plainShape, operation, placement);
+    const result = await runLegacyConformanceCase({
+      shape: plainShape,
+      operation: operation,
+      placement,
+    });
     expect(result).not.toBeNull();
     expect(result?.violations).toEqual([]);
   },

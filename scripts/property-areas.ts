@@ -57,7 +57,7 @@ export const COUPLINGS: readonly { prefix: string; areas: readonly string[] }[] 
   { prefix: "packages/core/src/docx/serializer/", areas: ["core/compare"] },
 ];
 
-type PropertyFile = { area: string; packageDir: string; file: string };
+type PropertyFile = { area: string; packageDir: string; file: string; weightMs: number };
 
 const PROPERTY_WORKERS = 2;
 type PropertyBatch = { packageDir: string; files: PropertyFile[] };
@@ -101,28 +101,128 @@ const walk = (dir: string): string[] =>
     return entry.isDirectory() ? walk(absolute) : [absolute];
   });
 
-const drivesProperty = (file: string): boolean => {
-  const source = ts.createSourceFile(
-    file,
-    readFileSync(file, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  let found = false;
+// A scheduling estimate, not a measured duration or a changed test timeout.
+// Synchronous properties without a declared budget use Bun's 5-second default.
+const DEFAULT_PROPERTY_WEIGHT_MS = 5_000;
+
+const callName = (expression: ts.Expression): string | undefined => {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (ts.isPropertyAccessExpression(expression)) return callName(expression.expression);
+  if (ts.isCallExpression(expression)) return callName(expression.expression);
+  return undefined;
+};
+
+const enclosingTest = (node: ts.Node): ts.CallExpression | undefined => {
+  for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
+    if (ts.isCallExpression(parent) && ["test", "it"].includes(callName(parent.expression) ?? ""))
+      return parent;
+  }
+  return undefined;
+};
+
+type PropertyFileProfileOptions = { file: string; text: string };
+
+/** Derive scheduling weight from actual property drivers and their stated base budgets. */
+export const propertyFileProfile = ({ file, text }: PropertyFileProfileOptions) => {
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const constants = new Map<string, ts.Expression[]>();
+  const drivers: ts.CallExpression[] = [];
+  const budgets: ts.CallExpression[] = [];
+  const defaults: ts.CallExpression[] = [];
   const visit = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isVariableDeclarationList(node.parent) &&
+      (node.parent.flags & ts.NodeFlags.Const) !== 0
+    ) {
+      const existing = constants.get(node.name.text);
+      if (existing) existing.push(node.initializer);
+      else constants.set(node.name.text, [node.initializer]);
+    }
     if (ts.isCallExpression(node)) {
       const callee = node.expression;
-      found ||=
+      if (
         (ts.isIdentifier(callee) && callee.text === "assertProperty") ||
         (ts.isPropertyAccessExpression(callee) &&
           ts.isIdentifier(callee.expression) &&
           callee.expression.text === "fc" &&
-          (callee.name.text === "assert" || callee.name.text === "check"));
+          (callee.name.text === "assert" || callee.name.text === "check"))
+      )
+        drivers.push(node);
+      if (ts.isIdentifier(callee) && callee.text === "propertyTestTimeout") budgets.push(node);
+      if (ts.isIdentifier(callee) && callee.text === "setDefaultTimeout") defaults.push(node);
     }
-    if (!found) ts.forEachChild(node, visit);
+    ts.forEachChild(node, visit);
   };
   visit(source);
-  return found;
+  if (drivers.length === 0) return { drivers: 0, weightMs: 0, missingBudgets: 0 };
+
+  const numericBudget = (expression: ts.Expression, resolving = new Set<string>()): number => {
+    let value: number;
+    if (ts.isNumericLiteral(expression)) value = Number(expression.text);
+    else if (ts.isParenthesizedExpression(expression))
+      return numericBudget(expression.expression, resolving);
+    else if (ts.isIdentifier(expression)) {
+      const definitions = constants.get(expression.text);
+      const definition = definitions?.length === 1 ? definitions.at(0) : undefined;
+      if (!definition || resolving.has(expression.text))
+        return panic(`Cannot derive property budget in ${file}: ${expression.getText(source)}`);
+      return numericBudget(definition, new Set([...resolving, expression.text]));
+    } else {
+      return panic(`Cannot derive property budget in ${file}: ${expression.getText(source)}`);
+    }
+    if (!Number.isFinite(value) || value <= 0)
+      return panic(`Property budget must be finite and positive in ${file}: ${String(value)}`);
+    return value;
+  };
+  let missingBudgets = 0;
+  const timeoutBudget = (call: ts.CallExpression): number => {
+    const argument = call.arguments.at(0);
+    if (argument === undefined) {
+      missingBudgets += 1;
+      return DEFAULT_PROPERTY_WEIGHT_MS;
+    }
+    return numericBudget(argument);
+  };
+  const stated = new Map<ts.CallExpression, number>();
+  // Validate every declared helper call, including calls not used by a property.
+  for (const call of budgets) stated.set(call, timeoutBudget(call));
+  let defaultBudget = DEFAULT_PROPERTY_WEIGHT_MS;
+  for (const call of defaults) {
+    const argument = call.arguments.at(0);
+    if (argument === undefined) return panic(`Missing default property budget in ${file}`);
+    defaultBudget =
+      ts.isCallExpression(argument) && stated.has(argument)
+        ? (stated.get(argument) ?? panic(`Missing profiled property budget in ${file}`))
+        : numericBudget(argument);
+  }
+  const testBudgets = new Map<ts.CallExpression, number>();
+  for (const [call, budget] of stated) {
+    const owner = enclosingTest(call);
+    if (owner !== undefined) {
+      if (testBudgets.has(owner)) return panic(`Multiple property budgets in one test in ${file}`);
+      testBudgets.set(owner, budget);
+    }
+  }
+  let weightMs = 0;
+  for (const driver of drivers) {
+    const owner = enclosingTest(driver);
+    weightMs += owner === undefined ? defaultBudget : (testBudgets.get(owner) ?? defaultBudget);
+  }
+  if (!Number.isFinite(weightMs) || weightMs <= 0)
+    return panic(`Property scheduling weight must be finite and positive in ${file}`);
+  return { drivers: drivers.length, weightMs, missingBudgets };
+};
+
+const profileProperty = (file: string) => {
+  const profile = propertyFileProfile({ file, text: readFileSync(file, "utf8") });
+  if (profile.missingBudgets > 0)
+    console.warn(
+      `${file}: ${String(profile.missingBudgets)} missing property budget arguments; scheduling uses Bun's 5000ms default estimate.`,
+    );
+  return profile;
 };
 
 /** `packages/<pkg>/src/<segment>/...` → `<pkg>/<segment>`; a file directly under src → `<pkg>`. */
@@ -143,25 +243,33 @@ export const propertyFiles = (): PropertyFile[] => {
       return [];
     }
     return files
-      .filter((file) => PROPERTY_FILE.test(file) && drivesProperty(file))
-      .map((file) => {
+      .filter((file) => PROPERTY_FILE.test(file))
+      .flatMap((file) => {
+        const profile = profileProperty(file);
+        if (profile.drivers === 0) return [];
         const repoPath = path.relative(REPO_ROOT, file).replaceAll("\\", "/");
         return {
           area: areaOf(repoPath) as string,
           packageDir: `packages/${pkg}`,
           file: repoPath,
+          weightMs: profile.weightMs,
         };
       })
       .toSorted((a, b) => a.file.localeCompare(b.file));
   });
   const rootTests = ROOT_TEST_DIRS.flatMap((root) =>
     walk(path.join(REPO_ROOT, root))
-      .filter((file) => PROPERTY_FILE.test(file) && drivesProperty(file))
-      .map((file) => ({
-        area: root,
-        packageDir: ".",
-        file: path.relative(REPO_ROOT, file).replaceAll("\\", "/"),
-      })),
+      .filter((file) => PROPERTY_FILE.test(file))
+      .flatMap((file) => {
+        const profile = profileProperty(file);
+        if (profile.drivers === 0) return [];
+        return {
+          area: root,
+          packageDir: ".",
+          file: path.relative(REPO_ROOT, file).replaceAll("\\", "/"),
+          weightMs: profile.weightMs,
+        };
+      }),
   );
   return [...packages, ...rootTests].toSorted((a, b) => a.file.localeCompare(b.file));
 };
@@ -203,7 +311,7 @@ export const selectPropertyFiles = (
 
 type PropertyShard = { index: number; total: number };
 
-/** Partition the complete selection deterministically, without changing property seeds or runs. */
+/** Longest-first greedy bin packing retains the complete selection and every property run. */
 export const shardPropertyFiles = (
   files: readonly PropertyFile[],
   { index, total }: PropertyShard,
@@ -216,9 +324,20 @@ export const shardPropertyFiles = (
     index > total
   )
     return panic("Property shard must be an integer index/total with 1 ≤ index ≤ total.");
-  return files
-    .toSorted((a, b) => a.file.localeCompare(b.file))
-    .filter((_, position) => position % total === index - 1);
+  const shards = Array.from({ length: total }, () => ({ files: files.slice(0, 0), weightMs: 0 }));
+  for (const file of files.toSorted(
+    (a, b) => b.weightMs - a.weightMs || a.file.localeCompare(b.file),
+  )) {
+    if (!Number.isFinite(file.weightMs) || file.weightMs <= 0)
+      return panic(`Property scheduling weight must be finite and positive: ${file.file}`);
+    let target = shards.at(0) ?? panic("Property scheduling requires a shard");
+    for (const shard of shards) if (shard.weightMs < target.weightMs) target = shard;
+    target.files.push(file);
+    target.weightMs += file.weightMs;
+  }
+  return (shards.at(index - 1) ?? panic("Requested property shard is unavailable")).files.toSorted(
+    (a, b) => a.file.localeCompare(b.file),
+  );
 };
 
 const parseArgs = (argv: readonly string[]) => {

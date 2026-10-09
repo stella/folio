@@ -4697,6 +4697,9 @@ function createImageRun(node: PMNode): Run {
     },
     wrap,
   };
+  if (attrs.pictureNames != null) {
+    image.pictureNames = { ...attrs.pictureNames };
+  }
   if (attrs.docPrName != null) {
     image.docPrName = attrs.docPrName;
   }

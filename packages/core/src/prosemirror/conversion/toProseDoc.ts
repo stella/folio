@@ -32,7 +32,6 @@ import type {
   Document,
   Paragraph,
   ParagraphFormatting,
-  ListRendering,
   PreservedAttribute,
   PreservedBlock,
   PreservedInline,
@@ -71,7 +70,11 @@ import type {
 } from "../../types/document";
 import { resolveTableLook, type ResolvedTableLook } from "../../docx/tableLook";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
-import { listRenderingDefinitionsMatch } from "./listRenderingDefinition";
+import {
+  resolveListRenderingDefinition,
+  listRenderingDefinitionsMatch,
+  type ListRenderingDefinition,
+} from "../../docx/listRendering";
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inlineWrapperContent";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
@@ -84,13 +87,13 @@ import { calculateRowSpans, type RowSpanInfo } from "../../docx/verticalMergePro
 import { isCellMergeContinuation } from "../../docx/tableParser";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import {
-  paragraphFormattingWithAuthoredIndentation,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   createProseParagraphWithPropertySource,
   proseParagraphAttrsWithoutPropertySource,
   getDocumentParagraphPropertySourceContract,
   recreateProseNodeWithParagraphPropertySource,
   transportTableCellsWithParagraphPropertySources,
+  paragraphFormattingWithAuthoredIndentation,
 } from "../../docx/paragraphPropertySource";
 import {
   buildPageBreakRunSourceDescendantIndex,
@@ -144,11 +147,7 @@ import type {
   TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
-import {
-  computeListRendering,
-  getCachedNumberingMap,
-  type NumberingMap,
-} from "../../docx/numberingParser";
+import { getCachedNumberingMap, type NumberingMap } from "../../docx/numberingParser";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { planEmptyRanges } from "../emptyRangeAnchor";
@@ -711,10 +710,7 @@ function convertBlockCustomXml(
   );
 }
 
-type ResolvedListRendering = {
-  rendering: ListRendering | null;
-  nextSlotOffset: number | undefined;
-};
+type ResolvedListRendering = ListRenderingDefinition;
 
 const resolveListRendering = (
   numPr: { numId: number; ilvl?: number },
@@ -723,18 +719,7 @@ const resolveListRendering = (
   const key = `${numPr.numId}:${numPr.ilvl ?? 0}`;
   const cached = context.listRenderings.get(key);
   if (cached !== undefined) return cached;
-  const numbering = context.numbering;
-  const rendering = numbering === undefined ? null : computeListRendering(numPr, numbering);
-  const nextLevel = numbering?.getLevel(numPr.numId, (numPr.ilvl ?? 0) + 1);
-  const resolved = {
-    rendering,
-    nextSlotOffset:
-      nextLevel?.pPr?.hangingIndent === true &&
-      nextLevel.pPr.indentFirstLine !== undefined &&
-      nextLevel.pPr.indentFirstLine < 0
-        ? -nextLevel.pPr.indentFirstLine
-        : undefined,
-  };
+  const resolved = resolveListRenderingDefinition(numPr, context.numbering);
   context.listRenderings.set(key, resolved);
   return resolved;
 };
@@ -778,7 +763,13 @@ function convertParagraph(
     attrs.numPrFromStyle ?? undefined,
     attrs.numPr ?? undefined,
   );
-  if (numPr?.kind === "none") Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+  if (
+    numPr?.kind === "none" ||
+    (paragraph.listRendering !== undefined &&
+      context.numbering !== undefined &&
+      numPr === undefined)
+  )
+    Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   else if (context.numbering !== undefined && numPr?.kind === "reference") {
     Object.assign(
       attrs,
@@ -1420,7 +1411,7 @@ function paragraphFormattingToAttrs(
   styleResolver: StyleEngine | null,
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
 ): ParagraphFormattingProjection {
-  const formatting = paragraph.formatting;
+  const formatting = paragraphFormattingWithAuthoredIndentation(paragraph);
   const styleId = formatting?.styleId;
   const styleName = styleId ? styleResolver?.getStyle(styleId)?.name : undefined;
   const tableOfContentsLevel = tableOfContentsStyleLevel({
@@ -4308,6 +4299,7 @@ function convertImage({
     // diagram beyond the shapes the parse already read.
     preview: image.preview,
     docPrName: image.docPrName,
+    pictureNames: image.pictureNames === undefined ? undefined : { ...image.pictureNames },
     alt: image.alt,
     title: image.title,
     width: widthPx,

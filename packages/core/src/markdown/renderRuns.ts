@@ -31,7 +31,11 @@ import { wrapComment, wrapDeletion, wrapInsertion, wrapMoveFrom, wrapMoveTo } fr
 import { escapeAltText, escapeInline, escapeLinkUrl } from "./escape";
 import { registerImage } from "./images";
 import { getHyperlinkRuns } from "../docx/hyperlinkParser";
-import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "../docx/relsParser";
+import {
+  RELATIONSHIP_TYPES,
+  resolveRelationshipIdOfType,
+  resolveRelativePath,
+} from "../docx/relsParser";
 import { numberNoteReference, pushWarning } from "./internals";
 import type { RenderContext } from "./types";
 
@@ -363,7 +367,9 @@ function renderRunContent(
           RELATIONSHIP_TYPES.image,
         );
         const media =
-          ref.status === "resolved" ? pkg?.media?.get(ref.relationship.target) : undefined;
+          ref.status === "resolved"
+            ? pkg?.media?.get(resolveRelativePath("word/document.xml", ref.relationship.target))
+            : undefined;
         if (media) {
           const reg = registerImage(ctx, media, item.image, paraId);
           const alt = reg.alt ? escapeAltText(reg.alt) : "";

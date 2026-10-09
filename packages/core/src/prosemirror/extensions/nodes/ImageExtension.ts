@@ -5,6 +5,7 @@
 import { expectImageAttrs } from "../../attrs";
 import type { ImageAttrs } from "../../schema/nodes";
 import { imageLuminanceFilter } from "../../../utils/imageLuminance";
+import { pictureNamesFromDom, pictureNamesDomAttrs } from "../../imagePictureNames";
 import { createNodeExtension } from "../create";
 
 export const ImageExtension = createNodeExtension({
@@ -19,6 +20,7 @@ export const ImageExtension = createNodeExtension({
       src: {},
       preview: { default: null },
       docPrName: { default: null },
+      pictureNames: { default: null },
       alt: { default: null },
       title: { default: null },
       width: { default: null },
@@ -78,6 +80,7 @@ export const ImageExtension = createNodeExtension({
         tag: "img[src]",
         getAttrs(dom): ImageAttrs {
           const element = dom as HTMLImageElement;
+          const pictureNames = pictureNamesFromDom(element);
           const alt = element.getAttribute("alt");
           const title = element.getAttribute("title");
           const cssFloat = element.dataset["cssFloat"] as
@@ -92,6 +95,10 @@ export const ImageExtension = createNodeExtension({
           const contrast = contrastRaw === undefined ? Number.NaN : Number(contrastRaw);
           return {
             src: element.getAttribute("src") || "",
+            ...(element.dataset["docPrName"] === undefined
+              ? {}
+              : { docPrName: element.dataset["docPrName"] }),
+            ...(Object.keys(pictureNames).length > 0 ? { pictureNames } : {}),
             ...(alt ? { alt } : {}),
             ...(title ? { title } : {}),
             ...(element.width ? { width: element.width } : {}),
@@ -120,8 +127,10 @@ export const ImageExtension = createNodeExtension({
       const domAttrs: Record<string, string> = {
         src: attrs.src,
         class: "docx-image",
+        ...pictureNamesDomAttrs(attrs.pictureNames),
       };
 
+      if (attrs.docPrName != null) domAttrs["data-doc-pr-name"] = attrs.docPrName;
       if (attrs.alt) {
         domAttrs["alt"] = attrs.alt;
       }

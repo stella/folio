@@ -4,12 +4,19 @@ import { mapTocSelection } from "./canonicalTocSelection";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import { AllSelection, TextSelection, type EditorState, type Transaction } from "prosemirror-state";
+import {
+  AllSelection,
+  NodeSelection,
+  TextSelection,
+  type EditorState,
+  type Transaction,
+} from "prosemirror-state";
 import {
   applyDocumentOps,
   combineEdits,
   commentDocumentIssue,
   DOCUMENT_OP_TYPES,
+  DOCUMENT_OP_REFUSAL_REASONS,
   editorParagraphGroups,
   type AppliedDocumentOp,
   type EditorIntentMode,
@@ -191,7 +198,7 @@ const operationChangesBodyProjection = (op: DocumentOp): boolean => {
 };
 
 export type CanonicalSelection = {
-  type: "text" | "all";
+  type: "text" | "inlineNode" | "all";
   anchor: TextPosition;
   head: TextPosition;
 };
@@ -298,14 +305,30 @@ class CanonicalProjection {
   }
 
   selectionAt(state: EditorState): Result<CanonicalSelection, CanonicalSessionError> {
-    if (!(state.selection instanceof TextSelection) && !(state.selection instanceof AllSelection)) {
-      return refuse("Canonical input requires a text selection.");
-    }
-    const range = canonicalSelectionRange(state);
-    const type = state.selection instanceof AllSelection ? "all" : "text";
-    const anchor = this.addressAt(type === "all" ? range.from : state.selection.anchor);
+    const selection = state.selection;
+    let type: CanonicalSelection["type"];
+    let anchorPosition = selection.anchor;
+    let headPosition = selection.head;
+    if (selection instanceof TextSelection) type = "text";
+    else if (
+      selection instanceof NodeSelection &&
+      selection.node.isInline &&
+      selection.node.isAtom &&
+      selection.node.type.name !== "noteMarker"
+    )
+      type = "inlineNode";
+    else if (selection instanceof AllSelection) {
+      type = "all";
+      const range = canonicalSelectionRange(state);
+      anchorPosition = range.from;
+      headPosition = range.to;
+    } else
+      return refuse(
+        "Canonical input requires text, an inline atom, or the whole document selection.",
+      );
+    const anchor = this.addressAt(anchorPosition);
     if (anchor.isErr()) return anchor;
-    const head = this.addressAt(type === "all" ? range.to : state.selection.head);
+    const head = this.addressAt(headPosition);
     if (head.isErr()) return head;
     return Result.ok({ type, anchor: anchor.value, head: head.value });
   }
@@ -449,6 +472,7 @@ const project = ({
   const paragraphs: ParagraphAddress[] = [];
   let failure: CanonicalSessionError | undefined;
   converted.value.forEach((node, offset, index) => {
+    if (failure !== undefined) return;
     const source = body.content.at(index);
     if (source?.type !== "paragraph" || source.paraId === undefined) {
       failure = new CanonicalSessionError({
@@ -460,7 +484,7 @@ const project = ({
     }
     if (node.type.name !== "paragraph" || node.attrs["paraId"] !== source.paraId) {
       failure = new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
+        gap: CANONICAL_GAP.storyContentProjection,
         reason: "refused",
         message: "The projection changed paragraph structure.",
       });
@@ -984,9 +1008,16 @@ class CanonicalSession {
       return refuse("Canonical input accepts a well-formed text replacement.");
     }
     if (from === to && text.length === 0) return noChange("The input makes no text change.");
-    const start = projection.inputAddressAt(from);
+    const replacesAll =
+      state.selection instanceof AllSelection &&
+      from === state.selection.from &&
+      to === state.selection.to;
+    const range = canonicalSelectionRange(state);
+    const inputFrom = replacesAll ? range.from : from;
+    const inputTo = replacesAll ? range.to : to;
+    const start = projection.inputAddressAt(inputFrom);
     if (start.isErr()) return start;
-    const end = projection.inputAddressAt(to);
+    const end = projection.inputAddressAt(inputTo);
     if (end.isErr()) return end;
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
@@ -1010,7 +1041,11 @@ class CanonicalSession {
     });
     if (compiled.isErr()) return refuse(compiled.error.message);
     const { ops, selection: caret } = compiled.value;
-    const postSelection = { type: "text", anchor: caret, head: caret } as const;
+    const postSelection = {
+      type: "text",
+      anchor: caret,
+      head: caret,
+    } as const satisfies CanonicalSelection;
     const preDocument = this.currentDocument;
     const isCaret = state.selection.empty;
     const deletion =
@@ -1126,7 +1161,22 @@ class CanonicalSession {
         mode: this.intentMode(document, intent),
         firstBlockId: this.nextBlockId,
       });
-      if (compiled.isErr()) return refuse(compiled.error.message);
+      if (compiled.isErr()) {
+        if (
+          compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
+          (intent.type === "setHyperlink" ||
+            intent.type === "removeHyperlink" ||
+            intent.type === "insertHyperlink")
+        )
+          return Result.err(
+            new CanonicalSessionError({
+              gap: CANONICAL_GAP.trackedHyperlinkResolution,
+              reason: "refused",
+              message: compiled.error.message,
+            }),
+          );
+        return refuse(compiled.error.message);
+      }
       const applied = applyDocumentOps(document, compiled.value.ops);
       if (applied.isErr()) return refuse(applied.error.message);
       document = applied.value.document;
@@ -1458,8 +1508,14 @@ class CanonicalSession {
       document: applied.value.document,
       previous: this.currentDocument,
     });
-    const unsupported = unsupportedSeedReason(applied.value.document, changed);
-    if (unsupported !== null) return refuse(unsupported);
+    if (unsupportedSeedReason(applied.value.document, changed) !== null)
+      return Result.err(
+        new CanonicalSessionError({
+          gap: CANONICAL_GAP.storyContentProjection,
+          reason: "refused",
+          message: "The operations produce unsupported canonical story content.",
+        }),
+      );
     preservePropertySources({
       target: applied.value.document,
       source: this.currentDocument,
@@ -1523,12 +1579,15 @@ class CanonicalSession {
       sameStory(selection.anchor.story, projectedStory) &&
       sameStory(selection.head.story, projectedStory)
     ) {
-      restoreCanonicalSelection({
-        transaction,
-        projection: projected.value,
-        selection,
-        unavailable: { type: "near", anchor: state.selection.anchor },
-      });
+      if (
+        !restoreCanonicalSelection({
+          transaction,
+          projection: projected.value,
+          selection,
+          unavailable: { type: "near", anchor: state.selection.anchor },
+        })
+      )
+        return refuse("Canonical history cannot restore the selected inline atom.");
     }
     transaction.setMeta(CANONICAL_PROJECTION_META, {
       type: "canonical",
@@ -1614,6 +1673,18 @@ export const createCanonicalSession = (
   document: Document,
   styles?: StyleDefinitions | null,
 ): Result<CanonicalSession, CanonicalSessionError> => {
+  if (
+    documentStories(document).some((story) =>
+      findStoryBody(document, story)?.content.some((block) => block.type === "table"),
+    )
+  )
+    return Result.err(
+      new CanonicalSessionError({
+        gap: CANONICAL_GAP.tableActivation,
+        reason: "refused",
+        message: "Canonical sessions cannot activate documents containing tables.",
+      }),
+    );
   const unsupported = unsupportedSeedReason(document);
   if (unsupported !== null) return refuse(unsupported);
   const owned = cloneDocumentWithParagraphPropertySources(document);
@@ -1711,8 +1782,18 @@ export const deletionRange = (
   direction: "backward" | "forward",
 ): Result<{ from: number; to: number }, CanonicalSessionError> => {
   const { selection } = state;
+  if (
+    selection instanceof NodeSelection &&
+    selection.node.isInline &&
+    selection.node.isAtom &&
+    selection.node.type.name !== "noteMarker"
+  )
+    return Result.ok({ from: selection.from, to: selection.to });
+  if (selection instanceof AllSelection) return Result.ok(canonicalSelectionRange(state));
   if (!(selection instanceof TextSelection))
-    return refuse("Canonical deletion requires a text selection.");
+    return refuse(
+      "Canonical deletion requires text, an inline atom, or the whole document selection.",
+    );
   if (!selection.empty) return Result.ok({ from: selection.from, to: selection.to });
   const parent = selection.$from.parent;
   const offset = selection.$from.parentOffset;
