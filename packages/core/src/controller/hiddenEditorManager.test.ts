@@ -194,6 +194,67 @@ describe("createHiddenEditorManager", () => {
   });
 });
 
+test(
+  "external note types reach paste refusal in both session modes without mutation",
+  () => {
+    GlobalRegistrator.register();
+    try {
+      assertProperty(
+        fc.property(
+          fc
+            .stringMatching(/^[a-z]{1,12}$/u)
+            .filter((kind) => kind !== "footnote" && kind !== "endnote"),
+          (noteType) => {
+            const cases = (["legacy", "canonical"] as const).flatMap((session) =>
+              (["sup", "span"] as const).flatMap((tag) =>
+                (["footnote", "endnote"] as const).map((kind) => ({ session, tag, kind })),
+              ),
+            );
+            for (const { session, tag, kind } of cases) {
+              const host = document.createElement("div");
+              document.body.append(host);
+              const source = createEmptyDocument({ initialText: "Before" });
+              const refusals: { reason: string; gap: unknown }[] = [];
+              const { deps } = makeDeps({
+                getHost: () => host,
+                getDocument: () => source,
+                getDocumentContext: () => source,
+                getExtensionManager: () => singletonManager,
+                getExperimentalSession: () => session,
+                onSessionRefusal: (reason, gap) => refusals.push({ reason, gap }),
+              });
+              const manager = createHiddenEditorManager(deps);
+              try {
+                manager.ensureView();
+                const view = manager.getView() ?? panic("Missing paste fixture view");
+                const before = view.state;
+                const reference = document.createElement(tag);
+                reference.className = `docx-${kind}-ref`;
+                reference.dataset["id"] = "123";
+                reference.dataset["noteOccurrence"] = "8bf05044-8197-4ca1-8207-600164d5dd24";
+                reference.dataset["noteType"] = noteType;
+                reference.textContent = "123";
+                expect(() => view.pasteHTML(reference.outerHTML)).not.toThrow();
+                expect(view.state.doc).toBe(before.doc);
+                expect(refusals).toHaveLength(1);
+                expect(refusals.at(0)?.gap).toBe(CANONICAL_GAP.dispatch);
+                expect(refusals.at(0)?.reason).toEqual(expect.any(String));
+              } finally {
+                manager.destroyView();
+                host.remove();
+              }
+            }
+          },
+        ),
+        { numRuns: 20 },
+      );
+    } finally {
+      GlobalRegistrator.unregister();
+    }
+  },
+  propertyTestTimeout(5_000),
+);
+
 test("hidden manager refuses a local partial note-reference edit before committing it", async () => {
   GlobalRegistrator.register();
   const host = document.createElement("div");

@@ -18,6 +18,8 @@ import { createMarkExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { expandNoteReferenceDeletionRange, noteReferenceRanges } from "./noteReferenceDeletion";
 
+const NOTE_REFERENCE_PARSE_PRIORITY = 60;
+
 const noteRefAttrsFromDom = (
   dom: HTMLElement,
   noteType: "footnote" | "endnote",
@@ -44,18 +46,22 @@ export const FootnoteRefExtension = createMarkExtension({
     parseDOM: [
       {
         tag: "sup.docx-footnote-ref",
+        priority: NOTE_REFERENCE_PARSE_PRIORITY,
         getAttrs: (dom) => noteRefAttrsFromDom(dom, "footnote", "superscript"),
       },
       {
         tag: "sup.docx-endnote-ref",
+        priority: NOTE_REFERENCE_PARSE_PRIORITY,
         getAttrs: (dom) => noteRefAttrsFromDom(dom, "endnote", "superscript"),
       },
       {
         tag: "span.docx-footnote-ref",
+        priority: NOTE_REFERENCE_PARSE_PRIORITY,
         getAttrs: (dom) => noteRefAttrsFromDom(dom, "footnote", "baseline"),
       },
       {
         tag: "span.docx-endnote-ref",
+        priority: NOTE_REFERENCE_PARSE_PRIORITY,
         getAttrs: (dom) => noteRefAttrsFromDom(dom, "endnote", "baseline"),
       },
     ],
