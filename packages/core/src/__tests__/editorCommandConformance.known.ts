@@ -8,6 +8,8 @@
  * same change — entries tied to an issue flip that way when the fix lands.
  */
 
+import { panic } from "better-result";
+
 import type { ViolationKind } from "./editorCommandConformance";
 import { LIST_PASTE_RESOLUTION_KEYS } from "./editorCommandConformance.listPaste";
 import type { EditorMode, SelectionPlacement } from "./editorHarness";
@@ -28,8 +30,11 @@ export type KnownConformanceGap = {
   shapes?: readonly string[];
   /** Placements covered; every placement when omitted. */
   placements?: readonly SelectionPlacement[];
-  /** Shape/operation pairs that have complete resolution coverage. */
-  excludedCases?: readonly Pick<ConformanceCaseKey, "shape" | "operation">[];
+  /** Strict coverage can apply to a complete pair or one exact selection case. */
+  excludedCases?: readonly (
+    | ({ scope: "shapeOperation" } & Pick<ConformanceCaseKey, "shape" | "operation">)
+    | ({ scope: "case" } & ConformanceCaseKey)
+  )[];
   modes?: readonly EditorMode[];
   kinds: readonly ViolationKind[];
   /**
@@ -140,6 +145,12 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "key:Tab",
       "key:Shift-Tab",
     ],
+    excludedCases: LEGACY_NODE_REPLACEMENTS.map(({ operation }) => ({
+      scope: "case" as const,
+      shape: "image",
+      operation,
+      placement: "node" as const,
+    })),
     modes: ["suggesting"],
     kinds: ["reject-mismatch"],
   },
@@ -206,9 +217,13 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:generateTOC",
     ],
     excludedCases: [
-      ...LIST_PASTE_RESOLUTION_KEYS,
-      { shape: "tracked-changes", operation: "paste:copied-blocks" },
-      { shape: "tables", operation: "paste:copied-blocks" },
+      ...LIST_PASTE_RESOLUTION_KEYS.map(({ shape, operation }) => ({
+        scope: "shapeOperation" as const,
+        shape,
+        operation,
+      })),
+      { scope: "shapeOperation", shape: "tracked-changes", operation: "paste:copied-blocks" },
+      { scope: "shapeOperation", shape: "tables", operation: "paste:copied-blocks" },
     ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],
@@ -218,7 +233,9 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "In suggesting mode, typing or inserting over a range deletes the range untracked, and replacing a range that spans paragraphs loses the typed text when the change is accepted",
     operations: REPLACING_OPERATIONS,
     placements: RANGE_PLACEMENTS,
-    excludedCases: [{ shape: "tracked-changes", operation: "paste:copied-blocks" }],
+    excludedCases: [
+      { scope: "shapeOperation", shape: "tracked-changes", operation: "paste:copied-blocks" },
+    ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],
     tier: "full",
@@ -268,6 +285,16 @@ export const gapApplies = (gap: KnownConformanceGap, key: ConformanceCaseKey): b
   (gap.operations === undefined || gap.operations.includes(key.operation)) &&
   (gap.shapes === undefined || gap.shapes.includes(key.shape)) &&
   (gap.placements === undefined || gap.placements.includes(key.placement)) &&
-  !gap.excludedCases?.some(
-    ({ shape, operation }) => shape === key.shape && operation === key.operation,
-  );
+  !gap.excludedCases?.some((excluded) => {
+    if (excluded.shape !== key.shape || excluded.operation !== key.operation) return false;
+    switch (excluded.scope) {
+      case "shapeOperation":
+        return true;
+      case "case":
+        return excluded.placement === key.placement;
+      default: {
+        const impossible: never = excluded;
+        return panic(`Unknown conformance gap exclusion: ${String(impossible)}`);
+      }
+    }
+  });
