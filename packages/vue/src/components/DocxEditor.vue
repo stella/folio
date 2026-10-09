@@ -531,10 +531,7 @@ import {
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document, SectionProperties, Style } from "@stll/folio-core/types/document";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
-import {
-  DEFAULT_OUTLINE_DEPTH,
-  filterHeadingsByDepth,
-} from "@stll/folio-core/utils/outlineDepth";
+import { DEFAULT_OUTLINE_DEPTH, filterHeadingsByDepth } from "@stll/folio-core/utils/outlineDepth";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import {
