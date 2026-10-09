@@ -1113,6 +1113,9 @@ export const validateOpsDocument: (document: Document_2) => Result<Document_2, D
 export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, BatchRejection>;
 
 // @public
+export const withBodyContent: (body: DocumentBody, content: BlockContent[]) => DocumentBody;
+
+// @public
 export const zeroWidthLeavesAt: (items: readonly InlineNode[], offset: number) => InlineNode[];
 
 // (No @packageDocumentation comment for this package)
