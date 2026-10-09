@@ -12,8 +12,6 @@
  * - Inline properties (highest priority)
  */
 
-import { mintNoteReferenceOccurrenceId } from "../noteReferenceOccurrences";
-
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
@@ -240,6 +238,7 @@ type RunIdentityIdAllocator = () => number;
 /** What converting one paragraph's runs shares across them. */
 type RunConversionScope = {
   nextRunIdentityId: RunIdentityIdAllocator;
+  nextNoteReferenceOccurrenceId: () => string;
   /** The conversion's mark interner. */
   createMark: MarkFactory;
 };
@@ -279,6 +278,12 @@ const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): M
 const createHyperlinkInstanceIndexAllocator = (): HyperlinkInstanceIndexAllocator => {
   let index = 0;
   return () => index++;
+};
+
+/** Imported occurrences belong to the projection walk, not to the referenced note. */
+const createNoteReferenceOccurrenceAllocator = () => {
+  let index = 0;
+  return () => `source-note:${index++}`;
 };
 
 type BookmarkBoundaryCount = {
@@ -484,6 +489,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const theme = options?.theme ?? document.package.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
+  const nextNoteReferenceOccurrenceId = createNoteReferenceOccurrenceAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
   const conversionContext = {
     listRenderings: new Map<string, ResolvedListRendering>(),
@@ -494,6 +500,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
+    nextNoteReferenceOccurrenceId,
     pairedBookmarkIds,
     pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(paragraphs),
     storyRangedCommentIds: rangedCommentIds(paragraphs),
@@ -752,6 +759,7 @@ function convertParagraph(
   let runIdentityId = 0;
   const runScope = {
     nextRunIdentityId: () => runIdentityId++,
+    nextNoteReferenceOccurrenceId: context.nextNoteReferenceOccurrenceId,
     createMark: context.createMark,
   };
   const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
@@ -1768,6 +1776,7 @@ type TableConversionContext = {
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
+  nextNoteReferenceOccurrenceId: () => string;
   pairedBookmarkIds: ReadonlySet<number>;
   pageBreakRunSourceDescendants: PageBreakRunSourceDescendantIndex;
   /** Comments the story opens a range for, for the point-comment question. */
@@ -2509,6 +2518,7 @@ export function standaloneTableCellToProseMirror(
 ): PMNode {
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
+  const nextNoteReferenceOccurrenceId = createNoteReferenceOccurrenceAllocator();
   const pageBreakRunSourceDescendants = buildPageBreakRunSourceDescendantIndex(cell.content);
   reportSourceContainerPageBreakRun(
     cell.content,
@@ -2525,6 +2535,7 @@ export function standaloneTableCellToProseMirror(
       numbering: undefined,
       nextTextBoxGroupId,
       nextHyperlinkInstanceIndex,
+      nextNoteReferenceOccurrenceId,
       pairedBookmarkIds: collectPairedBookmarkIds(cell.content),
       pageBreakRunSourceDescendants,
       storyRangedCommentIds: rangedCommentIds(cell.content),
@@ -3053,13 +3064,14 @@ function convertRun(
   }
 
   for (const content of run.content) {
-    const contentNodes = convertRunContent(
+    const contentNodes = convertRunContent({
       content,
       marks,
-      mergedFormatting,
+      formatting: mergedFormatting,
       textBoxAnchors,
-      run.formatting,
-    );
+      authoredFormatting: run.formatting,
+      nextNoteReferenceOccurrenceId: runScope.nextNoteReferenceOccurrenceId,
+    });
     nodes.push(...contentNodes);
   }
 
@@ -3821,19 +3833,29 @@ const carriedRunFormatting = (
 /**
  * Convert RunContent to ProseMirror nodes
  */
-function convertRunContent(
-  content: RunContent,
-  marks: ReturnType<typeof schema.mark>[],
-  formatting?: TextFormatting,
-  textBoxAnchors?: ReadonlyMap<Shape, string>,
+type ConvertRunContentOptions = {
+  content: RunContent;
+  marks: ReturnType<typeof schema.mark>[];
+  formatting: TextFormatting | undefined;
+  textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
   /**
    * The run's own `w:rPr`, NOT the style-resolved `formatting` above. An
    * inline atom carries it verbatim so the save can rebuild the run; carrying
    * the resolved value instead would write the style's run properties into
    * the run as direct formatting.
    */
-  authoredFormatting?: TextFormatting,
-): PMNode[] {
+  authoredFormatting: TextFormatting | undefined;
+  nextNoteReferenceOccurrenceId: () => string;
+};
+
+function convertRunContent({
+  content,
+  marks,
+  formatting,
+  textBoxAnchors,
+  authoredFormatting,
+  nextNoteReferenceOccurrenceId,
+}: ConvertRunContentOptions): PMNode[] {
   switch (content.type) {
     case "noteMarker":
       // PM gives the invisible atom a structural position; native story offsets
@@ -3923,7 +3945,7 @@ function convertRunContent(
       // Footnote reference - render as superscript number with footnoteRef mark
       const footnoteMark = schema.mark("footnoteRef", {
         id: content.id.toString(),
-        occurrenceId: mintNoteReferenceOccurrenceId(),
+        occurrenceId: nextNoteReferenceOccurrenceId(),
         noteType: "footnote",
         vertAlign: noteReferenceVertAlign(formatting?.vertAlign),
         customMarkFollows: content.customMarkFollows,
@@ -3935,7 +3957,7 @@ function convertRunContent(
       // Endnote reference - render as superscript number with footnoteRef mark
       const endnoteMark = schema.mark("footnoteRef", {
         id: content.id.toString(),
-        occurrenceId: mintNoteReferenceOccurrenceId(),
+        occurrenceId: nextNoteReferenceOccurrenceId(),
         noteType: "endnote",
         vertAlign: noteReferenceVertAlign(formatting?.vertAlign),
         customMarkFollows: content.customMarkFollows,
@@ -4402,13 +4424,14 @@ function convertHyperlink(
         // collapsing the right-aligned page number flush against the title.
         for (const content of child.content) {
           childNodes.push(
-            ...convertRunContent(
+            ...convertRunContent({
               content,
-              allMarks,
-              mergedFormatting,
+              marks: allMarks,
+              formatting: mergedFormatting,
               textBoxAnchors,
-              child.formatting,
-            ),
+              authoredFormatting: child.formatting,
+              nextNoteReferenceOccurrenceId: runScope.nextNoteReferenceOccurrenceId,
+            }),
           );
         }
         break;
@@ -5172,6 +5195,7 @@ export function headerFooterToProseDoc(
   const theme = options?.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
+  const nextNoteReferenceOccurrenceId = createNoteReferenceOccurrenceAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(content);
   const conversionContext = {
     listRenderings: new Map<string, ResolvedListRendering>(),
@@ -5180,6 +5204,7 @@ export function headerFooterToProseDoc(
       options?.numbering === undefined ? undefined : getCachedNumberingMap(options.numbering),
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
+    nextNoteReferenceOccurrenceId,
     pairedBookmarkIds,
     pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(content),
     storyRangedCommentIds: rangedCommentIds(content),
