@@ -263,6 +263,28 @@ export const captureDocumentSourceBaseline = (document: Document, xml: string): 
   }
 };
 
+// Styles remain private in the same capture as the parsed document body.
+const readDocumentSourceCapture = (document: Document) => {
+  const body = document.package.document;
+  const handle =
+    BASELINE_HANDLE in body
+      ? body[BASELINE_HANDLE]
+      : document.originalBuffer &&
+        packageBaselines.get(document.originalBuffer)?.get("word/document.xml")?.get("body");
+  if (handle === undefined) return { type: "missing" } as const;
+  if (typeof handle !== "object" || handle === null) return { type: "mismatch" } as const;
+  const baseline = contentBaselines.get(handle);
+  if (!baseline || baseline.type !== "body") return { type: "mismatch" } as const;
+  return { type: "captured", baseline } as const;
+};
+
+/** Read the parsed stylesheet without exposing the capture or comparing body content. */
+export const getDocumentSourceStyles = (document: Document) => {
+  const source = readDocumentSourceCapture(document);
+  if (source.type !== "captured") return source;
+  return { type: "captured", styles: structuredClone(source.baseline.resourceStyles) } as const;
+};
+
 export const getDocumentSourceBaseline = (
   document: Document,
 ):
@@ -277,16 +299,9 @@ export const getDocumentSourceBaseline = (
       resourceRelationships: Document["package"]["relationships"];
       resourceMedia: ReadonlyMap<string, { data: ArrayBuffer; mimeType: string }>;
     } => {
-  const body = document.package.document;
-  const handle =
-    BASELINE_HANDLE in body
-      ? body[BASELINE_HANDLE]
-      : document.originalBuffer &&
-        packageBaselines.get(document.originalBuffer)?.get("word/document.xml")?.get("body");
-  if (handle === undefined) return { type: "missing" };
-  if (typeof handle !== "object" || handle === null) return { type: "mismatch" };
-  const baseline = contentBaselines.get(handle);
-  if (!baseline || baseline.type !== "body") return { type: "mismatch" };
+  const source = readDocumentSourceCapture(document);
+  if (source.type !== "captured") return source;
+  const { baseline } = source;
   const fingerprint = JSON.stringify(baseline.body);
   // The cloned body stays private until this first read. Capture its integrity
   // fingerprint lazily so parsing alone never pays for save-only comparisons.
