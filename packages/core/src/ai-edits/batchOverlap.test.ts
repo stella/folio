@@ -71,6 +71,27 @@ const apply = (
     operations,
   });
 
+test.each(MODES)(
+  "equal-coordinate insertions retain their requested document order (%s)",
+  async (mode) => {
+    const reviewer = await openReviewer(
+      await paragraphsDocx([[textRun("Anchor.")], [textRun("Following.")]]),
+    );
+    const blockId = reviewer.snapshot().blocks.at(0)?.id;
+    expect(blockId).toBeDefined();
+    if (blockId === undefined) return;
+    const result = apply(reviewer, mode, [
+      { id: "first", type: "insertAfterBlock", blockId, text: "First inserted." },
+      { id: "second", type: "insertAfterBlock", blockId, text: "Second inserted." },
+    ]);
+    expect(result.skipped).toEqual([]);
+    const expected = ["Anchor.", "First inserted.", "Second inserted.", "Following."];
+    expect(blockTexts(reviewer)).toEqual(expected);
+    const saved = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
+    expect(blockTexts(saved)).toEqual(expected);
+  },
+);
+
 describe("an operation inside a block another operation of the batch deletes", () => {
   const threeClauses = () =>
     paragraphsDocx([
