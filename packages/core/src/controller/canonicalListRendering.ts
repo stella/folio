@@ -26,7 +26,7 @@ import {
   paragraphIndentationFromFormatting,
   withDirectParagraphIndentation,
 } from "../prosemirror/paragraphIndentation";
-import { listRenderingDefinitionsMatch } from "../prosemirror/conversion/listRenderingDefinition";
+import { listRenderingDefinitionsMatch } from "../docx/listRendering";
 import { canonicalJson } from "../utils/canonicalJson";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { listIndentationProvenancePatch } from "../prosemirror/styles/resolvedStyleAttrs";
