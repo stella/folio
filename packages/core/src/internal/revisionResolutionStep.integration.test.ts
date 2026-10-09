@@ -81,7 +81,8 @@ test(
             expect(fromProseDoc(resolved.doc, source).package.document.content).toEqual(
               expectedContent,
             );
-            expect(resolved.doc.eq(createHarnessState(expected, "editing").doc)).toBe(true);
+            const expectedDoc = createHarnessState(expected, "editing").doc;
+            expect(resolved.doc.eq(expectedDoc)).toBe(true);
           }
         },
       ),
