@@ -3,7 +3,11 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { checkBrowserDiscovery, trackedBrowserConfigs } from "./ci-browser-discovery";
+import {
+  checkBrowserConfigDiscovery,
+  checkBrowserDiscovery,
+  trackedBrowserConfigs,
+} from "./ci-browser-discovery";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const requireFromRepo = createRequire(path.join(REPO_ROOT, "package.json"));
@@ -230,11 +234,24 @@ describe("no-browser discovery preflight", () => {
     );
   }, 20_000);
 
-  test("the repository's real browser import graphs load in Node for every tracked config", () => {
-    const results = checkBrowserDiscovery({ log: () => {} });
-    expect(results.map(({ config }) => config)).toEqual(trackedBrowserConfigs());
-    expect(results.every(({ tests }) => tests > 0)).toBe(true);
+  test("the repository's browser input coverage passes before discovery", () => {
+    const result = Bun.spawnSync(
+      [process.execPath, path.join(REPO_ROOT, "scripts/check-browser-input-coverage.ts")],
+      { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" },
+    );
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
   }, 20_000);
+
+  // Each independent Node process gets the same deadline. Sharing a deadline
+  // made later graphs inherit the cost of every preceding graph and coverage.
+  for (const config of trackedBrowserConfigs()) {
+    test(`the repository's real browser import graph loads in Node: ${config}`, () => {
+      const result = checkBrowserConfigDiscovery({ config });
+      expect(result.config).toBe(config);
+      expect(result.tests).toBeGreaterThan(0);
+    }, 20_000);
+  }
 
   test("the command line refuses filtering arguments", () => {
     const result = Bun.spawnSync(
