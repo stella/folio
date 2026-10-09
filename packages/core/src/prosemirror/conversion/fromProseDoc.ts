@@ -836,8 +836,6 @@ export function fromProseDoc(
   baseDocument: Document | undefined,
   { stylesheetSource, reuse = "none" }: FromProseDocOptions,
 ): Document {
-  const styles = saveStylesheet(stylesheetSource, baseDocument);
-  assertSaveStylesheetAvailable({ pmDoc, styles, baseDocument, stylesheetSource });
   assertNoteReferenceOccurrences(pmDoc);
   switch (reuse) {
     case "none": {
@@ -876,6 +874,9 @@ export function fromProseDoc(
     baseContract && proseContract && baseDocument
       ? validateParagraphPropertySourceTokens(pmDoc, baseDocument, baseContract)
       : null;
+
+  const styles = saveStylesheet(stylesheetSource, baseDocument);
+  assertSaveStylesheetAvailable({ pmDoc, styles, baseDocument, stylesheetSource });
 
   // Match the reader's empty-styles resolver when the source has no styles part.
   const blocks = extractBlocks(pmDoc, "resolve", createStyleEngine(styles));
