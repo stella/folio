@@ -79,8 +79,8 @@ export const computeListMarker = (
     const latestAbstractCounters = abstractCounters.get(abstractNumId);
     if (latestAbstractCounters) {
       // A paragraph whose numbering comes only from its style resumes the
-      // latest compatible list instance. Word does this when an attachment
-      // starts a fresh w:num (with a startOverride) and later paragraphs fall
+      // latest compatible list instance. A fresh w:num with a startOverride
+      // can restart the sequence before later paragraphs fall
       // back to the style's original w:num: the style continues the attachment
       // sequence instead of reviving its stale counters from earlier content.
       counters = latestAbstractCounters;
@@ -117,8 +117,8 @@ export const computeListMarker = (
     counters[i] = Number.NaN;
   }
 
-  // Word's default LISTNUM field advances the counter at one ilvl deeper
-  // than the host paragraph. Mirror the toFlowBlocks logic here so the
+  // A default LISTNUM field advances the counter one ilvl deeper
+  // than its containing paragraph. Mirror the toFlowBlocks logic so the
   // marker substituted at parse time agrees with the renderer's counters —
   // otherwise a follow-up paragraph at that depth picks up the stale,
   // pre-substituted "(a)" instead of "(b)".
