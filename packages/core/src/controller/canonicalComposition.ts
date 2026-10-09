@@ -24,19 +24,24 @@ type CompositionOptions = {
   refuse: (reason: string) => void;
 };
 
+type CompositionCompletionEvidence = "provisional" | "explicitFinal";
+type CompositionPhase =
+  | { type: "active"; completion: CompositionCompletionEvidence }
+  | { type: "ended"; data: string | null; completion: CompositionCompletionEvidence };
+
 type CompositionState =
   | { type: "committed" }
   | {
       type: "provisional";
       baseline: EditorState;
       view: EditorView;
-      phase: "active" | "ended";
+      phase: CompositionPhase;
     }
   | {
       type: "refused";
       baseline: EditorState;
       view: EditorView;
-      phase: "active" | "ended";
+      phase: CompositionPhase;
       text: string | null;
     };
 
@@ -189,7 +194,15 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       view.updateState(pending.baseline);
     }
     options.end();
-    if (!commit || view.isDestroyed) return { type: "cancelled" };
+    if (
+      !commit ||
+      view.isDestroyed ||
+      (pending.phase.type === "ended" &&
+        pending.phase.data === "" &&
+        pending.phase.completion === "provisional" &&
+        committedText === "")
+    )
+      return { type: "cancelled" };
     if (pending.type === "refused") return { type: "refused", text: pending.text };
     if (!input) {
       options.refuse(
@@ -255,9 +268,14 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     start: (view: EditorView) => {
       if (state.type !== "committed") return;
       if (!options.begin()) return;
-      state = { type: "provisional", baseline: view.state, view, phase: "active" };
+      state = {
+        type: "provisional",
+        baseline: view.state,
+        view,
+        phase: { type: "active", completion: "provisional" },
+      };
     },
-    ended: (view: EditorView) => {
+    ended: (view: EditorView, data: string | null) => {
       if (state.type === "committed") return;
       switch (state.type) {
         case "provisional":
@@ -265,7 +283,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
             type: "provisional",
             baseline: state.baseline,
             view: state.view,
-            phase: "ended",
+            phase: { type: "ended", data, completion: state.phase.completion },
           };
           break;
         case "refused":
@@ -273,7 +291,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
             type: "refused",
             baseline: state.baseline,
             view: state.view,
-            phase: "ended",
+            phase: { type: "ended", data, completion: state.phase.completion },
             text: state.text,
           };
           break;
@@ -303,8 +321,14 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       completed = { type: "authorized", receipt, text };
       return true;
     },
-    authorizeNative: (view: EditorView) => {
+    authorizeNative: (view: EditorView, completion: CompositionCompletionEvidence) => {
       authorizedNativeState = view.state;
+      if (state.type !== "committed" && completion === "explicitFinal") {
+        state.phase =
+          state.phase.type === "active"
+            ? { type: "active", completion }
+            : { type: "ended", data: state.phase.data, completion };
+      }
     },
     flushed: (view: EditorView) => {
       const authorized = authorizedNativeState;
@@ -313,7 +337,7 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
       queueMicrotask(() => {
         if (authorizedNativeState === authorized) authorizedNativeState = null;
       });
-      if (state.type !== "committed" && state.phase === "ended") schedule(view);
+      if (state.type !== "committed" && state.phase.type === "ended") schedule(view);
     },
     recover: (view: EditorView) => finish(view, true),
     cancel: (view: EditorView) => finish(view, false),

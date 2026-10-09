@@ -83,7 +83,13 @@ const createLateFinalRig = (initialText = "alpha") => {
     },
   });
   let nativeMarks = view.state.storedMarks;
+  const begin = () => {
+    nativeMarks =
+      view.state.storedMarks ?? view.state.selection.$from.marksAcross(view.state.selection.$to);
+    view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+  };
   return {
+    begin,
     boundary,
     session,
     view,
@@ -104,9 +110,7 @@ const createLateFinalRig = (initialText = "alpha") => {
       mount.remove();
     },
     start: (text: string) => {
-      nativeMarks =
-        view.state.storedMarks ?? view.state.selection.$from.marksAcross(view.state.selection.$to);
-      view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+      begin();
       view.dispatch(view.state.tr.insertText(text, 1, 6).setMeta("composition", 1));
       view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
     },
@@ -1095,4 +1099,113 @@ test("a native rewrite of identical text never commits a replacement", async () 
   expect(docs.length).toBeGreaterThan(0);
   expect(executed.markLoss).toBeGreaterThan(0);
   expect(executed.textEdit).toBeGreaterThan(0);
+});
+
+test("native composition lifecycle keeps cancelled selections and commits explicit finals", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(
+        fc.array(fc.constantFrom("", "shall", "café 東京 é", "😀", "契約"), {
+          minLength: 1,
+          maxLength: 5,
+        }),
+        fc.constantFrom("cancel" as const, "commit" as const),
+        fc.constantFrom("", "shall", "契約"),
+        (updates, completion, finalText) => {
+          const rig = createLateFinalRig("alpha😀café東京");
+          try {
+            const baseline = rig.view.state;
+            const original = structuredClone(rig.session.document);
+            const marks = baseline.selection.$from.marksAcross(baseline.selection.$to);
+            rig.begin();
+            let current = "alpha";
+            const update = (text: string) => {
+              rig.view.dom.dispatchEvent(
+                new InputEvent("beforeinput", {
+                  bubbles: true,
+                  inputType: "insertCompositionText",
+                  data: text,
+                  isComposing: true,
+                }),
+              );
+              const transaction =
+                current === "" ? rig.view.state.tr.setStoredMarks(marks) : rig.view.state.tr;
+              rig.view.dispatch(
+                transaction.insertText(text, 1, 1 + current.length).setMeta("composition", 1),
+              );
+              current = text;
+              expect(rig.session.canUndo).toBe(false);
+            };
+            for (const text of updates) update(text);
+            if (completion === "cancel") update("");
+            else rig.final(finalText, current);
+            // The DOM fixture aliases CompositionEvent to Event and drops its data init.
+            const end = new CompositionEvent("compositionend", { bubbles: true });
+            Object.defineProperty(end, "data", { value: completion === "cancel" ? "" : finalText });
+            rig.view.dom.dispatchEvent(end);
+            jest.advanceTimersByTime(26);
+            expect(rig.refusals).toEqual([]);
+            if (completion === "cancel") {
+              expect(structuredClone(rig.session.document)).toEqual(original);
+              expect(rig.view.state.doc.eq(baseline.doc)).toBe(true);
+              expect(rig.view.state.selection.eq(baseline.selection)).toBe(true);
+              expect(rig.session.canUndo).toBe(false);
+            } else {
+              expect(rig.view.state.doc.textContent).toBe(`${finalText}😀café東京`);
+              expect(rig.session.canUndo).toBe(true);
+              rig.history("undo");
+              expect(structuredClone(rig.session.document)).toEqual(original);
+              rig.history("redo");
+              expect(rig.view.state.doc.textContent).toBe(`${finalText}😀café東京`);
+            }
+          } finally {
+            rig.destroy();
+          }
+        },
+      ),
+      {
+        examples: [
+          [["shall", "café 東京 é", ""], "cancel", ""],
+          [["shall", ""], "commit", "契約"],
+          [["shall", ""], "commit", ""],
+        ],
+      },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("native cancellation restoration requires its end evidence", () => {
+  jest.useFakeTimers();
+  try {
+    for (const evidence of ["nativeEnd", "ablatedEnd"] as const) {
+      const rig = createLateFinalRig("alpha😀café東京");
+      try {
+        const baseline = rig.view.state;
+        rig.begin();
+        rig.view.dispatch(rig.view.state.tr.insertText("", 1, 6).setMeta("composition", 1));
+        const end = new CompositionEvent("compositionend", { bubbles: true });
+        Object.defineProperty(end, "data", { value: "" });
+        if (evidence === "ablatedEnd") {
+          const handleEnd = rig.boundary.handleDOMEvents.compositionend;
+          rig.boundary.handleDOMEvents.compositionend = (view) =>
+            handleEnd(view, new Event("compositionend"));
+        }
+        rig.view.dom.dispatchEvent(end);
+        jest.advanceTimersByTime(26);
+        expect(rig.refusals).toEqual([]);
+        expect(rig.view.state.doc.eq(baseline.doc)).toBe(evidence === "nativeEnd");
+        expect(rig.view.state.doc.textContent).toBe(
+          evidence === "nativeEnd" ? "alpha😀café東京" : "😀café東京",
+        );
+        expect(rig.session.canUndo).toBe(evidence === "ablatedEnd");
+      } finally {
+        rig.destroy();
+      }
+    }
+  } finally {
+    jest.useRealTimers();
+  }
 });

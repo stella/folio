@@ -28,5 +28,13 @@
       "note": "A non-composing character deletion with missing native compositionend commits the proposal and keeps deletion as a separate gesture.",
       "date": "2026-10-08"
     }
+  ],
+  "native composition lifecycle keeps cancelled selections and commits explicit finals": [
+    {
+      "seed": -594463263,
+      "path": "0:0",
+      "note": "An empty native composition lifecycle must cancel without deleting the captured selection.",
+      "date": "2026-10-09"
+    }
   ]
 }
