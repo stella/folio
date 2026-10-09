@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -57,12 +57,11 @@ switch (tool) {
       log("metadata:" + revision(manifest));
       console.log(JSON.stringify({ packages: [{ name: "wasm-bindgen", version: version(revision(manifest)) }] }));
     } else if (args[0] === "install") {
-      if (args[1] !== "wasm-bindgen-cli" || !args.includes("--locked") || !args.includes("--force"))
-        fail("unexpected CLI installation");
-      const installed = option("--version");
-      writeFileSync(state, installed);
-      log("install:" + installed);
-    } else if (args[0] !== "rustc") fail("unexpected cargo command");
+      log("install");
+      fail("comparison must not install a CLI");
+    } else if (args[0] === "rustc") {
+      log("rustc:" + (args.includes("--manifest-path") ? "base" : "head"));
+    } else fail("unexpected cargo command");
     break;
   }
   case "jq": {
@@ -73,7 +72,10 @@ switch (tool) {
   }
   case "wasm-bindgen": {
     const installed = readFileSync(state, "utf8");
-    if (args[0] === "--version") console.log("wasm-bindgen " + installed);
+    if (args[0] === "--version") {
+      log("bindgen:version");
+      console.log("wasm-bindgen " + installed);
+    }
     else {
       const name = revision(args[0]);
       if (installed !== version(name)) fail("CLI does not match " + name + " dependency");
@@ -99,54 +101,34 @@ switch (tool) {
 
 test.each([
   {
-    name: "different versions replace the head CLI before binding the base",
-    head: "0.2.126",
-    base: "0.2.125",
-    installed: "0.2.126",
-    calls: [
-      "metadata:head",
-      "bindgen:head:0.2.126",
-      "metadata:base",
-      "install:0.2.125",
-      "bindgen:base:0.2.125",
-      "compare:base:head",
-    ],
-  },
-  {
-    name: "a stale initial CLI is replaced independently for each revision",
-    head: "0.2.126",
-    base: "0.2.125",
-    installed: "0.2.124",
-    calls: [
-      "metadata:head",
-      "install:0.2.126",
-      "bindgen:head:0.2.126",
-      "metadata:base",
-      "install:0.2.125",
-      "bindgen:base:0.2.125",
-      "compare:base:head",
-    ],
-  },
-  {
-    name: "matching revisions reuse the installed CLI",
+    name: "matching revisions share one CLI after resolving both manifests",
     head: "0.2.126",
     base: "0.2.126",
-    installed: "0.2.126",
+    exitCode: 0,
     calls: [
       "metadata:head",
-      "bindgen:head:0.2.126",
       "metadata:base",
+      "rustc:head",
+      "bindgen:head:0.2.126",
+      "rustc:base",
       "bindgen:base:0.2.126",
       "compare:base:head",
     ],
   },
-])("$name", ({ head, base, installed, calls }) => {
+  {
+    name: "different versions fail before any build, binding, or installation",
+    head: "0.2.126",
+    base: "0.2.125",
+    exitCode: 1,
+    calls: ["metadata:head", "metadata:base"],
+  },
+])("$name", ({ head, base, exitCode, calls }) => {
   const directory = mkdtempSync(join(tmpdir(), "folio-footprint-workflow-"));
   directories.push(directory);
   const bin = join(directory, "bin");
   mkdirSync(bin);
   writeFileSync(join(directory, "Cargo.toml"), "head manifest");
-  writeFileSync(join(directory, "cli-version"), installed);
+  writeFileSync(join(directory, "cli-version"), head);
   writeFileSync(join(directory, "calls"), "");
   for (const name of ["cargo", "git", "wasm-bindgen", "bun", "jq"])
     writeFileSync(join(bin, name), `#!${process.execPath}\n${mockTool}`, { mode: 0o755 });
@@ -165,7 +147,15 @@ test.each([
     stdout: "pipe",
     stderr: "pipe",
   });
-  expect(result.exitCode, result.stderr.toString()).toBe(0);
+  expect(result.exitCode, result.stderr.toString()).toBe(exitCode);
   expect(readFileSync(join(directory, "calls"), "utf8").trim().split("\n")).toEqual(calls);
-  expect(readFileSync(join(directory, "projection-footprint.json"), "utf8")).toBe("{}");
+  const report = join(directory, "projection-footprint.json");
+  if (exitCode === 0) {
+    expect(readFileSync(report, "utf8")).toBe("{}");
+    return;
+  }
+  expect(result.stderr.toString()).toContain(
+    `footprint attribution requires matching wasm-bindgen versions (head: ${head}, base: ${base})`,
+  );
+  expect(existsSync(report)).toBe(false);
 });
