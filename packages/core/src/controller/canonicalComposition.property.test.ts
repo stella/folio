@@ -1209,3 +1209,41 @@ test("native cancellation restoration requires its end evidence", () => {
     jest.useRealTimers();
   }
 });
+
+test("classified native finals commit empty replacements during end recovery", () => {
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(fc.constantFrom("insertText", "insertReplacementText"), (inputType) => {
+        const rig = createLateFinalRig("alpha😀café東京");
+        try {
+          rig.begin();
+          rig.view.dispatch(rig.view.state.tr.insertText("", 1, 6).setMeta("composition", 1));
+          const end = new CompositionEvent("compositionend", { bubbles: true });
+          Object.defineProperty(end, "data", { value: "" });
+          // The boundary receives end evidence before the native owner has flushed it.
+          rig.boundary.handleDOMEvents.compositionend(rig.view, end);
+          expect(rig.view.composing).toBe(true);
+          const final = new InputEvent("beforeinput", {
+            bubbles: true,
+            cancelable: true,
+            inputType,
+            data: "",
+          });
+          rig.view.dom.dispatchEvent(final);
+          expect(final.defaultPrevented).toBe(true);
+          jest.advanceTimersByTime(26);
+          expect(rig.refusals).toEqual([]);
+          expect(rig.view.state.doc.textContent).toBe("😀café東京");
+          expect(rig.session.canUndo).toBe(true);
+          rig.history("undo");
+          expect(rig.view.state.doc.textContent).toBe("alpha😀café東京");
+        } finally {
+          rig.destroy();
+        }
+      }),
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
