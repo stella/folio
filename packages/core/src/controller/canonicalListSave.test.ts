@@ -12,6 +12,13 @@ import { prepareCanonicalPaste } from "./canonicalClipboard";
 import { validateDocxPackage } from "@stll/docx-core";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import fc from "fast-check";
+import JSZip from "jszip";
+import {
+  findWordprocessingChild,
+  findChildrenByNamespaceUri,
+  parseXmlDocument,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+} from "../docx/xmlParser";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { mintListInstance } from "../docx/listNumberingInstances";
 import { createNumberingMap } from "../docx/numberingParser";
@@ -82,6 +89,24 @@ test(
               expect(await validateDocxPackage(new Uint8Array(saved.buffer))).toEqual({
                 valid: true,
               });
+              const xml = await (
+                await JSZip.loadAsync(saved.buffer)
+              )
+                .file("word/document.xml")
+                ?.async("text");
+              if (xml === undefined) throw new Error("Saved package must contain its document XML");
+              const paragraphs = findChildrenByNamespaceUri(
+                findWordprocessingChild(parseXmlDocument(xml), "body"),
+                WORDPROCESSINGML_NAMESPACE_URIS,
+                "p",
+              );
+              expect(paragraphs.length).toBeGreaterThan(0);
+              // These lists author numbering only; a save must not materialize level indentation.
+              for (const paragraph of paragraphs) {
+                expect(
+                  findWordprocessingChild(findWordprocessingChild(paragraph, "pPr"), "ind"),
+                ).toBeNull();
+              }
               const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
               expect(structuredClone(reopened.package.document.content)).toEqual(
                 structuredClone(snapshot.document.package.document.content),

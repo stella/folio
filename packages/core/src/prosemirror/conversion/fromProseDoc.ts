@@ -52,6 +52,7 @@ import {
   copyParagraphPropertyCapture,
   copyParagraphPropertySource,
   paragraphFormattingWithAuthoredIndentation,
+  assignParagraphIndentationProjection,
   decodeTableCellParagraphSourcePayload,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
@@ -70,6 +71,7 @@ import {
   visitTableCellParagraphPropertySourceBindings,
 } from "../../docx/paragraphPropertySource";
 import { canonicalJson } from "../../utils/canonicalJson";
+import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
 import { EDITED_PREVIEW_FINGERPRINT, imageRawXmlFingerprint } from "../../docx/imageRawXml";
 import { refingerprintShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { unchangedAlternateContentXml } from "../alternateContentAttrs";
@@ -1850,6 +1852,16 @@ function convertPMParagraph(
   const pFormatting = paragraphAttrsToFormatting(attrs);
   if (pFormatting) {
     paragraph.formatting = pFormatting;
+  }
+  if (attrs.numPr?.kind === "reference") {
+    const inheritedIndentation = paragraphIndentationFromFormatting(attrs._resolvedFormatting);
+    if (inheritedIndentation) {
+      assignParagraphIndentationProjection({
+        paragraph,
+        authored: pFormatting,
+        inherited: inheritedIndentation,
+      });
+    }
   }
   const listRendering = listRenderingFromAttrs(attrs);
   if (listRendering) {
