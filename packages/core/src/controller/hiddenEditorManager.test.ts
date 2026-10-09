@@ -1,3 +1,6 @@
+import * as Y from "yjs";
+import { FolioYjsNoteReferenceSchemaError } from "../prosemirror/yjsDocumentMetadata";
+import { loadCollaborationModules } from "./collaborationModules";
 import * as documentOps from "@stll/docx-core/ops";
 import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
 import { assertExactModel } from "../../../../test/exactModel";
@@ -21,11 +24,19 @@ import type { CanonicalCommentRequest } from "../types/canonicalComments";
 import type { FolioDocumentOperationStory } from "../document-operations";
 import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
 import { createNoteEditorManager } from "./noteEditorManager";
+import { createDocx } from "../docx/rezip";
+import { parseShapeDocument } from "../__tests__/editorHarness";
+import { singletonManager } from "../prosemirror/schema";
+import {
+  NoteReferenceEditRefusal,
+  NoteReferenceReplayDefect,
+} from "../prosemirror/noteReferenceOccurrences";
 import { withCanonicalCommand } from "../prosemirror/canonicalCommands";
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 
 import {
   createHiddenEditorManager,
+  createHiddenEditorState,
   createHiddenEditorClipboardHandlers,
   type HiddenEditorManagerDeps,
   type HiddenProseMirrorRemoteSelection,
@@ -105,6 +116,24 @@ const makeDeps = (
   return { deps, spies };
 };
 
+const sourceWithNoteReference = async () => {
+  const source = createEmptyDocument({ initialText: "LR" });
+  const noteContent = createEmptyDocument({ initialText: "Note" }).package.document.content;
+  source.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "12345678",
+      content: [
+        { type: "run", content: [{ type: "text", text: "L" }] },
+        { type: "run", formatting: { bold: true }, content: [{ type: "footnoteRef", id: 123 }] },
+        { type: "run", content: [{ type: "text", text: "R" }] },
+      ],
+    },
+  ];
+  source.package.footnotes = [{ type: "footnote", id: 123, content: noteContent }];
+  return parseShapeDocument(new Uint8Array(await createDocx(source)));
+};
+
 describe("createHiddenEditorManager", () => {
   test("starts with no view and uninitialized", () => {
     const { deps } = makeDeps();
@@ -163,6 +192,232 @@ describe("createHiddenEditorManager", () => {
     expect(manager.api.getState()).toBeNull();
     expect(manager.api.getDocument()).toBeNull();
   });
+});
+
+type NotePasteRefusalOptions = { noteType?: string; occurrenceId: string };
+const assertNotePasteRefusal = ({ noteType, occurrenceId }: NotePasteRefusalOptions) => {
+  const cases = (["legacy", "canonical"] as const).flatMap((session) =>
+    (["sup", "span"] as const).flatMap((tag) =>
+      (["footnote", "endnote"] as const).map((kind) => ({ session, tag, kind })),
+    ),
+  );
+  for (const { session, tag, kind } of cases) {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = createEmptyDocument({ initialText: "Before" });
+    const paragraph = source.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Missing paste fixture paragraph");
+    paragraph.paraId = "74000000";
+    const refusals: { reason: string; gap: unknown }[] = [];
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExtensionManager: () => singletonManager,
+      getExperimentalSession: () => session,
+      onSessionRefusal: (reason, gap) => refusals.push({ reason, gap }),
+    });
+    const manager = createHiddenEditorManager(deps);
+    try {
+      manager.ensureView();
+      const view = manager.getView() ?? panic("Missing paste fixture view");
+      expect(refusals).toEqual([]);
+      if (session === "canonical") expect(manager.api.getCanonicalDocument()).not.toBeNull();
+      const before = view.state;
+      const reference = document.createElement(tag);
+      reference.className = `docx-${kind}-ref`;
+      reference.dataset["id"] = "123";
+      reference.dataset["noteOccurrence"] = occurrenceId;
+      reference.dataset["noteType"] = noteType ?? kind;
+      reference.textContent = "123";
+      expect(() => view.pasteHTML(reference.outerHTML)).not.toThrow();
+      expect(view.state.doc).toBe(before.doc);
+      expect(refusals).toHaveLength(1);
+      expect(refusals.at(0)?.gap).toBe(CANONICAL_GAP.dispatch);
+      expect(refusals.at(0)?.reason).toContain("attributed text occurrences");
+    } finally {
+      manager.destroyView();
+      host.remove();
+    }
+  }
+};
+
+test(
+  "external note attribution reaches paste refusal in both session modes without mutation",
+  () => {
+    GlobalRegistrator.register();
+    try {
+      assertProperty(
+        fc.property(
+          fc
+            .stringMatching(/^[a-z]{1,12}$/u)
+            .filter((kind) => kind !== "footnote" && kind !== "endnote"),
+          (noteType) => {
+            assertNotePasteRefusal({
+              noteType,
+              occurrenceId: "8bf05044-8197-4ca1-8207-600164d5dd24",
+            });
+            assertNotePasteRefusal({ occurrenceId: "" });
+          },
+        ),
+        { numRuns: 20 },
+      );
+    } finally {
+      GlobalRegistrator.unregister();
+    }
+  },
+  propertyTestTimeout(5_000),
+);
+
+test(
+  "blank note occurrence identities reach paste refusal without mutation",
+  () => {
+    GlobalRegistrator.register();
+    try {
+      assertProperty(
+        fc.property(
+          fc.array(fc.constantFrom(" ", "\t", "\r", "\n", "\u00a0", "\u2028"), { maxLength: 16 }),
+          (characters) => assertNotePasteRefusal({ occurrenceId: characters.join("") }),
+        ),
+        { numRuns: 20 },
+      );
+    } finally {
+      GlobalRegistrator.unregister();
+    }
+  },
+  propertyTestTimeout(5_000),
+);
+
+test("hidden manager refuses a local partial note-reference edit before committing it", async () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = await sourceWithNoteReference();
+  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExtensionManager: () => singletonManager,
+    onSessionRefusal: (reason, gap, error) => refusals.push({ reason, gap, error }),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected note-reference editor view");
+    const before = view.state;
+    const partialFormatting = before.tr.addMark(
+      3,
+      4,
+      before.schema.marks.italic?.create() ?? panic("Expected italic mark"),
+    );
+
+    expect(() => view.dispatch(partialFormatting)).not.toThrow();
+    expect(view.state).toBe(before);
+    expect(view.state.doc).toBe(before.doc);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]?.error).toBeInstanceOf(NoteReferenceEditRefusal);
+    expect(refusals[0]?.reason).toBe(refusals[0]?.error?.message);
+    expect(refusals[0]?.gap).toBe(CANONICAL_GAP.dispatch);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("hidden manager accepts an invalid remote note-reference replay and reports its typed defect", async () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = await sourceWithNoteReference();
+  const modules = await loadCollaborationModules();
+  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExtensionManager: () => singletonManager,
+    getCollaborationModules: () => modules,
+    onSessionRefusal: (reason, gap, error) => refusals.push({ reason, gap, error }),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected note-reference editor view");
+    const before = view.state;
+    const remotePartialFormatting = before.tr
+      .addMark(3, 4, before.schema.marks.italic?.create() ?? panic("Expected italic mark"))
+      .setMeta(modules.yProseMirror.ySyncPluginKey, { isChangeOrigin: true });
+
+    expect(() => view.dispatch(remotePartialFormatting)).not.toThrow();
+    expect(view.state).not.toBe(before);
+    expect(view.state.doc).not.toBe(before.doc);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]?.error).toBeInstanceOf(NoteReferenceReplayDefect);
+    expect(refusals[0]?.reason).toBe(refusals[0]?.error?.message);
+    expect(refusals[0]?.gap).toBe(CANONICAL_GAP.dispatch);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("hidden manager history remains usable around a refused partial note-reference edit", async () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = await sourceWithNoteReference();
+  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExtensionManager: () => singletonManager,
+    onSessionRefusal: (reason, gap, error) => refusals.push({ reason, gap, error }),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected note-reference editor view");
+    const initial = view.state;
+    const referenceFormatting = initial.tr.addMark(
+      2,
+      5,
+      initial.schema.marks.italic?.create() ?? panic("Expected italic mark"),
+    );
+
+    expect(() => view.dispatch(referenceFormatting)).not.toThrow();
+    const formatted = view.state;
+    expect(formatted).not.toBe(initial);
+    expect(manager.api.canUndo()).toBe(true);
+
+    const partialBoldRemoval = formatted.tr.removeMark(
+      3,
+      4,
+      formatted.schema.marks.bold ?? panic("Expected bold mark"),
+    );
+    expect(() => view.dispatch(partialBoldRemoval)).not.toThrow();
+    expect(view.state).toBe(formatted);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]?.error).toBeInstanceOf(NoteReferenceEditRefusal);
+    expect(refusals[0]?.reason).toBe(refusals[0]?.error?.message);
+    expect(refusals[0]?.gap).toBe(CANONICAL_GAP.dispatch);
+
+    expect(manager.api.undo()).toBe(true);
+    expect(view.state.doc.textContent).toBe(initial.doc.textContent);
+    expect(manager.api.redo()).toBe(true);
+    expect(view.state.doc.eq(formatted.doc)).toBe(true);
+    expect(refusals).toHaveLength(1);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
 });
 
 describe("createHiddenEditorClipboardHandlers", () => {
@@ -1427,6 +1682,43 @@ test.each([
     }
   },
 );
+
+test("legacy note snapshot refuses before the collaboration builder runs", async () => {
+  const modules = await loadCollaborationModules();
+  const source = await sourceWithNoteReference();
+  const ydoc = new Y.Doc();
+  const text = new Y.XmlText();
+  text.insert(0, "123123", { footnoteRef: { id: "123", noteType: "footnote" } });
+  const paragraph = new Y.XmlElement("paragraph");
+  paragraph.insert(0, [text]);
+  const fragment = ydoc.getXmlFragment("prosemirror");
+  fragment.insert(0, [paragraph]);
+  ydoc.getMap("folio:document-metadata").set("attrSchemaVersion", 11);
+  const before = Y.encodeStateAsUpdate(ydoc);
+  const build = spyOn(modules.yProseMirror, "initProseMirrorDoc");
+  expect(() =>
+    createHiddenEditorState({
+      document: source,
+      manager: singletonManager,
+      collaboration: { yXmlFragment: fragment, shouldSeed: false },
+      collaborationModules: modules,
+    }),
+  ).toThrow(FolioYjsNoteReferenceSchemaError);
+  expect(build).not.toHaveBeenCalled();
+  expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
+  build.mockRestore();
+  ydoc.destroy();
+  const fresh = createHiddenEditorState({ document: source, manager: singletonManager });
+  const ids: string[] = [];
+  fresh.doc.descendants((node) => {
+    for (const mark of node.marks) {
+      if (mark.type.name === "footnoteRef") ids.push(mark.attrs["occurrenceId"]);
+    }
+  });
+  expect(ids).toHaveLength(1);
+  expect(ids.at(0)).toEqual(expect.any(String));
+  expect(ids.at(0)).not.toBe("");
+});
 
 test.each([
   { key: "Home", selectionType: "all" },

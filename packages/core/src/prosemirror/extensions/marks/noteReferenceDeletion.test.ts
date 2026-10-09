@@ -12,7 +12,11 @@ import { FootnoteRefExtension } from "./FootnoteRefExtension";
 import { expandNoteReferenceDeletionRange } from "./noteReferenceDeletion";
 
 const makeState = (id: number, noteType: "footnote" | "endnote" = "footnote") => {
-  const mark = schema.mark("footnoteRef", { id: String(id), noteType });
+  const mark = schema.mark("footnoteRef", {
+    occurrenceId: "fixture-note",
+    id: String(id),
+    noteType,
+  });
   const doc = schema.node("doc", null, [
     schema.node("paragraph", null, [
       schema.text("Before "),
@@ -70,7 +74,11 @@ describe("note reference deletion", () => {
   });
 
   test("a reference split by formatting still deletes as one unit", () => {
-    const mark = schema.mark("footnoteRef", { id: "100", noteType: "footnote" });
+    const mark = schema.mark("footnoteRef", {
+      occurrenceId: "fixture-note",
+      id: "100",
+      noteType: "footnote",
+    });
     const bold = schema.mark("bold");
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [

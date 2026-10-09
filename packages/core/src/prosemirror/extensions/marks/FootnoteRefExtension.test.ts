@@ -11,7 +11,9 @@ describe("FootnoteRefExtension parseDOM", () => {
     }
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.text("1", [footnoteRef.create({ id: "1", noteType: "footnote" })]),
+        schema.text("1", [
+          footnoteRef.create({ occurrenceId: "fixture-note", id: "1", noteType: "footnote" }),
+        ]),
       ]),
     ]);
     const state = EditorState.create({ schema, doc });
@@ -36,10 +38,11 @@ describe("FootnoteRefExtension parseDOM", () => {
     }
 
     const attrs = rule.getAttrs({
-      dataset: { id: "7", noteType: "footnote" },
+      dataset: { noteOccurrence: "fixture-note", id: "7", noteType: "footnote" },
     } as unknown as HTMLElement);
 
     expect(attrs).toEqual({
+      occurrenceId: "fixture-note",
       id: "7",
       noteType: "footnote",
       vertAlign: "superscript",
@@ -58,10 +61,11 @@ describe("FootnoteRefExtension parseDOM", () => {
     }
 
     const attrs = rule.getAttrs({
-      dataset: { id: "7", noteType: "footnote" },
+      dataset: { noteOccurrence: "fixture-note", id: "7", noteType: "footnote" },
     } as unknown as HTMLElement);
 
     expect(attrs).toEqual({
+      occurrenceId: "fixture-note",
       id: "7",
       noteType: "footnote",
       vertAlign: "baseline",
@@ -80,10 +84,11 @@ describe("FootnoteRefExtension parseDOM", () => {
     }
 
     const attrs = rule.getAttrs({
-      dataset: { id: "9", noteType: "endnote" },
+      dataset: { noteOccurrence: "fixture-note", id: "9", noteType: "endnote" },
     } as unknown as HTMLElement);
 
     expect(attrs).toEqual({
+      occurrenceId: "fixture-note",
       id: "9",
       noteType: "endnote",
       vertAlign: "baseline",
@@ -99,7 +104,7 @@ describe("FootnoteRefExtension toDOM", () => {
     }
 
     const dom = footnoteRef.spec.toDOM(
-      footnoteRef.create({ id: "7", noteType: "footnote" }),
+      footnoteRef.create({ occurrenceId: "fixture-note", id: "7", noteType: "footnote" }),
       false,
     );
 
@@ -108,6 +113,7 @@ describe("FootnoteRefExtension toDOM", () => {
       {
         class: "docx-footnote-ref docx-note-ref-baseline",
         "data-id": "7",
+        "data-note-occurrence": "fixture-note",
         "data-note-type": "footnote",
       },
       0,
@@ -122,6 +128,7 @@ describe("FootnoteRefExtension toDOM", () => {
 
     const dom = footnoteRef.spec.toDOM(
       footnoteRef.create({
+        occurrenceId: "fixture-note",
         id: "7",
         noteType: "footnote",
         vertAlign: "superscript",
@@ -134,6 +141,7 @@ describe("FootnoteRefExtension toDOM", () => {
       {
         class: "docx-footnote-ref docx-note-ref-superscript",
         "data-id": "7",
+        "data-note-occurrence": "fixture-note",
         "data-note-type": "footnote",
       },
       0,

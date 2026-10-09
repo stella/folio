@@ -14,6 +14,7 @@ import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { drawingXmlWithoutIdentity } from "../docx/drawingIdNormalization";
 import { resolveAllChangesInHeadlessStateWithMapping } from "../prosemirror/commands/comments";
 import { runFormattingInlineAtomResultText } from "../prosemirror/runFormattingInlineCarriers";
+import { mintNoteReferenceOccurrenceId } from "../prosemirror/noteReferenceOccurrences";
 import { canonicalJson } from "../utils/canonicalJson";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
 
@@ -1022,10 +1023,15 @@ export const matchInlineAtoms = ({
       const written = transaction.doc.nodeAt(from);
       const noteMark = action.node.marks.find(({ type }) => type.name === "footnoteRef");
       if (from >= to || !written?.isText || !noteMark) return { status: "unalignable" };
+      // Target occurrence identities belong to its document, not the comparison result.
+      const restoredNoteMark = noteMark.type.create({
+        ...noteMark.attrs,
+        occurrenceId: mintNoteReferenceOccurrenceId(),
+      });
       transaction.replaceWith(
         from,
         to,
-        state.schema.text(action.node.text ?? "", noteMark.addToSet(written.marks)),
+        state.schema.text(action.node.text ?? "", restoredNoteMark.addToSet(written.marks)),
       );
       if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
       continue;

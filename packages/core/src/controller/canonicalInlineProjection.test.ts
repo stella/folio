@@ -358,7 +358,7 @@ test("generated erased containers keep unique source seams beside text and colla
   );
 });
 
-test("adjacent note-reference carriers preserve every source unit after identical marks merge", () => {
+test("adjacent note-reference carriers preserve every distinct source occurrence", () => {
   const check = (kind: NoteReferenceContent["type"], count: number, ids: readonly number[]) => {
     const references = Array.from(
       { length: count },
@@ -408,7 +408,13 @@ test("adjacent note-reference carriers preserve every source unit after identica
       if (node.marks.some(({ type }) => type.name === "footnoteRef"))
         renderedNodes.push(node.text ?? "");
     });
-    if (ids.length === 1) expect(renderedNodes).toEqual([String(ids.at(0)).repeat(count)]);
+    expect(renderedNodes).toEqual(references.map((reference) => String(reference.id)));
+    const occurrenceIds = new Set<string>();
+    native.forEach((node) => {
+      const mark = node.marks.find(({ type }) => type.name === "footnoteRef");
+      if (mark) occurrenceIds.add(mark.attrs["occurrenceId"]);
+    });
+    expect(occurrenceIds.size).toBe(count);
     let physical = 2;
     for (const [index, reference] of references.entries()) {
       const offset = index + 1;
