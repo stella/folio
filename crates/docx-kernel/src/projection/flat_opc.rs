@@ -218,7 +218,8 @@ impl PartIndex {
                 for (name, value) in &namespaces {
                     self.index_bytes = self
                         .index_bytes
-                        .checked_add(name.len() + value.len())
+                        .checked_add(name.len())
+                        .and_then(|size| size.checked_add(value.len()))
                         .ok_or(ProjectionError::ArchiveTooLarge)?;
                 }
                 if self.index_bytes > limits.maximum_archive_bytes {
@@ -370,7 +371,7 @@ fn extract(
                 let size = root
                     .as_ref()
                     .len()
-                    .checked_add(1 + closing.len())
+                    .checked_add(if empty { 3 } else { 2 })
                     .and_then(|size| size.checked_add(tail.len()))
                     .filter(|size| *size <= maximum)
                     .ok_or(too_large)?;
