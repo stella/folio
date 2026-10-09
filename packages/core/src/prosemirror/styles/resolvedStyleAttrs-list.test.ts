@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { createNumberingMap, parseNumbering } from "../../docx/numberingParser";
 import {
   listAttrsFromResolvedStyle,
+  paragraphAttrsFromResolvedStyle,
   listLevelAttrPatch,
   listLevelIndentRemovalPatch,
 } from "./resolvedStyleAttrs";
@@ -181,14 +182,18 @@ test.each(LEVEL_PROVENANCE_CASES)(
       hangingIndent: false,
       indentRight: 456,
     } as const;
+    const styleAttrs = paragraphAttrsFromResolvedStyle(
+      { paragraphFormatting: styleFormatting },
+      { styleId: "IndentedList" },
+    );
     const attrs = {
       ...PARAGRAPH_ATTRS,
+      ...styleAttrs,
       numPr: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: from }),
       ...inherited,
       ...direct,
       _originalFormatting: { numPr: { kind: "reference", numId: 1, ilvl: from }, ...direct },
-      _resolvedFormatting: { ...styleFormatting, ...inherited },
-      _styleResolvedFormatting: styleFormatting,
+      _resolvedFormatting: { ...styleAttrs._resolvedFormatting, ...inherited },
       indentRight: direct?.indentRight ?? styleFormatting.indentRight,
     };
     expect(directParagraphIndentation(attrs)).toEqual(direct);
@@ -200,7 +205,8 @@ test.each(LEVEL_PROVENANCE_CASES)(
     expect(changed.indentLeft).toBe(direct?.indentLeft ?? 720 * (to + 1));
     expect(changed.indentFirstLine).toBe(direct?.indentFirstLine ?? -360);
     expect(changed.hangingIndent).toBe(direct?.hangingIndent ?? true);
-    expect(changed._resolvedFormatting?.alignment).toBe("center");
+    expect(changed.alignment).toBe("center");
+    expect(changed.alignmentFromStyle).toBe("center");
     expect(changed._resolvedFormatting?.indentRight).toBe(456);
     expect(directParagraphIndentation(changed)).toEqual(direct);
     const restored = {
@@ -275,12 +281,14 @@ test.each(LEVELS)("style-owned indentation wins over list level %s", (ilvl) => {
   const styleFormatting = { indentLeft: 100, indentFirstLine: 0, hangingIndent: false } as const;
   const attrs = {
     ...PARAGRAPH_ATTRS,
+    ...paragraphAttrsFromResolvedStyle(
+      { paragraphFormatting: { ...styleFormatting, spaceBefore: 123 } },
+      { styleId: "IndentedList" },
+    ),
     numPr,
     numPrFromStyle: numPr,
     ...styleFormatting,
     _originalFormatting: { styleId: "IndentedList" },
-    _resolvedFormatting: { ...styleFormatting, spaceBefore: 123 },
-    _styleResolvedFormatting: styleFormatting,
   };
   const changed = {
     ...attrs,
@@ -289,8 +297,8 @@ test.each(LEVELS)("style-owned indentation wins over list level %s", (ilvl) => {
   expect(changed.indentLeft).toBe(100);
   expect(changed.indentFirstLine).toBe(0);
   expect(changed.hangingIndent).toBe(false);
-  expect(changed._resolvedFormatting?.spaceBefore).toBe(123);
+  expect(changed.spaceBefore).toBe(123);
   expect(directParagraphIndentation(changed)).toBeUndefined();
   const removed = listLevelIndentRemovalPatch(changed, LEVEL_MAP);
-  expect(removed._resolvedFormatting?.spaceBefore).toBe(123);
+  expect({ ...changed, ...removed }.spaceBefore).toBe(123);
 });

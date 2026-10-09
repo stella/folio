@@ -134,5 +134,10 @@ export const styleResolvedParagraphFormatting = (
     Reflect.set(governed, field, value);
     found = true;
   }
+  // First-line distance and its hanging interpretation travel as one value.
+  // List removal must restore the style's interpretation, not a default.
+  if (resolved.indentFirstLine !== undefined && resolved.hangingIndent !== undefined) {
+    governed.hangingIndent = resolved.hangingIndent;
+  }
   return found ? governed : undefined;
 };
