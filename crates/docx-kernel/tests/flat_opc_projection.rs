@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 // Integration fixtures use assertion-style failures; production parsing stays bounded.
 
+use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
 use stella_docx_kernel::{
@@ -33,7 +34,7 @@ fn relationships(target: &str) -> String {
 fn flat_opc(parts: &[(&str, &str)]) -> String {
     let mut package = format!(r#"<pkg:package xmlns:pkg="{FLAT_OPC_NAMESPACE}">"#);
     for (path, xml) in parts {
-        package.push_str(&format!(r#"<pkg:part pkg:name="{path}" pkg:contentType="application/xml"><pkg:xmlData>{xml}</pkg:xmlData></pkg:part>"#));
+        write!(&mut package, r#"<pkg:part pkg:name="{path}" pkg:contentType="application/xml"><pkg:xmlData>{xml}</pkg:xmlData></pkg:part>"#).expect("test package XML should write");
     }
     package.push_str("</pkg:package>");
     package
@@ -431,9 +432,11 @@ fn raw_input_requires_a_namespace_qualified_document_root() {
         "<w:document xmlns:w=\"urn:unrelated\"><w:body/></w:document>",
         "<w:body xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:p/></w:body>",
     ] {
-        let mut allocator_calls = 0;
+        let mut allocator_calls = 0_usize;
         let result = project_main_document_xml(xml.as_bytes(), DocxLimits::default(), |facts| {
-            allocator_calls += 1;
+            allocator_calls = allocator_calls
+                .checked_add(1)
+                .expect("bounded allocator call count");
             allocate(facts)
         });
         assert_eq!(result, Err(ProjectionError::InvalidDocumentXml));
