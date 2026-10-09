@@ -1692,7 +1692,9 @@ export const createCanonicalSession = (
   const unsupported = unsupportedSeedReason(document);
   if (unsupported !== null) return refuse(unsupported);
   const owned = cloneDocumentWithParagraphPropertySources(document);
-  const normalized = normalizeForOps(normalizeCanonicalListRendering(owned).document);
+  const identified = normalizeForOps(owned);
+  preservePropertySources({ target: identified, source: owned });
+  const normalized = normalizeCanonicalListRendering(identified).document;
   preservePropertySources({ target: normalized, source: owned });
   const validated = validateOpsDocument(normalized);
   if (validated.isErr()) return refuse(validated.error.message);

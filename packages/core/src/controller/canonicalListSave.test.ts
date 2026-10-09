@@ -303,3 +303,40 @@ test(
   },
   propertyTestTimeout(30_000),
 );
+
+test("activation assigns identities before normalizing inherited list overrides", async () => {
+  await assertProperty(
+    fc.asyncProperty(
+      fc.array(fc.integer({ min: 0, max: 2 }), { minLength: 1, maxLength: 4 }),
+      fc.constantFrom("bullet" as const, "numbered" as const),
+      async (levels, kind) => {
+        const minted = mintListInstance(undefined, { kind });
+        const document = createEmptyDocument();
+        document.package.numbering = minted.definitions;
+        document.package.document.content = levels.map((ilvl) => ({
+          type: "paragraph",
+          formatting: {
+            numPrFromStyle: { kind: "reference", numId: minted.numId, ilvl: 0 },
+            numPr: { kind: "levelOnly", ilvl },
+          },
+          content: [{ type: "run", content: [{ type: "text", text: "List item" }] }],
+        }));
+        const original = structuredClone(document);
+        const result = createCanonicalSession(document);
+        expect(result.isOk()).toBe(true);
+        const session = result.unwrap();
+        const identities = new Set<string>();
+        for (const block of session.document.package.document.content) {
+          expect(block.type).toBe("paragraph");
+          if (block.type !== "paragraph") continue;
+          expect(block.paraId).toBeDefined();
+          if (block.paraId !== undefined) identities.add(block.paraId);
+          expect(block.formatting?.numPr?.kind).toBe("reference");
+        }
+        expect(identities.size).toBe(levels.length);
+        expect(document).toStrictEqual(original);
+      },
+    ),
+    { numRuns: 20 },
+  );
+});
