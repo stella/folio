@@ -1054,6 +1054,33 @@ describe("a random batch with distinct paragraph-property patches", () => {
               properties,
             }));
             expect(await batchAgainstOneAtATime({ generated: ties, mode })).toEqual([]);
+            const batch = await freshSession();
+            const blocks = batch.snapshot().blocks.map(({ id }) => id);
+            const operations = ties.flatMap((operation, index) => {
+              const resolved = materialize(batch, blocks, operation, index);
+              return resolved === null ? [] : [resolved];
+            });
+            expect(operations).toHaveLength(2);
+            const result = batch.apply(mode, operations);
+            expect(result.applied.map(({ id }) => id)).toEqual(["op0"]);
+            expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
+              { id: "op1", reason: "overlappingOperation" },
+            ]);
+            const expected = await freshSession();
+            const first = ties.at(0);
+            if (first === undefined) throw new TypeError("Generated tie requires its first patch");
+            const expectedOperation = materialize(
+              expected,
+              expected.snapshot().blocks.map(({ id }) => id),
+              first,
+              0,
+            );
+            if (expectedOperation === null)
+              throw new TypeError("Generated first patch must resolve");
+            expected.apply("direct", [expectedOperation]);
+            expect(paragraphProjection(resolveStateStory(batch.state, "accept").resolved)).toEqual(
+              paragraphProjection(expected.state.doc),
+            );
           },
         ),
         { numRuns: 150 },
