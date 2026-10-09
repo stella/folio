@@ -11,7 +11,7 @@ import {
 } from "../prosemirror/styles/styleResolver";
 import { paragraphNumberingFromSlots } from "../docx/numberingReference";
 
-setDefaultTimeout(propertyTestTimeout(30_000));
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 test("Markdown numbering avoids the full run-formatting style cascade", () => {
   const fullCascade = spyOn(StyleResolver.prototype, "resolveParagraphStyle");
