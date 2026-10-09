@@ -417,6 +417,50 @@ where
     }
 }
 
+/// Projects exactly one paragraph from a relationship-selected Flat OPC package.
+///
+/// The caller's package, XML, dependency and fact limits still apply; the paragraph
+/// count is additionally capped at one. Namespace context and related styles use
+/// the same package selection as full-document projection. This is partial evidence:
+/// all document structural fact families are unknown, and table coordinates are
+/// unavailable because fragment-local positions cannot identify document locations.
+///
+/// # Errors
+/// Returns [`ProjectionError`] for malformed input, zero or multiple paragraphs,
+/// resource limits or allocator failures. Standalone XML is not a package fragment.
+pub fn project_paragraph_fragment<F>(
+    xml: &[u8],
+    mut limits: DocxLimits,
+    allocate_id: F,
+) -> Result<DocumentProjection, ProjectionError>
+where
+    F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
+{
+    limits.maximum_paragraphs = limits.maximum_paragraphs.min(1);
+    let mut projection = project_parts(
+        flat_opc::extract_parts(xml, limits)?,
+        limits,
+        ProjectionOptions::default(),
+        allocate_id,
+    )?;
+    let [paragraph] = projection.paragraphs.as_mut_slice() else {
+        return Err(ProjectionError::InvalidDocumentXml);
+    };
+    paragraph.structure = None;
+    projection.structural_facts = DocumentStructureFacts {
+        indentation: StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment),
+        numbering_hierarchy: StructuralFactSet::Unknown(
+            StructuralFactUnknownReason::ParagraphFragment,
+        ),
+        bookmarks: StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment),
+        internal_references: StructuralFactSet::Unknown(
+            StructuralFactUnknownReason::ParagraphFragment,
+        ),
+        outline_levels: StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment),
+    };
+    Ok(projection)
+}
+
 /// Projects an uncompressed main OOXML document part with default options.
 ///
 /// # Errors
@@ -583,7 +627,10 @@ where
 
 const fn formatting_unknown_reason(reason: StructuralFactUnknownReason) -> FormattingUnknownReason {
     match reason {
-        StructuralFactUnknownReason::DocumentPartOnly => FormattingUnknownReason::DocumentPartOnly,
+        StructuralFactUnknownReason::DocumentPartOnly
+        | StructuralFactUnknownReason::ParagraphFragment => {
+            FormattingUnknownReason::DocumentPartOnly
+        }
         StructuralFactUnknownReason::StylesPartUnavailable => {
             FormattingUnknownReason::StylesPartUnavailable
         }
