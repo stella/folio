@@ -224,7 +224,7 @@ const directListMembership = (
   }
   const attrs = expectParagraphAttrs(node);
   const numId = paragraphNumberingReferenceId(attrs.numPr);
-  if (numId === undefined || numId === paragraphNumberingReferenceId(attrs.numPrFromStyle)) {
+  if (numId === undefined) {
     return null;
   }
   const ilvl = paragraphNumberingLevel(attrs.numPr) ?? 0;

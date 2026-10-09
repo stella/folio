@@ -27,6 +27,127 @@ import { expectParagraphAttrs } from "../prosemirror/attrs";
 import { CANONICAL_SAVE_FALLBACK_DIAGNOSTIC } from "../../../../test/canonicalSaveDiagnostics";
 
 test(
+  "generated numbering sources survive edits, save/reopen and later style reference changes",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.integer({ min: 0, max: 4 }),
+        fc.integer({ min: 0, max: 4 }),
+        fc.constantFrom("bullet" as const, "numbered" as const),
+        async (styleLevel, directLevel, kind) => {
+          const original = mintListInstance(undefined, { kind });
+          const replacement = mintListInstance(original.definitions, { kind });
+          const authored = [
+            undefined,
+            { kind: "levelOnly", ilvl: directLevel },
+            { kind: "reference", numId: original.numId, ilvl: styleLevel },
+            { kind: "reference", numId: original.numId, ilvl: directLevel },
+          ] as const;
+          const parsed = await parseDocx(
+            await createDocx({
+              package: {
+                numbering: replacement.definitions,
+                styles: {
+                  styles: [
+                    {
+                      type: "paragraph",
+                      styleId: "Numbered",
+                      name: "Numbered",
+                      pPr: {
+                        numPr: { kind: "reference", numId: original.numId, ilvl: styleLevel },
+                      },
+                    },
+                  ],
+                },
+                document: {
+                  content: authored.map((numPr, index) => ({
+                    type: "paragraph",
+                    paraId: (index + 1).toString(16).padStart(8, "0"),
+                    formatting: { styleId: "Numbered", ...(numPr === undefined ? {} : { numPr }) },
+                    content: [{ type: "run", content: [{ type: "text", text: "Item" }] }],
+                  })),
+                },
+              },
+            }),
+            { preloadFonts: false },
+          );
+          const session = createCanonicalSession(parsed).unwrap();
+          const state = EditorState.create({ schema, doc: session.projection.doc });
+          publishCanonicalProjection({
+            session,
+            state,
+            commit: session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap(),
+          }).unwrap();
+          for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
+            const saved = await serializeCanonicalSave({
+              snapshot: session.captureSaveSnapshot(),
+              options: { mode },
+            });
+            const xml = await (
+              await JSZip.loadAsync(saved.buffer)
+            )
+              .file("word/document.xml")
+              ?.async("text");
+            expect(xml).toBeDefined();
+            if (xml === undefined) return;
+            const paragraphs = findChildrenByNamespaceUri(
+              findWordprocessingChild(parseXmlDocument(xml), "body"),
+              WORDPROCESSINGML_NAMESPACE_URIS,
+              "p",
+            );
+            expect(paragraphs).toHaveLength(authored.length);
+            const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+            for (const [index, paragraph] of reopened.package.document.content.entries()) {
+              expect(paragraph.type).toBe("paragraph");
+              if (paragraph.type !== "paragraph") continue;
+              const expected = authored.at(index);
+              expect(paragraph.formatting?.numPr).toEqual(expected);
+              const numbering = findWordprocessingChild(
+                findWordprocessingChild(paragraphs.at(index), "pPr"),
+                "numPr",
+              );
+              expect(findWordprocessingChild(numbering, "numId") !== null).toBe(
+                expected?.kind === "reference",
+              );
+              expect(findWordprocessingChild(numbering, "ilvl") !== null).toBe(
+                expected !== undefined,
+              );
+            }
+            // A new package changes the stylesheet itself; existing paragraph overrides
+            // must survive that change rather than following an equal former value.
+            const restyledPackage = structuredClone(reopened.package);
+            const style = restyledPackage.styles?.styles.find(
+              ({ styleId }) => styleId === "Numbered",
+            );
+            expect(style).toBeDefined();
+            if (style === undefined) return;
+            style.pPr = {
+              numPr: { kind: "reference", numId: replacement.numId, ilvl: styleLevel },
+            };
+            const restyled = await parseDocx(await createDocx({ package: restyledPackage }), {
+              preloadFonts: false,
+            });
+            for (const [index, paragraph] of restyled.package.document.content.entries()) {
+              if (paragraph.type !== "paragraph") continue;
+              const expected = authored.at(index);
+              expect(paragraph.formatting?.numPr).toEqual(expected);
+              expect(paragraph.listRendering?.numId).toBe(
+                expected?.kind === "reference" ? original.numId : replacement.numId,
+              );
+              expect(paragraph.listRendering?.level).toBe(
+                expected === undefined ? styleLevel : expected.ilvl,
+              );
+            }
+          }
+        },
+      ),
+      { numRuns: 5 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+test(
   "generated pasted lists preserve save/reopen fidelity through full-save fallbacks and history",
   async () => {
     await assertProperty(

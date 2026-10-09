@@ -4,7 +4,11 @@ import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { Result } from "better-result";
 import type { EditorState } from "prosemirror-state";
 import { OP_STORIES, type EditorIntent, type TextPosition } from "@stll/docx-core/ops";
-import { headingOutlineLevel, paragraphNumberingReference } from "@stll/docx-core/model";
+import {
+  headingOutlineLevel,
+  mergeParagraphNumbering,
+  paragraphNumberingReference,
+} from "@stll/docx-core/model";
 import type { Paragraph, ListLevel } from "../types/document";
 import { getCachedNumberingMap, numberingLevelUsesBulletMarker } from "../docx/numberingParser";
 import { listRequestsForMarker } from "../prosemirror/listAutoformatMarkers";
@@ -40,6 +44,9 @@ const selectedParagraphs = (session: CanonicalSession, state: EditorState) => {
       paragraph.type === "paragraph" && ids.has(paragraph.paraId ?? ""),
   );
 };
+
+const effectiveNumbering = (paragraph: Paragraph | undefined) =>
+  mergeParagraphNumbering(paragraph?.formatting?.numPrFromStyle, paragraph?.formatting?.numPr);
 
 const numberingIntent = (
   session: CanonicalSession,
@@ -199,8 +206,8 @@ export const prepareCanonicalCommands = (
         const map = definitions === undefined ? undefined : getCachedNumberingMap(definitions);
         const already =
           paragraphs.length > 0 &&
-          paragraphs.every(({ formatting }) => {
-            const numPr = formatting?.numPr;
+          paragraphs.every((paragraph) => {
+            const numPr = effectiveNumbering(paragraph);
             return (
               numPr?.kind === "reference" &&
               numberingLevelUsesBulletMarker(map?.getLevel(numPr.numId, numPr.ilvl ?? 0)) ===
@@ -233,7 +240,7 @@ export const prepareCanonicalCommands = (
         break;
       case "changeListLevel":
         for (const paragraph of paragraphs) {
-          const numPr = paragraph.formatting?.numPr;
+          const numPr = effectiveNumbering(paragraph);
           if (numPr?.kind !== "reference") continue;
           const at = {
             story: OP_STORIES.MAIN,
@@ -246,10 +253,15 @@ export const prepareCanonicalCommands = (
             type: "formatParagraph",
             at,
             patch: {
-              numPr:
-                level < 0
-                  ? { kind: "none" }
-                  : paragraphNumberingReference({ numId: numPr.numId, ilvl: level }),
+              numPr: (() => {
+                if (level < 0) return { kind: "none" } as const;
+                if (
+                  paragraph.formatting?.numPr?.kind !== "reference" &&
+                  paragraph.formatting?.numPrFromStyle?.kind === "reference"
+                )
+                  return { kind: "levelOnly", ilvl: level } as const;
+                return paragraphNumberingReference({ numId: numPr.numId, ilvl: level });
+              })(),
             },
           });
         }
@@ -257,39 +269,37 @@ export const prepareCanonicalCommands = (
       case "restartNumbering":
       case "continueNumbering": {
         const source = paragraphs.at(0);
-        const numPr = source?.formatting?.numPr;
+        const numPr = effectiveNumbering(source);
         const definitions = session.document.package.numbering;
         if (source === undefined || numPr?.kind !== "reference" || definitions === undefined)
           return noChange("Numbering changes require a list paragraph.");
         const body = session.document.package.document.content;
         const index = body.findIndex((item) => item === source);
-        const affected = body
-          .slice(index)
-          .filter(
-            (item): item is Paragraph =>
-              item.type === "paragraph" &&
-              item.formatting?.numPr?.kind === "reference" &&
-              item.formatting.numPr.numId === numPr.numId,
-          );
+        const affected = body.slice(index).filter((item): item is Paragraph => {
+          if (item.type !== "paragraph") return false;
+          const effective = effectiveNumbering(item);
+          return effective?.kind === "reference" && effective.numId === numPr.numId;
+        });
         let targetId: number;
         let target: Extract<EditorIntent, { type: "setList" }>["target"];
         if (command.type === "continueNumbering") {
           const map = getCachedNumberingMap(definitions);
           const bullet = numberingLevelUsesBulletMarker(map.getLevel(numPr.numId, numPr.ilvl ?? 0));
-          const earlier = body
-            .slice(0, index)
-            .findLast(
-              (item) =>
-                item.type === "paragraph" &&
-                item.formatting?.numPr?.kind === "reference" &&
-                item.formatting.numPr.numId !== numPr.numId &&
-                numberingLevelUsesBulletMarker(
-                  map.getLevel(item.formatting.numPr.numId, item.formatting.numPr.ilvl ?? 0),
-                ) === bullet,
+          const earlier = body.slice(0, index).findLast((item) => {
+            if (item.type !== "paragraph") return false;
+            const effective = effectiveNumbering(item);
+            return (
+              effective?.kind === "reference" &&
+              effective.numId !== numPr.numId &&
+              numberingLevelUsesBulletMarker(map.getLevel(effective.numId, effective.ilvl ?? 0)) ===
+                bullet
             );
-          if (earlier?.type !== "paragraph" || earlier.formatting?.numPr?.kind !== "reference")
+          });
+          const earlierNumbering =
+            earlier?.type === "paragraph" ? effectiveNumbering(earlier) : undefined;
+          if (earlierNumbering?.kind !== "reference")
             return noChange("There is no preceding compatible list.");
-          targetId = earlier.formatting.numPr.numId;
+          targetId = earlierNumbering.numId;
           target = { type: "existing", numId: targetId };
         } else {
           const start = command.start ?? 1;
@@ -318,13 +328,13 @@ export const prepareCanonicalCommands = (
         intents.push({
           type: "setList",
           target,
-          items: affected.map((paragraph) => ({
-            at: { story: OP_STORIES.MAIN, blockId: paragraph.paraId ?? "", offset: 0 },
-            ilvl:
-              paragraph.formatting?.numPr?.kind === "reference"
-                ? (paragraph.formatting.numPr.ilvl ?? 0)
-                : 0,
-          })),
+          items: affected.map((paragraph) => {
+            const effective = effectiveNumbering(paragraph);
+            return {
+              at: { story: OP_STORIES.MAIN, blockId: paragraph.paraId ?? "", offset: 0 },
+              ilvl: effective?.kind === "reference" ? (effective.ilvl ?? 0) : 0,
+            };
+          }),
         });
         break;
       }
@@ -349,7 +359,7 @@ export const prepareCanonicalAutoformat = (
   const at = session.projection.addressAt(from);
   if (at.isErr()) return undefined;
   const address = session.projection.paragraph(at.value.blockId);
-  if (address === undefined || address.source.formatting?.numPr?.kind === "reference")
+  if (address === undefined || effectiveNumbering(address.source)?.kind === "reference")
     return undefined;
   const source = address.source;
   const prefix = address.text.slice(0, at.value.offset) + text;

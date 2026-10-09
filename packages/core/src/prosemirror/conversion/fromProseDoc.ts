@@ -452,7 +452,7 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
     }
   }
   const { numPr, numPrFromStyle } = baseFormatting;
-  if (!numPr || !numPrFromStyle || !isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)) {
+  if (numPrFromStyle == null || (numPr != null && numPr.kind !== "levelOnly")) {
     return;
   }
   if (
@@ -461,7 +461,11 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
   ) {
     return;
   }
-  paragraph.formatting = { ...paragraph.formatting, numPr, numPrFromStyle };
+  paragraph.formatting = {
+    ...paragraph.formatting,
+    ...(numPr === undefined ? {} : { numPr }),
+    numPrFromStyle,
+  };
 };
 
 const restoreParagraphPropertySources = (

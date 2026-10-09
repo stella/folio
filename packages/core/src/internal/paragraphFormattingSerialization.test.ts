@@ -199,17 +199,18 @@ describe("paragraph formatting emission model", () => {
       { propertiesXml: '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>' },
     ],
     [
-      "style-sourced",
+      "authored reference equal to its style",
       { kind: "reference", numId: 7, ilvl: 1 },
       { kind: "reference", numId: 7, ilvl: 1 },
-      {},
+      { propertiesXml: '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>' },
     ],
     [
-      "implicit style level zero",
+      "authored id equal to its style",
       { kind: "reference", numId: 7 },
       { kind: "reference", numId: 7, ilvl: 0 },
-      {},
+      { propertiesXml: '<w:numPr><w:numId w:val="7"/></w:numPr>' },
     ],
+    ["inherited style reference", undefined, { kind: "reference", numId: 7, ilvl: 0 }, {}],
     [
       "level stated without an id",
       { kind: "levelOnly", ilvl: 2 },
