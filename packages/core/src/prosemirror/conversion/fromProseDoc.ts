@@ -704,9 +704,19 @@ const parsedPackageStyles = (document: Document, liveStyles?: StyleDefinitions) 
   const source = getDocumentSourceStyles(document, liveStyles);
   switch (source.type) {
     case "captured": {
+      if (source.styles !== undefined && source.additions.length === 0) return source.styles;
+      const addedIds = new Set<string>();
+      for (const addition of source.additions) {
+        if (addedIds.has(addition.styleId)) {
+          throw new SaveStylesheetSourceMismatch({
+            message: `Duplicate added style ID: ${addition.styleId}.`,
+            divergences: [{ type: "style", styleId: addition.styleId }],
+          });
+        }
+        addedIds.add(addition.styleId);
+      }
       if (source.styles === undefined)
         return liveStyles === undefined ? undefined : structuredClone(liveStyles);
-      if (source.additions.length === 0) return source.styles;
       return {
         ...source.styles,
         styles: [...source.styles.styles, ...structuredClone(source.additions)],

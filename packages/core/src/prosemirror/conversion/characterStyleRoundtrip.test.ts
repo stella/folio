@@ -1522,6 +1522,28 @@ describe("save stylesheet authority", () => {
     ).toBe(true);
   });
 
+  test("package save refuses duplicate additions before resolver and writer precedence can diverge", async () => {
+    const base = await reopenThroughDocx(
+      withStyles(
+        wrapParagraph({
+          type: "paragraph",
+          formatting: { styleId: "AddedHeading" },
+          content: [runText("Term")],
+        }),
+      ),
+    );
+    const liveStyles = base.package.styles;
+    if (!liveStyles) throw new Error("Expected an existing parsed stylesheet");
+    liveStyles.styles.push(
+      { styleId: "AddedHeading", type: "paragraph", rPr: { bold: true } },
+      { styleId: "AddedHeading", type: "paragraph", rPr: { bold: false } },
+    );
+    const proseDoc = toProseDoc(base);
+    expect(() => fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } })).toThrow(
+      "Duplicate added style ID: AddedHeading.",
+    );
+  });
+
   test("package save retains added styles when the parsed package had no stylesheet part", async () => {
     const input = wrapParagraph({
       type: "paragraph",
