@@ -7,6 +7,8 @@ import { expectParagraphAttrs } from "../attrs";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
 import { rejectedListRenderingPatch } from "../listRendering";
+import { listLevelIndentAttrPatch } from "../styles/resolvedStyleAttrs";
+import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
 import type { RunStyleResolver } from "../runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import {
@@ -78,17 +80,10 @@ export const resolveParagraphChangeAttrs = ({
         if (styleResolver) {
           previousFormattingFromStyle =
             styleResolver.resolveParagraphStyle(restoredStyleId).paragraphFormatting;
-          if (!sameStyle) {
-            resolvedFromStyle = styleResolvedParagraphFormatting(previousFormattingFromStyle);
-            nextAttrs["_resolvedFormatting"] = resolvedFromStyle;
-          }
+          resolvedFromStyle = styleResolvedParagraphFormatting(previousFormattingFromStyle);
         } else if (inheritedAlignment !== undefined) {
           previousFormattingFromStyle = { alignment: inheritedAlignment };
         }
-        const inheritedFormatting =
-          previousFormattingFromStyle === undefined && resolvedFromStyle === undefined
-            ? undefined
-            : { ...previousFormattingFromStyle, ...resolvedFromStyle };
         let styleNumbering = previousFormattingFromStyle?.numPr;
         if (!styleResolver && sameStyle) {
           styleNumbering = currentAttrs.numPrFromStyle ?? undefined;
@@ -99,6 +94,32 @@ export const resolveParagraphChangeAttrs = ({
             : paragraphNumberingAttr(resolveParagraphNumbering(styleNumbering));
         const recordedNumbering = rejection.previousFormatting?.numPr;
         const restoredNumbering = recordedNumbering ?? inheritedNumbering;
+        // Numbering is inherited formatting too. Rebuild its baseline before
+        // projecting the restored authored properties, including when only
+        // numbering changed and the paragraph style stayed the same.
+        const levelIndent =
+          restoredNumbering?.kind === "reference"
+            ? listLevelIndentAttrPatch(
+                recordedNumbering == null
+                  ? paragraphIndentationFromFormatting(previousFormattingFromStyle)
+                  : undefined,
+                { numId: restoredNumbering.numId, ilvl: restoredNumbering.ilvl ?? 0 },
+                numbering,
+              )
+            : {};
+        resolvedFromStyle = {
+          ...resolvedFromStyle,
+          ...(typeof levelIndent.indentLeft === "number"
+            ? { indentLeft: levelIndent.indentLeft }
+            : {}),
+          ...(typeof levelIndent.indentFirstLine === "number"
+            ? { indentFirstLine: levelIndent.indentFirstLine }
+            : {}),
+          ...(typeof levelIndent.hangingIndent === "boolean"
+            ? { hangingIndent: levelIndent.hangingIndent }
+            : {}),
+        };
+        const inheritedFormatting = { ...previousFormattingFromStyle, ...resolvedFromStyle };
         Object.assign(
           nextAttrs,
           paragraphRejectAttrPatch(rejection.previousFormatting, inheritedFormatting),
@@ -114,6 +135,7 @@ export const resolveParagraphChangeAttrs = ({
             numPrFromStyle: recordedNumbering == null ? inheritedNumbering : null,
           },
         );
+        nextAttrs["_resolvedFormatting"] = resolvedFromStyle;
         const restoredFormatting = paragraphRejectOriginalFormatting(
           rejection.previousFormatting,
           node.attrs["_originalFormatting"],

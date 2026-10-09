@@ -84,6 +84,11 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
     expect(attrs?.["indentLeft"]).toBe(360);
     expect(attrs?.["indentFirstLine"]).toBe(-360);
     expect(attrs?.["hangingIndent"]).toBe(true);
+    expect(attrs?._resolvedFormatting).toMatchObject({
+      indentLeft: 360,
+      indentFirstLine: -360,
+      hangingIndent: true,
+    });
   });
 
   test("returns null for styles without numbering or with numId 0", () => {

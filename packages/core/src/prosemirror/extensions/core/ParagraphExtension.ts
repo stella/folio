@@ -963,17 +963,17 @@ function makeApplyStyle() {
                 numPrFromStyle: null,
               });
             } else if (directNumId !== undefined) {
-              Object.assign(
-                newAttrs,
-                listLevelIndentAttrPatch(
-                  restyledIndentation(styleAttrs, restyledOriginal),
-                  {
-                    numId: directNumId,
-                    ilvl: paragraphNumberingLevel(current.numPr ?? undefined) ?? 0,
-                  },
-                  resolvedAttrs.numbering ?? getDocumentNumbering(state),
-                ),
+              const levelIndent = listLevelIndentAttrPatch(
+                restyledIndentation(styleAttrs, restyledOriginal),
+                {
+                  numId: directNumId,
+                  ilvl: paragraphNumberingLevel(current.numPr ?? undefined) ?? 0,
+                },
+                resolvedAttrs.numbering ?? getDocumentNumbering(state),
               );
+              Object.assign(newAttrs, levelIndent, {
+                _resolvedFormatting: { ...styleAttrs._resolvedFormatting, ...levelIndent },
+              });
             }
           }
 

@@ -146,6 +146,13 @@ export function listAttrsFromResolvedStyle(
     }
   }
 
+  // The effective level values must stay inherited when the paragraph saves.
+  attrs._resolvedFormatting = styleResolvedParagraphFormatting({
+    ...ppr,
+    ...(attrs.indentLeft == null ? {} : { indentLeft: attrs.indentLeft }),
+    ...(attrs.indentFirstLine == null ? {} : { indentFirstLine: attrs.indentFirstLine }),
+    ...(attrs.hangingIndent == null ? {} : { hangingIndent: attrs.hangingIndent }),
+  });
   return attrs;
 }
 
