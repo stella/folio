@@ -7,6 +7,7 @@ import {
   projectMainDocumentXml,
   projectParagraphFragment,
 } from "./projection";
+import type { DocxProjectionStructure } from "./projection";
 
 const packageNamespace = "http://schemas.microsoft.com/office/2006/xmlPackage";
 const documentNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -62,6 +63,6 @@ test("fragment cannot publish document-relative table coordinates", async () => 
   const full = await projectMainDocumentXml(bytes);
   expect(full[1][0]?.[4]).toEqual(["table", "table-0", 0, 0]);
   const partial = await projectParagraphFragment(bytes);
-  expect(partial[1][0][4]).toBeNull();
+  expect(partial[1][0][4]).toEqual([] as const satisfies DocxProjectionStructure);
   expect(partial[2]).toEqual(full[2].map(() => ["unknown", "paragraph-fragment"]));
 });
