@@ -329,7 +329,7 @@ fn package_attribute(
         {
             value = Some(
                 attribute
-                    .decode_and_unescape_value(XmlVersion::Implicit1_0, reader.decoder())
+                    .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
                     .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?
                     .into_owned(),
             );
