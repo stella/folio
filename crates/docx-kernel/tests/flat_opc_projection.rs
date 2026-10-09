@@ -61,7 +61,7 @@ fn zip_package(parts: &[(&str, &str)]) -> Vec<u8> {
 
 #[test]
 fn standalone_document_preserves_the_existing_projection_and_allocator() {
-    let xml = document(r#"<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>A &amp; 😀</w:t></w:r></w:p><w:p/>"#);
+    let xml = document(r"<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>A &amp; 😀</w:t></w:r></w:p><w:p/>");
     assert_eq!(
         project_main_document_xml(xml.as_bytes(), DocxLimits::default(), allocate),
         project_document_xml(xml.as_bytes(), allocate),
