@@ -348,3 +348,171 @@ for (const shape of SHAPES) {
     }
   }
 }
+
+test("committed comments are derived once across caret and composition renders", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<DocxEditorRef>();
+  const bytes = await createShapeBuffer("header-footer");
+  const messages = getFolioMessages("en");
+  const observer = createErrorObserver();
+  let showToolbar = false;
+  const renderEditor = () => (
+    <IntlProvider locale="en" timeZone="UTC" messages={messages}>
+      <DocxEditor
+        ref={editor}
+        documentBuffer={bytes}
+        experimentalSession="canonical"
+        onError={observer.onError}
+        showToolbar={showToolbar}
+      />
+    </IntlProvider>
+  );
+  try {
+    await act(async () => root.render(renderEditor()));
+    await act(async () => editor.current?.loadDocumentBuffer(bytes));
+    await act(async () => editor.current?.ensureEditorView({ focus: false }));
+    const api = editor.current?.getEditor() ?? panic("Missing canonical editor.");
+    const view = api.getView() ?? panic("Missing canonical view.");
+    await act(async () => {
+      const result = api.applyCanonicalComment({
+        type: "create",
+        text: "Review",
+        author: "Projection fixture",
+        anchor: { kind: "selection", from: 8, to: 10, story: "main" },
+      });
+      expect(result?.status).toBe("applied");
+    });
+    await act(async () => root.render(renderEditor()));
+    const clones = spyOn(globalThis, "structuredClone");
+    const serializations = spyOn(JSON, "stringify");
+    const commentProjectionCalls = (values: readonly unknown[]) =>
+      values.filter(
+        (value) =>
+          Array.isArray(value) &&
+          value.some(
+            (entry) =>
+              entry !== null &&
+              typeof entry === "object" &&
+              "author" in entry &&
+              entry.author === "Projection fixture",
+          ),
+      ).length;
+    const projectionWork = () => ({
+      clones: commentProjectionCalls(clones.mock.calls.map(([value]) => value)),
+      serializations: commentProjectionCalls(serializations.mock.calls.map(([value]) => value)),
+    });
+    try {
+      for (const position of [2, 3, 4, 2, 1]) {
+        await act(async () => api.setSelection(position));
+      }
+      showToolbar = true;
+      await act(async () => root.render(renderEditor()));
+      expect(projectionWork()).toEqual({ clones: 0, serializations: 0 });
+      await act(async () => {
+        view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+        view.dispatch(view.state.tr.insertText("alpha", 1, 3).setMeta("composition", 1));
+      });
+      showToolbar = false;
+      await act(async () => root.render(renderEditor()));
+      expect(projectionWork()).toEqual({ clones: 0, serializations: 0 });
+      expect(api.getCanonicalDocument).toThrow("Composition must finish before taking a snapshot.");
+      await act(async () => {
+        view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+        await new Promise<void>((resolve) => setTimeout(resolve, 40));
+      });
+      showToolbar = true;
+      await act(async () => root.render(renderEditor()));
+      expect(projectionWork()).toEqual({ clones: 1, serializations: 1 });
+      expect(observer.errors).toEqual([]);
+      const committedWork = projectionWork();
+      await act(async () => api.setSelection(2));
+      expect(projectionWork()).toEqual(committedWork);
+      await act(async () => editor.current?.loadDocumentBuffer(bytes));
+      expect(api.getCanonicalComments()).toEqual([]);
+    } finally {
+      clones.mockRestore();
+      serializations.mockRestore();
+    }
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+const createLoadedCommentDocument = (text: string, count = 1) => {
+  const source = createEmptyDocument({ initialText: "Unchanged body" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected loaded comment paragraph");
+  paragraph.paraId = "76100000";
+  paragraph.content.unshift({ type: "commentRangeStart", id: 1 });
+  paragraph.content.push({ type: "commentRangeEnd", id: 1 });
+  source.package.document.comments = Array.from({ length: count }, (_, index) => ({
+    id: index + 1,
+    author: "Projection fixture",
+    content: [{ type: "paragraph", content: [{ type: "run", content: [{ type: "text", text }] }] }],
+  }));
+  return source;
+};
+
+test("external loads refresh committed comments when selection and history stay unchanged", async () => {
+  const first = createLoadedCommentDocument("First loaded note");
+  const second = createLoadedCommentDocument("Second loaded note", 2);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<DocxEditorRef>();
+  const messages = getFolioMessages("en");
+  const observer = createErrorObserver();
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" timeZone="UTC" messages={messages}>
+          <DocxEditor
+            ref={editor}
+            document={first}
+            experimentalSession="canonical"
+            onError={observer.onError}
+            preserveDocumentWhileLoading
+          />
+        </IntlProvider>,
+      ),
+    );
+    await act(async () => editor.current?.ensureEditorView({ focus: false }));
+    const api = editor.current?.getEditor() ?? panic("Expected loaded canonical editor");
+    const view = api.getView() ?? panic("Expected loaded canonical view");
+    const selection = view.state.selection.toJSON();
+    expect(api.canUndo()).toBe(false);
+    expect(container.querySelector("[data-testid=toolbar-comments-count]")?.textContent).toBe("1");
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" timeZone="UTC" messages={messages}>
+          <DocxEditor
+            ref={editor}
+            document={second}
+            experimentalSession="canonical"
+            onError={observer.onError}
+            preserveDocumentWhileLoading
+          />
+        </IntlProvider>,
+      ),
+    );
+    expect(view.state.selection.toJSON()).toEqual(selection);
+    expect(api.canUndo()).toBe(false);
+    expect(api.getCanonicalComments()).toHaveLength(2);
+    expect(JSON.stringify(api.getCanonicalComments())).toContain("Second loaded note");
+    expect(container.querySelector("[data-testid=toolbar-comments-count]")?.textContent).toBe("2");
+    expect(container.textContent).not.toContain("First loaded note");
+    const nextToggle = container.querySelector<HTMLButtonElement>(
+      "[data-testid=toolbar-comments-toggle]",
+    );
+    if (!nextToggle) panic("Expected refreshed comment visibility toggle");
+    await act(async () => nextToggle.click());
+    expect(container.textContent).toContain("Second loaded note");
+    expect(observer.errors).toEqual([]);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

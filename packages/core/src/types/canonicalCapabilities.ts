@@ -87,10 +87,11 @@ export const CANONICAL_CAPABILITIES = {
     summary: "Direct model and pending-suggestion snapshots bypass the canonical journal.",
   },
   [CANONICAL_GAP.sectionProperties]: {
-    owner: "adapters",
+    owner: "controller",
     kind: "routing",
     adapters: ["react", "vue"],
-    summary: "Section properties select canonical operations or legacy model changes.",
+    summary:
+      "The shared controller journals section properties; default sessions keep model changes.",
   },
   [CANONICAL_GAP.watermark]: {
     owner: "adapters",
