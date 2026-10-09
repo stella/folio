@@ -90,4 +90,11 @@ export const HEADING_COLLECTOR_RUN_IN_DOCUMENT = schema.node("doc", null, [
     schema.text(" Underline run", [schema.mark("underline")]),
     schema.text(" unformatted body"),
   ]),
+  schema.node("paragraph", { styleId: "Heading2" }, [
+    schema.text("Italic run-in title", [
+      schema.mark("italic"),
+      schema.mark("runIdentity", { id: 5 }),
+    ]),
+    schema.text(" and body text"),
+  ]),
 ]);

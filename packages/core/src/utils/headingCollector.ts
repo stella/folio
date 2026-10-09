@@ -17,7 +17,7 @@ export type HeadingInfo = {
   pageNumber?: number | null;
 };
 
-const RUN_IN_TITLE_MARKS = new Set(["bold", "underline"]);
+const RUN_IN_TITLE_MARKS = new Set(["bold", "italic", "underline"]);
 
 type RunInTitleCapture =
   | { status: "searching" }

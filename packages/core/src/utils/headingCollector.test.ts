@@ -23,6 +23,7 @@ describe("document outline collection", () => {
       ["Visible fallback after an empty formatted span", 0],
       ["Underlined title and more", 1],
       ["Bold run", 0],
+      ["Italic run-in title", 1],
     ]);
   });
 
