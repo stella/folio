@@ -13,5 +13,13 @@
       "note": "Apply the retained transaction after the deletion owner mutates it; protected text descendants retain their revision.",
       "date": "2026-10-08"
     }
+  ],
+  "whole-field deletion retains nested child insertion paths": [
+    {
+      "seed": 1517767006,
+      "path": "0:0:0",
+      "note": "Whole-carrier deletion preserves the nested insertion path of its child.",
+      "date": "2026-10-09"
+    }
   ]
 }

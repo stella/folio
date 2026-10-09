@@ -47,6 +47,19 @@ export const addTrackedDeletionMark = ({
   });
   const mapFrom = tr.mapping.maps.length;
   const ranges: { from: number; to: number; mark: Mark; disposition: "mark" | "retract" }[] = [];
+  const descendantDeletions: { from: number; to: number; mark: Mark }[] = [];
+  const deletionFor = (node: PMNode): Mark => {
+    const insertion = node.marks.find(({ type }) => type.name === "insertion");
+    const ancestors = insertion
+      ? expectTrackedChangeMarkAttrs(insertion)._docxRevisionAncestors
+      : null;
+    return insertion && ancestors?.length
+      ? mark.type.create({
+          ...mark.attrs,
+          _docxRevisionAncestors: [...ancestors, trackedRevisionLayerOf(insertion, node)],
+        })
+      : mark;
+  };
   tr.doc.nodesBetween(from, to, (node, position) => {
     if (!canCarryTrackedRunMark(node)) return true;
     if (node.marks.some(({ type }) => type.name === "deletion")) return false;
@@ -56,16 +69,7 @@ export const addTrackedDeletionMark = ({
     const insertion = node.marks.find(({ type }) => type.name === "insertion");
     const ownInsertion =
       insertion !== undefined && insertion.attrs["author"] === mark.attrs["author"];
-    const ancestors = insertion
-      ? expectTrackedChangeMarkAttrs(insertion)._docxRevisionAncestors
-      : null;
-    const deletion =
-      insertion && ancestors?.length
-        ? mark.type.create({
-            ...mark.attrs,
-            _docxRevisionAncestors: [...ancestors, trackedRevisionLayerOf(insertion, node)],
-          })
-        : mark;
+    const deletion = deletionFor(node);
     const disposition =
       insertionPolicy === "retract-own" && ownInsertion && !protectedCarriers.has(node)
         ? "retract"
@@ -78,6 +82,18 @@ export const addTrackedDeletionMark = ({
     )
       previous.to = end;
     else ranges.push({ from: start, to: end, mark: deletion, disposition });
+    if (disposition === "mark") {
+      node.descendants((child, offset) => {
+        if (child.marks.some(({ type }) => type.name === "deletion")) return false;
+        const childDeletion = deletionFor(child);
+        if (childDeletion === mark) return true;
+        const childStart = Math.max(from, position + 1 + offset);
+        const childEnd = Math.min(to, position + 1 + offset + child.nodeSize);
+        if (childStart < childEnd)
+          descendantDeletions.push({ from: childStart, to: childEnd, mark: childDeletion });
+        return true;
+      });
+    }
     return false;
   });
   // Retractions change positions: process the original ranges right to left.
@@ -86,7 +102,9 @@ export const addTrackedDeletionMark = ({
     else tr.addMark(range.from, range.to, range.mark);
   }
   const mapping = tr.mapping.slice(mapFrom);
-  for (const preserved of preservedDeletions) {
+  // AddMarkStep propagates the carrier's mark. Restore each child's own path,
+  // then restore prior deletions so existing ownership always takes precedence.
+  for (const preserved of [...descendantDeletions, ...preservedDeletions]) {
     const start = mapping.map(preserved.from);
     const end = mapping.map(preserved.to);
     if (start < end) tr.addMark(start, end, preserved.mark);

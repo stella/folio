@@ -13,6 +13,64 @@ import { fromProseDoc } from "./conversion/fromProseDoc";
 import { toProseDoc } from "./conversion/toProseDoc";
 import { schema } from "./schema/index";
 
+test("whole-field deletion retains nested child insertion paths", () => {
+  assertProperty(
+    fc.property(
+      fc.integer({ min: 1, max: 12 }),
+      fc.integer({ min: 1, max: 4 }),
+      (length, depth) => {
+        const ancestors = Array.from({ length: depth }, (_, index) => ({
+          type: "insertion" as const,
+          revisionId: 100 + index,
+          author: "Earlier Reviewer",
+          outerWrapperCount: 0,
+        }));
+        const insertion = schema.mark("insertion", {
+          revisionId: 200,
+          author: "Earlier Reviewer",
+          _docxRevisionAncestors: ancestors,
+        });
+        const existing = schema.mark("deletion", { revisionId: 300, author: "Other Reviewer" });
+        const field = schema.node("structuredField", null, [
+          schema.text("x".repeat(length), [insertion]),
+          schema.text("hidden", [existing]),
+        ]);
+        const doc = schema.node("doc", null, schema.node("paragraph", null, [field]));
+        for (const insertionPolicy of ["preserve-pending", "retract-own"] as const) {
+          const tr = EditorState.create({ doc }).tr;
+          addTrackedDeletionMark({
+            tr,
+            from: 1,
+            to: 1 + field.nodeSize,
+            mark: schema.mark("deletion", { revisionId: 400, author: "New Reviewer" }),
+            insertionPolicy,
+          });
+          const inserted = tr.doc.nodeAt(2);
+          const deleted = inserted?.marks.find(({ type }) => type.name === "deletion");
+          if (!deleted) throw new TypeError("Nested inserted child requires a deletion");
+          expect(
+            expectTrackedChangeMarkAttrs(deleted)._docxRevisionAncestors?.map(
+              ({ revisionId }) => revisionId,
+            ),
+          ).toEqual([...ancestors.map(({ revisionId }) => revisionId), 200]);
+          expect(tr.doc.nodeAt(2 + length)?.marks).toContainEqual(existing);
+          expect(tr.doc.textContent).toBe(doc.textContent);
+          const first = tr.doc.toJSON();
+          addTrackedDeletionMark({
+            tr,
+            from: 1,
+            to: 1 + field.nodeSize,
+            mark: schema.mark("deletion", { revisionId: 500, author: "Another Reviewer" }),
+            insertionPolicy,
+          });
+          expect(tr.doc.toJSON()).toEqual(first);
+        }
+      },
+    ),
+    { numRuns: 30 },
+  );
+});
+
 test(
   "range deletion preserves every existing deletion and is idempotent",
   async () => {
