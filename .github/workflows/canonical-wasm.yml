@@ -129,6 +129,13 @@ jobs:
           fi
           cargo install wasm-bindgen-cli --version "${versions[0]}" --locked
 
+      - name: Validate projection Rust source
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy -p stella-docx-kernel --all-targets -- -D warnings
+          cargo clippy -p stella-docx-kernel --lib --features wasm --target wasm32-unknown-unknown -- -D warnings
+          cargo test -p stella-docx-kernel
+
       - name: Generate canonical projection artifact
         id: generate
         run: |
