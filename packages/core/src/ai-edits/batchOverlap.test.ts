@@ -500,15 +500,22 @@ const batchAgainstOneAtATime = async ({
   const insertsAfterLast = applied.some(
     ({ operation }) => operation.kind === "insertAfterBlock" && operation.block === BLOCK_COUNT - 1,
   );
+  const editsFinalBreakCarrier = applied.some(
+    ({ operation }) =>
+      operation.kind === "setBlockParagraphProperties" && operation.block === finalBreakCarrier,
+  );
   const beforeFinalBreakRetirement = ({ operation }: { operation: GeneratedOperation }) =>
     mode === "tracked-changes" &&
+    editsFinalBreakCarrier &&
     !insertsAfterLast &&
     finalBreakCarrier < BLOCK_COUNT - 1 &&
     operation.kind === "setBlockParagraphProperties" &&
     operation.block >= finalBreakCarrier;
-  // Retirement carries the predecessor's properties onto the final mark.
-  // Apply properties on the deleted paragraphs before those on the carrier,
-  // so the carrier's revision cannot become a pre-existing refusal there.
+  // Every generated property edit states the same alignment. When the carrier
+  // is edited, those identical suffix edits commute with its property transfer;
+  // replay them first so retirement does not make its revision pre-existing.
+  // Without a carrier edit, keep suffix edits after deletion: retirement would
+  // otherwise overwrite properties that the batch retains as its own edits.
   const compareReplayOrder = (
     left: { operation: GeneratedOperation; index: number },
     right: { operation: GeneratedOperation; index: number },

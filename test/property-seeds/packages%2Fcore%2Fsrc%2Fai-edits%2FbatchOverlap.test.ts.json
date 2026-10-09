@@ -53,6 +53,12 @@
       "path": "86:5",
       "note": "Tracked final-paragraph retirement orders deleted-paragraph properties before carrier properties.",
       "date": "2026-10-09"
+    },
+    {
+      "seed": 2057617557,
+      "path": "308:1:4:7:7",
+      "note": "A final-paragraph property edit survives retirement when the third operation annotates another block.",
+      "date": "2026-10-09"
     }
   ]
 }
