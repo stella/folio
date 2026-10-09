@@ -115,6 +115,28 @@ const commandManager = (view: OperationContext["view"]) =>
 const CARET: readonly SelectionPlacement[] = ["caret-middle"];
 const RANGE: readonly SelectionPlacement[] = ["word"];
 
+// Toggling a text mark over selected text must change the document. This
+// applicability contract reads the input, never a command/planner verdict.
+export const CANONICAL_TEXT_TOGGLE_OPERATIONS = [
+  "command:toggleBold",
+  "command:toggleItalic",
+  "command:toggleUnderline",
+  "command:toggleStrike",
+  "command:toggleSuperscript",
+  "command:toggleSubscript",
+] as const;
+
+const expectsCanonicalDocumentChange = (operation: ConformanceOperation, before: EditorState) => {
+  if (!CANONICAL_TEXT_TOGGLE_OPERATIONS.some((id) => id === operation.id)) return false;
+  const { from, to, empty } = before.selection;
+  if (empty) return false;
+  let selectedText = false;
+  before.doc.nodesBetween(from, to, (node) => {
+    if (node.isText && node.textContent.length > 0) selectedText = true;
+  });
+  return selectedText;
+};
+
 const registryCommand = (
   name: string,
   args: readonly unknown[] = [],
@@ -780,6 +802,7 @@ const runCanonicalMode = ({
     const before = driver.state;
     const beforeModel = driver.snapshot();
     const historyViolations: Violation[] = [];
+    const expectedChange = expectsCanonicalDocumentChange(operation, before);
     let verdict: boolean | undefined;
     try {
       observeRefusalCase?.(refusalId, "executed");
@@ -801,6 +824,16 @@ const runCanonicalMode = ({
     const after = driver.state;
     const base = driver.snapshot();
     const changed = !after.doc.eq(before.doc) || !isDeepStrictEqual(base, beforeModel);
+    if (
+      expectedChange &&
+      !changed &&
+      !driver.refusals.some(({ expectation }) => expectation === "declared")
+    )
+      historyViolations.push({
+        kind: "silent-refusal",
+        mode,
+        detail: "A text mark toggle over selected text changed nothing without a declared refusal.",
+      });
     const refusalProblems = harnessRefusalProblems({
       rows: driver.refusalRows,
       refusals: driver.refusals,
