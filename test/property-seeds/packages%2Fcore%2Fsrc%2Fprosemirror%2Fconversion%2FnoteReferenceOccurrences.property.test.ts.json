@@ -33,6 +33,12 @@
       "path": "48:2:0:5:6:15:17:19:22:21:18:22:22:23:23",
       "note": "A pasted whole note reference retains bold after split/join changes its paragraph context and through save/reopen.",
       "date": "2026-10-09"
+    },
+    {
+      "seed": -846174343,
+      "path": "13:1:1:5:8:11:16:17:17:17:17",
+      "note": "A note reference pasted after deletion and an empty split retains authored bold through save and reopen.",
+      "date": "2026-10-09"
     }
   ],
   "pasted note formatting survives empty splits without paragraph-mark defaults": [

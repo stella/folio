@@ -925,13 +925,7 @@ const hasSuggestedInsertion = (marks: readonly Mark[]): boolean =>
  */
 function stripSuggestedInlineMarks(
   marks: readonly Mark[],
-  {
-    baseParagraphFormatting,
-    inheritedFormatting,
-    paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
-    styleResolver,
-  }: RunFormattingContext,
+  readFormattingContext: () => RunFormattingContext,
 ): readonly Mark[] {
   const hasSuggestedDeletion = marks.some(
     (mark) => mark.type.name === "deletion" && isSuggestedMark(mark),
@@ -952,6 +946,13 @@ function stripSuggestedInlineMarks(
   );
 
   if (suggestedRunPropertyChange) {
+    const {
+      baseParagraphFormatting,
+      inheritedFormatting,
+      paragraphMarkFormatting,
+      paragraphMarkPrecedesStyle,
+      styleResolver,
+    } = readFormattingContext();
     const previousFormatting = expectRunPropertyChangeMarkAttrs(
       suggestedRunPropertyChange,
     ).changes.at(0)?.previousFormatting;
@@ -1140,19 +1141,13 @@ const savedParagraphRunStyleContext = (
  */
 function mapSuggestionStrippedNode(
   node: PMNode,
-  formattingContext: RunFormattingContext = {
-    baseParagraphFormatting: undefined,
-    inheritedFormatting: undefined,
-    paragraphMarkFormatting: undefined,
-    paragraphMarkPrecedesStyle: false,
-    styleResolver: null,
-  },
+  readFormattingContext: () => RunFormattingContext,
 ): PMNode | null {
   if (node.isInline) {
     if (hasSuggestedInsertion(node.marks)) {
       return null;
     }
-    const marks = stripSuggestedInlineMarks(node.marks, formattingContext);
+    const marks = stripSuggestedInlineMarks(node.marks, readFormattingContext);
     return marks === node.marks ? node : node.mark(marks);
   }
 
@@ -1163,22 +1158,28 @@ function mapSuggestionStrippedNode(
   const nextAttrs = stripSuggestedNodeAttrs(node);
   const children: PMNode[] = [];
   let changed = nextAttrs !== null;
-  const paragraphStyleContext =
+  // Ordinary paragraphs need no style resolution during suggestion stripping.
+  // Resolve this context only when a run-property suggestion needs reconstruction.
+  let resolvedChildContext: RunFormattingContext | undefined;
+  const readChildFormattingContext =
     node.type.name === "paragraph"
-      ? savedParagraphRunStyleContext(node, formattingContext.styleResolver)
-      : undefined;
-  const childFormattingContext = paragraphStyleContext
-    ? {
-        baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
-        inheritedFormatting: paragraphStyleContext.paragraphFormatting,
-        paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle: paragraphStyleContext.paragraphMarkPrecedesStyle,
-        styleResolver: formattingContext.styleResolver,
-      }
-    : formattingContext;
+      ? () => {
+          if (resolvedChildContext) return resolvedChildContext;
+          const { styleResolver } = readFormattingContext();
+          const paragraphStyleContext = savedParagraphRunStyleContext(node, styleResolver);
+          resolvedChildContext = {
+            baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
+            inheritedFormatting: paragraphStyleContext.paragraphFormatting,
+            paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
+            paragraphMarkPrecedesStyle: paragraphStyleContext.paragraphMarkPrecedesStyle,
+            styleResolver,
+          };
+          return resolvedChildContext;
+        }
+      : readFormattingContext;
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
-    const mapped = mapSuggestionStrippedNode(child, childFormattingContext);
+    const mapped = mapSuggestionStrippedNode(child, readChildFormattingContext);
     if (mapped === null) {
       changed = true;
       return;
@@ -1205,13 +1206,13 @@ function mapSuggestionStrippedNode(
  */
 function stripSuggestedProvenance(doc: PMNode, styleResolver: StyleEngine | null): PMNode {
   return (
-    mapSuggestionStrippedNode(doc, {
+    mapSuggestionStrippedNode(doc, () => ({
       baseParagraphFormatting: undefined,
       inheritedFormatting: undefined,
       paragraphMarkFormatting: undefined,
       paragraphMarkPrecedesStyle: false,
       styleResolver,
-    }) ?? doc
+    })) ?? doc
   );
 }
 
