@@ -15,7 +15,11 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { parseDocumentBody } from "../../docx/documentParser";
 import { parseDocx } from "../../docx/parser";
-import { cloneDocumentWithParagraphPropertySources } from "../../docx/paragraphPropertySource";
+import {
+  cloneDocumentWithParagraphPropertySources,
+  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
+  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
+} from "../../docx/paragraphPropertySource";
 import { createDocx } from "../../docx/rezip";
 import { serializeDocument } from "../../docx/serializer/documentSerializer";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
@@ -1684,7 +1688,15 @@ describe("unknown and malformed style references", () => {
       italic: false,
     });
     const reopened = await reopenThroughDocx(saved);
-    expect(toProseDoc(reopened).toJSON()).toEqual(projection.toJSON());
+    // A reopened package owns a new source contract; these are package-local
+    // ownership keys, not content or formatting identities.
+    const contentSnapshot = (document: PMNode) =>
+      JSON.stringify(document.toJSON(), (key, value: unknown) =>
+        key === PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR || key === PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR
+          ? undefined
+          : value,
+      );
+    expect(contentSnapshot(toProseDoc(reopened))).toEqual(contentSnapshot(projection));
   });
 
   test("basedOn cycle in style definitions terminates and round-trips", () => {
