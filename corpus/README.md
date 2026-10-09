@@ -88,7 +88,7 @@ but not ratcheted:
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `reserialize`         | With every rebuildable capture removed, so the real serializers run for every block, the saved package parses back to the same model. A difference here is a serializer defect verbatim replay hides.                                                    |
 | `editor-round-trip`   | Document → `toProseDoc` → `fromProseDoc` → save → parse preserves the whole normalised model, not only the visible text and block count `fixed-point` checks.                                                                                            |
-| `editor-projection`   | The same pipeline with reuse declined (`fromProseDoc(pm, base, { reuse: "none" })`), so every record is rebuilt from ProseMirror. Report-only until its first full-corpus baseline. See [Why `editor-projection` exists](#why-editor-projection-exists). |
+| `editor-projection`   | The same pipeline with reuse declined (`fromProseDoc(pm, base, { stylesheetSource: { type: "package" }, reuse: "none" })`), so every record is rebuilt from ProseMirror. Report-only until its first full-corpus baseline. See [Why `editor-projection` exists](#why-editor-projection-exists). |
 | `op-inverse`          | Seeded operation sequences and their captured inverses restore exact model records and serialized package parts. Fixed-zero gate.                                                                                                                        |
 | `op-locality`         | Generated operations leave undeclared paragraphs, containers, and unrelated serialized package parts unchanged. Fixed-zero gate.                                                                                                                         |
 | `edit-locality`       | One character inserted in the first non-empty body paragraph changes that paragraph and nothing else: no other block's model, no part outside the body.                                                                                                  |
@@ -234,7 +234,7 @@ the content, and removing it would test deletion.
 
 ### Why `editor-projection` exists
 
-`editor-round-trip` runs `parse → toProseDoc → fromProseDoc(base) → save →
+`editor-round-trip` runs `parse → toProseDoc → fromProseDoc(pm, base, { stylesheetSource: { type: "package" } }) → save →
 parse` and compares against the parse. `fromProseDoc` rebuilds every record out
 of ProseMirror today, so that pipeline measures the projection. It will stop.
 Once a record the editor did not change may come back from the base document by
