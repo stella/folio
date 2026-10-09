@@ -48,7 +48,9 @@ export const restoreHistoricalRunFormatting = ({
   paragraphContext,
   styleResolver,
 }: RestoreHistoricalRunFormattingOptions): readonly Mark[] => {
-  if (runFormattingInlineAtomDisposition(node) === "not-a-run") return node.marks;
+  const disposition = runFormattingInlineAtomDisposition(node);
+  if (disposition === null || disposition === "not-a-run") return node.marks;
+  if (paragraphContext.paragraphMarkFormatting === undefined) return node.marks;
   const authoredFormatting = readAuthoredRunFormatting({
     context: {
       baseParagraphFormatting: paragraphContext.baseParagraphFormatting,
