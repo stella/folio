@@ -2,6 +2,7 @@ import { TaggedError } from "better-result";
 
 import initializeRuntime, {
   projectCompressedDocx as projectCompressedDocxInWasm,
+  projectMainDocumentXml as projectMainDocumentXmlInWasm,
   projectCompressedDocxWithReadableReviewFacts as projectCompressedDocxWithReadableReviewFactsInWasm,
   projectCompressedDocxWithReviewFacts as projectCompressedDocxWithReviewFactsInWasm,
   type DocxAttributedComment,
@@ -142,6 +143,14 @@ export const projectCompressedDocx = (bytes: Uint8Array): Promise<DocxProjection
   projectWith({
     bytes,
     project: projectCompressedDocxInWasm,
+    message: DOCUMENT_PROJECTION_FAILURE_MESSAGE,
+  });
+
+/** Projects raw main-document XML or a Flat OPC package through Rust. */
+export const projectMainDocumentXml = (bytes: Uint8Array): Promise<DocxProjectionWire> =>
+  projectWith({
+    bytes,
+    project: projectMainDocumentXmlInWasm,
     message: DOCUMENT_PROJECTION_FAILURE_MESSAGE,
   });
 
