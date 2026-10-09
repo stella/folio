@@ -77,7 +77,9 @@ describe("complex-script formatting pipeline", () => {
     );
     const document = documentWithRun("Aع", formatting);
 
-    const roundTripped = firstDocumentRunFormatting(fromProseDoc(toProseDoc(document)));
+    const roundTripped = firstDocumentRunFormatting(
+      fromProseDoc(toProseDoc(document), undefined, { stylesheetSource: { type: "package" } }),
+    );
     expect(roundTripped).toMatchObject({
       bold: true,
       boldCs: false,
@@ -111,7 +113,11 @@ describe("complex-script formatting pipeline", () => {
     const proseDoc = toProseDoc(document);
     const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
 
-    expect(firstDocumentRunFormatting(fromProseDoc(clonedProseDoc))).toEqual({
+    expect(
+      firstDocumentRunFormatting(
+        fromProseDoc(clonedProseDoc, undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    ).toEqual({
       bold: false,
       boldCs: false,
       italic: false,
@@ -155,7 +161,9 @@ describe("complex-script formatting pipeline", () => {
       const source = schema.node("doc", null, [
         schema.node("paragraph", null, [schema.text("!", marks)]),
       ]);
-      const roundTripped = toProseDoc(fromProseDoc(source));
+      const roundTripped = toProseDoc(
+        fromProseDoc(source, undefined, { stylesheetSource: { type: "package" } }),
+      );
       const text = roundTripped.firstChild?.firstChild;
 
       const override = text?.marks.find((mark) => mark.type.name === "runFormattingOverride");

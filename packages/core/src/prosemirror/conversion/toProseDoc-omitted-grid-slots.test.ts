@@ -69,7 +69,9 @@ describe("toProseDoc — omitted table grid slots", () => {
     expect(flowTable.rows[1]?.cells).toHaveLength(1);
     expect(flowTable.rows[1]).toMatchObject({ gridBefore: 1, gridAfter: 1 });
 
-    const restored = fromProseDoc(pmDoc, source).package.document.content.at(0) as Table;
+    const restored = fromProseDoc(pmDoc, source, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0) as Table;
     expect(restored.rows[1]).toMatchObject({
       formatting: { gridBefore: 1, gridAfter: 1 },
       cells: [{ content: [paragraph("middle")] }],
@@ -94,7 +96,9 @@ describe("toProseDoc — omitted table grid slots", () => {
     expect(pmTable.child(1).childCount).toBe(2);
     expect(TableMap.get(pmTable).width).toBe(3);
     expect(fixTables(EditorState.create({ doc: pmDoc }))).toBeUndefined();
-    const restored = fromProseDoc(pmDoc, source).package.document.content.at(0) as Table;
+    const restored = fromProseDoc(pmDoc, source, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0) as Table;
     expect(restored.rows[1]?.cells).toEqual([]);
   });
 });

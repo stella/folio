@@ -143,7 +143,9 @@ test("PM and Document ops agree after every generated text and formatting step",
   const property = fc.property(flowArbitrary, ({ source, steps }) => {
     const original = fromMarkdown(source);
     let state = createHarnessState(original, "editing");
-    let model = normalizeForOps(fromProseDoc(state.doc, original));
+    let model = normalizeForOps(
+      fromProseDoc(state.doc, original, { stylesheetSource: { type: "package" } }),
+    );
     expect(contentView(toProseDoc(model))).toEqual(contentView(state.doc));
     for (const step of steps) {
       const blocks = textblocks(state.doc);

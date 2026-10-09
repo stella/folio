@@ -204,7 +204,7 @@ const resolveAndRoundtrip = async (scenario: Scenario, indents: Indents): Promis
 
   const restored = node.type.create({ ...node.attrs, ...patch }, node.content);
   const outputDoc = doc.type.create(doc.attrs, [restored]);
-  const saved = fromProseDoc(outputDoc, parsed);
+  const saved = fromProseDoc(outputDoc, parsed, { stylesheetSource: { type: "package" } });
   const reopened = await parseDocx(await repackDocx(saved));
   const reopenedParagraph = reopened.package.document.content.at(0);
   expect(reopenedParagraph?.type).toBe("paragraph");

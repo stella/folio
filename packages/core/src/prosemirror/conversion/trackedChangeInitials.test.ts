@@ -40,7 +40,11 @@ describe("tracked-change w:initials", () => {
       initials: "AA",
     });
     const xml = serializeParagraph(
-      firstParagraph(fromProseDoc(paragraphOf([schema.text("hi", [mark])]))),
+      firstParagraph(
+        fromProseDoc(paragraphOf([schema.text("hi", [mark])]), undefined, {
+          stylesheetSource: { type: "package" },
+        }),
+      ),
     );
     // The tracked change still serializes — just without the non-standard attr.
     expect(xml).toContain("<w:ins");
@@ -81,7 +85,9 @@ describe("tracked-change w:initials", () => {
     expect(markInitials).toBe("AA");
 
     // And it survives the trip back to the model — but is NOT written to XML.
-    const roundTripped = firstParagraph(fromProseDoc(pmDoc));
+    const roundTripped = firstParagraph(
+      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
+    );
     const insertion = roundTripped.content.find((item) => item.type === "insertion");
     expect(insertion?.type === "insertion" ? insertion.info.initials : undefined).toBe("AA");
     expect(serializeParagraph(roundTripped)).not.toContain("w:initials");

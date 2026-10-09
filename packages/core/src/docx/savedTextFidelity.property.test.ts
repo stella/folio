@@ -295,7 +295,9 @@ describe("a saved package says what the source said", () => {
           expect(read).toBe(stated);
         }
 
-        const rebuilt = fromProseDoc(toProseDoc(parsed), parsed);
+        const rebuilt = fromProseDoc(toProseDoc(parsed), parsed, {
+          stylesheetSource: { type: "package" },
+        });
         const savedPackage = await repack(rebuilt);
         await expectSavedPackageSaysIt(savedPackage, specs);
         const saved = await parseDocx(savedPackage, { preloadFonts: false });

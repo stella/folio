@@ -112,7 +112,7 @@ const savedDocumentPart = async (document: Document): Promise<string> => {
 };
 
 const throughEditor = (document: Document): Document =>
-  fromProseDoc(toProseDoc(document), document);
+  fromProseDoc(toProseDoc(document), document, { stylesheetSource: { type: "package" } });
 
 const shapesOf = (document: Document): ShapeContent[] =>
   document.package.document.content
@@ -182,7 +182,7 @@ const typeInEditor = (document: Document, target: EditTarget, text: string): Doc
   const edited = state.apply(
     state.tr.setSelection(TextSelection.create(state.doc, textPosition)).insertText(text),
   );
-  return fromProseDoc(edited.doc, document);
+  return fromProseDoc(edited.doc, document, { stylesheetSource: { type: "package" } });
 };
 
 const safeText = fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9 ]{0,24}$/u);

@@ -30,12 +30,16 @@ const sourceWithParagraphMarkFont = (formatting?: TextFormatting) => {
 test("a paragraph-mark font does not become direct body-run formatting", () => {
   for (const direct of [undefined, { fontFamily: { csTheme: "minorHAnsi" } }] as const) {
     const source = sourceWithParagraphMarkFont(direct);
-    const saved = fromProseDoc(toProseDoc(source, { styles: source.package.styles }), source);
+    const saved = fromProseDoc(toProseDoc(source, { styles: source.package.styles }), source, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = saved.package.document.content.at(0);
     const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     expect(run?.type === "run" ? run.formatting : undefined).toEqual(direct);
 
-    const savedAgain = fromProseDoc(toProseDoc(saved, { styles: saved.package.styles }), saved);
+    const savedAgain = fromProseDoc(toProseDoc(saved, { styles: saved.package.styles }), saved, {
+      stylesheetSource: { type: "package" },
+    });
     expect(savedAgain.package.document.content).toEqual(saved.package.document.content);
   }
 });

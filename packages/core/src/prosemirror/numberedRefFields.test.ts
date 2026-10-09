@@ -93,7 +93,7 @@ function fieldFallbacks(pmDoc: PMNode): string[] {
 }
 
 function savedFieldTexts(pmDoc: PMNode): string[] {
-  const model = fromProseDoc(pmDoc);
+  const model = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
   return model.package.document.content.flatMap((block) => {
     if (block.type !== "paragraph") {
       return [];
@@ -478,7 +478,7 @@ describe("numbered REF projection", () => {
     ).toBe(true);
     const cloned = pmDoc.type.schema.nodeFromJSON(pmDoc.toJSON());
     expect(fieldFallbacks(cloned)).toEqual(["1"]);
-    const saved = fromProseDoc(cloned);
+    const saved = fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } });
     const savedTarget = saved.package.document.content.at(0);
     expect(savedTarget?.type === "paragraph" ? savedTarget.content : null).toEqual([hyperlink]);
     expect(fieldFallbacks(toProseDoc(saved))).toEqual(["1"]);
@@ -512,7 +512,9 @@ describe("numbered REF projection", () => {
 
     expect(resolvedFieldValues(pmDoc)).toEqual([undefined, "1"]);
     const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
-    const savedTarget = fromProseDoc(cloned).package.document.content.at(0);
+    const savedTarget = fromProseDoc(cloned, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     expect(savedTarget?.type === "paragraph" ? savedTarget.content : null).toEqual([field]);
   });
 

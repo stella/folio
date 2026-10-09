@@ -788,7 +788,7 @@ type Observation = { summary: ContentSummary; markdown: string };
 
 const observe = (state: EditorState, base: Document): Observation => ({
   summary: summarizeState(state),
-  markdown: modelMarkdown(fromProseDoc(state.doc, base)),
+  markdown: modelMarkdown(fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } })),
 });
 
 const observeReopened = async (state: EditorState, base: Document): Promise<Observation> => {

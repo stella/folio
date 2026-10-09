@@ -96,8 +96,9 @@ const statedWidthsOf = (saved: string): (string | null)[] =>
 
 const throughEditor = (columns: readonly StatedWidth[]): string => {
   const document = documentOf(parsed(tableXml(columns)));
-  const projected = fromProseDoc(toProseDoc(document), document).package.document
-    .content[0] as Table;
+  const projected = fromProseDoc(toProseDoc(document), document, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content[0] as Table;
   return serializeTable(projected, serializeParagraph);
 };
 
@@ -156,7 +157,9 @@ describe("a cell's preferred width is the one it states", () => {
 
     commitColumnResize(view, { pmStart: 0, colIdx: 0, newLeft: 3000, newRight: 1800 });
 
-    const projected = fromProseDoc(view.state.doc, document_).package.document.content[0] as Table;
+    const projected = fromProseDoc(view.state.doc, document_, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Table;
     expect(statedWidthsOf(serializeTable(projected, serializeParagraph))).toEqual([
       '<w:tcW w:w="3000" w:type="dxa"/>',
       '<w:tcW w:w="1800" w:type="dxa"/>',

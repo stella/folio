@@ -37,7 +37,9 @@ for (const coverage of ["authored", "none"] as const) {
     expect(directParagraphs).toHaveLength(1);
     const targetId = directParagraphs.at(0);
     if (!targetId) panic("Expected allocated target ID");
-    const serialized = serializeDocument(fromProseDoc(state.doc, parsed));
+    const serialized = serializeDocument(
+      fromProseDoc(state.doc, parsed, { stylesheetSource: { type: "package" } }),
+    );
     expect(censusParagraphOrdinals(source, serialized).get(targetId)).toBe(1);
     expect(censusParagraphOrdinals(serialized, serialized).get(targetId)).toBe(1);
   });

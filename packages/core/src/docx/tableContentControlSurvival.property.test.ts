@@ -209,7 +209,7 @@ const documentForLeg = (parsed: Document, leg: Leg): Document => {
       clearCaptures(parsed.package, new WeakSet());
       return parsed;
     case LEGS.editor:
-      return fromProseDoc(toProseDoc(parsed), parsed);
+      return fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } });
     default: {
       const unreachable: never = leg;
       return unreachable;
@@ -273,7 +273,10 @@ describe("a table content control keeps its wrapper", () => {
     const before = captured(parsed);
     expect(before?.length).toBeGreaterThan(0);
 
-    for (const document of [parsed, fromProseDoc(toProseDoc(parsed), parsed)]) {
+    for (const document of [
+      parsed,
+      fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+    ]) {
       const saved = await repackDocx(document, { updateModifiedDate: false });
       const reopened = await parseDocx(saved, { preloadFonts: false });
       expect(captured(reopened)).toEqual(before);

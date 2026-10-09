@@ -324,7 +324,9 @@ describe("a run property set survives the editor", () => {
         document: { content: [{ type: "paragraph", content: [run] } satisfies Paragraph] },
       },
     } as unknown as Document;
-    const rebuilt = fromProseDoc(toProseDoc(source), source);
+    const rebuilt = fromProseDoc(toProseDoc(source), source, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = rebuilt.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("the projection produced no paragraph");

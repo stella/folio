@@ -123,7 +123,9 @@ const viewFromDoc = (doc: PMNode) => {
 };
 
 const reopenedView = async (doc: PMNode) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(fromProseDoc(doc)));
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await createDocx(fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } })),
+  );
   return viewFromDoc(toProseDoc(reviewer.toDocument()));
 };
 

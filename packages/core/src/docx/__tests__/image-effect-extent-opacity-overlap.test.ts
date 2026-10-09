@@ -87,7 +87,9 @@ describe("wp:effectExtent stays separate from wp:inline/wp:anchor dist*", () => 
 
     expect(drawing.rawXml).toBeDefined();
     const document: Document = { package: { document: { content: body.content } } };
-    const restored = fromProseDoc(toProseDoc(document), document);
+    const restored = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
     const restoredParagraph = restored.package.document.content.at(0);
     if (restoredParagraph?.type !== "paragraph") {
       throw new Error("Expected restored paragraph");
@@ -335,7 +337,9 @@ describe("a:lum brightness and contrast round-trip", () => {
       },
     };
 
-    const restored = fromProseDoc(toProseDoc(document), document);
+    const restored = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = restored.package.document.content.at(0);
     const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     const drawing = run?.type === "run" ? run.content.at(0) : undefined;

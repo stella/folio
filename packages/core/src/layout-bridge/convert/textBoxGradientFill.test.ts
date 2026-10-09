@@ -118,7 +118,9 @@ describe("text box gradient fill", () => {
 
   test("the gradient survives an editor round trip and a save", async () => {
     const document = await parseDocx(await buildDocx(GRADIENT_FILL));
-    const edited = fromProseDoc(toProseDoc(document), document);
+    const edited = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
     const saved = await repackDocx(edited, { updateModifiedDate: false });
     const xml = await (await JSZip.loadAsync(saved)).file("word/document.xml")!.async("text");
 

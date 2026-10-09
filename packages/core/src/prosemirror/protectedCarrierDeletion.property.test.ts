@@ -79,7 +79,9 @@ for (const direction of ["Delete", "Backspace"] as const) {
       expect(live.doc.textContent).toBe("leftright");
       // Resolve before saving: pending child revisions in simple fields are not
       // representable by the current DOCX field model.
-      const saved = await createDocx(fromProseDoc(live.doc, source));
+      const saved = await createDocx(
+        fromProseDoc(live.doc, source, { stylesheetSource: { type: "package" } }),
+      );
       const reopened = toProseDoc(await parseDocx(saved, { preloadFonts: false }));
       expect(reopened.textContent).toBe(live.doc.textContent);
     }

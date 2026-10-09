@@ -54,7 +54,9 @@ for (const host of HOSTS) {
       const document: Document = {
         package: { document: { content: [{ type: "paragraph", content: [wrap(host, run)] }] } },
       };
-      const saved = fromProseDoc(toProseDoc(document), document);
+      const saved = fromProseDoc(toProseDoc(document), document, {
+        stylesheetSource: { type: "package" },
+      });
       const paragraph = saved.package.document.content.at(0);
       if (paragraph?.type !== "paragraph") {
         throw new Error("Expected one paragraph");
@@ -67,7 +69,9 @@ for (const host of HOSTS) {
       expect(item.type).toBe(host === "paragraph" ? "run" : host);
       expect(innerRuns(item).map((part) => part.content)).toEqual([run.content]);
 
-      const savedAgain = fromProseDoc(toProseDoc(saved), saved);
+      const savedAgain = fromProseDoc(toProseDoc(saved), saved, {
+        stylesheetSource: { type: "package" },
+      });
       const again = savedAgain.package.document.content.at(0);
       expect(again?.type === "paragraph" ? again.content : []).toEqual(paragraph.content);
     });
@@ -86,7 +90,9 @@ test("adjacent mixed runs retain distinct authored boundaries", () => {
   const document: Document = {
     package: { document: { content: [{ type: "paragraph", content: [first, second] }] } },
   };
-  const saved = fromProseDoc(toProseDoc(document), document);
+  const saved = fromProseDoc(toProseDoc(document), document, {
+    stylesheetSource: { type: "package" },
+  });
   const paragraph = saved.package.document.content.at(0);
   expect(paragraph?.type === "paragraph" ? paragraph.content : []).toEqual([first, second]);
 });
@@ -100,7 +106,9 @@ test("an inline atom and text retain their shared direct formatting", () => {
   const document: Document = {
     package: { document: { content: [{ type: "paragraph", content: [run] }] } },
   };
-  const saved = fromProseDoc(toProseDoc(document), document);
+  const saved = fromProseDoc(toProseDoc(document), document, {
+    stylesheetSource: { type: "package" },
+  });
   const paragraph = saved.package.document.content.at(0);
   expect(paragraph?.type === "paragraph" ? paragraph.content : []).toEqual([run]);
 });

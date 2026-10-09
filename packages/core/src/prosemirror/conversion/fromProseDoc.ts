@@ -11,7 +11,7 @@ import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
  * - Handle marks -> TextFormatting conversion
  */
 
-import { panic } from "better-result";
+import { panic, TaggedError } from "better-result";
 import { DRAWING_RAW_XML_MODES, relationshipIdOf } from "@stll/docx-core/model";
 import {
   assertNoteReferenceOccurrences,
@@ -107,6 +107,7 @@ import type {
   BookmarkStart,
   Document,
   DocumentBody,
+  StyleDefinitions,
   Paragraph,
   ParagraphPropertyChange,
   PreservedInline,
@@ -674,16 +675,55 @@ export type ProjectionReuse = "none" | "matched";
 
 /** How the conversion treats records the editor did not change. */
 export type FromProseDocOptions = {
+  /** The stylesheet authority used to construct the projection. */
+  stylesheetSource: { type: "package" } | { type: "supplied"; styles: StyleDefinitions };
   /** Defaults to `"none"`, the only value implemented. */
   reuse?: ProjectionReuse;
+};
+
+const saveStylesheet = (
+  source: FromProseDocOptions["stylesheetSource"],
+  baseDocument: Document | undefined,
+) => {
+  switch (source.type) {
+    case "package":
+      return baseDocument?.package.styles;
+    case "supplied":
+      return source.styles;
+    default: {
+      const unreachable: never = source;
+      return panic(`Unexpected stylesheet source: ${JSON.stringify(unreachable)}`);
+    }
+  }
+};
+
+class MissingSaveStylesheet extends TaggedError("MissingSaveStylesheet")<{
+  message: string;
+}>() {}
+
+const assertSaveStylesheetAvailable = (pmDoc: PMNode, styles: StyleDefinitions | undefined) => {
+  if (styles !== undefined) return;
+  pmDoc.descendants((node) => {
+    const paragraphStyle =
+      node.type.name === "paragraph" ? expectParagraphAttrs(node).styleId : undefined;
+    if (
+      (paragraphStyle !== undefined && paragraphStyle !== null) ||
+      node.marks.some(({ type }) => type.name === "characterStyle")
+    )
+      throw new MissingSaveStylesheet({
+        message: "Saving style-dependent content requires its authoritative stylesheet.",
+      });
+  });
 };
 
 /** Convert a ProseMirror document to the document model. */
 export function fromProseDoc(
   pmDoc: PMNode,
-  baseDocument?: Document,
-  { reuse = "none" }: FromProseDocOptions = {},
+  baseDocument: Document | undefined,
+  { stylesheetSource, reuse = "none" }: FromProseDocOptions,
 ): Document {
+  const styles = saveStylesheet(stylesheetSource, baseDocument);
+  assertSaveStylesheetAvailable(pmDoc, styles);
   assertNoteReferenceOccurrences(pmDoc);
   switch (reuse) {
     case "none": {
@@ -723,11 +763,7 @@ export function fromProseDoc(
       ? validateParagraphPropertySourceTokens(pmDoc, baseDocument, baseContract)
       : null;
 
-  const blocks = extractBlocks(
-    pmDoc,
-    "resolve",
-    baseDocument?.package.styles ? createStyleEngine(baseDocument.package.styles) : null,
-  );
+  const blocks = extractBlocks(pmDoc, "resolve", styles ? createStyleEngine(styles) : null);
   joinCommentRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
@@ -5880,7 +5916,7 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
  */
 export function updateDocumentContent(originalDocument: Document, pmDoc: PMNode): Document {
   // canonical-gap: pm-save-projection
-  return fromProseDoc(pmDoc, originalDocument);
+  return fromProseDoc(pmDoc, originalDocument, { stylesheetSource: { type: "package" } });
 }
 
 /**

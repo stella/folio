@@ -184,7 +184,8 @@ const editDrawingAttrs = (node: PMNode, overrides: Record<string, unknown>): PMN
   return node.copy(Fragment.fromArray(children));
 };
 
-const restore = (source: Document): Document => fromProseDoc(toProseDoc(source), source);
+const restore = (source: Document): Document =>
+  fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } });
 
 describe("drawing transform survives the editor projection", () => {
   test("an untouched drawing is written back with its authored rotation and flips", () => {
@@ -223,7 +224,11 @@ describe("drawing transform survives the editor projection", () => {
             docxFlipV: edited.flipV ?? null,
           });
 
-          expect(restoredTransform(fromProseDoc(projected, source))).toEqual(edited);
+          expect(
+            restoredTransform(
+              fromProseDoc(projected, source, { stylesheetSource: { type: "package" } }),
+            ),
+          ).toEqual(edited);
         },
       ),
       propertyConfig({ numRuns: 300 }),

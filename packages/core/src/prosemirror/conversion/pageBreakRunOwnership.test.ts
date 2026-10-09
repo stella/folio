@@ -224,7 +224,7 @@ describe("page-break run ownership", () => {
       const prose = toProseDoc(source);
       expect(prose.firstChild?.firstChild?.type.name).toBe("pageBreakRun");
       expect(prose.firstChild?.firstChild?.attrs["clear"] ?? undefined).toBe(clear);
-      const roundTripped = fromProseDoc(prose, source);
+      const roundTripped = fromProseDoc(prose, source, { stylesheetSource: { type: "package" } });
       const paragraph = roundTripped.package.document.content.at(0);
       if (paragraph?.type !== "paragraph") {
         throw new Error("Expected paragraph");
@@ -279,7 +279,7 @@ describe("page-break run ownership", () => {
 
     const prose = toProseDoc(source);
     const cloned = prose.type.schema.nodeFromJSON(prose.toJSON());
-    const restored = fromProseDoc(cloned, source);
+    const restored = fromProseDoc(cloned, source, { stylesheetSource: { type: "package" } });
     const paragraph = restored.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected paragraph");
@@ -314,7 +314,9 @@ describe("page-break run ownership", () => {
       ];
 
       const prose = toProseDoc(source);
-      const restored = fromProseDoc(prose.type.schema.nodeFromJSON(prose.toJSON()), source);
+      const restored = fromProseDoc(prose.type.schema.nodeFromJSON(prose.toJSON()), source, {
+        stylesheetSource: { type: "package" },
+      });
       const paragraph = restored.package.document.content.at(0);
       if (paragraph?.type !== "paragraph") {
         throw new Error("Expected paragraph");
@@ -365,7 +367,9 @@ describe("page-break run ownership", () => {
     ];
 
     const prose = toProseDoc(source, { styles: source.package.styles });
-    const restored = fromProseDoc(prose.type.schema.nodeFromJSON(prose.toJSON()), source);
+    const restored = fromProseDoc(prose.type.schema.nodeFromJSON(prose.toJSON()), source, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = restored.package.document.content.at(0);
     const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
     expect(run?.type).toBe("run");
@@ -409,7 +413,9 @@ describe("page-break run ownership", () => {
     const mutated = new Transform(prose)
       .removeMark(trailingTextPosition, trailingTextPosition + 1, ownerType)
       .addMark(trailingTextPosition, trailingTextPosition + 1, ownerType.create({ id: 99 })).doc;
-    const paragraph = fromProseDoc(mutated, source).package.document.content.at(0);
+    const paragraph = fromProseDoc(mutated, source, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected paragraph");
     }
@@ -443,7 +449,9 @@ describe("page-break run ownership", () => {
       },
     ];
 
-    const first = await createDocx(fromProseDoc(toProseDoc(source), source));
+    const first = await createDocx(
+      fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+    );
     const firstXml = await documentXml(first);
     expect(firstXml).toContain("<w:br/>");
     expect(firstXml).toContain('<w:br w:type="textWrapping" w:clear="left"/>');
@@ -451,7 +459,9 @@ describe("page-break run ownership", () => {
     expect(firstXml).toContain('<w:br w:type="page" w:clear="all"/>');
 
     const reopened = await parseDocx(first);
-    const second = await createDocx(fromProseDoc(toProseDoc(reopened), reopened));
+    const second = await createDocx(
+      fromProseDoc(toProseDoc(reopened), reopened, { stylesheetSource: { type: "package" } }),
+    );
     expect(await documentXml(second)).toBe(firstXml);
   });
 
@@ -530,7 +540,9 @@ describe("page-break run ownership", () => {
     ];
 
     const prose = toProseDoc(source);
-    const restored = fromProseDoc(prose.type.schema.nodeFromJSON(prose.toJSON()), source);
+    const restored = fromProseDoc(prose.type.schema.nodeFromJSON(prose.toJSON()), source, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = restored.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected paragraph");
@@ -556,7 +568,9 @@ describe("page-break run ownership", () => {
       },
     ];
 
-    const restored = fromProseDoc(toProseDoc(source), source);
+    const restored = fromProseDoc(toProseDoc(source), source, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = restored.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected paragraph");
@@ -602,7 +616,9 @@ describe("page-break run ownership", () => {
           ),
         ).toBe(true);
 
-        const { change, run } = firstTrackedRun(fromProseDoc(cloned, source));
+        const { change, run } = firstTrackedRun(
+          fromProseDoc(cloned, source, { stylesheetSource: { type: "package" } }),
+        );
         expect(change.type).toBe(type);
         expect(run.content).toEqual(contents);
         expect(run.formatting?.underline).toEqual({ style: "single" });
@@ -657,7 +673,7 @@ describe("page-break run ownership", () => {
       expect.arrayContaining(["hyperlink", "insertion", "runPropertyChange"]),
     );
 
-    const restored = fromProseDoc(prose, source);
+    const restored = fromProseDoc(prose, source, { stylesheetSource: { type: "package" } });
     const paragraph = restored.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected paragraph");
@@ -688,7 +704,9 @@ describe("page-break run ownership", () => {
 
   test.each(WRAPPERS)("enumerates and resolves a stacked %s plus rPrChange", async (type) => {
     const source = trackedDocument(type, SHAPES.interior);
-    const pending = await createDocx(fromProseDoc(toProseDoc(source), source));
+    const pending = await createDocx(
+      fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+    );
     const pendingXml = await documentXml(pending);
     let wrapperTag = "del";
     if (type === "moveFrom") {
@@ -727,7 +745,9 @@ describe("page-break run ownership", () => {
     "accept/reject resolves stacked revisions and reaches both clean projections for %s",
     async (type) => {
       const source = trackedDocument(type, SHAPES.interior);
-      const pending = await createDocx(fromProseDoc(toProseDoc(source), source));
+      const pending = await createDocx(
+        fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+      );
       const keepOnAccept = type === "insertion" || type === "moveTo";
 
       for (const decision of ["accept", "reject"] as const) {
@@ -759,16 +779,22 @@ describe("page-break run ownership", () => {
 
   test.each(WRAPPERS)("reaches a save/reopen fixed point for a pending %s", async (type) => {
     const source = trackedDocument(type, SHAPES.multiple);
-    const first = await createDocx(fromProseDoc(toProseDoc(source), source));
+    const first = await createDocx(
+      fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+    );
     const reopened = await parseDocx(first);
-    const second = await createDocx(fromProseDoc(toProseDoc(reopened), reopened));
+    const second = await createDocx(
+      fromProseDoc(toProseDoc(reopened), reopened, { stylesheetSource: { type: "package" } }),
+    );
 
     expect(await documentXml(second)).toBe(await documentXml(first));
   });
 
   test("serializes the same owned page-break graph deterministically", async () => {
     const source = trackedDocument("insertion", SHAPES.multiple);
-    const roundTripped = fromProseDoc(toProseDoc(source), source);
+    const roundTripped = fromProseDoc(toProseDoc(source), source, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(await documentXml(await createDocx(roundTripped))).toBe(
       await documentXml(await createDocx(roundTripped)),

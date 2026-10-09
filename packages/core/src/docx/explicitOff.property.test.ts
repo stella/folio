@@ -319,7 +319,9 @@ describe("CT_OnOff elements", () => {
         },
       },
     };
-    const block = fromProseDoc(toProseDoc(original), original).package.document.content.at(0);
+    const block = fromProseDoc(toProseDoc(original), original, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (block?.type !== "table") {
       throw new Error("expected a table");
     }
@@ -346,7 +348,9 @@ describe("CT_OnOff elements", () => {
         },
       },
     };
-    const block = fromProseDoc(toProseDoc(original), original).package.document.content.at(0);
+    const block = fromProseDoc(toProseDoc(original), original, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (block?.type !== "table") {
       throw new Error("expected a table");
     }
@@ -370,7 +374,9 @@ describe("CT_OnOff elements", () => {
         },
       },
     };
-    const block = fromProseDoc(toProseDoc(original), original).package.document.content.at(0);
+    const block = fromProseDoc(toProseDoc(original), original, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (block?.type !== "blockSdt") {
       throw new Error("expected a block control");
     }
@@ -588,7 +594,9 @@ describe("CT_Columns @sep", () => {
         },
       },
     };
-    const block = fromProseDoc(toProseDoc(original), original).package.document.content.at(0);
+    const block = fromProseDoc(toProseDoc(original), original, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (block?.type !== "paragraph") {
       throw new Error("expected a paragraph");
     }
@@ -680,7 +688,9 @@ describe("field @fldLock and @dirty", () => {
         },
       },
     };
-    const block = fromProseDoc(toProseDoc(original)).package.document.content.at(0);
+    const block = fromProseDoc(toProseDoc(original), undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (block?.type !== "paragraph") {
       throw new Error("expected a paragraph");
     }
@@ -713,7 +723,9 @@ describe("field @fldLock and @dirty", () => {
         },
       },
     };
-    const block = fromProseDoc(toProseDoc(original)).package.document.content.at(0);
+    const block = fromProseDoc(toProseDoc(original), undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (block?.type !== "paragraph") {
       throw new Error("expected a paragraph");
     }
@@ -768,7 +780,8 @@ describe("w:trPr/w:hidden", () => {
     const original = {
       package: { document: { content: [parsedTable(spelling)], finalSectionProperties: {} } },
     } as never;
-    return fromProseDoc(toProseDoc(original), original).package.document.content[0] as Table;
+    return fromProseDoc(toProseDoc(original), original, { stylesheetSource: { type: "package" } })
+      .package.document.content[0] as Table;
   };
 
   test(

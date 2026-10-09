@@ -636,7 +636,11 @@ describe("body revision enumeration", () => {
     const changes = getTrackedChangesFromDoc(doc);
 
     expect(changes.map(({ id, type, text }) => ({ id, type, text }))).toEqual(expectedChanges);
-    expect(getTrackedChangesFromDoc(toProseDoc(fromProseDoc(doc)))).toEqual(changes);
+    expect(
+      getTrackedChangesFromDoc(
+        toProseDoc(fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } })),
+      ),
+    ).toEqual(changes);
     expect(
       changes.every(({ author, date, blockId }) => author === AUTHOR && date === DATE && blockId),
     ).toBe(true);
@@ -725,7 +729,9 @@ describe("body revision enumeration", () => {
           }),
         ).toBe(true);
 
-        const roundtripped = toProseDoc(fromProseDoc(state.doc));
+        const roundtripped = toProseDoc(
+          fromProseDoc(state.doc, undefined, { stylesheetSource: { type: "package" } }),
+        );
         const remainingIds = getTrackedChangesFromDoc(roundtripped).map(({ id }) => id);
         expect(remainingIds).not.toContain(selected.id);
         expect(remainingIds.toSorted((left, right) => left - right)).toEqual(

@@ -98,7 +98,9 @@ const documentHolding = (paragraph: Paragraph): Document => {
 /** The mark's properties again, after the editor has had the paragraph. */
 const saveParagraphMarkThroughEditor = (xml: string): string => {
   const document = documentHolding(parseParagraph(parseOne(xml), null, null, null));
-  const projected = fromProseDoc(toProseDoc(document), document);
+  const projected = fromProseDoc(toProseDoc(document), document, {
+    stylesheetSource: { type: "package" },
+  });
   const roundTripped = projected.package.document.content.at(0);
   if (roundTripped?.type !== "paragraph") {
     throw new Error("the projection did not hand back a paragraph");

@@ -475,7 +475,7 @@ export const saveHarnessState = async (
   state: EditorState,
   base: Document,
 ): Promise<SavedDocument> => {
-  const model = fromProseDoc(state.doc, base);
+  const model = fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } });
   assertValidFolioDocumentModel(model, "Editor state converts to an invalid DOCX model");
   // As the editors save: with the section removals the edit made on purpose.
   const bytes = new Uint8Array(

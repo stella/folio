@@ -35,7 +35,9 @@ test("keeps change carriers in document order when ids go backward", () => {
     { id: 1, type: "deletion", text: "earlier revision" },
     { id: 1, type: "deletion", text: "first block" },
   ]);
-  expect(changes(toProseDoc(fromProseDoc(live)))).toEqual(changes(live));
+  expect(
+    changes(toProseDoc(fromProseDoc(live, undefined, { stylesheetSource: { type: "package" } }))),
+  ).toEqual(changes(live));
 });
 
 test("folds a revision split only at a hyperlink boundary", () => {
@@ -95,7 +97,9 @@ test("comment quotes span unmarked runs and paragraphs after a save", () => {
     schema.node("paragraph", null, [schema.text("outside")]),
     schema.node("paragraph", null, [schema.text("again", [comment]), schema.text("after")]),
   ]);
-  const reopened = toProseDoc(fromProseDoc(live));
+  const reopened = toProseDoc(
+    fromProseDoc(live, undefined, { stylesheetSource: { type: "package" } }),
+  );
   const quotes = (doc: typeof live) => getCommentAnchorsFromDoc(doc).map(({ quote }) => quote);
 
   expect(quotes(live)).toEqual(["helloXXXworldoutsideagain"]);

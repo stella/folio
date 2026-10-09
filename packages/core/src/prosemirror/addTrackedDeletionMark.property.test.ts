@@ -222,7 +222,9 @@ test(
                 "n".repeat(length),
             );
             const source = createEmptyDocument();
-            const saved = await createDocx(fromProseDoc(live.doc, source));
+            const saved = await createDocx(
+              fromProseDoc(live.doc, source, { stylesheetSource: { type: "package" } }),
+            );
             const reopened = EditorState.create({
               doc: toProseDoc(await parseDocx(saved, { preloadFonts: false })),
             });

@@ -127,8 +127,9 @@ const throughEditor = (cellProperties: string): string => {
   const document = {
     package: { document: { content: [table], finalSectionProperties: {} } },
   } as never;
-  const projected = fromProseDoc(toProseDoc(document), document).package.document
-    .content[0] as Table;
+  const projected = fromProseDoc(toProseDoc(document), document, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content[0] as Table;
   return serializeTable(withoutReplay(projected), serializeParagraph);
 };
 

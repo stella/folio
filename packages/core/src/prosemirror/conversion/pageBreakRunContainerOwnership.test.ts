@@ -403,7 +403,9 @@ describe("page-break run source-container ownership", () => {
       }),
     ]);
 
-    const restored = fromProseDoc(toProseDoc(source), source);
+    const restored = fromProseDoc(toProseDoc(source), source, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(restored.package.document.content).toEqual(source.package.document.content);
   });

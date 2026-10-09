@@ -118,7 +118,7 @@ describe("page-break run field ownership", () => {
       expect(structuredField?.marks.some((mark) => mark.type.name === "insertion")).toBe(true);
       expect(structuredField?.child(1).type.name).toBe("pageBreakRun");
 
-      const roundTripped = fromProseDoc(prose, source);
+      const roundTripped = fromProseDoc(prose, source, { stylesheetSource: { type: "package" } });
       const paragraph = roundTripped.package.document.content.at(0);
       if (paragraph?.type !== "paragraph") {
         throw new Error("Expected paragraph");
@@ -168,10 +168,14 @@ describe("page-break run field ownership", () => {
             };
       source.package.document.content = [{ type: "paragraph", content: [field] }];
 
-      const firstModel = fromProseDoc(toProseDoc(source), source);
+      const firstModel = fromProseDoc(toProseDoc(source), source, {
+        stylesheetSource: { type: "package" },
+      });
       const firstBuffer = await createDocx(firstModel);
       const reopened = await parseDocx(firstBuffer);
-      const secondModel = fromProseDoc(toProseDoc(reopened), reopened);
+      const secondModel = fromProseDoc(toProseDoc(reopened), reopened, {
+        stylesheetSource: { type: "package" },
+      });
       const secondBuffer = await createDocx(secondModel);
 
       expect(await documentXml(secondBuffer)).toBe(await documentXml(firstBuffer));
@@ -414,9 +418,9 @@ describe("page-break run field ownership", () => {
         expectedMessage = "Complex field results cannot contain bookmark boundaries.";
       }
       expect(validation.issues.map(({ message }) => message)).toContain(expectedMessage);
-      expect(() => fromProseDoc(prose)).toThrow(
-        "Cannot convert invalid ProseMirror document to DOCX model",
-      );
+      expect(() =>
+        fromProseDoc(prose, undefined, { stylesheetSource: { type: "package" } }),
+      ).toThrow("Cannot convert invalid ProseMirror document to DOCX model");
     },
   );
 });

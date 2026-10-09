@@ -261,7 +261,9 @@ describe("ParagraphExtension", () => {
 
     expect(state.doc.firstChild?.attrs["lineSpacingExplicit"]).toBe("both");
     const baseDocument: Document = { package: { document: { content: [] } } };
-    const paragraph = fromProseDoc(state.doc, baseDocument).package.document.content.at(0);
+    const paragraph = fromProseDoc(state.doc, baseDocument, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {
       return;
@@ -289,7 +291,9 @@ describe("ParagraphExtension", () => {
 
     expect(state.doc.firstChild?.attrs["lineSpacingExplicit"]).toBe("both");
     const baseDocument: Document = { package: { document: { content: [] } } };
-    const paragraph = fromProseDoc(state.doc, baseDocument).package.document.content.at(0);
+    const paragraph = fromProseDoc(state.doc, baseDocument, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {
       return;
@@ -324,7 +328,9 @@ describe("ParagraphExtension", () => {
     });
 
     const baseDocument: Document = { package: { document: { content: [] } } };
-    const paragraph = fromProseDoc(state.doc, baseDocument).package.document.content.at(0);
+    const paragraph = fromProseDoc(state.doc, baseDocument, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {
       return;
@@ -373,7 +379,20 @@ describe("ParagraphExtension", () => {
     const block = toFlowBlocks(state.doc).at(0);
     expect(block?.attrs?.spacing?.before).toBe(24);
 
-    const saved = fromProseDoc(state.doc, { package: { document: { content: [] } } });
+    const saved = fromProseDoc(
+      state.doc,
+      { package: { document: { content: [] } } },
+      {
+        stylesheetSource: {
+          type: "supplied",
+          styles: {
+            styles: [
+              { type: "paragraph", styleId: "Spaced", name: "Spaced", pPr: { spaceBefore: 360 } },
+            ],
+          },
+        },
+      },
+    );
     const paragraph = saved.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {
@@ -427,7 +446,7 @@ describe("ParagraphExtension", () => {
     });
 
     expect(state.doc.firstChild?.attrs["lineSpacingExplicit"]).toBeNull();
-    const saved = fromProseDoc(state.doc, source);
+    const saved = fromProseDoc(state.doc, source, { stylesheetSource: { type: "package" } });
     const paragraph = saved.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {

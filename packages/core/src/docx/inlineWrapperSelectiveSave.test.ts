@@ -113,11 +113,15 @@ describe("a selective save of an edit inside a bidirectional wrapper", () => {
       state.tr.setSelection(TextSelection.create(state.doc, from, to)).insertText("SIDE", from, to),
     );
 
-    const saved = await attemptSelectiveSave(fromProseDoc(edited.doc, parsed), buffer, {
-      changedParaIds: new Set([WRAPPED_PARAGRAPH_ID]),
-      structuralChange: false,
-      hasUntrackedChanges: false,
-    });
+    const saved = await attemptSelectiveSave(
+      fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+      buffer,
+      {
+        changedParaIds: new Set([WRAPPED_PARAGRAPH_ID]),
+        structuralChange: false,
+        hasUntrackedChanges: false,
+      },
+    );
     expect(saved).not.toBeNull();
     if (!saved) {
       throw new Error("The selective save refused the patch");

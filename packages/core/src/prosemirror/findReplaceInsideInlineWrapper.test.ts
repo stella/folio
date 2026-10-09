@@ -223,7 +223,9 @@ describe("a phrase inside a transparent inline wrapper", () => {
         throw new Error("The editor could not resolve the match");
       }
       const replaced = state.apply(state.tr.insertText("shares", range.from, range.to));
-      const block = fromProseDoc(replaced.doc, source).package.document.content.at(0);
+      const block = fromProseDoc(replaced.doc, source, {
+        stylesheetSource: { type: "package" },
+      }).package.document.content.at(0);
       if (block?.type !== "paragraph") {
         throw new Error("The replacement lost its paragraph");
       }

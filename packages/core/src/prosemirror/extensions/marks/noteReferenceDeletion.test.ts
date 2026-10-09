@@ -122,7 +122,9 @@ describe("note reference deletion", () => {
       const doc = toProseDoc(source);
       const pos = 1 + `Before ${id}`.length;
       const state = EditorState.create({ schema, doc, selection: TextSelection.create(doc, pos) });
-      const edited = fromProseDoc(press(state, "Backspace").state.doc, source);
+      const edited = fromProseDoc(press(state, "Backspace").state.doc, source, {
+        stylesheetSource: { type: "package" },
+      });
       const saved = await createDocx(edited);
       const reopened = await parseDocx(saved, { preloadFonts: false });
       const reopenedDoc = toProseDoc(reopened);

@@ -1004,7 +1004,9 @@ describe("tracked run formatting", () => {
     for (const mode of ["accept", "reject"] as const) {
       const resolvedState = applyRevisionDecision(createSameIdInlineCarrierState(), mode);
       expect(getTrackedChangesFromDoc(resolvedState.doc)).toEqual([]);
-      const resolved = await createDocx(fromProseDoc(resolvedState.doc));
+      const resolved = await createDocx(
+        fromProseDoc(resolvedState.doc, undefined, { stylesheetSource: { type: "package" } }),
+      );
       const reopened = await FolioDocxReviewer.fromBuffer(resolved);
       expect(reopened.getChanges()).toEqual([]);
       expect(countXmlElements(await documentXml(resolved), "b")).toBe(mode === "accept" ? 6 : 0);

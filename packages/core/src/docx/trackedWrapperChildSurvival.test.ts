@@ -90,7 +90,7 @@ const wrapParagraph = (paragraph: Paragraph): Document => ({
 /** The paragraph as it comes back from the editor, with nothing edited. */
 const throughTheEditor = (paragraph: Paragraph): Paragraph => {
   const input = wrapParagraph(paragraph);
-  const out = fromProseDoc(toProseDoc(input), input);
+  const out = fromProseDoc(toProseDoc(input), input, { stylesheetSource: { type: "package" } });
   const first = out.package.document.content.at(0);
   if (first?.type !== "paragraph") {
     throw new Error("Expected the round trip to give a paragraph back");
@@ -108,7 +108,7 @@ const resolveAll = (paragraph: Paragraph, resolution: Resolution): Document => {
   command(state, (transaction) => {
     state = state.apply(transaction);
   });
-  return fromProseDoc(state.doc, input);
+  return fromProseDoc(state.doc, input, { stylesheetSource: { type: "package" } });
 };
 
 describe("a run-level tracked change keeps the children folio does not model", () => {

@@ -503,7 +503,7 @@ describe("migrateFolioYjsSnapshot carries a version-6 outline level forward", ()
       expect(readParagraphAttrs(document.child(index)).ok).toBe(true);
     }
 
-    const saved = fromProseDoc(document);
+    const saved = fromProseDoc(document, undefined, { stylesheetSource: { type: "package" } });
     expect(saved.package.document.content[1]?.formatting?.outlineLevel).toEqual({
       kind: "heading",
       level: 1,

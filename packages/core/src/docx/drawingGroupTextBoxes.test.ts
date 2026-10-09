@@ -207,7 +207,9 @@ describe("saving text boxes inside a DrawingML group", () => {
     const pmDocument = toProseDoc(document);
     const state = EditorState.create({ doc: pmDocument });
     const edited = edit ? edit(state).doc : pmDocument;
-    return firstParagraph(fromProseDoc(edited, document));
+    return firstParagraph(
+      fromProseDoc(edited, document, { stylesheetSource: { type: "package" } }),
+    );
   };
 
   const textPositionIn = (state: EditorState, name: string): number => {

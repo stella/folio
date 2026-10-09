@@ -174,8 +174,9 @@ describe("a section's property set survives a rebuild", () => {
             },
           },
         } as never;
-        const projected = fromProseDoc(toProseDoc(document), document).package.document
-          .finalSectionProperties;
+        const projected = fromProseDoc(toProseDoc(document), document, {
+          stylesheetSource: { type: "package" },
+        }).package.document.finalSectionProperties;
 
         expect(serializeSectionProperties(projected)).toBe(
           serializeSectionProperties(finalSectionProperties),

@@ -89,7 +89,9 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
       },
     });
 
-    const converted = fromProseDoc(toProseDoc({ package: { document: body } }));
+    const converted = fromProseDoc(toProseDoc({ package: { document: body } }), undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const convertedParagraph = converted.package.document.content.at(0);
     if (convertedParagraph?.type !== "paragraph") {
       throw new Error("Expected converted paragraph");

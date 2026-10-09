@@ -265,8 +265,12 @@ test("arbitrary digit splits preserve adjacent occurrences and whole-unit revisi
         const doc = state.doc.copy(Fragment.from(splitParagraph));
         const splitState = EditorState.create({ doc, plugins: state.plugins });
         await assertRoundtrip(splitState, bases[kind]);
-        expect(fromProseDoc(doc, bases[kind]).package.document.content).toEqual(
-          fromProseDoc(state.doc, bases[kind]).package.document.content,
+        expect(
+          fromProseDoc(doc, bases[kind], { stylesheetSource: { type: "package" } }).package.document
+            .content,
+        ).toEqual(
+          fromProseDoc(state.doc, bases[kind], { stylesheetSource: { type: "package" } }).package
+            .document.content,
         );
       },
     ),
@@ -441,7 +445,9 @@ test("unattributed or mixed-owner serializer inputs panic instead of guessing", 
   mixed.addMark(FROM, FROM + 1, state.schema.mark("italic"));
   expect(state.apply(mixed)).toBe(state);
   expect(noteReferenceTransactionIssue(mixed)).toBeInstanceOf(NoteReferenceEditRefusal);
-  expect(() => fromProseDoc(mixed.doc)).toThrow();
+  expect(() =>
+    fromProseDoc(mixed.doc, undefined, { stylesheetSource: { type: "package" } }),
+  ).toThrow();
   const mark = state.doc
     .nodeAt(FROM)
     ?.marks.find((candidate) => candidate.type.name === "footnoteRef");
@@ -453,7 +459,9 @@ test("unattributed or mixed-owner serializer inputs panic instead of guessing", 
   );
   expect(state.apply(unowned)).toBe(state);
   expect(noteReferenceTransactionIssue(unowned)).toBeInstanceOf(NoteReferenceEditRefusal);
-  expect(() => fromProseDoc(unowned.doc)).toThrow();
+  expect(() =>
+    fromProseDoc(unowned.doc, undefined, { stylesheetSource: { type: "package" } }),
+  ).toThrow();
 });
 
 test("DOM and clipboard preserve unit attribution while pasted occurrences get fresh identities", async () => {

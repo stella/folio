@@ -352,7 +352,9 @@ describe("serializeParagraph tracked-change hardening", () => {
 
     const document = createEmptyDocument();
     document.package.document.content = [paragraph];
-    const rebuilt = fromProseDoc(toProseDoc(document), document);
+    const rebuilt = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
     const rebuiltParagraph = rebuilt.package.document.content.at(0);
     expect(rebuiltParagraph?.type).toBe("paragraph");
     if (rebuiltParagraph?.type !== "paragraph") {

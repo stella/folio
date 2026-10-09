@@ -160,7 +160,9 @@ describe("w:shd auto", () => {
 
   test("the sentinel survives a save", async () => {
     const original = await parseDocx(await styledTableFixture());
-    const rebuilt = fromProseDoc(toProseDoc(original), original);
+    const rebuilt = fromProseDoc(toProseDoc(original), original, {
+      stylesheetSource: { type: "package" },
+    });
     const repacked = await repackDocx(rebuilt, { updateModifiedDate: false });
     const documentXml = await (
       await JSZip.loadAsync(repacked)

@@ -88,7 +88,9 @@ describe("convertHyperlink preserves non-text run content", () => {
       ],
     });
 
-    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const roundTripped = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = roundTripped.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {
@@ -169,7 +171,9 @@ describe("convertHyperlink preserves non-text run content", () => {
       ],
     });
 
-    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const roundTripped = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = roundTripped.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {
@@ -210,7 +214,9 @@ describe("convertHyperlink preserves non-text run content", () => {
       ],
     });
 
-    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const roundTripped = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = roundTripped.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {

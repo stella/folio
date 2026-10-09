@@ -67,7 +67,7 @@ describe("rtl mark round-trip through ProseMirror", () => {
   test("preserves rtl=true on a run", () => {
     const input = wrap(runText("שלום", { rtl: true }));
     const pmDoc = toProseDoc(input);
-    const out = fromProseDoc(pmDoc, input);
+    const out = fromProseDoc(pmDoc, input, { stylesheetSource: { type: "package" } });
     const run = findRun(firstParagraph(out), "שלום");
     expect(run.formatting?.rtl).toBe(true);
   });
@@ -77,7 +77,7 @@ describe("rtl mark round-trip through ProseMirror", () => {
     // PM round-trip; otherwise it would silently re-enable inherited RTL.
     const input = wrap(runText("plain", { rtl: false }));
     const pmDoc = toProseDoc(input);
-    const out = fromProseDoc(pmDoc, input);
+    const out = fromProseDoc(pmDoc, input, { stylesheetSource: { type: "package" } });
     const run = findRun(firstParagraph(out), "plain");
     expect(run.formatting?.rtl).toBe(false);
   });
@@ -111,7 +111,7 @@ describe("textEffect mark round-trip through ProseMirror", () => {
     test(`preserves effect=${variant} on a run`, () => {
       const input = wrap(runText("animated", { effect: variant }));
       const pmDoc = toProseDoc(input);
-      const out = fromProseDoc(pmDoc, input);
+      const out = fromProseDoc(pmDoc, input, { stylesheetSource: { type: "package" } });
       const run = findRun(firstParagraph(out), "animated");
       expect(run.formatting?.effect).toBe(variant);
     });
@@ -140,7 +140,7 @@ describe("textEffect mark round-trip through ProseMirror", () => {
     expect(
       pmDoc.firstChild?.firstChild?.marks.some(({ type }) => type.name === "runFormattingOverride"),
     ).toBe(true);
-    const out = fromProseDoc(pmDoc, input);
+    const out = fromProseDoc(pmDoc, input, { stylesheetSource: { type: "package" } });
     const run = findRun(firstParagraph(out), "plain");
     expect(run.formatting?.effect).toBe("none");
 
@@ -151,7 +151,9 @@ describe("textEffect mark round-trip through ProseMirror", () => {
     });
     expect(findRun(firstParagraph(firstReopen), "plain").formatting?.effect).toBe("none");
 
-    const secondBuffer = await createDocx(fromProseDoc(toProseDoc(firstReopen), firstReopen));
+    const secondBuffer = await createDocx(
+      fromProseDoc(toProseDoc(firstReopen), firstReopen, { stylesheetSource: { type: "package" } }),
+    );
     const secondReopen = await parseDocx(secondBuffer, {
       detectVariables: false,
       preloadFonts: false,
@@ -191,7 +193,7 @@ describe("rtl + textEffect round-trip combined", () => {
   test("preserves both marks together", () => {
     const input = wrap(runText("mixed", { rtl: true, effect: "shimmer", bold: true }));
     const pmDoc = toProseDoc(input);
-    const out = fromProseDoc(pmDoc, input);
+    const out = fromProseDoc(pmDoc, input, { stylesheetSource: { type: "package" } });
     const run = findRun(firstParagraph(out), "mixed");
     expect(run.formatting?.rtl).toBe(true);
     expect(run.formatting?.effect).toBe("shimmer");

@@ -118,7 +118,10 @@ describe("FieldExtension", () => {
       displayText: "",
       _docxEmptyResultRuns: runs,
     });
-    expect(fromProseDoc(parsed).package.document.content).toEqual([paragraph]);
+    expect(
+      fromProseDoc(parsed, undefined, { stylesheetSource: { type: "package" } }).package.document
+        .content,
+    ).toEqual([paragraph]);
   });
 
   test.each([
@@ -144,7 +147,9 @@ describe("FieldExtension", () => {
     const parsed = DOMParser.fromSchema(schema).parse(host);
     expect(parsed.firstChild?.firstChild?.attrs["_docxEmptyResultRuns"]).toBeNull();
     expect(parsed.firstChild?.firstChild?.attrs["displayText"]).toBe("{page}");
-    expect(() => fromProseDoc(parsed)).not.toThrow();
+    expect(() =>
+      fromProseDoc(parsed, undefined, { stylesheetSource: { type: "package" } }),
+    ).not.toThrow();
   });
 
   test("preserves hyperlink bookmark boundaries through DOM serialization", () => {

@@ -261,7 +261,9 @@ describe("ListExtension Enter numbering", () => {
       state = state.apply(transaction);
     });
 
-    const refreshedDocument = fromProseDoc(state.doc, document);
+    const refreshedDocument = fromProseDoc(state.doc, document, {
+      stylesheetSource: { type: "package" },
+    });
     let refreshedState = EditorState.create({
       doc: toProseDoc(refreshedDocument, { styles: refreshedDocument.package.styles }),
       plugins: [createDocumentNumberingPlugin(MULTILEVEL_NUMBERING.definitions)],

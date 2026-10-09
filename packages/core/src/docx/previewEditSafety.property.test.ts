@@ -225,7 +225,11 @@ describe("an edited preview saves the drawing it was made from", () => {
           );
           const authoredCapture = drawingOf(document).rawXml;
 
-          const edited = fromProseDoc(withEditedImage(toProseDoc(document), EDITS[edit]), document);
+          const edited = fromProseDoc(
+            withEditedImage(toProseDoc(document), EDITS[edit]),
+            document,
+            { stylesheetSource: { type: "package" } },
+          );
           const savedDrawing = drawingOf(edited);
           const saved = await savedPackageOf(edited);
 

@@ -73,7 +73,9 @@ describe("suggestion serialization strip", () => {
       schema.text(" tail"),
     ]);
 
-    const paragraph = firstParagraph(fromProseDoc(doc));
+    const paragraph = firstParagraph(
+      fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } }),
+    );
     expect(paragraphPlainText(paragraph)).toBe("Keep this  tail");
     expect(paragraph.content.some((item) => item.type === "insertion")).toBe(false);
 
@@ -91,7 +93,9 @@ describe("suggestion serialization strip", () => {
       schema.text(" here"),
     ]);
 
-    const paragraph = firstParagraph(fromProseDoc(doc));
+    const paragraph = firstParagraph(
+      fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } }),
+    );
     expect(paragraphPlainText(paragraph)).toBe("Keep proposed removal here");
     expect(paragraph.content.some((item) => item.type === "deletion")).toBe(false);
 
@@ -112,7 +116,9 @@ describe("suggestion serialization strip", () => {
       ]),
     ]);
 
-    const paragraph = firstParagraph(fromProseDoc(doc));
+    const paragraph = firstParagraph(
+      fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } }),
+    );
     const xml = serializeParagraph(paragraph);
 
     // Real tracked changes survive.
@@ -136,7 +142,9 @@ describe("suggestion serialization strip", () => {
       schema.text(" survivor"),
     ]);
 
-    const paragraph = firstParagraph(fromProseDoc(doc));
+    const paragraph = firstParagraph(
+      fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } }),
+    );
     expect(paragraphPlainText(paragraph)).toBe(" survivor");
     expect(serializeParagraph(paragraph)).not.toContain("orphan suggested");
   });

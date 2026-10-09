@@ -78,11 +78,15 @@ const assertTwoSaves = async (source: Document) => {
       revisions++;
   });
   expect(revisions).toBeGreaterThan(0);
-  const projected = fromProseDoc(toProseDoc(source), source);
+  const projected = fromProseDoc(toProseDoc(source), source, {
+    stylesheetSource: { type: "package" },
+  });
   expect(sourceSpan(projected)).toBe(original);
   const opened = await parseDocx(await createDocx(projected), { preloadFonts: false });
   expect(sourceSpan(opened)).toBe(original);
-  const projectedAgain = fromProseDoc(toProseDoc(opened), opened);
+  const projectedAgain = fromProseDoc(toProseDoc(opened), opened, {
+    stylesheetSource: { type: "package" },
+  });
   expect(sourceSpan(projectedAgain)).toBe(original);
   const reopened = await parseDocx(await createDocx(projectedAgain), { preloadFonts: false });
   expect(sourceSpan(reopened)).toBe(original);
@@ -91,7 +95,9 @@ const assertTwoSaves = async (source: Document) => {
       EditorState.create({ doc: toProseDoc(reopened) }),
       mode,
     );
-    const resolvedSource = fromProseDoc(resolved.doc, reopened);
+    const resolvedSource = fromProseDoc(resolved.doc, reopened, {
+      stylesheetSource: { type: "package" },
+    });
     const savedResolved = await parseDocx(await createDocx(resolvedSource), {
       preloadFonts: false,
     });
@@ -183,9 +189,14 @@ for (const type of ["insertion", "deletion"] as const) {
     const tag = type === "insertion" ? "ins" : "del";
     expect(xml).toMatch(new RegExp(`<w:${tag}[^>]*>.*<w:sdt>.*<w:sdtContent><w:hyperlink`, "u"));
     expect(xml.match(/folio:resolutionJoins=/gu)).toHaveLength(1);
-    const reopened = await parseDocx(await createDocx(fromProseDoc(toProseDoc(source), source)), {
-      preloadFonts: false,
-    });
+    const reopened = await parseDocx(
+      await createDocx(
+        fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+      ),
+      {
+        preloadFonts: false,
+      },
+    );
     const reopenedParagraph = reopened.package.document.content.at(0);
     if (reopenedParagraph?.type !== "paragraph") throw new TypeError("Saved paragraph missing.");
     expect(serializeParagraph(reopenedParagraph)).toContain('<w:hyperlink w:anchor="target">');
@@ -194,9 +205,14 @@ for (const type of ["insertion", "deletion"] as const) {
         EditorState.create({ doc: toProseDoc(reopened) }),
         mode,
       );
-      const final = await parseDocx(await createDocx(fromProseDoc(resolved.doc, reopened)), {
-        preloadFonts: false,
-      });
+      const final = await parseDocx(
+        await createDocx(
+          fromProseDoc(resolved.doc, reopened, { stylesheetSource: { type: "package" } }),
+        ),
+        {
+          preloadFonts: false,
+        },
+      );
       const expected = (mode === "accept") === (type === "insertion") ? "linked" : "";
       expect(toProseDoc(final).textContent).toBe(expected);
     }

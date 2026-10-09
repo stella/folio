@@ -133,7 +133,11 @@ const firstImage = (document: Document): Image | null => {
 };
 
 const editorRoundTrip = (image: Image): Image | null =>
-  firstImage(fromProseDoc(toProseDoc(documentWithImage(image)), documentWithImage(image)));
+  firstImage(
+    fromProseDoc(toProseDoc(documentWithImage(image)), documentWithImage(image), {
+      stylesheetSource: { type: "package" },
+    }),
+  );
 
 /** The facts, as the model should hold them. */
 const factsOf = (image: Image | null) => ({

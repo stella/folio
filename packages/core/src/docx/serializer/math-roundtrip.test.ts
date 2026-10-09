@@ -86,7 +86,7 @@ describe("math equation round-trip", () => {
     } as unknown as Document;
 
     const pmDoc = toProseDoc(doc);
-    const docAgain = fromProseDoc(pmDoc, doc);
+    const docAgain = fromProseDoc(pmDoc, doc, { stylesheetSource: { type: "package" } });
     const para2 = docAgain.package.document.content.at(0);
     expect(para2?.type).toBe("paragraph");
     if (para2?.type !== "paragraph") {

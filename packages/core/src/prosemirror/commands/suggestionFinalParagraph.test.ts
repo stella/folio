@@ -225,7 +225,9 @@ const paragraphsInChangedContainer = (
 };
 
 const documentModel = (state: EditorState): Document =>
-  fromProseDoc(state.doc, sourceDocuments.get(state.doc));
+  fromProseDoc(state.doc, sourceDocuments.get(state.doc), {
+    stylesheetSource: { type: "package" },
+  });
 
 const documentBuffer = async (state: EditorState): Promise<Uint8Array> =>
   await createDocx(documentModel(state));
