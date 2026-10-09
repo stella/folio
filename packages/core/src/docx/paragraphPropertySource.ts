@@ -102,6 +102,17 @@ export const copyParagraphIndentationProjection = ({
   }
 };
 
+/** History restores its captured authored/effective baseline before normalization. */
+export const restoreParagraphIndentationProjection = ({
+  target,
+  source,
+}: CopyParagraphIndentationProjectionOptions): void => {
+  assignedIndentationProjections.delete(target);
+  Reflect.deleteProperty(target, paragraphIndentationProjection);
+  copyParagraphIndentationProjection({ target, source });
+  assignedIndentationProjections.add(target);
+};
+
 const indentationFields = (formatting: ParagraphFormatting | undefined): IndentationFormatting => ({
   indentLeft: formatting?.indentLeft,
   indentRight: formatting?.indentRight,
@@ -136,7 +147,11 @@ export const assignParagraphIndentationProjection = ({
   }
   paragraph.formatting = { ...authored, ...effective };
   if (Object.keys(paragraph.formatting).length === 0) delete paragraph.formatting;
-  if (Object.values(effective).every((value) => value === undefined)) {
+  if (
+    Object.values(effective).every((value) => value === undefined) ||
+    (getParagraphPropertySource(paragraph) === undefined &&
+      INDENTATION_FIELDS.every((key) => effective[key] === authored?.[key]))
+  ) {
     Reflect.deleteProperty(paragraph, paragraphIndentationProjection);
     return;
   }

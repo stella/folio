@@ -3,6 +3,7 @@ import {
   withBodyContent,
   OP_STORIES,
   DOCUMENT_OP_TYPES,
+  EMPTY_PROPERTY_SETS,
   type OpStory,
   type DocumentOp,
 } from "@stll/docx-core/ops";
@@ -115,11 +116,33 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
           numPr?.kind === "reference" ? { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 } : undefined,
         numbering,
       });
+      const authoredFormatting = withDirectParagraphIndentation(next.formatting, authored);
       assignParagraphIndentationProjection({
         paragraph: next,
-        authored: withDirectParagraphIndentation(next.formatting, authored),
+        authored: authoredFormatting,
         inherited: paragraphIndentationFromFormatting(inheritance._resolvedFormatting) ?? {},
       });
+      // Structural inverse preconditions capture the fields before rendering
+      // normalization; undo its effective indentation before those inverses.
+      if (
+        canonicalJson(paragraphIndentationFromFormatting(next.formatting)) !==
+        canonicalJson(paragraphIndentationFromFormatting(formatting))
+      ) {
+        inverse.unshift({
+          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+          story,
+          blockId:
+            paragraph.paraId ??
+            panic("Canonical numbering normalization requires paragraph identities."),
+          patch: {
+            indentLeft: formatting?.indentLeft ?? null,
+            indentRight: formatting?.indentRight ?? null,
+            indentFirstLine: formatting?.indentFirstLine ?? null,
+            hangingIndent: formatting?.hangingIndent ?? null,
+          },
+          whenEmpty: formatting === undefined ? EMPTY_PROPERTY_SETS.OMIT : EMPTY_PROPERTY_SETS.KEEP,
+        });
+      }
       if (rendering === null) delete next.listRendering;
       else {
         // Counters consume templates, never a marker substituted on an earlier pass.
