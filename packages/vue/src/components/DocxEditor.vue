@@ -161,7 +161,10 @@
     >
       <DocumentOutline
         v-if="panelLayout.outline === 'column' || panelLayout.outline === 'rail'"
-        :headings="outlineHeadings"
+        :headings="visibleOutlineHeadings"
+        :available="outlineHeadings.length > 1"
+        :outline-depth="outlineDepth"
+        @outline-depth-change="handleOutlineDepthChange"
         :get-scroll-container="() => editorScrollRef"
         :doc-size="editorView?.state.doc.content.size ?? 0"
         :active-id="activeHeadingId"
@@ -439,7 +442,10 @@
           @mousedown.prevent="panelOverlay = 'none'"
         />
         <DocumentOutline
-          :headings="outlineHeadings"
+          :headings="visibleOutlineHeadings"
+          :available="outlineHeadings.length > 1"
+          :outline-depth="outlineDepth"
+          @outline-depth-change="handleOutlineDepthChange"
           :get-scroll-container="() => editorScrollRef"
           :doc-size="editorView?.state.doc.content.size ?? 0"
           :active-id="activeHeadingId"
@@ -525,6 +531,8 @@ import {
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document, SectionProperties, Style } from "@stll/folio-core/types/document";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
+import { DEFAULT_OUTLINE_DEPTH, filterHeadingsByDepth } from "@stll/folio-core/utils/outlineDepth";
+import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import {
   getDocumentWatermark,
@@ -764,6 +772,12 @@ const showPageSetup = ref(false);
 const showTableProperties = ref(false);
 const showWatermark = ref(false);
 const showOutline = ref(props.showOutline);
+const outlineDepthState = ref<OutlineDepth>(DEFAULT_OUTLINE_DEPTH);
+const outlineDepth = computed(() => props.outlineDepth ?? outlineDepthState.value);
+const handleOutlineDepthChange = (depth: OutlineDepth) => {
+  if (props.outlineDepth === undefined) outlineDepthState.value = depth;
+  props.onOutlineDepthChange?.(depth);
+};
 const showSidebar = ref(false);
 const panelOverlay = ref<PanelOverlay>("none");
 const activeSidebarItem = ref<string | null>(null);
@@ -774,6 +788,9 @@ const bookmarks = shallowRef<{ name: string; label?: string }[]>([]);
 // Populated by `useOutlineSidebar` — collected lazily on outline open and
 // re-collected on doc changes while the panel stays open (see below).
 const outlineHeadings = shallowRef<HeadingInfo[]>([]);
+const visibleOutlineHeadings = computed(() =>
+  filterHeadingsByDepth(outlineHeadings.value, outlineDepth.value),
+);
 
 const {
   zoom,
@@ -1298,7 +1315,7 @@ function updateActiveHeading(): void {
     .filter(({ pm }) => Number.isFinite(pm))
     .sort((a, b) => a.pm - b.pm);
   let next: string | null = null;
-  for (const heading of outlineHeadings.value) {
+  for (const heading of visibleOutlineHeadings.value) {
     const candidate = offsets.find(({ pm }) => pm >= heading.pmPos);
     if (candidate && candidate.top <= threshold) next = String(heading.pmPos);
   }

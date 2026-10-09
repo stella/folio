@@ -40,7 +40,7 @@
  * Quote`), which is why {@link normalizeStyleName} ignores both.
  */
 
-import { type OutlineLevel, headingLevelOf } from "@stll/docx-core/model";
+import { type OutlineLevel, headingLevelOf, headingOutlineLevel } from "@stll/docx-core/model";
 
 import type { DocDefaults, Style } from "../types/document";
 import {
@@ -185,11 +185,12 @@ const asBuiltInName = (normalized: string): BuiltInStyleName | undefined =>
   CANONICAL_BY_NORMALIZED.get(normalized);
 
 /**
- * The outline level a style chain sets: the style's own `w:outlineLvl`, else
- * the nearest ancestor's (17.7.1). `styleParser` already flattens `w:basedOn`
- * for a parsed package, but a style set built in memory carries the raw chain,
- * so the walk keeps both kinds of input on the same answer. `seen` guards the
- * circular `basedOn` a malformed package can contain.
+ * The effective outline contribution of a style chain: the nearest explicit
+ * `w:outlineLvl` wins across the chain; only when none exists does the nearest
+ * built-in heading name supply its implicit level. `styleParser` already flattens
+ * `w:basedOn` for a parsed package, but a style set built in memory carries the
+ * raw chain, so the walk keeps both kinds of input on the same answer. `seen`
+ * guards the circular `basedOn` a malformed package can contain.
  */
 const inheritedOutlineLevel = (
   style: Style,
@@ -197,14 +198,21 @@ const inheritedOutlineLevel = (
 ): OutlineLevel | undefined => {
   const seen = new Set<string>();
   let current: Style | undefined = style;
+  let nearestImplicitHeadingLevel: OutlineLevel | undefined;
   while (current && !seen.has(current.styleId)) {
     seen.add(current.styleId);
     if (current.pPr?.outlineLevel !== undefined) {
       return current.pPr.outlineLevel;
     }
+    if (nearestImplicitHeadingLevel === undefined) {
+      const namedLevel = headingOutlineLevelFromStyleName(current.name);
+      if (namedLevel !== undefined) {
+        nearestImplicitHeadingLevel = headingOutlineLevel(namedLevel);
+      }
+    }
     current = current.basedOn === undefined ? undefined : styleById.get(current.basedOn);
   }
-  return undefined;
+  return nearestImplicitHeadingLevel;
 };
 
 /** The level a heading style is indexed under, or undefined if it is not one. */

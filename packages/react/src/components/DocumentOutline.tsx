@@ -1,8 +1,8 @@
 /**
  * Document outline for the docx editor.
  *
- * Owns the outline's chrome (the column, rail or drawer surface, its header
- * and toggles) and the editor-specific data: heading positions over the full
+ * Owns the outline's chrome (the column, rail or opened track, its header and
+ * toggles) and the editor-specific data: heading positions over the full
  * document size (the paged editor virtualises pages). The active heading is
  * tracked once by the editor (`useActiveHeading`) and passed in, so every
  * surface marks the same one. The list of headings itself comes from the
@@ -10,8 +10,8 @@
  * default), told which presentation it fills.
  *
  * The editor decides the surface from the width it has (see
- * `@stll/folio-core/panel-layout`): a `column` beside the page, a `rail` of heading ticks
- * that can open the full outline as a drawer, or a `drawer` over the page.
+ * `@stll/folio-core/panel-layout`): a `column` beside the page, a `rail` of heading ticks,
+ * or an explicitly opened, width-clamped track beside the document.
  */
 
 import type React from "react";
@@ -21,23 +21,27 @@ import { PanelLeftOpenIcon, XIcon } from "lucide-react";
 import { useTranslations } from "use-intl";
 
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
+import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { useFolioUI } from "../ui/folio-ui";
 import type { OutlineItem } from "../ui/folio-ui";
 import { headingId } from "./hooks/useActiveHeading";
 import { useDrawerFocus } from "./panelDrawer";
 import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 
-/** Where the outline sits: its own column, a rail of ticks, or a drawer over the page. */
-export type DocumentOutlineSurface = "column" | "rail" | "drawer";
+/** Where the outline sits: a column, a tick rail, or an opened in-flow panel. */
+export type DocumentOutlineSurface = "column" | "expanded" | "rail";
 
 const SURFACE_WIDTH = {
   column: PANEL_METRICS.outlineColumnWidth,
   rail: PANEL_METRICS.outlineRailWidth,
-  drawer: PANEL_METRICS.drawerWidth,
+  expanded: PANEL_METRICS.outlineColumnWidth,
 } as const satisfies Record<DocumentOutlineSurface, number>;
 
 export type DocumentOutlineProps = {
   headings: HeadingInfo[];
+  available: boolean;
+  outlineDepth: OutlineDepth;
+  onOutlineDepthChange: (depth: OutlineDepth) => void;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   /** Total ProseMirror document content size — drives proportional tick
    *  placement when pages are virtualised. */
@@ -47,16 +51,20 @@ export type DocumentOutlineProps = {
   /** Jump to the heading with item id `id`. */
   onJump: (id: string) => void;
   surface: DocumentOutlineSurface;
-  /** Rail: whether the full outline is open as a drawer. */
+  /** Rail: whether the full outline is open. */
   expanded?: boolean;
-  /** Rail: open the full outline as a drawer. */
+  /** Rail: open the full outline. */
   onExpand?: () => void;
-  /** Drawer: close it (after a jump, Escape, or the close button). */
+  /** Close the opened outline (after a jump, Escape, or the close button). */
   onClose?: () => void;
+  width?: number;
 };
 
 export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
   headings,
+  available,
+  outlineDepth,
+  onOutlineDepthChange,
   scrollContainerRef,
   docSize,
   activeId,
@@ -65,11 +73,21 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
   expanded,
   onExpand,
   onClose,
+  width: widthOverride,
 }) => {
   const t = useTranslations("folio");
   const OutlineRail = useFolioUI().OutlineRail;
   const navRef = useRef<HTMLElement>(null);
-  useDrawerFocus(navRef, surface === "drawer" && onClose ? onClose : null);
+  const expandButtonRef = useRef<HTMLButtonElement>(null);
+  useDrawerFocus({
+    container: navRef,
+    onClose: surface === "expanded" && onClose ? onClose : null,
+    returnFocusRef: expandButtonRef,
+  });
+  const controlMinimumStyle = {
+    minWidth: PANEL_METRICS.controlMinimumSize,
+    minHeight: PANEL_METRICS.controlMinimumSize,
+  };
 
   const items = useMemo<OutlineItem[]>(
     () =>
@@ -100,7 +118,7 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
   const handleJump = useCallback(
     (id: string) => {
       onJump(id);
-      if (surface === "drawer") {
+      if (surface === "expanded") {
         onClose?.();
       }
     },
@@ -109,12 +127,12 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
 
   const resolvePct = useCallback((id: string) => pctById.get(id) ?? null, [pctById]);
 
-  if (headings.length < 2) {
+  if (!available) {
     return null;
   }
 
   const outlineLabel = t("editor.showDocumentOutline");
-  const width = SURFACE_WIDTH[surface];
+  const width = widthOverride ?? SURFACE_WIDTH[surface];
   const rail = (
     <OutlineRail
       activeId={activeId}
@@ -139,11 +157,13 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
         style={{ width }}
       >
         <button
+          ref={expandButtonRef}
           aria-expanded={expanded ?? false}
           aria-label={outlineLabel}
           className="folio-outline-icon-button"
           data-testid="folio-outline-expand"
           onClick={onExpand}
+          style={controlMinimumStyle}
           title={outlineLabel}
           type="button"
         >
@@ -158,24 +178,46 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
     <nav
       ref={navRef}
       aria-label={outlineLabel}
-      className={`folio-outline folio-outline--${surface}`}
+      className={`folio-outline folio-outline--${surface === "expanded" ? "column" : surface}`}
       data-testid="folio-outline"
       data-folio-outline-surface={surface}
       style={{ width }}
     >
       <div className="folio-outline-header">
-        <span className="folio-outline-title">{t("editor.outlineTitle")}</span>
-        {surface === "drawer" && onClose && (
-          <button
-            aria-label={t("common.closeDialog")}
-            className="folio-outline-icon-button"
-            onClick={onClose}
-            title={t("common.closeDialog")}
-            type="button"
+        <div className="folio-outline-heading-row">
+          <span className="folio-outline-title">{t("editor.outlineTitle")}</span>
+          {surface === "expanded" && onClose && (
+            <button
+              aria-label={t("common.closeDialog")}
+              className="folio-outline-icon-button"
+              onClick={onClose}
+              style={controlMinimumStyle}
+              title={t("common.closeDialog")}
+              type="button"
+            >
+              <XIcon aria-hidden="true" size={16} />
+            </button>
+          )}
+        </div>
+        <label className="folio-outline-depth-control">
+          <span>{t("editor.outlineDepthLabel")}</span>
+          <select
+            aria-label={t("editor.outlineDepthLabel")}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              if (value === "all") {
+                onOutlineDepthChange("all");
+                return;
+              }
+              onOutlineDepthChange(value === "3" ? 3 : 2);
+            }}
+            value={outlineDepth}
           >
-            <XIcon aria-hidden="true" size={16} />
-          </button>
-        )}
+            <option value={2}>{t("editor.outlineDepthTwo")}</option>
+            <option value={3}>{t("editor.outlineDepthThree")}</option>
+            <option value="all">{t("editor.outlineDepthAll")}</option>
+          </select>
+        </label>
       </div>
       {rail}
     </nav>

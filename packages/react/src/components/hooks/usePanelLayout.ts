@@ -60,10 +60,16 @@ export const usePanelLayout = ({
     return () => observer.disconnect();
   }, [row, scrollContainerRef]);
 
-  const layout = computePanelLayout({ availableWidth, pageWidth, outline, comments });
+  const requestedOutline = overlay === "outline" && outline !== "absent" ? "expanded" : outline;
+  const layout = computePanelLayout({
+    availableWidth,
+    pageWidth,
+    outline: requestedOutline,
+    comments,
+  });
 
-  // A drawer closes once its panel has a track of its own again (or is gone).
-  const outlineDrawn = layout.outline === "rail" || layout.outline === "drawer";
+  // An overlay closes if its panel is no longer available.
+  const outlineDrawn = layout.outline !== "none" && layout.outline !== "column";
   const commentsDrawn = layout.comments === "drawer";
   useEffect(() => {
     if ((overlay === "outline" && !outlineDrawn) || (overlay === "comments" && !commentsDrawn)) {
@@ -72,8 +78,14 @@ export const usePanelLayout = ({
   }, [commentsDrawn, outlineDrawn, overlay]);
 
   const layoutWithCommentsOpen = useCallback(
-    () => computePanelLayout({ availableWidth, pageWidth, outline, comments: "open" }),
-    [availableWidth, outline, pageWidth],
+    () =>
+      computePanelLayout({
+        availableWidth,
+        pageWidth,
+        outline: requestedOutline,
+        comments: "open",
+      }),
+    [availableWidth, pageWidth, requestedOutline],
   );
 
   return { rowRef: setRow, layout, overlay, setOverlay, layoutWithCommentsOpen };

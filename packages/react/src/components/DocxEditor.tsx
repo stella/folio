@@ -225,6 +225,8 @@ import { queryHtmlElement } from "@stll/folio-core/utils/domGuards";
 import { onFontsLoaded } from "@stll/folio-core/utils/fontLoader";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
+import { DEFAULT_OUTLINE_DEPTH, filterHeadingsByDepth } from "@stll/folio-core/utils/outlineDepth";
+import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { pointsToHalfPoints, twipsToPixels } from "@stll/folio-core/utils/units";
 import { useDocumentHistory } from "../hooks/useHistory";
 import {
@@ -529,6 +531,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     initialScrollTop,
     onScrollTopChange,
     showOutline: showOutlineProp = true,
+    outlineDepth: outlineDepthProp,
+    onOutlineDepthChange,
     onPrint,
     onInsertImage,
     onInsertTable,
@@ -563,6 +567,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   ref,
 ) {
   const t = useTranslations("folio");
+  const [outlineDepthState, setOutlineDepthState] = useState<OutlineDepth>(DEFAULT_OUTLINE_DEPTH);
+  const outlineDepth = outlineDepthProp ?? outlineDepthState;
+  const handleOutlineDepthChange = useCallback(
+    (depth: OutlineDepth) => {
+      if (outlineDepthProp === undefined) setOutlineDepthState(depth);
+      onOutlineDepthChange?.(depth);
+    },
+    [onOutlineDepthChange, outlineDepthProp],
+  );
 
   // Surface a failed clipboard read behind the "paste without formatting"
   // keystroke: the core command owns no UI and emits a bubbling event instead.
@@ -1208,6 +1221,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     activeHfRId = hfEditIsFirstPage ? activeFirstHeaderRId : activeHeaderRId;
   }
 
+  const visibleOutlineHeadings = useMemo(
+    () => filterHeadingsByDepth(outlineHeadings, outlineDepth),
+    [outlineDepth, outlineHeadings],
+  );
+
   // Side panels: the page is centred between the outline track and the
   // comments; the width the row has decides how each is shown.
   const panels = usePanelLayout({
@@ -1224,7 +1242,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   })();
   const { activeId: activeHeadingId, markJumped: markHeadingJumped } = useActiveHeading(
     scrollContainerRef,
-    panels.layout.outline === "none" ? NO_HEADINGS : outlineHeadings,
+    panels.layout.outline === "none" ? NO_HEADINGS : visibleOutlineHeadings,
   );
   const closePanelOverlay = useCallback(() => setPanelOverlay("none"), [setPanelOverlay]);
   const toggleOutlineOverlay = useCallback(
@@ -4595,7 +4613,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   ]);
   const openCommentThreadCount = useMemo(() => countOpenCommentThreads(comments), [comments]);
   const outlineToggle = ((): OutlineToggleState => {
-    if (panels.layout.outline !== "drawer") return "absent";
+    if (panels.layout.outline !== "drawer" && panels.layout.outline !== "expanded") {
+      return "absent";
+    }
     return panelOverlay === "outline" ? "open" : "closed";
   })();
   const panelToggles = useMemo(
@@ -5004,16 +5024,23 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                   data-folio-outline={panels.layout.outline}
                   data-folio-comments={panels.layout.comments}
                 >
-                  {(panels.layout.outline === "column" || panels.layout.outline === "rail") && (
+                  {panels.layout.outline !== "none" && panels.layout.outline !== "drawer" && (
                     <DocumentOutline
-                      headings={outlineHeadings}
+                      headings={visibleOutlineHeadings}
+                      available={outlineHeadings.length > 1}
+                      outlineDepth={outlineDepth}
+                      onOutlineDepthChange={handleOutlineDepthChange}
                       scrollContainerRef={scrollContainerRef}
                       docSize={pagedEditorRef.current?.getView()?.state.doc.content.size ?? 0}
                       activeId={activeHeadingId}
                       onJump={handleOutlineJump}
                       surface={panels.layout.outline}
+                      width={panels.layout.outlineTrackWidth}
                       expanded={panelOverlay === "outline"}
                       onExpand={toggleOutlineOverlay}
+                      {...(panels.layout.outline === "expanded"
+                        ? { onClose: closePanelOverlay }
+                        : {})}
                     />
                   )}
                   {/* Editor container - this is the scroll container (toolbar is above, not inside) */}
@@ -5332,20 +5359,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                   </div>
                   {/* end scroll container */}
 
-                  {panelOverlay === "outline" && (
-                    <>
-                      <PanelScrim onDismiss={closePanelOverlay} />
-                      <DocumentOutline
-                        headings={outlineHeadings}
-                        scrollContainerRef={scrollContainerRef}
-                        docSize={pagedEditorRef.current?.getView()?.state.doc.content.size ?? 0}
-                        activeId={activeHeadingId}
-                        onJump={handleOutlineJump}
-                        surface="drawer"
-                        onClose={closePanelOverlay}
-                      />
-                    </>
-                  )}
                   {commentsSurface === "drawer" && <PanelScrim onDismiss={dismissCommentsDrawer} />}
                 </div>
                 {/* end panels row */}

@@ -341,6 +341,10 @@ export const messages: FolioMessages = {
     "editor": {
       "editing": "संपादन",
       "editingDescription": "दस्तावेज़ को सीधे संपादित करें",
+      "outlineDepthAll": "सभी स्तर",
+      "outlineDepthLabel": "शीर्षक दिखाएँ",
+      "outlineDepthThree": "स्तर 1–3",
+      "outlineDepthTwo": "स्तर 1–2",
       "outlineTitle": "रूपरेखा",
       "showDocumentOutline": "दस्तावेज़ रूपरेखा",
       "suggesting": "परिवर्तन ट्रैक करें",

@@ -341,6 +341,10 @@ export const messages: FolioMessages = {
     "editor": {
       "editing": "Düzenleme",
       "editingDescription": "Belgeyi doğrudan düzenleyin",
+      "outlineDepthAll": "Tüm düzeyler",
+      "outlineDepthLabel": "Başlıkları göster",
+      "outlineDepthThree": "1–3. düzeyler",
+      "outlineDepthTwo": "1–2. düzeyler",
       "outlineTitle": "Ana hat",
       "showDocumentOutline": "Belge ana hattı",
       "suggesting": "Değişiklik izleme",

@@ -44,6 +44,7 @@ import { JSX } from 'react';
 import { KeyboardShortcutScope } from '@stll/folio-core/managers/editorShortcuts';
 import { Layout } from '@stll/folio-core/layout-engine/types';
 import { Menu } from '@base-ui/react/menu';
+import { OutlineDepth } from '@stll/folio-core/utils/outlineDepth';
 import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRenderer';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Popover } from '@base-ui/react/popover';

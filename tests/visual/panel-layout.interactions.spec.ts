@@ -93,7 +93,9 @@ test.describe("side panel layout", () => {
     });
   }
 
-  test("Tab reaches the outline after focused headings are removed", async ({ page }) => {
+  test("Tab reaches the depth control and outline after focused headings are removed", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
     await loadDocument(page, { review: "none" });
     const outline = page.locator('[data-folio-outline-surface="column"]');
@@ -130,6 +132,8 @@ test.describe("side panel layout", () => {
       element.before(before);
       before.focus();
     });
+    await page.keyboard.press("Tab");
+    await expect(outline.getByRole("combobox")).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(items.last()).toBeFocused();
     await page.keyboard.press("ArrowUp");

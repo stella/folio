@@ -341,6 +341,10 @@ export const messages: FolioMessages = {
     "editor": {
       "editing": "עריכה",
       "editingDescription": "ערוך את המסמך ישירות",
+      "outlineDepthAll": "כל הרמות",
+      "outlineDepthLabel": "הצגת כותרות",
+      "outlineDepthThree": "רמות 1–3",
+      "outlineDepthTwo": "רמות 1–2",
       "outlineTitle": "ניווט",
       "showDocumentOutline": "חלונית הניווט במסמך",
       "suggesting": "מעקב אחר שינויים",

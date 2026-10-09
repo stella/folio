@@ -337,6 +337,10 @@
     "editor": {
       "editing": "Rediģēšana",
       "editingDescription": "Rediģējiet dokumentu tieši",
+      "outlineDepthAll": "Visi līmeņi",
+      "outlineDepthLabel": "Rādīt virsrakstus",
+      "outlineDepthThree": "1.–3. līmenis",
+      "outlineDepthTwo": "1.–2. līmenis",
       "outlineTitle": "Struktūra",
       "showDocumentOutline": "Dokumenta struktūra",
       "suggesting": "Izmaiņu reģistrēšana",
