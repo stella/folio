@@ -32,6 +32,7 @@ import React, {
 } from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { panic } from "better-result";
 
 import type { Node as PMNode } from "prosemirror-model";
 import { NodeSelection, TextSelection } from "prosemirror-state";
@@ -53,6 +54,7 @@ import {
 import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
+import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { FolioEditor, FolioEditorDocumentIO } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
@@ -1426,9 +1428,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     );
 
     useEffect(() => {
-      if (readOnly || usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
-        noteEditorRef.current?.close();
-    }, [experimentalSession, readOnly]);
+      if (readOnly) noteEditorRef.current?.close();
+    }, [readOnly]);
 
     const getCanonicalApi = useCallback(() => hiddenPMRef.current, []);
 
@@ -2102,6 +2103,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       });
     }
     const documentChangeNotifyTimerRef = useRef<number | null>(null);
+    const compositionNotificationRetryRef = useRef<(() => void) | null>(null);
     // A note follows its reference: a reference whose deletion the reported
     // edits rejected gives its note back its text, and deleting it again (as
     // undoing that reject does) takes the text with it.
@@ -2115,6 +2117,23 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         window.clearTimeout(documentChangeNotifyTimerRef.current);
         documentChangeNotifyTimerRef.current = null;
       }
+
+      if (hiddenPMRef.current?.isCanonicalComposing()) {
+        const activeView =
+          getActiveEditorStory().view ?? panic("Canonical composition requires an editor view.");
+        if (compositionNotificationRetryRef.current === null) {
+          compositionNotificationRetryRef.current = afterCanonicalCompositionSettles(
+            activeView,
+            () => {
+              compositionNotificationRetryRef.current = null;
+              flushDocumentChangeNotification();
+            },
+          );
+        }
+        return;
+      }
+      compositionNotificationRetryRef.current?.();
+      compositionNotificationRetryRef.current = null;
 
       let newDoc = hiddenPMRef.current?.getDocument();
       const body = hiddenPMRef.current?.getState()?.doc;
@@ -2134,7 +2153,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             : newDoc,
         );
       }
-    }, [experimentalSession, noteFollower]);
+    }, [experimentalSession, noteFollower, getActiveEditorStory]);
 
     const scheduleDocumentChangeNotification = useCallback(() => {
       if (documentChangeNotifyTimerRef.current !== null) {
@@ -2157,6 +2176,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     useEffect(
       () => () => {
         layoutSchedulerRef.current?.dispose();
+        compositionNotificationRetryRef.current?.();
+        compositionNotificationRetryRef.current = null;
         if (documentChangeNotifyTimerRef.current !== null) {
           window.clearTimeout(documentChangeNotifyTimerRef.current);
           documentChangeNotifyTimerRef.current = null;
@@ -4542,13 +4563,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           if (story) {
             e.preventDefault();
             e.stopPropagation();
-            if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-              handleSessionRefusal(
-                "Footnote and endnote editing is unavailable in this session.",
-                CANONICAL_GAP.secondaryStories,
-              );
-              return;
-            }
             noteEditorRef.current?.open(story);
             return;
           }
@@ -4819,14 +4833,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
       },
       // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
-      [
-        experimentalSession,
-        getPositionFromMouse,
-        handleSessionRefusal,
-        onHeaderFooterDoubleClick,
-        onHyperlinkClick,
-        readOnly,
-      ],
+      [getPositionFromMouse, onHeaderFooterDoubleClick, onHyperlinkClick, readOnly],
     );
 
     /**
@@ -5720,8 +5727,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           return folioEditor.getView();
         },
         getActiveView() {
-          if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting))
-            return folioEditor.getView();
           return getActiveEditorStory().view;
         },
         closeNoteStory() {

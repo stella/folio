@@ -1,0 +1,10 @@
+{
+  "generated canonical story lifecycle follows the owner while host props stay stale": [
+    {
+      "seed": -1238563321,
+      "path": "0:0:0:0",
+      "note": "Canonical ADD_NOTE must appear in story listing and mount with stale host props; host-document listing hid owner-created notes.",
+      "date": "2026-10-04"
+    }
+  ]
+}

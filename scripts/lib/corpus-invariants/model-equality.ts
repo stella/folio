@@ -30,6 +30,7 @@
  * With the whole set reported, fixing a loss can only make a count go down.
  */
 
+import { panic } from "better-result";
 import type { Document } from "@stll/folio-core/types/document";
 
 import {
@@ -100,8 +101,36 @@ const normalizeValue = (value: unknown): unknown => {
   return value;
 };
 
-export const normalizeDocumentPackage = (document: Document): unknown =>
-  normalizeValue(document.package);
+const normalizeInternalPartTarget = (target: string): string => {
+  const fragment = target.indexOf("#");
+  if (fragment < 0) return target.toLowerCase();
+  return target.slice(0, fragment).toLowerCase() + target.slice(fragment);
+};
+
+export const normalizeDocumentPackage = (document: Document): unknown => {
+  if (
+    typeof document !== "object" ||
+    document === null ||
+    !Object.hasOwn(document, "package") ||
+    typeof document.package !== "object" ||
+    document.package === null ||
+    !Object.hasOwn(document.package, "document")
+  )
+    panic("Model equality requires Document inputs containing a document package.");
+  const relationships = document.package.relationships;
+  if (!relationships) return normalizeValue(document.package);
+  // Internal targets identify OPC parts, whose names compare without casing.
+  // External URLs and authored text retain their exact spelling.
+  const normalizedRelationships = new Map(relationships);
+  for (const [id, relationship] of relationships) {
+    if (relationship.targetMode === "External") continue;
+    normalizedRelationships.set(id, {
+      ...relationship,
+      target: normalizeInternalPartTarget(relationship.target),
+    });
+  }
+  return normalizeValue({ ...document.package, relationships: normalizedRelationships });
+};
 
 /**
  * The shapes a string is reported as when it is not a token of the format.

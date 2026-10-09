@@ -11,9 +11,11 @@ import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { createDocx } from "@stll/folio-core/docx/rezip";
+import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import type { Document } from "@stll/folio-core/types/document";
+import type { Comment } from "@stll/folio-core/types/content";
+import type { CanonicalCommentResult } from "@stll/folio-core/types/canonicalComments";
 import {
   createCanonicalHeaderFooterOperation,
   DOCUMENT_OP_TYPES,
@@ -173,12 +175,261 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
       expect(editor.current?.undo()).toBe(true);
     });
     expect(editor.current?.getDocument()).toEqual(canonical);
+    await act(async () => {
+      expect(editor.current?.redo()).toBe(true);
+    });
+    const sectionPropertiesCanonical =
+      editor.current?.getDocument() ?? panic("Expected canonical section properties");
+    expect(sectionPropertiesCanonical.package.document.finalSectionProperties).toMatchObject({
+      footnotePr: { numStart: 3 },
+      endnotePr: { numStart: 4 },
+    });
+    let sectionPropertiesSaved: ArrayBuffer | null | undefined;
+    await act(async () => {
+      sectionPropertiesSaved = await editor.current?.save();
+    });
+    if (!sectionPropertiesSaved) panic("Expected saved canonical section properties");
+    const reopenedSectionProperties = await parseDocx(sectionPropertiesSaved, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    expect(reviewDifferences(sectionPropertiesCanonical, reopenedSectionProperties)).toEqual({
+      messages: [],
+      omitted: 0,
+    });
   } finally {
     await act(async () => root.unmount());
     dialogs.mockRestore();
     container.remove();
   }
 });
+
+const collectCommentChanges =
+  (changes: Comment[][], onChange: (next: Comment[]) => void) => (next: Comment[]) => {
+    changes.push(structuredClone(next));
+    onChange(next);
+  };
+const collectCommentErrors = (errors: Error[]) => (error: Error) => errors.push(error);
+
+test.each(["immediate", "deferred"] as const)(
+  "canonical comments preserve %s host feedback through undo and save",
+  async (feedback) => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const editor = createRef<DocxEditorRef>();
+    const errors: Error[] = [];
+    const changes: Comment[][] = [];
+    const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
+    const initialComments: Comment[] = [];
+    const messages = getFolioMessages("en");
+    const onError = collectCommentErrors(errors);
+    let controlledComments = initialComments;
+    const onCommentsChange = collectCommentChanges(changes, (next) => {
+      if (feedback === "immediate") {
+        controlledComments = structuredClone(next);
+        root.render(renderEditor());
+      }
+    });
+    const renderEditor = () => (
+      <IntlProvider locale="en" timeZone="UTC" messages={messages}>
+        <DocxEditor
+          ref={editor}
+          documentBuffer={bytes}
+          experimentalSession="canonical"
+          comments={controlledComments}
+          onCommentsChange={onCommentsChange}
+          onError={onError}
+          showToolbar={false}
+        />
+      </IntlProvider>
+    );
+    try {
+      await act(async () => root.render(renderEditor()));
+      await act(async () => editor.current?.loadDocumentBuffer(bytes));
+      await act(async () => editor.current?.ensureEditorView({ focus: false }));
+
+      let created: CanonicalCommentResult | null = null;
+      await act(async () => {
+        created =
+          editor.current?.getEditor()?.applyCanonicalComment({
+            type: "create",
+            text: "Review this",
+            author: "Reviewer",
+            anchor: { kind: "selection", from: 1, to: 8, story: "main" },
+          }) ?? null;
+      });
+      expect(created?.status).toBe("applied");
+      if (created?.status !== "applied" || created.commentId === undefined) {
+        panic("Expected canonical comment creation");
+      }
+      // Host notifications follow the coalesced document-change notification.
+      await act(async () => await new Promise((resolve) => window.setTimeout(resolve, 300)));
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(created.comments);
+      expect(changes.at(-1)).toEqual(created.comments);
+      // New array identity without a host value change must not undo creation.
+      controlledComments = [...controlledComments];
+      await act(async () => root.render(renderEditor()));
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(created.comments);
+      controlledComments = created.comments;
+      await act(async () => root.render(renderEditor()));
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(controlledComments);
+
+      const revisedContent: Comment["content"] = [
+        {
+          type: "paragraph",
+          paraId:
+            created.comments[0]?.content[0]?.type === "paragraph"
+              ? created.comments[0].content[0].paraId
+              : undefined,
+          formatting: {},
+          content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "Updated" }] }],
+        },
+      ];
+      controlledComments = controlledComments.map((comment) =>
+        comment.id === created.commentId
+          ? { ...comment, done: true, content: revisedContent }
+          : comment,
+      );
+      await act(async () => root.render(renderEditor()));
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(controlledComments);
+
+      await act(async () => {
+        expect(editor.current?.undo()).toBe(true);
+      });
+      const undoneComments = editor.current?.getDocument()?.package.document.comments ?? [];
+      expect(undoneComments.at(0)?.done).toBeFalsy();
+      expect(undoneComments.at(0)?.content).toEqual(created.comments.at(0)?.content);
+      expect(changes.at(-1)).toEqual(undoneComments);
+      // A stale controlled value must not replay the edit after journal undo.
+      controlledComments = [...controlledComments];
+      await act(async () => root.render(renderEditor()));
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(undoneComments);
+      await act(async () => {
+        expect(editor.current?.redo()).toBe(true);
+        expect(editor.current?.getDocument()?.package.document.comments?.at(0)?.done).toBe(true);
+      });
+      await act(async () => {
+        expect(editor.current?.undo()).toBe(true);
+      });
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(undoneComments);
+      await act(async () => {
+        expect(editor.current?.undo()).toBe(true);
+      });
+      expect(editor.current?.getDocument()?.package.document.comments ?? []).toEqual([]);
+      await act(async () => {
+        expect(editor.current?.redo()).toBe(true);
+      });
+      expect(editor.current?.getDocument()?.package.document.comments).toEqual(undoneComments);
+
+      const expected = editor.current?.getDocument() ?? panic("Expected canonical comments model");
+      for (const selective of [false, true]) {
+        await act(async () => {
+          const saved = await editor.current?.save({ selective });
+          if (!saved) panic("Expected saved canonical comments");
+          expect((await validateDocx(saved)).valid).toBe(true);
+          const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+          expect(reopened.package.document.comments).toEqual(undoneComments);
+          expect(describePackageDifferences(expected, reopened)).toEqual({
+            messages: [],
+            omitted: 0,
+          });
+        });
+        if (!selective) expect(errors).toEqual([]);
+      }
+      expect(errors).toEqual([]);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  },
+);
+
+test.each(["resolution", "content"] as const)(
+  "a controlled comment %s change during composition applies once composition settles",
+  async (change) => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const editor = createRef<DocxEditorRef>();
+    const errors: Error[] = [];
+    const bytes = await createDocx(createEmptyDocument({ initialText: "Comment anchor" }));
+    const messages = getFolioMessages("en");
+    const initialComments: Comment[] = [];
+    let controlledComments = initialComments;
+    const renderEditor = () => (
+      <IntlProvider locale="en" timeZone="UTC" messages={messages}>
+        <DocxEditor
+          ref={editor}
+          documentBuffer={bytes}
+          experimentalSession="canonical"
+          comments={controlledComments}
+          onError={collectCommentErrors(errors)}
+          showToolbar={false}
+        />
+      </IntlProvider>
+    );
+    try {
+      await act(async () => root.render(renderEditor()));
+      await act(async () => editor.current?.loadDocumentBuffer(bytes));
+      await act(async () => editor.current?.ensureEditorView({ focus: false }));
+      const api = editor.current?.getEditor() ?? panic("Expected canonical editor");
+      let created: CanonicalCommentResult | null = null;
+      await act(async () => {
+        created = api.applyCanonicalComment({
+          type: "create",
+          text: "Review this",
+          author: "Reviewer",
+          anchor: { kind: "selection", from: 1, to: 8, story: "main" },
+        });
+      });
+      if (created?.status !== "applied" || created.commentId === undefined)
+        panic("Expected canonical comment creation");
+      const commentId = created.commentId;
+      controlledComments = created.comments;
+      await act(async () => root.render(renderEditor()));
+
+      const view = api.getView() ?? panic("Expected mounted canonical view");
+      await act(async () => {
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 9, 9)));
+        view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+        view.dispatch(view.state.tr.insertText("x", 9, 9).setMeta("composition", 1));
+      });
+      const requested = structuredClone(controlledComments);
+      const changed = requested.find(({ id }) => id === commentId) ?? panic("Expected comment");
+      if (change === "resolution") changed.done = true;
+      else
+        changed.content = [
+          {
+            type: "paragraph",
+            paraId:
+              changed.content[0]?.type === "paragraph" ? changed.content[0].paraId : undefined,
+            formatting: {},
+            content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "Later" }] }],
+          },
+        ];
+      controlledComments = requested;
+      await act(async () => root.render(renderEditor()));
+      // The update waits for the composition; the host does not render again.
+      const pending = api.getCanonicalComments() ?? [];
+      expect(pending.find(({ id }) => id === commentId)?.done).toBeFalsy();
+      await act(async () => {
+        view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+        await new Promise<void>((resolve) => setTimeout(resolve, 80));
+      });
+      const settled = editor.current?.getDocument()?.package.document.comments ?? [];
+      const target = settled.find(({ id }) => id === commentId);
+      const expected = requested.find(({ id }) => id === commentId);
+      if (change === "resolution") expect(target?.done).toBe(true);
+      else expect(target?.content).toEqual(expected?.content);
+      // A deferral the adapter retries is not reported as a refusal.
+      expect(errors).toEqual([]);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  },
+);
 
 test("canonical header edits and new footer and note stories survive adapter save and reopen", async () => {
   const container = document.createElement("div");
@@ -250,6 +501,7 @@ test("canonical header edits and new footer and note stories survive adapter sav
     await act(async () => editor.current?.loadDocumentBuffer(bytes));
     await act(async () => editor.current?.ensureEditorView({ focus: false }));
     await act(async () => bindings.current?.handleHeaderFooterDoubleClick("header"));
+    expect(editor.current?.getEditorRef()?.getHfView("rIdCanonicalHeader")).not.toBeNull();
     const headerView =
       container.querySelector(".paged-editor__hidden-hf-pm .ProseMirror") ??
       panic("Expected mounted header editor");
@@ -650,6 +902,132 @@ test.each(["uncontrolled", "controlled"] as const)(
   },
 );
 
+for (const mode of ["editing", "suggesting"] as const) {
+  test.each(["footnote", "endnote"] as const)(
+    `canonical painted note double-click routes active views and shared ${mode} history`,
+    async (kind) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      const editor = createRef<DocxEditorRef>();
+      const source = createEmptyDocument({ initialText: "Body" });
+      const paragraph = source.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") panic("Expected note body fixture");
+      paragraph.content.push({
+        type: "run",
+        content: [
+          { type: "footnoteRef", id: 1 },
+          { type: "endnoteRef", id: 1 },
+        ],
+      });
+      const noteContent = (text: string) =>
+        [
+          {
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text }] }],
+          },
+        ] satisfies typeof source.package.document.content;
+      source.package.footnotes = [{ type: "footnote", id: 1, content: noteContent("Footnote") }];
+      source.package.endnotes = [{ type: "endnote", id: 1, content: noteContent("Endnote") }];
+      const bytes = await createDocx(source);
+      try {
+        await act(async () =>
+          root.render(
+            <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+              <DocxEditor
+                ref={editor}
+                documentBuffer={bytes}
+                experimentalSession="canonical"
+                mode={mode}
+                author="Note reviewer"
+                showToolbar={false}
+              />
+            </IntlProvider>,
+          ),
+        );
+        await act(async () => editor.current?.loadDocumentBuffer(bytes));
+        await act(async () => editor.current?.ensureEditorView({ focus: false }));
+        const paged = editor.current?.getEditorRef() ?? panic("Expected paged adapter ref");
+        const body = paged.getView() ?? panic("Expected canonical body view");
+        // Paint identity fixture: happy-dom cannot paint pages, but this is the real delegated click path.
+        const pages =
+          container.querySelector(".paged-editor__pages") ?? panic("Expected pages container");
+        const target = document.createElement("span");
+        target.dataset["noteKind"] = kind;
+        target.dataset["noteId"] = "1";
+        pages.append(target);
+        await act(async () =>
+          target.dispatchEvent(
+            new MouseEvent("click", {
+              detail: 2,
+              bubbles: true,
+              cancelable: true,
+            }),
+          ),
+        );
+        const note = paged.getActiveView() ?? panic("Expected active canonical note view");
+        expect(note).not.toBe(body);
+        expect(note.state.doc.textContent).toContain(kind === "footnote" ? "Footnote" : "Endnote");
+        const before = editor.current?.getDocument() ?? panic("Expected canonical snapshot");
+        const end = note.state.doc.content.size - 1;
+        await act(async () => {
+          note.dispatch(note.state.tr.setSelection(TextSelection.create(note.state.doc, end)));
+          note.dom.dispatchEvent(
+            new InputEvent("beforeinput", {
+              bubbles: true,
+              cancelable: true,
+              inputType: "insertText",
+              data: "😀 edited",
+            }),
+          );
+        });
+        const after = editor.current?.getDocument() ?? panic("Expected note edit");
+        expect(after.package.document.content).toEqual(before.package.document.content);
+        expect(after.package[kind === "footnote" ? "endnotes" : "footnotes"]).toEqual(
+          before.package[kind === "footnote" ? "endnotes" : "footnotes"],
+        );
+        expect(
+          note.state.doc
+            .nodeAt(end)
+            ?.marks.some((mark) => mark.attrs["author"] === "Note reviewer"),
+        ).toBe(mode === "suggesting");
+        await act(async () => {
+          expect(paged.undo()).toBe(true);
+        });
+        expect(editor.current?.getDocument()).toEqual(before);
+        // Undo restores the selection immediately preceding the native edit.
+        expect(note.state.selection.toJSON()).toEqual({ type: "text", anchor: end, head: end });
+        await act(async () => {
+          expect(paged.redo()).toBe(true);
+        });
+        expect(editor.current?.getDocument()).toEqual(after);
+        let saved: ArrayBuffer | null | undefined;
+        await act(async () => {
+          saved = await editor.current?.save();
+        });
+        if (!saved) panic("Expected canonical note save");
+        const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+        expect(reviewDifferences(after, reopened)).toEqual({ messages: [], omitted: 0 });
+        for (const collection of ["footnotes", "endnotes"] as const) {
+          const authored = after.package[collection]?.find((value) => value.id === 1);
+          const parsed = reopened.package[collection]?.find((value) => value.id === 1);
+          if (!authored || !parsed) panic("Expected both saved note namespaces");
+          expect(
+            reviewDifferences(
+              { package: { document: { content: authored.content } } },
+              { package: { document: { content: parsed.content } } },
+            ),
+          ).toEqual({ messages: [], omitted: 0 });
+        }
+        await act(async () => paged.closeNoteStory());
+        expect(paged.getActiveView()).toBe(body);
+      } finally {
+        await act(async () => root.unmount());
+        container.remove();
+      }
+    },
+  );
+}
 test.each(CANONICAL_SAVE_SEEDS)(
   "generated canonical history %s saves independently of PM trackers",
   async (seed) => {

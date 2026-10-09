@@ -10,5 +10,13 @@
       "note": "Painter commit targets remain consistent across generated position changes",
       "date": "2026-10-03"
     }
+  ],
+  "current paint owns targets even when stale coordinates successfully roundtrip": [
+    {
+      "seed": -729794571,
+      "path": "0:0:0:0:0",
+      "note": "Stale painted coordinates remain numerically valid before current-document paint commits.",
+      "date": "2026-10-08"
+    }
   ]
 }
