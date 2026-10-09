@@ -11,22 +11,26 @@ afterEach(() => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const comparisonStep = () => {
+const workflowJobs = () => {
   const workflow: unknown = Bun.YAML.parse(
     readFileSync(join(import.meta.dir, "../.github/workflows/canonical-wasm.yml"), "utf8"),
   );
   if (!isRecord(workflow) || !isRecord(workflow["jobs"]))
     throw new TypeError("Canonical workflow has no jobs.");
-  for (const job of Object.values(workflow["jobs"])) {
+  return workflow["jobs"];
+};
+
+const workflowStep = (name: string) => {
+  for (const job of Object.values(workflowJobs())) {
     if (!isRecord(job) || !Array.isArray(job["steps"])) continue;
     for (const step of job["steps"]) {
-      if (!isRecord(step) || step["name"] !== "Compare named base and head projections") continue;
+      if (!isRecord(step) || step["name"] !== name) continue;
       if (typeof step["run"] !== "string")
-        throw new TypeError("Projection comparison step has no executable script.");
+        throw new TypeError(`Workflow step ${name} has no executable script.`);
       return step["run"];
     }
   }
-  throw new TypeError("Canonical workflow has no projection comparison step.");
+  throw new TypeError(`Canonical workflow has no ${name} step.`);
 };
 
 // Every external tool is isolated; this exercises the actual workflow shell,
@@ -132,21 +136,24 @@ test.each([
   writeFileSync(join(directory, "calls"), "");
   for (const name of ["cargo", "git", "wasm-bindgen", "bun", "jq"])
     writeFileSync(join(bin, name), `#!${process.execPath}\n${mockTool}`, { mode: 0o755 });
-  const result = Bun.spawnSync(["bash", "-euo", "pipefail", "-c", comparisonStep()], {
-    cwd: directory,
-    env: {
-      ...process.env,
-      PATH: `${bin}:${process.env["PATH"] ?? ""}`,
-      FOOTPRINT_FIXTURE: directory,
-      RUNNER_TEMP: directory,
-      BASE_SHA: "a".repeat(40),
-      HEAD_SHA: "b".repeat(40),
-      HEAD_VERSION: head,
-      BASE_VERSION: base,
+  const result = Bun.spawnSync(
+    ["bash", "-euo", "pipefail", "-c", workflowStep("Compare named base and head projections")],
+    {
+      cwd: directory,
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+        FOOTPRINT_FIXTURE: directory,
+        RUNNER_TEMP: directory,
+        BASE_SHA: "a".repeat(40),
+        HEAD_SHA: "b".repeat(40),
+        HEAD_VERSION: head,
+        BASE_VERSION: base,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
     },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  );
   expect(result.exitCode, result.stderr.toString()).toBe(exitCode);
   expect(readFileSync(join(directory, "calls"), "utf8").trim().split("\n")).toEqual(calls);
   const report = join(directory, "projection-footprint.json");
@@ -158,4 +165,88 @@ test.each([
     `footprint attribution requires matching wasm-bindgen versions (head: ${head}, base: ${base})`,
   );
   expect(existsSync(report)).toBe(false);
+});
+
+test.each([
+  {
+    name: "raw Wasm budget failure",
+    message: "Panic: DOCX kernel WebAssembly is 330835 bytes; budget is 318976",
+    exitCode: 1,
+    output: "budget_exceeded=true\n",
+  },
+  {
+    name: "Brotli budget failure",
+    message: "Panic: DOCX kernel Brotli size is 150000 bytes; budget is 149504",
+    exitCode: 1,
+    output: "budget_exceeded=true\n",
+  },
+  {
+    name: "unrelated compilation failure",
+    message: "error[E0308]: mismatched types",
+    exitCode: 1,
+    output: "",
+  },
+  {
+    name: "non-default generator failure",
+    message: "cargo invocation failed before artifact generation",
+    exitCode: 17,
+    output: "",
+  },
+  {
+    name: "successful generation",
+    message: "Generated canonical projection artifact",
+    exitCode: 0,
+    output: "",
+  },
+])(
+  "generation preserves $name status and signals only budget failures",
+  ({ message, exitCode, output }) => {
+    const directory = mkdtempSync(join(tmpdir(), "folio-footprint-budget-"));
+    directories.push(directory);
+    const bin = join(directory, "bin");
+    const githubOutput = join(directory, "github-output");
+    mkdirSync(bin);
+    writeFileSync(githubOutput, "");
+    writeFileSync(
+      join(bin, "bun"),
+      `#!${process.execPath}\nconsole.error(process.env.BUILD_MESSAGE);\nprocess.exit(Number(process.env.BUILD_STATUS));\n`,
+      { mode: 0o755 },
+    );
+    const result = Bun.spawnSync(
+      ["bash", "-euo", "pipefail", "-c", workflowStep("Generate canonical projection artifact")],
+      {
+        cwd: directory,
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+          RUNNER_TEMP: directory,
+          GITHUB_OUTPUT: githubOutput,
+          BUILD_MESSAGE: message,
+          BUILD_STATUS: String(exitCode),
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    expect(result.exitCode, result.stderr.toString()).toBe(exitCode);
+    expect(readFileSync(githubOutput, "utf8")).toBe(output);
+    expect(readFileSync(join(directory, "canonical-projection-build.log"), "utf8")).toContain(
+      message,
+    );
+  },
+);
+
+test("budget failure automatically schedules attribution even when the canonical job failed", () => {
+  const jobs = workflowJobs();
+  const canonical = jobs["canonical-wasm"];
+  const footprint = jobs["footprint"];
+  if (!isRecord(canonical) || !isRecord(canonical["outputs"]) || !isRecord(footprint))
+    throw new TypeError("Canonical artifact and footprint jobs must exist.");
+  expect(canonical["outputs"]["budget_exceeded"]).toBe(
+    "${{ steps.generate.outputs.budget_exceeded }}",
+  );
+  expect(footprint["needs"]).toBe("canonical-wasm");
+  expect(footprint["if"]).toBe(
+    "always() && (needs.canonical-wasm.outputs.budget_exceeded == 'true' || (github.event_name == 'workflow_dispatch' && inputs.footprint_base != ''))",
+  );
 });
