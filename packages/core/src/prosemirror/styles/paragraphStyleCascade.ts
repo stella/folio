@@ -12,10 +12,7 @@
 
 import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
 import type { Paragraph, ParagraphFormatting, TextFormatting } from "../../types/document";
-import {
-  mergeParagraphNumbering,
-  paragraphNumberingReferenceId,
-} from "../../docx/numberingReference";
+import { paragraphNumberingReferenceId } from "../../docx/numberingReference";
 import {
   mergeParagraphFormatting,
   mergeParagraphTabStops,
@@ -281,10 +278,6 @@ export function paragraphStyleCascadeAttrs({
     styleNumbering?.kind === "reference" &&
     (formatting?.numPr === undefined || formatting.numPr.kind === "levelOnly")
   ) {
-    const merged = mergeParagraphNumbering(styleNumbering, formatting?.numPr);
-    if (merged !== undefined) {
-      attrs.numPr = paragraphNumberingAttr(merged);
-    }
     attrs.numPrFromStyle = paragraphNumberingAttr(styleNumbering);
   }
 

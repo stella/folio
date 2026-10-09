@@ -69,7 +69,7 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
       map,
     );
     expect(attrs).not.toBeNull();
-    expect(attrs?.["numPr"]).toEqual({ kind: "reference", numId: 2, ilvl: 0 });
+    expect(attrs?.["numPr"]).toBeNull();
     expect(attrs?.["numPrFromStyle"]).toEqual({ kind: "reference", numId: 2, ilvl: 0 });
     expect(attrs?.["listMarker"]).toBe("[Claim %1]");
     expect(attrs?.["listNumFmt"]).toBe("decimal");
@@ -117,7 +117,7 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
       { paragraphFormatting: { numPr: { kind: "reference", numId: 2 } } },
       null,
     );
-    expect(attrs?.["numPr"]).toEqual({ kind: "reference", numId: 2, ilvl: 0 });
+    expect(attrs?.["numPr"]).toBeNull();
     expect(attrs?.["listMarker"]).toBeNull();
   });
 

@@ -128,7 +128,7 @@ export function listAttrsFromResolvedStyle(
   }
 
   const { numId, ilvl = 0 } = numPr;
-  const attrs = listAttrsFromNumbering({ numId, ilvl }, numbering);
+  const attrs = { ...listAttrsFromNumbering({ numId, ilvl }, numbering), numPr: null };
   attrs.numPrFromStyle = paragraphNumberingAttr(paragraphNumberingReference({ numId, ilvl }));
   Object.assign(
     attrs,
@@ -305,6 +305,9 @@ export function listLevelAttrPatch(
   const direct = directParagraphIndentation(attrs);
   return {
     ...listAttrsFromNumbering(numPr, numbering),
+    ...(attrs.numPr?.kind !== "reference" && attrs.numPrFromStyle?.kind === "reference"
+      ? { numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: numPr.ilvl }) }
+      : {}),
     listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances ?? null,
     ...listIndentationProvenancePatch({
       direct,

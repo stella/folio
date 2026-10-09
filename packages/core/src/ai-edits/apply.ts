@@ -36,6 +36,7 @@ import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolvePara
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import {
   paragraphNumberingReference,
+  mergeParagraphNumbering,
   paragraphNumberingReferenceId,
 } from "../docx/numberingReference";
 import {
@@ -3419,13 +3420,14 @@ const restyledListAttrs = ({
     readParagraphNumberingAttr(attrs["numPrFromStyle"]),
   );
   const fromStyle = styleNumbering === undefined ? null : paragraphNumberingAttr(styleNumbering);
-  const kept = stated !== null && !statedByOldStyle ? stated : fromStyle;
+  const kept = statedByOldStyle ? null : stated;
   // Out of every list, the new style's included.
   const numPr = removesNumbering ? removedNumberingAttr(fromStyle) : kept;
+  const effective = mergeParagraphNumbering(fromStyle ?? undefined, numPr ?? undefined);
   return {
     ...CLEARED_LIST_RENDERING_ATTRS,
-    ...(numPr?.kind === "reference" &&
-      listAttrsFromNumbering({ numId: numPr.numId, ilvl: numPr.ilvl ?? 0 }, numbering)),
+    ...(effective?.kind === "reference" &&
+      listAttrsFromNumbering({ numId: effective.numId, ilvl: effective.ilvl ?? 0 }, numbering)),
     // As stated: an absent `w:ilvl` stays absent.
     numPr,
     numPrFromStyle: fromStyle,
