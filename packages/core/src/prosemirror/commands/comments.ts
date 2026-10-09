@@ -7,7 +7,7 @@
 import { resolvedPreservedXmlAttrs } from "../preservedXmlReview";
 import { canonicalFieldNode } from "../fieldRepresentation";
 
-import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
+import { Fragment, type Mark, type MarkType, type Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { resolveStateStory } from "../markupViewProjection";
@@ -463,6 +463,20 @@ function resolveChange(
         rangesToDelete = coalescedDeleteRanges;
       }
       for (const range of rangesToDelete.toReversed()) {
+        const start = tr.doc.resolve(range.from);
+        const field = start.parent;
+        if (
+          field.type.name === "structuredField" &&
+          start.parentOffset === 0 &&
+          range.to === start.end()
+        ) {
+          // Canonicalize before the replacement fitter supplies a synthetic
+          // child for a required inline carrier whose result was removed.
+          const position = start.before();
+          const empty = canonicalFieldNode(field.copy(Fragment.empty));
+          tr.replaceWith(position, position + field.nodeSize, empty);
+          continue;
+        }
         tr.delete(range.from, range.to);
       }
       // A text box goes with its anchor, and before any paragraph mark joins:

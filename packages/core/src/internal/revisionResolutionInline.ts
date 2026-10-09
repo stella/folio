@@ -297,7 +297,10 @@ const resolveInlineContent = ({
     rejoinResolvedRuns({ children, positions, resolvedBoundaries, paragraphScope, context });
   }
   let resolvedContent = Fragment.fromArray(children);
-  if (!resolvedNode.type.validContent(resolvedContent)) {
+  if (
+    !resolvedNode.type.validContent(resolvedContent) &&
+    !(resolvedNode.type.name === "structuredField" && resolvedContent.size === 0)
+  ) {
     // A required-content parent may need a generated child after resolution
     // removes its last carrier. Let the schema choose that filler instead of
     // constructing an invalid node.
