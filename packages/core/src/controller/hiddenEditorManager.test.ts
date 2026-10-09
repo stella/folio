@@ -1221,13 +1221,13 @@ test("canonical command execution reports descriptor refusals without mutation",
   const paragraph = source.package.document.content.at(0);
   if (paragraph?.type !== "paragraph") panic("Expected refusal fixture paragraph");
   paragraph.paraId = "12345678";
-  const reasons: string[] = [];
+  const reasons: { message: string; gap: string }[] = [];
   const { deps } = makeDeps({
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
     getExperimentalSession: () => "canonical",
-    onSessionRefusal: (reason) => reasons.push(reason),
+    onSessionRefusal: (message, gap) => reasons.push({ message, gap }),
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -1250,7 +1250,9 @@ test("canonical command execution reports descriptor refusals without mutation",
       expect(manager.api.getCanonicalDocument()).toEqual(baseline);
       expect(manager.api.canUndo()).toBe(false);
     }
-    expect(reasons).toEqual(Array.from({ length: 7 }, () => message));
+    expect(reasons).toEqual(
+      Array.from({ length: 7 }, () => ({ message, gap: CANONICAL_GAP.commands })),
+    );
     const unexpected = new TypeError("Unexpected descriptor failure");
     const failingCommand = withCanonicalCommand(
       () => panic("A failed descriptor must not execute its command"),

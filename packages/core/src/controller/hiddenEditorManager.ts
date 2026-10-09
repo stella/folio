@@ -654,13 +654,18 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       refuse("Composition must finish before formatting.");
       return false;
     }
+    const commandState = view.state;
     const described = Result.try({
-      try: () => getCanonicalCommandIntents(command, view.state),
+      try: () => getCanonicalCommandIntents(command, commandState),
       catch: (error) => error,
     });
     if (described.isErr()) {
       if (!(described.error instanceof HyperlinkRemovalRefusal)) throw described.error;
-      refuse(described.error.message);
+      const refusal = new CanonicalSessionRefusalError({
+        gap: CANONICAL_GAP.commands,
+        message: described.error.message,
+      });
+      refuse(refusal.message, refusal.gap);
       return false;
     }
     const intents = described.value;
