@@ -65,6 +65,11 @@ const maximumEffectiveProjectionStylesBrotliBytes = 1536;
 const maximumOriginalPropertySnapshotsBytes = 4608;
 const maximumOriginalPropertySnapshotsBrotliBytes = 1536;
 
+// Bounded Flat OPC selection and namespace-preserving extraction reuse the
+// shared projection. Canonical raw delta: 12,512 bytes (run 37981048348);
+// named diagnostic Brotli delta: 4,991 bytes (run 37979334143), indicative only.
+const maximumFlatOpcMainProjectionBytes = 12512;
+
 const kernel = {
   label: "DOCX kernel",
   crate: "stella-docx-kernel",
@@ -88,7 +93,8 @@ const kernel = {
     maximumReviewFactRelocationBytes +
     maximumTablePropertyRevisionSpansBytes +
     maximumEffectiveProjectionStylesBytes +
-    maximumOriginalPropertySnapshotsBytes,
+    maximumOriginalPropertySnapshotsBytes +
+    maximumFlatOpcMainProjectionBytes,
   maximumBrotliBytes:
     100 * 1024 +
     maximumReviewDetailBrotliBytes +
