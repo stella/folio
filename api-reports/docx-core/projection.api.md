@@ -16,6 +16,9 @@ export type DocxAttributedRevision = readonly [type: DocxRevisionKind, author: s
 export type DocxPackageProjectionWire = readonly [schemaVersion: 2, document: DocxProjectionWire, reviewFacts: DocxReviewFactsWire];
 
 // @public (undocumented)
+export type DocxParagraphFragmentWire = readonly [schemaVersion: DocxProjectionWire[0], paragraphs: readonly [DocxProjectionParagraph], structuralFacts: DocxParagraphFragmentFacts<DocxProjectionStructuralFacts>, revisionStatus: DocxProjectionWire[3], formattingStatus: DocxProjectionWire[4]];
+
+// @public (undocumented)
 export type DocxProjectionAlignment = readonly [value: DocxProjectionAlignmentValue, source: DocxProjectionAlignmentSource] | null;
 
 // @public (undocumented)
@@ -82,7 +85,7 @@ export type DocxProjectionStructuralSpan = readonly [startUtf8: number, endUtf8:
 export type DocxProjectionStructure = readonly [] | readonly [type: "table", tableId: string, row: number, column: number];
 
 // @public (undocumented)
-export type DocxProjectionUnknownReason = "document-part-only" | "styles-part-unavailable" | "unsupported-styles" | "unsupported-numbering" | "incomplete-bookmark-ranges" | "unsupported-internal-references";
+export type DocxProjectionUnknownReason = "paragraph-fragment" | "document-part-only" | "styles-part-unavailable" | "unsupported-styles" | "unsupported-numbering" | "incomplete-bookmark-ranges" | "unsupported-internal-references";
 
 // @public (undocumented)
 export type DocxProjectionWasmSource = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -123,6 +126,9 @@ export type ProjectCompressedDocxWithReviewFactsOptions = {
 
 // @public
 export const projectMainDocumentXml: (bytes: Uint8Array) => Promise<DocxProjectionWire>;
+
+// @public
+export const projectParagraphFragment: (bytes: Uint8Array) => Promise<DocxParagraphFragmentWire>;
 
 // (No @packageDocumentation comment for this package)
 
