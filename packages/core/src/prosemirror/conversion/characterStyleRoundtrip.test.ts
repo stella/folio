@@ -1487,6 +1487,41 @@ describe("save stylesheet authority", () => {
     expect(savedAgain.package.styles).toEqual(capturedStylesSnapshot);
   });
 
+  test("package save appends new live style IDs beside authoritative captured definitions", async () => {
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "AddedHeading" },
+        content: [runText("Term")],
+      }),
+    );
+    const base = await reopenThroughDocx(input);
+    const liveStyles = base.package.styles;
+    if (!liveStyles) throw new Error("Expected an existing parsed stylesheet");
+    const addedStyle = {
+      styleId: "AddedHeading",
+      type: "paragraph",
+      rPr: { bold: true },
+    } as const satisfies StyleDefinitions["styles"][number];
+    liveStyles.styles.push(addedStyle);
+    const proseDoc = toProseDoc(base);
+    const saved = fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } });
+    const savedAddition = saved.package.styles?.styles.find(
+      ({ styleId }) => styleId === "AddedHeading",
+    );
+    expect(savedAddition).toEqual(addedStyle);
+    expect(savedAddition).not.toBe(addedStyle);
+    const reopened = await reopenThroughDocx(saved);
+    expect(
+      reopened.package.styles?.styles.find(({ styleId }) => styleId === "AddedHeading"),
+    ).toMatchObject(addedStyle);
+    expect(
+      findTextNode(toProseDoc(reopened), "Term").node.marks.some(
+        ({ type }) => type.name === "bold",
+      ),
+    ).toBe(true);
+  });
+
   test("package save retains added styles when the parsed package had no stylesheet part", async () => {
     const input = wrapParagraph({
       type: "paragraph",

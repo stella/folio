@@ -680,7 +680,9 @@ export type FromProseDocOptions = {
    * The stylesheet authority used to construct the projection. With a parsed package,
    * package source uses its captured definitions; edits to live package.styles do not
    * alter existing definitions. Captured definitions are deeply frozen and shared;
-   * clone them explicitly once when authoring additions, then supply that stylesheet.
+   * package-source saves append live definitions for IDs missing from the capture.
+   * Supplied sources follow the same addition rule and must match existing definitions
+   * and document defaults. Clone frozen definitions once when authoring a mutable copy.
    * If the parsed package had no styles part, all live definitions are additions.
    */
   stylesheetSource: { type: "package" } | { type: "supplied"; styles: StyleDefinitions };
@@ -698,11 +700,18 @@ class SaveStylesheetSourceMismatch extends TaggedError("SaveStylesheetSourceMism
   divergences: readonly SaveStylesheetDivergence[];
 }> {}
 
-const parsedPackageStyles = (document: Document) => {
-  const source = getDocumentSourceStyles(document);
+const parsedPackageStyles = (document: Document, liveStyles?: StyleDefinitions) => {
+  const source = getDocumentSourceStyles(document, liveStyles);
   switch (source.type) {
-    case "captured":
-      return source.styles;
+    case "captured": {
+      if (source.styles === undefined)
+        return liveStyles === undefined ? undefined : structuredClone(liveStyles);
+      if (source.additions.length === 0) return source.styles;
+      return {
+        ...source.styles,
+        styles: [...source.styles.styles, ...structuredClone(source.additions)],
+      };
+    }
     case "missing":
     case "mismatch":
       throw new SaveStylesheetSourceMismatch({
@@ -776,9 +785,7 @@ const saveStylesheet = (
   switch (source.type) {
     case "package": {
       if (!baseDocument?.originalBuffer) return baseDocument?.package.styles;
-      const capturedStyles = parsedPackageStyles(baseDocument);
-      // Without a parsed styles part, every live definition is an addition.
-      return capturedStyles ?? baseDocument.package.styles;
+      return parsedPackageStyles(baseDocument, baseDocument.package.styles);
     }
     case "supplied":
       assertSuppliedStylesMatchSource(source.styles, baseDocument);

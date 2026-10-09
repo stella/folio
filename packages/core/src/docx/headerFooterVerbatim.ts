@@ -33,6 +33,7 @@ const contentBaselines = new WeakMap<
       xml: string;
       body: Document["package"]["document"];
       resourceStyles: Readonly<NonNullable<Document["package"]["styles"]>> | undefined;
+      styleIds: ReadonlySet<string>;
       resourceRelationships: Document["package"]["relationships"];
       resourceMedia: ReadonlyMap<string, { data: ArrayBuffer; mimeType: string }>;
     }
@@ -40,6 +41,7 @@ const contentBaselines = new WeakMap<
       type: "body";
       kind: "noMainPart";
       resourceStyles: Readonly<NonNullable<Document["package"]["styles"]>> | undefined;
+      styleIds: ReadonlySet<string>;
     }
 >();
 
@@ -255,8 +257,9 @@ export const captureDocumentSourceBaseline = (
   const handle = {};
   const resourceStyles = structuredClone(document.package.styles);
   freezeSourceStyles(resourceStyles);
+  const styleIds = new Set(resourceStyles?.styles.map(({ styleId }) => styleId));
   if (xml === undefined) {
-    contentBaselines.set(handle, { type: "body", kind: "noMainPart", resourceStyles });
+    contentBaselines.set(handle, { type: "body", kind: "noMainPart", resourceStyles, styleIds });
   } else {
     contentBaselines.set(handle, {
       type: "body",
@@ -265,6 +268,7 @@ export const captureDocumentSourceBaseline = (
       xml,
       body: structuredClone(document.package.document),
       resourceStyles,
+      styleIds,
       resourceRelationships: structuredClone(document.package.relationships),
       resourceMedia: new Map(
         [...(document.package.media ?? [])].map(([path, media]) => [
@@ -302,10 +306,15 @@ const readDocumentSourceCapture = (document: Document) => {
 };
 
 /** Read the identity-stable, deeply frozen stylesheet without cloning or body comparison. */
-export const getDocumentSourceStyles = (document: Document) => {
+export const getDocumentSourceStyles = (
+  document: Document,
+  liveStyles?: Document["package"]["styles"],
+) => {
   const source = readDocumentSourceCapture(document);
   if (source.type !== "captured") return source;
-  return { type: "captured", styles: source.baseline.resourceStyles } as const;
+  const additions =
+    liveStyles?.styles.filter(({ styleId }) => !source.baseline.styleIds.has(styleId)) ?? [];
+  return { type: "captured", styles: source.baseline.resourceStyles, additions } as const;
 };
 
 export const getDocumentSourceBaseline = (
