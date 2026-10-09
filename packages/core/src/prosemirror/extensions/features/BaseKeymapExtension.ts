@@ -19,7 +19,11 @@ import type { Command, Transaction } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
 import { mergeTextFormatting } from "../../../utils/textFormattingMerge";
-import { expectCharacterStyleMarkAttrs, expectRunFormattingOverrideMarkAttrs } from "../../attrs";
+import {
+  expectCharacterStyleMarkAttrs,
+  expectParagraphAttrs,
+  expectRunFormattingOverrideMarkAttrs,
+} from "../../attrs";
 import { clearIndentOnBackspace } from "../../commands/clearParagraphIndent";
 import { keepSectionBreaksOnSurvivingMarks } from "../../commands/sectionBreak";
 import { getDocumentStyleResolver } from "../../plugins/documentStyleState";
@@ -249,6 +253,16 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
             newAttrs[key] = srcVal;
             attrsChanged = true;
           }
+        }
+        // The copied run defaults must keep their authored paragraph-mark source.
+        // Otherwise save treats the defaults as inherited but emits no source for them.
+        const runProperties = expectParagraphAttrs(sourcePara)._originalFormatting?.runProperties;
+        if (runProperties !== undefined) {
+          newAttrs["_originalFormatting"] = {
+            ...expectParagraphAttrs(newPara)._originalFormatting,
+            runProperties,
+          };
+          attrsChanged = true;
         }
       }
 
