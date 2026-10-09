@@ -1,0 +1,30 @@
+{
+  "collapsed removal covers exactly one equal hyperlink across formatting segments": [
+    {
+      "seed": -1942764121,
+      "path": "0:0:0:0:0:0:0:0:0",
+      "note": "Cursor generator stays inside non-inclusive hyperlink endpoints while covering internal formatting boundaries.",
+      "date": "2026-10-08"
+    },
+    {
+      "seed": 987928050,
+      "path": "0:0:0:1:0:1",
+      "note": "Old partial removal leaves equal hyperlink segments linked; exact helper removes the full contiguous range.",
+      "date": "2026-10-08"
+    }
+  ],
+  "collapsed removal crosses linked inline atoms without losing content": [
+    {
+      "seed": 1973514314,
+      "path": "0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Inline atoms retain their complete node; only text uses text-offset cuts.",
+      "date": "2026-10-08"
+    },
+    {
+      "seed": 1750224837,
+      "path": "0:0:0:0:0:0:0",
+      "note": "Inline atoms retain their complete node; only text uses text-offset cuts.",
+      "date": "2026-10-08"
+    }
+  ]
+}

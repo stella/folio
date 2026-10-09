@@ -48,7 +48,7 @@ const readOccurrences = (paragraph: PMNode) => {
       return;
     }
     const attrs = readFootnoteRefMarkAttrs(reference);
-    if (!attrs.ok || attrs.value.occurrenceId.length === 0 || !node.isText) {
+    if (!attrs.ok || !node.isText) {
       issue = "Note references require attributed text occurrences.";
       return;
     }
@@ -197,10 +197,8 @@ export const noteReferenceOccurrencePlugin = () => {
             const marks = node.marks.map((mark) => {
               if (mark.type.name !== "footnoteRef") return mark;
               const attrs = readFootnoteRefMarkAttrs(mark);
-              if (!attrs.ok)
-                throw new NoteReferenceEditRefusal({
-                  message: "Pasted note references require occurrence attribution.",
-                });
+              // Keep malformed input intact for the paste or transaction refusal boundary.
+              if (!attrs.ok) return mark;
               const id = attrs.value.occurrenceId;
               let replacement = identities.get(id);
               if (replacement === undefined) {

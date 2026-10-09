@@ -1,3 +1,4 @@
+import { fieldRequiresStructuredContent } from "./fieldRepresentation";
 import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
@@ -8,7 +9,6 @@ import { readBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
-import { INLINE_WRAPPER_MARK_NAME } from "./extensions/marks/InlineWrapperExtension";
 import {
   readCharacterSpacingMarkAttrs,
   readCharacterStyleMarkAttrs,
@@ -462,17 +462,6 @@ const validateNodeAttrs = (
           const hasPageBreakCarrier = node.content.content.some(
             (child) => child.type.name === "pageBreakRun",
           );
-          // A capture is the third reason a simple field keeps its children:
-          // the markup has no other carrier, so collapsing the field to its
-          // display text would drop it.
-          const hasPreservedCapture = node.content.content.some(
-            (child) => child.type.name === "preservedXml",
-          );
-          // The fourth: a transparent wrapper rides the field's own leaves, so
-          // collapsing the field to its display text would take it with them.
-          const hasInlineWrapper = node.content.content.some((child) =>
-            child.marks.some((mark) => mark.type.name === INLINE_WRAPPER_MARK_NAME),
-          );
           if (fieldAttrs.value.fieldKind === "complex" && !hasPageBreakCarrier) {
             issues.push({
               path: `${path}.content`,
@@ -483,16 +472,11 @@ const validateNodeAttrs = (
               path: `${path}.content`,
               message: "Complex field results cannot contain hyperlink content.",
             });
-          } else if (
-            !hasStructuredHyperlink &&
-            !hasPageBreakCarrier &&
-            !hasPreservedCapture &&
-            !hasInlineWrapper
-          ) {
+          } else if (!fieldRequiresStructuredContent(node.content.content)) {
             issues.push({
               path: `${path}.content`,
               message:
-                "Structured simple fields require hyperlink, page-break, preserved or wrapper content.",
+                "Structured simple fields require non-text, hyperlink, wrapper or tracked content.",
             });
           }
           // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach

@@ -5,6 +5,7 @@
  * resolves the reference, and this resolves the note's story to match.
  */
 
+import { addTrackedDeletionMark } from "./addTrackedDeletionMark";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { Transform } from "prosemirror-transform";
@@ -204,7 +205,13 @@ export const deleteNoteWithReference = <T extends Transform>(transform: T, refer
       transform.setNodeAttribute(position, "pPrMark", { kind: "del", info: markInfo });
     }
     if (node.isInline && !deletion.type.isInSet(node.marks)) {
-      transform.addMark(position, position + node.nodeSize, deletion);
+      addTrackedDeletionMark({
+        insertionPolicy: "preserve-pending",
+        tr: transform,
+        from: position,
+        to: position + node.nodeSize,
+        mark: deletion,
+      });
     }
     return !node.isInline;
   });

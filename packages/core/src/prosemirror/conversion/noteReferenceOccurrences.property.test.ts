@@ -24,6 +24,8 @@ import {
 } from "../noteReferenceOccurrences";
 import { singletonManager } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
+import { toProseDoc, headerFooterToProseDoc } from "./toProseDoc";
+import type { Paragraph, ParagraphContent, Run } from "../../types/document";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
@@ -97,6 +99,58 @@ const occurrences = (doc: PMNode) => {
   });
   return ids;
 };
+
+test("imported note projections are deterministic and distinct across paragraphs and inline carriers", () => {
+  assertProperty(
+    fc.property(
+      fc.array(fc.array(fc.integer({ min: 1, max: 123 }), { minLength: 1, maxLength: 6 }), {
+        minLength: 2,
+        maxLength: 5,
+      }),
+      (paragraphIds) => {
+        const source = createEmptyDocument();
+        let expectedOccurrences = 0;
+        source.package.document.content = paragraphIds.map((ids, paragraphIndex) => {
+          const content: ParagraphContent[] = [];
+          for (const [index, id] of ids.entries()) {
+            for (const kind of KINDS) {
+              const run = {
+                type: "run",
+                content: [{ type: kind === "footnote" ? "footnoteRef" : "endnoteRef", id }],
+              } satisfies Run;
+              // Equal note IDs in different runs and carriers remain separate occurrences.
+              content.push(run, {
+                type: "hyperlink",
+                href: "https://example.com/reference",
+                children: [run],
+              });
+              expectedOccurrences += 2;
+            }
+            if (index % 2 === 0)
+              content.push({ type: "run", content: [{ type: "text", text: " " }] });
+          }
+          return {
+            type: "paragraph",
+            paraId: (0x10000000 + paragraphIndex).toString(16),
+            content,
+          } satisfies Paragraph;
+        });
+        const projection = toProseDoc(source);
+        expect(projection.eq(toProseDoc(source))).toBe(true);
+        expect(projection.eq(toProseDoc(structuredClone(source)))).toBe(true);
+        expect(occurrences(projection).size).toBe(expectedOccurrences);
+        assertNoteReferenceOccurrences(projection);
+        const detached = headerFooterToProseDoc(source.package.document.content);
+        expect(
+          detached.eq(headerFooterToProseDoc(structuredClone(source.package.document.content))),
+        ).toBe(true);
+        expect(occurrences(detached).size).toBe(expectedOccurrences);
+        assertNoteReferenceOccurrences(detached);
+      },
+    ),
+    { numRuns: 30 },
+  );
+});
 
 const assertRoundtrip = async (
   state: EditorState,

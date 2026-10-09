@@ -1,3 +1,5 @@
+import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
+import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
 import { panic } from "better-result";
 import { Fragment, Slice, type Mark, type MarkType, type Node as PMNode } from "prosemirror-model";
 import { ReplaceStep, StepMap, type Step } from "prosemirror-transform";
@@ -14,7 +16,10 @@ import {
 import { resolveEmptyFieldResultRuns } from "../prosemirror/emptyFieldResultRuns";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
 import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
-import { reconstructRejectedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
+import {
+  reconstructRejectedRunFormattingMarks,
+  restoreHistoricalRunFormatting,
+} from "../prosemirror/runPropertyChangeResolution";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import {
   paragraphRunStyleContext,
@@ -99,6 +104,19 @@ const resolveInlineNode = ({
 }: ResolveInlineNodeOptions): PMNode | null => {
   let marks: readonly Mark[] = node.marks;
   let attrs = node.attrs;
+  if (
+    context.mode === "reject" &&
+    node.marks.some(
+      (mark) =>
+        mark.type === context.keepType && expectTrackedChangeMarkAttrs(mark)._historicalFormatting,
+    )
+  ) {
+    marks = restoreHistoricalRunFormatting({
+      node,
+      paragraphContext: resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
+      styleResolver: context.styleResolver,
+    });
+  }
   const runPropertyChangeMark = marks.find((mark) => mark.type.name === "runPropertyChange");
   if (runPropertyChangeMark) {
     const { changes } = expectRunPropertyChangeMarkAttrs(runPropertyChangeMark);
@@ -149,6 +167,7 @@ const resolveInlineNode = ({
   if (context.keepType) {
     marks = marks.filter((mark) => mark.type !== context.keepType);
   }
+  if (attrs === node.attrs) attrs = resolvedPreservedXmlAttrs(node, marks);
   if (attrs !== node.attrs) return rebuildNode(node, attrs, node.content, marks);
   return marksEqual(marks, node.marks) ? node : node.mark(marks);
 };
@@ -294,7 +313,10 @@ const resolveInlineContent = ({
     rejoinResolvedRuns({ children, positions, resolvedBoundaries, paragraphScope, context });
   }
   let resolvedContent = Fragment.fromArray(children);
-  if (!resolvedNode.type.validContent(resolvedContent)) {
+  if (
+    !resolvedNode.type.validContent(resolvedContent) &&
+    !(resolvedNode.type.name === "structuredField" && resolvedContent.size === 0)
+  ) {
     // A required-content parent may need a generated child after resolution
     // removes its last carrier. Let the schema choose that filler instead of
     // constructing an invalid node.
@@ -334,7 +356,25 @@ const resolveInlineContent = ({
   }
   // Rebuild through the provenance-aware owner so a filled paragraph keeps
   // its captured property source.
-  return rebuildNode(node, resolvedAttrs, resolvedContent, resolvedNode.marks);
+  const rebuilt = rebuildNode(node, resolvedAttrs, resolvedContent, resolvedNode.marks);
+  const canonical = canonicalFieldNode(rebuilt);
+  if (canonical !== rebuilt && canonical.type === rebuilt.type) {
+    recordNodeResolution({ before: rebuilt, after: canonical, position, steps: context.steps });
+  } else if (canonical !== rebuilt) {
+    // Replace the entire carrier: nested deletion maps no longer address children
+    // after the result becomes an atom. Mark edits recorded above still run first.
+    context.replacementRanges.splice(
+      replacementRangeStart,
+      context.replacementRanges.length - replacementRangeStart,
+      {
+        from: position,
+        to: position + node.nodeSize,
+        newSize: canonical.nodeSize,
+        slice: new Slice(Fragment.from(canonical), 0, 0),
+      },
+    );
+  }
+  return canonical;
 };
 
 const coalesceReplacementRanges = (

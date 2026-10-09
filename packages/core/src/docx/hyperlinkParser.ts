@@ -15,6 +15,8 @@
  * Internal links use w:anchor to reference a bookmark in the same document
  */
 
+import { preserveLinkedSdt } from "./linkedSdtPreservation";
+
 import type {
   Hyperlink,
   InlineWrapper,
@@ -322,7 +324,9 @@ export const HYPERLINK_CHILD_HANDLERS = {
   permEnd: CAPTURE,
   permStart: CAPTURE,
   proofErr: CAPTURE,
-  sdt: CAPTURE,
+  sdt: (child, { push }) => {
+    push(preserveLinkedSdt(child));
+  },
   subDoc: CAPTURE,
 } as const satisfies ChildHandlers<"w:hyperlink", HyperlinkChildContext>;
 

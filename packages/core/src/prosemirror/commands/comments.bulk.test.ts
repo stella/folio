@@ -500,48 +500,67 @@ describe("headless bulk revision resolution equivalence", () => {
     { mode: "reject", revisionType: "insertion" },
     { mode: "accept", revisionType: "deletion" },
   ] as const)(
-    "$mode fits an emptied required inline parent with the legacy position map",
+    "$mode canonicalizes an emptied field with the per-change position map",
     ({ mode, revisionType }) => {
-      const field = schema.node(
-        "structuredField",
-        {
-          fieldType: "REF",
-          instruction: "REF required_inline_parent",
-          displayText: "removed",
-        },
-        [schema.text("removed", [revisionMark(revisionType, 1)])],
-      );
-      const trailingText = "following";
-      const doc = schema.node("doc", null, [
-        schema.node("paragraph", null, [field, schema.text(trailingText)]),
-      ]);
-      const trailingTextStart = 1 + field.nodeSize;
-      const selection = TextSelection.create(doc, trailingTextStart + 2);
-      const state = EditorState.create({
-        schema,
-        doc,
-        selection,
-        plugins: pluginsForHeadlessRevisionResolution([stepCountPlugin]),
-      });
-      const bulk = resolveAllChangesInHeadlessState(state, mode);
-      const legacy = apply(
-        state,
-        mode === "accept" ? acceptChange(0, doc.content.size) : rejectChange(0, doc.content.size),
-      ).state;
+      assertProperty(
+        fc.property(
+          fc.array(fc.constantFrom("text", "tab"), { minLength: 1, maxLength: 8 }),
+          fc.integer({ min: 1, max: 12 }),
+          (children, length) => {
+            const field = schema.node(
+              "structuredField",
+              {
+                fieldType: "REF",
+                instruction: "REF required_inline_parent",
+                displayText: "removed",
+              },
+              children.map((kind, index) => {
+                const marks = [revisionMark(revisionType, index + 1)];
+                return kind === "tab"
+                  ? schema.node("tab", null, null, marks)
+                  : schema.text("removed", marks);
+              }),
+            );
+            const trailingText = "f".repeat(length);
+            const doc = schema.node("doc", null, [
+              schema.node("paragraph", null, [field, schema.text(trailingText)]),
+            ]);
+            const trailingTextStart = 1 + field.nodeSize;
+            const selection = TextSelection.create(doc, trailingTextStart + Math.min(2, length));
+            const state = EditorState.create({
+              schema,
+              doc,
+              selection,
+              plugins: pluginsForHeadlessRevisionResolution([stepCountPlugin]),
+            });
+            const bulk = resolveAllChangesInHeadlessState(state, mode);
+            const legacy = apply(
+              state,
+              mode === "accept"
+                ? acceptChange(0, doc.content.size)
+                : rejectChange(0, doc.content.size),
+            ).state;
 
-      const legacyField = legacy.doc.firstChild?.firstChild;
-      expect(field.childCount).toBe(1);
-      expect(legacy.doc.textContent).toBe(trailingText);
-      expect(legacyField?.type.name).toBe("structuredField");
-      expect(legacyField?.firstChild?.type.name).toBe("tab");
-      expect(bulk.doc.toJSON()).toEqual(legacy.doc.toJSON());
-      expect(stepCountKey.getState(bulk)).toBe(1);
-      expect({ anchor: bulk.selection.anchor, head: bulk.selection.head }).toEqual({
-        anchor: legacy.selection.anchor,
-        head: legacy.selection.head,
-      });
-      expect(() => legacy.doc.check()).not.toThrow();
-      expect(() => bulk.doc.check()).not.toThrow();
+            const legacyField = legacy.doc.firstChild?.firstChild;
+            expect(field.childCount).toBe(children.length);
+            // An ordinary empty REF atom paints its existing field placeholder.
+            expect(legacy.doc.textContent).toBe(`{REF}${trailingText}`);
+            expect(legacyField?.type.name).toBe("field");
+            expect(legacyField?.childCount).toBe(0);
+            expect(legacyField?.attrs["displayText"]).toBe("");
+            expect(() => fromProseDoc(bulk.doc, createEmptyDocument())).not.toThrow();
+            expect(bulk.doc.toJSON()).toEqual(legacy.doc.toJSON());
+            expect(stepCountKey.getState(bulk)).toBe(1);
+            expect({ anchor: bulk.selection.anchor, head: bulk.selection.head }).toEqual({
+              anchor: legacy.selection.anchor,
+              head: legacy.selection.head,
+            });
+            expect(() => legacy.doc.check()).not.toThrow();
+            expect(() => bulk.doc.check()).not.toThrow();
+          },
+        ),
+        { numRuns: 30 },
+      );
     },
   );
 

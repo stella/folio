@@ -1,0 +1,10 @@
+{
+  "toggle-on then toggle-off preserves authored indentation without tracking a net change": [
+    {
+      "seed": 932054966,
+      "path": "0:0",
+      "note": "Pin absent effective indentation across both node schemas; compare semantic absence while preserving authored zero and numeric values.",
+      "date": "2026-10-09"
+    }
+  ]
+}

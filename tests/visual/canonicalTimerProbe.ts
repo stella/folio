@@ -1,3 +1,4 @@
+import { evaluateCanonicalDocument } from "./canonicalPageNavigation";
 import { expect, type Page } from "@playwright/test";
 import { test as base } from "../parity/canonicalTest";
 import { CANONICAL_INPUT_TIMER_OWNER } from "../../packages/core/src/controller/canonicalInputTimer";
@@ -41,10 +42,12 @@ export const test = base.extend({
 
 /** Read an already instrumented page; observation must never install the probe. */
 export const assertCanonicalInputTimersSettled = async (page: Page) => {
-  const pending = await page.evaluate(() => {
-    if (!globalThis.__folioCanonicalInputTimers)
-      throw new TypeError("Canonical timer instrumentation must be installed before navigation");
-    return [...globalThis.__folioCanonicalInputTimers.values()];
-  });
+  const pending = await evaluateCanonicalDocument(page, () =>
+    page.evaluate(() => {
+      if (!globalThis.__folioCanonicalInputTimers)
+        throw new TypeError("Canonical timer instrumentation must be installed before navigation");
+      return [...globalThis.__folioCanonicalInputTimers.values()];
+    }),
+  );
   expect(pending, "case must start with no canonical input timer").toEqual([]);
 };

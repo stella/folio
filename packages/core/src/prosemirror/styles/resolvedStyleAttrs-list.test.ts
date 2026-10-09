@@ -62,8 +62,8 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
     expect(attrs?.["listMarker"]).toBe("[Claim %1]");
     expect(attrs?.["listNumFmt"]).toBe("decimal");
     expect(attrs?.["listAbstractNumId"]).toBe(10);
-    // Style defines its own indent — the level's must not be projected.
-    expect(attrs?.["indentLeft"]).toBeUndefined();
+    // The paired projection preserves the style's indent over its level.
+    expect(attrs?.["indentLeft"]).toBe(1134);
   });
 
   test("projects a custom zero-padded style numbering", () => {
@@ -84,6 +84,11 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
     expect(attrs?.["indentLeft"]).toBe(360);
     expect(attrs?.["indentFirstLine"]).toBe(-360);
     expect(attrs?.["hangingIndent"]).toBe(true);
+    expect(attrs?._resolvedFormatting).toMatchObject({
+      indentLeft: 360,
+      indentFirstLine: -360,
+      hangingIndent: true,
+    });
   });
 
   test("returns null for styles without numbering or with numId 0", () => {
@@ -121,6 +126,6 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
 
     expect(attrs["indentLeft"]).toBe(700);
     expect(attrs["indentFirstLine"]).toBeNull();
-    expect(attrs["hangingIndent"]).toBeNull();
+    expect(attrs["hangingIndent"]).toBe(false);
   });
 });

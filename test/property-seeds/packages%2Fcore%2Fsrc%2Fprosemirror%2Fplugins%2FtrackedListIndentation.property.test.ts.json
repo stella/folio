@@ -1,0 +1,18 @@
+{
+  "list indentation provenance survives clipboard, Delete, and style operations": [
+    {
+      "seed": -291231887,
+      "path": "0:0:0:0:0:0:0:0",
+      "note": "Inherited zero first-line offsets changed after tracked paste and reopen",
+      "date": "2026-10-09"
+    }
+  ],
+  "rejecting an imported numbering-only paragraph change restores inherited list indentation": [
+    {
+      "seed": 1454241969,
+      "path": "0:0:0:0:0:0:0",
+      "note": "Reopened numbering-level indentation was reported as direct indentation",
+      "date": "2026-10-09"
+    }
+  ]
+}

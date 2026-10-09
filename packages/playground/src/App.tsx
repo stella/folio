@@ -817,6 +817,7 @@ export function App() {
       getEditorRef: () => editorRef.current,
     };
     globalThis.__folioCanonical = buildCanonicalBridge(() => editorRef.current);
+    globalThis.__folioCanonicalReady = true;
     globalThis.__folioScrollParity = scrollParityHost;
     globalThis.__folioParity = buildParityBridge(
       () => editorRef.current,
@@ -825,6 +826,7 @@ export function App() {
     return () => {
       globalThis.__folioBrowserTestBridge = undefined;
       globalThis.__folioPlayground = undefined;
+      globalThis.__folioCanonicalReady = false;
       globalThis.__folioCanonical = undefined;
       globalThis.__folioParity = undefined;
       globalThis.__folioScrollParity = undefined;

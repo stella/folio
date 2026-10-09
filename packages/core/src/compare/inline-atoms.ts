@@ -1,3 +1,4 @@
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
@@ -13,6 +14,7 @@ import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { drawingXmlWithoutIdentity } from "../docx/drawingIdNormalization";
 import { resolveAllChangesInHeadlessStateWithMapping } from "../prosemirror/commands/comments";
 import { runFormattingInlineAtomResultText } from "../prosemirror/runFormattingInlineCarriers";
+import { mintNoteReferenceOccurrenceId } from "../prosemirror/noteReferenceOccurrences";
 import { canonicalJson } from "../utils/canonicalJson";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
 
@@ -991,11 +993,17 @@ export const matchInlineAtoms = ({
       if (action.textDisposition === "inserted") {
         transaction.delete(from, to);
       } else {
-        transaction.addMark(
+        addTrackedDeletionMark({
+          insertionPolicy: "preserve-pending",
+          tr: transaction,
           from,
           to,
-          deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
-        );
+          mark: deletionType.create({
+            revisionId: nextRevisionId++,
+            author,
+            date: revisionStamp.date,
+          }),
+        });
       }
       const at = transaction.mapping.map(action.from, -1);
       transaction.insert(
@@ -1015,10 +1023,15 @@ export const matchInlineAtoms = ({
       const written = transaction.doc.nodeAt(from);
       const noteMark = action.node.marks.find(({ type }) => type.name === "footnoteRef");
       if (from >= to || !written?.isText || !noteMark) return { status: "unalignable" };
+      // Target occurrence identities belong to its document, not the comparison result.
+      const restoredNoteMark = noteMark.type.create({
+        ...noteMark.attrs,
+        occurrenceId: mintNoteReferenceOccurrenceId(),
+      });
       transaction.replaceWith(
         from,
         to,
-        state.schema.text(action.node.text ?? "", noteMark.addToSet(written.marks)),
+        state.schema.text(action.node.text ?? "", restoredNoteMark.addToSet(written.marks)),
       );
       if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
       continue;
@@ -1033,11 +1046,17 @@ export const matchInlineAtoms = ({
       if (action.atomDisposition === "inserted") {
         transaction.delete(from, to);
       } else {
-        transaction.addMark(
+        addTrackedDeletionMark({
+          insertionPolicy: "preserve-pending",
+          tr: transaction,
           from,
           to,
-          deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
-        );
+          mark: deletionType.create({
+            revisionId: nextRevisionId++,
+            author,
+            date: revisionStamp.date,
+          }),
+        });
       }
       const at = transaction.mapping.map(action.from, -1);
       transaction.insert(
@@ -1067,11 +1086,13 @@ export const matchInlineAtoms = ({
       continue;
     }
     if (node.marks.some(({ type }) => type === deletionType)) return { status: "unalignable" };
-    transaction.addMark(
+    addTrackedDeletionMark({
+      insertionPolicy: "preserve-pending",
+      tr: transaction,
       from,
       to,
-      deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
-    );
+      mark: deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
+    });
     if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
   }
   return {

@@ -1,3 +1,4 @@
+import { evaluateCanonicalPage } from "./canonicalPageNavigation";
 import type { Page } from "@playwright/test";
 import type { BrowserInputAction } from "./browserInputTrace";
 import { driveBrowserIme } from "./browserImeDriver";
@@ -41,13 +42,15 @@ export const driveCanonicalBrowserInput = async (page: Page, action: BrowserInpu
     case "pasteTable":
     case "pasteMultiBlock":
       await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-      await page.evaluate(async ({ plain, html }) => {
-        const parts: Record<string, Blob> = {
-          "text/plain": new Blob([plain], { type: "text/plain" }),
-        };
-        if (html) parts["text/html"] = new Blob([html], { type: "text/html" });
-        await navigator.clipboard.write([new ClipboardItem(parts)]);
-      }, action);
+      await evaluateCanonicalPage(page, () =>
+        page.evaluate(async ({ plain, html }) => {
+          const parts: Record<string, Blob> = {
+            "text/plain": new Blob([plain], { type: "text/plain" }),
+          };
+          if (html) parts["text/html"] = new Blob([html], { type: "text/html" });
+          await navigator.clipboard.write([new ClipboardItem(parts)]);
+        }, action),
+      );
       await page.keyboard.press(`${MODIFIER}+v`);
       return;
     case "dragCellDelete":

@@ -69,6 +69,51 @@ type BrowserDiscoveryOptions = DiscoveryOptions & {
   cliPath?: string;
   log?: (message: string) => void;
 };
+type BrowserConfigDiscoveryOptions = BrowserDiscoveryOptions & { config: string };
+
+/** Discover one complete config graph; callers enumerate configs from Git. */
+export const checkBrowserConfigDiscovery = ({
+  config,
+  repoRoot = REPO_ROOT,
+  run = runCommand,
+  cliPath,
+  log = console.log,
+}: BrowserConfigDiscoveryOptions) => {
+  const playwrightCli =
+    cliPath ?? createRequire(path.join(repoRoot, "package.json")).resolve("@playwright/test/cli");
+  const started = performance.now();
+  log(`Browser discovery: starting ${config}.`);
+  const result = run({
+    command: [
+      "node",
+      playwrightCli,
+      "test",
+      "--config",
+      path.join(repoRoot, config),
+      "--list",
+      "--reporter=json",
+    ],
+    cwd: repoRoot,
+  });
+  const elapsedMs = Math.round(performance.now() - started);
+  log(`Browser discovery: ${config}: ${elapsedMs} ms (exit ${result.exitCode}).`);
+  if (result.exitCode !== 0)
+    throw new TypeError(
+      `Playwright discovery failed for ${config}:\n${result.stdout}\n${result.stderr}`,
+    );
+  const report: unknown = JSON.parse(result.stdout);
+  if (!isRecord(report) || !Array.isArray(report["errors"]) || !Array.isArray(report["suites"]))
+    throw new TypeError(`Invalid Playwright JSON discovery report for ${config}.`);
+  if (report["errors"].length > 0)
+    throw new TypeError(
+      `Playwright discovery errors for ${config}: ${JSON.stringify(report["errors"])}`,
+    );
+  const tests = suiteTestCount(report["suites"]);
+  if (tests === 0) throw new TypeError(`Playwright discovered no tests for ${config}.`);
+  log(`Browser discovery: ${config}: ${tests} tests across all projects.`);
+  return { config, tests };
+};
+
 export const checkBrowserDiscovery = ({
   repoRoot = REPO_ROOT,
   run = runCommand,
@@ -83,38 +128,9 @@ export const checkBrowserDiscovery = ({
     throw new TypeError(`Browser input coverage failed:\n${coverage.stdout}\n${coverage.stderr}`);
   if (coverage.stdout.trim() !== "") log(coverage.stdout.trim());
   const configs = trackedBrowserConfigs({ repoRoot, run });
-  const playwrightCli =
-    cliPath ?? createRequire(path.join(repoRoot, "package.json")).resolve("@playwright/test/cli");
-  const results: { config: string; tests: number }[] = [];
-  for (const config of configs) {
-    const result = run({
-      command: [
-        "node",
-        playwrightCli,
-        "test",
-        "--config",
-        path.join(repoRoot, config),
-        "--list",
-        "--reporter=json",
-      ],
-      cwd: repoRoot,
-    });
-    if (result.exitCode !== 0)
-      throw new TypeError(
-        `Playwright discovery failed for ${config}:\n${result.stdout}\n${result.stderr}`,
-      );
-    const report: unknown = JSON.parse(result.stdout);
-    if (!isRecord(report) || !Array.isArray(report["errors"]) || !Array.isArray(report["suites"]))
-      throw new TypeError(`Invalid Playwright JSON discovery report for ${config}.`);
-    if (report["errors"].length > 0)
-      throw new TypeError(
-        `Playwright discovery errors for ${config}: ${JSON.stringify(report["errors"])}`,
-      );
-    const tests = suiteTestCount(report["suites"]);
-    if (tests === 0) throw new TypeError(`Playwright discovered no tests for ${config}.`);
-    results.push({ config, tests });
-    log(`Browser discovery: ${config}: ${tests} tests across all projects.`);
-  }
+  const results = configs.map((config) =>
+    checkBrowserConfigDiscovery({ config, repoRoot, run, cliPath, log }),
+  );
   log(`Browser discovery: ${results.length} tracked configs validated.`);
   return results;
 };

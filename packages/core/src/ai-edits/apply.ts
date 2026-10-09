@@ -1,3 +1,4 @@
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
   Fragment,
   Mark,
@@ -141,7 +142,7 @@ import type {
   TextFormatting,
 } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
-import { type BatchClaim, BatchClaims } from "./batch-claims";
+import { type BatchClaim, BatchClaims, compareBatchTieOrder } from "./batch-claims";
 import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import { separateRevisionStretches } from "./revisionStretches";
@@ -4107,7 +4108,7 @@ const applyFolioAIEditOperationsInternal = ({
       if (leftCellShape.rectangle.right !== rightCellShape.rectangle.right) {
         return rightCellShape.rectangle.right - leftCellShape.rectangle.right;
       }
-      return right.originalIndex - left.originalIndex;
+      return compareBatchTieOrder(left.originalIndex, right.originalIndex);
     }
     const leftColumn = left.tableColumnInsertion ?? left.tableColumnDeletion;
     const rightColumn = right.tableColumnInsertion ?? right.tableColumnDeletion;
@@ -4129,12 +4130,12 @@ const applyFolioAIEditOperationsInternal = ({
       if (leftIsInsertion !== rightIsInsertion) {
         return leftIsInsertion ? -1 : 1;
       }
-      return right.originalIndex - left.originalIndex;
+      return compareBatchTieOrder(left.originalIndex, right.originalIndex);
     }
     if (left.from !== right.from) {
       return right.from - left.from;
     }
-    return right.originalIndex - left.originalIndex;
+    return compareBatchTieOrder(left.originalIndex, right.originalIndex);
   });
   for (let executionIndex = 0; executionIndex < executionOrder.length; executionIndex++) {
     const item = executionOrder[executionIndex];
@@ -5017,14 +5018,26 @@ const applyFolioAIEditOperationsInternal = ({
             ...(isPairedMove(item.operation.moveId) && { moveKind: "moveFrom" }),
             ...trackedRevisionExtras,
           });
-          tr = tr.addMark(item.from, item.to, deletionMark);
+          addTrackedDeletionMark({
+            insertionPolicy: "preserve-pending",
+            tr,
+            from: item.from,
+            to: item.to,
+            mark: deletionMark,
+          });
           // The range above spans the block's clean TEXT, so an inline image or
           // field sits outside it whenever it leads or trails the words.
           // Deleting a block deletes what is in it: left unmarked, accepting
           // the deletion kept a paragraph standing around an orphan image.
           const atomRanges = undeletedContentAtomRanges(tr, item.blockFrom);
           for (const { from, to } of atomRanges) {
-            tr = tr.addMark(from, to, deletionMark);
+            addTrackedDeletionMark({
+              insertionPolicy: "preserve-pending",
+              tr,
+              from,
+              to,
+              mark: deletionMark,
+            });
           }
           for (const anchorId of textBoxAnchorIdsBetween(
             tr.doc,
@@ -5406,16 +5419,18 @@ const applyFolioAIEditOperationsInternal = ({
           appliedRevisionIds = [revisionIdMark];
           if (item.to > item.from && deletionType) {
             const revisionIdSeparator = operationRevisionSeed++;
-            tr = tr.addMark(
-              item.from,
-              item.to,
-              deletionType.create({
+            addTrackedDeletionMark({
+              insertionPolicy: "preserve-pending",
+              tr,
+              from: item.from,
+              to: item.to,
+              mark: deletionType.create({
                 revisionId: revisionIdSeparator,
                 author,
                 date,
                 ...trackedRevisionExtras,
               }),
-            );
+            });
             appliedRevisionIds.push(revisionIdSeparator);
           }
           tr = tr.split(item.from);
@@ -6184,7 +6199,13 @@ const applyTextReplacement = ({
   }
 
   if (item.to > item.from && deletionType) {
-    nextTr = nextTr.addMark(item.from, item.to, deletionType.create(delAttrs));
+    addTrackedDeletionMark({
+      insertionPolicy: "preserve-pending",
+      tr: nextTr,
+      from: item.from,
+      to: item.to,
+      mark: deletionType.create(delAttrs),
+    });
     if (commentMark && replacement.length === 0) {
       nextTr = nextTr.addMark(item.from, item.to, commentMark);
     }
@@ -6953,7 +6974,13 @@ const applyMinimalTrackedReplacement = ({
         surveyReplacedAnnotations(doc, first.from, last.to).carried,
       );
       for (const piece of change.pieces) {
-        nextTr = nextTr.addMark(piece.from, piece.to, deletion);
+        addTrackedDeletionMark({
+          insertionPolicy: "preserve-pending",
+          tr: nextTr,
+          from: piece.from,
+          to: piece.to,
+          mark: deletion,
+        });
         if (commentMark) {
           nextTr = nextTr.addMark(piece.from, piece.to, commentMark);
         }

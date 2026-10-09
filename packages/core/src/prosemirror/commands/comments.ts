@@ -4,12 +4,16 @@
  * PM commands for adding/removing comments and accepting/rejecting tracked changes.
  */
 
-import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
+import { resolvedPreservedXmlAttrs } from "../preservedXmlReview";
+import { canonicalFieldNode } from "../fieldRepresentation";
+
+import { Fragment, type Mark, type MarkType, type Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { resolveStateStory } from "../markupViewProjection";
 import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
 import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
+import { trackedRevisionPathOf, retainedTrackedRevisionMark } from "../trackedRevisionPath";
 import { Mapping } from "prosemirror-transform";
 import { panic } from "better-result";
 
@@ -58,7 +62,10 @@ import {
 import { getDocumentNumbering } from "../plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../plugins/documentStyleState";
 import { paragraphRunStyleContext, paragraphRunStyleContextAt } from "../runStyleFormatting";
-import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
+import {
+  reconstructRejectedRunFormattingMarks,
+  restoreHistoricalRunFormatting,
+} from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import {
   deleteTextBoxesAnchoredAt,
@@ -148,25 +155,6 @@ export function removeCommentMark(commentId: number): Command {
 }
 
 type ResolveMode = "accept" | "reject";
-
-const revisionLayerOf = (mark: Mark): TrackedRevisionAncestor => {
-  const attrs = expectTrackedChangeMarkAttrs(mark);
-  let type: TrackedRevisionAncestor["type"];
-  if (mark.type.name === "insertion") {
-    type = attrs.moveKind === "moveTo" ? "moveTo" : "insertion";
-  } else {
-    type = attrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
-  }
-  return {
-    type,
-    revisionId: attrs.revisionId,
-    author: attrs.author,
-    ...(attrs.date ? { date: attrs.date } : {}),
-    ...(attrs.utcDate ? { utcDate: attrs.utcDate } : {}),
-    ...(attrs.initials ? { initials: attrs.initials } : {}),
-    outerWrapperCount: attrs._docxOuterWrapperCount ?? 0,
-  };
-};
 
 const revisionLayerRemovesContent = (layer: TrackedRevisionAncestor, mode: ResolveMode): boolean =>
   mode === "accept"
@@ -348,6 +336,38 @@ function resolveChange(
         if (resolvesNode) {
           resolvedBoundaries.push(rangeFrom, rangeTo);
         }
+        const restoredDeletion =
+          mode === "reject" &&
+          node.marks.find(
+            (mark) =>
+              mark.type === keepType &&
+              matchesRevision(mark) &&
+              expectTrackedChangeMarkAttrs(mark)._historicalFormatting &&
+              !expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.some(
+                (layer) =>
+                  (layer.type === "deletion" || layer.type === "moveFrom") &&
+                  revisionSet !== null &&
+                  !revisionSet.has(layer.revisionId),
+              ),
+          );
+        if (restoredDeletion && !removesNode) {
+          const nextMarks = restoreHistoricalRunFormatting({
+            node,
+            paragraphContext: paragraphRunStyleContextAt({
+              doc: tr.doc,
+              pos: rangeFrom,
+              styleResolver,
+            }),
+            styleResolver,
+          });
+          for (const mark of node.marks) {
+            if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name))
+              tr.removeMark(rangeFrom, rangeTo, mark);
+          }
+          for (const mark of nextMarks) {
+            if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name)) tr.addMark(rangeFrom, rangeTo, mark);
+          }
+        }
         if (runPropertyChangeMark) {
           resolveRunPropertyChange({
             tr,
@@ -367,8 +387,7 @@ function resolveChange(
             (expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.length ?? 0) > 0,
         );
         if (nestedMark) {
-          const nestedAttrs = expectTrackedChangeMarkAttrs(nestedMark);
-          const path = [...(nestedAttrs._docxRevisionAncestors ?? []), revisionLayerOf(nestedMark)];
+          const path = trackedRevisionPathOf(nestedMark);
           const selected = (layer: TrackedRevisionAncestor): boolean =>
             revisionSet === null || revisionSet.has(layer.revisionId);
           if (path.some(selected)) {
@@ -376,41 +395,32 @@ function resolveChange(
               deleteRanges.push({ from: rangeFrom, to: rangeTo });
             } else {
               tr.removeMark(rangeFrom, rangeTo, nestedMark);
-              const remaining = path.filter((layer) => !selected(layer));
-              const active = remaining.at(-1);
-              if (active) {
-                const type =
-                  active.type === "insertion" || active.type === "moveTo"
-                    ? insertionType
-                    : deletionType;
-                if (!type) {
-                  panic("A nested tracked revision has no editor mark type");
-                }
-                tr.addMark(
-                  rangeFrom,
-                  rangeTo,
-                  type.create({
-                    revisionId: active.revisionId,
-                    author: active.author,
-                    date: active.date ?? null,
-                    utcDate: active.utcDate ?? null,
-                    initials: active.initials ?? null,
-                    moveKind:
-                      active.type === "moveTo" || active.type === "moveFrom" ? active.type : null,
-                    _historicalFormatting:
-                      active.type === "deletion" || active.type === "moveFrom" ? true : null,
-                    _docxOuterWrapperCount: active.outerWrapperCount,
-                    _docxRevisionAncestors: remaining.length > 1 ? remaining.slice(0, -1) : null,
-                  }),
-                );
-              }
+              const retained = retainedTrackedRevisionMark(nestedMark, (layer) => !selected(layer));
+              if (retained) tr.addMark(rangeFrom, rangeTo, retained);
             }
+          }
+          const current = tr.doc.nodeAt(pos);
+          if (current) {
+            const attrs = resolvedPreservedXmlAttrs(node, current.marks);
+            if (attrs !== node.attrs) tr.setNodeMarkup(pos, undefined, attrs);
           }
           return true;
         }
 
         if (removesNode) {
           deleteRanges.push({ from: rangeFrom, to: rangeTo });
+        }
+
+        if (
+          !removesNode &&
+          keepType &&
+          node.marks.some((mark) => mark.type === keepType && matchesRevision(mark))
+        ) {
+          const retained = node.marks.filter(
+            (mark) => !(mark.type === keepType && matchesRevision(mark)),
+          );
+          const attrs = resolvedPreservedXmlAttrs(node, retained);
+          if (attrs !== node.attrs) tr.setNodeMarkup(pos, undefined, attrs);
         }
 
         if (!removeKeptMarksInBulk) {
@@ -443,6 +453,20 @@ function resolveChange(
         rangesToDelete = coalescedDeleteRanges;
       }
       for (const range of rangesToDelete.toReversed()) {
+        const start = tr.doc.resolve(range.from);
+        const field = start.parent;
+        if (
+          field.type.name === "structuredField" &&
+          start.parentOffset === 0 &&
+          range.to === start.end()
+        ) {
+          // Canonicalize before the replacement fitter supplies a synthetic
+          // child for a required inline carrier whose result was removed.
+          const position = start.before();
+          const empty = canonicalFieldNode(field.copy(Fragment.empty));
+          tr.replaceWith(position, position + field.nodeSize, empty);
+          continue;
+        }
         tr.delete(range.from, range.to);
       }
       // A text box goes with its anchor, and before any paragraph mark joins:
@@ -708,6 +732,17 @@ function resolveChange(
         styleResolver,
       });
 
+      const resolvedFields: { node: PMNode; position: number }[] = [];
+      tr.doc.descendants((node, position) => {
+        const canonical = canonicalFieldNode(node);
+        if (canonical !== node) resolvedFields.push({ node: canonical, position });
+      });
+      for (const { node, position } of resolvedFields.toReversed()) {
+        const field = tr.doc.nodeAt(position);
+        if (!field) continue;
+        if (field.type === node.type) tr.setNodeMarkup(position, undefined, node.attrs, node.marks);
+        else tr.replaceWith(position, position + field.nodeSize, node);
+      }
       if (tr.steps.length > 0) {
         dispatch(tr);
       }

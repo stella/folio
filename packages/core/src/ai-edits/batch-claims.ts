@@ -21,6 +21,10 @@
  * position before its node.
  */
 
+/** Equal snapshot coordinates execute in reverse input order. */
+export const compareBatchTieOrder = (leftIndex: number, rightIndex: number): number =>
+  rightIndex - leftIndex;
+
 type PositionRange = { from: number; to: number };
 
 /** The text an operation rewrites (`text`), only marks (`annotation`), or breaks (`split`). */

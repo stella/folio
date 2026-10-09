@@ -334,12 +334,22 @@ describe("the section break's one carrier against stored snapshots", () => {
 });
 
 describe("note-reference occurrence schema cutover", () => {
-  test.each([0, 11, FOLIO_YJS_ATTR_SCHEMA_VERSION] as const)(
+  test.each(
+    ([0, 11, FOLIO_YJS_ATTR_SCHEMA_VERSION] as const).flatMap((version) =>
+      [undefined, "", " \t\n\u00a0"].map((occurrenceId) => ({ version, occurrenceId })),
+    ),
+  )(
     "refuses unattributed references at schema %s before migration mutates anything",
-    (version) => {
+    ({ version, occurrenceId }) => {
       const ydoc = new Y.Doc();
       const text = new Y.XmlText();
-      text.insert(0, "123123", { footnoteRef: { id: "123", noteType: "footnote" } });
+      text.insert(0, "123123", {
+        footnoteRef: {
+          id: "123",
+          noteType: "footnote",
+          ...(occurrenceId === undefined ? {} : { occurrenceId }),
+        },
+      });
       const paragraph = new Y.XmlElement("paragraph");
       // Non-text hooks cannot hide the attributed text that follows them.
       paragraph.insert(0, [new Y.XmlHook("fixture"), text]);

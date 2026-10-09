@@ -12,7 +12,7 @@
  * - Inline properties (highest priority)
  */
 
-import { mintNoteReferenceOccurrenceId } from "../noteReferenceOccurrences";
+import { fieldRequiresStructuredContent } from "../fieldRepresentation";
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
@@ -77,11 +77,14 @@ import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inli
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { copiedWrapPolygon } from "../../docx/wrapPolygon";
 import { paragraphNumberingAttr } from "../numberingAttr";
+import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
+import { listIndentationProvenancePatch } from "../styles/resolvedStyleAttrs";
 import { emptyFieldRunPropertyChanges } from "../emptyFieldResultRuns";
 import { calculateRowSpans, type RowSpanInfo } from "../../docx/verticalMergeProjection";
 import { isCellMergeContinuation } from "../../docx/tableParser";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import {
+  paragraphFormattingWithAuthoredIndentation,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   createProseParagraphWithPropertySource,
   proseParagraphAttrsWithoutPropertySource,
@@ -108,7 +111,6 @@ import {
   type AuthoredRunFormattingCarrier,
   type MarkFactory,
 } from "../extensions/marks/markUtils";
-import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
 import { RUN_IDENTITY_MARK_NAME, hasRunIdentityPayload, runIdentityAttrs } from "../runIdentity";
 import { directionFromBidi } from "../paragraphDirection";
@@ -240,6 +242,7 @@ type RunIdentityIdAllocator = () => number;
 /** What converting one paragraph's runs shares across them. */
 type RunConversionScope = {
   nextRunIdentityId: RunIdentityIdAllocator;
+  nextNoteReferenceOccurrenceId: () => string;
   /** The conversion's mark interner. */
   createMark: MarkFactory;
 };
@@ -279,6 +282,12 @@ const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): M
 const createHyperlinkInstanceIndexAllocator = (): HyperlinkInstanceIndexAllocator => {
   let index = 0;
   return () => index++;
+};
+
+/** Imported occurrences belong to the projection walk, not to the referenced note. */
+const createNoteReferenceOccurrenceAllocator = () => {
+  let index = 0;
+  return () => `source-note:${index++}`;
 };
 
 type BookmarkBoundaryCount = {
@@ -484,6 +493,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const theme = options?.theme ?? document.package.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
+  const nextNoteReferenceOccurrenceId = createNoteReferenceOccurrenceAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
   const conversionContext = {
     listRenderings: new Map<string, ResolvedListRendering>(),
@@ -494,6 +504,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
+    nextNoteReferenceOccurrenceId,
     pairedBookmarkIds,
     pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(paragraphs),
     storyRangedCommentIds: rangedCommentIds(paragraphs),
@@ -752,19 +763,33 @@ function convertParagraph(
   let runIdentityId = 0;
   const runScope = {
     nextRunIdentityId: () => runIdentityId++,
+    nextNoteReferenceOccurrenceId: context.nextNoteReferenceOccurrenceId,
     createMark: context.createMark,
   };
+  const directFormatting = paragraphFormattingWithAuthoredIndentation(paragraph);
   const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
     paragraph,
     styleResolver,
     tableParagraphOverlay,
   );
+  if (directFormatting === undefined) Reflect.deleteProperty(attrs, "_originalFormatting");
+  else attrs._originalFormatting = directFormatting;
   const numPr = mergeParagraphNumbering(
     attrs.numPrFromStyle ?? undefined,
     attrs.numPr ?? undefined,
   );
   if (numPr?.kind === "none") Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   else if (context.numbering !== undefined && numPr?.kind === "reference") {
+    Object.assign(
+      attrs,
+      listIndentationProvenancePatch({
+        direct: paragraphIndentationFromFormatting(directFormatting),
+        styleFormatting: attrs._styleResolvedFormatting,
+        numberingSource: attrs.numPrFromStyle == null ? "paragraph" : "style",
+        numPr: { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 },
+        numbering: context.numbering,
+      }),
+    );
     const { rendering, nextSlotOffset } = resolveListRendering(numPr, context);
     if (rendering !== null) {
       const cached = paragraph.listRendering;
@@ -1148,7 +1173,8 @@ function applyCommentMarks(nodes: PMNode[], commentIds: Set<number>): PMNode[] {
     .map((commentId) => commentMarkType.create({ commentId }));
 
   return nodes.map((node) => {
-    if (!node.isText && (!node.isInline || !node.type.allowsMarkType(commentMarkType))) {
+    // The paragraph owns marks on inline nodes; a node's mark policy governs its children.
+    if (!node.isInline) {
       return node;
     }
     let marks = node.marks;
@@ -1767,6 +1793,7 @@ type TableConversionContext = {
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
+  nextNoteReferenceOccurrenceId: () => string;
   pairedBookmarkIds: ReadonlySet<number>;
   pageBreakRunSourceDescendants: PageBreakRunSourceDescendantIndex;
   /** Comments the story opens a range for, for the point-comment question. */
@@ -2508,6 +2535,7 @@ export function standaloneTableCellToProseMirror(
 ): PMNode {
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
+  const nextNoteReferenceOccurrenceId = createNoteReferenceOccurrenceAllocator();
   const pageBreakRunSourceDescendants = buildPageBreakRunSourceDescendantIndex(cell.content);
   reportSourceContainerPageBreakRun(
     cell.content,
@@ -2524,6 +2552,7 @@ export function standaloneTableCellToProseMirror(
       numbering: undefined,
       nextTextBoxGroupId,
       nextHyperlinkInstanceIndex,
+      nextNoteReferenceOccurrenceId,
       pairedBookmarkIds: collectPairedBookmarkIds(cell.content),
       pageBreakRunSourceDescendants,
       storyRangedCommentIds: rangedCommentIds(cell.content),
@@ -2582,7 +2611,11 @@ function convertField(
         (content) =>
           content.type === "hyperlink" ||
           content.type === "preservedInline" ||
-          content.type === "inlineWrapper",
+          content.type === "inlineWrapper" ||
+          content.type === "insertion" ||
+          content.type === "deletion" ||
+          content.type === "moveFrom" ||
+          content.type === "moveTo",
       ));
   const appendRun = (run: Run, into: PMNode[]): void => {
     for (const content of run.content) {
@@ -2593,7 +2626,7 @@ function convertField(
     // Use formatting from the first run that has it.
     fieldFormatting ??= run.formatting;
     fieldPropertyChanges ??= run.propertyChanges;
-    if (!hasStructuredSourceContent) {
+    if (field.type !== "simpleField" && !hasStructuredSourceContent) {
       return;
     }
     into.push(
@@ -2605,6 +2638,54 @@ function convertField(
         textBoxAnchors,
       ),
     );
+  };
+  const collectDisplay = (items: readonly ParagraphContent[]): void => {
+    for (const item of items) {
+      switch (item.type) {
+        case "run":
+          for (const child of item.content) if (child.type === "text") displayText += child.text;
+          fieldFormatting ??= item.formatting;
+          fieldPropertyChanges ??= item.propertyChanges;
+          break;
+        case "hyperlink":
+          collectDisplay(item.children);
+          break;
+        case "inlineWrapper":
+        case "inlineSdt":
+        case "insertion":
+        case "deletion":
+        case "moveFrom":
+        case "moveTo":
+          collectDisplay(item.content);
+          break;
+        case "simpleField":
+          collectDisplay(item.content);
+          break;
+        case "complexField":
+          collectDisplay(item.fieldResult);
+          break;
+        case "preservedInline":
+          displayText += item.text;
+          break;
+        case "mathEquation":
+          displayText += item.plainText ?? "";
+          break;
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "commentReference":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          break;
+        default: {
+          const unsupported: never = item;
+          panic(`Unsupported field display content: ${JSON.stringify(unsupported)}`);
+        }
+      }
+    }
   };
   if (field.type === "simpleField") {
     // A wrapper the field's cached result was authored inside rides the leaves
@@ -2641,6 +2722,25 @@ function convertField(
             }),
           );
           break;
+        case "insertion":
+        case "deletion":
+        case "moveFrom":
+        case "moveTo": {
+          collectDisplay(content.content);
+          itemNodes.push(
+            ...convertTrackedChange(
+              content,
+              content.type === "insertion" || content.type === "moveTo" ? "insertion" : "deletion",
+              nextHyperlinkInstanceIndex,
+              runScope,
+              { current: getInheritedRunFormatting, historical: getInheritedRunFormatting },
+              styleResolver,
+              content.type === "moveFrom" || content.type === "moveTo" ? content.type : null,
+              textBoxAnchors,
+            ),
+          );
+          break;
+        }
         // `SimpleField["content"]` holds the three above and the wrapper the
         // lift has already taken off, and a wrapper inside the field holds
         // what the field holds, because both read the field's handler map.
@@ -2678,24 +2778,7 @@ function convertField(
     createMark: runScope.createMark,
   });
 
-  const hasConvertedHyperlinkContent = inlineNodes.some((node) =>
-    node.marks.some((mark) => mark.type.name === "hyperlink"),
-  );
-  const hasConvertedPageBreakContent = inlineNodes.some(
-    (node) => node.type.name === "pageBreakRun",
-  );
-  const hasConvertedPreservedContent = inlineNodes.some(
-    (node) => node.type.name === "preservedXml",
-  );
-  // The wrapper is a mark on the field's own leaves, so collapsing the field to
-  // its display text would take the wrapper with it.
-  const hasConvertedWrapperContent = inlineNodes.some((node) =>
-    node.marks.some((mark) => mark.type.name === INLINE_WRAPPER_MARK_NAME),
-  );
-  const createStructuredField =
-    hasConvertedPageBreakContent ||
-    hasConvertedPreservedContent ||
-    (hasStructuredSourceContent && (hasConvertedHyperlinkContent || hasConvertedWrapperContent));
+  const createStructuredField = fieldRequiresStructuredContent(inlineNodes);
   const resultRuns =
     field.type === "simpleField"
       ? field.content.flatMap((content) => (content.type === "run" ? [content] : []))
@@ -3052,13 +3135,14 @@ function convertRun(
   }
 
   for (const content of run.content) {
-    const contentNodes = convertRunContent(
+    const contentNodes = convertRunContent({
       content,
       marks,
-      mergedFormatting,
+      formatting: mergedFormatting,
       textBoxAnchors,
-      run.formatting,
-    );
+      authoredFormatting: run.formatting,
+      nextNoteReferenceOccurrenceId: runScope.nextNoteReferenceOccurrenceId,
+    });
     nodes.push(...contentNodes);
   }
 
@@ -3820,19 +3904,29 @@ const carriedRunFormatting = (
 /**
  * Convert RunContent to ProseMirror nodes
  */
-function convertRunContent(
-  content: RunContent,
-  marks: ReturnType<typeof schema.mark>[],
-  formatting?: TextFormatting,
-  textBoxAnchors?: ReadonlyMap<Shape, string>,
+type ConvertRunContentOptions = {
+  content: RunContent;
+  marks: ReturnType<typeof schema.mark>[];
+  formatting: TextFormatting | undefined;
+  textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
   /**
    * The run's own `w:rPr`, NOT the style-resolved `formatting` above. An
    * inline atom carries it verbatim so the save can rebuild the run; carrying
    * the resolved value instead would write the style's run properties into
    * the run as direct formatting.
    */
-  authoredFormatting?: TextFormatting,
-): PMNode[] {
+  authoredFormatting: TextFormatting | undefined;
+  nextNoteReferenceOccurrenceId: () => string;
+};
+
+function convertRunContent({
+  content,
+  marks,
+  formatting,
+  textBoxAnchors,
+  authoredFormatting,
+  nextNoteReferenceOccurrenceId,
+}: ConvertRunContentOptions): PMNode[] {
   switch (content.type) {
     case "noteMarker":
       // PM gives the invisible atom a structural position; native story offsets
@@ -3922,7 +4016,7 @@ function convertRunContent(
       // Footnote reference - render as superscript number with footnoteRef mark
       const footnoteMark = schema.mark("footnoteRef", {
         id: content.id.toString(),
-        occurrenceId: mintNoteReferenceOccurrenceId(),
+        occurrenceId: nextNoteReferenceOccurrenceId(),
         noteType: "footnote",
         vertAlign: noteReferenceVertAlign(formatting?.vertAlign),
         customMarkFollows: content.customMarkFollows,
@@ -3934,7 +4028,7 @@ function convertRunContent(
       // Endnote reference - render as superscript number with footnoteRef mark
       const endnoteMark = schema.mark("footnoteRef", {
         id: content.id.toString(),
-        occurrenceId: mintNoteReferenceOccurrenceId(),
+        occurrenceId: nextNoteReferenceOccurrenceId(),
         noteType: "endnote",
         vertAlign: noteReferenceVertAlign(formatting?.vertAlign),
         customMarkFollows: content.customMarkFollows,
@@ -4401,13 +4495,14 @@ function convertHyperlink(
         // collapsing the right-aligned page number flush against the title.
         for (const content of child.content) {
           childNodes.push(
-            ...convertRunContent(
+            ...convertRunContent({
               content,
-              allMarks,
-              mergedFormatting,
+              marks: allMarks,
+              formatting: mergedFormatting,
               textBoxAnchors,
-              child.formatting,
-            ),
+              authoredFormatting: child.formatting,
+              nextNoteReferenceOccurrenceId: runScope.nextNoteReferenceOccurrenceId,
+            }),
           );
         }
         break;
@@ -5171,6 +5266,7 @@ export function headerFooterToProseDoc(
   const theme = options?.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
+  const nextNoteReferenceOccurrenceId = createNoteReferenceOccurrenceAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(content);
   const conversionContext = {
     listRenderings: new Map<string, ResolvedListRendering>(),
@@ -5179,6 +5275,7 @@ export function headerFooterToProseDoc(
       options?.numbering === undefined ? undefined : getCachedNumberingMap(options.numbering),
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
+    nextNoteReferenceOccurrenceId,
     pairedBookmarkIds,
     pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(content),
     storyRangedCommentIds: rangedCommentIds(content),

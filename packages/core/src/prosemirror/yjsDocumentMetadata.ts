@@ -1,3 +1,4 @@
+import { isNoteReferenceOccurrenceId } from "./noteReferenceOccurrenceId";
 import { Result, TaggedError, panic } from "better-result";
 import {
   DRAWING_RAW_XML_MODES,
@@ -697,12 +698,7 @@ const requireNoteOccurrenceAttribution = (
         const attributes: unknown = op.attributes;
         if (!isRecord(attributes) || attributes["footnoteRef"] == null) continue;
         const reference = attributes["footnoteRef"];
-        if (
-          isRecord(reference) &&
-          typeof reference["occurrenceId"] === "string" &&
-          reference["occurrenceId"].length > 0
-        )
-          continue;
+        if (isRecord(reference) && isNoteReferenceOccurrenceId(reference["occurrenceId"])) continue;
         throw new FolioYjsNoteReferenceSchemaError({
           schemaVersion,
           requiredSchemaVersion: FOLIO_YJS_ATTR_SCHEMA_VERSION,

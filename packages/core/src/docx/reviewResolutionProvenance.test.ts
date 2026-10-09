@@ -20,8 +20,19 @@ import {
   serializeBoundaryJoins,
   serializeResolutionJoins,
 } from "./reviewResolutionProvenance";
-import { findChild, parseXmlDocument, WORDPROCESSINGML_NAMESPACE_URIS } from "./xmlParser";
-import type { Paragraph, ParagraphMarkChange } from "../types/document";
+import {
+  getChildElements,
+  getLocalName,
+  findChild,
+  parseXmlDocument,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+} from "./xmlParser";
+import type {
+  TrackedRunChange,
+  ParagraphContent,
+  Paragraph,
+  ParagraphMarkChange,
+} from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -269,4 +280,312 @@ test("save refuses provenance requiring unsupported hyperlink repartition", () =
     ],
   } satisfies Paragraph;
   expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
+});
+
+test("nested hyperlink lifting refuses enclosing resolution provenance", () => {
+  const paragraph = {
+    type: "paragraph",
+    content: [
+      {
+        type: "insertion",
+        info: { id: 35, author: "Outer Reviewer" },
+        resolutionJoins: { before: 1, after: 1, remove: 1 },
+        content: [
+          { type: "run", content: [{ type: "text", text: "before" }] },
+          {
+            type: "deletion",
+            info: { id: 37, author: "Inner Reviewer" },
+            content: [
+              {
+                type: "hyperlink",
+                anchor: "target",
+                children: [{ type: "run", content: [{ type: "text", text: "linked" }] }],
+              },
+            ],
+          },
+          { type: "run", content: [{ type: "text", text: "after" }] },
+        ],
+      },
+    ],
+  } satisfies Paragraph;
+  expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
+});
+
+type RecursiveInlineContainerKind = Extract<
+  ParagraphContent,
+  { content: ParagraphContent[] }
+>["type"];
+const RECURSIVE_CONTAINER_KINDS = {
+  insertion: fc.constant("insertion" as const),
+  deletion: fc.constant("deletion" as const),
+  moveFrom: fc.constant("moveFrom" as const),
+  moveTo: fc.constant("moveTo" as const),
+  simpleField: fc.constant("simpleField" as const),
+  inlineSdt: fc.constant("inlineSdt" as const),
+  inlineWrapper: fc.constantFrom("bidiEmbedding", "bidiOverride", "smartTag", "customXml"),
+} satisfies Record<RecursiveInlineContainerKind, fc.Arbitrary<string>>;
+
+test(
+  "generated nested lifting refuses provenance and unsplit revisions retain it",
+  () => {
+    assertProperty(
+      fc.property(
+        fc.array(fc.oneof(...Object.values(RECURSIVE_CONTAINER_KINDS)), {
+          minLength: 1,
+          maxLength: 5,
+        }),
+        fc.constantFrom("plain", "field"),
+        fc.constantFrom("linked", "unlinked"),
+        fc.constantFrom("none", "outer", "inner", "every"),
+        fc.record({
+          before: fc.integer({ min: 0, max: 4 }),
+          after: fc.integer({ min: 0, max: 4 }),
+          remove: fc.integer({ min: 0, max: 4 }),
+        }),
+        (kinds, carrier, link, provenance, joins) => {
+          const run = { type: "run", content: [{ type: "text", text: "result" }] } as const;
+          const leaf =
+            link === "linked"
+              ? {
+                  type: "hyperlink" as const,
+                  anchor: "target",
+                  children: [{ ...run, content: [...run.content] }],
+                }
+              : { ...run, content: [...run.content] };
+          let content: TrackedRunChange["content"] =
+            carrier === "field"
+              ? [
+                  {
+                    type: "simpleField",
+                    instruction: "REF target",
+                    fieldType: "REF",
+                    content: [leaf],
+                  },
+                ]
+              : [leaf];
+          let owners = 0;
+          let exposedLink = link === "linked";
+          let refusesSegmentation = false;
+          for (const [index, kind] of kinds.entries()) {
+            const retains =
+              provenance === "every" ||
+              (provenance === "inner" && index === 0) ||
+              (provenance === "outer" && index === kinds.length - 1);
+            const nestedContent: TrackedRunChange["content"] = [
+              { type: "run", content: [{ type: "text", text: "before" }] },
+            ];
+            nestedContent.push(...content);
+            nestedContent.push({ type: "run", content: [{ type: "text", text: "after" }] });
+            switch (kind) {
+              case "insertion":
+              case "deletion":
+              case "moveFrom":
+              case "moveTo":
+                if (retains) {
+                  owners++;
+                  if (exposedLink) refusesSegmentation = true;
+                }
+                content = [
+                  {
+                    type: kind,
+                    info: { id: index + 1, author: "Reviewer" },
+                    ...(retains ? { resolutionJoins: joins } : {}),
+                    content: nestedContent,
+                  },
+                ];
+                break;
+              case "simpleField":
+                if (retains) {
+                  owners++;
+                  if (exposedLink) refusesSegmentation = true;
+                }
+                content = [
+                  {
+                    type: "simpleField",
+                    instruction: "REF target",
+                    fieldType: "REF",
+                    content: [
+                      {
+                        type: "insertion",
+                        info: { id: index + 1, author: "Reviewer" },
+                        ...(retains ? { resolutionJoins: joins } : {}),
+                        content: nestedContent,
+                      },
+                    ],
+                  },
+                ];
+                break;
+              case "inlineSdt":
+                exposedLink = false;
+                content = [
+                  {
+                    type: "inlineSdt",
+                    properties: { sdtType: "richText" },
+                    content: nestedContent,
+                  },
+                ];
+                break;
+              case "bidiEmbedding":
+              case "bidiOverride":
+                content = [
+                  {
+                    type: "inlineWrapper",
+                    kind: "bidi",
+                    control: kind === "bidiEmbedding" ? "embedding" : "override",
+                    direction: "rtl",
+                    content: nestedContent,
+                  },
+                ];
+                break;
+              case "smartTag":
+              case "customXml":
+                content = [
+                  {
+                    type: "inlineWrapper",
+                    kind,
+                    element: "tag",
+                    uri: "urn:tag",
+                    content: nestedContent,
+                  },
+                ];
+                break;
+              default: {
+                const untested: never = kind;
+                return untested;
+              }
+            }
+          }
+          // Every generated container stack is inside a tracked owner, including
+          // stacks made entirely from fields, transparent wrappers and controls.
+          content = [{ type: "insertion", info: { id: 100, author: "Root Reviewer" }, content }];
+          const paragraph: Paragraph = { type: "paragraph", content };
+          if (refusesSegmentation) {
+            expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
+            return;
+          }
+          const xml = serializeParagraph(paragraph);
+          expectNoHyperlinkInsideRevision(xml);
+          expect(xml.match(/folio:resolutionJoins=/gu)?.length ?? 0).toBe(owners);
+          if (owners > 0) expect(xml).toContain(serializeResolutionJoins(joins));
+          const parsedRoot = element(
+            `<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}">${xml}</root>`,
+          );
+          const parsedParagraph = findChild(parsedRoot, "w", "p");
+          if (!parsedParagraph) throw new TypeError("Generated paragraph disappeared.");
+          const reopenedXml = serializeParagraph(parseParagraph(parsedParagraph, null, null, null));
+          expectNoHyperlinkInsideRevision(reopenedXml);
+          expect(reopenedXml.match(/<w:hyperlink\b/gu)?.length ?? 0).toBe(
+            link === "linked" ? 1 : 0,
+          );
+        },
+      ),
+      { numRuns: 80 },
+    );
+  },
+  propertyTestTimeout(10_000),
+);
+
+const expectNoHyperlinkInsideRevision = (xml: string) => {
+  const root = element(
+    `<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${xml}</root>`,
+  );
+  const pending = [{ node: root, revisionDepth: 0 }];
+  while (pending.length > 0) {
+    const next = pending.pop();
+    if (!next) continue;
+    const name = getLocalName(next.node.name);
+    if (name === "hyperlink") expect(next.revisionDepth).toBe(0);
+    const revisionDepth =
+      name === "sdt"
+        ? 0
+        : next.revisionDepth + (["ins", "del", "moveFrom", "moveTo"].includes(name) ? 1 : 0);
+    for (const child of getChildElements(next.node)) pending.push({ node: child, revisionDepth });
+  }
+};
+
+for (const provenance of ["none", "joins"] as const) {
+  test(`tracked field wrapper hyperlink uses lifted revision placement (${provenance})`, () => {
+    const paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 35, author: "Reviewer" },
+          ...(provenance === "joins"
+            ? { resolutionJoins: { before: 1, after: 1, remove: 1 } }
+            : {}),
+          content: [
+            {
+              type: "simpleField",
+              instruction: "REF target",
+              fieldType: "REF",
+              content: [
+                {
+                  type: "inlineWrapper",
+                  kind: "bidi",
+                  control: "embedding",
+                  direction: "rtl",
+                  content: [
+                    {
+                      type: "hyperlink",
+                      anchor: "target",
+                      children: [{ type: "run", content: [{ type: "text", text: "linked" }] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    } satisfies Paragraph;
+    if (provenance === "joins") {
+      expect(() => serializeParagraph(paragraph)).toThrow(ReviewResolutionProvenanceError);
+      return;
+    }
+    const xml = serializeParagraph(paragraph);
+    expectNoHyperlinkInsideRevision(xml);
+    expect(xml).toContain("<w:hyperlink");
+    expect(xml).toContain('<w:dir w:val="rtl">');
+    expect(xml).toContain("linked");
+  });
+}
+
+test("opaque tracked captures refuse untyped hyperlinks", () => {
+  expect(() =>
+    serializeParagraph({
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 35, author: "Reviewer" },
+          content: [
+            {
+              type: "preservedInline",
+              text: "linked",
+              xml: '<w:dir w:val="rtl"><w:hyperlink w:anchor="target"><w:r><w:t>linked</w:t></w:r></w:hyperlink></w:dir>',
+            },
+          ],
+        },
+      ],
+    }),
+  ).toThrow(/tracked capture/);
+});
+
+test("hyperlink revision hoisting descends through transparent revision containers", () => {
+  const paragraph = parseParagraph(
+    element(
+      '<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:hyperlink w:anchor="target"><w:ins w:id="1" w:author="Outer"><w:dir w:val="rtl"><w:del w:id="2" w:author="Inner"><w:r><w:delText>linked</w:delText></w:r></w:del></w:dir></w:ins></w:hyperlink></w:p>',
+    ),
+    null,
+    null,
+    null,
+  );
+  const xml = serializeParagraph(paragraph);
+  expect(xml.match(/<w:hyperlink\b/gu)).toHaveLength(1);
+  expect(xml).toContain('w:anchor="target"');
+  expect(xml).toContain('w:id="1"');
+  expect(xml).toContain('w:id="2"');
+  expect(JSON.stringify(paragraph)).not.toContain('"type":"preservedInline"');
+  expectNoHyperlinkInsideRevision(xml);
 });

@@ -28,6 +28,9 @@ export const CONTAINER_CHILDREN = {
   ...SEQUENCE_CHILDREN,
 } as const;
 
+/** WordprocessingML children permitted directly inside CT_RunTrackChange. */
+export const TRACKED_RUN_WORDPROCESSING_CHILDREN = ["bdo", "bookmarkEnd", "bookmarkStart", "commentRangeEnd", "commentRangeStart", "customXml", "customXmlDelRangeEnd", "customXmlDelRangeStart", "customXmlInsRangeEnd", "customXmlInsRangeStart", "customXmlMoveFromRangeEnd", "customXmlMoveFromRangeStart", "customXmlMoveToRangeEnd", "customXmlMoveToRangeStart", "del", "dir", "ins", "moveFrom", "moveFromRangeEnd", "moveFromRangeStart", "moveTo", "moveToRangeEnd", "moveToRangeStart", "permEnd", "permStart", "proofErr", "r", "sdt", "smartTag"] as const;
+
 /** A container the shared child dispatcher covers. */
 export type DispatchedContainer = keyof typeof CONTAINER_CHILDREN;
 

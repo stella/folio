@@ -31,6 +31,8 @@ import {
   NoteReferenceEditRefusal,
   NoteReferenceReplayDefect,
 } from "../prosemirror/noteReferenceOccurrences";
+import { withCanonicalCommand } from "../prosemirror/canonicalCommands";
+import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 
 import {
   createHiddenEditorManager,
@@ -191,6 +193,100 @@ describe("createHiddenEditorManager", () => {
     expect(manager.api.getDocument()).toBeNull();
   });
 });
+
+type NotePasteRefusalOptions = { noteType?: string; occurrenceId: string };
+const assertNotePasteRefusal = ({ noteType, occurrenceId }: NotePasteRefusalOptions) => {
+  const cases = (["legacy", "canonical"] as const).flatMap((session) =>
+    (["sup", "span"] as const).flatMap((tag) =>
+      (["footnote", "endnote"] as const).map((kind) => ({ session, tag, kind })),
+    ),
+  );
+  for (const { session, tag, kind } of cases) {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = createEmptyDocument({ initialText: "Before" });
+    const paragraph = source.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Missing paste fixture paragraph");
+    paragraph.paraId = "74000000";
+    const refusals: { reason: string; gap: unknown }[] = [];
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExtensionManager: () => singletonManager,
+      getExperimentalSession: () => session,
+      onSessionRefusal: (reason, gap) => refusals.push({ reason, gap }),
+    });
+    const manager = createHiddenEditorManager(deps);
+    try {
+      manager.ensureView();
+      const view = manager.getView() ?? panic("Missing paste fixture view");
+      expect(refusals).toEqual([]);
+      if (session === "canonical") expect(manager.api.getCanonicalDocument()).not.toBeNull();
+      const before = view.state;
+      const reference = document.createElement(tag);
+      reference.className = `docx-${kind}-ref`;
+      reference.dataset["id"] = "123";
+      reference.dataset["noteOccurrence"] = occurrenceId;
+      reference.dataset["noteType"] = noteType ?? kind;
+      reference.textContent = "123";
+      expect(() => view.pasteHTML(reference.outerHTML)).not.toThrow();
+      expect(view.state.doc).toBe(before.doc);
+      expect(refusals).toHaveLength(1);
+      expect(refusals.at(0)?.gap).toBe(CANONICAL_GAP.dispatch);
+      expect(refusals.at(0)?.reason).toContain("attributed text occurrences");
+    } finally {
+      manager.destroyView();
+      host.remove();
+    }
+  }
+};
+
+test(
+  "external note attribution reaches paste refusal in both session modes without mutation",
+  () => {
+    GlobalRegistrator.register();
+    try {
+      assertProperty(
+        fc.property(
+          fc
+            .stringMatching(/^[a-z]{1,12}$/u)
+            .filter((kind) => kind !== "footnote" && kind !== "endnote"),
+          (noteType) => {
+            assertNotePasteRefusal({
+              noteType,
+              occurrenceId: "8bf05044-8197-4ca1-8207-600164d5dd24",
+            });
+            assertNotePasteRefusal({ occurrenceId: "" });
+          },
+        ),
+        { numRuns: 20 },
+      );
+    } finally {
+      GlobalRegistrator.unregister();
+    }
+  },
+  propertyTestTimeout(5_000),
+);
+
+test(
+  "blank note occurrence identities reach paste refusal without mutation",
+  () => {
+    GlobalRegistrator.register();
+    try {
+      assertProperty(
+        fc.property(
+          fc.array(fc.constantFrom(" ", "\t", "\r", "\n", "\u00a0", "\u2028"), { maxLength: 16 }),
+          (characters) => assertNotePasteRefusal({ occurrenceId: characters.join("") }),
+        ),
+        { numRuns: 20 },
+      );
+    } finally {
+      GlobalRegistrator.unregister();
+    }
+  },
+  propertyTestTimeout(5_000),
+);
 
 test("hidden manager refuses a local partial note-reference edit before committing it", async () => {
   GlobalRegistrator.register();
@@ -1371,6 +1467,62 @@ test(
   },
   propertyTestTimeout(30_000),
 );
+
+test("canonical command execution reports descriptor refusals without mutation", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "result" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected refusal fixture paragraph");
+  paragraph.paraId = "12345678";
+  const reasons: { message: string; gap: string }[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    onSessionRefusal: (message, gap) => reasons.push({ message, gap }),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected canonical refusal view");
+    const message = "Hyperlink removal cannot split an indivisible inline element.";
+    const command = withCanonicalCommand(
+      () => panic("A refused descriptor must not execute its command"),
+      () => {
+        throw new HyperlinkRemovalRefusal({ message });
+      },
+    );
+    const baseline = manager.api.getCanonicalDocument();
+    for (let offset = 1; offset <= 7; offset++) {
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, offset)));
+      const before = view.state;
+      expect(manager.api.executeCommand(command)).toBe(false);
+      expect(view.state).toBe(before);
+      expect(manager.api.getCanonicalDocument()).toEqual(baseline);
+      expect(manager.api.canUndo()).toBe(false);
+    }
+    expect(reasons).toEqual(
+      Array.from({ length: 7 }, () => ({ message, gap: CANONICAL_GAP.commands })),
+    );
+    const unexpected = new TypeError("Unexpected descriptor failure");
+    const failingCommand = withCanonicalCommand(
+      () => panic("A failed descriptor must not execute its command"),
+      () => {
+        throw unexpected;
+      },
+    );
+    expect(() => manager.api.executeCommand(failingCommand)).toThrow(unexpected);
+    expect(reasons).toHaveLength(7);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
 
 test("TOC view helper publishes through the controller and keeps handled refusal atomic", () => {
   GlobalRegistrator.register();

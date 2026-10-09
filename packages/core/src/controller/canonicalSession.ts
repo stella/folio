@@ -35,6 +35,7 @@ import {
   type CanonicalInlineGap,
 } from "./canonicalInlineProjection";
 import { hasIllegalXmlCharacters } from "@stll/docx-core";
+import { rangedCommentIds, visitCommentMarkers } from "../docx/commentAnchorIndex";
 
 import { splitsGraphemeCluster, splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import {
@@ -436,6 +437,15 @@ const project = ({
   });
   if (converted.isErr()) return converted;
   const pairedBookmarkIds = collectPairedBookmarkIds(body.content);
+  const commentContext = {
+    rangedIds: rangedCommentIds(body.content),
+    pointIds: new Set<number>(),
+    openIds: new Set<number>(),
+  };
+  visitCommentMarkers(body.content, ({ item }) => {
+    if (item.type === "commentReference" && !commentContext.rangedIds.has(item.id))
+      commentContext.pointIds.add(item.id);
+  });
   const paragraphs: ParagraphAddress[] = [];
   let failure: CanonicalSessionError | undefined;
   converted.value.forEach((node, offset, index) => {
@@ -456,7 +466,12 @@ const project = ({
       });
       return;
     }
-    const inline = projectCanonicalInline({ source, paragraph: node, pairedBookmarkIds });
+    const inline = projectCanonicalInline({
+      source,
+      paragraph: node,
+      pairedBookmarkIds,
+      commentContext,
+    });
     if (inline.isErr()) {
       failure = new CanonicalSessionError({
         gap: CANONICAL_GAP.dispatch,
@@ -466,6 +481,10 @@ const project = ({
       return;
     }
     paragraphs.push({ blockId: source.paraId, start: offset + 1, ...inline.value, node, source });
+    visitCommentMarkers([source], ({ item }) => {
+      if (item.type === "commentRangeStart") commentContext.openIds.add(item.id);
+      if (item.type === "commentRangeEnd") commentContext.openIds.delete(item.id);
+    });
   });
   if (failure !== undefined) return Result.err(failure);
   if (paragraphs.length !== body.content.length) {
