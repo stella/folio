@@ -1,3 +1,4 @@
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
@@ -991,11 +992,17 @@ export const matchInlineAtoms = ({
       if (action.textDisposition === "inserted") {
         transaction.delete(from, to);
       } else {
-        transaction.addMark(
+        addTrackedDeletionMark({
+          insertionPolicy: "preserve-pending",
+          tr: transaction,
           from,
           to,
-          deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
-        );
+          mark: deletionType.create({
+            revisionId: nextRevisionId++,
+            author,
+            date: revisionStamp.date,
+          }),
+        });
       }
       const at = transaction.mapping.map(action.from, -1);
       transaction.insert(
@@ -1033,11 +1040,17 @@ export const matchInlineAtoms = ({
       if (action.atomDisposition === "inserted") {
         transaction.delete(from, to);
       } else {
-        transaction.addMark(
+        addTrackedDeletionMark({
+          insertionPolicy: "preserve-pending",
+          tr: transaction,
           from,
           to,
-          deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
-        );
+          mark: deletionType.create({
+            revisionId: nextRevisionId++,
+            author,
+            date: revisionStamp.date,
+          }),
+        });
       }
       const at = transaction.mapping.map(action.from, -1);
       transaction.insert(
@@ -1067,11 +1080,13 @@ export const matchInlineAtoms = ({
       continue;
     }
     if (node.marks.some(({ type }) => type === deletionType)) return { status: "unalignable" };
-    transaction.addMark(
+    addTrackedDeletionMark({
+      insertionPolicy: "preserve-pending",
+      tr: transaction,
       from,
       to,
-      deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
-    );
+      mark: deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
+    });
     if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
   }
   return {

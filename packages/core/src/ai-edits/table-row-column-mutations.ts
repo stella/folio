@@ -1,3 +1,4 @@
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import {
@@ -295,7 +296,7 @@ export const markTableRowContent = ({
     }
     if (node.marks.some(isTrackedChangeMark)) {
       wholeRowMarkable = false;
-      if (kind === "insertion" || node.marks.some(({ type }) => type.name === "deletion")) {
+      if (kind === "insertion") {
         return false;
       }
     }
@@ -304,11 +305,23 @@ export const markTableRowContent = ({
     return false;
   });
   if (wholeRowMarkable) {
-    tr.addMark(contentFrom, rowPosition + row.nodeSize - 1, mark);
+    if (kind === "deletion") {
+      addTrackedDeletionMark({
+        insertionPolicy: "preserve-pending",
+        tr,
+        from: contentFrom,
+        to: rowPosition + row.nodeSize - 1,
+        mark,
+      });
+    } else {
+      tr.addMark(contentFrom, rowPosition + row.nodeSize - 1, mark);
+    }
     return;
   }
   for (const range of markable) {
-    tr.addMark(range.from, range.to, mark);
+    if (kind === "deletion")
+      addTrackedDeletionMark({ insertionPolicy: "preserve-pending", tr, ...range, mark });
+    else tr.addMark(range.from, range.to, mark);
   }
 };
 

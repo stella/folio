@@ -11,6 +11,7 @@
  * skipped and reported back to the caller.
  */
 
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import type { EditorView } from "prosemirror-view";
 
 import { mintRevisionId, seedRevisionIdsFromDoc } from "../prosemirror/plugins/revisionIds";
@@ -82,7 +83,13 @@ export function applySuggestions(options: ApplyOptions): ApplyResult {
         tr.addMark(to, to + suggestion.suggestedText.length, insertionType.create(attrs));
       }
       if (to > from) {
-        tr.addMark(from, to, deletionType.create(attrs));
+        addTrackedDeletionMark({
+          insertionPolicy: "preserve-pending",
+          tr,
+          from,
+          to,
+          mark: deletionType.create(attrs),
+        });
       }
       applied.push(suggestion.id);
     }
