@@ -61,6 +61,12 @@ test("canonical evaluation waits for a mid-sequence navigation to mount", async 
     // fails without depending on transport timing or a fixed delay.
     expect(navigation.current.load).not.toBeNull();
     expect(callbackInvoked).toBe(false);
+    // A delayed outgoing load event must not release an uncommitted request.
+    // Inject this event order while a real main-frame request is held.
+    page.emit("load", page);
+    expect(navigation.current.status).toBe("loading");
+    await Promise.resolve();
+    expect(callbackInvoked).toBe(false);
   } finally {
     releaseResponse();
   }

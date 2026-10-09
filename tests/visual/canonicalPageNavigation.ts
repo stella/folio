@@ -6,6 +6,7 @@ type NavigationState =
   | {
       status: "loading";
       request: Request;
+      commitment: "pending" | "committed";
       load: { promise: Promise<void>; complete: () => void; fail: (reason: string) => void } | null;
     }
   | { status: "failed"; reason: string };
@@ -23,6 +24,7 @@ export const observeCanonicalPageNavigation = (page: Page) => {
       owner.current = {
         status: "loading",
         request,
+        commitment: "pending",
         load: owner.current.status === "loading" ? owner.current.load : null,
       };
   });
@@ -33,8 +35,13 @@ export const observeCanonicalPageNavigation = (page: Page) => {
     owner.current = { status: "failed", reason };
   });
   page.on("load", () => {
-    if (owner.current.status === "loading") owner.current.load?.complete();
+    if (owner.current.status !== "loading" || owner.current.commitment !== "committed") return;
+    owner.current.load?.complete();
     owner.current = { status: "settled" };
+  });
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame() && owner.current.status === "loading")
+      owner.current.commitment = "committed";
   });
   return owner;
 };
