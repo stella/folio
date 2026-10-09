@@ -1,5 +1,13 @@
 # @stll/folio-vue
 
+## 0.22.3
+
+### Patch Changes
+
+- [#1627](https://github.com/stella/folio/pull/1627) [`b2c1451`](https://github.com/stella/folio/commit/b2c1451cc13fae49088007017a60b57b54b8aa85) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Breaking: `fromProseDoc` now requires an explicit stylesheet source; pass `{ stylesheetSource: { type: "package" } }` or `{ stylesheetSource: { type: "supplied", styles } }` with the stylesheet used for projection. Preserve pasted formatting and authored overrides through save.
+- Updated dependencies [[`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e), [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e), [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e), [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e), [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e), [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e), [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e), [`5e179e9`](https://github.com/stella/folio/commit/5e179e91a95add591e2c2b88feb323493e8eb1a9), [`5e179e9`](https://github.com/stella/folio/commit/5e179e91a95add591e2c2b88feb323493e8eb1a9), [`b2c1451`](https://github.com/stella/folio/commit/b2c1451cc13fae49088007017a60b57b54b8aa85), [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e)]:
+  - @stll/folio-core@0.58.0
+
 ## 0.22.2
 
 ### Patch Changes
