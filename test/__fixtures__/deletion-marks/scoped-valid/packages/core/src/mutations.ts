@@ -16,3 +16,9 @@ export const typeShadow = (tr, schema) => {
     tr.addMark(1, 2, type.create({ revisionId: 4 }));
   }
 };
+export const laterDeletion = (tr, schema) => {
+  let mark = schema.marks.insertion.create({ revisionId: 5 });
+  tr.addMark(1, 2, mark);
+  mark = schema.marks.deletion.create({ revisionId: 6 });
+  addTrackedDeletionMark({ tr, from: 1, to: 2, mark });
+};

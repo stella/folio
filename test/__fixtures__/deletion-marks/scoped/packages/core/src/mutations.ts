@@ -1,4 +1,4 @@
-// Exactly three fresh deletions; sibling/parameter/block names cannot contaminate calls.
+// Five fresh deletions; captured and loop-carried writes remain reachable.
 export const flaggedSibling = (tr, schema) => {
   const mark = schema.marks.deletion.create({ revisionId: 1 });
   tr.addMark(1, 2, mark);
@@ -24,4 +24,17 @@ export const assignedInBlock = (tr, schema) => {
     mark = schema.marks.deletion.create({ revisionId: 5 });
   }
   tr.addMark(1, 2, mark);
+};
+export const assignedAfterCapture = (tr, schema) => {
+  let mark = schema.marks.insertion.create({ revisionId: 6 });
+  const apply = () => tr.addMark(1, 2, mark);
+  mark = schema.marks.deletion.create({ revisionId: 7 });
+  apply();
+};
+export const loopCarriedDeletion = (tr, schema) => {
+  let mark = schema.marks.insertion.create({ revisionId: 8 });
+  for (let index = 0; index < 2; index++) {
+    tr.addMark(1, 2, mark);
+    mark = schema.marks.deletion.create({ revisionId: 9 });
+  }
 };

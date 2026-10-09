@@ -12,3 +12,7 @@ tr.addMark(1, 10, renamedType.create({ revisionId: 15 }));
 let later;
 later = deletionType.create({ revisionId: 16 });
 tr.addMark(1, 10, later);
+const marks = schema.marks;
+tr.addMark(1, 10, marks.deletion.create({ revisionId: 17 }));
+const { deletion: collectedType } = marks;
+tr.addMark(1, 10, collectedType.create({ revisionId: 18 }));
