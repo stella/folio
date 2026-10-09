@@ -1,4 +1,4 @@
-import { BODY_TEXT_OUTLINE_LEVEL } from "@stll/docx-core/model";
+import { BODY_TEXT_OUTLINE_LEVEL, paragraphNumberingReference } from "@stll/docx-core/model";
 
 import type { Style } from "../../types/document";
 import { paragraphNumberingAttr } from "../../prosemirror/numberingAttr";
@@ -50,7 +50,7 @@ export const HEADING_COLLECTOR_DOCUMENT = schema.node("doc", null, [
   }),
   ...[0, 1, 2].map((ilvl) =>
     paragraph(`ListParagraph`, `Numbered list item at level ${ilvl}`, {
-      numPr: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl }),
+      numPr: paragraphNumberingAttr(paragraphNumberingReference({ numId: 1, ilvl })),
       listMarker: `${ilvl + 1}.`,
     }),
   ),

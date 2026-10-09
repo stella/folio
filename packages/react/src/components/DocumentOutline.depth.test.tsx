@@ -10,7 +10,7 @@ import { createRoot } from "react-dom/client";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { DEFAULT_OUTLINE_DEPTH, filterHeadingsByDepth } from "@stll/folio-core/utils/outlineDepth";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
-import type { Paragraph } from "@stll/docx-core/model";
+import type { Paragraph } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { DocumentOutline } from "./DocumentOutline";

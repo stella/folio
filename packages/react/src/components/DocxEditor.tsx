@@ -5038,7 +5038,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                       width={panels.layout.outlineTrackWidth}
                       expanded={panelOverlay === "outline"}
                       onExpand={toggleOutlineOverlay}
-                      onClose={panels.layout.outline === "expanded" ? closePanelOverlay : undefined}
+                      {...(panels.layout.outline === "expanded"
+                        ? { onClose: closePanelOverlay }
+                        : {})}
                     />
                   )}
                   {/* Editor container - this is the scroll container (toolbar is above, not inside) */}
