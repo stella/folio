@@ -1,6 +1,6 @@
 ---
-"@stll/folio-core": patch
+"@stll/folio-core": minor
 "@stll/folio-vue": patch
 ---
 
-Preserve pasted run formatting through save using an explicit authoritative stylesheet source.
+Require an explicit stylesheet source when converting editor content for save, preserving pasted formatting and authored overrides.

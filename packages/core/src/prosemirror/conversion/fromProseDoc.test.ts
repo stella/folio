@@ -37,7 +37,39 @@ import { toProseDoc } from "./toProseDoc";
 import { stableProjectionIdentity } from "./__tests__/stableProjectionIdentity";
 
 describe("fromProseDoc", () => {
-  test("uses resolver-less run ownership when the base package has no styles", () => {
+  test.each([
+    {
+      name: "paragraph style",
+      node: schema.node("paragraph", { styleId: "BodyStyle" }, [schema.text("Text")]),
+    },
+    {
+      name: "paragraph-mark character style",
+      node: schema.node(
+        "paragraph",
+        {
+          _originalFormatting: { runProperties: { styleId: "MarkStyle" } },
+        },
+        [schema.text("Text")],
+      ),
+    },
+    {
+      name: "table style",
+      node: schema.node("table", { styleId: "TableStyle" }, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Text")])]),
+        ]),
+      ]),
+    },
+  ])("refuses a missing stylesheet for $name without mutation", ({ node }) => {
+    const pmDoc = schema.node("doc", null, [node]);
+    const before = pmDoc.toJSON();
+    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
+      "Saving style-dependent content requires its authoritative stylesheet.",
+    );
+    expect(pmDoc.toJSON()).toEqual(before);
+  });
+
+  test("uses an explicit empty stylesheet for unresolved character references", () => {
     const characterStyle = schema.mark("characterStyle", { styleId: "MissingCharacterStyle" });
     const directFormatting = schema.mark("runFormattingOverride", { bold: true });
     const pmDoc = schema.node("doc", undefined, [
@@ -48,8 +80,9 @@ describe("fromProseDoc", () => {
     const baseDocument: Document = { package: { document: { content: [] } } };
 
     const expected = proseDocToBlocks(pmDoc);
-    const restored = fromProseDoc(pmDoc, baseDocument, { stylesheetSource: { type: "package" } })
-      .package.document.content;
+    const restored = fromProseDoc(pmDoc, baseDocument, {
+      stylesheetSource: { type: "supplied", styles: { styles: [] } },
+    }).package.document.content;
 
     expect(expected.at(0)).toMatchObject({
       type: "paragraph",
@@ -1820,7 +1853,7 @@ describe("fromProseDoc", () => {
       lineSpacing: 240,
     });
     const paragraph = fromProseDoc(pmDoc, undefined, {
-      stylesheetSource: { type: "package" },
+      stylesheetSource: { type: "supplied", styles: { styles: [] } },
     }).package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type === "paragraph") {

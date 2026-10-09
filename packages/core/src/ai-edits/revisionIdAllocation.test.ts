@@ -15,7 +15,7 @@ import {
 import { expectParagraphAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { ParagraphFormatting } from "../types/document";
+import type { Document, ParagraphFormatting } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { applyFolioAIEditOperations } from "./apply";
 import { FolioDocxReviewer } from "./headless";
@@ -76,6 +76,7 @@ const insertionView = (formatting: ParagraphFormatting, text = "Anchor paragraph
     },
   ];
   const view = {
+    sourceDocument: document,
     state: EditorState.create({ doc: toProseDoc(document) }),
     dispatch(transaction: Transaction) {
       view.state = view.state.apply(transaction);
@@ -122,9 +123,9 @@ const viewFromDoc = (doc: PMNode) => {
   return view;
 };
 
-const reopenedView = async (doc: PMNode) => {
+const reopenedView = async (doc: PMNode, sourceDocument: Document) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
-    await createDocx(fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } })),
+    await createDocx(fromProseDoc(doc, sourceDocument, { stylesheetSource: { type: "package" } })),
   );
   return viewFromDoc(toProseDoc(reviewer.toDocument()));
 };
@@ -717,7 +718,7 @@ describe("unstamped revision id allocation", () => {
     expect(outcome.nextRevisionId).toBe(39);
     expect(new Set(outcome.applied.flatMap(({ revisionIds }) => revisionIds ?? [])).size).toBe(9);
 
-    const reopened = await reopenedView(view.state.doc);
+    const reopened = await reopenedView(view.state.doc, view.sourceDocument);
     expect(paragraphState(reopened.state.doc)).toEqual(paragraphState(view.state.doc));
     expect(
       getTrackedChangesFromDoc(reopened.state.doc)
@@ -752,7 +753,7 @@ describe("unstamped revision id allocation", () => {
         { text: "First inserted.", alignment: "left" },
         { text: "Third inserted.", alignment: "both" },
       ]);
-      const reopened = await reopenedView(view.state.doc);
+      const reopened = await reopenedView(view.state.doc, view.sourceDocument);
       expect(getTrackedChangesFromDoc(reopened.state.doc)).toEqual([]);
       expect(
         paragraphState(reopened.state.doc).map(({ text, alignment, markId, changes }) => ({
@@ -853,7 +854,7 @@ describe("unstamped revision id allocation", () => {
           : "Anchor paragraph.",
       );
 
-      const reopened = await reopenedView(view.state.doc);
+      const reopened = await reopenedView(view.state.doc, view.sourceDocument);
       expect(getTrackedChangesFromDoc(reopened.state.doc)).toEqual([]);
       expect(reopened.state.doc.textContent).toBe(view.state.doc.textContent);
     },
@@ -924,7 +925,7 @@ describe("unstamped revision id allocation", () => {
     }
     expect(getSuggestions(view.state)).toEqual([]);
 
-    const reopened = await reopenedView(view.state.doc);
+    const reopened = await reopenedView(view.state.doc, view.sourceDocument);
     const accepting = viewFromDoc(reopened.state.doc);
     expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(true);
     expect(getTrackedChangesFromDoc(accepting.state.doc)).toEqual([]);

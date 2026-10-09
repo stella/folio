@@ -704,12 +704,19 @@ class MissingSaveStylesheet extends TaggedError("MissingSaveStylesheet")<{
 const assertSaveStylesheetAvailable = (pmDoc: PMNode, styles: StyleDefinitions | undefined) => {
   if (styles !== undefined) return;
   pmDoc.descendants((node) => {
-    const paragraphStyle =
-      node.type.name === "paragraph" ? expectParagraphAttrs(node).styleId : undefined;
-    if (
-      (paragraphStyle !== undefined && paragraphStyle !== null) ||
-      node.marks.some(({ type }) => type.name === "characterStyle")
-    )
+    const referencedStyle = (() => {
+      switch (node.type.name) {
+        case "paragraph": {
+          const attrs = expectParagraphAttrs(node);
+          return attrs.styleId ?? attrs._originalFormatting?.runProperties?.styleId;
+        }
+        case "table":
+          return expectTableAttrs(node).styleId;
+        default:
+          return undefined;
+      }
+    })();
+    if (referencedStyle != null || node.marks.some(({ type }) => type.name === "characterStyle"))
       throw new MissingSaveStylesheet({
         message: "Saving style-dependent content requires its authoritative stylesheet.",
       });
@@ -804,6 +811,7 @@ export function fromProseDoc(
       package: {
         ...baseDocument.package,
         document: documentBody,
+        ...(styles ? { styles } : {}),
         ...(numbering ? { numbering } : {}),
       },
     };
@@ -815,6 +823,7 @@ export function fromProseDoc(
   return {
     package: {
       document: documentBody,
+      ...(styles ? { styles } : {}),
       ...(numbering ? { numbering } : {}),
     },
   };

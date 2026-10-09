@@ -1428,6 +1428,38 @@ describe("character style round-trip", () => {
   });
 });
 
+describe("save stylesheet authority", () => {
+  test.each(["absent", "different"] as const)(
+    "supplied stylesheet remains authoritative after save/reopen with an %s base stylesheet",
+    async (baseStyles) => {
+      const input = wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "ToggleHeading" },
+        content: [runText("Term")],
+      });
+      if (baseStyles === "different") {
+        input.package.styles = {
+          styles: styles.styles.map((style) =>
+            style.styleId === "ToggleHeading" ? { ...style, rPr: { bold: false } } : style,
+          ),
+        };
+      }
+      const proseDoc = toProseDoc(input, { styles });
+      const saved = fromProseDoc(proseDoc, input, {
+        stylesheetSource: { type: "supplied", styles },
+      });
+      expect(saved.package.styles).toEqual(styles);
+      expect(findRun(firstParagraph(saved), "Term").formatting?.bold).toBeUndefined();
+      const reopened = await reopenThroughDocx(saved);
+      expect(
+        findTextNode(toProseDoc(reopened), "Term").node.marks.some(
+          ({ type }) => type.name === "bold",
+        ),
+      ).toBe(true);
+    },
+  );
+});
+
 describe("unknown and malformed style references", () => {
   test("unknown styleId round-trips verbatim with direct formatting intact", () => {
     const input = wrap(runText("Term", { styleId: "NoSuchStyle", bold: true }));
