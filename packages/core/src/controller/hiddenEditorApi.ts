@@ -8,7 +8,7 @@ import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
  * React component or a headless controller without depending on React.
  */
 
-import type { DocumentOp, OpStory } from "@stll/docx-core/ops";
+import type { DocumentOp, OpStory, FormattingPatch } from "@stll/docx-core/ops";
 import type { Node as PMNode } from "prosemirror-model";
 
 import { undo, redo } from "prosemirror-history";
@@ -19,13 +19,16 @@ import type { EditorView } from "prosemirror-view";
 
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import type { Document } from "../types/document";
+import type { Document, SectionProperties } from "../types/document";
+import type { Comment } from "../types/content";
+import type { CanonicalSectionPropertiesResult } from "../types/canonicalSections";
 import type {
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
 } from "../document-operations";
 import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
+import type { CanonicalCommentRequest, CanonicalCommentResult } from "../types/canonicalComments";
 import type { CanonicalSessionMode } from "./canonicalSession";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
 
@@ -52,6 +55,9 @@ export type HiddenEditorApi = {
   /** Get the current Document from PM state */
   getDocument: () => Document | null;
   /** Canonical snapshot, or null in the default session. */
+  getCanonicalComments: () => Comment[] | null;
+  /** Committed session/version identity; safe during provisional composition. */
+  getCanonicalCommittedVersion: () => string | null;
   getCanonicalDocument: () => Document | null;
   captureCanonicalSave: () => CanonicalSaveSnapshot | null;
   /** A save cannot acknowledge newer edits or an unfinished composition. */
@@ -68,6 +74,11 @@ export type HiddenEditorApi = {
   ) => boolean;
   applyCanonicalStoryHistory: (options: CanonicalStoryHistoryOptions) => boolean;
   applyCanonicalOperations: (ops: readonly DocumentOp[]) => boolean;
+  applyCanonicalComment: (request: CanonicalCommentRequest) => CanonicalCommentResult | null;
+  /** Apply a final-section patch; null is reserved for default sessions. */
+  applyCanonicalSectionProperties: (
+    patch: FormattingPatch<SectionProperties>,
+  ) => CanonicalSectionPropertiesResult | null;
   getCanonicalStorySelection: (story: OpStory) => { anchor: number; head: number } | null;
   getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
   replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
@@ -108,6 +119,8 @@ export type HiddenEditorApi = {
 export type HiddenEditorApiDeps = {
   getView: () => EditorView | null;
   getDocumentContext: () => Document | null;
+  getCanonicalComments?: () => Comment[] | null;
+  getCanonicalCommittedVersion?: HiddenEditorApi["getCanonicalCommittedVersion"];
   getCanonicalDocument?: () => Document | null;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
@@ -119,6 +132,8 @@ export type HiddenEditorApiDeps = {
     HiddenEditorApi,
     | "updateCanonicalInputLifecycle"
     | "applyCanonicalOperations"
+    | "applyCanonicalComment"
+    | "applyCanonicalSectionProperties"
     | "getCanonicalStoryProjection"
     | "replaceCanonicalStoryText"
     | "applyCanonicalStoryHistory"
@@ -184,6 +199,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
     resolveCanonicalRevisions: (revisionIds, resolution) =>
       !deps.isDestroying() && (deps.resolveCanonicalRevisions?.(revisionIds, resolution) ?? false),
 
+    getCanonicalComments: () => deps.getCanonicalComments?.() ?? null,
+    getCanonicalCommittedVersion: () => deps.getCanonicalCommittedVersion?.() ?? null,
     captureCanonicalSave: () => deps.captureCanonicalSave?.() ?? null,
     isCanonicalSaveCurrent: (version) => deps.isCanonicalSaveCurrent?.(version) ?? false,
 
@@ -206,6 +223,10 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       deps.canonicalOperations?.updateCanonicalInputLifecycle(action) ?? false,
     applyCanonicalStoryHistory: (options) =>
       deps.canonicalOperations?.applyCanonicalStoryHistory(options) ?? false,
+    applyCanonicalComment: (request) =>
+      deps.canonicalOperations?.applyCanonicalComment(request) ?? null,
+    applyCanonicalSectionProperties: (patch) =>
+      deps.canonicalOperations?.applyCanonicalSectionProperties(patch) ?? null,
     applyCanonicalOperations: (ops) =>
       deps.canonicalOperations?.applyCanonicalOperations(ops) ?? false,
     getCanonicalStorySelection: (story) =>

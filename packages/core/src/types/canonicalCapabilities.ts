@@ -7,7 +7,6 @@ export const CANONICAL_GAP = {
   modelEdits: "direct-model-edits",
   sectionProperties: "section-properties",
   watermark: "watermark-model-edits",
-  secondaryStories: "secondary-story-routing",
   collaboration: "collaboration-session",
   dispatch: "unclassified-transactions",
   save: "pm-save-projection",
@@ -66,9 +65,10 @@ export const CANONICAL_CAPABILITIES = {
   },
   [CANONICAL_GAP.comments]: {
     owner: "adapters",
-    kind: "refusal",
+    kind: "routing",
     adapters: ["react", "vue"],
-    summary: "Comment mutations still use direct model changes.",
+    summary:
+      "Default sessions retain comment model edits; canonical comments use semantic operations.",
   },
   [CANONICAL_GAP.modelEdits]: {
     owner: "adapters",
@@ -77,22 +77,17 @@ export const CANONICAL_CAPABILITIES = {
     summary: "Direct model and pending-suggestion snapshots bypass the canonical journal.",
   },
   [CANONICAL_GAP.sectionProperties]: {
-    owner: "adapters",
+    owner: "controller",
     kind: "routing",
     adapters: ["react", "vue"],
-    summary: "Section properties select canonical operations or legacy model changes.",
+    summary:
+      "The shared controller journals section properties; default sessions keep model changes.",
   },
   [CANONICAL_GAP.watermark]: {
     owner: "adapters",
     kind: "refusal",
     adapters: ["vue"],
     summary: "Vue watermark mutations still change the model directly.",
-  },
-  [CANONICAL_GAP.secondaryStories]: {
-    owner: "controller",
-    kind: "routing",
-    adapters: ["react", "vue"],
-    summary: "Secondary-story creation, views and history still select their session authority.",
   },
   [CANONICAL_GAP.collaboration]: {
     owner: "controller",
@@ -159,10 +154,10 @@ export const CANONICAL_CAPABILITIES = {
   [CANONICAL_GAP.publicComments]: {
     owner: "document-operations",
     defaultSessionMutation: "pm-public-operations",
-    kind: "refusal",
+    kind: "routing",
     adapters: ["react", "vue"],
     summary:
-      "Public comment operations refuse in canonical sessions; legacy sessions retain PM comments.",
+      "Canonical public comments compile to semantic operations; default sessions retain PM comments.",
   },
   [CANONICAL_GAP.publicSuggestedMode]: {
     owner: "document-operations",

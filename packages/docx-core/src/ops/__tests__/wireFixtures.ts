@@ -4,6 +4,7 @@ import type { Document, Paragraph, Table, TableRow } from "../../model/document"
 import { captureSectionView, captureSectionViewState } from "../blocks";
 import { packageResourcesOpOf } from "../packageResources";
 import { applyDocumentOp } from "../apply";
+import { captureStoryParts } from "../storyLifecycle";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
   SECTION_BOUNDARY_POLICIES,
@@ -78,6 +79,36 @@ const OPS: readonly DocumentOp[] = [
       },
     },
   }),
+  {
+    type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+    comment: {
+      id: 400,
+      author: "Reviewer",
+      initials: undefined,
+      content: [
+        {
+          type: "paragraph",
+          paraId: "00001000",
+          content: [{ type: "run", content: [{ type: "text", text: "Comment" }] }],
+        },
+      ],
+    },
+    anchor: { kind: "point", at: at("00000001", 0) },
+  },
+  {
+    type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+    id: 400,
+    content: [
+      {
+        type: "paragraph",
+        paraId: "00001000",
+        content: [{ type: "run", content: [{ type: "text", text: "Edited" }] }],
+      },
+    ],
+    patch: { date: "2026-02-03T04:05:06Z" },
+  },
+  { type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION, id: 400, status: "resolved" },
+  { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id: 400, scope: "thread" },
   {
     type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
     abstractNum: {
@@ -580,6 +611,39 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     for (const inverse of applied.value.inverse) out.push(toOpEnvelope(inverse));
     lifecycleDocument = applied.value.document;
   }
+  // Persist the producer's own-undefined lifecycle presence across every target.
+  const undefinedLifecycle = {
+    package: {
+      document: {
+        content: [second],
+        background: undefined,
+        finalSectionProperties: undefined,
+        comments: undefined,
+        sections: [{ content: [second], properties: {}, headers: undefined, footers: undefined }],
+      },
+      headers: undefined,
+      footers: undefined,
+      footnotes: undefined,
+      endnotes: undefined,
+      settings: undefined,
+    },
+  } satisfies Document;
+  const undefinedParts = captureStoryParts(undefinedLifecycle, {
+    body: { background: null, finalSectionProperties: null, comments: null },
+    headers: null,
+    footers: null,
+    footnotes: null,
+    endnotes: null,
+    settings: null,
+    sections: [{ index: 0, properties: {}, headers: null, footers: null }],
+  });
+  out.push(
+    toOpEnvelope({
+      type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+      expected: undefinedParts,
+      parts: undefinedParts,
+    }),
+  );
   // Semantic table fixtures are independent: no earlier review or geometry constrains a later case.
   const editTable: Table = {
     type: "table",
