@@ -1,5 +1,35 @@
 # @stll/folio-core
 
+## 0.58.0
+
+### Minor Changes
+
+- [#1627](https://github.com/stella/folio/pull/1627) [`b2c1451`](https://github.com/stella/folio/commit/b2c1451cc13fae49088007017a60b57b54b8aa85) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Breaking: `fromProseDoc` now requires an explicit stylesheet source; pass `{ stylesheetSource: { type: "package" } }` or `{ stylesheetSource: { type: "supplied", styles } }` with the stylesheet used for projection. Preserve pasted formatting and authored overrides through save.
+
+### Patch Changes
+
+- [#1543](https://github.com/stella/folio/pull/1543) [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize authored indentation in tracked paragraph snapshots so returning list toggles remove their own revision.
+
+- [#1543](https://github.com/stella/folio/pull/1543) [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve inline-node and document selections through canonical replacement and exact history.
+
+- [#1543](https://github.com/stella/folio/pull/1543) [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve absent drawing names through image HTML clipboard serialization.
+
+- [#1543](https://github.com/stella/folio/pull/1543) [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep numbering resolution limited to paragraph style layers and budget its property tests.
+
+- [#1543](https://github.com/stella/folio/pull/1543) [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored indentation and recompute inherited indentation when changing or removing list numbering.
+
+- [#1543](https://github.com/stella/folio/pull/1543) [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve numbering indentation provenance when adding lists so removing them restores paragraph indentation and clears reversed suggestions.
+
+- [#1543](https://github.com/stella/folio/pull/1543) [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve Markdown paragraph numbering without computing unrelated run formatting.
+
+- [#1625](https://github.com/stella/folio/pull/1625) [`5e179e9`](https://github.com/stella/folio/commit/5e179e91a95add591e2c2b88feb323493e8eb1a9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Restore the captured selection when a native composition lifecycle cancels.
+
+- [#1625](https://github.com/stella/folio/pull/1625) [`5e179e9`](https://github.com/stella/folio/commit/5e179e91a95add591e2c2b88feb323493e8eb1a9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve canonical source identities when native composition omits identity marks from its text carrier.
+
+- [#1543](https://github.com/stella/folio/pull/1543) [`4871a6c`](https://github.com/stella/folio/commit/4871a6c65b91957085f6cdcbeeed9495699fb88e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Match canonical bookmark positions to their owner when projecting transparent inline wrappers.
+- Updated dependencies [[`3c06b3d`](https://github.com/stella/folio/commit/3c06b3d22a152478a43c60715e7664ffbea87d10), [`1e24558`](https://github.com/stella/folio/commit/1e24558cf0936153a89023da654072a0e5428768), [`4990c8b`](https://github.com/stella/folio/commit/4990c8bb2f4ba6fff3ecfdab179b4d64045481f4)]:
+  - @stll/docx-core@0.34.0
+
 ## 0.57.0
 
 ### Minor Changes

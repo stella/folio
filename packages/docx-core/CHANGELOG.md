@@ -1,5 +1,17 @@
 # @stll/docx-core
 
+## 0.34.0
+
+### Minor Changes
+
+- [#1628](https://github.com/stella/folio/pull/1628) [`1e24558`](https://github.com/stella/folio/commit/1e24558cf0936153a89023da654072a0e5428768) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose bounded main-document XML and relationship-selected Flat OPC projection through the shared kernel and WebAssembly wire.
+
+- [#1631](https://github.com/stella/folio/pull/1631) [`4990c8b`](https://github.com/stella/folio/commit/4990c8bb2f4ba6fff3ecfdab179b4d64045481f4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose bounded single-paragraph Flat OPC projection through the shared kernel and WebAssembly wire. Document structural evidence is explicitly unknown and fragment-local table coordinates are unavailable.
+
+### Patch Changes
+
+- [#1626](https://github.com/stella/folio/pull/1626) [`3c06b3d`](https://github.com/stella/folio/commit/3c06b3d22a152478a43c60715e7664ffbea87d10) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Project semantic highlight spans only from direct run markup, excluding paragraph and character style inheritance while preserving other resolved formatting.
+
 ## 0.33.0
 
 ### Minor Changes
