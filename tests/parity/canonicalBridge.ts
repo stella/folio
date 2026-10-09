@@ -1,4 +1,4 @@
-import { TextSelection, type Transaction } from "prosemirror-state";
+import { TextSelection } from "prosemirror-state";
 import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
 import { singletonManager } from "@stll/folio-core/prosemirror/schema";
 import type { BrowserDragTarget } from "../visual/browserDragTarget";
@@ -39,56 +39,6 @@ export type CanonicalHyperlinkAction =
 
 /** Private interaction-test bridge shared by both playgrounds. */
 export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null) => ({
-  observeInput: () => {
-    const view = getRef()?.getEditor()?.getView();
-    if (!view) return null;
-    const record = (transaction: Transaction) => ({
-      before: view.state.doc.toJSON(),
-      proposed: transaction.doc.toJSON(),
-      selection: view.state.selection.toJSON(),
-      proposedSelection: transaction.selection.toJSON(),
-      storedMarks: view.state.storedMarks?.map((mark) => mark.toJSON()) ?? null,
-      steps: transaction.steps.map((step) => step.toJSON()),
-      composition: transaction.getMeta("composition") ?? null,
-      composing: view.composing,
-    });
-    const records: ReturnType<typeof record>[] = [];
-    const events: (
-      | { type: "beforeinput"; inputType: string; data: string | null; isComposing: boolean }
-      | { type: "compositionend"; data: string }
-    )[] = [];
-    const controller = new AbortController();
-    view.dom.addEventListener(
-      "beforeinput",
-      (event) => {
-        events.push({
-          type: "beforeinput",
-          inputType: event.inputType,
-          data: event.data,
-          isComposing: event.isComposing,
-        });
-      },
-      { capture: true, signal: controller.signal },
-    );
-    view.dom.addEventListener(
-      "compositionend",
-      (event) => {
-        if (event instanceof CompositionEvent)
-          events.push({ type: "compositionend", data: event.data });
-      },
-      { capture: true, signal: controller.signal },
-    );
-    const dispatch = view.dispatch;
-    view.dispatch = (transaction) => {
-      records.push(record(transaction));
-      dispatch(transaction);
-    };
-    return () => {
-      view.dispatch = dispatch;
-      controller.abort();
-      return { transactions: records, events };
-    };
-  },
   nativeComposing: () => getRef()?.getEditor()?.getView()?.composing ?? null,
   ensureView: () => {
     const ref = getRef();
