@@ -49,8 +49,8 @@ const analyze = (filename: string) => {
     if (count !== names.length) return panic("Function inventory must match emitted code bodies");
     for (const name of names) {
       const size = unsigned();
-      // Sum monomorphizations under the same legacy Rust symbol, excluding its hash.
-      const key = name.replace(/17h[0-9a-f]{16}E$/u, "E");
+      // Sum monomorphizations under the same Rust symbol, excluding its hash.
+      const key = name.replace(/(?:17h[0-9a-f]{16}E|::h[0-9a-f]{16})$/u, "");
       functions.set(key, (functions.get(key) ?? 0) + size);
       codeBytes += size;
       position += size;
