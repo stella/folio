@@ -265,6 +265,14 @@ export function projectCompressedDocxWithReadableReviewFacts(bytes: Uint8Array):
  */
 export function projectCompressedDocxWithReviewFacts(bytes: Uint8Array): DocxPackageProjectionWire;
 
+/**
+ * Projects bounded main-document XML or a relationship-selected Flat OPC package.
+ *
+ * # Errors
+ * Returns a JavaScript `Error` for malformed input or a resource-limit violation.
+ */
+export function projectMainDocumentXml(bytes: Uint8Array): DocxProjectionWire;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -272,6 +280,7 @@ export interface InitOutput {
     readonly projectCompressedDocx: (a: number, b: number, c: number) => void;
     readonly projectCompressedDocxWithReadableReviewFacts: (a: number, b: number, c: number) => void;
     readonly projectCompressedDocxWithReviewFacts: (a: number, b: number, c: number) => void;
+    readonly projectMainDocumentXml: (a: number, b: number, c: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
 }

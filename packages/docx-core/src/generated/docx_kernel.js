@@ -91,6 +91,32 @@ export function projectCompressedDocxWithReviewFacts(bytes) {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
 }
+
+/**
+ * Projects bounded main-document XML or a relationship-selected Flat OPC package.
+ *
+ * # Errors
+ * Returns a JavaScript `Error` for malformed input or a resource-limit violation.
+ * @param {Uint8Array} bytes
+ * @returns {DocxProjectionWire}
+ */
+export function projectMainDocumentXml(bytes) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.projectMainDocumentXml(retptr, ptr0, len0);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return takeObject(r0);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
