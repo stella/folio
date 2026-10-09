@@ -1,3 +1,4 @@
+import { isNoteReferenceOccurrenceId } from "../noteReferenceOccurrenceId";
 import {
   isResolutionJoins,
   isParagraphMarkResolutionJoin,
@@ -1639,8 +1640,7 @@ export const readFootnoteRefMarkAttrs = (
   expectMarkType(mark, "footnoteRef", issues);
 
   requiredStringOrNumber(attrs, "id", "footnoteRef.attrs.id", issues);
-  requiredString(attrs, "occurrenceId", "footnoteRef.attrs.occurrenceId", issues);
-  if (typeof attrs["occurrenceId"] === "string" && attrs["occurrenceId"].trim().length === 0)
+  if (!isNoteReferenceOccurrenceId(attrs["occurrenceId"]))
     issues.push({
       path: "footnoteRef.attrs.occurrenceId",
       message: "Expected a nonblank occurrence identity.",

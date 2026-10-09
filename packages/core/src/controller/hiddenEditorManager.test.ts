@@ -205,6 +205,9 @@ const assertNotePasteRefusal = ({ noteType, occurrenceId }: NotePasteRefusalOpti
     const host = document.createElement("div");
     document.body.append(host);
     const source = createEmptyDocument({ initialText: "Before" });
+    const paragraph = source.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Missing paste fixture paragraph");
+    paragraph.paraId = "74000000";
     const refusals: { reason: string; gap: unknown }[] = [];
     const { deps } = makeDeps({
       getHost: () => host,
@@ -218,6 +221,8 @@ const assertNotePasteRefusal = ({ noteType, occurrenceId }: NotePasteRefusalOpti
     try {
       manager.ensureView();
       const view = manager.getView() ?? panic("Missing paste fixture view");
+      expect(refusals).toEqual([]);
+      if (session === "canonical") expect(manager.api.getCanonicalDocument()).not.toBeNull();
       const before = view.state;
       const reference = document.createElement(tag);
       reference.className = `docx-${kind}-ref`;

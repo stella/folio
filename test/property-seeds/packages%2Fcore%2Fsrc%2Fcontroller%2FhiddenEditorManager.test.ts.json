@@ -14,5 +14,13 @@
       "date": "2026-10-09",
       "path": "0"
     }
+  ],
+  "blank note occurrence identities reach paste refusal without mutation": [
+    {
+      "seed": 1677801762,
+      "path": "0:0",
+      "note": "Retain the blank external occurrence case through both paste refusal boundaries.",
+      "date": "2026-10-09"
+    }
   ]
 }
