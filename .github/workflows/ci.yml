@@ -848,9 +848,7 @@ jobs:
       - name: Exercise canonical evaluation transport
         run: >-
           bun run test:interactions
-          tests/visual/canonical-session.interactions.spec.ts
-          tests/visual/canonical-browser-history.interactions.spec.ts
-          -g 'canonical structural gestures and toolbar operations preserve each intermediate history state|canonical history replay 263 2:1:0:0:0|canonical history load survives browser collection while its evaluation is pending'
+          tests/visual/canonical-evaluation-regressions.interactions.spec.ts
           --workers=1
       - name: Preserve canonical protocol evidence
         if: failure()

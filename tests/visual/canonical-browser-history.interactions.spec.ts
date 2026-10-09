@@ -1,11 +1,6 @@
-import {
-  evaluateCanonicalPage,
-  observeCanonicalPageNavigation,
-  waitForCanonicalPageReady,
-} from "./canonicalPageNavigation";
+import { evaluateCanonicalPage, observeCanonicalPageNavigation } from "./canonicalPageNavigation";
 import { expect } from "@playwright/test";
 import { test } from "./canonicalTimerProbe";
-import fc from "fast-check";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
@@ -13,71 +8,13 @@ import {
   checkCanonicalBrowserHistory,
   initializeCanonicalBrowserHistory,
 } from "./canonicalBrowserHistoryOracle";
+import { runCanonicalHistoryReplay } from "./canonicalHistoryReplay";
 import { runBrowserImeLifecycle } from "./browserImeDriver";
 import {
   CANONICAL_BROWSER_HISTORY_REPLAYS,
   CANONICAL_BROWSER_SAVE_REPLAYS,
-  canonicalBrowserTraceArbitrary,
+  CANONICAL_EVALUATION_HISTORY_REPLAY,
 } from "./canonicalBrowserTrace";
-
-declare global {
-  var __folioCollectPendingCanonicalLoad: (() => Promise<void>) | undefined;
-}
-
-test("canonical history load survives browser collection while its evaluation is pending", async ({
-  page,
-}) => {
-  await page.goto("/?session=canonical");
-  await waitForCanonicalPageReady(page);
-  const cdp = await page.context().newCDPSession(page);
-  const collections: Promise<void>[] = [];
-  await page.exposeFunction("__folioCollectPendingCanonicalLoad", () => {
-    const collect = async () => {
-      for (let collection = 0; collection < 20; collection++)
-        await cdp.send("HeapProfiler.collectGarbage");
-    };
-    const pending = collect();
-    collections.push(pending);
-    return pending;
-  });
-  await page.evaluate(() => {
-    const bridge = globalThis.__folioCanonical;
-    if (!bridge) throw new TypeError("Canonical bridge unavailable");
-    const collect = globalThis.__folioCollectPendingCanonicalLoad;
-    if (!collect) throw new TypeError("Canonical collection probe unavailable");
-    const load = bridge.load;
-    bridge.load = (bytes) => {
-      const pending = load(bytes);
-      void collect();
-      return pending;
-    };
-  });
-  try {
-    const source = [
-      ...new Uint8Array(await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }))),
-    ];
-    await initializeCanonicalBrowserHistory(page, source);
-    const actions = fc
-      .sample(canonicalBrowserTraceArbitrary, { seed: 263, path: "2:1:0:0:0", numRuns: 1 })
-      .at(0);
-    if (!actions) throw new TypeError("Missing canonical history trace");
-    expect(
-      await checkCanonicalBrowserHistory({
-        page,
-        source,
-        actions,
-        missing: createMissingOpBurndown(),
-      }),
-    ).toBeGreaterThan(0);
-    await Promise.all(collections);
-    expect(
-      collections.length,
-      "collection must exercise the actual canonical load boundary",
-    ).toBeGreaterThan(0);
-  } finally {
-    await cdp.detach();
-  }
-});
 
 test("canonical evaluation waits for a mid-sequence navigation to mount", async ({ page }) => {
   await page.goto("/?session=canonical");
@@ -362,46 +299,11 @@ test("canonical history checks a lazy first view and rejects composition before 
   ).toBe(true);
 });
 
-for (const { seed, path, kinds } of [
-  ...CANONICAL_BROWSER_HISTORY_REPLAYS,
-  ...CANONICAL_BROWSER_SAVE_REPLAYS,
-]) {
+for (const replay of [...CANONICAL_BROWSER_HISTORY_REPLAYS, ...CANONICAL_BROWSER_SAVE_REPLAYS]) {
+  if (replay === CANONICAL_EVALUATION_HISTORY_REPLAY) continue;
+  const { seed, path } = replay;
   test(`canonical history replay ${seed} ${path}`, async ({ page }) => {
     if (seed === 197 && path === "1") test.setTimeout(120_000);
-    const traces = fc.sample(canonicalBrowserTraceArbitrary, { seed, path, numRuns: 1 });
-    expect(traces).toHaveLength(1);
-    const actions = traces.at(0);
-    if (actions === undefined) throw new TypeError("Missing canonical regression trace");
-    expect(actions.length).toBeGreaterThan(0);
-    expect(actions.map(({ kind }) => kind)).toEqual(kinds);
-    if (seed === 431 && path === "8")
-      expect(actions).toEqual([
-        { kind: "imeReplacement", updates: ["shall", "café 東京 é"], completion: "cancel" },
-      ]);
-    await page.goto("/?session=canonical");
-    await page.waitForSelector(".layout-page");
-    await evaluateCanonicalPage(page, () =>
-      page.evaluate(() => {
-        globalThis.__folioCanonicalFuzzErrors = [];
-      }),
-    );
-    const source = await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }));
-    await initializeCanonicalBrowserHistory(page, [...new Uint8Array(source)]);
-    // Repeat identical package input to exercise adoption of a fresh owner.
-    for (let load = 0; load < 2; load++) {
-      const applied = await checkCanonicalBrowserHistory({
-        page,
-        source: [...new Uint8Array(source)],
-        actions,
-        missing: createMissingOpBurndown(),
-      });
-      if (
-        actions.every(
-          (action) => action.kind === "imeReplacement" && action.completion === "cancel",
-        )
-      )
-        expect(applied).toBe(0);
-      else expect(applied).toBeGreaterThan(0);
-    }
+    await runCanonicalHistoryReplay(page, replay);
   });
 }
