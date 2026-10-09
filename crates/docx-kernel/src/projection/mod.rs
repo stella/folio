@@ -112,10 +112,19 @@ pub struct DocumentPackageProjection {
     pub review_facts: DocumentReviewFacts,
 }
 
+/// Selects whether highlight spans represent direct run markup or resolved styles.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum HighlightProjection {
+    Direct,
+    #[default]
+    Resolved,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProjectionOptions {
     pub revision_view: RevisionView,
     pub text_materialization: TextMaterialization,
+    pub highlight_projection: HighlightProjection,
 }
 
 impl Default for ProjectionOptions {
@@ -123,6 +132,7 @@ impl Default for ProjectionOptions {
         Self {
             revision_view: RevisionView::Current,
             text_materialization: TextMaterialization::WordHost,
+            highlight_projection: HighlightProjection::Resolved,
         }
     }
 }
@@ -450,6 +460,7 @@ where
         maximum_paragraphs,
         options.revision_view,
         options.text_materialization,
+        options.highlight_projection,
         dependencies.styles.map_err(formatting_unknown_reason),
         review_limits,
     )?;

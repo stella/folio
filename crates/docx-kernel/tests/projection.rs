@@ -14,7 +14,7 @@ use std::io::{Cursor, Write};
 
 use stella_docx_kernel::ParagraphAlignmentValue as Align;
 use stella_docx_kernel::{
-    CommentContent, DocxLimits, FormattingProjectionStatus, FormattingUnknownReason,
+    CommentContent, DocxLimits, FormattingProjectionStatus, FormattingUnknownReason, HighlightProjection,
     InternalParagraphId, InternalReferenceRole, PackageParagraphId, ParagraphAlignmentFact,
     ParagraphAlignmentSource, ParagraphIdentityFacts, ParagraphOutlineLevelFact,
     ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits,
@@ -1194,6 +1194,42 @@ fn style_toggle_chains_preserve_false_and_direct_values_remain_absolute() {
     );
     assert!(projection.paragraphs[1].formatting.is_empty());
     assert!(projection.paragraphs[2].formatting.is_empty());
+}
+
+#[test]
+fn direct_highlight_policy_excludes_style_inheritance_for_every_color() {
+    let contract = include_str!("../fixtures/ooxml-highlight-colors.tsv");
+    for row in contract.lines() {
+        let (color, classification) = row.split_once('\t').expect("color contract");
+        let document = format!(r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+            <w:p><w:pPr><w:pStyle w:val="Marked"/></w:pPr><w:r><w:t>😀P</w:t></w:r></w:p>
+            <w:p><w:r><w:rPr><w:rStyle w:val="MarkedCharacter"/></w:rPr><w:t>😀C</w:t></w:r></w:p>
+            <w:p><w:pPr><w:pStyle w:val="Marked"/></w:pPr><w:r><w:rPr><w:highlight w:val="{color}"/></w:rPr><w:t>😀D</w:t></w:r></w:p>
+        </w:body></w:document>"#);
+        let styles = format!(r#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+            <w:style w:type="paragraph" w:styleId="Marked"><w:rPr><w:b/><w:highlight w:val="{color}"/><w:vertAlign w:val="superscript"/></w:rPr></w:style>
+            <w:style w:type="character" w:styleId="MarkedCharacter"><w:rPr><w:b/><w:highlight w:val="{color}"/><w:vertAlign w:val="superscript"/></w:rPr></w:style>
+        </w:styles>"#);
+        let bytes = package(&[("word/document.xml", document.as_bytes()), ("word/styles.xml", styles.as_bytes())], CompressionMethod::Deflated);
+        let direct = project_docx_with_options(&bytes, DocxLimits::default(), ProjectionOptions { highlight_projection: HighlightProjection::Direct, ..ProjectionOptions::default() }, allocate).unwrap();
+        let resolved = project_docx(&bytes, DocxLimits::default(), allocate).unwrap();
+        for (ordinal, (direct, resolved)) in direct.paragraphs.iter().zip(&resolved.paragraphs).enumerate() {
+            assert_eq!(direct.text, resolved.text, "{color}:{ordinal}");
+            let direct_other = direct.formatting.iter().filter(|span| span.style != TextStyle::Highlight).collect::<Vec<_>>();
+            let resolved_other = resolved.formatting.iter().filter(|span| span.style != TextStyle::Highlight).collect::<Vec<_>>();
+            assert_eq!(direct_other, resolved_other, "{color}:{ordinal}");
+            assert_eq!(direct_other.len(), 2, "bold and superscript remain resolved");
+            let direct_highlight = direct.formatting.iter().filter(|span| span.style == TextStyle::Highlight).collect::<Vec<_>>();
+            let resolved_highlight = resolved.formatting.iter().filter(|span| span.style == TextStyle::Highlight).collect::<Vec<_>>();
+            assert_eq!(resolved_highlight.len(), usize::from(classification == "semantic"), "{color}:{ordinal}");
+            assert_eq!(direct_highlight.len(), usize::from(ordinal == 2 && classification == "semantic"), "{color}:{ordinal}");
+            for span in direct_highlight {
+                assert_eq!((span.start_utf16, span.end_utf16), (0, 3));
+            }
+        }
+        let fused = project_docx_with_review_facts(&bytes, DocxLimits::default(), ReviewFactLimits::default(), ProjectionOptions { highlight_projection: HighlightProjection::Direct, ..ProjectionOptions::default() }, allocate).unwrap();
+        assert_eq!(fused.document, direct, "fused direct projection {color}");
+    }
 }
 
 #[test]

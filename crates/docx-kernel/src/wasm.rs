@@ -1,14 +1,14 @@
 use crate::{
     AttributedComment, AttributedRevision, BookmarkFact, DocumentPackageProjection,
     DocumentProjection, DocumentReviewFacts, DocumentStructureFacts, DocxLimits,
-    FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
+    FormattingProjectionStatus, FormattingUnknownReason, HighlightProjection, InternalParagraphId,
     InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact, ParagraphAlignmentFact,
     ParagraphAlignmentSource, ParagraphAlignmentValue, ParagraphIdentityFacts,
     ParagraphIndentationFact, ParagraphOutlineLevelFact, ParagraphStructure, ProjectedParagraph,
     ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
     ReviewSpan, RevisionFactKind, RevisionPayload, RevisionProjectionStatus,
     RevisionUnsupportedReason, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
-    StructuralSpan, TextMaterialization, TextStyle, project_docx, project_docx_with_review_facts,
+    StructuralSpan, TextMaterialization, TextStyle, project_docx_with_options, project_docx_with_review_facts,
 };
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
@@ -19,6 +19,7 @@ const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 2;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TYPESCRIPT_TYPES: &str = r#"
+export type HighlightProjectionPolicy = "direct" | "resolved";
 export type DocxProjectionFormattingSpan = readonly [
   startUtf16: number,
   endUtf16: number,
@@ -249,6 +250,8 @@ export type DocxPackageProjectionWire = readonly [
 extern "C" {
     #[wasm_bindgen(typescript_type = "DocxProjectionWire")]
     pub type DocxProjectionWire;
+    #[wasm_bindgen(typescript_type = "HighlightProjectionPolicy")]
+    pub type HighlightProjectionPolicy;
     #[wasm_bindgen(typescript_type = "DocxPackageProjectionWire")]
     pub type DocxPackageProjectionWire;
 }
@@ -266,8 +269,12 @@ extern "C" {
 /// Returns a JavaScript `Error` when the package cannot be projected or a
 /// numeric wire value cannot be represented by the schema.
 #[wasm_bindgen(js_name = projectCompressedDocx)]
-pub fn project_compressed_docx(bytes: &[u8]) -> Result<DocxProjectionWire, JsValue> {
-    project_docx_projection(bytes)
+pub fn project_compressed_docx(
+    bytes: &[u8],
+    highlight_projection: Option<HighlightProjectionPolicy>,
+) -> Result<DocxProjectionWire, JsValue> {
+    let highlight_projection = parse_highlight_projection(highlight_projection)?;
+    project_docx_projection(bytes, highlight_projection)
         .and_then(|projection| output_projection_with_structure(&projection))
         // SAFETY: the output builder constructs the exact tuple declared as
         // `DocxProjectionWire` in the wasm-bindgen TypeScript custom section.
@@ -285,8 +292,10 @@ pub fn project_compressed_docx(bytes: &[u8]) -> Result<DocxProjectionWire, JsVal
 #[wasm_bindgen(js_name = projectCompressedDocxWithReviewFacts)]
 pub fn project_compressed_docx_with_review_facts(
     bytes: &[u8],
+    highlight_projection: Option<HighlightProjectionPolicy>,
 ) -> Result<DocxPackageProjectionWire, JsValue> {
-    project_docx_package_projection(bytes, TextMaterialization::WordHost)
+    let highlight_projection = parse_highlight_projection(highlight_projection)?;
+    project_docx_package_projection(bytes, TextMaterialization::WordHost, highlight_projection)
         .and_then(|projection| output_package_projection(&projection))
         // SAFETY: the output builder constructs the exact tuple declared as
         // `DocxPackageProjectionWire` in the TypeScript custom section.
@@ -303,8 +312,10 @@ pub fn project_compressed_docx_with_review_facts(
 #[wasm_bindgen(js_name = projectCompressedDocxWithReadableReviewFacts)]
 pub fn project_compressed_docx_with_readable_review_facts(
     bytes: &[u8],
+    highlight_projection: Option<HighlightProjectionPolicy>,
 ) -> Result<DocxPackageProjectionWire, JsValue> {
-    project_docx_package_projection(bytes, TextMaterialization::ReadablePlainText)
+    let highlight_projection = parse_highlight_projection(highlight_projection)?;
+    project_docx_package_projection(bytes, TextMaterialization::ReadablePlainText, highlight_projection)
         .and_then(|projection| output_package_projection(&projection))
         // SAFETY: the output builder constructs the exact tuple declared as
         // `DocxPackageProjectionWire` in the TypeScript custom section.
@@ -312,9 +323,25 @@ pub fn project_compressed_docx_with_readable_review_facts(
         .map_err(|error| js_error(&error))
 }
 
-fn project_docx_projection(bytes: &[u8]) -> Result<DocumentProjection, String> {
+fn parse_highlight_projection(
+    policy: Option<HighlightProjectionPolicy>,
+) -> Result<HighlightProjection, JsValue> {
+    let Some(policy) = policy else {
+        return Ok(HighlightProjection::Resolved);
+    };
+    match JsValue::from(policy).as_string().as_deref() {
+        Some("direct") => Ok(HighlightProjection::Direct),
+        Some("resolved") => Ok(HighlightProjection::Resolved),
+        _ => Err(js_error("highlight projection must be direct or resolved")),
+    }
+}
+
+fn project_docx_projection(
+    bytes: &[u8],
+    highlight_projection: HighlightProjection,
+) -> Result<DocumentProjection, String> {
     let limits = DocxLimits::default();
-    project_docx(bytes, limits, |facts: ParagraphIdentityFacts<'_>| {
+    project_docx_with_options(bytes, limits, ProjectionOptions { highlight_projection, ..ProjectionOptions::default() }, |facts: ParagraphIdentityFacts<'_>| {
         InternalParagraphId::new(format!("projected-{}", facts.ordinal))
     })
     .map_err(|error| error.to_string())
@@ -323,6 +350,7 @@ fn project_docx_projection(bytes: &[u8]) -> Result<DocumentProjection, String> {
 fn project_docx_package_projection(
     bytes: &[u8],
     text_materialization: TextMaterialization,
+    highlight_projection: HighlightProjection,
 ) -> Result<DocumentPackageProjection, String> {
     project_docx_with_review_facts(
         bytes,
@@ -330,6 +358,7 @@ fn project_docx_package_projection(
         ReviewFactLimits::default(),
         ProjectionOptions {
             text_materialization,
+            highlight_projection,
             ..ProjectionOptions::default()
         },
         |facts: ParagraphIdentityFacts<'_>| {

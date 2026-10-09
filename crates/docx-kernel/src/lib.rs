@@ -8,7 +8,7 @@ pub mod wasm;
 pub use projection::{
     AttributedComment, AttributedRevision, BookmarkFact, CommentContent, DocumentPackageProjection,
     DocumentParts, DocumentProjection, DocumentReviewFacts, DocumentStructureFacts, DocxLimits,
-    FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
+    FormattingProjectionStatus, FormattingUnknownReason, HighlightProjection, InternalParagraphId,
     InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact, PackageParagraphId,
     ParagraphAlignmentFact, ParagraphAlignmentSource, ParagraphAlignmentValue,
     ParagraphIdentityFacts, ParagraphIndentation, ParagraphIndentationFact,

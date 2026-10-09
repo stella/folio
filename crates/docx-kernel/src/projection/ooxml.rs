@@ -20,7 +20,7 @@ use crate::projection::styles::{
     parse_alignment, parse_indentation, parse_level_attribute, parse_outline_level_attribute,
     parse_u32_attribute, semantic_highlight_value, word_style_id,
 };
-use crate::{FormattingProjectionStatus, FormattingUnknownReason, ProjectionError};
+use crate::{FormattingProjectionStatus, FormattingUnknownReason, HighlightProjection, ProjectionError};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PackageParagraphId(u32);
@@ -732,6 +732,7 @@ pub(super) fn project_document_xml(
     maximum_paragraphs: usize,
     revision_view: RevisionView,
     text_materialization: TextMaterialization,
+    highlight_projection: HighlightProjection,
     styles: Result<&StyleSheet, FormattingUnknownReason>,
     review_limits: Option<ReviewProjectionLimits>,
 ) -> Result<RawDocumentProjection, ProjectionError> {
@@ -741,6 +742,7 @@ pub(super) fn project_document_xml(
         maximum_paragraphs,
         revision_view,
         text_materialization,
+        highlight_projection,
         bookmarks_complete: true,
         references_complete: true,
         formatting_status: match styles {
@@ -936,6 +938,7 @@ struct ProjectionState {
     paragraph_mark_revisions: HashMap<usize, ParagraphMarkRevision>,
     revision_view: RevisionView,
     text_materialization: TextMaterialization,
+    highlight_projection: HighlightProjection,
     revision_unsupported: BTreeSet<RevisionUnsupportedReason>,
     review_revisions: ReviewRevisionCollection,
     open_review_comment_anchors: HashMap<String, ReviewPoint>,
@@ -1481,7 +1484,7 @@ impl ProjectionState {
                     && !self.pseudo_text_is_suppressed()
                     && let Some(paragraph) = self.current_paragraph.as_mut()
                 {
-                    let effective = match styles {
+                    let mut effective = match styles {
                         Ok(styles) => {
                             let resolved = if run.character_style_id.is_none()
                                 && run.direct_styles == TextProperties::default()
@@ -1503,6 +1506,9 @@ impl ProjectionState {
                         }
                         Err(_) => run.direct_styles,
                     };
+                    if self.highlight_projection == HighlightProjection::Direct {
+                        effective.highlighted = run.direct_styles.highlighted;
+                    }
                     paragraph.append(&run.text, effective)?;
                 }
                 if let (Some(start), Some(end)) = (start, self.current_review_point()) {

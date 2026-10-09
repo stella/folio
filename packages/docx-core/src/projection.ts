@@ -90,8 +90,13 @@ export type InitializeDocxProjectionOptions = {
   wasm?: DocxProjectionWasmSource;
 };
 
-/** Controls text materialization for fused document and review-fact projection. */
-export type ProjectCompressedDocxWithReviewFactsOptions = {
+export type ProjectCompressedDocxOptions = {
+  /** Defaults to resolved style highlighting; direct selects run markup only. */
+  highlightProjection?: "direct" | "resolved";
+};
+
+/** Controls formatting and text materialization for fused package projection. */
+export type ProjectCompressedDocxWithReviewFactsOptions = ProjectCompressedDocxOptions & {
   /** Selects host-coordinate controls or normalized readable text. */
   textMaterialization?: "word-host" | "readable-plain-text";
 };
@@ -138,10 +143,13 @@ const projectWith = async <T>({
   }
 };
 
-export const projectCompressedDocx = (bytes: Uint8Array): Promise<DocxProjectionWire> =>
+export const projectCompressedDocx = (
+  bytes: Uint8Array,
+  { highlightProjection = "resolved" }: ProjectCompressedDocxOptions = {},
+): Promise<DocxProjectionWire> =>
   projectWith({
     bytes,
-    project: projectCompressedDocxInWasm,
+    project: (input) => projectCompressedDocxInWasm(input, highlightProjection),
     message: DOCUMENT_PROJECTION_FAILURE_MESSAGE,
   });
 
@@ -152,13 +160,18 @@ export const projectCompressedDocx = (bytes: Uint8Array): Promise<DocxProjection
  */
 export const projectCompressedDocxWithReviewFacts = (
   bytes: Uint8Array,
-  { textMaterialization = "word-host" }: ProjectCompressedDocxWithReviewFactsOptions = {},
+  {
+    textMaterialization = "word-host",
+    highlightProjection = "resolved",
+  }: ProjectCompressedDocxWithReviewFactsOptions = {},
 ): Promise<DocxPackageProjectionWire> =>
   projectWith({
     bytes,
-    project:
-      textMaterialization === "word-host"
-        ? projectCompressedDocxWithReviewFactsInWasm
-        : projectCompressedDocxWithReadableReviewFactsInWasm,
+    project: (input) => {
+      if (textMaterialization === "word-host") {
+        return projectCompressedDocxWithReviewFactsInWasm(input, highlightProjection);
+      }
+      return projectCompressedDocxWithReadableReviewFactsInWasm(input, highlightProjection);
+    },
     message: PACKAGE_PROJECTION_FAILURE_MESSAGE,
   });
