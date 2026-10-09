@@ -524,11 +524,10 @@ test(
             // The live anchor inherits list numbering only through a pending deletion
             // that the saved baseline does not contain, so anchor the control on the
             // nearest saved paragraph that carries the same numbering.
-            assert.ok(proposal.operation.type === "insertAfterBlock");
+            const { operation } = proposal;
+            assert.ok(operation.type === "insertAfterBlock");
             const savedRows = rowsOf(await openReviewer(bytes));
-            const liveAnchorAt = savedRows.findIndex(
-              (row) => row.id === proposal.operation.blockId,
-            );
+            const liveAnchorAt = savedRows.findIndex((row) => row.id === operation.blockId);
             assert.ok(liveAnchorAt >= 0, "The live anchor exists in the saved baseline");
             const numberedAnchor = savedRows
               .slice(0, liveAnchorAt + 1)
@@ -540,7 +539,7 @@ test(
               staging,
               [
                 {
-                  ...proposal.operation,
+                  ...operation,
                   id: "saved-heading-roundtrip",
                   blockId: numberedAnchor.id,
                 },
