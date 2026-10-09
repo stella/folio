@@ -1,9 +1,11 @@
 import { test as base, type Frame } from "@playwright/test";
+import { observeCanonicalPageNavigation } from "../visual/canonicalPageNavigation";
 
 /** Preserve navigation evidence when an evaluation loses its document context. */
 export const test = base.extend<{ canonicalNavigationEvidence: void }>({
   canonicalNavigationEvidence: [
     async ({ page }, use, testInfo) => {
+      observeCanonicalPageNavigation(page);
       const started = Date.now();
       const navigations: { elapsedMs: number; url: string; frame: "main" | "child" }[] = [];
       const record = (frame: Frame) => {

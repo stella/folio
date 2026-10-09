@@ -13,6 +13,7 @@ import { TableMap } from "prosemirror-tables";
 import { resolveStateStory } from "../markupViewProjection";
 import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
 import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
+import { trackedRevisionPathOf, retainedTrackedRevisionMark } from "../trackedRevisionPath";
 import { Mapping } from "prosemirror-transform";
 import { panic } from "better-result";
 
@@ -151,25 +152,6 @@ export function removeCommentMark(commentId: number): Command {
 }
 
 type ResolveMode = "accept" | "reject";
-
-const revisionLayerOf = (mark: Mark): TrackedRevisionAncestor => {
-  const attrs = expectTrackedChangeMarkAttrs(mark);
-  let type: TrackedRevisionAncestor["type"];
-  if (mark.type.name === "insertion") {
-    type = attrs.moveKind === "moveTo" ? "moveTo" : "insertion";
-  } else {
-    type = attrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
-  }
-  return {
-    type,
-    revisionId: attrs.revisionId,
-    author: attrs.author,
-    ...(attrs.date ? { date: attrs.date } : {}),
-    ...(attrs.utcDate ? { utcDate: attrs.utcDate } : {}),
-    ...(attrs.initials ? { initials: attrs.initials } : {}),
-    outerWrapperCount: attrs._docxOuterWrapperCount ?? 0,
-  };
-};
 
 const revisionLayerRemovesContent = (layer: TrackedRevisionAncestor, mode: ResolveMode): boolean =>
   mode === "accept"
@@ -370,8 +352,7 @@ function resolveChange(
             (expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.length ?? 0) > 0,
         );
         if (nestedMark) {
-          const nestedAttrs = expectTrackedChangeMarkAttrs(nestedMark);
-          const path = [...(nestedAttrs._docxRevisionAncestors ?? []), revisionLayerOf(nestedMark)];
+          const path = trackedRevisionPathOf(nestedMark);
           const selected = (layer: TrackedRevisionAncestor): boolean =>
             revisionSet === null || revisionSet.has(layer.revisionId);
           if (path.some(selected)) {
@@ -379,34 +360,8 @@ function resolveChange(
               deleteRanges.push({ from: rangeFrom, to: rangeTo });
             } else {
               tr.removeMark(rangeFrom, rangeTo, nestedMark);
-              const remaining = path.filter((layer) => !selected(layer));
-              const active = remaining.at(-1);
-              if (active) {
-                const type =
-                  active.type === "insertion" || active.type === "moveTo"
-                    ? insertionType
-                    : deletionType;
-                if (!type) {
-                  panic("A nested tracked revision has no editor mark type");
-                }
-                tr.addMark(
-                  rangeFrom,
-                  rangeTo,
-                  type.create({
-                    revisionId: active.revisionId,
-                    author: active.author,
-                    date: active.date ?? null,
-                    utcDate: active.utcDate ?? null,
-                    initials: active.initials ?? null,
-                    moveKind:
-                      active.type === "moveTo" || active.type === "moveFrom" ? active.type : null,
-                    _historicalFormatting:
-                      active.type === "deletion" || active.type === "moveFrom" ? true : null,
-                    _docxOuterWrapperCount: active.outerWrapperCount,
-                    _docxRevisionAncestors: remaining.length > 1 ? remaining.slice(0, -1) : null,
-                  }),
-                );
-              }
+              const retained = retainedTrackedRevisionMark(nestedMark, (layer) => !selected(layer));
+              if (retained) tr.addMark(rangeFrom, rangeTo, retained);
             }
           }
           const current = tr.doc.nodeAt(pos);

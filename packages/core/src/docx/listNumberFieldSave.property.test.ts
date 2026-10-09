@@ -200,10 +200,7 @@ const expectSavedFields = async (
 ): Promise<void> => {
   const xml = await documentXmlOf(saved.bytes);
   for (const spec of SPECS) {
-    const expected = expectedTokens(
-      { ...spec, body: bodies[spec.paraId] ?? spec.body },
-      saved.rewritten(spec.paraId),
-    );
+    const expected = expectedTokens({ ...spec, body: bodies[spec.paraId] ?? spec.body });
     expect(inlineTokens(paragraphMarkupOf(xml, spec.paraId))).toEqual(expected);
   }
   // The cached result keeps the run properties it was authored with.
@@ -719,9 +716,7 @@ const expectSaved = async (
 ): Promise<void> => {
   const xml = await documentXmlOf(saved.bytes);
   for (const spec of specs) {
-    expect(inlineTokens(paragraphMarkupOf(xml, spec.paraId))).toEqual(
-      expectedTokens(spec, saved.rewritten(spec.paraId)),
-    );
+    expect(inlineTokens(paragraphMarkupOf(xml, spec.paraId))).toEqual(expectedTokens(spec));
   }
 
   const reopened = await openDocx(saved.bytes);
@@ -754,123 +749,121 @@ const expectFolded = (parsed: Document, specs: readonly ParagraphSpec[]): void =
   }
 };
 
-describe("saving generated paragraphs whose list markers hold LISTNUM fields", () => {
-  test(
-    "every field goes back where it stood and the markers stay as they were",
-    async () => {
-      await assertProperty(
-        fc.asyncProperty(paragraphsArbitrary, async (specs) => {
-          const buffer = await listNumberFieldDocx(specs);
-          const parsed = await openDocx(buffer);
-          expectFolded(parsed, specs);
-          const opened = editorState(parsed);
+test(
+  "saving generated paragraphs whose list markers hold LISTNUM fields > every field goes back where it stood and the markers stay as they were",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(paragraphsArbitrary, async (specs) => {
+        const buffer = await listNumberFieldDocx(specs);
+        const parsed = await openDocx(buffer);
+        expectFolded(parsed, specs);
+        const opened = editorState(parsed);
 
-          // No paragraph of its own edited.
-          const beside = typeInto(opened, PLAIN_PARAGRAPH_ID, "Plain.", TYPED);
-          await expectSaved(
-            await saveDocx(fromProseDoc(beside.doc, parsed), buffer, [PLAIN_PARAGRAPH_ID]),
-            parsed,
-            specs,
-          );
+        // No paragraph of its own edited.
+        const beside = typeInto(opened, PLAIN_PARAGRAPH_ID, "Plain.", TYPED);
+        await expectSaved(
+          await saveDocx(fromProseDoc(beside.doc, parsed), buffer, [PLAIN_PARAGRAPH_ID]),
+          parsed,
+          specs,
+        );
 
-          // Text typed into every paragraph, after its fields.
-          let edited = opened;
-          for (const spec of specs) {
-            edited = typeInto(edited, spec.paraId, spec.body, TYPED);
-          }
-          await expectSaved(
-            await saveDocx(
-              fromProseDoc(edited.doc, parsed),
-              buffer,
-              specs.map(({ paraId }) => paraId),
-            ),
-            parsed,
-            specs.map((spec) => ({ ...spec, body: typedInto(spec.body, TYPED) })),
-          );
+        // Text typed into every paragraph, after its fields.
+        let edited = opened;
+        for (const spec of specs) {
+          edited = typeInto(edited, spec.paraId, spec.body, TYPED);
+        }
+        await expectSaved(
+          await saveDocx(
+            fromProseDoc(edited.doc, parsed),
+            buffer,
+            specs.map(({ paraId }) => paraId),
+          ),
+          parsed,
+          specs.map((spec) => ({ ...spec, body: typedInto(spec.body, TYPED) })),
+        );
 
-          // The whole part rewritten.
-          await expectSaved(await rewritten(fromProseDoc(opened.doc, parsed)), parsed, specs);
-        }),
-        {
-          numRuns: 30,
-          examples: [
-            // A comment that opens between a field on the line and its tab.
+        // The whole part rewritten.
+        await expectSaved(await rewritten(fromProseDoc(opened.doc, parsed)), parsed, specs);
+      }),
+      {
+        numRuns: 30,
+        examples: [
+          // A comment that opens between a field on the line and its tab.
+          [
             [
-              [
-                {
-                  paraId: "20000001",
-                  marker: "decimal",
-                  fields: [
-                    {
-                      instruction: " LISTNUM ",
-                      result: "(a)",
-                      formatting: "plain",
-                      before: "and ",
-                      gap: ["comment"],
-                      tab: true,
-                    },
-                  ],
-                  body: "Body",
-                },
-              ],
-            ],
-            [
-              [
-                {
-                  paraId: "20000001",
-                  marker: "percent",
-                  fields: [
-                    {
-                      instruction: " LISTNUM ",
-                      result: "a\tb",
-                      formatting: "symbol",
-                      before: "",
-                      gap: ["bookmark"],
-                      tab: true,
-                    },
-                    {
-                      instruction: "LISTNUM",
-                      result: "50%",
-                      formatting: "bold",
-                      before: "",
-                      gap: ["bookmarkStart"],
-                      tab: true,
-                    },
-                    {
-                      instruction: " LISTNUM  LegalDefault \\l 3 ",
-                      result: "(a)",
-                      formatting: "symbol",
-                      before: "x",
-                      gap: ["comment"],
-                      tab: false,
-                    },
-                  ],
-                  body: "Body",
-                },
-                {
-                  paraId: "20000002",
-                  marker: "symbol",
-                  fields: [
-                    {
-                      instruction: " listnum NumberDefault \\s 2 ",
-                      result: "(ii)",
-                      formatting: "plain",
-                      before: "",
-                      gap: [],
-                      tab: true,
-                    },
-                  ],
-                  body: "Tail text",
-                },
-              ],
+              {
+                paraId: "20000001",
+                marker: "decimal",
+                fields: [
+                  {
+                    instruction: " LISTNUM ",
+                    result: "(a)",
+                    formatting: "plain",
+                    before: "and ",
+                    gap: ["comment"],
+                    tab: true,
+                  },
+                ],
+                body: "Body",
+              },
             ],
           ],
-        },
-      );
-    },
-    propertyTestTimeout(180_000),
-  ); // Each case zips a package, then saves and reopens it three times.
-});
+          [
+            [
+              {
+                paraId: "20000001",
+                marker: "percent",
+                fields: [
+                  {
+                    instruction: " LISTNUM ",
+                    result: "a\tb",
+                    formatting: "symbol",
+                    before: "",
+                    gap: ["bookmark"],
+                    tab: true,
+                  },
+                  {
+                    instruction: "LISTNUM",
+                    result: "50%",
+                    formatting: "bold",
+                    before: "",
+                    gap: ["bookmarkStart"],
+                    tab: true,
+                  },
+                  {
+                    instruction: " LISTNUM  LegalDefault \\l 3 ",
+                    result: "(a)",
+                    formatting: "symbol",
+                    before: "x",
+                    gap: ["comment"],
+                    tab: false,
+                  },
+                ],
+                body: "Body",
+              },
+              {
+                paraId: "20000002",
+                marker: "symbol",
+                fields: [
+                  {
+                    instruction: " listnum NumberDefault \\s 2 ",
+                    result: "(ii)",
+                    formatting: "plain",
+                    before: "",
+                    gap: [],
+                    tab: true,
+                  },
+                ],
+                body: "Tail text",
+              },
+            ],
+          ],
+        ],
+      },
+    );
+  },
+  propertyTestTimeout(180_000),
+); // Each case zips a package, then saves and reopens it three times.
 
 const EDITED: ParagraphSpec[] = [
   {

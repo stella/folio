@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import { expectInlineWrapperMarkAttrs, expectTrackedChangeMarkAttrs } from "./attrs";
@@ -49,4 +50,53 @@ export const enclosingInsertionAncestors = ({
   }
   const layer = trackedRevisionLayerOf(insertionMark, node);
   return [layer, ...ancestors];
+};
+
+const revisionLayerOf = (mark: Mark): TrackedRevisionAncestor => {
+  const attrs = expectTrackedChangeMarkAttrs(mark);
+  let type: TrackedRevisionAncestor["type"];
+  if (mark.type.name === "insertion") {
+    type = attrs.moveKind === "moveTo" ? "moveTo" : "insertion";
+  } else {
+    type = attrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
+  }
+  return {
+    type,
+    revisionId: attrs.revisionId,
+    author: attrs.author,
+    ...(attrs.date ? { date: attrs.date } : {}),
+    ...(attrs.utcDate ? { utcDate: attrs.utcDate } : {}),
+    ...(attrs.initials ? { initials: attrs.initials } : {}),
+    outerWrapperCount: attrs._docxOuterWrapperCount ?? 0,
+  };
+};
+
+/** The authored revision layers already owned by a mark, outermost first. */
+export const trackedRevisionPathOf = (mark: Mark): readonly TrackedRevisionAncestor[] => [
+  ...(expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors ?? []),
+  revisionLayerOf(mark),
+];
+
+/** Promote a surviving existing layer; callers cannot supply a fresh identity. */
+export const retainedTrackedRevisionMark = (
+  mark: Mark,
+  keepLayer: (layer: TrackedRevisionAncestor) => boolean,
+): Mark | null => {
+  const remaining = trackedRevisionPathOf(mark).filter(keepLayer);
+  const active = remaining.at(-1);
+  if (!active) return null;
+  const name = active.type === "insertion" || active.type === "moveTo" ? "insertion" : "deletion";
+  const type = mark.type.schema.marks[name];
+  if (!type) panic("A nested tracked revision has no editor mark type");
+  return type.create({
+    revisionId: active.revisionId,
+    author: active.author,
+    date: active.date ?? null,
+    utcDate: active.utcDate ?? null,
+    initials: active.initials ?? null,
+    moveKind: active.type === "moveTo" || active.type === "moveFrom" ? active.type : null,
+    _historicalFormatting: active.type === "deletion" || active.type === "moveFrom" ? true : null,
+    _docxOuterWrapperCount: active.outerWrapperCount,
+    _docxRevisionAncestors: remaining.length > 1 ? remaining.slice(0, -1) : null,
+  });
 };
