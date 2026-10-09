@@ -10,7 +10,12 @@ import { createRoot } from "react-dom/client";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { DEFAULT_OUTLINE_DEPTH, filterHeadingsByDepth } from "@stll/folio-core/utils/outlineDepth";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
+import type { Paragraph } from "@stll/docx-core/model";
+import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
+import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { DocumentOutline } from "./DocumentOutline";
+import { DocxEditor } from "./DocxEditor";
+import type { DocxEditorRef } from "./DocxEditor.props";
 
 const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -27,11 +32,25 @@ const headings: HeadingInfo[] = [
 ];
 const EMPTY_HEADINGS: HeadingInfo[] = [];
 const onJumpNoop = () => {};
+const outlineParagraph = (styleId: string, text: string): Paragraph => ({
+  type: "paragraph",
+  formatting: { styleId },
+  content: [{ type: "run", content: [{ type: "text", text }] }],
+});
+const createOutlineDocument = () => {
+  const document = createEmptyDocument();
+  document.package.document.content = [
+    outlineParagraph("Heading1", "First level"),
+    outlineParagraph("Heading2", "Second level"),
+    outlineParagraph("Heading3", "Third level"),
+  ];
+  return document;
+};
 
 test("defaults to two outline levels and reports depth selector changes", async () => {
   const onOutlineDepthChange = mock((_depth: 2 | 3 | "all") => {});
   const OutlineHarness = () => {
-    const [depth, setDepth] = useState(DEFAULT_OUTLINE_DEPTH);
+    const [depth, setDepth] = useState<OutlineDepth>(DEFAULT_OUTLINE_DEPTH);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const onDepthChange = useCallback(
       (nextDepth: 2 | 3 | "all") => {
@@ -105,5 +124,61 @@ test("defaults to two outline levels and reports depth selector changes", async 
   } finally {
     await act(async () => root.unmount());
     container.remove();
+  }
+});
+
+test("DocxEditor defaults to two levels and forwards depth changes to the host", async () => {
+  const outlineDocument = createOutlineDocument();
+  const onOutlineDepthChange = mock((_depth: OutlineDepth) => {});
+  const editorRef = createRef<DocxEditorRef>();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const previousClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+
+  try {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.classList.contains("folio-panels-row")) return 1440;
+        return previousClientWidth?.get?.call(this) ?? 0;
+      },
+    });
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+          <DocxEditor
+            ref={editorRef}
+            document={outlineDocument}
+            onOutlineDepthChange={onOutlineDepthChange}
+            showToolbar={false}
+          />
+        </IntlProvider>,
+      ),
+    );
+    await act(async () => editorRef.current?.ensureEditorView({ focus: false }));
+
+    const itemLabels = () =>
+      [...container.querySelectorAll(".folio-outline-item-label")].map((node) => node.textContent);
+    expect(itemLabels()).toContain("First level");
+    expect(itemLabels()).toContain("Second level");
+    expect(itemLabels()).not.toContain("Third level");
+
+    const select = container.querySelector(".folio-outline select");
+    if (!(select instanceof HTMLSelectElement)) throw new Error("outline depth selector missing");
+    await act(async () => {
+      select.value = "all";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(onOutlineDepthChange).toHaveBeenCalledWith("all");
+    expect(itemLabels()).toContain("Third level");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    if (previousClientWidth) {
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", previousClientWidth);
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
+    }
   }
 });
