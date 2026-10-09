@@ -233,12 +233,9 @@ test.each(LEVEL_PROVENANCE_CASES)(
 test("an authored attr edit equal to the next level stays authored", () => {
   const attrs = {
     ...PARAGRAPH_ATTRS,
-    numPr: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 }),
+    ...listLevelAttrPatch(PARAGRAPH_ATTRS, { numId: 1, ilvl: 0 }, LEVEL_MAP),
     indentLeft: 1440,
-    indentFirstLine: -360,
-    hangingIndent: true,
     _originalFormatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
-    _resolvedFormatting: { indentLeft: 720, indentFirstLine: -360, hangingIndent: true },
   };
   expect(directParagraphIndentation(attrs)).toEqual({ indentLeft: 1440 });
   const changed = {
@@ -252,19 +249,16 @@ test("an authored attr edit equal to the next level stays authored", () => {
 test("style-owned numbering keeps its baseline when the list id changes", () => {
   const attrs = {
     ...PARAGRAPH_ATTRS,
+    ...paragraphAttrsFromResolvedStyle(
+      {
+        paragraphFormatting: { indentLeft: 100, indentFirstLine: 20, hangingIndent: false },
+      },
+      { styleId: "IndentedList" },
+    ),
     styleId: "IndentedList",
     numPr: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 }),
     numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 1, ilvl: 0 }),
-    indentLeft: 720,
-    indentFirstLine: -360,
-    hangingIndent: true,
     _originalFormatting: { styleId: "IndentedList" },
-    _resolvedFormatting: { indentLeft: 720, indentFirstLine: -360, hangingIndent: true },
-    _styleResolvedFormatting: {
-      indentLeft: 100,
-      indentFirstLine: 20,
-      hangingIndent: false,
-    } as const,
   };
   const changed = {
     ...attrs,
