@@ -468,7 +468,7 @@ fn inherited_default_namespace_and_package_paragraph_ids_remain_document_facts()
 }
 
 #[test]
-fn unrelated_zero_byte_binary_parts_preserve_selected_document_projection() {
+fn unrelated_zero_byte_parts_preserve_selected_document_projection() {
     let main = document("<w:p><w:r><w:t>Selected</w:t></w:r></w:p>");
     let root_relationships = relationships("word/document.xml");
     let parts = [
@@ -478,11 +478,58 @@ fn unrelated_zero_byte_binary_parts_preserve_selected_document_projection() {
     let expected =
         project_main_document_xml(flat_opc(&parts).as_bytes(), DocxLimits::default(), allocate)
             .unwrap();
-    for payload in ["<pkg:binaryData/>", "<pkg:binaryData></pkg:binaryData>"] {
-        let package = flat_opc(&parts).replace("</pkg:package>", &format!("<pkg:part pkg:name=\"/media/empty.bin\" pkg:contentType=\"application/octet-stream\">{payload}</pkg:part></pkg:package>"));
+    for (content_type, payload) in [
+        ("application/octet-stream", "<pkg:binaryData/>"),
+        (
+            "application/octet-stream",
+            "<pkg:binaryData></pkg:binaryData>",
+        ),
+        ("application/xml", "<pkg:xmlData/>"),
+        ("application/xml", "<pkg:xmlData></pkg:xmlData>"),
+    ] {
+        let package = flat_opc(&parts).replace("</pkg:package>", &format!("<pkg:part pkg:name=\"/media/empty\" pkg:contentType=\"{content_type}\">{payload}</pkg:part></pkg:package>"));
         assert_eq!(
             project_main_document_xml(package.as_bytes(), DocxLimits::default(), allocate).unwrap(),
             expected
+        );
+    }
+}
+
+#[test]
+fn empty_main_document_parts_remain_invalid_document_xml() {
+    let root_relationships = relationships("word/document.xml");
+    for payload in ["<pkg:xmlData/>", "<pkg:xmlData></pkg:xmlData>"] {
+        let package = flat_opc(&[("/_rels/.rels", root_relationships.as_str())]).replace(
+            "</pkg:package>",
+            &format!("<pkg:part pkg:name=\"/word/document.xml\" pkg:contentType=\"application/xml\">{payload}</pkg:part></pkg:package>"),
+        );
+        assert_eq!(
+            project_main_document_xml(package.as_bytes(), DocxLimits::default(), allocate),
+            Err(ProjectionError::InvalidDocumentXml)
+        );
+    }
+}
+
+#[test]
+fn empty_payloads_do_not_permit_invalid_package_structure() {
+    let main = document("<w:p/>");
+    let root_relationships = relationships("word/document.xml");
+    let parts = [
+        ("/_rels/.rels", root_relationships.as_str()),
+        ("/word/document.xml", main.as_str()),
+    ];
+    for invalid in [
+        "<pkg:part/>",
+        "<pkg:xmlData/>",
+        "<pkg:part pkg:name=\"/empty.xml\"><pkg:xmlData/><pkg:binaryData/></pkg:part>",
+        "<pkg:part pkg:name=\"/empty.xml\"><pkg:unknown/></pkg:part>",
+        "<pkg:part pkg:name=\"/empty.xml\"><other:xmlData xmlns:other=\"urn:other\"/></pkg:part>",
+    ] {
+        let package =
+            flat_opc(&parts).replace("</pkg:package>", &format!("{invalid}</pkg:package>"));
+        assert_eq!(
+            project_main_document_xml(package.as_bytes(), DocxLimits::default(), allocate),
+            Err(ProjectionError::InvalidFlatOpcPackage)
         );
     }
 }
