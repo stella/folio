@@ -4300,7 +4300,14 @@ const synchronizeFieldDisplayText = (
         visit(child);
         continue;
       }
-      if (child.type === "hyperlink" || child.type === "inlineWrapper") {
+      if (
+        child.type === "hyperlink" ||
+        child.type === "inlineWrapper" ||
+        child.type === "insertion" ||
+        child.type === "deletion" ||
+        child.type === "moveFrom" ||
+        child.type === "moveTo"
+      ) {
         visitRunsIn(child.type === "hyperlink" ? child.children : child.content, visit);
       }
     }

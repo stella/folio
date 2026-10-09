@@ -1,0 +1,16 @@
+{
+  "accept-all reads as the direct edit and reject-all restores the original": [
+    {
+      "seed": 1726575177,
+      "path": "2:1:1:1",
+      "note": "Rejecting typing over a structured tab field retains the structural result.",
+      "date": "2026-10-08"
+    },
+    {
+      "seed": 549392876,
+      "path": "3:1:1:1",
+      "note": "Rejecting a paste over a structured tab field retains the structural result.",
+      "date": "2026-10-08"
+    }
+  ]
+}

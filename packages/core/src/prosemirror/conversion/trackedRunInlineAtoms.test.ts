@@ -273,7 +273,7 @@ describe("tracked run inline atom ownership", () => {
     expect(rejectedXml).toContain(mathXml);
   });
 
-  test("rejects a tracked structured-field result while preserving an untracked one", async () => {
+  test("preserves tracked and untracked hyperlink field results", async () => {
     const field: SimpleField = {
       type: "simpleField",
       instruction: " REF field-link \\h ",
@@ -287,12 +287,12 @@ describe("tracked run inline atom ownership", () => {
       ],
     };
 
-    // A complex field under w:ins can contain runs, but cannot retain a
-    // structured simple-field result as an atomic revision child.
-    await expect(createDocx(reviewedFieldDocument(field, "insertion"))).rejects.toMatchObject({
-      _tag: "UnrepresentableTrackedSimpleFieldError",
-      contentType: "hyperlink",
-    });
+    const tracked = await createDocx(reviewedFieldDocument(field, "insertion"));
+    const trackedXml = await documentXml(tracked);
+    expect(trackedXml).not.toContain("<w:fldSimple");
+    expect(trackedXml).toContain('<w:hyperlink w:anchor="field-link"><w:ins ');
+    const pending = await roundTripThroughEditorModel(reviewedFieldDocument(field, "insertion"));
+    expect(await documentXml(pending)).toContain("Field value");
 
     const untracked = await createDocx(withMainContent([{ type: "paragraph", content: [field] }]));
     const reviewer = await FolioDocxReviewer.fromBuffer(untracked);

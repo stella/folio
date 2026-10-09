@@ -4275,7 +4275,7 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SimpleField/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}del": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SimpleField/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}dir": {
       "disposition": "modelled"
@@ -4290,10 +4290,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SimpleField/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ins": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SimpleField/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFrom": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SimpleField/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveFromRangeEnd": {
       "disposition": "captured-verbatim"
@@ -4302,7 +4302,7 @@
       "disposition": "captured-verbatim"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SimpleField/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveTo": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldSimple|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SimpleField/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}moveToRangeEnd": {
       "disposition": "captured-verbatim"

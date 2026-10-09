@@ -1652,7 +1652,7 @@ export type SimpleField = {
     type: "simpleField";
     instruction: string;
     fieldType: FieldType;
-    content: (Run | Hyperlink | InlineWrapper | PreservedInline)[];
+    content: (Run | Hyperlink | InlineWrapper | PreservedInline | TrackedRunChange)[];
     fldLock?: boolean;
     dirty?: boolean;
 };
