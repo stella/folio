@@ -1640,10 +1640,10 @@ export const readFootnoteRefMarkAttrs = (
 
   requiredStringOrNumber(attrs, "id", "footnoteRef.attrs.id", issues);
   requiredString(attrs, "occurrenceId", "footnoteRef.attrs.occurrenceId", issues);
-  if (attrs["occurrenceId"] === "")
+  if (typeof attrs["occurrenceId"] === "string" && attrs["occurrenceId"].trim().length === 0)
     issues.push({
       path: "footnoteRef.attrs.occurrenceId",
-      message: "Expected a nonempty occurrence identity.",
+      message: "Expected a nonblank occurrence identity.",
     });
   optionalOneOf(attrs, "noteType", "footnoteRef.attrs.noteType", issues, NOTE_TYPES);
   optionalOneOf(attrs, "vertAlign", "footnoteRef.attrs.vertAlign", issues, NOTE_REF_VERT_ALIGNS);

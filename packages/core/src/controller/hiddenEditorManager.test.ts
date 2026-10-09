@@ -194,6 +194,49 @@ describe("createHiddenEditorManager", () => {
   });
 });
 
+type NotePasteRefusalOptions = { noteType?: string; occurrenceId: string };
+const assertNotePasteRefusal = ({ noteType, occurrenceId }: NotePasteRefusalOptions) => {
+  const cases = (["legacy", "canonical"] as const).flatMap((session) =>
+    (["sup", "span"] as const).flatMap((tag) =>
+      (["footnote", "endnote"] as const).map((kind) => ({ session, tag, kind })),
+    ),
+  );
+  for (const { session, tag, kind } of cases) {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = createEmptyDocument({ initialText: "Before" });
+    const refusals: { reason: string; gap: unknown }[] = [];
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExtensionManager: () => singletonManager,
+      getExperimentalSession: () => session,
+      onSessionRefusal: (reason, gap) => refusals.push({ reason, gap }),
+    });
+    const manager = createHiddenEditorManager(deps);
+    try {
+      manager.ensureView();
+      const view = manager.getView() ?? panic("Missing paste fixture view");
+      const before = view.state;
+      const reference = document.createElement(tag);
+      reference.className = `docx-${kind}-ref`;
+      reference.dataset["id"] = "123";
+      reference.dataset["noteOccurrence"] = occurrenceId;
+      reference.dataset["noteType"] = noteType ?? kind;
+      reference.textContent = "123";
+      expect(() => view.pasteHTML(reference.outerHTML)).not.toThrow();
+      expect(view.state.doc).toBe(before.doc);
+      expect(refusals).toHaveLength(1);
+      expect(refusals.at(0)?.gap).toBe(CANONICAL_GAP.dispatch);
+      expect(refusals.at(0)?.reason).toContain("attributed text occurrences");
+    } finally {
+      manager.destroyView();
+      host.remove();
+    }
+  }
+};
+
 test(
   "external note attribution reaches paste refusal in both session modes without mutation",
   () => {
@@ -205,57 +248,31 @@ test(
             .stringMatching(/^[a-z]{1,12}$/u)
             .filter((kind) => kind !== "footnote" && kind !== "endnote"),
           (noteType) => {
-            const cases = (["legacy", "canonical"] as const)
-              .flatMap((session) =>
-                (["sup", "span"] as const).flatMap((tag) =>
-                  (["footnote", "endnote"] as const).map((kind) => ({ session, tag, kind })),
-                ),
-              )
-              .flatMap(({ session, tag, kind }) => [
-                {
-                  session,
-                  tag,
-                  kind,
-                  pastedType: noteType,
-                  occurrenceId: "8bf05044-8197-4ca1-8207-600164d5dd24",
-                },
-                { session, tag, kind, pastedType: kind, occurrenceId: "" },
-              ]);
-            for (const { session, tag, kind, pastedType, occurrenceId } of cases) {
-              const host = document.createElement("div");
-              document.body.append(host);
-              const source = createEmptyDocument({ initialText: "Before" });
-              const refusals: { reason: string; gap: unknown }[] = [];
-              const { deps } = makeDeps({
-                getHost: () => host,
-                getDocument: () => source,
-                getDocumentContext: () => source,
-                getExtensionManager: () => singletonManager,
-                getExperimentalSession: () => session,
-                onSessionRefusal: (reason, gap) => refusals.push({ reason, gap }),
-              });
-              const manager = createHiddenEditorManager(deps);
-              try {
-                manager.ensureView();
-                const view = manager.getView() ?? panic("Missing paste fixture view");
-                const before = view.state;
-                const reference = document.createElement(tag);
-                reference.className = `docx-${kind}-ref`;
-                reference.dataset["id"] = "123";
-                reference.dataset["noteOccurrence"] = occurrenceId;
-                reference.dataset["noteType"] = pastedType;
-                reference.textContent = "123";
-                expect(() => view.pasteHTML(reference.outerHTML)).not.toThrow();
-                expect(view.state.doc).toBe(before.doc);
-                expect(refusals).toHaveLength(1);
-                expect(refusals.at(0)?.gap).toBe(CANONICAL_GAP.dispatch);
-                expect(refusals.at(0)?.reason).toEqual(expect.any(String));
-              } finally {
-                manager.destroyView();
-                host.remove();
-              }
-            }
+            assertNotePasteRefusal({
+              noteType,
+              occurrenceId: "8bf05044-8197-4ca1-8207-600164d5dd24",
+            });
+            assertNotePasteRefusal({ occurrenceId: "" });
           },
+        ),
+        { numRuns: 20 },
+      );
+    } finally {
+      GlobalRegistrator.unregister();
+    }
+  },
+  propertyTestTimeout(5_000),
+);
+
+test(
+  "blank note occurrence identities reach paste refusal without mutation",
+  () => {
+    GlobalRegistrator.register();
+    try {
+      assertProperty(
+        fc.property(
+          fc.array(fc.constantFrom(" ", "\t", "\r", "\n", "\u00a0", "\u2028"), { maxLength: 16 }),
+          (characters) => assertNotePasteRefusal({ occurrenceId: characters.join("") }),
         ),
         { numRuns: 20 },
       );
