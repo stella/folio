@@ -24,6 +24,18 @@ const CASE = {
   placement: "word",
 } as const;
 const DECLARED_CASES = EDITOR_MODES.map((mode) => ({ ...CASE, mode }));
+const SELECTED_TEXT_EXPECTED_CHANGE_DETAIL =
+  "A text mark toggle over selected text changed nothing without a declared refusal.";
+
+const expectedSilentRefusals = (detail: string) =>
+  EDITOR_MODES.flatMap((mode) => [
+    {
+      kind: "silent-refusal" as const,
+      mode,
+      detail: SELECTED_TEXT_EXPECTED_CHANGE_DETAIL,
+    },
+    { kind: "silent-refusal" as const, mode, detail },
+  ]);
 
 test("canonical refusal table covers exactly the declared concrete cases", () => {
   const rows = declareCanonicalRefusalCases(DECLARED_CASES);
@@ -155,9 +167,7 @@ test.each([
   try {
     const ablated = await runConformanceCase(options);
     expect(ablated?.runs).toEqual({ editing: "refused", suggesting: "refused" });
-    expect(ablated?.violations).toEqual(
-      EDITOR_MODES.map((mode) => ({ kind: "silent-refusal", mode, detail: `${gap}: ${message}` })),
-    );
+    expect(ablated?.violations).toEqual(expectedSilentRefusals(`${gap}: ${message}`));
     expect(ablated?.refusals.map(({ expectation }) => expectation)).toEqual([
       "unexpected",
       "unexpected",
@@ -204,11 +214,9 @@ test("a supported command losing its descriptor fails standing conformance in bo
   expect(descriptorLossControls).toBe(EDITOR_MODES.length);
   expect(ablated?.runs).toEqual({ editing: "refused", suggesting: "refused" });
   expect(ablated?.violations).toEqual(
-    EDITOR_MODES.map((mode) => ({
-      kind: "silent-refusal",
-      mode,
-      detail: `${CANONICAL_GAP.dispatch}: Unclassified native text is unavailable in this session.`,
-    })),
+    expectedSilentRefusals(
+      `${CANONICAL_GAP.dispatch}: Unclassified native text is unavailable in this session.`,
+    ),
   );
   expect(ablated?.refusals.map(({ expectation }) => expectation)).toEqual([
     "unexpected",
