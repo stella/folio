@@ -5,11 +5,91 @@ import { EditorState, type Transaction } from "prosemirror-state";
 import { Step } from "prosemirror-transform";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
+import { acceptAllChanges, rejectAllChanges, rejectChange } from "../prosemirror/commands/comments";
+import { createHarnessState } from "../__tests__/editorHarness";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Run } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
 import { schema } from "../prosemirror/schema";
 import { RevisionResolutionStep } from "./revisionResolutionStep";
 
 const revision = (id: number) => ({ revisionId: id, author: "Reviewer", date: "2026-09-09" });
+
+test(
+  "restored historical runs preserve authorship through bulk and individual rejection",
+  () => {
+    // The old generator covered structural markers but never imported historical runs
+    // beneath paragraph-mark formatting, so both paths could agree on invented overrides.
+    assertProperty(
+      fc.property(
+        fc.record({
+          bold: fc.boolean(),
+          italic: fc.boolean(),
+          fontSize: fc.integer({ min: 8, max: 32 }),
+        }),
+        fc.option(
+          fc.record({
+            bold: fc.boolean(),
+            italic: fc.boolean(),
+            fontSize: fc.integer({ min: 8, max: 32 }),
+          }),
+          { nil: undefined },
+        ),
+        fc.string({ minLength: 1, maxLength: 12 }).filter((text) => text.trim().length > 0),
+        (paragraphMark, direct, text) => {
+          const source = createEmptyDocument();
+          const run = {
+            type: "run",
+            content: [{ type: "text", text }],
+            ...(direct ? { formatting: direct } : {}),
+          } satisfies Run;
+          source.package.document.content = [
+            {
+              type: "paragraph",
+              paraId: "1A000001",
+              formatting: { runProperties: paragraphMark },
+              content: [
+                { type: "deletion", info: { id: 101, author: "Reviewer" }, content: [run] },
+              ],
+            },
+          ];
+          const expected = createEmptyDocument();
+          expected.package.document.content = [
+            {
+              type: "paragraph",
+              paraId: "1A000001",
+              formatting: { runProperties: paragraphMark },
+              content: [run],
+            },
+          ];
+          const expectedContent = fromProseDoc(
+            createHarnessState(expected, "editing").doc,
+            expected,
+          ).package.document.content;
+          for (const command of [
+            rejectAllChanges(),
+            rejectChange(0, toProseDoc(source).content.size),
+          ]) {
+            const state = createHarnessState(source, "editing");
+            let resolved = state;
+            expect(
+              command(state, (tr) => {
+                resolved = state.apply(tr);
+              }),
+            ).toBe(true);
+            expect(fromProseDoc(resolved.doc, source).package.document.content).toEqual(
+              expectedContent,
+            );
+            expect(resolved.doc.eq(createHarnessState(expected, "editing").doc)).toBe(true);
+          }
+        },
+      ),
+      { numRuns: 40, seed: 16091615 },
+    );
+  },
+  propertyTestTimeout(5_000),
+);
 
 const paragraph = (
   index: number,
