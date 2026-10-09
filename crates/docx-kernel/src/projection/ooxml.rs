@@ -1481,7 +1481,7 @@ impl ProjectionState {
                     && !self.pseudo_text_is_suppressed()
                     && let Some(paragraph) = self.current_paragraph.as_mut()
                 {
-                    let effective = match styles {
+                    let mut effective = match styles {
                         Ok(styles) => {
                             let resolved = if run.character_style_id.is_none()
                                 && run.direct_styles == TextProperties::default()
@@ -1503,6 +1503,8 @@ impl ProjectionState {
                         }
                         Err(_) => run.direct_styles,
                     };
+                    // Highlight spans describe direct run markup, never style inheritance.
+                    effective.highlighted = run.direct_styles.highlighted;
                     paragraph.append(&run.text, effective)?;
                 }
                 if let (Some(start), Some(end)) = (start, self.current_review_point()) {

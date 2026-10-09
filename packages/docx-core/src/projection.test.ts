@@ -65,6 +65,46 @@ describe("DOCX projection TypeScript binding", () => {
     ]);
   });
 
+  test("reports only direct highlights for every colour through regular and fused projection", async () => {
+    const contract = await readFile(
+      new URL("../../../crates/docx-kernel/fixtures/ooxml-highlight-colors.tsv", import.meta.url),
+      "utf8",
+    );
+    const colours = contract
+      .trim()
+      .split("\n")
+      .map((row) => row.split("\t"));
+    expect(colours).toHaveLength(17);
+    for (const [colour, classification] of colours) {
+      const archive = new JSZip();
+      archive.file(
+        "word/document.xml",
+        `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+          <w:p><w:pPr><w:pStyle w:val="Marked"/></w:pPr><w:r><w:t>😀P</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:rStyle w:val="MarkedCharacter"/></w:rPr><w:t>😀C</w:t></w:r></w:p>
+          <w:p><w:pPr><w:pStyle w:val="Marked"/></w:pPr><w:r><w:rPr><w:highlight w:val="${colour}"/></w:rPr><w:t>😀D</w:t></w:r></w:p>
+        </w:body></w:document>`,
+      );
+      addStylesPart(
+        archive,
+        `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:style w:type="paragraph" w:styleId="Marked"><w:rPr><w:b/><w:highlight w:val="${colour}"/></w:rPr></w:style>
+          <w:style w:type="character" w:styleId="MarkedCharacter"><w:rPr><w:b/><w:highlight w:val="${colour}"/></w:rPr></w:style>
+        </w:styles>`,
+      );
+      const bytes = await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
+      const projection = await projectCompressedDocx(bytes);
+      const fused = await projectCompressedDocxWithReviewFacts(bytes);
+      expect(fused[1]).toEqual(projection);
+      expect(
+        projection[1].map((paragraph) => paragraph[3].filter((span) => span[2] === "highlight")),
+      ).toEqual([[], [], classification === "semantic" ? [[0, 3, "highlight"]] : []]);
+      expect(
+        projection[1].map((paragraph) => paragraph[3].filter((span) => span[2] === "bold")),
+      ).toEqual([[[0, 3, "bold"]], [[0, 3, "bold"]], [[0, 3, "bold"]]]);
+    }
+  });
+
   test("projects effective styles, Office Math text, and font-bound symbols through WebAssembly", async () => {
     const archive = new JSZip();
     archive.file(
