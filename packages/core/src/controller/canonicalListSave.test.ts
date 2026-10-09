@@ -123,7 +123,7 @@ test(
               if (xml === undefined) throw new TypeError("Saved list fixture has no main story.");
               const root = parseXmlDocument(xml);
               if (root?.namespaceUri === undefined)
-                throw new TypeError("Saved list fixture has no Word namespace.");
+                throw new TypeError("Saved list fixture has no OOXML namespace.");
               const namespaces = new Set([root.namespaceUri]);
               const body = findChildByNamespaceUri(root, namespaces, "body");
               const savedParagraphs = findChildrenByNamespaceUri(body, namespaces, "p");

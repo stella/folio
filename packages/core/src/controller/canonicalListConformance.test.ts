@@ -54,7 +54,7 @@ test.each(CASES)(
       // The level owns indentation: canonical list selection must not author a paragraph w:ind.
       const root = parseXmlDocument(xml);
       if (root?.namespaceUri === undefined)
-        throw new TypeError("Saved document lacks its Word namespace.");
+        throw new TypeError("Saved document lacks its OOXML namespace.");
       const namespaces = new Set([root.namespaceUri]);
       const body = findChildByNamespaceUri(root, namespaces, "body");
       const savedParagraph = findChildByNamespaceUri(body, namespaces, "p");
@@ -128,7 +128,7 @@ test.each(CACHE_CASES)(
     if (xml === undefined) throw new TypeError("Saved existing-list fixture has no main story.");
     const root = parseXmlDocument(xml);
     if (root?.namespaceUri === undefined)
-      throw new TypeError("Saved document lacks its Word namespace.");
+      throw new TypeError("Saved document lacks its OOXML namespace.");
     const namespaces = new Set([root.namespaceUri]);
     const properties = findChildByNamespaceUri(
       findChildByNamespaceUri(findChildByNamespaceUri(root, namespaces, "body"), namespaces, "p"),
