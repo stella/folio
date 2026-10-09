@@ -1468,8 +1468,22 @@ describe("save stylesheet authority", () => {
       ({ styleId }) => styleId === "ToggleHeading",
     );
     if (!savedHeading) throw new Error("Expected the saved heading style");
-    savedHeading.rPr = { bold: false };
+    expect(Object.isFrozen(saved.package.styles)).toBe(true);
+    expect(Object.isFrozen(savedHeading)).toBe(true);
+    expect(Object.isFrozen(savedHeading.rPr)).toBe(true);
+    expect(() => {
+      savedHeading.rPr = { bold: false };
+    }).toThrow(TypeError);
     const savedAgain = fromProseDoc(proseDoc, base, { stylesheetSource: { type: "package" } });
+    expect(savedAgain.package.styles).toBe(saved.package.styles);
+    expect(savedAgain.package.styles).toEqual(capturedStylesSnapshot);
+    // Callers that author additions explicitly own their mutable copy.
+    saved.package.styles = structuredClone(saved.package.styles);
+    const mutableHeading = saved.package.styles?.styles.find(
+      ({ styleId }) => styleId === "ToggleHeading",
+    );
+    if (!mutableHeading) throw new Error("Expected the caller-owned heading style");
+    mutableHeading.rPr = { bold: false };
     expect(savedAgain.package.styles).toEqual(capturedStylesSnapshot);
   });
 

@@ -4,7 +4,11 @@ import { parseDocx } from "./parser";
 import { createDocx, repackDocx } from "./rezip";
 import { readRootNamespaceBindings } from "./serializer/partNamespaces";
 import { createSimpleDocument, serializeDocument } from "./serializer/documentSerializer";
-import { captureDocumentSourceBaseline, getDocumentSourceBaseline } from "./headerFooterVerbatim";
+import {
+  captureDocumentSourceBaseline,
+  getDocumentSourceBaseline,
+  getDocumentSourceStyles,
+} from "./headerFooterVerbatim";
 import { cloneDocumentWithParagraphPropertySources } from "./paragraphPropertySource";
 
 const WORD = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -156,3 +160,26 @@ test("model authority serializes independently of captured canonical replay stat
   expect(xml).toBe(serializeDocument(document, readRootNamespaceBindings(source)));
   expect(diagnostics).toEqual([]);
 });
+
+test.each(["removed", "renamed"] as const)(
+  "parsed styles remain captured when the main part is %s",
+  async (disposition) => {
+    const zip = await JSZip.loadAsync(await createDocx(createSimpleDocument([{ text: "seed" }])));
+    const xml = await zip.file("word/document.xml")?.async("text");
+    if (xml === undefined) throw new Error("Expected the main document part");
+    zip.remove("word/document.xml");
+    if (disposition === "renamed") zip.file("word/renamed-document.xml", xml);
+    const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+      preloadFonts: false,
+    });
+    expect(getDocumentSourceBaseline(parsed)).toEqual({ type: "missing" });
+    const captured = getDocumentSourceStyles(parsed);
+    expect(captured.type).toBe("captured");
+    if (captured.type !== "captured") throw new Error("Expected captured styles without body XML");
+    expect(captured.styles).toEqual(parsed.package.styles);
+    expect(Object.isFrozen(captured.styles)).toBe(true);
+    const again = getDocumentSourceStyles(parsed);
+    if (again.type !== "captured") throw new Error("Expected the same capture");
+    expect(again.styles).toBe(captured.styles);
+  },
+);

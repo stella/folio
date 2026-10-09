@@ -679,7 +679,8 @@ export type FromProseDocOptions = {
   /**
    * The stylesheet authority used to construct the projection. With a parsed package,
    * package source uses its captured definitions; edits to live package.styles do not
-   * alter existing definitions. Supply a stylesheet explicitly to append missing styles.
+   * alter existing definitions. Captured definitions are deeply frozen and shared;
+   * clone them explicitly once when authoring additions, then supply that stylesheet.
    * If the parsed package had no styles part, all live definitions are additions.
    */
   stylesheetSource: { type: "package" } | { type: "supplied"; styles: StyleDefinitions };
