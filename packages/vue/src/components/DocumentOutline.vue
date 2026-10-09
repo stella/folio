@@ -64,16 +64,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
+import { type OutlineSurface, useOutlineDrawerFocus } from "../composables/useOutlineDrawerFocus";
 import { useTranslation } from "../i18n";
 import type { OutlineItem } from "../ui/folio-ui";
 import { useFolioUI } from "../ui/folio-ui";
 import MaterialSymbol from "./ui/MaterialSymbol.vue";
-
-type OutlineSurface = "column" | "rail" | "drawer";
 
 const SURFACE_WIDTH = {
   column: PANEL_METRICS.outlineColumnWidth,
@@ -105,6 +104,13 @@ const emit = defineEmits<{
 const { t } = useTranslation();
 const { OutlineRail } = useFolioUI();
 const navRef = ref<HTMLElement | null>(null);
+const closeDrawer = () => emit("close");
+useOutlineDrawerFocus({
+  surface: () => props.surface,
+  available: () => props.available,
+  navRef,
+  onClose: closeDrawer,
+});
 const outlineLabel = computed(() => t("editor.showDocumentOutline"));
 const onDepthChange = (event: Event) => {
   if (!(event.currentTarget instanceof HTMLSelectElement)) return;
@@ -142,36 +148,6 @@ const handleJump = (id: string) => {
   emit("navigate", Number(id));
   if (props.surface === "drawer") emit("close");
 };
-
-watch(
-  () => props.surface === "drawer" && props.headings.length >= 2,
-  async (open, _wasOpen, onCleanup) => {
-    if (!open || typeof document === "undefined") return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    let active = true;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      event.preventDefault();
-      emit("close");
-    };
-    onCleanup(() => {
-      active = false;
-      document.removeEventListener("keydown", onKeyDown);
-      if (previous?.isConnected) previous.focus({ preventScroll: true });
-    });
-    await nextTick();
-    if (!active) return;
-    const nav = navRef.value;
-    const target =
-      nav?.querySelector<HTMLElement>('[aria-current="true"]') ??
-      nav?.querySelector<HTMLElement>('ol button:not([tabindex="-1"])') ??
-      nav?.querySelector<HTMLElement>("button") ??
-      nav;
-    target?.focus({ preventScroll: true });
-    document.addEventListener("keydown", onKeyDown);
-  },
-  { immediate: true, flush: "post" },
-);
 </script>
 
 <style scoped>

@@ -36,11 +36,20 @@ const initialFocusTarget = (container: HTMLElement, initial: DrawerInitialFocus)
  * Escape calls `onClose`, and once it closes focus returns to what had it
  * before, if that is still in the document.
  */
-export const useDrawerFocus = (
-  container: RefObject<HTMLElement | null>,
-  onClose: (() => void) | null,
-  initial: DrawerInitialFocus = "item",
-) => {
+type UseDrawerFocusOptions = {
+  container: RefObject<HTMLElement | null>;
+  onClose: (() => void) | null;
+  initial?: DrawerInitialFocus;
+  /** Preferred restore target when an opening control was replaced during open. */
+  returnFocusRef?: RefObject<HTMLElement | null>;
+};
+
+export const useDrawerFocus = ({
+  container,
+  onClose,
+  initial = "item",
+  returnFocusRef,
+}: UseDrawerFocusOptions) => {
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -66,11 +75,11 @@ export const useDrawerFocus = (
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      if (previous?.isConnected) {
-        previous.focus({ preventScroll: true });
-      }
+      const returnTarget = returnFocusRef?.current;
+      const target = returnTarget?.isConnected ? returnTarget : previous;
+      if (target?.isConnected) target.focus({ preventScroll: true });
     };
-  }, [active, container, initial]);
+  }, [active, container, initial, returnFocusRef]);
 };
 
 type PanelScrimProps = {

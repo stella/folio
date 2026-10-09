@@ -2981,7 +2981,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Úpravy",
         "editingDescription": "Upravovat dokument přímo",
-        "outlineDepthAll": "vše",
+        "outlineDepthAll": "Vše",
         "outlineDepthLabel": "Zobrazit nadpisy",
         "outlineDepthThree": "Úrovně 1–3",
         "outlineDepthTwo": "Úrovně 1–2",

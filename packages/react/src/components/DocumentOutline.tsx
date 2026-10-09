@@ -78,7 +78,12 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
   const t = useTranslations("folio");
   const OutlineRail = useFolioUI().OutlineRail;
   const navRef = useRef<HTMLElement>(null);
-  useDrawerFocus(navRef, surface === "expanded" && onClose ? onClose : null);
+  const expandButtonRef = useRef<HTMLButtonElement>(null);
+  useDrawerFocus({
+    container: navRef,
+    onClose: surface === "expanded" && onClose ? onClose : null,
+    returnFocusRef: expandButtonRef,
+  });
   const controlMinimumStyle = {
     minWidth: PANEL_METRICS.controlMinimumSize,
     minHeight: PANEL_METRICS.controlMinimumSize,
@@ -152,6 +157,7 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
         style={{ width }}
       >
         <button
+          ref={expandButtonRef}
           aria-expanded={expanded ?? false}
           aria-label={outlineLabel}
           className="folio-outline-icon-button"

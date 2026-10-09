@@ -13,7 +13,7 @@ import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import type { Paragraph } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
-import { DocumentOutline } from "./DocumentOutline";
+import { DocumentOutline, type DocumentOutlineSurface } from "./DocumentOutline";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
@@ -32,6 +32,7 @@ const headings: HeadingInfo[] = [
 ];
 const EMPTY_HEADINGS: HeadingInfo[] = [];
 const onJumpNoop = () => {};
+const onOutlineDepthChangeNoop = (_depth: OutlineDepth) => {};
 const outlineParagraph = (styleId: string, text: string): Paragraph => ({
   type: "paragraph",
   formatting: { styleId },
@@ -180,5 +181,63 @@ test("DocxEditor defaults to two levels and forwards depth changes to the host",
     } else {
       Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
     }
+  }
+});
+
+test("Escape from expanded outline restores focus to the newly mounted rail toggle", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const OutlineFocusHarness = () => {
+    const [surface, setSurface] = useState<DocumentOutlineSurface>("rail");
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const expand = useCallback(() => setSurface("expanded"), []);
+    const close = useCallback(() => setSurface("rail"), []);
+    return (
+      <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <DocumentOutline
+          activeId={null}
+          available
+          docSize={10}
+          expanded={surface === "expanded"}
+          headings={EMPTY_HEADINGS}
+          onClose={close}
+          onExpand={expand}
+          onJump={onJumpNoop}
+          onOutlineDepthChange={onOutlineDepthChangeNoop}
+          outlineDepth={DEFAULT_OUTLINE_DEPTH}
+          scrollContainerRef={scrollContainerRef}
+          surface={surface}
+        />
+      </IntlProvider>
+    );
+  };
+
+  try {
+    await act(async () => root.render(<OutlineFocusHarness />));
+    const opener = container.querySelector<HTMLButtonElement>(
+      "[data-testid='folio-outline-expand']",
+    );
+    if (!opener) throw new Error("outline rail toggle missing");
+    await act(async () => {
+      opener.focus();
+      opener.click();
+    });
+    expect(
+      document.activeElement?.closest('[data-folio-outline-surface="expanded"]'),
+    ).not.toBeNull();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    const restoredToggle = container.querySelector<HTMLButtonElement>(
+      "[data-testid='folio-outline-expand']",
+    );
+    expect(restoredToggle).not.toBe(opener);
+    expect(restoredToggle?.isConnected).toBe(true);
+    expect(document.activeElement).toBe(restoredToggle);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
   }
 });

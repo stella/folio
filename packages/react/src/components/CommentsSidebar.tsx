@@ -235,7 +235,11 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     width: PANEL_METRICS.drawerWidth,
     height: 0,
   });
-  useDrawerFocus(sidebarRef, isDrawer && onDismiss ? onDismiss : null, "container");
+  useDrawerFocus({
+    container: sidebarRef,
+    onClose: isDrawer && onDismiss ? onDismiss : null,
+    initial: "container",
+  });
 
   const updateSidebarLeft = useCallback(() => {
     const scrollEl = editorContainerRef?.current;
