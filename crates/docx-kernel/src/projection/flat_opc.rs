@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::ops::Range;
 
 use quick_xml::XmlVersion;
@@ -65,9 +64,7 @@ pub(super) fn extract_parts(
     let parts = index_parts(xml, limits)?;
     let relationships = extract(
         xml,
-        parts
-            .get(ROOT_RELATIONSHIPS_PATH)
-            .ok_or(ProjectionError::MissingDocumentXml)?,
+        find_part(&parts, ROOT_RELATIONSHIPS_PATH).ok_or(ProjectionError::MissingDocumentXml)?,
         MAXIMUM_RELATIONSHIPS_BYTES,
         ProjectionError::PackageRelationshipsTooLarge,
     )?;
@@ -75,9 +72,7 @@ pub(super) fn extract_parts(
     let document_name = part_name(&document_path)?;
     let document_xml = extract(
         xml,
-        parts
-            .get(&document_name)
-            .ok_or(ProjectionError::MissingDocumentXml)?,
+        find_part(&parts, &document_name).ok_or(ProjectionError::MissingDocumentXml)?,
         limits.maximum_document_xml_bytes,
         ProjectionError::DocumentXmlTooLarge,
     )?;
@@ -85,8 +80,7 @@ pub(super) fn extract_parts(
         return Err(ProjectionError::InvalidDocumentXml);
     }
     let relationship_name = part_name(&document_relationships_path(&document_path)?)?;
-    let related = parts
-        .get(&relationship_name)
+    let related = find_part(&parts, &relationship_name)
         .map(|part| {
             extract(
                 xml,
@@ -120,6 +114,13 @@ pub(super) fn extract_parts(
     })
 }
 
+fn find_part<'a>(parts: &'a [(String, XmlPart)], name: &str) -> Option<&'a XmlPart> {
+    parts
+        .iter()
+        .find(|(path, _)| path == name)
+        .map(|(_, part)| part)
+}
+
 fn part_name(path: &[u8]) -> Result<String, ProjectionError> {
     Ok(format!(
         "/{}",
@@ -129,7 +130,7 @@ fn part_name(path: &[u8]) -> Result<String, ProjectionError> {
 
 fn extract_optional(
     xml: &[u8],
-    parts: &HashMap<String, XmlPart>,
+    parts: &[(String, XmlPart)],
     path: Option<&[u8]>,
     maximum: usize,
     error: ProjectionError,
@@ -138,8 +139,7 @@ fn extract_optional(
         return Ok(None);
     };
     let name = part_name(path)?;
-    parts
-        .get(&name)
+    find_part(parts, &name)
         .map(|part| extract(xml, part, maximum, error))
         .transpose()
 }
@@ -147,7 +147,7 @@ fn extract_optional(
 // Index package topology only: no body search, payload projection or binary decoding.
 #[derive(Default)]
 struct PartIndex {
-    parts: HashMap<String, XmlPart>,
+    parts: Vec<(String, XmlPart)>,
     names: std::collections::HashSet<String>,
     depth: usize,
     root_seen: bool,
@@ -281,7 +281,7 @@ impl PartIndex {
                 return Err(ProjectionError::InvalidFlatOpcPackage);
             }
             if let Some(part) = self.current_xml.take() {
-                self.parts.insert(name, part);
+                self.parts.push((name, part));
             }
         }
         self.depth = self
@@ -292,10 +292,7 @@ impl PartIndex {
     }
 }
 
-fn index_parts(
-    xml: &[u8],
-    limits: DocxLimits,
-) -> Result<HashMap<String, XmlPart>, ProjectionError> {
+fn index_parts(xml: &[u8], limits: DocxLimits) -> Result<Vec<(String, XmlPart)>, ProjectionError> {
     let mut reader = NsReader::from_reader(xml);
     reader.config_mut().check_end_names = true;
     let mut state = PartIndex::default();
