@@ -62,12 +62,15 @@ test("native composition cancellation preserves a selection", async ({ page }) =
           selectionEnd: text.length,
         });
         await page.waitForFunction((expected) => {
-          const editor = document.querySelector(".ProseMirror");
+          const editor = document.activeElement;
           return (
-            globalThis.__folioCanonical?.nativeComposing() === true &&
-            editor?.textContent?.includes(expected) === true
+            (globalThis.__folioCanonicalFuzzErrors?.length ?? 0) > 0 ||
+            (globalThis.__folioCanonical?.nativeComposing() === true &&
+              editor?.classList.contains("ProseMirror") === true &&
+              editor.textContent?.includes(expected) === true)
           );
         }, text);
+        await expectNoRefusals(page);
       }
       await cdp.send("Input.imeSetComposition", {
         text: "",
@@ -75,7 +78,7 @@ test("native composition cancellation preserves a selection", async ({ page }) =
         selectionEnd: 0,
       });
     } finally {
-      await cdp.detach();
+      if (!page.isClosed()) await cdp.detach();
     }
 
     await page.waitForFunction(() => globalThis.__folioCanonical?.nativeComposing() === false);

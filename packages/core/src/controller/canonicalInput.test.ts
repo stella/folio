@@ -498,7 +498,9 @@ describe("canonical input boundary", () => {
       view.dispatch(view.state.tr.insertText(final, from, from + 1).setMeta("composition", 1));
       expect(view.state.doc.textContent).toBe(from === to ? "A契約😀B" : "A契約B");
       expect(inputs).toEqual([]);
-      expect(boundary.handleDOMEvents.compositionend(view)).toBe(false);
+      expect(boundary.handleDOMEvents.compositionend(view, new Event("compositionend"))).toBe(
+        false,
+      );
       await new Promise<void>((resolve) => setTimeout(resolve, 40));
       expect(inputs).toEqual([{ from, to: expectedTo, text: final, semantic: "composition" }]);
       expect(view.state).toBe(baseline);
@@ -513,8 +515,8 @@ describe("canonical input boundary", () => {
     boundary.handleDOMEvents.compositionstart(view);
     boundary.handleDOMEvents.compositionstart(view);
     view.dispatch(view.state.tr.insertText("契", 2, 4).setMeta("composition", 1));
-    boundary.handleDOMEvents.compositionend(view);
-    boundary.handleDOMEvents.compositionend(view);
+    boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
+    boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
     await Promise.resolve();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(inputs).toEqual([]);
@@ -539,7 +541,7 @@ describe("canonical input boundary", () => {
     const { boundary, view, inputs, refusals } = createRig(2, 4);
     boundary.handleDOMEvents.compositionstart(view);
     view.dispatch(view.state.tr.insertText("契", 2, 4).setMeta("composition", 1));
-    boundary.handleDOMEvents.compositionend(view);
+    boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     const final = new InputEvent("beforeinput", {
       inputType: "insertFromComposition",
@@ -563,7 +565,7 @@ describe("canonical input boundary", () => {
     const baseline = view.state;
     boundary.handleDOMEvents.compositionstart(view);
     view.dispatch(view.state.tr.insertText("契約", 2, 4).setMeta("composition", 1));
-    boundary.handleDOMEvents.compositionend(view);
+    boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
     const escape = new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
     expect(boundary.handleKeyDown(view, escape)).toBe(true);
     expect(escape.defaultPrevented).toBe(true);
@@ -597,7 +599,7 @@ describe("canonical input boundary", () => {
     boundary.handleDOMEvents.compositionstart(view);
     view.dispatch(view.state.tr.insertText("契", 2, 4).setMeta("composition", 1));
     view.dispatch(view.state.tr.insertText("😀", 2, 3).setMeta("composition", 1));
-    boundary.handleDOMEvents.compositionend(view);
+    boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
     await new Promise<void>((resolve) => setTimeout(resolve, 40));
     expect(inputs).toEqual([]);
     expect(view.state).toBe(baseline);
@@ -666,7 +668,7 @@ describe("canonical input boundary", () => {
             view.dispatch(transaction.setMeta("composition", 1));
             if (change === "text") {
               expect(view.state.doc.eq(baseline.tr.insertText(text, from, to).doc)).toBe(true);
-              boundary.handleDOMEvents.compositionend(view);
+              boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
               await new Promise<void>((resolve) => setTimeout(resolve, 40));
               expect(inputs).toEqual([{ from, to, text, semantic: "composition" }]);
               expect(refusals).toEqual([]);
@@ -717,7 +719,7 @@ describe("canonical input boundary", () => {
             width = text.length;
           }
           if (cancel) boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "Escape" }));
-          else boundary.handleDOMEvents.compositionend(view);
+          else boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
           await new Promise<void>((resolve) => setTimeout(resolve, 40));
           expect(inputs).toEqual(
             cancel ? [] : [{ from, to, text: updates.at(-1), semantic: "composition" }],
@@ -773,7 +775,7 @@ describe("canonical input boundary", () => {
             boundary.handleDOMEvents.input(view);
           };
           if (finalOrder === "beforeEnd") flushFinal();
-          boundary.handleDOMEvents.compositionend(view);
+          boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
           if (finalOrder === "microtask") {
             await Promise.resolve();
             flushFinal();
@@ -783,7 +785,7 @@ describe("canonical input boundary", () => {
             flushFinal();
           }
           for (let index = 0; index < duplicates; index++) {
-            boundary.handleDOMEvents.compositionend(view);
+            boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
             boundary.handleDOMEvents.input(view);
           }
           expect(inputs).toEqual([]);
