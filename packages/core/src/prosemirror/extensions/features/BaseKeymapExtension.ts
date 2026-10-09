@@ -17,9 +17,14 @@ import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Command, Transaction } from "prosemirror-state";
 
-import type { TextFormatting } from "../../../types/document";
+import type { ParagraphFormatting, TextFormatting } from "../../../types/document";
+import type { ParagraphAttrs } from "../../schema/nodes";
 import { mergeTextFormatting } from "../../../utils/textFormattingMerge";
-import { expectCharacterStyleMarkAttrs, expectRunFormattingOverrideMarkAttrs } from "../../attrs";
+import {
+  expectCharacterStyleMarkAttrs,
+  expectParagraphAttrs,
+  expectRunFormattingOverrideMarkAttrs,
+} from "../../attrs";
 import { clearIndentOnBackspace } from "../../commands/clearParagraphIndent";
 import { keepSectionBreaksOnSurvivingMarks } from "../../commands/sectionBreak";
 import { getDocumentStyleResolver } from "../../plugins/documentStyleState";
@@ -51,23 +56,27 @@ function chainCommands(...commands: Command[]): Command {
  * so we must manually copy style-related attrs from the source paragraph.
  * Word does NOT propagate paragraph borders (w:pBdr) on Enter.
  */
+type InheritedParagraphAttribute = {
+  attr: keyof ParagraphAttrs;
+  formattingFields: readonly (keyof ParagraphFormatting)[];
+};
+
+// Each inherited value declares its authored and resolved formatting channels together.
 const INHERITED_PARA_ATTRS = [
-  "defaultTextFormatting",
-  "styleId",
-  "_tableOfContentsLevel",
-  "lineSpacing",
-  "lineSpacingRule",
-  "snapToGrid",
-  "spaceAfter",
-  "spaceBefore",
-  // Where the copied spacing came from travels with it: without it a value the
-  // source paragraph only inherited from the document defaults or the default
-  // style is saved as the new paragraph's own `w:spacing`.
-  "spacingExplicit",
-  "spacingFromDocDefaults",
-  "spacingFromImplicitDefaultStyle",
-  "contextualSpacing",
-] as const;
+  { attr: "defaultTextFormatting", formattingFields: ["runProperties"] },
+  { attr: "styleId", formattingFields: ["styleId"] },
+  { attr: "_tableOfContentsLevel", formattingFields: [] },
+  { attr: "lineSpacing", formattingFields: ["lineSpacing", "spacingPreservedAttributes"] },
+  { attr: "lineSpacingRule", formattingFields: ["lineSpacingRule", "spacingPreservedAttributes"] },
+  { attr: "snapToGrid", formattingFields: ["snapToGrid"] },
+  { attr: "spaceAfter", formattingFields: ["spaceAfter", "spacingPreservedAttributes"] },
+  { attr: "spaceBefore", formattingFields: ["spaceBefore", "spacingPreservedAttributes"] },
+  // Spacing provenance keeps effective defaults from becoming authored spacing.
+  { attr: "spacingExplicit", formattingFields: ["spacingExplicit"] },
+  { attr: "spacingFromDocDefaults", formattingFields: [] },
+  { attr: "spacingFromImplicitDefaultStyle", formattingFields: [] },
+  { attr: "contextualSpacing", formattingFields: ["contextualSpacing"] },
+] as const satisfies readonly InheritedParagraphAttribute[];
 
 /** Style formatting needed when the caret has no marks of its own. */
 const STYLE_MARK_NAMES = new Set(["fontFamily", "fontSize", "textColor"]);
@@ -241,14 +250,33 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
       const newAttrs = { ...newPara.attrs };
       let attrsChanged = false;
 
-      // Copy inherited attrs from source paragraph
+      // Copy each inherited value with the provenance needed to save it.
       if (sourcePara) {
-        for (const key of INHERITED_PARA_ATTRS) {
-          const srcVal = sourcePara.attrs[key];
-          if (srcVal !== null && newAttrs[key] === null) {
-            newAttrs[key] = srcVal;
+        const sourceAttrs = expectParagraphAttrs(sourcePara);
+        const addedAttrs = expectParagraphAttrs(newPara);
+        const originalFormatting: ParagraphFormatting = { ...addedAttrs._originalFormatting };
+        const resolvedFormatting: ParagraphFormatting = { ...addedAttrs._resolvedFormatting };
+        for (const { attr, formattingFields } of INHERITED_PARA_ATTRS) {
+          const srcVal = sourceAttrs[attr];
+          if (srcVal !== null && newAttrs[attr] === null) {
+            newAttrs[attr] = srcVal;
             attrsChanged = true;
           }
+          if (newAttrs[attr] !== srcVal) continue;
+          for (const field of formattingFields) {
+            const original = sourceAttrs._originalFormatting?.[field];
+            if (original !== undefined) Reflect.set(originalFormatting, field, original);
+            const resolved = sourceAttrs._resolvedFormatting?.[field];
+            if (resolved !== undefined) Reflect.set(resolvedFormatting, field, resolved);
+          }
+        }
+        if (Object.keys(originalFormatting).length > 0) {
+          newAttrs["_originalFormatting"] = originalFormatting;
+          attrsChanged = true;
+        }
+        if (Object.keys(resolvedFormatting).length > 0) {
+          newAttrs["_resolvedFormatting"] = resolvedFormatting;
+          attrsChanged = true;
         }
       }
 
