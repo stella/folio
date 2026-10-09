@@ -6,6 +6,7 @@
 
 mod archive;
 mod compatibility;
+mod flat_opc;
 mod namespaces;
 mod numbering;
 mod ooxml;
@@ -131,6 +132,7 @@ impl Default for ProjectionOptions {
 pub enum ProjectionError {
     ArchiveTooLarge,
     InvalidArchive,
+    InvalidFlatOpcPackage,
     TooManyArchiveEntries,
     InvalidPackageRelationships,
     PackageRelationshipsTooLarge,
@@ -165,6 +167,7 @@ impl fmt::Display for ProjectionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
             Self::ArchiveTooLarge => "DOCX archive exceeds the configured size limit",
+            Self::InvalidFlatOpcPackage => "Flat OPC package has invalid structure",
             Self::InvalidArchive => "DOCX archive is invalid",
             Self::TooManyArchiveEntries => "DOCX archive has too many entries",
             Self::InvalidPackageRelationships => "DOCX archive has invalid package relationships",
@@ -246,6 +249,20 @@ where
     F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
 {
     let parts = extract_document_parts(bytes, limits)?;
+    project_parts(&parts, limits, options, allocate_id)
+}
+
+// Both package entry points must share dependency preparation and projection.
+#[inline(never)]
+fn project_parts<F>(
+    parts: &DocumentParts,
+    limits: DocxLimits,
+    options: ProjectionOptions,
+    allocate_id: F,
+) -> Result<DocumentProjection, ProjectionError>
+where
+    F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
+{
     let styles = parts.styles_xml.as_deref().map_or(
         Err(StructuralFactUnknownReason::StylesPartUnavailable),
         |styles| {
@@ -352,6 +369,51 @@ fn parse_optional_numbering(
         Ok(catalog) => Ok(Some(catalog)),
         Err(ProjectionError::TooManyNumberingItems) => Err(ProjectionError::TooManyNumberingItems),
         Err(_) => Ok(None),
+    }
+}
+
+/// Projects a bounded standalone main document or relationship-selected Flat OPC package.
+///
+/// Package payloads are indexed without scanning their bodies. Only the selected
+/// document and its style/numbering dependencies enter the shared projection.
+/// Standalone input retains unknown dependency-derived evidence.
+///
+/// # Errors
+/// Returns [`ProjectionError`] for malformed input, resource limits or allocator failures.
+pub fn project_main_document_xml<F>(
+    xml: &[u8],
+    limits: DocxLimits,
+    allocate_id: F,
+) -> Result<DocumentProjection, ProjectionError>
+where
+    F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
+{
+    if xml.len() > limits.maximum_archive_bytes {
+        return Err(ProjectionError::ArchiveTooLarge);
+    }
+    match flat_opc::input_kind(xml)? {
+        flat_opc::XmlInputKind::Document => {
+            if xml.len() > limits.maximum_document_xml_bytes {
+                return Err(ProjectionError::DocumentXmlTooLarge);
+            }
+            project_document_xml_with_limit(
+                xml,
+                limits.maximum_paragraphs,
+                limits.maximum_structural_facts,
+                ProjectionOptions::default(),
+                ProjectionDependencies {
+                    styles: Err(StructuralFactUnknownReason::DocumentPartOnly),
+                    numbering: Err(StructuralFactUnknownReason::DocumentPartOnly),
+                },
+                allocate_id,
+            )
+        }
+        flat_opc::XmlInputKind::Package => project_parts(
+            &flat_opc::extract_parts(xml, limits)?,
+            limits,
+            ProjectionOptions::default(),
+            allocate_id,
+        ),
     }
 }
 

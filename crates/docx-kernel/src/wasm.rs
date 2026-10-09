@@ -5,10 +5,11 @@ use crate::{
     InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact, ParagraphAlignmentFact,
     ParagraphAlignmentSource, ParagraphAlignmentValue, ParagraphIdentityFacts,
     ParagraphIndentationFact, ParagraphOutlineLevelFact, ParagraphStructure, ProjectedParagraph,
-    ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
-    ReviewSpan, RevisionFactKind, RevisionPayload, RevisionProjectionStatus,
-    RevisionUnsupportedReason, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
-    StructuralSpan, TextMaterialization, TextStyle, project_docx, project_docx_with_review_facts,
+    ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet,
+    ReviewFactUnknownReason, ReviewSpan, RevisionFactKind, RevisionPayload,
+    RevisionProjectionStatus, RevisionUnsupportedReason, SpanCoverage, StructuralFactSet,
+    StructuralFactUnknownReason, StructuralSpan, TextMaterialization, TextStyle, project_docx,
+    project_docx_with_review_facts, project_main_document_xml,
 };
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
@@ -275,6 +276,24 @@ pub fn project_compressed_docx(bytes: &[u8]) -> Result<DocxProjectionWire, JsVal
         .map_err(|error| js_error(&error))
 }
 
+/// Projects bounded main-document XML or a relationship-selected Flat OPC package.
+///
+/// # Errors
+/// Returns a JavaScript `Error` for malformed input or a resource-limit violation.
+#[wasm_bindgen(js_name = projectMainDocumentXml)]
+pub fn project_main_document_xml_in_wasm(bytes: &[u8]) -> Result<DocxProjectionWire, JsValue> {
+    project_main_document_xml(
+        bytes,
+        DocxLimits::default(),
+        allocate_projected_paragraph_id,
+    )
+    .map_err(|error| error.to_string())
+    .and_then(|projection| output_projection_with_structure(&projection))
+    // SAFETY: the shared output builder constructs the declared DocxProjectionWire tuple.
+    .map(JsCast::unchecked_into)
+    .map_err(|error| js_error(&error))
+}
+
 /// Projects the document snapshot and attributed review facts from one bounded
 /// package-directory scan.
 ///
@@ -314,10 +333,7 @@ pub fn project_compressed_docx_with_readable_review_facts(
 
 fn project_docx_projection(bytes: &[u8]) -> Result<DocumentProjection, String> {
     let limits = DocxLimits::default();
-    project_docx(bytes, limits, |facts: ParagraphIdentityFacts<'_>| {
-        InternalParagraphId::new(format!("projected-{}", facts.ordinal))
-    })
-    .map_err(|error| error.to_string())
+    project_docx(bytes, limits, allocate_projected_paragraph_id).map_err(|error| error.to_string())
 }
 
 fn project_docx_package_projection(
@@ -332,11 +348,15 @@ fn project_docx_package_projection(
             text_materialization,
             ..ProjectionOptions::default()
         },
-        |facts: ParagraphIdentityFacts<'_>| {
-            InternalParagraphId::new(format!("projected-{}", facts.ordinal))
-        },
+        allocate_projected_paragraph_id,
     )
     .map_err(|error| error.to_string())
+}
+
+fn allocate_projected_paragraph_id(
+    facts: ParagraphIdentityFacts<'_>,
+) -> Result<InternalParagraphId, ProjectionError> {
+    InternalParagraphId::new(format!("projected-{}", facts.ordinal))
 }
 
 fn output_paragraphs(projection: &DocumentProjection) -> Result<JsValue, String> {

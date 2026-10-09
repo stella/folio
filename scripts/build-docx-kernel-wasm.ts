@@ -65,6 +65,12 @@ const maximumEffectiveProjectionStylesBrotliBytes = 1536;
 const maximumOriginalPropertySnapshotsBytes = 4608;
 const maximumOriginalPropertySnapshotsBrotliBytes = 1536;
 
+// Bounded Flat OPC selection and namespace-preserving extraction reuse the
+// shared projection. Canonical raw delta: 12,512 bytes (run 37981048348);
+// canonical Brotli delta: 4,872 bytes (run 37981828814, baseline 37971302068).
+const maximumFlatOpcMainProjectionBytes = 12512;
+const maximumFlatOpcMainProjectionBrotliBytes = 4872;
+
 const kernel = {
   label: "DOCX kernel",
   crate: "stella-docx-kernel",
@@ -88,7 +94,8 @@ const kernel = {
     maximumReviewFactRelocationBytes +
     maximumTablePropertyRevisionSpansBytes +
     maximumEffectiveProjectionStylesBytes +
-    maximumOriginalPropertySnapshotsBytes,
+    maximumOriginalPropertySnapshotsBytes +
+    maximumFlatOpcMainProjectionBytes,
   maximumBrotliBytes:
     100 * 1024 +
     maximumReviewDetailBrotliBytes +
@@ -102,7 +109,8 @@ const kernel = {
     maximumReviewRelocationBrotliBytes +
     maximumTablePropertyRevisionSpansBrotliBytes +
     maximumEffectiveProjectionStylesBrotliBytes +
-    maximumOriginalPropertySnapshotsBrotliBytes,
+    maximumOriginalPropertySnapshotsBrotliBytes +
+    maximumFlatOpcMainProjectionBrotliBytes,
 } as const satisfies RustWasmArtifact;
 
 await buildRustWasmArtifact(kernel, mode);

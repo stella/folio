@@ -121,6 +121,9 @@ export type ProjectCompressedDocxWithReviewFactsOptions = {
     textMaterialization?: "word-host" | "readable-plain-text";
 };
 
+// @public
+export const projectMainDocumentXml: (bytes: Uint8Array) => Promise<DocxProjectionWire>;
+
 // (No @packageDocumentation comment for this package)
 
 ```

@@ -6,6 +6,7 @@ import {
   DocxProjectionError,
   initializeDocxProjection,
   projectCompressedDocx,
+  projectMainDocumentXml,
   projectCompressedDocxWithReviewFacts,
 } from "./projection";
 import type { DocxAttributedComment, DocxReviewFactsWire, DocxReviewFactSet } from "./projection";
@@ -45,6 +46,62 @@ describe("DOCX projection TypeScript binding", () => {
     expect(projection[1].map(([, text]) => text)).toEqual(["Before", "Inside"]);
     expect(projection[1][1]?.[4]).toEqual(["table", "table-0", 0, 0]);
     expect(projection[4]).toEqual(["incomplete", "styles-part-unavailable"]);
+  });
+
+  test("projects raw main-document paragraphs exactly like compressed input", async () => {
+    const projection = await projectMainDocumentXml(new TextEncoder().encode(documentXml));
+    const compressed = await projectCompressedDocx(await createDocument());
+    expect(projection[0]).toBe(compressed[0]);
+    expect(projection[1]).toEqual(compressed[1]);
+    expect(projection[4]).toEqual(["incomplete", "document-part-only"]);
+  });
+
+  test("selects the related main part from a multipart Flat OPC package", async () => {
+    const documentNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const packageNamespace = "http://schemas.microsoft.com/office/2006/xmlPackage";
+    const relationshipNamespace = "http://schemas.openxmlformats.org/package/2006/relationships";
+    const documentRelationship =
+      "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+    const mainXml = `<doc:document xmlns:doc="${documentNamespace}"><doc:body><doc:p><doc:r><doc:t>Main</doc:t></doc:r></doc:p></doc:body></doc:document>`;
+    const archive = new JSZip();
+    archive.file("content/main.xml", mainXml);
+    const stylesXml = `<doc:styles xmlns:doc="${documentNamespace}"><doc:docDefaults><doc:rPrDefault><doc:rPr><doc:b/></doc:rPr></doc:rPrDefault></doc:docDefaults></doc:styles>`;
+    const numberingXml = `<doc:numbering xmlns:doc="${documentNamespace}"/>`;
+    const documentRelationships = `<Relationships xmlns="${relationshipNamespace}"><Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="numbering" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`;
+    archive.file("content/styles.xml", stylesXml);
+    archive.file("content/numbering.xml", numberingXml);
+    archive.file("content/_rels/main.xml.rels", documentRelationships);
+    archive.file(
+      "_rels/.rels",
+      `<Relationships xmlns="${relationshipNamespace}"><Relationship Id="main" Type="${documentRelationship}" Target="content/main.xml"/></Relationships>`,
+    );
+    const flat = `<flat:package xmlns:flat="${packageNamespace}" xmlns:doc="${documentNamespace}" xmlns:rel="${relationshipNamespace}">
+      <flat:part flat:name="/content/other.xml" flat:contentType="application/xml"><flat:xmlData><doc:document><doc:body><doc:p><doc:r><doc:t>Other</doc:t></doc:r></doc:p></doc:body></doc:document></flat:xmlData></flat:part>
+      <flat:part flat:name="/_rels/.rels" flat:contentType="application/vnd.openxmlformats-package.relationships+xml"><flat:xmlData><rel:Relationships><rel:Relationship Id="main" Type="${documentRelationship}" Target="content/main.xml"/></rel:Relationships></flat:xmlData></flat:part>
+      <flat:part flat:name="/content/main.xml" flat:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"><flat:xmlData><doc:document><doc:body><doc:p><doc:r><doc:t>Main</doc:t></doc:r></doc:p></doc:body></doc:document></flat:xmlData></flat:part>
+      <flat:part flat:name="/content/styles.xml" flat:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"><flat:xmlData>${stylesXml}</flat:xmlData></flat:part>
+      <flat:part flat:name="/content/numbering.xml" flat:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"><flat:xmlData>${numberingXml}</flat:xmlData></flat:part>
+      <flat:part flat:name="/content/_rels/main.xml.rels" flat:contentType="application/vnd.openxmlformats-package.relationships+xml"><flat:xmlData>${documentRelationships}</flat:xmlData></flat:part>
+    </flat:package>`;
+    const projection = await projectMainDocumentXml(new TextEncoder().encode(flat));
+    const compressed = await projectCompressedDocx(
+      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+    );
+    expect(projection).toEqual(compressed);
+    expect(projection[1].map(([, text]) => text)).toEqual(["Main"]);
+    expect(projection[1][0]?.[3]).toEqual([[0, 4, "bold"]]);
+  });
+
+  test.each([
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>',
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/><w:body/></w:document>',
+  ])("rejects invalid main-document body cardinality: %s", async (xml) => {
+    const flat = `<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage"><pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml"><pkg:xmlData><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="main" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="document.xml"/></Relationships></pkg:xmlData></pkg:part><pkg:part pkg:name="/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"><pkg:xmlData>${xml}</pkg:xmlData></pkg:part></pkg:package>`;
+    for (const input of [xml, flat]) {
+      await expect(projectMainDocumentXml(new TextEncoder().encode(input))).rejects.toBeInstanceOf(
+        DocxProjectionError,
+      );
+    }
   });
 
   test("preserves every direct text style across the WebAssembly wire", async () => {
