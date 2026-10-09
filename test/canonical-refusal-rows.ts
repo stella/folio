@@ -1,5 +1,4 @@
 import { panic } from "better-result";
-import { documentStories, findStoryBody } from "../packages/docx-core/src/ops/stories";
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
@@ -22,9 +21,13 @@ export type HarnessRefusalRow = {
 };
 
 export const canonicalActivationRefusalRow = (source: Document): HarnessRefusalRow | undefined =>
-  documentStories(source).some((story) =>
-    findStoryBody(source, story)?.content.some((block) => block.type === "table"),
-  )
+  [
+    source.package.document,
+    ...(source.package.headers?.values() ?? []),
+    ...(source.package.footers?.values() ?? []),
+    ...(source.package.footnotes ?? []),
+    ...(source.package.endnotes ?? []),
+  ].some(({ content }) => content.some((block) => block.type === "table"))
     ? {
         id: "table-session-activation",
         gap: CANONICAL_GAP.tableActivation,

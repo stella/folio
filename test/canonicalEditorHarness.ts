@@ -21,6 +21,7 @@ import {
   publishCanonicalProjection,
 } from "../packages/core/src/controller/canonicalSession";
 import { EditorState as PMEditorState } from "prosemirror-state";
+import { expectRangeAnchorAttrs } from "../packages/core/src/prosemirror/rangeAnchorAttrs";
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import { serializeCanonicalSave } from "../packages/core/src/docx/canonicalSave";
@@ -271,6 +272,8 @@ export const createCanonicalEditorHarness = (source: Document, mode: EditorMode)
         let importsStoryParts = false;
         slice.content.descendants((node) => {
           if (
+            (node.type.name === "rangeAnchor" &&
+              expectRangeAnchorAttrs(node).start.type === "commentRangeStart") ||
             node.type.name === "commentReference" ||
             node.marks.some(({ type }) => type.name === "comment" || type.name === "footnoteRef")
           )

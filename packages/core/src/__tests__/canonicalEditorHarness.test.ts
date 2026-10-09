@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { documentStories, OP_STORIES, storyBody } from "@stll/docx-core/ops";
+import { OP_STORIES } from "@stll/docx-core/ops";
 import type { Document } from "@stll/docx-core/model";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { singletonManager } from "../prosemirror/schema";
@@ -75,13 +75,16 @@ test.each(TABLE_ACTIVATION_CASES)(
   "canonical $location table activation is an exact ledger precondition in $mode",
   async ({ location, mode }) => {
     const source = await tableActivationSource(location);
-    const tableStories = documentStories(source).filter((story) =>
-      storyBody(source, story).content.some((block) => block.type === "table"),
+    const tableLocations = [
+      { location: "main", bodies: [source.package.document] },
+      { location: "header", bodies: [...(source.package.headers?.values() ?? [])] },
+      { location: "footer", bodies: [...(source.package.footers?.values() ?? [])] },
+      { location: "footnote", bodies: source.package.footnotes ?? [] },
+      { location: "endnote", bodies: source.package.endnotes ?? [] },
+    ].filter(({ bodies }) =>
+      bodies.some(({ content }) => content.some((block) => block.type === "table")),
     );
-    expect(tableStories).toHaveLength(1);
-    expect(tableStories.map((story) => (story === OP_STORIES.MAIN ? story : story.kind))).toEqual([
-      location,
-    ]);
+    expect(tableLocations.map((entry) => entry.location)).toEqual([location]);
     const before = cloneDocumentWithParagraphPropertySources(source);
     const ambientDom = typeof document;
     const hosts = globalThis.document?.body.childElementCount ?? 0;
@@ -491,3 +494,32 @@ test.each(["caret-middle", "document"] as const)(
     expect(result?.violations).toEqual([]);
   },
 );
+
+for (const mode of ["editing", "suggesting"] as const) {
+  test(`copied point-comment anchors declare their story import independently in ${mode}`, async () => {
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer("plain-markdown")),
+    );
+    const driver = createCanonicalEditorHarness(source, mode);
+    try {
+      const anchor = driver.state.schema.node("rangeAnchor", {
+        start: { type: "commentRangeStart", id: 7 },
+        end: { type: "commentRangeEnd", id: 7 },
+      });
+      const paragraph = driver.state.schema.node("paragraph", null, anchor);
+      const before = driver.snapshot();
+      const state = driver.state;
+      driver.paste(new Slice(Fragment.from(paragraph), 0, 0));
+      expect(driver.refusals).toHaveLength(1);
+      expect(driver.refusals.at(0)).toMatchObject({
+        expectation: "declared",
+        row: "clipboard-story-parts",
+      });
+      assertExactModel(driver.snapshot(), before);
+      expect(driver.state).toBe(state);
+      expect(driver.history.canUndo()).toBe(false);
+    } finally {
+      driver.dispose();
+    }
+  });
+}

@@ -190,9 +190,9 @@ describe("editor command conformance", () => {
       }
 
       expect(result.authority).toBe("canonical");
-      expect(result.violations.map(describeViolation)).toEqual([]);
       // Legacy evidence has its own authority and cannot excuse a canonical violation.
       const legacy =
+        result.violations.some(({ kind }) => kind === "silent-refusal") ||
         KNOWN_CONFORMANCE_GAPS.some((gap) => gapApplies(gap, key)) ||
         (key.shape === "image" &&
           key.placement === "node" &&
@@ -228,6 +228,7 @@ describe("editor command conformance", () => {
           `${JSON.stringify({ ...key, ...result, legacy, unexpected })}\n`,
         );
       }
+      expect(result.violations.map(describeViolation)).toEqual([]);
       expect(unexpected.map(describeViolation)).toEqual([]);
     },
     60_000,
