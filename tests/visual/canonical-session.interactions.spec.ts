@@ -239,6 +239,8 @@ test("canonical input, history and saved document agree across both adapters", a
       text: "契約",
       selection: { from: 3, to: 3 },
     });
+    // Synthetic composition does not restore native focus after the adapter adopts its projection.
+    await page.locator(".ProseMirror").focus();
     await page.keyboard.press(`${MODIFIER}+z`);
     const compositionUndone = await expectProjection(page, {
       text: "B",
