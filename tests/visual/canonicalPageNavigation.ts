@@ -46,8 +46,8 @@ export const observeCanonicalPageNavigation = (page: Page) => {
   return owner;
 };
 
-/** Wait for both the new document and the playground's mounted bridge. */
-export const waitForCanonicalPageReady = async (page: Page) => {
+/** Wait for the current document, including standalone instrumentation fixtures. */
+const waitForCanonicalDocumentReady = async (page: Page) => {
   const owner = observeCanonicalPageNavigation(page);
   for (;;) {
     if (owner.current.status === "failed")
@@ -67,16 +67,30 @@ export const waitForCanonicalPageReady = async (page: Page) => {
       await owner.current.load.promise;
     }
     await page.waitForLoadState("load");
-    await page.waitForFunction(
-      () => document.readyState === "complete" && globalThis.__folioCanonicalReady === true,
-    );
+    await page.waitForFunction(() => document.readyState === "complete");
     // A request may start while readiness is being awaited. Observe its load
     // before invoking the callback; never retry an interrupted evaluation.
     if (owner.current.status === "settled") return;
   }
 };
 
-/** The oracle's only entry into an execution context, after navigation settles. */
+/** Wait for both the current document and the playground's mounted bridge. */
+export const waitForCanonicalPageReady = async (page: Page) => {
+  const owner = observeCanonicalPageNavigation(page);
+  for (;;) {
+    await waitForCanonicalDocumentReady(page);
+    await page.waitForFunction(() => globalThis.__folioCanonicalReady === true);
+    if (owner.current.status === "settled") return;
+  }
+};
+
+/** Instrumentation preconditions do not depend on the playground bridge. */
+export const evaluateCanonicalDocument = async <T>(page: Page, evaluate: () => Promise<T>) => {
+  await waitForCanonicalDocumentReady(page);
+  return evaluate();
+};
+
+/** The oracle's entry into a mounted playground context, after navigation settles. */
 export const evaluateCanonicalPage = async <T>(page: Page, evaluate: () => Promise<T>) => {
   await waitForCanonicalPageReady(page);
   return evaluate();

@@ -14,6 +14,8 @@ test("canonical history page evaluations use the navigation owner", () => {
       ts.ScriptTarget.Latest,
       true,
     );
+    const evaluationOwner =
+      name === "canonicalTimerProbe.ts" ? "evaluateCanonicalDocument" : "evaluateCanonicalPage";
     let evaluations = 0;
     const visit = (node: ts.Node) => {
       if (
@@ -29,7 +31,7 @@ test("canonical history page evaluations use the navigation owner", () => {
           !(
             ts.isCallExpression(parent) &&
             ts.isIdentifier(parent.expression) &&
-            parent.expression.text === "evaluateCanonicalPage"
+            parent.expression.text === evaluationOwner
           )
         ) {
           parent = parent.parent;
