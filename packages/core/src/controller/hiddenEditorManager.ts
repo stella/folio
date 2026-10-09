@@ -34,6 +34,7 @@ import {
   toggleUnderlineMark,
 } from "../prosemirror/extensions/marks/markUtils";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand";
 import { prepareCanonicalCommands, prepareCanonicalAutoformat } from "./canonicalStructure";
 import { panic, Result, TaggedError } from "better-result";
@@ -653,7 +654,16 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       refuse("Composition must finish before formatting.");
       return false;
     }
-    const intents = getCanonicalCommandIntents(command, view.state);
+    const described = Result.try({
+      try: () => getCanonicalCommandIntents(command, view.state),
+      catch: (error) => error,
+    });
+    if (described.isErr()) {
+      if (!(described.error instanceof HyperlinkRemovalRefusal)) throw described.error;
+      refuse(described.error.message);
+      return false;
+    }
+    const intents = described.value;
     // Caller commands without document intents retain their ordinary selection
     // and probe behavior; dispatchTransaction still refuses raw document edits.
     // canonical-gap: command-descriptors
