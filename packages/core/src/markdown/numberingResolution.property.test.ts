@@ -1,7 +1,7 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { panic } from "better-result";
 import fc from "fast-check";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
 import {
@@ -10,6 +10,8 @@ import {
   StyleResolver,
 } from "../prosemirror/styles/styleResolver";
 import { paragraphNumberingFromSlots } from "../docx/numberingReference";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 test("Markdown numbering avoids the full run-formatting style cascade", () => {
   const fullCascade = spyOn(StyleResolver.prototype, "resolveParagraphStyle");

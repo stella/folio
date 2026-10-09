@@ -392,17 +392,17 @@ const paragraphFormattingLayers = ({
     paragraphStyleFor(resolver, styleId)?.pPr,
   ] as const;
 
+/** Paragraph tiers that can contribute numbering; the table overlay is spacing-only. */
+const paragraphNumberingLayers = (resolver: StyleResolver, styleId: string | undefined | null) =>
+  [resolver.getDocDefaults()?.pPr, paragraphStyleFor(resolver, styleId)?.pPr] as const;
+
 /** The same ordered paragraph tiers, without unrelated run or paragraph fields. */
 export const resolveStyleParagraphNumbering = (
   resolver: StyleResolver,
   styleId: string | undefined | null,
 ) => {
   let numbering: ParagraphFormatting["numPr"];
-  for (const layer of paragraphFormattingLayers({
-    resolver,
-    styleId,
-    tableParagraphOverlay: undefined,
-  })) {
+  for (const layer of paragraphNumberingLayers(resolver, styleId)) {
     numbering = mergeParagraphNumbering(numbering, layer?.numPr);
   }
   return numbering;
