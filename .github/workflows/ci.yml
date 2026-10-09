@@ -828,6 +828,38 @@ jobs:
           path: test-results/
           retention-days: 7
 
+  canonical-evaluation-regressions:
+    name: Canonical evaluation transport regressions
+    needs: ci-plan
+    if: needs.ci-plan.outputs.interactions_required == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: "package.json"
+      - run: bun install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+      - name: Exercise canonical evaluation transport
+        run: >-
+          bun run test:interactions
+          tests/visual/canonical-session.interactions.spec.ts
+          tests/visual/canonical-browser-history.interactions.spec.ts
+          -g 'canonical structural gestures and toolbar operations preserve each intermediate history state|canonical history replay 263 2:1:0:0:0'
+          --workers=1
+      - name: Preserve canonical protocol evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: canonical-evaluation-failure
+          path: test-results/
+          retention-days: 7
+
   interactions:
     name: Interaction e2e (playground)
     needs: ci-plan
