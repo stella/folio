@@ -77,11 +77,14 @@ import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inli
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { copiedWrapPolygon } from "../../docx/wrapPolygon";
 import { paragraphNumberingAttr } from "../numberingAttr";
+import { paragraphIndentationFromFormatting } from "../paragraphIndentation";
+import { listIndentationProvenancePatch } from "../styles/resolvedStyleAttrs";
 import { emptyFieldRunPropertyChanges } from "../emptyFieldResultRuns";
 import { calculateRowSpans, type RowSpanInfo } from "../../docx/verticalMergeProjection";
 import { isCellMergeContinuation } from "../../docx/tableParser";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import {
+  paragraphFormattingWithAuthoredIndentation,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   createProseParagraphWithPropertySource,
   proseParagraphAttrsWithoutPropertySource,
@@ -753,17 +756,30 @@ function convertParagraph(
     nextRunIdentityId: () => runIdentityId++,
     createMark: context.createMark,
   };
+  const directFormatting = paragraphFormattingWithAuthoredIndentation(paragraph);
   const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
     paragraph,
     styleResolver,
     tableParagraphOverlay,
   );
+  if (directFormatting === undefined) Reflect.deleteProperty(attrs, "_originalFormatting");
+  else attrs._originalFormatting = directFormatting;
   const numPr = mergeParagraphNumbering(
     attrs.numPrFromStyle ?? undefined,
     attrs.numPr ?? undefined,
   );
   if (numPr?.kind === "none") Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   else if (context.numbering !== undefined && numPr?.kind === "reference") {
+    Object.assign(
+      attrs,
+      listIndentationProvenancePatch({
+        direct: paragraphIndentationFromFormatting(directFormatting),
+        styleFormatting: attrs._styleResolvedFormatting,
+        numberingSource: attrs.numPrFromStyle == null ? "paragraph" : "style",
+        numPr: { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 },
+        numbering: context.numbering,
+      }),
+    );
     const { rendering, nextSlotOffset } = resolveListRendering(numPr, context);
     if (rendering !== null) {
       const cached = paragraph.listRendering;

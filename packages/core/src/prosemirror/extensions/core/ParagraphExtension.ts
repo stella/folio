@@ -70,9 +70,11 @@ import type { ParagraphAttrs, ParagraphAttrsPatch } from "../../schema/nodes";
 import {
   paragraphAttrsFromResolvedStyle,
   listAttrsFromResolvedStyle,
-  listLevelIndentAttrPatch,
+  listIndentationProvenancePatch,
 } from "../../styles/resolvedStyleAttrs";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
+import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
+import { recordReplacedParagraphProperties } from "../../paragraphPropertyCarry";
 import { createNodeExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 
@@ -444,6 +446,7 @@ const paragraphNodeSpec: NodeSpec = {
     // `toJSON`, so a paragraph whose cascade governs none of these fields adds
     // nothing to the persisted editor state.
     _resolvedFormatting: { default: undefined },
+    _styleResolvedFormatting: { default: undefined },
     _autospacingBase: { default: null },
     _sectionProperties: { default: null },
     _propertyChanges: { default: null },
@@ -893,6 +896,7 @@ function makeApplyStyle() {
       }
 
       let tr = state.tr;
+      const revision = makeRevisionInfo(state);
       const seen = new Set<number>();
 
       state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
@@ -965,19 +969,24 @@ function makeApplyStyle() {
             } else if (directNumId !== undefined) {
               Object.assign(
                 newAttrs,
-                listLevelIndentAttrPatch(
-                  restyledIndentation(styleAttrs, restyledOriginal),
-                  {
+                listIndentationProvenancePatch({
+                  direct: restyledIndentation(styleAttrs, restyledOriginal),
+                  styleFormatting: resolvedAttrs.paragraphFormatting,
+                  numberingSource: "paragraph",
+                  numPr: {
                     numId: directNumId,
                     ilvl: paragraphNumberingLevel(current.numPr ?? undefined) ?? 0,
                   },
-                  resolvedAttrs.numbering ?? getDocumentNumbering(state),
-                ),
+                  numbering: resolvedAttrs.numbering ?? getDocumentNumbering(state),
+                }),
               );
             }
           }
 
           tr = tr.setNodeMarkup(pos, undefined, newAttrs);
+          if (revision) {
+            recordReplacedParagraphProperties({ tr, position: pos, replaced: node, revision });
+          }
 
           rebaseParagraphRuns({
             tr,
@@ -989,6 +998,7 @@ function makeApplyStyle() {
         }
       });
 
+      if (revision) tr.setMeta(SUGGESTION_META, true);
       dispatch(tr.scrollIntoView());
       return true;
     };

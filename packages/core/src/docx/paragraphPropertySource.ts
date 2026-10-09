@@ -6,6 +6,7 @@ import type {
   BlockContent,
   Document,
   Paragraph,
+  ParagraphFormatting,
   ParagraphContent,
   RunContent,
   TableCell,
@@ -14,6 +15,8 @@ import {
   modelParagraphFormattingEmission,
   type ModeledParagraphFormattingEmission,
 } from "../internal/paragraphFormattingSerialization";
+import { parseParagraphProperties } from "./paragraphProperties";
+import { parseXmlDocument } from "./xmlParser";
 import { canonicalJson } from "../utils/canonicalJson";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 import {
@@ -27,12 +30,104 @@ const paragraphPropertySourceEmissionFingerprint = Symbol(
   "paragraphPropertySourceEmissionFingerprint",
 );
 
+const paragraphPropertySourceIndentationBaseline = Symbol(
+  "paragraphPropertySourceIndentationBaseline",
+);
+const INDENTATION_FIELDS = [
+  "indentLeft",
+  "indentRight",
+  "indentFirstLine",
+  "hangingIndent",
+] as const;
+
 type ParagraphPropertySource = Readonly<{
   xml: string;
   [paragraphPropertySourceEmissionFingerprint]: string;
+  [paragraphPropertySourceIndentationBaseline]: Readonly<
+    Pick<ParagraphFormatting, (typeof INDENTATION_FIELDS)[number]>
+  >;
 }>;
 
 const paragraphPropertyCapture = Symbol("paragraphPropertyCapture");
+const paragraphIndentationProjection = Symbol("paragraphIndentationProjection");
+type IndentationFormatting = Pick<ParagraphFormatting, (typeof INDENTATION_FIELDS)[number]>;
+type ParagraphIndentationProjection = Readonly<{
+  effective: Readonly<IndentationFormatting>;
+  authored: Readonly<IndentationFormatting>;
+}>;
+const indentationProjections = new WeakMap<object, ParagraphIndentationProjection>();
+
+const indentationProjectionFor = (paragraph: Paragraph) => {
+  const handle: unknown = Object.getOwnPropertyDescriptor(
+    paragraph,
+    paragraphIndentationProjection,
+  )?.value;
+  return typeof handle === "object" && handle !== null
+    ? indentationProjections.get(handle)
+    : undefined;
+};
+
+type CopyParagraphIndentationProjectionOptions = { target: Paragraph; source: Paragraph };
+
+/** Retain effective-value provenance without copying a durable source identity. */
+export const copyParagraphIndentationProjection = ({
+  target,
+  source,
+}: CopyParagraphIndentationProjectionOptions): void => {
+  if (Object.hasOwn(target, paragraphIndentationProjection)) return;
+  const descriptor = Object.getOwnPropertyDescriptor(source, paragraphIndentationProjection);
+  if (descriptor && indentationProjectionFor(source)) {
+    Object.defineProperty(target, paragraphIndentationProjection, descriptor);
+  }
+};
+
+const indentationFields = (formatting: ParagraphFormatting | undefined): IndentationFormatting => ({
+  indentLeft: formatting?.indentLeft,
+  indentRight: formatting?.indentRight,
+  indentFirstLine: formatting?.indentFirstLine,
+  hangingIndent: formatting?.hangingIndent,
+});
+
+type AssignParagraphIndentationProjectionOptions = {
+  paragraph: Paragraph;
+  authored: ParagraphFormatting | undefined;
+  inherited: IndentationFormatting;
+};
+
+/** Keep the model's effective indentation without making inherited values authored. */
+export const assignParagraphIndentationProjection = ({
+  paragraph,
+  authored,
+  inherited,
+}: AssignParagraphIndentationProjectionOptions): void => {
+  const effective = { ...inherited, ...indentationFields(authored) };
+  // Absent authored fields inherit; explicit zero and false override.
+  for (const key of INDENTATION_FIELDS) {
+    if (authored?.[key] === undefined) {
+      const value = inherited[key];
+      if (value === undefined) Reflect.deleteProperty(effective, key);
+      else Object.assign(effective, { [key]: value });
+    }
+  }
+  if (authored?.indentFirstLine !== undefined && authored.hangingIndent === undefined) {
+    Reflect.deleteProperty(effective, "hangingIndent");
+  }
+  paragraph.formatting = { ...authored, ...effective };
+  const handle = Object.freeze({});
+  indentationProjections.set(
+    handle,
+    Object.freeze({
+      effective: Object.freeze(indentationFields(paragraph.formatting)),
+      authored: Object.freeze(indentationFields(authored)),
+    }),
+  );
+  Object.defineProperty(paragraph, paragraphIndentationProjection, {
+    value: handle,
+    enumerable: true,
+    configurable: true,
+  });
+};
+
 type ParagraphPropertyCapture = Readonly<{
   source: ParagraphPropertySource;
   owner: Paragraph;
@@ -75,6 +170,12 @@ const ownedParagraphPropertySource = (
 ): ParagraphPropertySource => {
   return Object.freeze({
     xml,
+    [paragraphPropertySourceIndentationBaseline]: Object.freeze({
+      indentLeft: paragraph.formatting?.indentLeft,
+      indentRight: paragraph.formatting?.indentRight,
+      indentFirstLine: paragraph.formatting?.indentFirstLine,
+      hangingIndent: paragraph.formatting?.hangingIndent,
+    }),
     [paragraphPropertySourceEmissionFingerprint]: paragraphFormattingEmissionFingerprint(
       modelParagraphFormattingEmission(paragraph.formatting),
     ),
@@ -247,6 +348,61 @@ export const getParagraphPropertySource = (
   paragraph: Paragraph,
 ): ParagraphPropertySource | undefined => captureForParagraph(paragraph)?.source;
 
+const directFormattingBySource = new WeakMap<
+  ParagraphPropertySource,
+  { formatting: ParagraphFormatting | undefined }
+>();
+
+/** Read authored indentation while preserving edits to the parsed effective values. */
+export const paragraphFormattingWithAuthoredIndentation = (
+  paragraph: Paragraph,
+): ParagraphFormatting | undefined => {
+  const source = getParagraphPropertySource(paragraph);
+  const projection = indentationProjectionFor(paragraph);
+  if (source === undefined && projection === undefined) return paragraph.formatting;
+  let direct = source === undefined ? undefined : directFormattingBySource.get(source);
+  if (source !== undefined && direct === undefined) {
+    direct = { formatting: parseParagraphProperties(parseXmlDocument(source.xml), null) };
+    directFormattingBySource.set(source, direct);
+  }
+  const result = { ...paragraph.formatting };
+  const baseline = projection?.effective ?? source?.[paragraphPropertySourceIndentationBaseline];
+  if (baseline === undefined) return paragraph.formatting;
+  const authored = projection?.authored ?? direct?.formatting;
+  const firstLineChanged =
+    paragraph.formatting?.indentFirstLine !== baseline.indentFirstLine ||
+    paragraph.formatting?.hangingIndent !== baseline.hangingIndent;
+  for (const key of INDENTATION_FIELDS) {
+    if ((key === "indentFirstLine" || key === "hangingIndent") && firstLineChanged) continue;
+    if (paragraph.formatting?.[key] !== baseline[key]) continue;
+    Reflect.deleteProperty(result, key);
+    const value = authored?.[key];
+    if (value !== undefined) Object.assign(result, { [key]: value });
+  }
+  return Object.keys(result).length === 0 ? undefined : result;
+};
+
+/** Equal effective values must not replay a capture that lacks newly authored indentation. */
+export const paragraphPropertySourceMatchesAuthoredIndentation = (
+  paragraph: Paragraph,
+): boolean => {
+  const source = getParagraphPropertySource(paragraph);
+  if (source === undefined) return true;
+  const authored = paragraphFormattingWithAuthoredIndentation(paragraph);
+  const original = directFormattingBySource.get(source)?.formatting;
+  const indentationEmission = (formatting: ParagraphFormatting | undefined) => {
+    const indentation: ParagraphFormatting = {};
+    for (const key of INDENTATION_FIELDS) {
+      const value = formatting?.[key];
+      if (value !== undefined) Object.assign(indentation, { [key]: value });
+    }
+    return modelParagraphFormattingEmission(indentation);
+  };
+  return (
+    canonicalJson(indentationEmission(authored)) === canonicalJson(indentationEmission(original))
+  );
+};
+
 export const paragraphPropertySourceMatchesEmission = (
   source: ParagraphPropertySource,
   emission: ModeledParagraphFormattingEmission,
@@ -256,6 +412,7 @@ export const paragraphPropertySourceMatchesEmission = (
 
 /** Copy the captured `w:pPr` without claiming the source paragraph's durable identity. */
 export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragraph): void => {
+  copyParagraphIndentationProjection({ target, source });
   const capture = captureForParagraph(source);
   if (capture) attachParagraphCapture(target, capture);
   const kind =
@@ -424,6 +581,7 @@ export const cloneParagraphWithoutPropertySource = (
 ): Paragraph => {
   const cloned = { ...paragraph, ...overrides };
   Reflect.deleteProperty(cloned, paragraphPropertyCapture);
+  Reflect.deleteProperty(cloned, paragraphIndentationProjection);
   return cloned;
 };
 
