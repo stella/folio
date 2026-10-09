@@ -78,6 +78,39 @@ test("canonical evaluation waits for a mid-sequence navigation to mount", async 
   ).toBe(0);
 });
 
+test("canonical evaluation reports a failed mid-sequence navigation", async ({ page }) => {
+  await page.goto("/?session=canonical");
+  await evaluateCanonicalPage(page, () => page.evaluate(() => globalThis.__folioCanonicalReady));
+  let releaseResponse: () => void = () => {};
+  const responseGate = new Promise<void>((resolve) => {
+    releaseResponse = resolve;
+  });
+  let reachedNavigation: () => void = () => {};
+  const navigationStarted = new Promise<void>((resolve) => {
+    reachedNavigation = resolve;
+  });
+  await page.route("**/?session=canonical", async (route) => {
+    reachedNavigation();
+    await responseGate;
+    await route.abort("failed");
+  });
+  const reloaded = page.reload().then(
+    () => "loaded",
+    () => "failed",
+  );
+  await navigationStarted;
+  let callbackInvoked = false;
+  const evaluated = evaluateCanonicalPage(page, () => {
+    callbackInvoked = true;
+    return page.evaluate(() => globalThis.__folioCanonicalReady);
+  });
+  const failure = expect(evaluated).rejects.toThrow("Canonical playground navigation failed:");
+  releaseResponse();
+  await failure;
+  expect(await reloaded).toBe("failed");
+  expect(callbackInvoked).toBe(false);
+});
+
 test("refused native IME commit ends composition before driver completion", async ({ page }) => {
   await page.goto("/?session=canonical");
   await page.waitForSelector(".layout-page");

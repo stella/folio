@@ -3,7 +3,11 @@ import type {} from "../parity/canonicalBridge";
 
 type NavigationState =
   | { status: "settled" }
-  | { status: "loading"; request: Request; load: Promise<unknown> | null }
+  | {
+      status: "loading";
+      request: Request;
+      load: { promise: Promise<void>; complete: () => void; fail: (reason: string) => void } | null;
+    }
   | { status: "failed"; reason: string };
 
 const owners = new WeakMap<Page, { current: NavigationState }>();
@@ -16,13 +20,20 @@ export const observeCanonicalPageNavigation = (page: Page) => {
   owners.set(page, owner);
   page.on("request", (request) => {
     if (request.isNavigationRequest() && request.frame() === page.mainFrame())
-      owner.current = { status: "loading", request, load: null };
+      owner.current = {
+        status: "loading",
+        request,
+        load: owner.current.status === "loading" ? owner.current.load : null,
+      };
   });
   page.on("requestfailed", (request) => {
-    if (owner.current.status === "loading" && owner.current.request === request)
-      owner.current = { status: "failed", reason: request.failure()?.errorText ?? "unknown" };
+    if (owner.current.status !== "loading" || owner.current.request !== request) return;
+    const reason = request.failure()?.errorText ?? "unknown";
+    owner.current.load?.fail(reason);
+    owner.current = { status: "failed", reason };
   });
   page.on("load", () => {
+    if (owner.current.status === "loading") owner.current.load?.complete();
     owner.current = { status: "settled" };
   });
   return owner;
@@ -36,8 +47,17 @@ export const waitForCanonicalPageReady = async (page: Page) => {
       throw new TypeError(`Canonical playground navigation failed: ${owner.current.reason}`);
     if (owner.current.status === "loading") {
       // Concurrent oracle reads share the same navigation barrier.
-      owner.current.load ??= page.waitForEvent("load");
-      await owner.current.load;
+      if (owner.current.load === null) {
+        let complete: () => void = () => {};
+        let fail: (reason: string) => void = () => {};
+        const promise = new Promise<void>((resolve, reject) => {
+          complete = resolve;
+          fail = (reason) =>
+            reject(new TypeError(`Canonical playground navigation failed: ${reason}`));
+        });
+        owner.current.load = { promise, complete, fail };
+      }
+      await owner.current.load.promise;
     }
     await page.waitForLoadState("load");
     await page.waitForFunction(
