@@ -205,7 +205,7 @@ describe("a table's property set survives a rebuild", () => {
           propertiesOf(rebuild(SAMPLES[name])),
         );
       }),
-      propertyConfig({ numRuns: 100 }),
+      { numRuns: 100 },
     );
   });
 
