@@ -135,7 +135,9 @@ const paragraphXml = (body: string): string => `<w:p xmlns:w="${W}">${body}</w:p
 /** The paragraph as it comes back from the editor, with nothing edited. */
 const throughTheEditor = (paragraph: Paragraph): Paragraph => {
   const input: Document = { package: { document: { content: [paragraph] } } };
-  const first = fromProseDoc(toProseDoc(input), input).package.document.content.at(0);
+  const first = fromProseDoc(toProseDoc(input), input, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (first?.type !== "paragraph") {
     throw new Error("the round trip did not give a paragraph back");
   }

@@ -68,7 +68,9 @@ const documentPartOf = async (saved: ArrayBuffer): Promise<string> => {
 /** The part as it comes back from one editor round trip. */
 const throughTheEditor = async (body: string): Promise<string> => {
   const parsed = await parseDocx(await documentWith(body), { preloadFonts: false });
-  const projected = fromProseDoc(toProseDoc(parsed), parsed);
+  const projected = fromProseDoc(toProseDoc(parsed), parsed, {
+    stylesheetSource: { type: "package" },
+  });
   return documentPartOf(await repackDocx(projected, { updateModifiedDate: false }));
 };
 
@@ -129,9 +131,18 @@ describe("a tracked move keeps its name across the editor", () => {
     const once = await throughTheEditor(body);
     const parsed = await parseDocx(await documentWith(body), { preloadFonts: false });
     const twice = await documentPartOf(
-      await repackDocx(fromProseDoc(toProseDoc(fromProseDoc(toProseDoc(parsed), parsed)), parsed), {
-        updateModifiedDate: false,
-      }),
+      await repackDocx(
+        fromProseDoc(
+          toProseDoc(
+            fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+          ),
+          parsed,
+          { stylesheetSource: { type: "package" } },
+        ),
+        {
+          updateModifiedDate: false,
+        },
+      ),
     );
 
     expect(namesIn(twice)).toEqual(namesIn(once));

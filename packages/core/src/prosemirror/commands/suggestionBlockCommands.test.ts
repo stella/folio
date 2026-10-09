@@ -88,10 +88,14 @@ describe("block/table suggestion accept/reject + getSuggestions", () => {
     expect(getSuggestions(next)).toEqual([]);
 
     // The row now serializes as a real tracked insertion authored by Alice.
-    const t = firstTable(fromProseDoc(next.doc));
+    const t = firstTable(
+      fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } }),
+    );
     const inserted = t.rows.find((r) => r.structuralChange?.type === "tableRowInsertion");
     expect(inserted?.structuralChange?.info.author).toBe("Alice");
-    expect(json(fromProseDoc(next.doc))).toContain("added");
+    expect(
+      json(fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } })),
+    ).toContain("added");
   });
 
   test("reject a suggested row insertion → row removed", () => {
@@ -100,9 +104,13 @@ describe("block/table suggestion accept/reject + getSuggestions", () => {
     ]);
     const { ok, state: next } = run(state, rejectSuggestion("sRow"));
     expect(ok).toBe(true);
-    const t = firstTable(fromProseDoc(next.doc));
+    const t = firstTable(
+      fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } }),
+    );
     expect(t.rows.length).toBe(1);
-    expect(json(fromProseDoc(next.doc))).not.toContain("added");
+    expect(
+      json(fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } })),
+    ).not.toContain("added");
   });
 
   test("accept a suggested paragraph insertion → inserted-paragraph tracked change", () => {
@@ -129,7 +137,7 @@ describe("block/table suggestion accept/reject + getSuggestions", () => {
 
     // The accepted paragraph serializes with a real inserted paragraph mark and
     // a real (user) run insertion — no suggestion leaks.
-    const model = fromProseDoc(next.doc);
+    const model = fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } });
     const serialized = json(model);
     expect(serialized).toContain("proposed");
     expect(serialized).toContain("pPrMark");
@@ -155,7 +163,9 @@ describe("block/table suggestion accept/reject + getSuggestions", () => {
     const { ok, state: next } = run(state, rejectSuggestion("sBlock"));
     expect(ok).toBe(true);
     expect(next.doc.childCount).toBe(1);
-    expect(json(fromProseDoc(next.doc))).not.toContain("proposed");
+    expect(
+      json(fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } })),
+    ).not.toContain("proposed");
   });
 
   test("accept a suggested table insertion applies directly (table kept, marker cleared)", () => {
@@ -169,7 +179,7 @@ describe("block/table suggestion accept/reject + getSuggestions", () => {
     );
     expect(ok).toBe(true);
     expect(getSuggestions(next)).toEqual([]);
-    const model = fromProseDoc(next.doc);
+    const model = fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } });
     expect(model.package.document.content.some((b) => b.type === "table")).toBe(true);
     expect(json(model)).toContain("sig");
   });
@@ -216,8 +226,12 @@ describe("heterogeneous (mixed) suggestion groups", () => {
     // Inline-inserted "added" removed AND the whole inserted paragraph removed.
     expect(next.doc.textContent).toBe("keep ");
     expect(getSuggestions(next)).toEqual([]);
-    expect(json(fromProseDoc(next.doc))).not.toContain("proposed");
-    expect(json(fromProseDoc(next.doc))).not.toContain("added");
+    expect(
+      json(fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } })),
+    ).not.toContain("proposed");
+    expect(
+      json(fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } })),
+    ).not.toContain("added");
   });
 
   test("accept resolves BOTH parts of the group in one transaction", () => {
@@ -225,7 +239,9 @@ describe("heterogeneous (mixed) suggestion groups", () => {
     const { ok, state: next } = run(state, acceptSuggestion("mix", { author: "Bob", date: DATE }));
     expect(ok).toBe(true);
     expect(getSuggestions(next)).toEqual([]);
-    const serialized = json(fromProseDoc(next.doc));
+    const serialized = json(
+      fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } }),
+    );
     // Both the inline edit and the inserted paragraph became real tracked changes.
     expect(serialized).toContain("added");
     expect(serialized).toContain("proposed");
@@ -258,7 +274,7 @@ describe("heterogeneous (mixed) suggestion groups", () => {
     );
     expect(ok).toBe(true);
     expect(getSuggestions(next)).toEqual([]);
-    const model = fromProseDoc(next.doc);
+    const model = fromProseDoc(next.doc, undefined, { stylesheetSource: { type: "package" } });
     expect(model.package.document.content.some((b) => b.type === "table")).toBe(true);
     expect(json(model)).toContain("edit");
   });

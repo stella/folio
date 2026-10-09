@@ -195,7 +195,9 @@ describe("content control selection state survives a rebuild", () => {
           const rebuilt = await parse(await save(withoutCapturedProperties(opened)));
           expect(readSelection(rebuilt)).toEqual(expected);
 
-          const edited = fromProseDoc(toProseDoc(opened), opened);
+          const edited = fromProseDoc(toProseDoc(opened), opened, {
+            stylesheetSource: { type: "package" },
+          });
           const afterEditor = await parse(await save(edited));
           expect(readSelection(afterEditor)).toEqual(expected);
         }),

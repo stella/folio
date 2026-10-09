@@ -274,7 +274,7 @@ function normalizeNode(node: PMNode): NormalizedNode {
  */
 function roundTrip(original: PMNode): PMNode {
   // Step 1: PM → Document model
-  const doc = fromProseDoc(original);
+  const doc = fromProseDoc(original, undefined, { stylesheetSource: { type: "package" } });
 
   // Step 2: Document → XML string
   const xml = serializeDocument(doc);
@@ -298,7 +298,7 @@ describe("DOCX round-trip property tests", () => {
     () => {
       fc.assert(
         fc.property(arbDocument(), (doc) => {
-          const docModel = fromProseDoc(doc);
+          const docModel = fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } });
           const xml = serializeDocument(docModel);
           expect(typeof xml).toBe("string");
           expect(xml.length).toBeGreaterThan(0);
@@ -314,7 +314,7 @@ describe("DOCX round-trip property tests", () => {
     () => {
       fc.assert(
         fc.property(arbDocument(), (doc) => {
-          const docModel = fromProseDoc(doc);
+          const docModel = fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } });
           const xml = serializeDocument(docModel);
           const parsed = parseDocumentBody(xml);
           expect(parsed.content.length).toBeGreaterThan(0);

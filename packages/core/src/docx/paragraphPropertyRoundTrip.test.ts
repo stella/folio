@@ -174,7 +174,8 @@ describe("paragraph properties survive a no-edit full repack", () => {
     ["typed model", (document: Document): Document => document],
     [
       "editable model",
-      (document: Document): Document => fromProseDoc(toProseDoc(document), document),
+      (document: Document): Document =>
+        fromProseDoc(toProseDoc(document), document, { stylesheetSource: { type: "package" } }),
     ],
   ] as const)("through the %s", async (_name, roundTrip) => {
     const source = await documentWithSourceProperties();
@@ -190,16 +191,20 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const proseDoc = toProseDoc(parsed);
 
     expect(JSON.stringify(proseDoc.toJSON())).not.toContain("propertySource");
-    expect(getParagraphPropertySource(firstParagraph(fromProseDoc(proseDoc, parsed)))).toEqual(
-      getParagraphPropertySource(firstParagraph(parsed)),
-    );
+    expect(
+      getParagraphPropertySource(
+        firstParagraph(fromProseDoc(proseDoc, parsed, { stylesheetSource: { type: "package" } })),
+      ),
+    ).toEqual(getParagraphPropertySource(firstParagraph(parsed)));
   });
 
   test("an unchanged id-less editable paragraph keeps its private source identity", async () => {
     const parsed = await parseDocx(await documentWithSourceProperties(SOURCE_PROPERTIES, null), {
       preloadFonts: false,
     });
-    const restored = fromProseDoc(toProseDoc(parsed), parsed);
+    const restored = fromProseDoc(toProseDoc(parsed), parsed, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(getParagraphPropertySource(firstParagraph(restored))).toEqual(
       getParagraphPropertySource(firstParagraph(parsed)),
@@ -213,7 +218,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const sourceParagraph = firstParagraph(parsed);
     sourceParagraph.content.unshift({ type: "commentRangeStart", id: 999 });
 
-    const restored = fromProseDoc(toProseDoc(parsed), parsed);
+    const restored = fromProseDoc(toProseDoc(parsed), parsed, {
+      stylesheetSource: { type: "package" },
+    });
     const restoredParagraph = firstParagraph(restored);
     expect(getParagraphPropertySourceCandidate(restoredParagraph)).toBe(sourceParagraph);
 
@@ -288,7 +295,7 @@ describe("paragraph properties survive a no-edit full repack", () => {
       proseParagraph.type.schema.text("Edited"),
     );
     const editedDoc = proseDoc.type.create(proseDoc.attrs, [editedParagraph]);
-    const restored = fromProseDoc(editedDoc, parsed);
+    const restored = fromProseDoc(editedDoc, parsed, { stylesheetSource: { type: "package" } });
 
     expect(firstParagraph(restored).paraId).toMatch(/^[0-9A-F]{8}$/u);
     expect(getParagraphPropertySource(firstParagraph(restored))).toEqual(
@@ -305,7 +312,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const parsed = await parseDocx(await documentWithDuplicateParagraphIds(), {
       preloadFonts: false,
     });
-    const restored = fromProseDoc(toProseDoc(parsed), parsed);
+    const restored = fromProseDoc(toProseDoc(parsed), parsed, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraphs = restored.package.document.content.filter(
       (block): block is Paragraph => block.type === "paragraph",
     );
@@ -328,7 +337,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
       panic("expected the table template to cross the package boundary");
     }
     const contractFree = nodeSchema.node("doc", null, [copied]);
-    const restored = fromProseDoc(contractFree);
+    const restored = fromProseDoc(contractFree, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const table = restored.package.document.content.at(0);
     const paragraph = table?.type === "table" ? table.rows.at(0)?.cells.at(0)?.content.at(0) : null;
     if (paragraph?.type !== "paragraph") {
@@ -367,8 +378,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
       copied,
     ]);
 
-    const firstSave = fromProseDoc(edited, target);
-    const secondSave = fromProseDoc(toProseDoc(firstSave), firstSave);
+    const firstSave = fromProseDoc(edited, target, { stylesheetSource: { type: "package" } });
+    const secondSave = fromProseDoc(toProseDoc(firstSave), firstSave, {
+      stylesheetSource: { type: "package" },
+    });
 
     for (const saved of [firstSave, secondSave]) {
       const table = saved.package.document.content.at(1);
@@ -436,7 +449,7 @@ describe("paragraph properties survive a no-edit full repack", () => {
         paragraph.type.create(paragraph.attrs, paragraph.content, paragraph.marks),
       ),
     );
-    const restored = fromProseDoc(detached, parsed);
+    const restored = fromProseDoc(detached, parsed, { stylesheetSource: { type: "package" } });
     const paragraphs = restored.package.document.content.filter(
       (block): block is Paragraph => block.type === "paragraph",
     );
@@ -453,7 +466,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const derived = { ...parsed, package: { ...parsed.package } };
     const normalized = ensureParaIdsInDoc(toProseDoc(parsed));
     const reconstructed = normalized.type.schema.nodeFromJSON(normalized.toJSON());
-    const restored = fromProseDoc(reconstructed, derived);
+    const restored = fromProseDoc(reconstructed, derived, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraphs = restored.package.document.content.filter(
       (block): block is Paragraph => block.type === "paragraph",
     );
@@ -469,7 +484,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const derived = { ...parsed, package: { ...parsed.package } };
     const normalized = ensureParaIdsInDoc(toProseDoc(parsed));
     const reconstructed = normalized.type.schema.nodeFromJSON(normalized.toJSON());
-    const restored = fromProseDoc(reconstructed, derived);
+    const restored = fromProseDoc(reconstructed, derived, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(getParagraphPropertySource(firstParagraph(restored))).toEqual(
       getParagraphPropertySource(firstParagraph(parsed)),
@@ -484,8 +501,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     ]);
     const edited = proseDoc.type.create(proseDoc.attrs, [proseDoc.child(0), authored]);
 
-    const firstSave = fromProseDoc(edited, parsed);
-    const secondSave = fromProseDoc(toProseDoc(firstSave), firstSave);
+    const firstSave = fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } });
+    const secondSave = fromProseDoc(toProseDoc(firstSave), firstSave, {
+      stylesheetSource: { type: "package" },
+    });
 
     for (const saved of [firstSave, secondSave]) {
       const sourceParagraph = saved.package.document.content.at(0);
@@ -507,11 +526,15 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const original = toProseDoc(parsed);
     const withoutFirst = original.type.create(original.attrs, [original.child(1)]);
 
-    const afterDeletion = fromProseDoc(withoutFirst, parsed);
+    const afterDeletion = fromProseDoc(withoutFirst, parsed, {
+      stylesheetSource: { type: "package" },
+    });
     const reconstructedOriginal = original.type.schema.nodeFromJSON(
       JSON.parse(JSON.stringify(original.toJSON())),
     );
-    const restored = fromProseDoc(reconstructedOriginal, afterDeletion);
+    const restored = fromProseDoc(reconstructedOriginal, afterDeletion, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraphs = restored.package.document.content.filter(
       (block): block is Paragraph => block.type === "paragraph",
     );
@@ -535,7 +558,7 @@ describe("paragraph properties survive a no-edit full repack", () => {
     };
 
     try {
-      fromProseDoc(toProseDoc(parsed), corrupted);
+      fromProseDoc(toProseDoc(parsed), corrupted, { stylesheetSource: { type: "package" } });
       panic("expected source validation to reject the missing token");
     } catch (error) {
       expect(error).toBeInstanceOf(ParagraphPropertySourceValidationError);
@@ -568,7 +591,7 @@ describe("paragraph properties survive a no-edit full repack", () => {
         paragraph.type.create(paragraph.attrs, paragraph.content, paragraph.marks),
       ),
     );
-    const restored = fromProseDoc(detached, parsed);
+    const restored = fromProseDoc(detached, parsed, { stylesheetSource: { type: "package" } });
     const paragraphs = restored.package.document.content.filter(
       (block): block is Paragraph => block.type === "paragraph",
     );
@@ -588,7 +611,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
       ...json,
       content: [paragraph, paragraph],
     });
-    expect(() => fromProseDoc(duplicate, parsed)).toThrow(ParagraphPropertySourceValidationError);
+    expect(() =>
+      fromProseDoc(duplicate, parsed, { stylesheetSource: { type: "package" } }),
+    ).toThrow(ParagraphPropertySourceValidationError);
   });
 
   test("one exact parser-linked paragraph node cannot lend its capture twice", async () => {
@@ -596,7 +621,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const proseDoc = toProseDoc(parsed);
     const paragraph = proseDoc.child(0);
     const duplicate = proseDoc.type.create(proseDoc.attrs, [paragraph, paragraph]);
-    expect(() => fromProseDoc(duplicate, parsed)).toThrow(ParagraphPropertySourceValidationError);
+    expect(() =>
+      fromProseDoc(duplicate, parsed, { stylesheetSource: { type: "package" } }),
+    ).toThrow(ParagraphPropertySourceValidationError);
   });
 
   test("a copied slice cannot borrow the exact owner's property capture", async () => {
@@ -611,7 +638,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     transferProseParagraphPropertySource(copied, paragraph, "87654321");
     const copiedSlice = new Slice(Fragment.fromArray([paragraph, copied]), 0, 0);
     const duplicated = proseDoc.type.create(proseDoc.attrs, copiedSlice.content);
-    expect(() => fromProseDoc(duplicated, parsed)).toThrow(ParagraphPropertySourceValidationError);
+    expect(() =>
+      fromProseDoc(duplicated, parsed, { stylesheetSource: { type: "package" } }),
+    ).toThrow(ParagraphPropertySourceValidationError);
   });
 
   test("rejects a source-bearing model paired with a contract-free ProseMirror document", async () => {
@@ -623,9 +652,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
       proseDoc.marks,
     );
 
-    expect(() => fromProseDoc(contractFree, parsed)).toThrow(
-      ParagraphPropertySourceValidationError,
-    );
+    expect(() =>
+      fromProseDoc(contractFree, parsed, { stylesheetSource: { type: "package" } }),
+    ).toThrow(ParagraphPropertySourceValidationError);
   });
 
   test("rejects a contract-bearing ProseMirror document paired with a source-free model", async () => {
@@ -634,9 +663,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const proseDoc = original.type.schema.nodeFromJSON(original.toJSON());
     const sourceFree = structuredClone(parsed);
 
-    expect(() => fromProseDoc(proseDoc, sourceFree)).toThrow(
-      ParagraphPropertySourceValidationError,
-    );
+    expect(() =>
+      fromProseDoc(proseDoc, sourceFree, { stylesheetSource: { type: "package" } }),
+    ).toThrow(ParagraphPropertySourceValidationError);
   });
 
   test("a JSON-cloned model falls back to its typed paragraph properties", async () => {
@@ -889,7 +918,7 @@ describe("paragraph properties survive a no-edit full repack", () => {
       );
       const proseDoc = toProseDoc(parsed);
       const cloned = proseDoc.type.schema.nodeFromJSON(proseDoc.toJSON());
-      const restored = fromProseDoc(cloned, parsed);
+      const restored = fromProseDoc(cloned, parsed, { stylesheetSource: { type: "package" } });
 
       expect(firstParagraph(restored).pPrMark?.info.utcDate).toEqual({
         attribute: "w16du:dateUtc",

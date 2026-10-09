@@ -51,7 +51,9 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     );
     const document: Document = { package: { document: { content: [paragraph] } } };
 
-    const restored = fromProseDoc(toProseDoc(document), document);
+    const restored = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
     const restoredParagraph = restored.package.document.content.find(
       (block): block is Paragraph => block.type === "paragraph",
     );

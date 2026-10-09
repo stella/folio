@@ -83,7 +83,9 @@ describe("fixed table absolute cell preferences", () => {
             if (repeated?.kind === "table") {
               expect(repeated.columnWidths?.map((width) => width * 15)).toEqual(result.widths);
             }
-            const saved = fromProseDoc(result.pmDoc).package.document.content.at(0);
+            const saved = fromProseDoc(result.pmDoc, undefined, {
+              stylesheetSource: { type: "package" },
+            }).package.document.content.at(0);
             expect(saved?.type).toBe("table");
             if (saved?.type === "table") {
               expect(saved.columnWidths).toEqual(result.table.columnWidths);

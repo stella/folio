@@ -418,7 +418,9 @@ describe("materializeYjsDocx", () => {
     const editedState = originalState.apply(edit);
     expect(editedState.doc.child(1).child(0).child(0).attrs["rowspan"]).toBe(1);
     expect(editedState.doc.child(1).child(1).childCount).toBe(2);
-    const afterSave = fromProseDoc(editedState.doc, sourceDocument);
+    const afterSave = fromProseDoc(editedState.doc, sourceDocument, {
+      stylesheetSource: { type: "package" },
+    });
     await repackDocx(afterSave);
 
     let undoneState: EditorState | undefined;
@@ -433,7 +435,9 @@ describe("materializeYjsDocx", () => {
     const serializedUndo = decodeCollaborativeDocument(
       encodeCollaborativeDocument(undoneState.doc),
     );
-    const restored = fromProseDoc(serializedUndo, afterSave);
+    const restored = fromProseDoc(serializedUndo, afterSave, {
+      stylesheetSource: { type: "package" },
+    });
     const output = await repackDocx(restored);
     const outputXml = await (
       await JSZip.loadAsync(output)

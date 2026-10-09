@@ -129,7 +129,9 @@ describe("inline SDT raw-property round-trip", () => {
       package: { document: { content: [paragraph] } } as Document["package"],
     } as Document;
 
-    const roundTripped = fromProseDoc(toProseDoc(baseDocument), baseDocument);
+    const roundTripped = fromProseDoc(toProseDoc(baseDocument), baseDocument, {
+      stylesheetSource: { type: "package" },
+    });
     const rtParagraph = roundTripped.package.document.content.find(
       (c): c is Paragraph => c.type === "paragraph",
     );
@@ -224,7 +226,9 @@ describe("inline SDT null-default normalization", () => {
     expect(sdtNode?.attrs["checked"]).toBeNull();
 
     // The null defaults must not survive back into the typed model.
-    const roundTripped = fromProseDoc(pmDoc, baseDocument);
+    const roundTripped = fromProseDoc(pmDoc, baseDocument, {
+      stylesheetSource: { type: "package" },
+    });
     const rtParagraph = roundTripped.package.document.content.find(
       (c): c is Paragraph => c.type === "paragraph",
     );

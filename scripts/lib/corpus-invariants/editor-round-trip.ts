@@ -48,7 +48,11 @@ export const runEditorRoundTripInvariant = async ({
   }
 
   const back = await timeStage(timings, "from-prose", () =>
-    Promise.resolve(Result.try(() => fromProseDoc(proseDoc.value, parsed))),
+    Promise.resolve(
+      Result.try(() =>
+        fromProseDoc(proseDoc.value, parsed, { stylesheetSource: { type: "package" } }),
+      ),
+    ),
   );
   if (back.isErr()) {
     return {

@@ -26,7 +26,7 @@ export async function proseMirrorBench(): Promise<Bench> {
       toProseDoc(doc);
     });
     bench.add(`fromProseDoc · ${label}`, () => {
-      fromProseDoc(proseDoc, doc);
+      fromProseDoc(proseDoc, doc, { stylesheetSource: { type: "package" } });
     });
   }
 

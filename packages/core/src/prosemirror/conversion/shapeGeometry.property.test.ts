@@ -243,7 +243,8 @@ const editDrawingAttrs = (node: PMNode, overrides: Record<string, unknown>): PMN
   return node.copy(Fragment.fromArray(children));
 };
 
-const restore = (source: Document): Document => fromProseDoc(toProseDoc(source), source);
+const restore = (source: Document): Document =>
+  fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } });
 
 describe("drawing geometry survives the editor projection", () => {
   test("an untouched drawing is written back with its authored EMUs", () => {
@@ -297,7 +298,9 @@ describe("drawing geometry survives the editor projection", () => {
             width: widthPx,
             distTop: distTopPx,
           });
-          const restored = geometryOf(fromProseDoc(edited, source));
+          const restored = geometryOf(
+            fromProseDoc(edited, source, { stylesheetSource: { type: "package" } }),
+          );
 
           expect(restored.size.width).toBe(pixelsToEmu(widthPx));
           expect(restored.wrap?.distT).toBe(pixelsToEmu(distTopPx));
@@ -318,7 +321,9 @@ describe("drawing geometry survives the editor projection", () => {
         const source = documentWithDrawing(geometry);
         const attr = geometry.kind === "picture" ? "borderWidth" : "outlineWidth";
         const edited = editDrawingAttrs(toProseDoc(source), { [attr]: outlineWidthPx });
-        const restored = geometryOf(fromProseDoc(edited, source));
+        const restored = geometryOf(
+          fromProseDoc(edited, source, { stylesheetSource: { type: "package" } }),
+        );
 
         expect(restored.outlineWidth).toBe(pixelsToEmu(outlineWidthPx));
       }),

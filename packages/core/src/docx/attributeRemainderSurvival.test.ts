@@ -156,7 +156,9 @@ describe("the attribute remainder follows the record through the editor", () => 
       await fc.assert(
         fc.asyncProperty(chosenArbitrary, async (chosen) => {
           const parsed = await open(documentXml(chosen));
-          const projected = fromProseDoc(toProseDoc(parsed), parsed);
+          const projected = fromProseDoc(toProseDoc(parsed), parsed, {
+            stylesheetSource: { type: "package" },
+          });
           expectCarried(await documentPartOf(await save(projected)), chosen, EDITOR_OWNERS);
         }),
         propertyConfig({ numRuns: 25 }),
@@ -176,6 +178,7 @@ describe("the attribute remainder follows the record through the editor", () => 
     const rebuilt = fromProseDoc(
       schema.node("doc", projected.attrs, [created, ...projected.content.content]),
       parsed,
+      { stylesheetSource: { type: "package" } },
     );
     const first = rebuilt.package.document.content.at(0) as Paragraph;
     expect(first.type).toBe("paragraph");
@@ -207,7 +210,9 @@ describe("the attribute remainder follows the record through the editor", () => 
     const host = parsed.package.document.content.at(0) as Paragraph;
     expect(host.preservedAttributes).toBeDefined();
 
-    const projected = fromProseDoc(toProseDoc(parsed), parsed);
+    const projected = fromProseDoc(toProseDoc(parsed), parsed, {
+      stylesheetSource: { type: "package" },
+    });
     const rebuilt = projected.package.document.content.at(0) as Paragraph;
     expect(rebuilt.preservedAttributes).toEqual(host.preservedAttributes);
     expect(startTag(await documentPartOf(await save(projected)), "p")).toContain(
@@ -279,7 +284,11 @@ describe("the attribute remainder follows the record through the editor", () => 
       ]);
 
       const saved = await documentPartOf(
-        await save(fromProseDoc(schema.node("doc", projection.attrs, [halves]), parsed)),
+        await save(
+          fromProseDoc(schema.node("doc", projection.attrs, [halves]), parsed, {
+            stylesheetSource: { type: "package" },
+          }),
+        ),
       );
       return [...saved.matchAll(/<w:r(?:\s[^>]*)?>/gu)].map(([tag]) => tag);
     };
@@ -321,7 +330,11 @@ describe("the attribute remainder follows the record through the editor", () => 
       "</w:body></w:document>";
 
     const parsed = await open(xml);
-    const saved = await documentPartOf(await save(fromProseDoc(toProseDoc(parsed), parsed)));
+    const saved = await documentPartOf(
+      await save(
+        fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+      ),
+    );
 
     expect(saved).toContain('w:rsidR="00AAAAAA"');
     expect(saved).toContain('w:rsidR="00BBBBBB"');
@@ -482,7 +495,9 @@ describe("the attribute remainder holds in every block container", () => {
             // assert about the body and pass.
             expect(nodeTypeNames(projection)).toContain(container);
 
-            const rebuilt = fromProseDoc(projection, parsed);
+            const rebuilt = fromProseDoc(projection, parsed, {
+              stylesheetSource: { type: "package" },
+            });
             expect(remainderCensus(rebuilt.package.document.content)).toEqual(authored);
           }),
           propertyConfig({ numRuns: 10 }),

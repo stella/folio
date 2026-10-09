@@ -42,7 +42,9 @@ describe("w:cr round-trip", () => {
       },
     };
 
-    const run = firstRun(fromProseDoc(toProseDoc(source), source));
+    const run = firstRun(
+      fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+    );
     expect(run.content).toEqual([{ type: "break", sourceElement: "cr" }]);
     expect(serializeRun(run)).toContain("<w:cr/>");
     expect(serializeRun(run)).not.toContain("<w:br");

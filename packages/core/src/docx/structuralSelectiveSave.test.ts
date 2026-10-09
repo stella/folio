@@ -111,7 +111,11 @@ const saveOptions = (state: EditorState) => ({
 
 type SaveEditorOptions = { base: Document; state: EditorState; buffer: ArrayBuffer };
 const saveEditor = ({ base, state, buffer }: SaveEditorOptions) =>
-  attemptSelectiveSave(fromProseDoc(state.doc, base), buffer, saveOptions(state));
+  attemptSelectiveSave(
+    fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
+    buffer,
+    saveOptions(state),
+  );
 
 const firstBlockSize = (state: EditorState): number => {
   const first = state.doc.firstChild;
@@ -406,7 +410,7 @@ describe("structural save fallback boundaries", () => {
     const buffer = await packageBytes(documentXml());
     const { base, state } = await openEditor(buffer);
     const edited = state.apply(state.tr.split(6));
-    const model = fromProseDoc(edited.doc, base);
+    const model = fromProseDoc(edited.doc, base, { stylesheetSource: { type: "package" } });
     model.package.numbering = {
       abstractNums: [
         { abstractNumId: 0, levels: [{ ilvl: 0, start: 1, numFmt: "decimal", lvlText: "%1." }] },

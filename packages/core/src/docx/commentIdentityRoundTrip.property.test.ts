@@ -316,7 +316,9 @@ describe("a comment keeps its own identity across a round trip", () => {
         const parsed = await parseDocx(await buildDocx(forest), { preloadFonts: false });
         const before = { identities: identities(parsed), order: commentOrder(parsed) };
 
-        const edited = fromProseDoc(toProseDoc(parsed), parsed);
+        const edited = fromProseDoc(toProseDoc(parsed), parsed, {
+          stylesheetSource: { type: "package" },
+        });
         const saved = await repackDocx(edited, { updateModifiedDate: false });
         const reparsed = await parseDocx(saved, { preloadFonts: false });
 

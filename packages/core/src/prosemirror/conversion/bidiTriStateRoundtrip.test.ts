@@ -37,15 +37,29 @@ const firstParagraphBidi = (doc: Document): unknown => {
 
 describe("fromProseDoc direction → bidi (new paragraphs, no original)", () => {
   test("manual LTR becomes bidi=false (not dropped)", () => {
-    expect(firstParagraphBidi(fromProseDoc(paraNode("عربي", LTR)))).toBe(false);
+    expect(
+      firstParagraphBidi(
+        fromProseDoc(paraNode("عربي", LTR), undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    ).toBe(false);
   });
 
   test("manual RTL becomes bidi=true", () => {
-    expect(firstParagraphBidi(fromProseDoc(paraNode("عربي", RTL)))).toBe(true);
+    expect(
+      firstParagraphBidi(
+        fromProseDoc(paraNode("عربي", RTL), undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    ).toBe(true);
   });
 
   test("undecided is omitted", () => {
-    expect(firstParagraphBidi(fromProseDoc(paraNode("Agreement", null)))).toBeUndefined();
+    expect(
+      firstParagraphBidi(
+        fromProseDoc(paraNode("Agreement", null), undefined, {
+          stylesheetSource: { type: "package" },
+        }),
+      ),
+    ).toBeUndefined();
   });
 });
 
@@ -73,7 +87,11 @@ describe("fromProseDoc direction → bidi (changed vs original)", () => {
       direction: LTR,
     }).doc;
 
-    expect(firstParagraphBidi(fromProseDoc(forcedLtr, original))).toBe(false);
+    expect(
+      firstParagraphBidi(
+        fromProseDoc(forcedLtr, original, { stylesheetSource: { type: "package" } }),
+      ),
+    ).toBe(false);
   });
 });
 
@@ -82,7 +100,9 @@ describe("pageBreakBefore tri-state (same class, fallback path)", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { pageBreakBefore: false }, [schema.text("Body")]),
     ]);
-    const block = fromProseDoc(doc).package.document.content.at(0);
+    const block = fromProseDoc(doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (block?.type !== "paragraph") {
       throw new Error("expected a paragraph");
     }
@@ -92,7 +112,9 @@ describe("pageBreakBefore tri-state (same class, fallback path)", () => {
 
 describe("manual LTR survives serialization (save invariant)", () => {
   test('direction=manual ltr serializes as <w:bidi w:val="0"/>', () => {
-    const block = fromProseDoc(paraNode("عربي", LTR)).package.document.content.at(0);
+    const block = fromProseDoc(paraNode("عربي", LTR), undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (block?.type !== "paragraph") {
       throw new Error("expected a paragraph");
     }
@@ -110,7 +132,11 @@ describe("manual LTR survives serialization (save invariant)", () => {
  */
 describe("auto-detected direction is view-only and never self-serializes", () => {
   test("auto direction on a new paragraph (no original) omits bidi", () => {
-    expect(firstParagraphBidi(fromProseDoc(paraNode("عربي", AUTO)))).toBeUndefined();
+    expect(
+      firstParagraphBidi(
+        fromProseDoc(paraNode("عربي", AUTO), undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    ).toBeUndefined();
   });
 
   test("no-edit save: a paragraph seeded auto from an original with no w:bidi stays free of w:bidi", () => {
@@ -137,8 +163,12 @@ describe("auto-detected direction is view-only and never self-serializes", () =>
       direction: AUTO,
     }).doc;
 
-    expect(firstParagraphBidi(fromProseDoc(seeded, original))).toBeUndefined();
-    const block = fromProseDoc(seeded, original).package.document.content.at(0);
+    expect(
+      firstParagraphBidi(fromProseDoc(seeded, original, { stylesheetSource: { type: "package" } })),
+    ).toBeUndefined();
+    const block = fromProseDoc(seeded, original, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (block?.type !== "paragraph") {
       throw new Error("expected a paragraph");
     }
@@ -152,7 +182,7 @@ describe("auto-detected direction is view-only and never self-serializes", () =>
       schema.node("paragraph", { direction: RTL }, [schema.text("عربي بعلامة")]),
       schema.node("paragraph", { direction: LTR }, [schema.text("عربي بالإكراه")]),
     ]);
-    const result = fromProseDoc(doc);
+    const result = fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } });
     const bidiOf = (index: number): unknown => {
       const block = result.package.document.content.at(index);
       if (block?.type !== "paragraph") {
@@ -170,6 +200,10 @@ describe("auto-detected direction is view-only and never self-serializes", () =>
     // The user invokes the direction toggle (ParagraphExtension's `setRtl`),
     // which always produces a `manual` decision — this is what actually makes
     // the paragraph's direction authored content.
-    expect(firstParagraphBidi(fromProseDoc(paraNode("عربي", RTL)))).toBe(true);
+    expect(
+      firstParagraphBidi(
+        fromProseDoc(paraNode("عربي", RTL), undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    ).toBe(true);
   });
 });

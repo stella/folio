@@ -35,7 +35,7 @@ describe("pPrMark — toProseDoc / fromProseDoc round-trip", () => {
       info: { id: 1, author: "Alice", date: "2026-05-01T10:00:00Z" },
     });
 
-    const rebuilt = fromProseDoc(pmDoc, doc);
+    const rebuilt = fromProseDoc(pmDoc, doc, { stylesheetSource: { type: "package" } });
     const para = rebuilt.package.document.content.at(0);
     expect(para?.type).toBe("paragraph");
     if (para?.type !== "paragraph") {
@@ -54,7 +54,7 @@ describe("pPrMark — toProseDoc / fromProseDoc round-trip", () => {
     });
 
     const pmDoc = toProseDoc(doc);
-    const rebuilt = fromProseDoc(pmDoc, doc);
+    const rebuilt = fromProseDoc(pmDoc, doc, { stylesheetSource: { type: "package" } });
     const para = rebuilt.package.document.content.at(0);
     expect(para?.type).toBe("paragraph");
     if (para?.type !== "paragraph") {
@@ -81,7 +81,7 @@ describe("pPrMark — toProseDoc / fromProseDoc round-trip", () => {
     };
 
     const pmDoc = toProseDoc(doc);
-    const rebuilt = fromProseDoc(pmDoc, doc);
+    const rebuilt = fromProseDoc(pmDoc, doc, { stylesheetSource: { type: "package" } });
     const para = rebuilt.package.document.content.at(0);
     expect(para?.type).toBe("paragraph");
     if (para?.type !== "paragraph") {

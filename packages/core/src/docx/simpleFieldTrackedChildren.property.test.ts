@@ -188,13 +188,17 @@ test(
           const initial = toProseDoc(source);
           expect(childRevisions(initial)).toHaveLength(1);
           // Initials are UI/model metadata, excluded from schema-strict CT_TrackChange XML.
-          expect(childRevisions(toProseDoc(fromProseDoc(initial, source)))).toEqual(
-            childRevisions(initial),
-          );
+          expect(
+            childRevisions(
+              toProseDoc(fromProseDoc(initial, source, { stylesheetSource: { type: "package" } })),
+            ),
+          ).toEqual(childRevisions(initial));
           const serializedRevisions = childRevisions(initial);
           for (const revisionAttrs of serializedRevisions) revisionAttrs.initials = undefined;
           const live = EditorState.create({ doc: initial });
-          const serializedSource = fromProseDoc(initial, source);
+          const serializedSource = fromProseDoc(initial, source, {
+            stylesheetSource: { type: "package" },
+          });
           if (fieldCapture === "fldData" && outer !== "none") expectFieldDataHome(serializedSource);
           const saved = await createDocx(serializedSource);
           const reopenedSource = await parseDocx(saved, { preloadFonts: false });
@@ -217,7 +221,9 @@ test(
               const resolved = resolveAllChangesInHeadlessState(state, mode);
               expect(resolved.doc.textContent).toBe(expected);
               const reopenedResolved = await parseDocx(
-                await createDocx(fromProseDoc(resolved.doc, baseline)),
+                await createDocx(
+                  fromProseDoc(resolved.doc, baseline, { stylesheetSource: { type: "package" } }),
+                ),
                 { preloadFonts: false },
               );
               expect(
@@ -246,7 +252,11 @@ test(
                 );
                 expect(individuallyResolved.doc.eq(before)).toBe(false);
                 const intermediate = await parseDocx(
-                  await createDocx(fromProseDoc(individuallyResolved.doc, baseline)),
+                  await createDocx(
+                    fromProseDoc(individuallyResolved.doc, baseline, {
+                      stylesheetSource: { type: "package" },
+                    }),
+                  ),
                   { preloadFonts: false },
                 );
                 expect(toProseDoc(intermediate)).toBeDefined();
@@ -254,7 +264,9 @@ test(
               expect(individuallyResolved.doc.textContent).toBe(expected);
             }
           }
-          const savedAgain = await createDocx(fromProseDoc(reopened.doc, reopenedSource));
+          const savedAgain = await createDocx(
+            fromProseDoc(reopened.doc, reopenedSource, { stylesheetSource: { type: "package" } }),
+          );
           expect(
             childRevisions(toProseDoc(await parseDocx(savedAgain, { preloadFonts: false }))),
           ).toEqual(serializedRevisions);
@@ -291,11 +303,15 @@ for (const type of ["insertion", "deletion"] as const) {
         ],
       },
     ];
-    const projected = fromProseDoc(toProseDoc(source), source);
+    const projected = fromProseDoc(toProseDoc(source), source, {
+      stylesheetSource: { type: "package" },
+    });
     expectFieldDataHome(projected);
     const reopened = await parseDocx(await createDocx(projected), { preloadFonts: false });
     expectFieldDataHome(reopened);
-    const projectedAgain = fromProseDoc(toProseDoc(reopened), reopened);
+    const projectedAgain = fromProseDoc(toProseDoc(reopened), reopened, {
+      stylesheetSource: { type: "package" },
+    });
     expectFieldDataHome(projectedAgain);
     expectFieldDataHome(await parseDocx(await createDocx(projectedAgain), { preloadFonts: false }));
   });
@@ -374,10 +390,15 @@ test(
             );
             for (const reviewed of [resolved, individual]) {
               for (const document of [
-                fromProseDoc(reviewed.doc, source),
-                await parseDocx(await createDocx(fromProseDoc(reviewed.doc, source)), {
-                  preloadFonts: false,
-                }),
+                fromProseDoc(reviewed.doc, source, { stylesheetSource: { type: "package" } }),
+                await parseDocx(
+                  await createDocx(
+                    fromProseDoc(reviewed.doc, source, { stylesheetSource: { type: "package" } }),
+                  ),
+                  {
+                    preloadFonts: false,
+                  },
+                ),
               ]) {
                 const paragraph = document.package.document.content.at(0);
                 if (paragraph?.type !== "paragraph")

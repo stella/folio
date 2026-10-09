@@ -24,7 +24,7 @@ describe("real DOCX fixture ProseMirror boundary", () => {
       expect(validation.issues).toEqual([]);
       expect(validation.valid).toBe(true);
 
-      const roundtripped = fromProseDoc(pmDoc, document);
+      const roundtripped = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
       expect(roundtripped.package.document.content.length).toBeGreaterThan(0);
     });
   }

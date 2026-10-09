@@ -117,7 +117,8 @@ const paragraphContentOf = (document: Document): ParagraphContent[] => {
   return block.content;
 };
 
-const roundTrip = (source: Document): Document => fromProseDoc(toProseDoc(source), source);
+const roundTrip = (source: Document): Document =>
+  fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } });
 
 const containerNames = Object.keys(CONTAINERS) as ContainerName[];
 const rangeKinds = Object.keys(EMPTY_RANGES) as RangeKind[];

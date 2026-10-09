@@ -46,7 +46,9 @@ const documentXmlOf = async (saved: ArrayBuffer): Promise<string> =>
 const savedAndProjected = async (body: string): Promise<{ saved: string; projected: string }> => {
   const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
   const saved = await documentXmlOf(await repackDocx(parsed, { updateModifiedDate: false }));
-  const roundTripped = fromProseDoc(toProseDoc(parsed), parsed);
+  const roundTripped = fromProseDoc(toProseDoc(parsed), parsed, {
+    stylesheetSource: { type: "package" },
+  });
   const projected = await documentXmlOf(
     await repackDocx(roundTripped, { updateModifiedDate: false }),
   );
@@ -62,7 +64,10 @@ describe("a resultless FORMCHECKBOX keeps no result on save", () => {
   ])("$name field data and display survive both save paths", async ({ checked, glyph }) => {
     const body = `<w:p><w:r><w:fldChar w:fldCharType="begin"><w:ffData><w:name w:val="Choice"/><w:helpText w:type="text" w:val="Select one"/><w:checkBox><w:default w:val="0"/><w:checked w:val="${checked}"/></w:checkBox></w:ffData></w:fldChar></w:r><w:r><w:instrText xml:space="preserve"> FORMCHECKBOX </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
     const original = await parseDocx(await buildDocx(body), { preloadFonts: false });
-    const documents = [original, fromProseDoc(toProseDoc(original), original)];
+    const documents = [
+      original,
+      fromProseDoc(toProseDoc(original), original, { stylesheetSource: { type: "package" } }),
+    ];
     for (const document of documents) {
       const saved = await repackDocx(document, { updateModifiedDate: false });
       const xml = await documentXmlOf(saved);

@@ -123,7 +123,10 @@ const packageDefects = async (buffer: ArrayBuffer): Promise<PartDefects> => {
 };
 
 const roundTrip = async (original: Document): Promise<ArrayBuffer> =>
-  repackDocx(fromProseDoc(toProseDoc(original), original), { updateModifiedDate: false });
+  repackDocx(
+    fromProseDoc(toProseDoc(original), original, { stylesheetSource: { type: "package" } }),
+    { updateModifiedDate: false },
+  );
 
 describe("saved package namespace declarations", () => {
   test.each(FIXTURES.map((file) => [path.basename(file), file] as const))(

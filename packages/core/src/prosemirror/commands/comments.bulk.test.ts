@@ -157,7 +157,10 @@ describe("generic bulk acceptance with suggestions", () => {
     ).toBe(false);
     expect(dispatched).toBe(false);
     expect(state.doc.toJSON()).toEqual(doc.toJSON());
-    const serialized = JSON.stringify(fromProseDoc(state.doc).package.document.content);
+    const serialized = JSON.stringify(
+      fromProseDoc(state.doc, undefined, { stylesheetSource: { type: "package" } }).package.document
+        .content,
+    );
     expect(serialized).toContain("ordinary");
     expect(serialized).not.toContain("proposed");
   });
@@ -548,7 +551,11 @@ describe("headless bulk revision resolution equivalence", () => {
             expect(legacyField?.type.name).toBe("field");
             expect(legacyField?.childCount).toBe(0);
             expect(legacyField?.attrs["displayText"]).toBe("");
-            expect(() => fromProseDoc(bulk.doc, createEmptyDocument())).not.toThrow();
+            expect(() =>
+              fromProseDoc(bulk.doc, createEmptyDocument(), {
+                stylesheetSource: { type: "package" },
+              }),
+            ).not.toThrow();
             expect(bulk.doc.toJSON()).toEqual(legacy.doc.toJSON());
             expect(stepCountKey.getState(bulk)).toBe(1);
             expect({ anchor: bulk.selection.anchor, head: bulk.selection.head }).toEqual({
@@ -630,8 +637,12 @@ describe("headless bulk revision resolution equivalence", () => {
           expect(pmRunPropertyChangeCount(bulk.doc)).toBe(0);
           expect(stepCountKey.getState(bulk)).toBe(1);
 
-          const bulkModel = fromProseDoc(bulk.doc, fixture.document);
-          const legacyModel = fromProseDoc(legacy.doc, fixture.document);
+          const bulkModel = fromProseDoc(bulk.doc, fixture.document, {
+            stylesheetSource: { type: "package" },
+          });
+          const legacyModel = fromProseDoc(legacy.doc, fixture.document, {
+            stylesheetSource: { type: "package" },
+          });
           expect(bulkModel.package.document.content).toEqual(legacyModel.package.document.content);
           expect(modelRunPropertyChangeCount(bulkModel)).toBe(0);
           expect(modelRunFormatting(bulkModel)).toEqual(
@@ -847,7 +858,9 @@ describe("bulk revision lifecycle", () => {
     "%s survives save and reopen with no unresolved revision carriers",
     async (mode) => {
       const doc = generatedDocument(mode === "accept" ? 71 : 72, 8, "omit");
-      const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(fromProseDoc(doc)));
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } })),
+      );
       const before = reviewer.readReviewedStory({ view: "current-markup" });
       expect(before?.changes.length).toBeGreaterThan(0);
 
@@ -879,7 +892,11 @@ describe("bulk revision lifecycle", () => {
     async (mode) => {
       const seed = mode === "accept" ? 71 : 72;
       const reviewer = await FolioDocxReviewer.fromBuffer(
-        await createDocx(fromProseDoc(generatedDocument(seed))),
+        await createDocx(
+          fromProseDoc(generatedDocument(seed), undefined, {
+            stylesheetSource: { type: "package" },
+          }),
+        ),
       );
       if (mode === "accept") {
         reviewer.acceptAll();
@@ -933,7 +950,9 @@ describe("bulk revision lifecycle", () => {
         ]),
         schema.node("paragraph", { paraId: "00000092" }, schema.text("stable")),
       ]);
-      const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(fromProseDoc(doc)));
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } })),
+      );
 
       if (mode === "accept") {
         reviewer.acceptAll();

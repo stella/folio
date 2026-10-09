@@ -177,7 +177,10 @@ describe("block-level custom XML", () => {
         table("Table clause."),
     );
     const parsed = await parseDocx(await makeDocx(body), { preloadFonts: false });
-    for (const document of [parsed, fromProseDoc(toProseDoc(parsed), parsed)]) {
+    for (const document of [
+      parsed,
+      fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+    ]) {
       const saved = await repackDocx(document, { updateModifiedDate: false });
       const xml = await documentXml(saved);
       expect(xml.match(/<w:customXml\b/gu)).toHaveLength(2);

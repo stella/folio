@@ -128,7 +128,7 @@ const exercise = async ({
     expect(attrs.numPr).toEqual({ kind: "reference", numId, ilvl: level });
     expect(attrs.listNumFmt).toBe("decimal");
   }
-  const saved = fromProseDoc(state.doc, document);
+  const saved = fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } });
   const bytes = await repackDocx(saved);
   const reopened = await parseDocx(bytes);
   const paragraph = reopened.package.document.content.at(1);

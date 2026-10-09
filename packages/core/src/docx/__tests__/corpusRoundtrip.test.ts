@@ -46,7 +46,7 @@ const readFixture = (filename: string): ArrayBuffer => {
  */
 async function fullRoundTrip(original: Document): Promise<Document> {
   const pmDoc = toProseDoc(original);
-  const back = fromProseDoc(pmDoc, original);
+  const back = fromProseDoc(pmDoc, original, { stylesheetSource: { type: "package" } });
   const repacked = await repackDocx(back, { updateModifiedDate: false });
   return await parseDocx(repacked);
 }
@@ -61,7 +61,7 @@ async function fullRoundTripWithXml(
   original: Document,
 ): Promise<{ document: Document; documentXml: string }> {
   const pmDoc = toProseDoc(original);
-  const back = fromProseDoc(pmDoc, original);
+  const back = fromProseDoc(pmDoc, original, { stylesheetSource: { type: "package" } });
   const repacked = await repackDocx(back, { updateModifiedDate: false });
   const zip = await JSZip.loadAsync(repacked);
   const docFile = zip.file("word/document.xml");

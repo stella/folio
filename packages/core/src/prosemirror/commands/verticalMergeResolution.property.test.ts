@@ -186,13 +186,15 @@ const exercise = async (options: CaseOptions) => {
     if (path === "targeted") targeted = state.doc;
     else expect(state.doc.toJSON()).toEqual(targeted?.toJSON());
     state.doc.check();
-    const saved = fromProseDoc(state.doc, document);
+    const saved = fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } });
     // The reader's visible cells include stored continuation payload content.
     expect(shape(toProseDoc(saved))).toEqual(expected);
     const reopened = await parseDocx(await createDocx(saved));
     expect(shape(toProseDoc(reopened))).toEqual(expected);
     const reopenedAgain = await parseDocx(
-      await repackDocx(fromProseDoc(toProseDoc(reopened), reopened)),
+      await repackDocx(
+        fromProseDoc(toProseDoc(reopened), reopened, { stylesheetSource: { type: "package" } }),
+      ),
     );
     expect(shape(toProseDoc(reopenedAgain))).toEqual(expected);
   }

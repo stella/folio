@@ -1037,7 +1037,11 @@ const observe = (
   authority: HarnessAuthority = "prosemirror",
 ): Observation => ({
   summary: summarizeState(state),
-  markdown: modelMarkdown(authority === "canonical" ? base : fromProseDoc(state.doc, base)),
+  markdown: modelMarkdown(
+    authority === "canonical"
+      ? base
+      : fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
+  ),
 });
 
 const saveRunState = (state: EditorState, base: Document, authority: HarnessAuthority) => {

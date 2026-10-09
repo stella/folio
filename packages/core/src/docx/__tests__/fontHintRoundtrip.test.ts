@@ -67,7 +67,9 @@ describe("run font hint round-trip", () => {
       },
     };
 
-    const roundtripped = fromProseDoc(toProseDoc(document), document);
+    const roundtripped = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
     const paragraph = roundtripped.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type !== "paragraph") {

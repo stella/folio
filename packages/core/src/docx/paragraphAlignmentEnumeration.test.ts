@@ -98,7 +98,11 @@ describe("ST_Jc", () => {
 
   test.each(PARAGRAPH_ALIGNMENT_VALUES)("%s survives the editor projection", (alignment) => {
     const original = documentWithAlignment(alignment);
-    expect(firstParagraphAlignment(fromProseDoc(toProseDoc(original), original))).toBe(alignment);
+    expect(
+      firstParagraphAlignment(
+        fromProseDoc(toProseDoc(original), original, { stylesheetSource: { type: "package" } }),
+      ),
+    ).toBe(alignment);
   });
 
   // `start` is not `left`: a reader that aliased the two would pass every

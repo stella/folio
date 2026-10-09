@@ -38,7 +38,9 @@ const documentWith = (paragraph: Paragraph) => ({
 
 const throughEditor = (paragraph: Paragraph): Paragraph => {
   const source = documentWith(paragraph);
-  const saved = fromProseDoc(toProseDoc(source), source).package.document.content.at(0);
+  const saved = fromProseDoc(toProseDoc(source), source, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (saved?.type !== "paragraph") {
     throw new Error("The editor round trip lost its paragraph");
   }
@@ -173,7 +175,9 @@ const resolvedXml = (
   };
   const command = mode === "accept" ? acceptAIEditRevision : rejectAIEditRevision;
   expect(command(revisionId)(view.state, view.dispatch)).toBe(true);
-  const saved = fromProseDoc(view.state.doc, source).package.document.content.at(0);
+  const saved = fromProseDoc(view.state.doc, source, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (saved?.type !== "paragraph") {
     throw new Error("Resolving a nested revision lost its paragraph");
   }

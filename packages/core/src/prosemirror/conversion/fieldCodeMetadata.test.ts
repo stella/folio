@@ -88,7 +88,9 @@ describe("complex field code metadata", () => {
   });
 
   test("preserves all authored code runs inside a table cell", () => {
-    const result = fromProseDoc(toProseDoc(documentWithField()));
+    const result = fromProseDoc(toProseDoc(documentWithField()), undefined, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(findComplexField(result).fieldCode).toEqual(fieldCode);
   });
@@ -118,7 +120,9 @@ describe("complex field code metadata", () => {
     );
 
     const parsed = DOMParser.fromSchema(schema).parse(host);
-    const paragraph = fromProseDoc(parsed).package.document.content.at(0);
+    const paragraph = fromProseDoc(parsed, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (paragraph?.type !== "paragraph") throw new Error("Expected parsed paragraph");
     const restored = paragraph.content.at(0);
     if (restored?.type !== "complexField") throw new Error("Expected parsed complex field");
@@ -149,7 +153,9 @@ describe("complex field code metadata", () => {
       fieldPosition + fieldNode.nodeSize,
       new Slice(Fragment.from(editedField), 0, 0),
     );
-    const editedModel = fromProseDoc(editedDoc);
+    const editedModel = fromProseDoc(editedDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(findComplexField(editedModel).instruction).toBe(" REF other \\h");
     expect(findComplexField(editedModel).fieldCode).toEqual([]);

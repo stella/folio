@@ -48,7 +48,10 @@ const CASES: readonly Case[] = [
 const saveLikeEditors = async (before: EditorState, after: EditorState, base: Document) => {
   const follower = createNoteReferenceFollower();
   follower.noteBase(before.doc);
-  const written = follower.reconcile(fromProseDoc(after.doc, base), after.doc);
+  const written = follower.reconcile(
+    fromProseDoc(after.doc, base, { stylesheetSource: { type: "package" } }),
+    after.doc,
+  );
   return saveHarnessState(after, withoutUnreferencedNotes(written));
 };
 

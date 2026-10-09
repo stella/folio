@@ -46,7 +46,9 @@ const wrapParagraph = (paragraph: Paragraph): Document => ({
 
 const throughTheEditor = (paragraph: Paragraph): Paragraph => {
   const source = wrapParagraph(paragraph);
-  const block = fromProseDoc(toProseDoc(source), source).package.document.content.at(0);
+  const block = fromProseDoc(toProseDoc(source), source, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (block?.type !== "paragraph") {
     throw new Error("The round trip lost its paragraph");
   }

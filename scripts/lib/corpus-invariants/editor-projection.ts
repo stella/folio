@@ -42,7 +42,8 @@ const DIFFERENCE_PREFIX = "editor projection changed";
 export const projectedWithoutReuse = (
   pmDoc: ReturnType<typeof toProseDoc>,
   baseDocument: Document,
-): Document => fromProseDoc(pmDoc, baseDocument, { reuse: "none" });
+): Document =>
+  fromProseDoc(pmDoc, baseDocument, { reuse: "none", stylesheetSource: { type: "package" } });
 
 export const runEditorProjectionInvariant = async ({
   parsed,

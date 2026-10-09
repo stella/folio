@@ -296,7 +296,9 @@ const anchorAttributeXml = (authored: ReadonlySet<AuthoredAnchorName>): string =
 const savedAfterEdit = async (body: string, viaEditor: boolean): Promise<string> => {
   const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
   // The editor's own leg, which is the path every edited document takes.
-  const projected = viaEditor ? fromProseDoc(toProseDoc(parsed), parsed) : parsed;
+  const projected = viaEditor
+    ? fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } })
+    : parsed;
   resizePictures(projected);
   const saved = await repackDocx(projected, { updateModifiedDate: false });
   return (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";

@@ -78,7 +78,11 @@ const byText = (doc: PMNode, text: string): PMNode => {
 };
 
 const savedFormatting = (doc: PMNode, text: string): Paragraph["formatting"] => {
-  const saved = fromProseDoc(doc, { package: { document: { content: [] } } });
+  const saved = fromProseDoc(
+    doc,
+    { package: { document: { content: [] } } },
+    { stylesheetSource: { type: "supplied", styles: STYLES } },
+  );
   const block = saved.package.document.content.find(
     (candidate): candidate is Paragraph =>
       candidate.type === "paragraph" &&
@@ -252,7 +256,7 @@ test(
           const joined = state.apply(state.tr.delete(boundary - 1, boundary + 1 + cut));
           expect(joined.doc.childCount).toBe(1);
           expect(joined.doc.textContent).toBe("Before" + "After!".slice(cut));
-          const saved = fromProseDoc(joined.doc, model);
+          const saved = fromProseDoc(joined.doc, model, { stylesheetSource: { type: "package" } });
           const reopened = toProseDoc(saved);
           expect(reopened.textContent).toBe(joined.doc.textContent);
           const tail = joined.doc.firstChild!.lastChild!;

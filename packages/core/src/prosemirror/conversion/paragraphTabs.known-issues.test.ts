@@ -47,7 +47,9 @@ for (const [name, factory] of Object.entries(commands)) {
       );
       const current = expectParagraphAttrs(state.doc.child(0)).tabs ?? undefined;
       assert.notDeepEqual(current, original.package.document.content[0].formatting.tabs);
-      const saved = fromProseDoc(state.doc, original).package.document.content.at(0);
+      const saved = fromProseDoc(state.doc, original, {
+        stylesheetSource: { type: "package" },
+      }).package.document.content.at(0);
       assert.ok(saved?.type === "paragraph");
       assert.deepEqual(
         saved.formatting?.tabs,

@@ -8,7 +8,7 @@ import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { getTrackedChangesFromDoc } from "../../ai-edits/read";
 import { createDocx } from "../../docx/rezip";
 import { revisedFinalParagraphMarks } from "../../compare/verification";
-import type { Document } from "../../types/document";
+import type { Document, StyleDefinitions } from "../../types/document";
 import { expectParagraphAttrs } from "../attrs";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
@@ -44,6 +44,9 @@ const EMPTY_CARRIER_FORMATTING = {
   numPr: { kind: "reference", numId: 1, ilvl: 1 },
   alignment: "both",
 } as const;
+const SYNTHETIC_STYLES = {
+  styles: [{ styleId: "Heading2", type: "paragraph" }],
+} satisfies StyleDefinitions;
 
 const sourceDocuments = new WeakMap<PMNode, Document>();
 
@@ -224,8 +227,15 @@ const paragraphsInChangedContainer = (
   return Array.from({ length: cell.childCount }, (_, index) => cell.child(index));
 };
 
-const documentModel = (state: EditorState): Document =>
-  fromProseDoc(state.doc, sourceDocuments.get(state.doc));
+const documentModel = (state: EditorState): Document => {
+  const sourceDocument = sourceDocuments.get(state.doc);
+  return fromProseDoc(state.doc, sourceDocument, {
+    stylesheetSource:
+      sourceDocument === undefined
+        ? { type: "supplied", styles: SYNTHETIC_STYLES }
+        : { type: "package" },
+  });
+};
 
 const documentBuffer = async (state: EditorState): Promise<Uint8Array> =>
   await createDocx(documentModel(state));

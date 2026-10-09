@@ -877,8 +877,11 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       if (!canonical && isCanonicalSession()) return;
       const updated =
         canonical ??
-        // canonical-gap: pm-save-projection
-        noteFollower.reconcile(fromProseDoc(view.state.doc, base), view.state.doc);
+        noteFollower.reconcile(
+          // canonical-gap: pm-save-projection
+          fromProseDoc(view.state.doc, base, { stylesheetSource: { type: "package" } }),
+          view.state.doc,
+        );
       docModel.value = updated;
       syncSecondaryStoryEditors();
       onChange?.(cloneForHost(updated));
@@ -1340,8 +1343,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // read from the same snapshot. A later `view.state` read could pick up an
     // edit that landed mid-save and diff against the wrong baseline.
     const state = view.state;
-    // canonical-gap: pm-save-projection
-    const updatedDoc = withoutUnreferencedNotes(fromProseDoc(state.doc, base));
+    const updatedDoc = withoutUnreferencedNotes(
+      // canonical-gap: pm-save-projection
+      fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
+    );
 
     const { resolveSelectiveSaveFlags } = await import("@stll/folio-core/docx/selectiveSaveFlags");
     const flags = resolveSelectiveSaveFlags(toValue(featureFlags));

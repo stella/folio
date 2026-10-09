@@ -101,9 +101,12 @@ describe("inline content-control text boxes", () => {
       { sdtType: "richText", alias: "Inner", tag: "inner" },
     ]);
 
-    const saved = await repackDocx(fromProseDoc(pmDocument, parsed), {
-      updateModifiedDate: false,
-    });
+    const saved = await repackDocx(
+      fromProseDoc(pmDocument, parsed, { stylesheetSource: { type: "package" } }),
+      {
+        updateModifiedDate: false,
+      },
+    );
     const savedZip = await JSZip.loadAsync(saved);
     const savedXml = await savedZip.file("word/document.xml")?.async("text");
     expect(savedXml?.match(/<w:sdt>/gu)).toHaveLength(2);

@@ -176,7 +176,12 @@ describe("a container's verbatim sink survives the editor projection", () => {
           // The save leg is the premise: a sink the parser never filled would
           // make the editor assertion below vacuous.
           expectSinksIntact(parsed, placement);
-          expectSinksIntact(await reopen(fromProseDoc(toProseDoc(parsed), parsed)), placement);
+          expectSinksIntact(
+            await reopen(
+              fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+            ),
+            placement,
+          );
         }),
         propertyConfig({ numRuns: 20 }),
       );
@@ -200,7 +205,10 @@ describe("a container's verbatim sink survives the editor projection", () => {
             created,
           ]);
 
-          expectSinksIntact(await reopen(fromProseDoc(edited, parsed)), placement);
+          expectSinksIntact(
+            await reopen(fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } })),
+            placement,
+          );
         }),
         propertyConfig({ numRuns: 20 }),
       );

@@ -116,7 +116,9 @@ const documentXmlOf = async (saved: ArrayBuffer): Promise<string> =>
 const savedAndProjected = async (body: string): Promise<{ saved: string; projected: string }> => {
   const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
   const saved = await documentXmlOf(await repackDocx(parsed, { updateModifiedDate: false }));
-  const roundTripped = fromProseDoc(toProseDoc(parsed), parsed);
+  const roundTripped = fromProseDoc(toProseDoc(parsed), parsed, {
+    stylesheetSource: { type: "package" },
+  });
   const projected = await documentXmlOf(
     await repackDocx(roundTripped, { updateModifiedDate: false }),
   );

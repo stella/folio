@@ -127,7 +127,9 @@ describe("a vertical merge keeps its origin", () => {
     );
     expect(readColumn(opened)).toEqual(["restart"]);
 
-    const edited = fromProseDoc(toProseDoc(opened), opened);
+    const edited = fromProseDoc(toProseDoc(opened), opened, {
+      stylesheetSource: { type: "package" },
+    });
     expect(readColumn(await parse(await save(edited)))).toEqual(["restart"]);
   });
 
@@ -144,7 +146,9 @@ describe("a vertical merge keeps its origin", () => {
 
           expect(readColumn(await parse(await save(opened)))).toEqual(expected);
 
-          const edited = fromProseDoc(toProseDoc(opened), opened);
+          const edited = fromProseDoc(toProseDoc(opened), opened, {
+            stylesheetSource: { type: "package" },
+          });
           expect(readColumn(await parse(await save(edited)))).toEqual(expected);
         }),
         propertyConfig({ numRuns: 60 }),

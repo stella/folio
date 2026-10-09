@@ -15,7 +15,14 @@ on:
       - "scripts/build-docx-kernel-wasm.ts"
       - "scripts/lib/rust-wasm-artifact.ts"
       - ".github/workflows/canonical-wasm.yml"
+      - "scripts/projection-footprint.ts"
   workflow_dispatch:
+    inputs:
+      footprint_base:
+        description: "Base commit for optional projection footprint attribution"
+        type: string
+        required: false
+        default: ""
 
 concurrency:
   group: projection-artifacts-${{ github.ref }}
@@ -25,11 +32,81 @@ permissions:
   contents: read
 
 jobs:
+  footprint:
+    name: Projection footprint attribution
+    needs: canonical-wasm
+    if: always() && (needs.canonical-wasm.outputs.budget_exceeded == 'true' || (github.event_name == 'workflow_dispatch' && inputs.footprint_base != ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install pinned projection toolchain
+        run: |
+          rustup show active-toolchain
+          rustup target add wasm32-unknown-unknown
+          mapfile -t versions < <(cargo metadata --locked --format-version 1 --features wasm | jq -r '[.packages[] | select(.name == "wasm-bindgen") | .version] | unique | .[]')
+          if (( ${#versions[@]} != 1 )); then
+            echo "expected exactly one wasm-bindgen version" >&2
+            exit 1
+          fi
+          cargo install wasm-bindgen-cli --version "${versions[0]}" --locked
+
+      - name: Compare named base and head projections
+        env:
+          BASE_SHA: ${{ inputs.footprint_base || github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "footprint base must be a full commit SHA" >&2
+            exit 1
+          fi
+          git worktree add --detach "$RUNNER_TEMP/footprint-base" "$BASE_SHA"
+          binding_version() {
+            mapfile -t versions < <(cargo metadata --manifest-path "$1" --locked --format-version 1 --features wasm | jq -r '[.packages[] | select(.name == "wasm-bindgen") | .version] | unique | .[]')
+            if (( ${#versions[@]} != 1 )); then
+              echo "expected exactly one wasm-bindgen version per revision" >&2
+              exit 1
+            fi
+            echo "${versions[0]}"
+          }
+          head_version="$(binding_version Cargo.toml)"
+          base_version="$(binding_version "$RUNNER_TEMP/footprint-base/Cargo.toml")"
+          if [[ "$head_version" != "$base_version" ]]; then
+            echo "footprint attribution requires matching wasm-bindgen versions (head: $head_version, base: $base_version)" >&2
+            exit 1
+          fi
+          cargo rustc --locked --release --target wasm32-unknown-unknown --features wasm -p stella-docx-kernel -- -C strip=none
+          wasm-bindgen target/wasm32-unknown-unknown/release/stella_docx_kernel.wasm --target web --remove-producers-section --out-dir "$RUNNER_TEMP/footprint-head" --out-name projection
+          cargo rustc --manifest-path "$RUNNER_TEMP/footprint-base/Cargo.toml" --locked --release --target wasm32-unknown-unknown --features wasm -p stella-docx-kernel -- -C strip=none
+          wasm-bindgen "$RUNNER_TEMP/footprint-base/target/wasm32-unknown-unknown/release/stella_docx_kernel.wasm" --target web --remove-producers-section --out-dir "$RUNNER_TEMP/footprint-base-output" --out-name projection
+          bun scripts/projection-footprint.ts "$RUNNER_TEMP/footprint-base-output/projection_bg.wasm" "$RUNNER_TEMP/footprint-head/projection_bg.wasm" "$RUNNER_TEMP/projection-footprint.json"
+
+      - name: Upload diagnostic attribution
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: projection-footprint-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/projection-footprint.json
+          retention-days: 7
+          if-no-files-found: error
+
   canonical-wasm:
     name: Canonical projection artifact
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      budget_exceeded: ${{ steps.generate.outputs.budget_exceeded }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -53,7 +130,23 @@ jobs:
           cargo install wasm-bindgen-cli --version "${versions[0]}" --locked
 
       - name: Generate canonical projection artifact
-        run: bun --filter '@stll/docx-core' wasm:generate
+        id: generate
+        run: |
+          set +e
+          bun --filter '@stll/docx-core' wasm:generate 2>&1 | tee "$RUNNER_TEMP/canonical-projection-build.log"
+          generation_status=${PIPESTATUS[0]}
+          set -e
+          if (( generation_status != 0 )); then
+            while IFS= read -r line; do
+              case "$line" in
+                *"Panic: DOCX kernel WebAssembly is "*|*"Panic: DOCX kernel Brotli size is "*)
+                  echo "budget_exceeded=true" >> "$GITHUB_OUTPUT"
+                  break
+                  ;;
+              esac
+            done < "$RUNNER_TEMP/canonical-projection-build.log"
+          fi
+          exit "$generation_status"
 
       - name: Upload canonical projection artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

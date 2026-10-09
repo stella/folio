@@ -181,7 +181,9 @@ const applyState = (document: Document, state: ModelState): Document => {
       poisonPreviewFingerprints(document.package);
       return document;
     case "editor-round-trip":
-      return fromProseDoc(toProseDoc(document), document);
+      return fromProseDoc(toProseDoc(document), document, {
+        stylesheetSource: { type: "package" },
+      });
     default:
       return state satisfies never;
   }

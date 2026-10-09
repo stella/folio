@@ -139,7 +139,9 @@ test(
               }),
             ).toBe(true);
             expect(state.doc.firstChild?.attrs["_propertyChanges"]).toBeNull();
-            const resolved = fromProseDoc(state.doc, document);
+            const resolved = fromProseDoc(state.doc, document, {
+              stylesheetSource: { type: "package" },
+            });
             expect(authoredIndentation(resolved)).toEqual(expected);
             const reopened = await parseDocx(await createDocx(resolved), {
               preloadFonts: false,

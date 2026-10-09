@@ -68,7 +68,7 @@ describe("complex-script list-marker pipeline", () => {
       cs: false,
     });
 
-    const roundTripped = fromProseDoc(prose);
+    const roundTripped = fromProseDoc(prose, undefined, { stylesheetSource: { type: "package" } });
     const modelParagraph = roundTripped.package.document.content.at(0);
     if (modelParagraph?.type !== "paragraph") {
       throw new TypeError("Expected round-tripped paragraph");

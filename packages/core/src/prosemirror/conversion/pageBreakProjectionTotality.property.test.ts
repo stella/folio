@@ -263,7 +263,9 @@ describe("page-break projection is total", () => {
         const opened = await parseDocx(await createDocx(documentFor(shape)), {
           preloadFonts: false,
         });
-        const rebuilt = fromProseDoc(toProseDoc(opened), opened);
+        const rebuilt = fromProseDoc(toProseDoc(opened), opened, {
+          stylesheetSource: { type: "package" },
+        });
         const reparsed = await parseDocx(await repackDocx(rebuilt, { updateModifiedDate: false }), {
           preloadFonts: false,
         });

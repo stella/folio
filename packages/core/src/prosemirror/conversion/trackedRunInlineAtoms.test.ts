@@ -121,7 +121,9 @@ const fieldBeginCount = (xml: string): number =>
 const hasUnderline = (xml: string): boolean => /<w:u(?:[\s/>])/u.test(xml);
 
 const roundTripThroughEditorModel = (document: Document): Promise<ArrayBuffer> =>
-  createDocx(fromProseDoc(toProseDoc(document), document));
+  createDocx(
+    fromProseDoc(toProseDoc(document), document, { stylesheetSource: { type: "package" } }),
+  );
 
 const resolveAll = async (
   buffer: ArrayBuffer,

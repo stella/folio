@@ -52,7 +52,9 @@ const countTextBlocks = (doc: PMNode): number => {
 };
 
 async function roundTrip(original: Document): Promise<Document> {
-  const back = fromProseDoc(toProseDoc(original), original);
+  const back = fromProseDoc(toProseDoc(original), original, {
+    stylesheetSource: { type: "package" },
+  });
   const repacked = await repackDocx(back, { updateModifiedDate: false });
   return parseDocx(repacked);
 }

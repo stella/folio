@@ -124,7 +124,9 @@ const editAndSave = (
   const { from, to } = rangeOfText(state, target);
   const selected = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
   const edited = selected.apply(selected.tr.insertText(replacement, from, to));
-  return paragraphContentOf(fromProseDoc(edited.doc, source));
+  return paragraphContentOf(
+    fromProseDoc(edited.doc, source, { stylesheetSource: { type: "package" } }),
+  );
 };
 
 /** Every wrapper in `content`, at any depth, with what it holds. */
@@ -216,7 +218,9 @@ describe("text replaced inside a bidirectional wrapper", () => {
     test(`saving the result again does not change it (${mode})`, () => {
       const once = editAndSave([WRAPPED, run(" outside")], mode, "sid", "SID");
       const source = documentWith(once);
-      const twice = paragraphContentOf(fromProseDoc(toProseDoc(source), source));
+      const twice = paragraphContentOf(
+        fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+      );
       expect(twice).toEqual(once);
     });
   }
@@ -249,7 +253,11 @@ describe("text replaced inside a smart tag or a custom-XML wrapper", () => {
       test(`saving the ${authored.kind} result again does not change it (${mode})`, () => {
         const once = editAndSave([authored, run(" outside")], mode, "sid", "SID");
         const source = documentWith(once);
-        expect(paragraphContentOf(fromProseDoc(toProseDoc(source), source))).toEqual(once);
+        expect(
+          paragraphContentOf(
+            fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+          ),
+        ).toEqual(once);
       });
     }
   }
@@ -264,7 +272,9 @@ describe("a wrapper with nothing left in it", () => {
     });
     const { from, to } = rangeOfText(state, "inside");
     const saved = paragraphContentOf(
-      fromProseDoc(state.apply(state.tr.delete(from, to)).doc, source),
+      fromProseDoc(state.apply(state.tr.delete(from, to)).doc, source, {
+        stylesheetSource: { type: "package" },
+      }),
     );
     expect(wrappersIn(saved)).toHaveLength(0);
     expect(textIn(saved)).toBe(" outside");
@@ -277,7 +287,9 @@ describe("a wrapper with nothing left in it", () => {
     rejectAllChanges()(state, (tr) => {
       rejected = state.apply(tr);
     });
-    const saved = paragraphContentOf(fromProseDoc(rejected.doc, source));
+    const saved = paragraphContentOf(
+      fromProseDoc(rejected.doc, source, { stylesheetSource: { type: "package" } }),
+    );
     expect(wrappersIn(saved)).toHaveLength(0);
     expect(textIn(saved)).toBe(" outside");
   });

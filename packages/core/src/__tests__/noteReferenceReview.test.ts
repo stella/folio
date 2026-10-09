@@ -151,19 +151,21 @@ describe("a note goes with its reference", () => {
     const state = createHarnessState(document, "editing");
     const accepted = resolve(state, "accept");
     expect(noteReferencesRestored(state.doc, accepted.doc)).toEqual([]);
-    const model = fromProseDoc(accepted.doc, document);
+    const model = fromProseDoc(accepted.doc, document, { stylesheetSource: { type: "package" } });
     const saved = withoutUnreferencedNotes(model);
     expect(noteState(saved, 1)).toBeNull();
     expect(saved.package.footnotes?.length).toBe((model.package.footnotes?.length ?? 0) - 1);
-    expect(withoutUnreferencedNotes(fromProseDoc(state.doc, document))).toEqual(
-      fromProseDoc(state.doc, document),
-    );
+    expect(
+      withoutUnreferencedNotes(
+        fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } }),
+      ),
+    ).toEqual(fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } }));
   });
 
   test("a note dropped on save takes the comments anchored only in it", async () => {
     const document = await open(fixture);
     const accepted = resolve(createHarnessState(document, "editing"), "accept");
-    const model = fromProseDoc(accepted.doc, document);
+    const model = fromProseDoc(accepted.doc, document, { stylesheetSource: { type: "package" } });
     const note = model.package.footnotes?.find(({ id }) => id === 1);
     const first = note?.content[0];
     if (first?.type !== "paragraph") throw new Error("missing the note's paragraph");

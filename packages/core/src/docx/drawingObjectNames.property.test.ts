@@ -246,7 +246,9 @@ describe("drawing object names survive both save paths", () => {
     });
 
     const opened = await parse(await save(authored));
-    const edited = fromProseDoc(toProseDoc(opened), opened);
+    const edited = fromProseDoc(toProseDoc(opened), opened, {
+      stylesheetSource: { type: "package" },
+    });
     const afterEditor = await parse(await save(edited));
 
     expect(readNames(afterEditor)).toEqual({
@@ -265,7 +267,9 @@ describe("drawing object names survive both save paths", () => {
       const savedOnce = await parse(await save(unnamed));
       expect(readNames(savedOnce)).toEqual({});
 
-      const edited = fromProseDoc(toProseDoc(savedOnce), savedOnce);
+      const edited = fromProseDoc(toProseDoc(savedOnce), savedOnce, {
+        stylesheetSource: { type: "package" },
+      });
       const afterEditor = await parse(await save(edited));
       expect(readNames(afterEditor)).toEqual({});
     },
@@ -284,7 +288,9 @@ describe("drawing object names survive both save paths", () => {
           const savedOnce = await parse(await save(authored));
           expect(readNames(savedOnce)).toEqual(expected);
 
-          const edited = fromProseDoc(toProseDoc(savedOnce), savedOnce);
+          const edited = fromProseDoc(toProseDoc(savedOnce), savedOnce, {
+            stylesheetSource: { type: "package" },
+          });
           const afterEditor = await parse(await save(edited));
           expect(readNames(afterEditor)).toEqual(expected);
         }),

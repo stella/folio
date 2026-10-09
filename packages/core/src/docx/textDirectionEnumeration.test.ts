@@ -83,7 +83,11 @@ describe("ST_TextDirection", () => {
 
   test.each(TEXT_DIRECTION_VALUES)("%s survives the editor projection", (direction) => {
     const original = documentWithDirection(direction);
-    expect(firstCellDirection(fromProseDoc(toProseDoc(original), original))).toBe(direction);
+    expect(
+      firstCellDirection(
+        fromProseDoc(toProseDoc(original), original, { stylesheetSource: { type: "package" } }),
+      ),
+    ).toBe(direction);
   });
 
   test("a token outside the enumeration does not become a flow", () => {

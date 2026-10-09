@@ -56,7 +56,10 @@ describe("table-cell identifiers", () => {
           const source = documentHolding(tableHolding(id, prefix, namespace));
           const prose = toProseDoc(source);
           const cloned = prose.type.schema.nodeFromJSON(prose.toJSON());
-          const projectedDocument = fromProseDoc(cloned, source, { reuse: "none" });
+          const projectedDocument = fromProseDoc(cloned, source, {
+            reuse: "none",
+            stylesheetSource: { type: "package" },
+          });
           const projected = projectedDocument.package.document.content.at(0);
           if (projected?.type !== "table") {
             panic("The editor projection lost the table.");

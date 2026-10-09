@@ -57,7 +57,9 @@ const wrapParagraph = (paragraph: Paragraph): Document => ({
 
 const throughTheEditor = (paragraph: Paragraph): Paragraph => {
   const source = wrapParagraph(paragraph);
-  const block = fromProseDoc(toProseDoc(source), source).package.document.content.at(0);
+  const block = fromProseDoc(toProseDoc(source), source, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (block?.type !== "paragraph") {
     throw new Error("The round trip lost its paragraph");
   }
@@ -441,7 +443,9 @@ const editedThroughTheEditor = (paragraph: Paragraph): Paragraph => {
   const edited = state.apply(
     state.tr.setSelection(TextSelection.create(state.doc, from, to)).insertText("EDIT", from, to),
   );
-  const block = fromProseDoc(edited.doc, source).package.document.content.at(0);
+  const block = fromProseDoc(edited.doc, source, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (block?.type !== "paragraph") {
     throw new Error("The edit lost its paragraph");
   }
