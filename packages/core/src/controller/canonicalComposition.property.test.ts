@@ -20,17 +20,23 @@ import {
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { schema as canonicalSchema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
+import { createDocx } from "../docx/rezip";
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
+import { RUN_IDENTITY_MARK_NAME, runIdentityAttrs } from "../prosemirror/runIdentity";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 beforeAll(() => GlobalRegistrator.register());
 afterAll(() => GlobalRegistrator.unregister());
 
-const createLateFinalRig = (initialText = "alpha") => {
-  const source = createEmptyDocument({ initialText });
+const createLateFinalRig = (
+  initialText = "alpha",
+  source = createEmptyDocument({ initialText }),
+) => {
   const paragraph = source.package.document.content.at(0);
   if (!paragraph || paragraph.type !== "paragraph") throw new TypeError("Missing seed paragraph");
-  paragraph.paraId = "12345678";
-  paragraph.textId = "87654321";
+  paragraph.paraId ??= "12345678";
+  paragraph.textId ??= "87654321";
   const session = createCanonicalSession(source).unwrap();
   const refusals: CanonicalSessionError[] = [];
   const boundary = createCanonicalInputBoundary({
@@ -1049,6 +1055,266 @@ const compose = (baseline: EditorState, nativeEdit: (state: EditorState) => Tran
   mount.remove();
   return { inputs, refusals, state };
 };
+
+const loadCarrierSource = async () => {
+  const source = createEmptyDocument({ initialText: "alpha😀café東京" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") throw new TypeError("Missing carrier paragraph");
+  const run = paragraph.content.at(0);
+  if (run?.type !== "run") throw new TypeError("Missing carrier run");
+  run.preservedAttributes = [{ name: "rsidR", value: "00A1B2C3" }];
+  const outside = createEmptyDocument({ initialText: "outside" }).package.document.content.at(0);
+  if (outside?.type !== "paragraph") throw new TypeError("Missing outside paragraph");
+  const outsideRun = outside.content.at(0);
+  if (outsideRun?.type !== "run") throw new TypeError("Missing outside run");
+  outsideRun.preservedAttributes = [{ name: "rsidR", value: "00D4E5F6" }];
+  source.package.document.content.push(outside);
+  const input = (await prepareCanonicalDocxInput(await createDocx(source))).unwrap();
+  return parseDocx(input, { preloadFonts: false });
+};
+
+const omitCarrierIdentity = (state: EditorState, text: string) => {
+  const paragraph = state.doc.firstChild;
+  if (paragraph === null) throw new TypeError("Missing carrier paragraph");
+  const marks = state.selection.$from
+    .marks()
+    .filter((mark) => mark.type.name !== RUN_IDENTITY_MARK_NAME);
+  // Saved native transaction shape: the second update replaces the entire
+  // carrier, retaining semantic formatting but omitting its source identity.
+  return state.tr.replaceWith(
+    1,
+    paragraph.content.size + 1,
+    state.schema.text(`${text}😀café東京`, marks),
+  );
+};
+
+test("native carrier identity omission preserves the canonical suffix and history", async () => {
+  const source = await loadCarrierSource();
+  jest.useFakeTimers();
+  try {
+    assertProperty(
+      fc.property(
+        fc.constantFrom("café 東京 é", "shall", "契約", "😀", "alpha"),
+        fc.constantFrom("commit", "cancel"),
+        (text, completion) => {
+          const rig = createLateFinalRig("alpha😀café東京", source);
+          const baseline = rig.view.state;
+          const original = structuredClone(rig.session.document);
+          const identity = baseline.doc
+            .nodeAt(1)
+            ?.marks.find((mark) => mark.type.name === RUN_IDENTITY_MARK_NAME);
+          if (identity === undefined) throw new TypeError("Missing source identity");
+          expect(identity?.attrs.preservedAttributes).toEqual([
+            { name: "rsidR", value: "00A1B2C3" },
+          ]);
+          try {
+            rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+            rig.view.dispatch(
+              rig.view.state.tr.insertText("shall", 1, 6).setMeta("composition", 1),
+            );
+            rig.view.dispatch(omitCarrierIdentity(rig.view.state, text).setMeta("composition", 1));
+            expect(rig.session.projection.doc.eq(baseline.doc)).toBe(true);
+            expect(
+              rig.view.state.doc
+                .nodeAt(1 + text.length)
+                ?.marks.some((mark) => mark.type.name === RUN_IDENTITY_MARK_NAME),
+            ).toBe(false);
+            if (completion === "cancel") rig.boundary.reset();
+            else {
+              rig.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+              jest.advanceTimersByTime(26);
+            }
+            expect(rig.refusals).toEqual([]);
+            const changed = completion === "commit" && text !== "alpha";
+            expect(rig.session.canUndo).toBe(changed);
+            if (!changed) {
+              expect(structuredClone(rig.session.document)).toEqual(original);
+              expect(rig.view.state.doc.eq(baseline.doc)).toBe(true);
+              return;
+            }
+            expect(rig.view.state.doc.firstChild?.textContent).toBe(`${text}😀café東京`);
+            const direct = createCanonicalSession(source).unwrap();
+            const directState = EditorState.create({
+              doc: direct.projection.doc,
+              selection: TextSelection.create(direct.projection.doc, 1, 6),
+            });
+            const expected = publishCanonicalProjection({
+              session: direct,
+              state: directState,
+              commit: direct
+                .prepareReplace(directState, { from: 1, to: 6, text, semantic: "composition" })
+                .unwrap(),
+            }).unwrap().state;
+            expect(rig.view.state.doc.eq(expected.doc)).toBe(true);
+            expect(structuredClone(rig.session.document)).toEqual(structuredClone(direct.document));
+            expect(
+              rig.view.state.doc
+                .nodeAt(1 + text.length)
+                ?.marks.find((mark) => mark.type.name === RUN_IDENTITY_MARK_NAME)?.attrs
+                .preservedAttributes,
+            ).toEqual(identity.attrs.preservedAttributes);
+            const committed = structuredClone(rig.session.document);
+            const suffix = committed.package.document.content.at(0);
+            expect(
+              suffix?.type === "paragraph" &&
+                suffix.content.some(
+                  (run) =>
+                    run.type === "run" &&
+                    run.preservedAttributes?.some((attr) => attr.value === "00A1B2C3"),
+                ),
+            ).toBe(true);
+            rig.history("undo");
+            expect(structuredClone(rig.session.document)).toEqual(original);
+            expect(rig.view.state.doc.eq(baseline.doc)).toBe(true);
+            rig.history("redo");
+            expect(structuredClone(rig.session.document)).toEqual(committed);
+          } finally {
+            rig.destroy();
+          }
+        },
+      ),
+      {
+        examples: [
+          ["café 東京 é", "cancel"],
+          ["café 東京 é", "commit"],
+          ["alpha", "commit"],
+        ],
+      },
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("native carrier saves equal direct canonical replacements", async () => {
+  const source = await loadCarrierSource();
+  await assertProperty(
+    fc.asyncProperty(fc.constantFrom("café 東京 é", "契約", "😀"), async (text) => {
+      const rig = createLateFinalRig("alpha😀café東京", source);
+      try {
+        rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+        rig.view.dispatch(rig.view.state.tr.insertText("shall", 1, 6).setMeta("composition", 1));
+        rig.view.dispatch(omitCarrierIdentity(rig.view.state, text).setMeta("composition", 1));
+        rig.boundary.handleDOMEvents.blur(rig.view);
+        expect(rig.refusals).toEqual([]);
+        const direct = createCanonicalSession(source).unwrap();
+        const state = EditorState.create({ doc: direct.projection.doc });
+        publishCanonicalProjection({
+          session: direct,
+          state,
+          commit: direct
+            .prepareReplace(state, { from: 1, to: 6, text, semantic: "composition" })
+            .unwrap(),
+        }).unwrap();
+        const nativeSave = await serializeCanonicalSave({
+          snapshot: rig.session.captureSaveSnapshot(),
+        });
+        const directSave = await serializeCanonicalSave({ snapshot: direct.captureSaveSnapshot() });
+        const nativeDoc = await parseDocx(nativeSave.buffer, { preloadFonts: false });
+        const directDoc = await parseDocx(directSave.buffer, { preloadFonts: false });
+        expect(structuredClone(nativeDoc.package.document)).toEqual(
+          structuredClone(directDoc.package.document),
+        );
+      } finally {
+        rig.destroy();
+      }
+    }),
+    { examples: [["café 東京 é"]] },
+  );
+});
+
+test("native carrier identity tolerance refuses every other mark or attribute drift", async () => {
+  const session = createCanonicalSession(await loadCarrierSource()).unwrap();
+  const baseline = EditorState.create({
+    doc: session.projection.doc,
+    selection: TextSelection.create(session.projection.doc, 1, 6),
+  });
+  assertProperty(
+    fc.property(
+      fc.constantFrom(
+        "differentIdentity",
+        "differentPayload",
+        "outsideIdentity",
+        "bold",
+        "paragraphAttribute",
+      ),
+      (drift) => {
+        const native = compose(baseline, (state) => {
+          const transaction = omitCarrierIdentity(state, "shall");
+          const identity = state.schema.marks[RUN_IDENTITY_MARK_NAME];
+          if (identity === undefined) throw new TypeError("Missing identity mark");
+          switch (drift) {
+            case "differentIdentity":
+              return transaction.addMark(1, 6, identity.create(runIdentityAttrs(999)));
+            case "differentPayload":
+              return transaction.addMark(
+                1,
+                6,
+                identity.create(
+                  runIdentityAttrs(0, {
+                    preservedAttributes: [{ name: "rsidR", value: "FFFFFFFF" }],
+                  }),
+                ),
+              );
+            case "outsideIdentity": {
+              const outside = transaction.doc.firstChild;
+              if (outside === null) throw new TypeError("Missing carrier");
+              expect(
+                identity.isInSet(transaction.doc.nodeAt(outside.nodeSize + 1)?.marks ?? []),
+              ).toBeDefined();
+              return transaction.removeMark(
+                outside.nodeSize + 1,
+                transaction.doc.content.size - 1,
+                identity,
+              );
+            }
+            case "bold": {
+              const bold = state.schema.marks.bold;
+              if (bold === undefined) throw new TypeError("Missing bold mark");
+              return transaction.addMark(1, 6, bold.create());
+            }
+            case "paragraphAttribute":
+              return transaction.setNodeMarkup(0, undefined, {
+                ...transaction.doc.firstChild?.attrs,
+                alignment: "right",
+              });
+            default: {
+              const unexpected: never = drift;
+              throw new TypeError(`Unknown native drift: ${unexpected}`);
+            }
+          }
+        });
+        expect(native.inputs).toEqual([]);
+        expect(native.refusals).toHaveLength(1);
+        expect(native.state.doc.eq(baseline.doc)).toBe(true);
+        expect(native.state.selection.eq(baseline.selection)).toBe(true);
+      },
+    ),
+  );
+});
+
+test("native carrier commits require rebuilding the captured baseline", async () => {
+  const source = await loadCarrierSource();
+  jest.useFakeTimers();
+  const rig = createLateFinalRig("alpha😀café東京", source);
+  const baseline = rig.view.state;
+  const updateState = rig.view.updateState.bind(rig.view);
+  try {
+    rig.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+    rig.view.dispatch(omitCarrierIdentity(rig.view.state, "café 東京 é").setMeta("composition", 1));
+    // Ablate only the baseline rebuild: the canonical session must reject the
+    // identity-free provisional carrier as a stale projection, never adopt it.
+    rig.view.updateState = (state) => {
+      if (state !== baseline) updateState(state);
+    };
+    expect(() => rig.boundary.handleDOMEvents.blur(rig.view)).toThrow("stale canonical projection");
+    expect(rig.session.canUndo).toBe(false);
+  } finally {
+    rig.view.updateState = updateState;
+    rig.destroy();
+    jest.useRealTimers();
+  }
+});
 
 test("a native rewrite of identical text never commits a replacement", async () => {
   const docs = await loadProjections();

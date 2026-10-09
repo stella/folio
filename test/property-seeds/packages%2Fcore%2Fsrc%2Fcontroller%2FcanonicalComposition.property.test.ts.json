@@ -21,12 +21,28 @@
       "date": "2026-10-07"
     }
   ],
+  "native carrier identity omission preserves the canonical suffix and history": [
+    {
+      "seed": 1725929815,
+      "path": "0:0",
+      "note": "Carrier-wide identity omission preserves the committed suffix; provisional state is inspected through the projection without taking a forbidden composition snapshot.",
+      "date": "2026-10-09"
+    }
+  ],
   "ordinary deletion recovers a missing native compositionend as a new gesture": [
     {
       "seed": -1233656905,
       "path": "0",
       "note": "A non-composing character deletion with missing native compositionend commits the proposal and keeps deletion as a separate gesture.",
       "date": "2026-10-08"
+    }
+  ],
+  "native carrier saves equal direct canonical replacements": [
+    {
+      "seed": 841257463,
+      "path": "0",
+      "note": "Saved document equality excludes independently generated package modification timestamps.",
+      "date": "2026-10-09"
     }
   ]
 }
