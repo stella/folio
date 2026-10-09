@@ -1063,6 +1063,37 @@ describe("canonical session", () => {
     for (const document of unsupported) expect(createCanonicalSession(document).isErr()).toBe(true);
   });
 
+  test.each(["table", "blockSdt"] as const)(
+    "activation refuses list paragraphs inside %s before normalization",
+    (container) => {
+      const paragraph: Paragraph = {
+        type: "paragraph",
+        paraId: "34567890",
+        formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+        content: [{ type: "run", content: [{ type: "text", text: "Nested list" }] }],
+      };
+      const document = seed("Body");
+      document.package.document.content.push(
+        container === "table"
+          ? {
+              type: "table",
+              rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [paragraph] }] }],
+            }
+          : { type: "blockSdt", properties: { sdtType: "richText" }, content: [paragraph] },
+      );
+      const original = structuredClone(document);
+      const result = createCanonicalSession(document);
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error).toBeInstanceOf(CanonicalSessionError);
+        expect(result.error.message).toBe(
+          "Canonical sessions currently require plain paragraphs and supported inline atoms.",
+        );
+      }
+      expect(document).toStrictEqual(original);
+    },
+  );
+
   test("stored formatting authors the next insertion and undo restores the unformatted model", () => {
     const session = createCanonicalSession(seed("plain")).unwrap();
     let state = stateFor(session);

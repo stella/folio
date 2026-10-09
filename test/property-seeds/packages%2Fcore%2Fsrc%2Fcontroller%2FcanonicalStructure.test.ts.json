@@ -1,6 +1,12 @@
 {
   "generated structural sequences preserve text, identities, projection and exact history selections": [
     {
+      "seed": 1529983810,
+      "path": "9:5:9:2:2:5:5:7:6:6:6:7:7:7:7:7:3:5:5:6:6:6:6:6:6:6:3:3:5:5:5:5:6:2:2:2:3:3:3:3:2:2:2:2:2:2:2:2:3:3:3:2:2:2:3:3:3:3:3:3:3:3:3:3",
+      "note": "Repeated list toggles and splits preserve exact inverse fields without redundant indentation provenance on authored paragraphs.",
+      "date": "2026-10-09"
+    },
+    {
       "seed": -1798387597,
       "path": "0:0:0:0:0:0:1:1:1:1:2:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",

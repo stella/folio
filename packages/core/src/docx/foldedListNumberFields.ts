@@ -321,6 +321,12 @@ const foldItemOf = (content: ParagraphContent): ListNumberFoldItem => {
   return isZeroWidth(content) ? { kind: "hidden" } : { kind: "shown" };
 };
 
+/** Derive the marker fold from current captures, never from cached rendering. */
+export const planParagraphListNumberFold = (
+  content: readonly ParagraphContent[],
+  showsFields: boolean,
+): ListNumberFoldPlan => planListNumberFold(content.map(foldItemOf), showsFields);
+
 /** The item a capture stands for, which shows on the line; any other item is itself. */
 export const unfoldedListNumberContent = (content: ParagraphContent): ParagraphContent => {
   const folded = foldedListNumberOf(content);
@@ -392,7 +398,7 @@ export const normalizeFoldedListNumbers = (paragraph: Paragraph): void => {
     return;
   }
 
-  const plan = planListNumberFold(content.map(foldItemOf), state.showsFields);
+  const plan = planParagraphListNumberFold(content, state.showsFields);
   const next: ParagraphContent[] = [];
   for (const index of plan.order) {
     const item = content[index];

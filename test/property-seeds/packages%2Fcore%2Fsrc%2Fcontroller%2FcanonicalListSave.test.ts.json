@@ -1,10 +1,46 @@
 {
+  "generated LISTNUM level edits preserve child counters, history and save/reopen": [
+    {
+      "seed": 1391099934,
+      "path": "0:0",
+      "note": "Parsed LISTNUM instructions and folded captures retain child-level advances after a level edit, including exact history and save/reopen.",
+      "date": "2026-10-09"
+    }
+  ],
   "generated pasted lists preserve save/reopen fidelity through full-save fallbacks and history": [
     {
       "seed": 1529073804,
       "path": "0:0:0",
       "note": "List slices must use the production list attrs and closed edges from numberPastedHtmlLists; package relationship creation is validated separately from authored body fidelity.",
       "date": "2026-10-05"
+    }
+  ],
+  "generated list edits normalize rendering and preserve exact history and save fixed points": [
+    {
+      "seed": 1529073804,
+      "path": "0:0:0",
+      "note": "List edit generator covers numbering removal, outdent, level change, split and both joins; exact history and save/reopen rendering must remain fixed points. The original pasted-list generator omitted edits after paste.",
+      "date": "2026-10-08"
+    },
+    {
+      "seed": -1909311219,
+      "path": "1:0:0:1",
+      "note": "Style numbering cancellation must clear stale inherited-numbering provenance in the canonical model, matching the serialized direct override.",
+      "date": "2026-10-08"
+    },
+    {
+      "seed": 1529073804,
+      "path": "0:0:0:0",
+      "note": "Numbering removal must clear inherited indentation in the authority before save/reopen.",
+      "date": "2026-10-09"
+    }
+  ],
+  "activation validates identities before normalizing inherited list overrides": [
+    {
+      "seed": 1288634722,
+      "path": "0:0:0",
+      "note": "Missing paragraph identities must not reach canonical normalization inverse generation.",
+      "date": "2026-10-09"
     }
   ]
 }
