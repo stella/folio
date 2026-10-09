@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
@@ -1650,14 +1651,40 @@ describe("unknown and malformed style references", () => {
     expect(names).toEqual(["characterStyle"]);
   });
 
-  test("saving a style reference without an authoritative stylesheet refuses without mutation", () => {
+  test("saving style-dependent content without a base package refuses without mutation", () => {
     const input = wrap(runText("Term", { styleId: "DefinedTerm" }));
     const pmDoc = toProseDoc(input);
     const before = pmDoc.toJSON();
-    expect(() => fromProseDoc(pmDoc, input, { stylesheetSource: { type: "package" } })).toThrow(
+    expect(() => fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })).toThrow(
       "Saving style-dependent content requires its authoritative stylesheet.",
     );
     expect(pmDoc.toJSON()).toEqual(before);
+  });
+
+  test("an absent styles part preserves unknown references and direct formatting on save/reopen", async () => {
+    const input = wrapParagraph({
+      type: "paragraph",
+      formatting: { styleId: "UnknownParagraph" },
+      content: [runText("Term", { styleId: "UnknownCharacter", bold: true, italic: false })],
+    });
+    const zip = await JSZip.loadAsync(await createDocx(input));
+    zip.remove("word/styles.xml");
+    const base = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(base.package.styles).toBeUndefined();
+    const projection = toProseDoc(base);
+    const saved = fromProseDoc(projection, base, { stylesheetSource: { type: "package" } });
+    expect(saved.package.styles).toBeUndefined();
+    expect(firstParagraph(saved).formatting?.styleId).toBe("UnknownParagraph");
+    expect(findRun(firstParagraph(saved), "Term").formatting).toMatchObject({
+      styleId: "UnknownCharacter",
+      bold: true,
+      italic: false,
+    });
+    const reopened = await reopenThroughDocx(saved);
+    expect(toProseDoc(reopened).toJSON()).toEqual(projection.toJSON());
   });
 
   test("basedOn cycle in style definitions terminates and round-trips", () => {

@@ -404,8 +404,17 @@ describe("ParagraphExtension", () => {
   });
 
   test("applying a style does not inline any resolved spacing attribute", () => {
+    const targetFormatting = {
+      spaceBefore: 480,
+      spaceAfter: 600,
+      lineSpacing: 240,
+      lineSpacingRule: "auto",
+      beforeAutospacing: true,
+      afterAutospacing: false,
+    } as const;
     const source: Document = {
       package: {
+        styles: { styles: [{ type: "paragraph", styleId: "Target", pPr: targetFormatting }] },
         document: {
           content: [
             {
@@ -433,14 +442,7 @@ describe("ParagraphExtension", () => {
     }
 
     applyStyle("Target", {
-      paragraphFormatting: {
-        spaceBefore: 480,
-        spaceAfter: 600,
-        lineSpacing: 240,
-        lineSpacingRule: "auto",
-        beforeAutospacing: true,
-        afterAutospacing: false,
-      },
+      paragraphFormatting: targetFormatting,
     })(state, (tr: Transaction) => {
       state = state.apply(tr);
     });

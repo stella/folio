@@ -1,0 +1,10 @@
+{
+  "every declared child survives the editor projection": [
+    {
+      "seed": 373766011,
+      "path": "21",
+      "note": "A concrete package with an absent styles part preserves unresolved references and visible direct formatting.",
+      "date": "2026-10-09"
+    }
+  ]
+}

@@ -17,7 +17,11 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -193,7 +197,7 @@ describe("a table's property set survives a rebuild", () => {
     // ProseMirror, so the sink and the newly modelled properties ride it; the
     // assertion is that the way back does not rebuild the element from the
     // handful of attrs the editor surfaces.
-    fc.assert(
+    assertProperty(
       // The comparison is the property set alone: the editor gives every cell
       // an explicit width, which is a decision about cells and not about this.
       fc.property(fc.constantFrom(...DECLARED), (name) => {

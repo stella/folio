@@ -781,8 +781,23 @@ class MissingSaveStylesheet extends TaggedError("MissingSaveStylesheet")<{
   message: string;
 }> {}
 
-const assertSaveStylesheetAvailable = (pmDoc: PMNode, styles: StyleDefinitions | undefined) => {
+type SaveStylesheetAvailabilityOptions = {
+  pmDoc: PMNode;
+  styles: StyleDefinitions | undefined;
+  baseDocument: Document | undefined;
+  stylesheetSource: FromProseDocOptions["stylesheetSource"];
+};
+
+const assertSaveStylesheetAvailable = ({
+  pmDoc,
+  styles,
+  baseDocument,
+  stylesheetSource,
+}: SaveStylesheetAvailabilityOptions) => {
   if (styles !== undefined) return;
+  // A concrete package's missing styles part is authoritative absence, not
+  // missing authority. Unknown references do not create inherited formatting.
+  if (stylesheetSource.type === "package" && baseDocument !== undefined) return;
   pmDoc.descendants((node) => {
     const referencedStyle = (() => {
       switch (node.type.name) {
@@ -810,7 +825,7 @@ export function fromProseDoc(
   { stylesheetSource, reuse = "none" }: FromProseDocOptions,
 ): Document {
   const styles = saveStylesheet(stylesheetSource, baseDocument);
-  assertSaveStylesheetAvailable(pmDoc, styles);
+  assertSaveStylesheetAvailable({ pmDoc, styles, baseDocument, stylesheetSource });
   assertNoteReferenceOccurrences(pmDoc);
   switch (reuse) {
     case "none": {
@@ -850,7 +865,8 @@ export function fromProseDoc(
       ? validateParagraphPropertySourceTokens(pmDoc, baseDocument, baseContract)
       : null;
 
-  const blocks = extractBlocks(pmDoc, "resolve", styles ? createStyleEngine(styles) : null);
+  // Match the reader's empty-styles resolver when the source has no styles part.
+  const blocks = extractBlocks(pmDoc, "resolve", createStyleEngine(styles));
   joinCommentRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
