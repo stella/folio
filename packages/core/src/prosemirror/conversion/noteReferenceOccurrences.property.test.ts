@@ -368,7 +368,7 @@ test("pasted note formatting survives empty splits without paragraph-mark defaul
       fc.record({ bold: fc.boolean(), italic: fc.boolean() }),
       fc.integer({ min: 1, max: 3 }),
       async (kind, formatting, splits) => {
-        for (const context of ["plain", "styled"] as const) {
+        for (const context of ["plain", "styled", "character-styled"] as const) {
           const source = await sourceDocument(kind, formatting);
           const paragraph = source.package.document.content.at(0);
           if (paragraph?.type !== "paragraph") return panic("Missing reference paragraph.");
@@ -384,6 +384,26 @@ test("pasted note formatting survives empty splits without paragraph-mark defaul
               rPr: { bold: !formatting.bold, italic: !formatting.italic },
             });
             paragraph.formatting = { ...paragraph.formatting, styleId: "NotePaste" };
+          }
+          if (context === "character-styled") {
+            const styles = source.package.styles;
+            if (!styles) return panic("Missing source styles.");
+            styles.styles.push({
+              styleId: "NotePasteCharacter",
+              type: "character",
+              name: "Note paste character",
+              rPr: { bold: !formatting.bold, italic: !formatting.italic },
+            });
+            for (const item of paragraph.content) {
+              if (
+                item.type !== "run" ||
+                !item.content.some(
+                  (content) => content.type === "footnoteRef" || content.type === "endnoteRef",
+                )
+              )
+                continue;
+              item.formatting = { ...item.formatting, styleId: "NotePasteCharacter" };
+            }
           }
           const base = await parseShapeDocument(new Uint8Array(await createDocx(source)));
           const view = new HeadlessEditorView(createHarnessState(base, "editing"));
