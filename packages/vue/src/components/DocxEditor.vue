@@ -508,7 +508,6 @@ import { useTransientNotice } from "../composables/useTransientNotice";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
-import { createCanonicalSectionPropertiesOperation } from "@stll/folio-core/controller/canonicalOperations";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
   clearAllCaches,
@@ -1474,28 +1473,9 @@ const {
   reLayout,
   onChange: notifyDocumentChange,
   applySectionProperties: (properties) => {
-    if (!usesCanonicalSession(props.experimentalSession, CANONICAL_GAP.authorityRouting))
-      return "unhandled";
-    editor.ensureView();
-    const document = editor.getCanonicalDocument();
-    if (
-      !document ||
-      !editor.applyCanonicalOperations([
-        createCanonicalSectionPropertiesOperation(document, properties),
-      ])
-    ) {
-      reportEditorError(
-        new CanonicalSessionRefusalError({
-          gap: CANONICAL_GAP.sectionProperties,
-          message: canonicalRefusalMessage(
-            CANONICAL_GAP.sectionProperties,
-            "Section property changes could not be applied.",
-          ),
-        }),
-      );
-      return "refused";
-    }
-    return "applied";
+    const result = editor.applyCanonicalSectionProperties(properties);
+    if (result === null) return "unhandled";
+    return result.status;
   },
 });
 

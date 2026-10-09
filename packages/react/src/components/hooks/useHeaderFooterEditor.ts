@@ -213,7 +213,7 @@ export const useHeaderFooterEditor = ({
       }
 
       // Create an empty header/footer for docs that don't have one yet.
-      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.secondaryStories)) {
+      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
         const api = getCanonicalApi?.();
         api?.ensureView();
         const canonical = api?.getCanonicalDocument();
@@ -250,7 +250,7 @@ export const useHeaderFooterEditor = ({
   );
 
   const handleHeaderFooterSave = useCallback(() => {
-    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.secondaryStories)) {
+    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
       setHfEditPosition(null);
       return;
     }
@@ -305,7 +305,7 @@ export const useHeaderFooterEditor = ({
     // Same active-rId resolution as save: target the rId actually rendered, not
     // whatever lives in `finalSectionProperties` (Codex PR #258).
     const activeRId = pickActiveHeaderFooterRId(resolution, hfEditPosition, hfEditIsFirstPage);
-    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.secondaryStories)) {
+    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
       const api = getCanonicalApi?.();
       const canonical = api?.getCanonicalDocument();
       if (api && canonical && activeRId) {

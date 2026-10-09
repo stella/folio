@@ -657,6 +657,8 @@ export class FlowError extends Error {
 }
 
 export type RunOptions = {
+  /** Additional invariants over each real generated step. */
+  checks?: readonly StepCheck[];
   /** Collect the flow's signature as it runs: coverage cells, step outcomes, structures. */
   signature?: boolean;
   /** Save the finished flow and return the package, as a sample. */
@@ -806,6 +808,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   const relations = await startRelations({ fixture: bytes, reviewer: flow.reviewer, mode, seed });
   const checks: StepCheck[] = [
     ...STEP_CHECKS,
+    ...(options.checks ?? []),
     {
       name: "metamorphic relations",
       check: async ({ flow: current, saved, label }) =>

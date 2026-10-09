@@ -1,3 +1,4 @@
+import { restoreCanonicalSelection } from "./canonicalSelection";
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import { mapTocSelection } from "./canonicalTocSelection";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
@@ -614,6 +615,7 @@ export type CanonicalCommit = {
   document: Document;
   projection: CanonicalProjection;
   bodyProjection: CanonicalProjection;
+  selection: CanonicalSelection;
   touched: TouchedBlocks;
   version: number;
   origin: CanonicalOrigin;
@@ -1517,33 +1519,16 @@ class CanonicalSession {
     }
     if (!transaction.doc.eq(projected.value.doc))
       transaction.replaceWith(0, transaction.doc.content.size, projected.value.doc.content);
-    if (sameStory(selection.anchor.story, story) && sameStory(selection.head.story, story)) {
-      const anchor = projected.value.positionAt(selection.anchor);
-      const head = projected.value.positionAt(selection.head);
-      switch (selection.type) {
-        case "all":
-          transaction.setSelection(new AllSelection(transaction.doc));
-          break;
-        case "text":
-          if (anchor.isOk() && head.isOk()) {
-            transaction.setSelection(
-              TextSelection.create(transaction.doc, anchor.value, head.value),
-            );
-            break;
-          }
-          transaction.setSelection(
-            TextSelection.near(
-              transaction.doc.resolve(
-                Math.min(state.selection.anchor, transaction.doc.content.size),
-              ),
-            ),
-          );
-          break;
-        default: {
-          const exhaustive: never = selection.type;
-          return panic(`Unknown canonical selection type: ${exhaustive}`);
-        }
-      }
+    if (
+      sameStory(selection.anchor.story, projectedStory) &&
+      sameStory(selection.head.story, projectedStory)
+    ) {
+      restoreCanonicalSelection({
+        transaction,
+        projection: projected.value,
+        selection,
+        unavailable: { type: "near", anchor: state.selection.anchor },
+      });
     }
     transaction.setMeta(CANONICAL_PROJECTION_META, {
       type: "canonical",
@@ -1564,6 +1549,7 @@ class CanonicalSession {
       document: applied.value.document,
       projection: projected.value,
       bodyProjection: bodyProjection.value,
+      selection,
       touched: applied.value.touched,
       version: baseVersion + 1,
       origin,

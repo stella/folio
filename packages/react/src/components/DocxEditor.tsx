@@ -227,7 +227,6 @@ import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
 import { pointsToHalfPoints, twipsToPixels } from "@stll/folio-core/utils/units";
 import { useDocumentHistory } from "../hooks/useHistory";
-import { createCanonicalSectionPropertiesOperation } from "@stll/folio-core/controller/canonicalOperations";
 import {
   CanonicalSaveDiagnosticError,
   serializeCanonicalSave,
@@ -1055,10 +1054,20 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     size: 4,
     color: { rgb: "000000" },
   });
-  const canonicalComments = pagedEditorRef.current?.getEditor().getCanonicalComments() ?? null;
-  const canonicalCommentsSnapshotRef = useRef<string | null>(
-    canonicalComments === null ? null : JSON.stringify(canonicalComments),
+  const canonicalCommentApi = pagedEditorRef.current?.getEditor();
+  const canonicalCommentsVersion = canonicalCommentApi?.getCanonicalCommittedVersion() ?? null;
+  const canonicalComments = useMemo(
+    () =>
+      canonicalCommentsVersion === null
+        ? null
+        : (canonicalCommentApi?.getCanonicalComments() ?? null),
+    [canonicalCommentApi, canonicalCommentsVersion],
   );
+  const canonicalCommentsSerialized = useMemo(
+    () => (canonicalComments === null ? null : JSON.stringify(canonicalComments)),
+    [canonicalComments],
+  );
+  const canonicalCommentsSnapshotRef = useRef<string | null>(canonicalCommentsSerialized);
   const lastControlledCommentsRef = useRef<string | undefined>(undefined);
 
   const {
@@ -1095,8 +1104,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     committedComments: canonicalComments,
   });
   const comments = canonicalComments ?? legacyComments;
-  const canonicalCommentsSerialized =
-    canonicalComments === null ? null : JSON.stringify(canonicalComments);
   const commentDraftMode = usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
     ? "canonical"
     : "prosemirror";
@@ -1635,7 +1642,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     const requested = JSON.stringify(legacyComments);
     // Internal journal changes cannot reapply an unchanged host value.
     if (lastControlledCommentsRef.current === requested) return;
-    if (JSON.stringify(canonicalComments) === requested) {
+    if (canonicalCommentsSerialized === requested) {
       lastControlledCommentsRef.current = requested;
       return;
     }
@@ -1663,14 +1670,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   useEffect(() => {
     if (canonicalComments === null) return;
     const nextComments = canonicalComments;
-    const serialized = JSON.stringify(nextComments);
+    const serialized = canonicalCommentsSerialized;
     if (canonicalCommentsSnapshotRef.current === null) {
       canonicalCommentsSnapshotRef.current = serialized;
       return;
     }
     if (canonicalCommentsSnapshotRef.current === serialized) return;
     canonicalCommentsSnapshotRef.current = serialized;
-    onCommentsChange?.(nextComments);
+    onCommentsChange?.(structuredClone(nextComments));
   }, [canonicalCommentsSerialized, onCommentsChange]);
 
   const selectFindMatch = useCallback((match: FindMatch): boolean => {
@@ -2061,22 +2068,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Handle footnote/endnote properties update
   const handleApplyFootnoteProperties = useCallback(
     (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => {
-      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-        const api = getCanonicalApi();
-        api?.ensureView();
-        const canonical = api?.getCanonicalDocument();
-        if (
-          !canonical ||
-          !api?.applyCanonicalOperations([
-            createCanonicalSectionPropertiesOperation(canonical, { footnotePr, endnotePr }),
-          ])
-        )
-          refuseCanonicalModelEdit(
-            CANONICAL_GAP.sectionProperties,
-            "Section property changes could not be applied.",
-          );
+      const api = getCanonicalApi();
+      if (!api) {
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.sectionProperties,
+          "The editor is not ready for section changes.",
+        );
         return;
       }
+      const result = api.applyCanonicalSectionProperties({ footnotePr, endnotePr });
+      if (result !== null) return;
       if (!history.state?.package) {
         return;
       }
@@ -2096,7 +2097,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         },
       });
     },
-    [history, pushDocument, experimentalSession, getCanonicalApi, refuseCanonicalModelEdit],
+    [history, pushDocument, getCanonicalApi, refuseCanonicalModelEdit],
   );
 
   // Handle table action from Toolbar - use ProseMirror commands
@@ -2998,22 +2999,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const handlePageSetupApply = useCallback(
     (props: Partial<SectionProperties>) => {
       if (readOnly) return;
-      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-        const api = getCanonicalApi();
-        api?.ensureView();
-        const canonical = api?.getCanonicalDocument();
-        if (
-          !canonical ||
-          !api?.applyCanonicalOperations([
-            createCanonicalSectionPropertiesOperation(canonical, props),
-          ])
-        )
-          refuseCanonicalModelEdit(
-            CANONICAL_GAP.sectionProperties,
-            "Section property changes could not be applied.",
-          );
+      const api = getCanonicalApi();
+      if (!api) {
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.sectionProperties,
+          "The editor is not ready for section changes.",
+        );
         return;
       }
+      const result = api.applyCanonicalSectionProperties(props);
+      if (result !== null) return;
       if (!history.state || readOnly) {
         return;
       }
@@ -3032,14 +3027,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       };
       handleDocumentChange(newDoc);
     },
-    [
-      history.state,
-      readOnly,
-      handleDocumentChange,
-      experimentalSession,
-      getCanonicalApi,
-      refuseCanonicalModelEdit,
-    ],
+    [history.state, readOnly, handleDocumentChange, getCanonicalApi, refuseCanonicalModelEdit],
   );
 
   // Ruler drag handlers. Page-margin drags go through the section-properties
