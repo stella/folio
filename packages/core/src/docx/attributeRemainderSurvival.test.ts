@@ -113,19 +113,23 @@ const ALL_OWNERS = ["p", "r", "tr", "sectPr"] as const;
 const EDITOR_OWNERS = ALL_OWNERS;
 
 describe("the attribute remainder survives a save", () => {
-  test("every subset of the rsid family comes back on the element it was written on", async () => {
-    await fc.assert(
-      fc.asyncProperty(chosenArbitrary, async (chosen) => {
-        const saved = await documentPartOf(await save(await open(documentXml(chosen))));
-        expectCarried(saved, chosen, ALL_OWNERS);
+  test(
+    "every subset of the rsid family comes back on the element it was written on",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(chosenArbitrary, async (chosen) => {
+          const saved = await documentPartOf(await save(await open(documentXml(chosen))));
+          expectCarried(saved, chosen, ALL_OWNERS);
 
-        // Save, reopen, save: the second save is where a remainder that only
-        // replays and does not re-parse stops being a fixed point.
-        expect(await documentPartOf(await save(await open(saved)))).toBe(saved);
-      }),
-      propertyConfig({ numRuns: 25 }),
-    );
-  }, 120_000);
+          // Save, reopen, save: the second save is where a remainder that only
+          // replays and does not re-parse stops being a fixed point.
+          expect(await documentPartOf(await save(await open(saved)))).toBe(saved);
+        }),
+        propertyConfig({ numRuns: 25 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
   test("a second prefix bound to the same namespace is read once, not kept twice", async () => {
     const xml =
@@ -146,16 +150,20 @@ describe("the attribute remainder survives a save", () => {
 });
 
 describe("the attribute remainder follows the record through the editor", () => {
-  test("an authored element's remainder survives the projection unchanged", async () => {
-    await fc.assert(
-      fc.asyncProperty(chosenArbitrary, async (chosen) => {
-        const parsed = await open(documentXml(chosen));
-        const projected = fromProseDoc(toProseDoc(parsed), parsed);
-        expectCarried(await documentPartOf(await save(projected)), chosen, EDITOR_OWNERS);
-      }),
-      propertyConfig({ numRuns: 25 }),
-    );
-  }, 120_000);
+  test(
+    "an authored element's remainder survives the projection unchanged",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(chosenArbitrary, async (chosen) => {
+          const parsed = await open(documentXml(chosen));
+          const projected = fromProseDoc(toProseDoc(parsed), parsed);
+          expectCarried(await documentPartOf(await save(projected)), chosen, EDITOR_OWNERS);
+        }),
+        propertyConfig({ numRuns: 25 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
   test("a paragraph the editor creates from scratch has no remainder", async () => {
     const parsed = await open(documentXml({ p: ["rsidR"], r: [], tr: [], sectPr: [] }));
@@ -461,43 +469,51 @@ describe("the attribute remainder holds in every block container", () => {
   });
 
   for (const [container, wrap] of Object.entries(CONTAINER_FIXTURES)) {
-    test(`${container}: a record inside it keeps the remainder it was authored with`, async () => {
-      await fc.assert(
-        fc.asyncProperty(containerArbitrary, async (chosen) => {
-          const parsed = await open(containerDocumentXml(wrap(recordsXml(chosen))));
-          const authored = remainderCensus(parsed.package.document.content);
-          const projection = toProseDoc(parsed);
+    test(
+      `${container}: a record inside it keeps the remainder it was authored with`,
+      async () => {
+        await fc.assert(
+          fc.asyncProperty(containerArbitrary, async (chosen) => {
+            const parsed = await open(containerDocumentXml(wrap(recordsXml(chosen))));
+            const authored = remainderCensus(parsed.package.document.content);
+            const projection = toProseDoc(parsed);
 
-          // A fixture that stopped producing the container would otherwise
-          // assert about the body and pass.
-          expect(nodeTypeNames(projection)).toContain(container);
+            // A fixture that stopped producing the container would otherwise
+            // assert about the body and pass.
+            expect(nodeTypeNames(projection)).toContain(container);
 
-          const rebuilt = fromProseDoc(projection, parsed);
-          expect(remainderCensus(rebuilt.package.document.content)).toEqual(authored);
-        }),
-        propertyConfig({ numRuns: 10 }),
-      );
-    }, 120_000);
+            const rebuilt = fromProseDoc(projection, parsed);
+            expect(remainderCensus(rebuilt.package.document.content)).toEqual(authored);
+          }),
+          propertyConfig({ numRuns: 10 }),
+        );
+      },
+      propertyTestTimeout(120_000),
+    );
 
-    test(`${container}: a copy the editor made inside it claims no revision session`, async () => {
-      await fc.assert(
-        fc.asyncProperty(containerArbitrary, async (chosen) => {
-          const parsed = await open(containerDocumentXml(wrap(recordsXml(chosen))));
-          const authored = remainderCensus(parsed.package.document.content);
+    test(
+      `${container}: a copy the editor made inside it claims no revision session`,
+      async () => {
+        await fc.assert(
+          fc.asyncProperty(containerArbitrary, async (chosen) => {
+            const parsed = await open(containerDocumentXml(wrap(recordsXml(chosen))));
+            const authored = remainderCensus(parsed.package.document.content);
 
-          // `proseDocToBlocks` rather than `fromProseDoc`: the
-          // paragraph-property source contract refuses two paragraphs carrying
-          // one source token, which is a different rule about the same copy.
-          const blocks: BlockContent[] = proseDocToBlocks(
-            duplicateRecordNodes(toProseDoc(parsed)),
-            parsed.package.document.content,
-            parsed.package.styles,
-          );
-          expect(remainderCensus(blocks)).toEqual(authored);
-        }),
-        propertyConfig({ numRuns: 10 }),
-      );
-    }, 120_000);
+            // `proseDocToBlocks` rather than `fromProseDoc`: the
+            // paragraph-property source contract refuses two paragraphs carrying
+            // one source token, which is a different rule about the same copy.
+            const blocks: BlockContent[] = proseDocToBlocks(
+              duplicateRecordNodes(toProseDoc(parsed)),
+              parsed.package.document.content,
+              parsed.package.styles,
+            );
+            expect(remainderCensus(blocks)).toEqual(authored);
+          }),
+          propertyConfig({ numRuns: 10 }),
+        );
+      },
+      propertyTestTimeout(120_000),
+    );
   }
 });
 
@@ -562,31 +578,35 @@ const sectionArbitrary = fc.record({
 });
 
 describe("the section break belongs to the last paragraph of its section", () => {
-  test("splitting the section-ending paragraph writes one w:sectPr, on the last half", async () => {
-    await fc.assert(
-      fc.asyncProperty(sectionArbitrary, async ({ copies, ...chosen }) => {
-        const parsed = await open(sectionDocumentXml(chosen));
-        const authored = await documentPartOf(await save(parsed));
+  test(
+    "splitting the section-ending paragraph writes one w:sectPr, on the last half",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(sectionArbitrary, async ({ copies, ...chosen }) => {
+          const parsed = await open(sectionDocumentXml(chosen));
+          const authored = await documentPartOf(await save(parsed));
 
-        const blocks = proseDocToBlocks(
-          duplicateRecordNodes(toProseDoc(parsed), copies),
-          parsed.package.document.content,
-          parsed.package.styles,
-        );
-        expect(sectionCarrierIndexes(blocks)).toEqual([SECTION_CARRIER_INDEX + copies]);
+          const blocks = proseDocToBlocks(
+            duplicateRecordNodes(toProseDoc(parsed), copies),
+            parsed.package.document.content,
+            parsed.package.styles,
+          );
+          expect(sectionCarrierIndexes(blocks)).toEqual([SECTION_CARRIER_INDEX + copies]);
 
-        const saved = await documentPartOf(await save(documentWithContent(parsed, blocks)));
-        expect(occurrences(saved, SECT_PR)).toBe(occurrences(authored, SECT_PR));
-        for (const attribute of chosen.sectPr) {
-          expect(occurrences(saved, valuePattern("sectPr", attribute))).toBe(1);
-        }
-        for (const attribute of chosen.p) {
-          expect(occurrences(saved, valuePattern("p", attribute))).toBe(1);
-        }
-      }),
-      propertyConfig({ numRuns: 15 }),
-    );
-  }, 120_000);
+          const saved = await documentPartOf(await save(documentWithContent(parsed, blocks)));
+          expect(occurrences(saved, SECT_PR)).toBe(occurrences(authored, SECT_PR));
+          for (const attribute of chosen.sectPr) {
+            expect(occurrences(saved, valuePattern("sectPr", attribute))).toBe(1);
+          }
+          for (const attribute of chosen.p) {
+            expect(occurrences(saved, valuePattern("p", attribute))).toBe(1);
+          }
+        }),
+        propertyConfig({ numRuns: 15 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
   test("joining it with its predecessor keeps the break on the merged paragraph", async () => {
     const chosen = { p: ["rsidR"], sectPr: ["rsidSect"] } as const;

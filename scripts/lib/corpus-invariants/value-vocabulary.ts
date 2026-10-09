@@ -27,15 +27,14 @@
  */
 
 import { readFileSync } from "node:fs";
-import path from "node:path";
 
 // By path, not by specifier: the gate's scripts are not a workspace package,
 // and `@stll/docx-core` is reachable only from the packages that depend on it.
 import * as docxModel from "../../../packages/docx-core/src/model/document";
 
-const GRAPH_PATH = path.join(
-  path.resolve(import.meta.dir, "../../.."),
-  "specifications/generated/docx-transitional-schema.gen.json",
+const GRAPH_URL = new URL(
+  "../../../specifications/generated/docx-transitional-schema.gen.json",
+  import.meta.url,
 );
 
 /**
@@ -60,7 +59,7 @@ const schemaEnumValues = (): string[] => {
   // Read synchronously and once: the formatter is called from inside a
   // synchronous model walk, and the parse costs single-digit milliseconds per
   // worker process against a run measured in minutes.
-  const graph = JSON.parse(readFileSync(GRAPH_PATH, "utf8")) as EnumeratedSymbols;
+  const graph = JSON.parse(readFileSync(GRAPH_URL, "utf8")) as EnumeratedSymbols;
   const values: string[] = [];
   for (const symbol of graph.symbols) {
     if (symbol.kind !== "simpleType" || symbol.enumValues === undefined) {

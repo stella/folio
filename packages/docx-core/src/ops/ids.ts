@@ -79,6 +79,44 @@ export const paragraphIdsIn = (value: unknown): string[] => {
 /** Every paragraph id of a package, each story walked once. */
 export const packageParagraphIds = (pkg: DocxPackage): string[] => paragraphIdsIn(storiesOf(pkg));
 
+export type PackageBookmark = { id: number; name: string };
+export type PackageBookmarkCensus = {
+  ids: ReadonlySet<number>;
+  names: ReadonlySet<string>;
+  pairs: readonly PackageBookmark[];
+};
+
+/** Bookmark ids, names and uniquely paired starts from every package story. */
+export const packageBookmarkCensus = (pkg: DocxPackage): PackageBookmarkCensus => {
+  const ids = new Set<number>();
+  const names = new Set<string>();
+  const starts = new Map<number, { name: string; count: number }>();
+  const ends = new Map<number, number>();
+  walk({
+    value: storiesOf(pkg),
+    visit: (entries) => {
+      const type = fieldOf(entries, "type");
+      const id = fieldOf(entries, "id");
+      if (typeof id !== "number") return;
+      if (type === "bookmarkStart") {
+        ids.add(id);
+        const name = fieldOf(entries, "name");
+        if (typeof name !== "string") return;
+        names.add(name);
+        const prior = starts.get(id);
+        starts.set(id, { name, count: (prior?.count ?? 0) + 1 });
+      } else if (type === "bookmarkEnd") {
+        ids.add(id);
+        ends.set(id, (ends.get(id) ?? 0) + 1);
+      }
+    },
+  });
+  const pairs = [...starts].flatMap(([id, start]) =>
+    start.count === 1 && ends.get(id) === 1 ? [{ id, name: start.name }] : [],
+  );
+  return { ids, names, pairs };
+};
+
 /**
  * The key two spellings of one id share. `ST_LongHexNumber` is hex, so
  * `0000abcd` and `0000ABCD` are the same id; every lookup and comparison of

@@ -1,0 +1,37 @@
+{
+  "generated comment histories preserve exact state, declaration order, opaque markup and owned anchors": [
+    {
+      "seed": 20261004,
+      "note": "Owned comment-reference atoms occupy physical offset units; inverse ownership checks remove only owned anchors before comparing preserved text.",
+      "date": "2026-10-04"
+    }
+  ],
+  "every comment package-operation generator exercises its exact inverse in every story": [
+    {
+      "seed": 20261005,
+      "note": "Owned comment-reference atoms occupy physical offset units; inverse ownership checks remove only owned anchors before comparing preserved text.",
+      "date": "2026-10-04"
+    }
+  ],
+  "generated text and revision histories retain live comment ownership and exact reversible state": [
+    {
+      "seed": 20261006,
+      "note": "Owned comment-reference atoms occupy physical offset units; inverse ownership checks remove only owned anchors before comparing preserved text.",
+      "date": "2026-10-04"
+    },
+    {
+      "seed": 20261006,
+      "path": "78:6:9:13:11:11",
+      "note": "Mixed rejection and split histories can empty the first paragraph; choose a current nonempty target for deletion/split rather than generating a stale range.",
+      "date": "2026-10-04"
+    }
+  ],
+  "generated interior source-shaped comment histories undo and redo the complete journal": [
+    {
+      "seed": 20261007,
+      "path": "1:1",
+      "note": "Owned anchor cut seams must remain comparable after deletion removes the markers; interior UTF16-safe source run cuts undo exactly.",
+      "date": "2026-10-04"
+    }
+  ]
+}

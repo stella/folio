@@ -1,0 +1,10 @@
+{
+  "generated tracked secondary replacements preserve shared history and saved review outcomes": [
+    {
+      "seed": 249696761,
+      "note": "Secondary-story generator uses typed note parts and canonical position mapping: note marks have zero logical width but occupy a rendered atom. Preserve linked story parts across save/reopen. CI factor-5 replay: deleting the first note character then inserting at visible gap zero must inherit surviving text formatting, not the zero-width note marker style, both in memory and after save/reopen.",
+      "date": "2026-10-04",
+      "path": "25:9:2:3:4:7:8:5:8:0:1:4:4:4:5:4:4:4:4:2:3:3:3:3:3:3:2:3"
+    }
+  ]
+}

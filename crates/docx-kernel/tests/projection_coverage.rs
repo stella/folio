@@ -36,11 +36,11 @@ use proptest::{collection, prop_assert, prop_assert_eq, proptest, sample};
 use quick_xml::events::{BytesStart, Event};
 use stella_docx_kernel::{
     AttributedRevision, CommentContent, DocumentPackageProjection, DocumentStructureFacts,
-    DocxLimits, FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
-    ParagraphIdentityFacts, ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail,
-    ReviewFactLimits, ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind,
-    RevisionPayload, RevisionProjectionStatus, RevisionUnsupportedReason, RevisionView,
-    StructuralFactSet, TextFormattingSpan, TextStyle, project_docx_with_review_facts,
+    DocxLimits, FormattingProjectionStatus, InternalParagraphId, ParagraphIdentityFacts,
+    ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits,
+    ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionPayload,
+    RevisionProjectionStatus, RevisionView, StructuralFactSet, TextFormattingSpan, TextStyle,
+    project_docx_with_review_facts,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -139,6 +139,7 @@ enum RunContent {
 struct Run {
     content: RunContent,
     bold: bool,
+    prior_bold: bool,
     property_change: bool,
 }
 
@@ -240,11 +241,13 @@ fn run() -> impl Strategy<Value = Run> {
             1 => Just(RunContent::EndnoteReference),
         ],
         any::<bool>(),
+        any::<bool>(),
         proptest::bool::weighted(0.08),
     )
-        .prop_map(|(content, bold, property_change)| Run {
+        .prop_map(|(content, bold, prior_bold, property_change)| Run {
             content,
             bold,
+            prior_bold,
             property_change,
         })
 }
@@ -418,8 +421,8 @@ fn document() -> impl Strategy<Value = Document> {
         })
 }
 
-/// Property snapshots are generated for the current view.
-fn current_property_document() -> impl Strategy<Value = Document> {
+/// Property snapshots are generated for both revision views.
+fn property_document() -> impl Strategy<Value = Document> {
     (document(), any::<bool>(), any::<bool>(), any::<bool>()).prop_map(
         |(mut document, paragraph_change, mark_change, run_change)| {
             map_paragraphs(&mut document.blocks, &mut |paragraph| {
@@ -679,7 +682,12 @@ impl Markup {
                 self.xml.push_str("<w:b/>");
             }
             if run.property_change {
-                self.change("rPrChange", "<w:rPr/>");
+                let prior = if run.prior_bold {
+                    "<w:rPr><w:b/></w:rPr>"
+                } else {
+                    "<w:rPr/>"
+                };
+                self.change("rPrChange", prior);
             }
             self.xml.push_str("</w:rPr>");
         }
@@ -812,7 +820,8 @@ impl Markup {
     }
 
     fn table(&mut self, table: &Table) {
-        self.xml.push_str("<w:tbl><w:tblPr>");
+        self.xml
+            .push_str(r#"<w:tbl><w:tblPr><w:tblStyle w:val="MissingTableStyle"/>"#);
         if table.property_changes.table {
             self.change("tblPrChange", "<w:tblPr/>");
         }
@@ -997,6 +1006,8 @@ enum Element {
     ParagraphProperties,
     Table,
     TableProperties,
+    TablePropertyExceptions,
+    TableStyle,
     TableGrid,
     Row,
     RowProperties,
@@ -1028,6 +1039,7 @@ enum Element {
     RunPropertiesChange,
     ParagraphPropertiesChange,
     TablePropertiesChange,
+    TablePropertiesExceptionChange,
     TableGridChange,
     TableRowPropertiesChange,
     TableCellPropertiesChange,
@@ -1045,11 +1057,13 @@ enum Element {
 }
 
 impl Element {
-    const ALL: [Self; 49] = [
+    const ALL: [Self; 52] = [
         Self::Paragraph,
         Self::ParagraphProperties,
         Self::Table,
         Self::TableProperties,
+        Self::TablePropertyExceptions,
+        Self::TableStyle,
         Self::TableGrid,
         Self::Row,
         Self::RowProperties,
@@ -1081,6 +1095,7 @@ impl Element {
         Self::RunPropertiesChange,
         Self::ParagraphPropertiesChange,
         Self::TablePropertiesChange,
+        Self::TablePropertiesExceptionChange,
         Self::TableGridChange,
         Self::TableRowPropertiesChange,
         Self::TableCellPropertiesChange,
@@ -1103,6 +1118,8 @@ impl Element {
             Self::ParagraphProperties => "pPr",
             Self::Table => "tbl",
             Self::TableProperties => "tblPr",
+            Self::TablePropertyExceptions => "tblPrEx",
+            Self::TableStyle => "tblStyle",
             Self::TableGrid => "tblGrid",
             Self::Row => "tr",
             Self::RowProperties => "trPr",
@@ -1134,6 +1151,7 @@ impl Element {
             Self::RunPropertiesChange => "rPrChange",
             Self::ParagraphPropertiesChange => "pPrChange",
             Self::TablePropertiesChange => "tblPrChange",
+            Self::TablePropertiesExceptionChange => "tblPrExChange",
             Self::TableGridChange => "tblGridChange",
             Self::TableRowPropertiesChange => "trPrChange",
             Self::TableCellPropertiesChange => "tcPrChange",
@@ -1223,9 +1241,10 @@ impl Element {
             Self::ParagraphProperties => vec![C::Paragraph],
             Self::ParagraphPropertiesChange => vec![C::ParagraphProperties],
             Self::TableProperties | Self::TableGrid | Self::Row => vec![C::Table],
-            Self::TablePropertiesChange => vec![C::TableProperties],
+            Self::TableStyle | Self::TablePropertiesChange => vec![C::TableProperties],
             Self::TableGridChange => vec![C::TableGrid],
-            Self::RowProperties | Self::Cell => vec![C::TableRow],
+            Self::RowProperties | Self::TablePropertyExceptions | Self::Cell => vec![C::TableRow],
+            Self::TablePropertiesExceptionChange => vec![C::TablePropertyExceptions],
             Self::TableRowPropertiesChange => vec![C::TableRowProperties],
             Self::CellProperties => vec![C::TableCell],
             Self::TableCellPropertiesChange
@@ -1263,6 +1282,7 @@ enum Context {
     ParagraphProperties,
     ParagraphMarkProperties,
     TableProperties,
+    TablePropertyExceptions,
     TableRowProperties,
     TableCellProperties,
     TableGrid,
@@ -1333,11 +1353,7 @@ const UNGENERATED_DISPATCH: &[&str] = &[
 
 /// Generated elements the parser handles through its default arm: they are
 /// transparent containers or markers whose content the walk still visits.
-const DEFAULT_ARM: &[Element] = &[
-    Element::SectionProperties,
-    Element::SmartTag,
-    Element::ProofErr,
-];
+const DEFAULT_ARM: &[Element] = &[Element::SmartTag, Element::ProofErr];
 
 /// Element names the parser dispatches on: byte-string patterns in
 /// `ProjectionState::start` and in the revision classifiers it calls.
@@ -1462,6 +1478,10 @@ fn current_context(stack: &[ObservedFrame], skip_runs: bool) -> Option<Context> 
     })
 }
 
+fn is_property_snapshot(name: &str) -> bool {
+    name.ends_with("PrChange") || name == "tblGridChange" || name == "tblPrExChange"
+}
+
 fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
     let mut reader = quick_xml::Reader::from_str(xml);
     let mut stack: Vec<ObservedFrame> = Vec::new();
@@ -1472,7 +1492,7 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
             Event::Empty(element) => (element, true),
             Event::End(_) => {
                 let frame = stack.pop().unwrap();
-                if frame.name.ends_with("PrChange") || frame.name == "tblGridChange" {
+                if is_property_snapshot(&frame.name) {
                     snapshot_depth -= 1;
                 }
                 continue;
@@ -1518,6 +1538,7 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
             "trPr" => Some(Context::TableRowProperties),
             "tcPr" => Some(Context::TableCellProperties),
             "tblPr" => Some(Context::TableProperties),
+            "tblPrEx" => Some(Context::TablePropertyExceptions),
             "tblGrid" => Some(Context::TableGrid),
             "sectPr" => Some(Context::SectionProperties),
             "rPr" => Some(if parent_is_paragraph_properties {
@@ -1541,11 +1562,11 @@ fn observe(xml: &str, rows: &mut BTreeSet<(Element, Context)>) {
             }
             _ => None,
         };
-        if name.ends_with("PrChange") || name == "tblGridChange" {
+        if is_property_snapshot(&name) {
             snapshot_depth += 1;
         }
         if empty {
-            if name.ends_with("PrChange") || name == "tblGridChange" {
+            if is_property_snapshot(&name) {
                 snapshot_depth -= 1;
             }
             continue;
@@ -1590,6 +1611,26 @@ const EXCLUDED_ROWS: &[(Element, Context)] = &[
     (Element::SectionPropertiesChange, Context::SectionProperties),
 ];
 
+#[test]
+fn snapshot_receipt_resumes_after_table_property_exceptions() {
+    let xml = format!(
+        r#"<w:document xmlns:w="{W}"><w:body><w:tbl><w:tr><w:tblPrEx><w:tblPrExChange w:id="1" w:author="A"><w:tblPrEx/></w:tblPrExChange></w:tblPrEx><w:tc><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>a</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>"#
+    );
+    let mut rows = BTreeSet::new();
+    observe(&xml, &mut rows);
+    assert!(rows.contains(&(
+        Element::TablePropertiesExceptionChange,
+        Context::TablePropertyExceptions
+    )));
+    assert!(rows.contains(&(Element::Cell, Context::TableRow)));
+    assert!(rows.contains(&(Element::Bold, Context::RunProperties)));
+    assert!(rows.contains(&(Element::Text, Context::Run)));
+    assert!(!rows.contains(&(
+        Element::TablePropertyExceptions,
+        Context::TablePropertyExceptions
+    )));
+}
+
 fn expected_rows() -> BTreeSet<(Element, Context)> {
     Element::ALL
         .iter()
@@ -1608,7 +1649,7 @@ fn expected_rows() -> BTreeSet<(Element, Context)> {
 #[test]
 fn generator_reaches_every_context_row() {
     let mut runner = TestRunner::deterministic();
-    let strategy = prop_oneof![document().boxed(), current_property_document().boxed()];
+    let strategy = prop_oneof![document().boxed(), property_document().boxed()];
     let mut observed = BTreeSet::new();
     for _ in 0..RECEIPT_CASES {
         let document = strategy.new_tree(&mut runner).unwrap().current();
@@ -1856,7 +1897,11 @@ impl Model {
             utf16: 0,
             formatting: Vec::new(),
             cell,
-            mark: paragraph.mark,
+            mark: if paragraph.mark_property_change && self.view == RevisionView::Original {
+                None
+            } else {
+                paragraph.mark
+            },
         });
         let mark_index = paragraph.mark.map(|mark| {
             self.site(mark.kind(), Site::Inline);
@@ -1904,7 +1949,12 @@ impl Model {
         };
         let start_utf16 = self.paragraphs.last().unwrap().utf16;
         self.push_text(text, hidden);
-        if !hidden && run.bold && !text.is_empty() {
+        let bold = if run.property_change && self.view == RevisionView::Original {
+            run.prior_bold
+        } else {
+            run.bold
+        };
+        if !hidden && bold && !text.is_empty() {
             let paragraph = self.paragraphs.last_mut().unwrap();
             let end_utf16 = paragraph.utf16;
             if let Some(last) = paragraph.formatting.last_mut()
@@ -2152,7 +2202,7 @@ fn check_projected_facts(
     projection: &DocumentPackageProjection,
 ) -> Result<(), String> {
     let mut placements = document.clone();
-    if view == RevisionView::Current {
+    {
         map_paragraphs(&mut placements.blocks, &mut |paragraph| {
             paragraph.property_change = false;
             paragraph.mark_property_change = false;
@@ -2286,9 +2336,11 @@ proptest! {
     #![proptest_config(config(96))]
 
     #[test]
-    fn generated_current_property_documents_match_the_model(document in current_property_document()) {
-        let checked = check_projection(&document, RevisionView::Current);
-        prop_assert!(checked.is_ok(), "{}", checked.unwrap_err());
+    fn generated_property_documents_match_the_model(document in property_document()) {
+        for view in VIEWS {
+            let checked = check_projection(&document, view);
+            prop_assert!(checked.is_ok(), "{}", checked.unwrap_err());
+        }
     }
 
     /// Every generated fact stays known and matches the model.
@@ -2457,9 +2509,12 @@ fn apply_blocks(blocks: &[Block], view: RevisionView, in_textbox: bool) -> Optio
         let applied = match block {
             Block::Paragraph(paragraph) => {
                 let inlines = apply_inlines(&paragraph.inlines, view, false);
-                let removes_break = paragraph
-                    .mark
-                    .is_some_and(|mark| mark.removes_paragraph_break_in(view));
+                let restores_mark =
+                    paragraph.mark_property_change && view == RevisionView::Original;
+                let removes_break = !restores_mark
+                    && paragraph
+                        .mark
+                        .is_some_and(|mark| mark.removes_paragraph_break_in(view));
                 let applied = Paragraph {
                     mark: None,
                     mark_property_change: false,
@@ -2522,11 +2577,15 @@ fn apply_inlines(inlines: &[Inline], view: RevisionView, removed: bool) -> Vec<I
                 if removed {
                     continue;
                 }
-                // Rejecting a property change restores the empty snapshot.
-                let restored = run.property_change && view == RevisionView::Original;
+                let bold = if run.property_change && view == RevisionView::Original {
+                    run.prior_bold
+                } else {
+                    run.bold
+                };
                 Inline::Run(Run {
                     content: run.content,
-                    bold: run.bold && !restored,
+                    bold,
+                    prior_bold: false,
                     property_change: false,
                 })
             }
@@ -3059,7 +3118,7 @@ const TRACKED: &str = r#"w:id="1" w:author="A""#;
 #[derive(Clone, Debug)]
 struct TablePropertyDocument {
     rows: Vec<Vec<Vec<&'static str>>>,
-    snapshots: [bool; 4],
+    snapshots: [bool; 5],
     placement: TablePlacement,
     namespace: NamespaceProfile,
 }
@@ -3086,7 +3145,7 @@ fn table_property_document() -> impl Strategy<Value = TablePropertyDocument> {
             ),
             1..4,
         ),
-        any::<[bool; 4]>(),
+        any::<[bool; 5]>(),
         sample::select(vec![
             TablePlacement::Body,
             TablePlacement::ContentControl,
@@ -3125,7 +3184,9 @@ impl TablePropertyDocument {
             TablePlacement::CustomXml => ("<w:customXml>", "</w:customXml>"),
         };
         markup.xml.push_str(opening);
-        markup.xml.push_str("<w:tbl><w:tblPr>");
+        markup
+            .xml
+            .push_str(r#"<w:tbl><w:tblPr><w:tblStyle w:val="MissingTableStyle"/>"#);
         if self.snapshots[0] {
             markup.change("tblPrChange", "<w:tblPr/>");
         }
@@ -3135,7 +3196,13 @@ impl TablePropertyDocument {
         }
         markup.xml.push_str("</w:tblGrid>");
         for row in &self.rows {
-            markup.xml.push_str("<w:tr><w:trPr>");
+            markup.xml.push_str("<w:tr>");
+            if self.snapshots[4] {
+                markup.xml.push_str("<w:tblPrEx>");
+                markup.change("tblPrExChange", "<w:tblPrEx/>");
+                markup.xml.push_str("</w:tblPrEx>");
+            }
+            markup.xml.push_str("<w:trPr>");
             if self.snapshots[2] {
                 markup.change("trPrChange", "<w:trPr/>");
             }
@@ -3151,6 +3218,7 @@ impl TablePropertyDocument {
                         inlines: vec![Inline::Run(Run {
                             content: RunContent::Text(text),
                             bold: false,
+                            prior_bold: false,
                             property_change: false,
                         })],
                         ..empty_paragraph()
@@ -3222,6 +3290,9 @@ impl TablePropertyDocument {
             expected.push((RevisionFactKind::TableGridChange, table_span));
         }
         for (row, cells) in owners {
+            if self.snapshots[4] {
+                expected.push((RevisionFactKind::TablePropertiesExceptionChange, row));
+            }
             if self.snapshots[2] {
                 expected.push((RevisionFactKind::TableRowPropertiesChange, row));
             }
@@ -3266,19 +3337,8 @@ impl TablePropertyDocument {
         {
             return Err("table annotations and paragraph properties are empty".to_owned());
         }
-        let expected_status =
-            if view == RevisionView::Original && self.snapshots.iter().any(|present| *present) {
-                RevisionProjectionStatus::Incomplete(vec![
-                    RevisionUnsupportedReason::UnsupportedRevisionMarkup,
-                ])
-            } else {
-                RevisionProjectionStatus::Complete
-            };
-        if projection.document.revision_status != expected_status
-            || projection.document.formatting_status
-                != FormattingProjectionStatus::Incomplete(
-                    FormattingUnknownReason::UnsupportedStyles,
-                )
+        if projection.document.revision_status != RevisionProjectionStatus::Complete
+            || projection.document.formatting_status != FormattingProjectionStatus::Complete
         {
             return Err(
                 "table projection statuses differ from their declared semantics".to_owned(),
@@ -3329,7 +3389,7 @@ fn table_property_revisions_cover_distinct_rows_and_cells() {
             vec![vec!["", "é😀"], vec!["a"]],
             vec![vec!["b", "😀"], vec![""]],
         ],
-        snapshots: [true; 4],
+        snapshots: [true; 5],
         placement: TablePlacement::Body,
         namespace: NamespaceProfile::Transitional,
     };

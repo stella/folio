@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { generateDocxFixture } from "../../support/validatedDocxFixture";
 /**
  * Build the synthetic DOCX packages that check the review views' layout.
  *
@@ -128,11 +129,7 @@ const write = async (name: string, paragraphs: readonly string[]): Promise<void>
   add("word/_rels/document.xml.rels", DOCUMENT_RELS);
   add("word/document.xml", documentXml(paragraphs));
   add("word/styles.xml", STYLES_XML);
-  const bytes = await zip.generateAsync({
-    type: "uint8array",
-    compression: "DEFLATE",
-    compressionOptions: { level: 9 },
-  });
+  const bytes = await generateDocxFixture(zip, name);
   const outputPath = path.join(OUTPUT_DIR, name);
   await Bun.write(outputPath, bytes);
   console.log(`Wrote ${outputPath} (${bytes.byteLength} bytes)`);

@@ -1,3 +1,4 @@
+import { writeZipPart } from "@stll/docx-core/zip";
 import type { SaveDiagnosticOptions } from "./saveDiagnostics";
 /**
  * Selective Save Module
@@ -51,6 +52,7 @@ import {
 import {
   type CommentPartPlan,
   planCommentParts,
+  hasOwnedCommentsPart,
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
@@ -425,6 +427,7 @@ export async function attemptSelectiveSave(
 
   const comments = doc.package.document.comments ?? [];
   const hasComments = comments.length > 0;
+  const ownsCommentsPart = hasOwnedCommentsPart(doc);
   // One plan, both parts: the order they are written in and the paraId each
   // comment is threaded by are decided once, keyed by `w:id`. Planned here
   // rather than beside `word/comments.xml` because `commentsExtended.xml` is
@@ -460,7 +463,7 @@ export async function attemptSelectiveSave(
         sourceParts.set(path, await file.async("text"));
       }
       for (const [path, xml] of normalizeImportedNumericIds(sourceParts)) {
-        if (xml !== sourceParts.get(path)) zip.file(path, xml);
+        if (xml !== sourceParts.get(path)) writeZipPart({ zip, path, data: xml });
       }
     }
 
@@ -547,8 +550,9 @@ export async function attemptSelectiveSave(
     // even if the editor now has zero comments — otherwise the stale
     // entries linger in the saved file (the rezip baseline copies the
     // previous part as-is) and round-trip back as phantom threads.
-    const sourceCommentsFile = zip.file("word/comments.xml");
-    if (hasComments || sourceCommentsFile) {
+    const sourceCommentsFile = findZipEntryCaseInsensitive(zip, "word/comments.xml");
+    const commentsPartPath = sourceCommentsFile?.name ?? "word/comments.xml";
+    if (hasComments || ownsCommentsPart || sourceCommentsFile) {
       const sourceCommentsXml = sourceCommentsFile
         ? await sourceCommentsFile.async("text")
         : undefined;
@@ -557,20 +561,20 @@ export async function attemptSelectiveSave(
         sourceCommentsXml === undefined ? undefined : readRootNamespaceBindings(sourceCommentsXml),
       );
       if (commentsXml !== sourceCommentsXml) {
-        updates.set("word/comments.xml", commentsXml);
+        updates.set(commentsPartPath, commentsXml);
       }
     }
-    if (hasComments) {
+    if (hasComments || ownsCommentsPart) {
       // Ensure [Content_Types].xml has an Override for comments.xml
       const ctFile = zip.file("[Content_Types].xml");
       if (ctFile) {
         const ctXml = await ctFile.async("text");
-        if (!ctXml.includes("/word/comments.xml")) {
+        if (!ctXml.toLowerCase().includes("/word/comments.xml")) {
           updates.set(
             "[Content_Types].xml",
             ctXml.replace(
               "</Types>",
-              `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
+              `<Override PartName="/${commentsPartPath}" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
             ),
           );
         }
@@ -581,13 +585,13 @@ export async function attemptSelectiveSave(
       const relsFile = zip.file(relsPath);
       if (relsFile) {
         const relsXml = await relsFile.async("text");
-        if (!relsXml.includes("comments.xml")) {
+        if (!relsXml.toLowerCase().includes("comments.xml")) {
           const maxId = findMaxRId(relsXml);
           updates.set(
             relsPath,
             relsXml.replace(
               "</Relationships>",
-              `<Relationship Id="rId${maxId + 1}" Type="${RELATIONSHIP_TYPES.comments}" Target="comments.xml"/></Relationships>`,
+              `<Relationship Id="rId${maxId + 1}" Type="${RELATIONSHIP_TYPES.comments}" Target="${commentsPartPath.slice("word/".length)}"/></Relationships>`,
             ),
           );
         }

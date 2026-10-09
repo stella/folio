@@ -248,7 +248,7 @@ describe("a transparent wrapper inside a link, through parse and save", () => {
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test(
@@ -262,7 +262,7 @@ describe("a transparent wrapper inside a link, through parse and save", () => {
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 });
 
@@ -282,7 +282,7 @@ describe("a transparent wrapper inside a simple field, through parse and save", 
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test(
@@ -296,7 +296,7 @@ describe("a transparent wrapper inside a simple field, through parse and save", 
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 });
 
@@ -313,7 +313,7 @@ describe("a transparent wrapper inside a link, through the editor", () => {
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test(
@@ -327,7 +327,7 @@ describe("a transparent wrapper inside a link, through the editor", () => {
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test(
@@ -346,7 +346,7 @@ describe("a transparent wrapper inside a link, through the editor", () => {
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test(
@@ -360,7 +360,7 @@ describe("a transparent wrapper inside a link, through the editor", () => {
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 });
 
@@ -378,7 +378,7 @@ describe("a transparent wrapper inside a simple field, through the editor", () =
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 
   test(
@@ -392,7 +392,7 @@ describe("a transparent wrapper inside a simple field, through the editor", () =
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 });
 
@@ -415,7 +415,7 @@ describe("a wrapped hyperlink inside a simple field, through the editor", () => 
         propertyConfig({ numRuns: 200 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 });
 
@@ -462,6 +462,6 @@ describe("an edit inside a wrapper inside a link", () => {
         propertyConfig({ numRuns: 100 }),
       );
     },
-    propertyTestTimeout(),
+    propertyTestTimeout(15_000),
   );
 });

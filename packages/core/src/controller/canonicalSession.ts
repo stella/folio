@@ -1,4 +1,6 @@
+import { restoreCanonicalSelection } from "./canonicalSelection";
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
+import { mapTocSelection } from "./canonicalTocSelection";
 import { CANONICAL_GAP, type CanonicalGap } from "../types/canonicalCapabilities";
 import { panic, Result, TaggedError } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
@@ -6,6 +8,7 @@ import { AllSelection, TextSelection, type EditorState, type Transaction } from 
 import {
   applyDocumentOps,
   combineEdits,
+  commentDocumentIssue,
   DOCUMENT_OP_TYPES,
   editorParagraphGroups,
   type AppliedDocumentOp,
@@ -65,8 +68,21 @@ const noChange = (message: string) =>
     new CanonicalSessionError({ gap: CANONICAL_GAP.dispatch, message, reason: "noChange" }),
   );
 
+const COMMENT_OPERATION_TYPES: ReadonlySet<DocumentOp["type"]> = new Set([
+  DOCUMENT_OP_TYPES.CREATE_COMMENT,
+  DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+  DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
+  DOCUMENT_OP_TYPES.DELETE_COMMENT,
+  DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+]);
+
 const operationChangesPackage = (op: DocumentOp): boolean => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+    case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+    case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+    case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+    case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
@@ -118,6 +134,7 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
+      return true;
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
@@ -131,6 +148,11 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+    case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+    case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+    case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+    case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
       return false;
     default: {
       const unreachable: never = op;
@@ -141,6 +163,11 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
 
 const operationChangesBodyProjection = (op: DocumentOp): boolean => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+    case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+    case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
+    case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+    case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
@@ -350,6 +377,8 @@ const unsupportedSeedReason = (
   document: Document,
   stories = documentStories(document),
 ): string | null => {
+  const commentIssue = commentDocumentIssue(document, "all");
+  if (commentIssue !== undefined) return commentIssue;
   for (const story of stories) {
     const body = findStoryBody(document, story);
     if (story !== OP_STORIES.MAIN && (story.kind === "footnote" || story.kind === "endnote")) {
@@ -456,6 +485,7 @@ const intentStory = (intent: EditorIntent): OpStory => {
     case "formatRun":
     case "insertAtom":
       return intent.from.story;
+    case "generateTOC":
     case "splitParagraph":
     case "formatParagraph":
       return intent.at.story;
@@ -566,6 +596,7 @@ export type CanonicalCommit = {
   document: Document;
   projection: CanonicalProjection;
   bodyProjection: CanonicalProjection;
+  selection: CanonicalSelection;
   touched: TouchedBlocks;
   version: number;
   origin: CanonicalOrigin;
@@ -718,6 +749,11 @@ class CanonicalSession {
     this.rememberSources(document);
   }
 
+  /** Render only the committed comment projection while provisional IME blocks document snapshots. */
+  getCommittedComments() {
+    return structuredClone(this.currentDocument.package.document.comments ?? []);
+  }
+
   setMode(mode: CanonicalSessionMode): void {
     if (
       this.mode.type !== mode.type ||
@@ -750,12 +786,13 @@ class CanonicalSession {
 
   private intentMode(document: Document, intent: EditorIntent): EditorIntentMode {
     if (this.mode.type === "editing" && !this.intentNeedsIdentityIds(document, intent))
-      return { type: "editing" };
+      return { type: "editing", reservedBlockIds: this.allocatedBlockIds };
     const ids = this.allocateIntentIds(document, intent);
     return this.mode.type === "editing"
-      ? { type: "editing", newIds: ids.newIds }
+      ? { type: "editing", newIds: ids.newIds, reservedBlockIds: this.allocatedBlockIds }
       : {
           type: "suggesting",
+          reservedBlockIds: this.allocatedBlockIds,
           revision: {
             id: ids.revisionId,
             author: this.mode.author,
@@ -770,6 +807,7 @@ class CanonicalSession {
     switch (intent.type) {
       case "table":
         return true;
+      case "generateTOC":
       case "setList":
       case "formatParagraph":
         return false;
@@ -1052,13 +1090,15 @@ class CanonicalSession {
         this.mode.type === "suggesting" &&
         (intent.type === "setHyperlink" ||
           intent.type === "removeHyperlink" ||
-          intent.type === "insertHyperlink")
+          intent.type === "insertHyperlink" ||
+          intent.type === "generateTOC")
       ) {
         return Result.err(
           new CanonicalSessionError({
             gap: CANONICAL_GAP.trackedHyperlinkResolution,
             reason: "refused",
-            message: "Hyperlink suggestions require serializable wrapper review provenance.",
+            message:
+              "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
           }),
         );
       }
@@ -1073,7 +1113,13 @@ class CanonicalSession {
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
-      if (
+      if (intent.type === "generateTOC") {
+        const mapping = { at: intent.at, after: compiled.value.selection, ops: compiled.value.ops };
+        postSelection = Object.assign({}, postSelection, {
+          anchor: mapTocSelection(postSelection.anchor, mapping),
+          head: mapTocSelection(postSelection.head, mapping),
+        });
+      } else if (
         intent.type !== "setHyperlink" &&
         intent.type !== "removeHyperlink" &&
         intent.type !== "formatRun" &&
@@ -1454,33 +1500,16 @@ class CanonicalSession {
     }
     if (!transaction.doc.eq(projected.value.doc))
       transaction.replaceWith(0, transaction.doc.content.size, projected.value.doc.content);
-    if (sameStory(selection.anchor.story, story) && sameStory(selection.head.story, story)) {
-      const anchor = projected.value.positionAt(selection.anchor);
-      const head = projected.value.positionAt(selection.head);
-      switch (selection.type) {
-        case "all":
-          transaction.setSelection(new AllSelection(transaction.doc));
-          break;
-        case "text":
-          if (anchor.isOk() && head.isOk()) {
-            transaction.setSelection(
-              TextSelection.create(transaction.doc, anchor.value, head.value),
-            );
-            break;
-          }
-          transaction.setSelection(
-            TextSelection.near(
-              transaction.doc.resolve(
-                Math.min(state.selection.anchor, transaction.doc.content.size),
-              ),
-            ),
-          );
-          break;
-        default: {
-          const exhaustive: never = selection.type;
-          return panic(`Unknown canonical selection type: ${exhaustive}`);
-        }
-      }
+    if (
+      sameStory(selection.anchor.story, projectedStory) &&
+      sameStory(selection.head.story, projectedStory)
+    ) {
+      restoreCanonicalSelection({
+        transaction,
+        projection: projected.value,
+        selection,
+        unavailable: { type: "near", anchor: state.selection.anchor },
+      });
     }
     transaction.setMeta(CANONICAL_PROJECTION_META, {
       type: "canonical",
@@ -1501,6 +1530,7 @@ class CanonicalSession {
       document: applied.value.document,
       projection: projected.value,
       bodyProjection: bodyProjection.value,
+      selection,
       touched: applied.value.touched,
       version: baseVersion + 1,
       origin,
@@ -1540,11 +1570,15 @@ class CanonicalSession {
         ]) {
           for (const id of ids) this.saveTouched.add(id);
         }
+        // Comment operations touch only the comments part and keep the paragraph
+        // splice path; every other operation that inserts or removes blocks, or
+        // changes package parts or a non-body story, invalidates it.
+        const bodyOps = ops.filter((op) => !COMMENT_OPERATION_TYPES.has(op.type));
         if (
-          applied.value.touched.inserted.length > 0 ||
-          applied.value.touched.removed.length > 0 ||
-          ops.some(operationChangesPackage) ||
-          ops.some(operationChangesStructure)
+          bodyOps.some(operationChangesStructure) ||
+          bodyOps.some(operationChangesPackage) ||
+          (bodyOps.length > 0 &&
+            (applied.value.touched.inserted.length > 0 || applied.value.touched.removed.length > 0))
         )
           this.saveStructure = "changed";
         this.currentVersion = baseVersion + 1;

@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { generateDocxFixture } from "../support/validatedDocxFixture";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -20,7 +21,12 @@ import { makeTempDir } from "../../packages/cli/src/__tests__/fixtures";
 import { propertyConfig, propertyTestTimeout } from "../../test/property-testing";
 import { buildScrollRootDocument } from "../support/scrollRootDocument";
 import { ensureLiveView, openEditor } from "./parity-fixture";
-import { HOST_NAVIGATION_CASES, hostApiFlowArbitrary, navigationWasEffective } from "./hostApiFlow";
+import {
+  HOST_FLOW_REGRESSION,
+  HOST_NAVIGATION_CASES,
+  hostApiFlowArbitrary,
+  navigationWasEffective,
+} from "./hostApiFlow";
 
 const semanticProjection = async (bytes: Uint8Array) => {
   expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
@@ -159,7 +165,7 @@ test("host APIs interleaved with edits save equally across React, Vue, headless 
     "word/document.xml",
     (await part.async("string")).replace("First page", "Replacement page"),
   );
-  const replacement = await zip.generateAsync({ type: "uint8array" });
+  const replacement = await generateDocxFixture(zip, "host-flow-replacement");
   const { dir, cleanup } = await makeTempDir();
   const file = path.join(dir, "host-flow.docx");
   try {
@@ -182,125 +188,134 @@ test("host APIs interleaved with edits save equally across React, Vue, headless 
         window.scrollTo({ top: 120, behavior: "instant" });
       });
     }
-    const verdict = await fc.check(
-      fc.asyncProperty(hostApiFlowArbitrary, async (flow) => {
-        let headless = await FolioDocxReviewer.fromBuffer(new Uint8Array(source).buffer);
-        let expectedFirstText = "First page";
-        const exercised = new Map(hosts.map(({ name }) => [name, new Set<string>()]));
-        await writeFile(file, source);
-        for (const { page } of hosts) {
-          await page.evaluate(
-            (bytes) => window.__folioScrollParity?.loadFlowDocument(bytes),
-            [...source],
-          );
-          await waitForLayout(page);
-        }
-        for (const [index, navigation] of flow.navigation.entries()) {
-          if (index === flow.replacementAfter) {
-            headless = await FolioDocxReviewer.fromBuffer(new Uint8Array(replacement).buffer);
-            expectedFirstText = "Replacement page";
-            await writeFile(file, replacement);
-            for (const { page } of hosts) {
-              await page.evaluate(
-                (bytes) => window.__folioScrollParity?.replaceFlowDocument(bytes),
-                [...replacement],
-              );
-              await waitForLayout(page);
-            }
-          }
-          const text = flow.edits.at(index);
-          if (text === undefined) throw new Error("Generated flow missing edit");
-          const id = `host-edit-${index}`;
-          const batch = {
-            version: 1,
-            mode: "direct",
-            operations: [
-              {
-                id,
-                type: "replaceInBlock",
-                blockId: "13300100",
-                find: "page",
-                replace: `page ${text}`,
-              },
-            ],
-          } as const satisfies FolioDocumentOperationBatch;
-          expectedFirstText = expectedFirstText.replace("page", `page ${text}`);
-          expect(headless.applyDocumentOperations(batch)).toMatchObject({
-            skipped: [],
-            applied: [{ id }],
-          });
-          await applyCliBatch(file, batch);
-          const baselineBytes = new Uint8Array(await headless.toBuffer());
-          const baseline = await semanticProjection(baselineBytes);
-          expect(baseline.blocks.at(0)?.text).toBe(expectedFirstText);
-          for (const { name, page } of hosts) {
-            expect(
-              await page.evaluate(
-                (input) => window.__folioScrollParity?.applyFlowBatch(input),
-                batch,
-              ),
-            ).toMatchObject({ skipped: [], applied: [{ id }] });
-            await waitForLayout(page);
-            await navigate(page, navigation);
-            exercised.get(name)?.add(`${navigation.type}:${navigation.method}`);
-            const read = await page.evaluate(() => window.__folioScrollParity?.readFlowDocument());
-            expect(
-              read ? getDocumentText(read.documentBody).split("\n").at(0) : undefined,
-              `${name}:getDocument`,
-            ).toBe(expectedFirstText);
-            expect(
-              read ? getDocumentText(read.pagedBody).split("\n").at(0) : undefined,
-              `${name}:paged.getDocument`,
-            ).toBe(expectedFirstText);
-            expect(read?.liveText, `${name}:live`).toContain(expectedFirstText);
-            const saved = await page.evaluate(() => window.__folioScrollParity?.saveFlowDocument());
-            if (!saved) throw new Error("Missing browser checkpoint output");
-            expect(await semanticProjection(new Uint8Array(saved)), `${name}:${index}`).toEqual(
-              baseline,
-            );
-            // Fresh headless parsing above is the save/reopen oracle at every step.
-          }
-          expect(
-            await semanticProjection(new Uint8Array(await readFile(file))),
-            `cli:${index}`,
-          ).toEqual(baseline);
-        }
-        const declared = HOST_NAVIGATION_CASES.map(
-          ({ type, method }) => `${type}:${method}`,
-        ).sort();
-        for (const { name } of hosts) {
-          expect([...(exercised.get(name) ?? [])].sort(), `${name}:navigation coverage`).toEqual(
-            declared,
-          );
-        }
-      }),
+    for (const options of [
+      HOST_FLOW_REGRESSION,
       propertyConfig({ numRuns: 2, endOnFailure: false }),
-    );
-    if (!verdict.failed) return;
-    const failure = {
-      seed: verdict.seed,
-      path: verdict.counterexamplePath,
-      trace: verdict.counterexample?.at(0),
-      error: String(verdict.errorInstance),
-    };
-    await testInfo.attach("host-api-repro", {
-      body: JSON.stringify(failure),
-      contentType: "application/json",
-    });
-    logFailureMarker(
-      failureMarker({
-        test: "host APIs interleaved with edits save equally across React, Vue, headless and CLI",
+    ]) {
+      const verdict = await fc.check(
+        fc.asyncProperty(hostApiFlowArbitrary, async (flow) => {
+          let headless = await FolioDocxReviewer.fromBuffer(new Uint8Array(source).buffer);
+          let expectedFirstText = "First page";
+          const exercised = new Map(hosts.map(({ name }) => [name, new Set<string>()]));
+          await writeFile(file, source);
+          for (const { page } of hosts) {
+            await page.evaluate(
+              (bytes) => window.__folioScrollParity?.loadFlowDocument(bytes),
+              [...source],
+            );
+            await waitForLayout(page);
+          }
+          for (const [index, navigation] of flow.navigation.entries()) {
+            if (index === flow.replacementAfter) {
+              headless = await FolioDocxReviewer.fromBuffer(new Uint8Array(replacement).buffer);
+              expectedFirstText = "Replacement page";
+              await writeFile(file, replacement);
+              for (const { page } of hosts) {
+                await page.evaluate(
+                  (bytes) => window.__folioScrollParity?.replaceFlowDocument(bytes),
+                  [...replacement],
+                );
+                await waitForLayout(page);
+              }
+            }
+            const text = flow.edits.at(index);
+            if (text === undefined) throw new Error("Generated flow missing edit");
+            const id = `host-edit-${index}`;
+            const batch = {
+              version: 1,
+              mode: "direct",
+              operations: [
+                {
+                  id,
+                  type: "replaceInBlock",
+                  blockId: "13300100",
+                  find: "page",
+                  replace: `page ${text}`,
+                },
+              ],
+            } as const satisfies FolioDocumentOperationBatch;
+            expectedFirstText = expectedFirstText.replace("page", `page ${text}`);
+            expect(headless.applyDocumentOperations(batch)).toMatchObject({
+              skipped: [],
+              applied: [{ id }],
+            });
+            await applyCliBatch(file, batch);
+            const baselineBytes = new Uint8Array(await headless.toBuffer());
+            const baseline = await semanticProjection(baselineBytes);
+            expect(baseline.blocks.at(0)?.text).toBe(expectedFirstText);
+            for (const { name, page } of hosts) {
+              expect(
+                await page.evaluate(
+                  (input) => window.__folioScrollParity?.applyFlowBatch(input),
+                  batch,
+                ),
+              ).toMatchObject({ skipped: [], applied: [{ id }] });
+              await waitForLayout(page);
+              await navigate(page, navigation);
+              exercised.get(name)?.add(`${navigation.type}:${navigation.method}`);
+              const read = await page.evaluate(() =>
+                window.__folioScrollParity?.readFlowDocument(),
+              );
+              expect(
+                read ? getDocumentText(read.documentBody).split("\n").at(0) : undefined,
+                `${name}:getDocument`,
+              ).toBe(expectedFirstText);
+              expect(
+                read ? getDocumentText(read.pagedBody).split("\n").at(0) : undefined,
+                `${name}:paged.getDocument`,
+              ).toBe(expectedFirstText);
+              expect(read?.liveText, `${name}:live`).toContain(expectedFirstText);
+              const saved = await page.evaluate(() =>
+                window.__folioScrollParity?.saveFlowDocument(),
+              );
+              if (!saved) throw new Error("Missing browser checkpoint output");
+              expect(await semanticProjection(new Uint8Array(saved)), `${name}:${index}`).toEqual(
+                baseline,
+              );
+              // Fresh headless parsing above is the save/reopen oracle at every step.
+            }
+            expect(
+              await semanticProjection(new Uint8Array(await readFile(file))),
+              `cli:${index}`,
+            ).toEqual(baseline);
+          }
+          const declared = HOST_NAVIGATION_CASES.map(
+            ({ type, method }) => `${type}:${method}`,
+          ).sort();
+          for (const { name } of hosts) {
+            expect([...(exercised.get(name) ?? [])].sort(), `${name}:navigation coverage`).toEqual(
+              declared,
+            );
+          }
+        }),
+        options,
+      );
+      if (!verdict.failed) continue;
+      const failure = {
         seed: verdict.seed,
         path: verdict.counterexamplePath,
-        repro: `PROPERTY_TEST_SEED=${verdict.seed} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=parity-fuzzer tests/parity/host-api-flow.spec.ts --workers=1`,
-        failure: verdict.errorInstance,
-        flow: fc.stringify(failure.trace),
-      }),
-    );
-    throw new Error(
-      `Host API flow failed: ${JSON.stringify(failure)}\n` +
-        `PROPERTY_TEST_SEED=${verdict.seed} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=parity-fuzzer tests/parity/host-api-flow.spec.ts --workers=1`,
-    );
+        trace: verdict.counterexample?.at(0),
+        error: String(verdict.errorInstance),
+      };
+      await testInfo.attach("host-api-repro", {
+        body: JSON.stringify(failure),
+        contentType: "application/json",
+      });
+      logFailureMarker(
+        failureMarker({
+          test: "host APIs interleaved with edits save equally across React, Vue, headless and CLI",
+          seed: verdict.seed,
+          path: verdict.counterexamplePath,
+          repro: `PROPERTY_TEST_SEED=${verdict.seed} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=parity-fuzzer tests/parity/host-api-flow.spec.ts --workers=1`,
+          failure: verdict.errorInstance,
+          flow: fc.stringify(failure.trace),
+        }),
+      );
+      throw new Error(
+        `Host API flow failed: ${JSON.stringify(failure)}\n` +
+          `PROPERTY_TEST_SEED=${verdict.seed} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=parity-fuzzer tests/parity/host-api-flow.spec.ts --workers=1`,
+      );
+    }
   } finally {
     await react.close();
     await vue.close();

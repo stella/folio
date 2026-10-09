@@ -7,7 +7,8 @@
  * record an operation embeds, shows up here as a diff of the fixture; it
  * needs a new schema version and a migration, not an updated released fixture.
  * The fixture for an unreleased schema records that cutover's final contract;
- * schema 9 adds clipboard package resources over schema 8's semantic table edits.
+ * schema 9 adds clipboard package resources over schema 8's semantic table edits,
+ * and schema 10 adds comment operations.
  *
  * `bun packages/docx-core/src/ops/__tests__/wireFixtures.ts` generates the current fixture.
  */
@@ -179,7 +180,7 @@ test("older envelopes are refused structurally and current envelopes apply", asy
     text: "x",
     runProps: "inherit",
   } as const;
-  // Schema 8 adds semantic table edits; schema 9 adds clipboard package resources.
+  // Schema 8 adds semantic table edits; schema 9 adds clipboard resources; schema 10 adds comments.
   const older: unknown = await Bun.file(
     new URL("./__fixtures__/ops-v4.json", import.meta.url),
   ).json();
@@ -200,7 +201,25 @@ test("older envelopes are refused structurally and current envelopes apply", asy
   expect(current.inverse.length).toBe(1);
 });
 
-test("clipboard package resources remain pinned in the schema-9 wire contract", () => {
+test("lifecycle wire fixtures exercise each declared own-undefined target", () => {
+  const targets = { body: true, package: true, section: true } as const satisfies Record<
+    NonNullable<import("../types").StoryParts["undefinedFields"]>[number]["target"],
+    true
+  >;
+  const restorations = envelopes()
+    .map(({ op }) => op)
+    .filter((op) => op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS);
+  const exercised = new Set(
+    restorations.flatMap((op) =>
+      [...(op.expected.undefinedFields ?? []), ...(op.parts.undefinedFields ?? [])].map(
+        ({ target }) => target,
+      ),
+    ),
+  );
+  expect([...exercised].toSorted()).toEqual(Object.keys(targets).toSorted());
+});
+
+test("clipboard package resources remain pinned in the schema-10 wire contract", () => {
   const resources = envelopes().filter(
     ({ op }) => op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
   );

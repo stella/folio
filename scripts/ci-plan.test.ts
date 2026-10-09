@@ -9,6 +9,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import editorWebPlaywright from "../packages/editor-web/playwright.config";
 import runContract from "./ci-run-contract.json";
+import {
+  BROWSER_INPUT_REGRESSIONS,
+  PINNED_BROWSER_INPUT_TAG,
+} from "../tests/visual/browserInputRegressions";
 import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 import {
   assignTestShards,
@@ -33,7 +37,14 @@ const PR_SCOPED_JOBS = new Set(["property-areas", "browser-discovery"]);
 const PROPERTY_AREAS_CONDITION =
   "github.event_name == 'pull_request' && github.event.pull_request.draft != true && ";
 
-type Job = { needs?: unknown; if?: unknown; steps?: unknown; outputs?: Record<string, unknown> };
+type Job = {
+  needs?: unknown;
+  if?: unknown;
+  steps?: unknown;
+  outputs?: Record<string, unknown>;
+  "timeout-minutes"?: unknown;
+  strategy?: unknown;
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -57,6 +68,8 @@ const readJobs = (): Record<string, Job> => {
       needs: job["needs"],
       if: job["if"],
       steps: job["steps"],
+      "timeout-minutes": job["timeout-minutes"],
+      strategy: job["strategy"],
       outputs: isRecord(outputs) ? outputs : {},
     };
   }
@@ -139,6 +152,7 @@ describe("CI plan", () => {
       "scripts/property-test-budgets.test.ts",
       "scripts/rust-boundaries.test.ts",
       "scripts/on-off-element-writer.test.ts",
+      "scripts/zip-part-writer.test.ts",
       "scripts/on-off-spelling.test.ts",
       "scripts/consumer-scenario-dependencies.test.ts",
       "scripts/adapter-layout-timing.test.ts",
@@ -459,6 +473,58 @@ describe("CI plan", () => {
     expect(jobs).not.toHaveProperty("browser-fuzzer-smoke");
   });
 
+  test("pinned browser inputs gate PRs and merge groups with exactly the standing registry", () => {
+    const pinned = jobs["browser-input-pinned"];
+    expect(pinned?.if).toBe("needs.ci-plan.outputs.interactions_required == 'true'");
+    const steps = pinned?.steps;
+    if (!Array.isArray(steps)) throw new TypeError("Missing pinned browser steps");
+    const commands = steps.flatMap((step) =>
+      isRecord(step) && typeof step["run"] === "string" ? [step["run"]] : [],
+    );
+    expect(commands.filter((command) => command.includes("playwright test"))).toEqual([
+      "bunx playwright test --project=browser-input-pinned --workers=1",
+    ]);
+    expect(pinned?.strategy).toBeUndefined();
+    expect(pinned?.["timeout-minutes"]).toBe(10);
+
+    const listing = Bun.spawnSync(
+      ["bunx", "playwright", "test", "--project=browser-input-pinned", "--list", "--reporter=json"],
+      { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" },
+    );
+    expect(listing.exitCode, listing.stderr.toString()).toBe(0);
+    const report: unknown = JSON.parse(listing.stdout.toString());
+    if (!isRecord(report)) throw new TypeError("Invalid pinned project report");
+    expect(report["errors"]).toEqual([]);
+    const titles: string[] = [];
+    const collect = (suites: unknown) => {
+      if (!Array.isArray(suites)) throw new TypeError("Invalid discovery suites");
+      for (const suite of suites) {
+        if (!isRecord(suite) || !Array.isArray(suite["specs"]))
+          throw new TypeError("Invalid discovery suite");
+        for (const spec of suite["specs"]) {
+          if (!isRecord(spec) || typeof spec["title"] !== "string" || !Array.isArray(spec["tests"]))
+            throw new TypeError("Invalid pinned spec");
+          expect(spec["tags"]).toEqual([PINNED_BROWSER_INPUT_TAG.slice(1)]);
+          for (const discovered of spec["tests"]) {
+            if (!isRecord(discovered)) throw new TypeError("Invalid pinned test");
+            expect(discovered["projectName"]).toBe("browser-input-pinned");
+            expect(discovered["timeout"]).toBe(60_000);
+            titles.push(spec["title"]);
+          }
+        }
+        if (suite["suites"] !== undefined) collect(suite["suites"]);
+      }
+    };
+    collect(report["suites"]);
+    expect(titles.toSorted()).toEqual(
+      BROWSER_INPUT_REGRESSIONS.map(
+        ({ seed, path: replayPath, fingerprint }) =>
+          `regression seed ${seed} path ${replayPath} / ${fingerprint}`,
+      ).toSorted(),
+    );
+    expect(titles.length).toBeGreaterThan(0);
+  }, 30_000);
+
   // CodSpeed rejects merge_group events, so benchmarks keep their own
   // pull-request, main-push and nightly triggers.
   test("benchmarks never run on merge groups", () => {
@@ -576,6 +642,37 @@ describe("CI plan", () => {
       event: "pull_request",
       area: "browser_discovery_required",
     });
+  });
+
+  test("CI outcome evaluation owns every registered job and preserves its gate", () => {
+    const result = jobs["ci-result"];
+    const steps = result?.steps;
+    if (!Array.isArray(steps)) throw new TypeError("Missing CI result steps");
+    const evaluation = steps.find(
+      (step) => isRecord(step) && step["name"] === "Evaluate CI outcome",
+    );
+    if (!isRecord(evaluation) || !isRecord(evaluation["env"]))
+      throw new TypeError("Missing CI result environment");
+    const scopes: unknown = JSON.parse(String(evaluation["env"]["JOB_SCOPES"]));
+    if (!isRecord(scopes)) throw new TypeError("Invalid outcome scopes");
+    const evaluated = Object.keys(jobs).filter((id) => id !== PLAN_JOB && id !== "ci-result");
+    expect(Object.keys(scopes).toSorted()).toEqual(evaluated.toSorted());
+    expect(result?.needs).toEqual(expect.arrayContaining([PLAN_JOB, ...evaluated]));
+    if (!Array.isArray(result?.needs)) throw new TypeError("Missing CI outcome dependencies");
+    expect(result.needs.length).toBe(evaluated.length + 1);
+    for (const id of evaluated) {
+      const condition = jobs[id]?.if;
+      const scope = scopes[id];
+      if (!isRecord(scope)) throw new TypeError(`Missing job scope ${id}`);
+      if (typeof scope["area"] !== "string") continue;
+      expect(typeof condition).toBe("string");
+      if (typeof condition !== "string") throw new TypeError(`Missing job gate ${id}`);
+      const suffix =
+        scope["depth"] === "full" ? " && needs.ci-plan.outputs.suite_depth == 'full'" : "";
+      const areaGate = `needs.ci-plan.outputs.${scope["area"]} == '${scope["value"] ?? "true"}'${suffix}`;
+      expect(condition.endsWith(areaGate)).toBe(true);
+    }
+    expect(scopes["browser-input-pinned"]).toEqual({ area: "interactions_required" });
   });
 
   test("every area is a plan output named after it, and every area output is an area", () => {

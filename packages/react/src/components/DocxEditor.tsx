@@ -59,6 +59,7 @@ import {
   type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
+import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
@@ -211,6 +212,7 @@ import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plu
 import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import type { Comment } from "@stll/folio-core/types/content";
+import type { CanonicalCommentRequest } from "@stll/folio-core/types/canonicalComments";
 import type {
   Document,
   HeaderFooter,
@@ -225,7 +227,6 @@ import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
 import { pointsToHalfPoints, twipsToPixels } from "@stll/folio-core/utils/units";
 import { useDocumentHistory } from "../hooks/useHistory";
-import { createCanonicalSectionPropertiesOperation } from "@stll/folio-core/controller/canonicalOperations";
 import {
   CanonicalSaveDiagnosticError,
   serializeCanonicalSave,
@@ -636,34 +637,20 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const [anchorPositions, setAnchorPositions] =
     useState<Map<string, number>>(EMPTY_ANCHOR_POSITIONS);
 
-  const {
-    editingMode,
-    readOnly,
-    trackChangesOn,
-    toggleTrackChanges: toggleTrackChangesUnrestricted,
-    displayMode,
-    setDisplayMode,
-  } = useEditorMode({
-    modeProp,
-    onModeChange,
-    readOnlyProp,
-  });
+  const { editingMode, readOnly, trackChangesOn, toggleTrackChanges, displayMode, setDisplayMode } =
+    useEditorMode({
+      modeProp,
+      onModeChange,
+      readOnlyProp,
+    });
 
-  const toggleTrackChanges = useCallback(() => {
-    if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.suggesting) && !trackChangesOn) {
-      const error = new CanonicalSessionRefusalError({
-        gap: CANONICAL_GAP.suggesting,
-        message: canonicalRefusalMessage(
-          CANONICAL_GAP.suggesting,
-          "Canonical sessions do not support suggesting mode.",
-        ),
-      });
-      toast(error.message);
-      onError?.(error);
-      return;
-    }
-    toggleTrackChangesUnrestricted();
-  }, [experimentalSession, trackChangesOn, onError, toggleTrackChangesUnrestricted]);
+  useEffect(() => {
+    pagedEditorRef.current
+      ?.getEditor()
+      .setCanonicalMode(
+        editingMode === "suggesting" ? { type: "suggesting", author } : { type: "editing" },
+      );
+  }, [editingMode, author]);
 
   // Debounce timer for extractTrackedChanges (avoid full doc walk on every keystroke)
   const extractTrackedChangesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1067,9 +1054,24 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     size: 4,
     color: { rgb: "000000" },
   });
+  const canonicalCommentApi = pagedEditorRef.current?.getEditor();
+  const canonicalCommentsVersion = canonicalCommentApi?.getCanonicalCommittedVersion() ?? null;
+  const canonicalComments = useMemo(
+    () =>
+      canonicalCommentsVersion === null
+        ? null
+        : (canonicalCommentApi?.getCanonicalComments() ?? null),
+    [canonicalCommentApi, canonicalCommentsVersion],
+  );
+  const canonicalCommentsSerialized = useMemo(
+    () => (canonicalComments === null ? null : JSON.stringify(canonicalComments)),
+    [canonicalComments],
+  );
+  const canonicalCommentsSnapshotRef = useRef<string | null>(canonicalCommentsSerialized);
+  const lastControlledCommentsRef = useRef<string | undefined>(undefined);
 
   const {
-    comments,
+    comments: legacyComments,
     createComment,
     setComments,
     commentsRef,
@@ -1093,13 +1095,18 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     visibleComments,
     syncCommentHighlightStyles,
   } = useFolioComments({
-    doc: history.state,
+    doc: canonicalComments === null ? history.state : null,
     autoOpenReviewSidebar,
     anchorPositions,
     editorContentRef,
     commentsProp,
     onCommentsChange,
+    committedComments: canonicalComments,
   });
+  const comments = canonicalComments ?? legacyComments;
+  const commentDraftMode = usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+    ? "canonical"
+    : "prosemirror";
   const documentOperationUndoEntriesRef = useRef<LiveDocumentOperationUndoEntry[]>([]);
   const pendingSuggestionRegistryRef = useRef(new FolioPendingSuggestionRegistry());
   // Cache style resolver to avoid recreating on every selection change
@@ -1448,20 +1455,23 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Handle document change
   const handleDocumentChange = useCallback(
     (newDocument: Document) => {
+      const canonical = usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting);
       const currentComments = commentsRef.current;
-      const documentWithComments = {
-        ...newDocument,
-        package: {
-          ...newDocument.package,
-          document: {
-            ...newDocument.package.document,
-            comments: currentComments,
-          },
-        },
-      };
+      const documentWithComments = canonical
+        ? newDocument
+        : {
+            ...newDocument,
+            package: {
+              ...newDocument.package,
+              document: {
+                ...newDocument.package.document,
+                comments: currentComments,
+              },
+            },
+          };
       pushDocument(documentWithComments);
       onChange?.(
-        usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+        canonical
           ? cloneDocumentWithParagraphPropertySources(documentWithComments)
           : documentWithComments,
       );
@@ -1498,6 +1508,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       refreshBodyHistoryAvailability,
       commentsRef,
       experimentalSession,
+      history.state,
+      onCommentsChange,
     ],
   );
 
@@ -1583,15 +1595,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     return doc;
   }, [history.state, commentsRef, experimentalSession]);
 
+  const applyCanonicalComment = useCallback(
+    (request: CanonicalCommentRequest) => {
+      return getCanonicalApi()?.applyCanonicalComment(request) ?? null;
+    },
+    [getCanonicalApi],
+  );
+
   const replaceComments = useCallback(
     (nextComments: Comment[]) => {
-      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-        refuseCanonicalModelEdit(
-          CANONICAL_GAP.comments,
-          "Comment changes are unavailable in this session.",
-        );
-        return;
-      }
+      if (applyCanonicalComment({ type: "replace", comments: nextComments }) !== null) return;
 
       commentsDirtyRef.current = true;
       setComments(nextComments);
@@ -1607,8 +1620,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       buildCurrentDocument,
       commentsDirtyRef,
       experimentalSession,
+      applyCanonicalComment,
       onChange,
-      refuseCanonicalModelEdit,
       setComments,
     ],
   );
@@ -1619,6 +1632,53 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     },
     [commentsRef, replaceComments],
   );
+
+  const [controlledCommentsRetry, setControlledCommentsRetry] = useState(0);
+  useEffect(() => {
+    if (commentsProp === undefined || canonicalComments === null) {
+      lastControlledCommentsRef.current = undefined;
+      return;
+    }
+    const requested = JSON.stringify(legacyComments);
+    // Internal journal changes cannot reapply an unchanged host value.
+    if (lastControlledCommentsRef.current === requested) return;
+    if (canonicalCommentsSerialized === requested) {
+      lastControlledCommentsRef.current = requested;
+      return;
+    }
+    const result = applyCanonicalComment({ type: "replace", comments: legacyComments });
+    // Only an applied value is handled; a value deferred by composition retries.
+    if (result?.status === "applied") {
+      lastControlledCommentsRef.current = requested;
+      return;
+    }
+    if (result?.status !== "refused" || result.retry !== "afterComposition") return;
+    const view = getCanonicalApi()?.getView();
+    if (!view) return;
+    return afterCanonicalCompositionSettles(view, () =>
+      setControlledCommentsRetry((attempt) => attempt + 1),
+    );
+  }, [
+    applyCanonicalComment,
+    commentsProp,
+    controlledCommentsRetry,
+    getCanonicalApi,
+    legacyComments,
+    canonicalCommentsSerialized,
+  ]);
+
+  useEffect(() => {
+    if (canonicalComments === null) return;
+    const nextComments = canonicalComments;
+    const serialized = canonicalCommentsSerialized;
+    if (canonicalCommentsSnapshotRef.current === null) {
+      canonicalCommentsSnapshotRef.current = serialized;
+      return;
+    }
+    if (canonicalCommentsSnapshotRef.current === serialized) return;
+    canonicalCommentsSnapshotRef.current = serialized;
+    onCommentsChange?.(structuredClone(nextComments));
+  }, [canonicalCommentsSerialized, onCommentsChange]);
 
   const selectFindMatch = useCallback((match: FindMatch): boolean => {
     const editor = pagedEditorRef.current;
@@ -2008,22 +2068,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Handle footnote/endnote properties update
   const handleApplyFootnoteProperties = useCallback(
     (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => {
-      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-        const api = getCanonicalApi();
-        api?.ensureView();
-        const canonical = api?.getCanonicalDocument();
-        if (
-          !canonical ||
-          !api?.applyCanonicalOperations([
-            createCanonicalSectionPropertiesOperation(canonical, { footnotePr, endnotePr }),
-          ])
-        )
-          refuseCanonicalModelEdit(
-            CANONICAL_GAP.sectionProperties,
-            "Section property changes could not be applied.",
-          );
+      const api = getCanonicalApi();
+      if (!api) {
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.sectionProperties,
+          "The editor is not ready for section changes.",
+        );
         return;
       }
+      const result = api.applyCanonicalSectionProperties({ footnotePr, endnotePr });
+      if (result !== null) return;
       if (!history.state?.package) {
         return;
       }
@@ -2043,7 +2097,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         },
       });
     },
-    [history, pushDocument, experimentalSession, getCanonicalApi, refuseCanonicalModelEdit],
+    [history, pushDocument, getCanonicalApi, refuseCanonicalModelEdit],
   );
 
   // Handle table action from Toolbar - use ProseMirror commands
@@ -2866,11 +2920,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           );
           const commentY = yPos ?? getFallbackCommentYPosition(scrollContainerRef.current);
           setCommentSelectionRange({ from, to });
-          const marked = applyCommentMarkRange(view, { from, to }, PENDING_COMMENT_ID, {
-            selectEnd: true,
-          });
-          if (!marked) {
-            break;
+          if (commentDraftMode === "prosemirror") {
+            const marked = applyCommentMarkRange(view, { from, to }, PENDING_COMMENT_ID, {
+              selectEnd: true,
+            });
+            if (!marked) break;
           }
           setAddCommentYPosition(commentY);
           setShowCommentsSidebar(true);
@@ -2945,22 +2999,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const handlePageSetupApply = useCallback(
     (props: Partial<SectionProperties>) => {
       if (readOnly) return;
-      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)) {
-        const api = getCanonicalApi();
-        api?.ensureView();
-        const canonical = api?.getCanonicalDocument();
-        if (
-          !canonical ||
-          !api?.applyCanonicalOperations([
-            createCanonicalSectionPropertiesOperation(canonical, props),
-          ])
-        )
-          refuseCanonicalModelEdit(
-            CANONICAL_GAP.sectionProperties,
-            "Section property changes could not be applied.",
-          );
+      const api = getCanonicalApi();
+      if (!api) {
+        refuseCanonicalModelEdit(
+          CANONICAL_GAP.sectionProperties,
+          "The editor is not ready for section changes.",
+        );
         return;
       }
+      const result = api.applyCanonicalSectionProperties(props);
+      if (result !== null) return;
       if (!history.state || readOnly) {
         return;
       }
@@ -2979,14 +3027,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       };
       handleDocumentChange(newDoc);
     },
-    [
-      history.state,
-      readOnly,
-      handleDocumentChange,
-      experimentalSession,
-      getCanonicalApi,
-      refuseCanonicalModelEdit,
-    ],
+    [history.state, readOnly, handleDocumentChange, getCanonicalApi, refuseCanonicalModelEdit],
   );
 
   // Ruler drag handlers. Page-margin drags go through the section-properties
@@ -4313,28 +4354,20 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   );
   const handleCommentResolve = useCallback(
     (id: number) => {
-      if (
-        refuseCanonicalModelEdit(
-          CANONICAL_GAP.comments,
-          "Comment changes are unavailable in this session.",
-        )
-      )
-        return;
+      if (applyCanonicalComment({ type: "resolve", id, status: "resolved" }) !== null) return;
       updateComments((previous) =>
         previous.map((comment) => (comment.id === id ? { ...comment, done: true } : comment)),
       );
     },
-    [refuseCanonicalModelEdit, updateComments],
+    [applyCanonicalComment, updateComments],
   );
   const handleCommentDelete = useCallback(
     (id: number) => {
-      if (
-        refuseCanonicalModelEdit(
-          CANONICAL_GAP.comments,
-          "Comment changes are unavailable in this session.",
-        )
-      )
+      const result = applyCanonicalComment({ type: "delete", id });
+      if (result !== null) {
+        if (result.status === "applied" && activeCommentId === id) setActiveCommentId(null);
         return;
+      }
       updateComments((previous) =>
         previous.filter((comment) => comment.id !== id && comment.parentId !== id),
       );
@@ -4342,36 +4375,51 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         setActiveCommentId(null);
       }
     },
-    [activeCommentId, refuseCanonicalModelEdit, setActiveCommentId, updateComments],
+    [activeCommentId, applyCanonicalComment, setActiveCommentId, updateComments],
   );
   const handleCommentReply = useCallback(
     (id: number, text: string) => {
       if (
-        refuseCanonicalModelEdit(
-          CANONICAL_GAP.comments,
-          "Comment changes are unavailable in this session.",
-        )
+        applyCanonicalComment({
+          type: "create",
+          text,
+          author,
+          anchor: { kind: "reply", parentId: id },
+        }) !== null
       )
         return;
       updateComments((previous) => [...previous, createComment(text, author, id)]);
     },
-    [author, createComment, refuseCanonicalModelEdit, updateComments],
+    [applyCanonicalComment, author, createComment, updateComments],
   );
   const handleAddComment = useCallback(
     (addText: string) => {
-      if (
-        refuseCanonicalModelEdit(
-          CANONICAL_GAP.comments,
-          "Comment changes are unavailable in this session.",
-        )
-      ) {
-        return false;
-      }
-      const comment = createComment(addText, author);
       const view = pagedEditorRef.current?.getView();
       if (!view || !commentSelectionRange) {
         return false;
       }
+      const result = applyCanonicalComment({
+        type: "create",
+        text: addText,
+        author,
+        anchor: { kind: "selection", ...commentSelectionRange, story: "main" },
+      });
+      if (result !== null) {
+        if (result?.status !== "applied") return false;
+        setVisibleCommentAuthors((current) => {
+          if (current === null) return null;
+          const next = new Set(current);
+          const created = result.comments.find(({ id }) => id === result.commentId);
+          if (created) next.add(getCommentAuthorKey(created.author));
+          return next;
+        });
+        if (result.commentId !== undefined) setActiveCommentId(result.commentId);
+        setIsAddingComment(false);
+        setCommentSelectionRange(null);
+        setAddCommentYPosition(null);
+        return true;
+      }
+      const comment = createComment(addText, author);
       const marked = applyCommentMarkRange(view, commentSelectionRange, comment.id, {
         replacePending: true,
       });
@@ -4401,9 +4449,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     },
     [
       author,
+      applyCanonicalComment,
       commentSelectionRange,
       createComment,
-      refuseCanonicalModelEdit,
       setActiveCommentId,
       setAddCommentYPosition,
       setCommentSelectionRange,
@@ -4416,25 +4464,33 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const handleTrackedChangeReply = useCallback(
     (revisionId: number, text: string) => {
       if (
-        refuseCanonicalModelEdit(
-          CANONICAL_GAP.comments,
-          "Comment changes are unavailable in this session.",
-        )
+        applyCanonicalComment({
+          type: "create",
+          text,
+          author,
+          anchor: { kind: "revision", story: "main", revisionId },
+        }) !== null
       )
         return;
       updateComments((previous) => [...previous, createComment(text, author, revisionId)]);
     },
-    [author, createComment, refuseCanonicalModelEdit, updateComments],
+    [applyCanonicalComment, author, createComment, updateComments],
   );
   const handleCancelAddComment = useCallback(() => {
     const view = pagedEditorRef.current?.getView();
-    if (view && commentSelectionRange) {
+    if (view && commentSelectionRange && commentDraftMode === "prosemirror") {
       removePendingCommentMarkRange(view, commentSelectionRange);
     }
     setIsAddingComment(false);
     setCommentSelectionRange(null);
     setAddCommentYPosition(null);
-  }, [commentSelectionRange, setAddCommentYPosition, setCommentSelectionRange, setIsAddingComment]);
+  }, [
+    commentSelectionRange,
+    commentDraftMode,
+    setAddCommentYPosition,
+    setCommentSelectionRange,
+    setIsAddingComment,
+  ]);
   // Resolve the specific tracked-change `revisionId` for a (from, to) range
   // reported by the sidebar. The 2-arg acceptChange/rejectChange commands
   // treat a missing revisionId as "match every mark in range", which would
@@ -5164,16 +5220,18 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                                   return;
                                 }
                                 setCommentSelectionRange(safeRange);
-                                const marked = applyCommentMarkRange(
-                                  view,
-                                  safeRange,
-                                  PENDING_COMMENT_ID,
-                                  { selectEnd: true },
-                                );
-                                if (!marked) {
-                                  setCommentSelectionRange(null);
-                                  setFloatingCommentBtn(null);
-                                  return;
+                                if (commentDraftMode === "prosemirror") {
+                                  const marked = applyCommentMarkRange(
+                                    view,
+                                    safeRange,
+                                    PENDING_COMMENT_ID,
+                                    { selectEnd: true },
+                                  );
+                                  if (!marked) {
+                                    setCommentSelectionRange(null);
+                                    setFloatingCommentBtn(null);
+                                    return;
+                                  }
                                 }
                                 const yPos = findSelectionYPosition(
                                   scrollContainerRef.current,

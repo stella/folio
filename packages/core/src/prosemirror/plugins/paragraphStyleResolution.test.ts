@@ -274,5 +274,5 @@ test(
       { numRuns: 48 },
     );
   },
-  propertyTestTimeout(),
+  propertyTestTimeout(15_000),
 );

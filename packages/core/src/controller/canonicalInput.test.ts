@@ -24,6 +24,13 @@ const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
     paragraph: { content: "inline*", group: "block", toDOM: () => ["p", 0] },
+    image: {
+      inline: true,
+      group: "inline",
+      atom: true,
+      attrs: { rId: {} },
+      toDOM: (node) => ["img", { "data-rid": node.attrs["rId"] }],
+    },
     text: { group: "inline" },
   },
   marks: { strong: { toDOM: () => ["strong", 0] } },
@@ -625,6 +632,62 @@ describe("canonical input boundary", () => {
       expect(boundary.isComposing).toBe(false);
     },
   );
+
+  test("generated text compositions preserve adjacent pictures and refuse picture mutations", async () => {
+    await assertProperty(
+      fc.asyncProperty(fc.constantFrom("契", "契約", "😀", "alpha"), async (text) => {
+        for (const placement of ["before", "middle", "after"] as const) {
+          for (const change of ["text", "remove", "rebind"] as const) {
+            const { boundary, view, inputs, refusals } = createRig();
+            const image = schema.node("image", { rId: "rIdPicture" });
+            const content = {
+              before: [image, schema.text("ABCDEF")],
+              middle: [schema.text("ABC"), image, schema.text("DEF")],
+              after: [schema.text("ABCDEF"), image],
+            };
+            const doc = schema.node(
+              "doc",
+              null,
+              schema.node("paragraph", null, content[placement]),
+            );
+            const from = placement === "before" ? 2 : 1;
+            const to = from + 2;
+            const imagePosition = { before: 1, middle: 4, after: 7 }[placement];
+            view.updateState(
+              EditorState.create({ doc, selection: TextSelection.create(doc, from, to) }),
+            );
+            const baseline = view.state;
+            boundary.handleDOMEvents.compositionstart(view);
+            const transaction = view.state.tr;
+            if (change === "remove") transaction.delete(imagePosition, imagePosition + 1);
+            else if (change === "rebind")
+              transaction.setNodeMarkup(imagePosition, undefined, { rId: "rIdOtherPicture" });
+            else transaction.insertText(text, from, to);
+            view.dispatch(transaction.setMeta("composition", 1));
+            if (change === "text") {
+              expect(view.state.doc.eq(baseline.tr.insertText(text, from, to).doc)).toBe(true);
+              boundary.handleDOMEvents.compositionend(view);
+              await new Promise<void>((resolve) => setTimeout(resolve, 40));
+              expect(inputs).toEqual([{ from, to, text, semantic: "composition" }]);
+              expect(refusals).toEqual([]);
+            } else {
+              expect(inputs).toEqual([]);
+              expect(refusals).toEqual([
+                "Composition changed unsupported content; the canonical document was restored.",
+              ]);
+              boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "Escape" }));
+            }
+            expect(view.state).toBe(baseline);
+            expect(boundary.isComposing).toBe(false);
+            view.destroy();
+            views.splice(views.indexOf(view), 1);
+            view.dom.parentElement?.remove();
+          }
+        }
+      }),
+      { seed: 20261020, numRuns: 16 },
+    );
+  });
 
   test("generated cross-paragraph compositions lower one exact replacement or cancel", async () => {
     await assertProperty(
