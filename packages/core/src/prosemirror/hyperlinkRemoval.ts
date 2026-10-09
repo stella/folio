@@ -13,6 +13,7 @@
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
+import { TaggedError } from "better-result";
 
 import { BUILT_IN_STYLE_NAME } from "../docx/builtInStyles";
 import type { RunPropertyChange, TextFormatting } from "../types/document";
@@ -31,12 +32,39 @@ import { paragraphRunStyleContextAt } from "./runStyleFormatting";
 type LinkedPiece = { from: number; to: number; node: PMNode };
 type LinkedRange = { from: number; to: number; pieces: LinkedPiece[] };
 
-/** Contiguous stretches of linked, not yet deleted, text in [`from`, `to`) of `doc`. */
+export class HyperlinkRemovalRefusal extends TaggedError("HyperlinkRemovalRefusal")<{
+  message: string;
+}> {}
+
+const partialInlineRefusal = () =>
+  new HyperlinkRemovalRefusal({
+    message: "Hyperlink removal cannot split an indivisible inline element.",
+  });
+
+type HyperlinkRemovalRangeOptions = { doc: PMNode; from: number; to: number };
+
+/** Canonical inline elements have no addressable interior gaps. */
+export const assertHyperlinkRemovalRange = ({
+  doc,
+  from,
+  to,
+}: HyperlinkRemovalRangeOptions): void => {
+  for (const position of [from, to]) {
+    const resolved = doc.resolve(position);
+    for (let depth = 1; depth <= resolved.depth; depth += 1) {
+      const node = resolved.node(depth);
+      if (node.isInline && node.marks.some(({ type }) => type.name === "hyperlink"))
+        throw partialInlineRefusal();
+    }
+  }
+};
+
+/** Contiguous stretches of linked, not yet deleted, inline content in [`from`, `to`) of `doc`. */
 const linkedRanges = (doc: PMNode, from: number, to: number): LinkedRange[] => {
   const ranges: LinkedRange[] = [];
   doc.nodesBetween(from, to, (node, position) => {
     if (
-      !node.isText ||
+      !node.isInline ||
       !node.marks.some(({ type }) => type.name === "hyperlink") ||
       node.marks.some(({ type }) => type.name === "deletion")
     ) {
@@ -47,7 +75,14 @@ const linkedRanges = (doc: PMNode, from: number, to: number): LinkedRange[] => {
     if (start >= end) {
       return true;
     }
-    const piece = { from: start, to: end, node: node.cut(start - position, end - position) };
+    if (!node.isText && (start !== position || end !== position + node.nodeSize))
+      throw partialInlineRefusal();
+    // Non-text cut offsets address content, not the atom's outer node size.
+    const piece = {
+      from: start,
+      to: end,
+      node: node.isText ? node.cut(start - position, end - position) : node,
+    };
     const last = ranges.at(-1);
     if (last && last.to === start) {
       last.to = end;
@@ -55,7 +90,8 @@ const linkedRanges = (doc: PMNode, from: number, to: number): LinkedRange[] => {
     } else {
       ranges.push({ from: start, to: end, pieces: [piece] });
     }
-    return true;
+    // A matched atom owns its content; do not collect its descendants again.
+    return false;
   });
   return ranges;
 };
@@ -97,8 +133,8 @@ const withoutHyperlinkStyle = (state: EditorState, doc: PMNode, piece: LinkedPie
   };
 };
 
-/** Replace the marks of the text at [`from`, `to`) of `tr.doc` with `marks`. */
-const setTextMarks = (
+/** Replace the marks of the inline content at [`from`, `to`) of `tr.doc` with `marks`. */
+const setInlineMarks = (
   tr: Transaction,
   from: number,
   to: number,
@@ -127,6 +163,7 @@ export const removeHyperlinkInRange = (
   from: number,
   to: number,
 ): Transaction => {
+  assertHyperlinkRemovalRange({ doc: tr.doc, from, to });
   const { schema } = state;
   const hyperlinkType = schema.marks["hyperlink"];
   if (!hyperlinkType) {
@@ -172,7 +209,7 @@ export const removeHyperlinkInRange = (
     }));
     if (!insertion || !deletionType) {
       for (const { piece, marks } of unlinked) {
-        setTextMarks(
+        setInlineMarks(
           tr,
           piece.from,
           piece.to,
@@ -198,7 +235,7 @@ export const removeHyperlinkInRange = (
         previousFormatting && !hasPendingPropertyChange(piece.node.marks)
           ? propertyChange(previousFormatting)
           : null;
-      setTextMarks(
+      setInlineMarks(
         tr,
         piece.from,
         piece.to,
