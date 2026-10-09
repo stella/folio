@@ -124,8 +124,8 @@ export const createCanonicalStoryEditor = ({
         mousedown: (view: EditorView) => enabled() && boundary.handleDOMEvents.mousedown(view),
         compositionstart: (view: EditorView) =>
           enabled() && boundary.handleDOMEvents.compositionstart(view),
-        compositionend: (view: EditorView) =>
-          enabled() && boundary.handleDOMEvents.compositionend(view),
+        compositionend: (view: EditorView, event: Event) =>
+          enabled() && boundary.handleDOMEvents.compositionend(view, event),
         input: (view: EditorView) => enabled() && boundary.handleDOMEvents.input(view),
         blur: (view: EditorView) => enabled() && boundary.handleDOMEvents.blur(view),
         paste: (view: EditorView, event: ClipboardEvent) =>

@@ -849,6 +849,7 @@ jobs:
         run: >-
           bun run test:interactions
           tests/visual/canonical-evaluation-regressions.interactions.spec.ts
+          tests/visual/canonical-composition-cancellation.interactions.spec.ts
           --workers=1
       - name: Preserve canonical protocol evidence
         if: failure()
