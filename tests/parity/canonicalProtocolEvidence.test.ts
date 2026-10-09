@@ -19,6 +19,7 @@ test(
               arguments: [
                 { value: "(bytes) => globalThis.__folioCanonical.load(bytes)" },
                 { value: { payload } },
+                { value: payload },
               ],
             },
           })} +1ms`,
@@ -32,7 +33,7 @@ test(
             contextId: undefined,
             objectId: "1.1.1",
             awaitPromise: true,
-            expressions: ["(bytes) => globalThis.__folioCanonical.load(bytes)"],
+            operation: "canonical-load",
           },
         });
         const error = { code: -32000, message: payload };

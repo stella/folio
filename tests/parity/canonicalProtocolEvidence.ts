@@ -14,6 +14,18 @@ const CONTEXT_EVENTS = new Set([
   "Target.detachedFromTarget",
 ]);
 
+const evaluationOperation = (expressions: string[]) => {
+  for (const [operation, call] of [
+    ["canonical-load", ".load("],
+    ["canonical-save", ".save("],
+    ["canonical-snapshot", ".snapshot("],
+  ] as const) {
+    if (expressions.some((value) => value.includes("__folioCanonical") && value.includes(call)))
+      return operation;
+  }
+  return "other";
+};
+
 /** Preserve protocol errors and their calls without transporting document or screenshot payloads. */
 export const canonicalProtocolEvidence = (line: string) => {
   const text = stripVTControlCharacters(line);
@@ -21,9 +33,9 @@ export const canonicalProtocolEvidence = (line: string) => {
   if (marker === -1) return { type: "output", text: line } as const;
   const start = text.indexOf("{", marker);
   const end = text.lastIndexOf("}");
-  if (start === -1 || end < start) return { type: "unparsed", text } as const;
+  if (start === -1 || end < start) return { type: "unparsed", length: text.length } as const;
   const parsed: unknown = JSON.parse(text.slice(start, end + 1));
-  if (!isRecord(parsed)) return { type: "unparsed", text } as const;
+  if (!isRecord(parsed)) return { type: "unparsed", length: text.length } as const;
   const base = { id: parsed["id"], sessionId: parsed["sessionId"] };
   if (parsed["error"] !== undefined)
     return { type: "evidence", message: { ...base, error: parsed["error"] } } as const;
@@ -34,7 +46,7 @@ export const canonicalProtocolEvidence = (line: string) => {
     return { type: "evidence", message: { ...base, method, params } } as const;
   if (method !== "Runtime.callFunctionOn" && method !== "Runtime.evaluate")
     return { type: "discard" } as const;
-  if (!isRecord(params)) return { type: "unparsed", text } as const;
+  if (!isRecord(params)) return { type: "unparsed", length: text.length } as const;
   const args = params["arguments"];
   const expressions = Array.isArray(args)
     ? args.flatMap((arg: unknown) =>
@@ -51,7 +63,7 @@ export const canonicalProtocolEvidence = (line: string) => {
       contextId: params["contextId"],
       objectId: params["objectId"],
       awaitPromise: params["awaitPromise"],
-      expressions: expressions.map((value) => value.slice(0, 500)),
+      operation: evaluationOperation(expressions),
     },
   } as const;
 };

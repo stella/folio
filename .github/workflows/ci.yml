@@ -850,7 +850,7 @@ jobs:
           bun run test:interactions
           tests/visual/canonical-session.interactions.spec.ts
           tests/visual/canonical-browser-history.interactions.spec.ts
-          -g 'canonical structural gestures and toolbar operations preserve each intermediate history state|canonical history replay 263 2:1:0:0:0'
+          -g 'canonical structural gestures and toolbar operations preserve each intermediate history state|canonical history replay 263 2:1:0:0:0|canonical history load survives browser collection while its evaluation is pending'
           --workers=1
       - name: Preserve canonical protocol evidence
         if: failure()
@@ -1086,6 +1086,7 @@ jobs:
       - container-contract
       - docx-kernel
       - browser-input-pinned
+      - canonical-evaluation-regressions
       - interactions
       - differential
       - consumer-scenarios
@@ -1121,6 +1122,7 @@ jobs:
             "container-contract":{"area":"container_contract_required","depth":"full"},
             "docx-kernel":{"area":"docx_kernel_required","depth":"full"},
             "browser-input-pinned":{"area":"interactions_required"},
+            "canonical-evaluation-regressions":{"area":"interactions_required"},
             "interactions":{"area":"interactions_required","depth":"full"},
             "differential":{"area":"differential_required","depth":"full"},
             "consumer-scenarios":{"area":"consumer_scenarios_required","depth":"full"},

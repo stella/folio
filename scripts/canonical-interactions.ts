@@ -33,7 +33,7 @@ const record = (line: string) => {
         process.stderr.write(`${result.text}\n`);
         break;
       case "unparsed":
-        appendFileSync(evidencePath, `${JSON.stringify({ unparsed: result.text })}\n`);
+        appendFileSync(evidencePath, `${JSON.stringify({ unparsedLength: result.length })}\n`);
         break;
       case "evidence":
         appendFileSync(evidencePath, `${JSON.stringify({ at: Date.now(), ...result.message })}\n`);
@@ -42,7 +42,10 @@ const record = (line: string) => {
         break;
     }
   } catch (error) {
-    appendFileSync(evidencePath, `${JSON.stringify({ unparsed: line, error: String(error) })}\n`);
+    appendFileSync(
+      evidencePath,
+      `${JSON.stringify({ unparsedLength: line.length, error: error instanceof Error ? error.name : "UnknownError" })}\n`,
+    );
   }
 };
 const decoder = new TextDecoder();

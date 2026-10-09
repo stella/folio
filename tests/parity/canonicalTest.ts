@@ -32,6 +32,7 @@ export const test = base.extend<{ canonicalNavigationEvidence: void }>({
         });
       };
       page.on("framenavigated", record);
+      let detachFailure: { error: unknown } | null = null;
       try {
         await use();
         if (testInfo.status !== testInfo.expectedStatus) {
@@ -51,8 +52,19 @@ export const test = base.extend<{ canonicalNavigationEvidence: void }>({
         }
       } finally {
         page.off("framenavigated", record);
-        if (!page.isClosed()) await cdp.detach();
+        if (!page.isClosed()) {
+          try {
+            await cdp.detach();
+          } catch (error) {
+            detachFailure = { error };
+            await testInfo.attach("canonical-protocol-detach-error", {
+              body: String(error),
+              contentType: "text/plain",
+            });
+          }
+        }
       }
+      if (detachFailure && testInfo.status === testInfo.expectedStatus) throw detachFailure.error;
     },
     { auto: true },
   ],

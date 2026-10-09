@@ -1,4 +1,8 @@
-import { evaluateCanonicalPage, observeCanonicalPageNavigation } from "./canonicalPageNavigation";
+import {
+  evaluateCanonicalPage,
+  observeCanonicalPageNavigation,
+  waitForCanonicalPageReady,
+} from "./canonicalPageNavigation";
 import { expect } from "@playwright/test";
 import { test } from "./canonicalTimerProbe";
 import fc from "fast-check";
@@ -15,6 +19,65 @@ import {
   CANONICAL_BROWSER_SAVE_REPLAYS,
   canonicalBrowserTraceArbitrary,
 } from "./canonicalBrowserTrace";
+
+declare global {
+  var __folioCollectPendingCanonicalLoad: (() => Promise<void>) | undefined;
+}
+
+test("canonical history load survives browser collection while its evaluation is pending", async ({
+  page,
+}) => {
+  await page.goto("/?session=canonical");
+  await waitForCanonicalPageReady(page);
+  const cdp = await page.context().newCDPSession(page);
+  const collections: Promise<void>[] = [];
+  await page.exposeFunction("__folioCollectPendingCanonicalLoad", () => {
+    const collect = async () => {
+      for (let collection = 0; collection < 20; collection++)
+        await cdp.send("HeapProfiler.collectGarbage");
+    };
+    const pending = collect();
+    collections.push(pending);
+    return pending;
+  });
+  await page.evaluate(() => {
+    const bridge = globalThis.__folioCanonical;
+    if (!bridge) throw new TypeError("Canonical bridge unavailable");
+    const collect = globalThis.__folioCollectPendingCanonicalLoad;
+    if (!collect) throw new TypeError("Canonical collection probe unavailable");
+    const load = bridge.load;
+    bridge.load = (bytes) => {
+      const pending = load(bytes);
+      void collect();
+      return pending;
+    };
+  });
+  try {
+    const source = [
+      ...new Uint8Array(await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }))),
+    ];
+    await initializeCanonicalBrowserHistory(page, source);
+    const actions = fc
+      .sample(canonicalBrowserTraceArbitrary, { seed: 263, path: "2:1:0:0:0", numRuns: 1 })
+      .at(0);
+    if (!actions) throw new TypeError("Missing canonical history trace");
+    expect(
+      await checkCanonicalBrowserHistory({
+        page,
+        source,
+        actions,
+        missing: createMissingOpBurndown(),
+      }),
+    ).toBeGreaterThan(0);
+    await Promise.all(collections);
+    expect(
+      collections.length,
+      "collection must exercise the actual canonical load boundary",
+    ).toBeGreaterThan(0);
+  } finally {
+    await cdp.detach();
+  }
+});
 
 test("canonical evaluation waits for a mid-sequence navigation to mount", async ({ page }) => {
   await page.goto("/?session=canonical");
