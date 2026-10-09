@@ -6,6 +6,7 @@ use crate::projection::review::ReviewPoint;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StructuralFactUnknownReason {
+    ParagraphFragment,
     DocumentPartOnly,
     StylesPartUnavailable,
     UnsupportedStyles,

@@ -20,7 +20,7 @@ pub use projection::{
     TextMaterialization, TextStyle, extract_document_parts, extract_document_xml,
     is_semantic_highlight_color, project_document_xml, project_document_xml_with_options,
     project_docx, project_docx_with_options, project_docx_with_review_facts,
-    project_main_document_xml,
+    project_main_document_xml, project_paragraph_fragment,
 };
 pub use semantic::{
     BlockLocation, InlineContext, PartCoverage, PartScan, RevisionKind, ScanError, ScanLimits,

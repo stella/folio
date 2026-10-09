@@ -9,7 +9,7 @@ use crate::{
     ReviewFactUnknownReason, ReviewSpan, RevisionFactKind, RevisionPayload,
     RevisionProjectionStatus, RevisionUnsupportedReason, SpanCoverage, StructuralFactSet,
     StructuralFactUnknownReason, StructuralSpan, TextMaterialization, TextStyle, project_docx,
-    project_docx_with_review_facts, project_main_document_xml,
+    project_docx_with_review_facts, project_main_document_xml, project_paragraph_fragment,
 };
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
@@ -62,6 +62,7 @@ export type DocxProjectionFactSet<T> =
   | readonly [status: "known", items: readonly T[]]
   | readonly [status: "unknown", reason: DocxProjectionUnknownReason];
 export type DocxProjectionUnknownReason =
+  | "paragraph-fragment"
   | "document-part-only"
   | "styles-part-unavailable"
   | "unsupported-styles"
@@ -138,6 +139,16 @@ export type DocxProjectionWire = readonly [
   structuralFacts: DocxProjectionStructuralFacts,
   revisionStatus: DocxProjectionRevisionStatus,
   formattingStatus: DocxProjectionFormattingStatus,
+];
+type DocxParagraphFragmentFacts<T extends readonly unknown[]> = {
+  readonly [Key in keyof T]: readonly [status: "unknown", reason: "paragraph-fragment"];
+};
+export type DocxParagraphFragmentWire = readonly [
+  schemaVersion: DocxProjectionWire[0],
+  paragraphs: readonly [DocxProjectionParagraph],
+  structuralFacts: DocxParagraphFragmentFacts<DocxProjectionStructuralFacts>,
+  revisionStatus: DocxProjectionWire[3],
+  formattingStatus: DocxProjectionWire[4],
 ];
 export type DocxReviewUnknownReason =
   | "invalid-document"
@@ -250,6 +261,8 @@ export type DocxPackageProjectionWire = readonly [
 extern "C" {
     #[wasm_bindgen(typescript_type = "DocxProjectionWire")]
     pub type DocxProjectionWire;
+    #[wasm_bindgen(typescript_type = "DocxParagraphFragmentWire")]
+    pub type DocxParagraphFragmentWire;
     #[wasm_bindgen(typescript_type = "DocxPackageProjectionWire")]
     pub type DocxPackageProjectionWire;
 }
@@ -290,6 +303,27 @@ pub fn project_main_document_xml_in_wasm(bytes: &[u8]) -> Result<DocxProjectionW
     .map_err(|error| error.to_string())
     .and_then(|projection| output_projection_with_structure(&projection))
     // SAFETY: the shared output builder constructs the declared DocxProjectionWire tuple.
+    .map(JsCast::unchecked_into)
+    .map_err(|error| js_error(&error))
+}
+
+/// Projects one bounded paragraph fragment with unknown document structural facts.
+///
+/// # Errors
+/// Returns a JavaScript `Error` for malformed input or a resource-limit violation.
+#[wasm_bindgen(js_name = projectParagraphFragment)]
+pub fn project_paragraph_fragment_in_wasm(
+    bytes: &[u8],
+) -> Result<DocxParagraphFragmentWire, JsValue> {
+    project_paragraph_fragment(
+        bytes,
+        DocxLimits::default(),
+        allocate_projected_paragraph_id,
+    )
+    .map_err(|error| error.to_string())
+    .and_then(|projection| output_projection_with_structure(&projection))
+    // SAFETY: fragment projection proves exactly one paragraph and every structural
+    // family unknown; the shared builder preserves those narrowed wire fields.
     .map(JsCast::unchecked_into)
     .map_err(|error| js_error(&error))
 }
@@ -827,6 +861,7 @@ fn usize_number(value: usize) -> Result<JsValue, String> {
 
 const fn unknown_reason(reason: StructuralFactUnknownReason) -> &'static str {
     match reason {
+        StructuralFactUnknownReason::ParagraphFragment => "paragraph-fragment",
         StructuralFactUnknownReason::DocumentPartOnly => "document-part-only",
         StructuralFactUnknownReason::StylesPartUnavailable => "styles-part-unavailable",
         StructuralFactUnknownReason::UnsupportedStyles => "unsupported-styles",
