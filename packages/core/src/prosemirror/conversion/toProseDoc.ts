@@ -72,6 +72,7 @@ import { resolveTableLook, type ResolvedTableLook } from "../../docx/tableLook";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import {
   resolveListRenderingDefinition,
+  listRenderingDefinitionsMatch,
   type ListRenderingDefinition,
 } from "../../docx/listRendering";
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
