@@ -15,6 +15,9 @@ export type AddNoteOp = {
 };
 
 // @public
+export const allocateCommentAnchorIds: (document: Document_2, op: CreateCommentOp) => Result<NewIds, DocumentOpRefusal>;
+
+// @public
 export type AppliedDocumentOp = {
     document: Document_2;
     inverse: readonly DocumentOp[];
@@ -76,6 +79,46 @@ export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
 
 // @public
+export type CommentAnchor = {
+    kind: "range";
+    from: TextPosition;
+    to: TextPosition;
+} | {
+    kind: "point";
+    at: TextPosition;
+} | {
+    kind: "reply";
+    parentId: number;
+} | {
+    kind: "revision";
+    story: OpStory;
+    revisionId: number;
+};
+
+// @public
+export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
+
+// @public
+export type CommentState = {
+    relationshipPresence: "absent" | "undefined" | "present";
+    relationships: readonly {
+        index: number;
+        key: string;
+        relationship: Relationship;
+    }[];
+    listPresence: "absent" | "undefined" | "present";
+    records: readonly {
+        index: number;
+        comment: Comment_2;
+    }[];
+    anchors: readonly {
+        story: OpStory;
+        blockId: string;
+        content: readonly ParagraphContent[];
+    }[];
+};
+
+// @public
 export const compareGaps: (left: Gap, right: Gap) => number;
 
 // @public
@@ -92,6 +135,14 @@ export const createClient: (document: Document_2) => {
     readonly headRev: number;
     readonly pending: readonly DocumentBatch[];
     readonly notices: readonly ClientNotice[];
+};
+
+// @public (undocumented)
+export type CreateCommentOp = {
+    type: typeof DOCUMENT_OP_TYPES.CREATE_COMMENT;
+    comment: Omit<Comment_2, "parentId">;
+    anchor: CommentAnchor;
+    newIds?: NewIds;
 };
 
 // @public
@@ -146,6 +197,13 @@ export type DeleteBlocksOp = {
 export type DeleteColumnOp = TableEditTarget & {
     type: typeof DOCUMENT_OP_TYPES.DELETE_COLUMN;
     column: number;
+};
+
+// @public (undocumented)
+export type DeleteCommentOp = {
+    type: typeof DOCUMENT_OP_TYPES.DELETE_COMMENT;
+    id: number;
+    scope: "thread" | "reply";
 };
 
 // @public
@@ -223,10 +281,15 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 9;
+export const DOCUMENT_OP_SCHEMA_VERSION = 10;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
+    readonly CREATE_COMMENT: "createComment";
+    readonly UPDATE_COMMENT_CONTENT: "updateCommentContent";
+    readonly SET_COMMENT_RESOLUTION: "setCommentResolution";
+    readonly DELETE_COMMENT: "deleteComment";
+    readonly RESTORE_COMMENT_STATE: "restoreCommentState";
     readonly CREATE_HEADER_FOOTER: "createHeaderFooter";
     readonly REMOVE_HEADER_FOOTER: "removeHeaderFooter";
     readonly ADD_NOTE: "addNote";
@@ -280,7 +343,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = (CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
+export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -413,6 +476,9 @@ export function formattingEquals(a: ComparedTextFormatting | undefined, b: Compa
 
 // @public
 export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?: Formatting[Key] | null | undefined; };
+
+// @public
+export const freshCommentId: (document: Document_2) => Result<number, DocumentOpRefusal>;
 
 // @public
 export type HeaderFooterStory = {
@@ -739,6 +805,15 @@ export type ResolveRevisionOp = {
     decision: RevisionDecision;
 };
 
+// @public (undocumented)
+export type RestoreCommentStateOp = {
+    type: typeof DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE;
+    ids: readonly number[];
+    scaffoldIds: NewIds;
+    expected: CommentState;
+    state: CommentState;
+};
+
 // @public
 export type RestoreStoryPartsOp = {
     type: typeof DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS;
@@ -833,6 +908,13 @@ export type SequencedBatch = DocumentBatch & {
 export type SetCellPropsOp = TableEditTarget & {
     type: typeof DOCUMENT_OP_TYPES.SET_CELL_PROPS;
     patch: FormattingPatch<TableCellFormatting>;
+};
+
+// @public (undocumented)
+export type SetCommentResolutionOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION;
+    id: number;
+    status: "open" | "resolved";
 };
 
 // @public
@@ -1012,6 +1094,14 @@ export type TouchedBlocks = {
 
 // @public
 export const transformBatch: (batch: DocumentBatch, over: readonly SequencedBatch[], options?: TransformOptions) => Result<DocumentBatch, BatchRejection>;
+
+// @public (undocumented)
+export type UpdateCommentContentOp = {
+    type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
+    id: number;
+    content: readonly Paragraph[];
+    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date">>;
+};
 
 // @public
 export const validateDocumentBatch: (value: unknown) => Result<DocumentBatch, BatchRejection>;

@@ -48,7 +48,12 @@ export {
 export { transformBatch } from "./sequencing/transform";
 export { createSequencer } from "./sequencing/sequencer";
 export { createClient } from "./sequencing/client";
-export { planTrackedDeletion, type PlanTrackedDeletionOptions, revisionIdDemand } from "./plan";
+export {
+  allocateCommentAnchorIds,
+  planTrackedDeletion,
+  type PlanTrackedDeletionOptions,
+  revisionIdDemand,
+} from "./plan";
 export {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,
@@ -65,6 +70,13 @@ export {
   REVISION_DECISIONS,
   SPLIT_HALVES,
   toOpEnvelope,
+  type CommentAnchor,
+  type CommentState,
+  type CreateCommentOp,
+  type UpdateCommentContentOp,
+  type SetCommentResolutionOp,
+  type DeleteCommentOp,
+  type RestoreCommentStateOp,
   type HeaderFooterStory,
   type NoteStory,
   type CreateHeaderFooterOp,
@@ -142,3 +154,5 @@ export {
 } from "./types";
 
 export { idKey, packageParagraphIds } from "./ids";
+
+export { commentDocumentIssue, freshCommentId } from "./comments";

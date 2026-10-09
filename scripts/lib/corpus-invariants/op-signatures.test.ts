@@ -229,7 +229,17 @@ test("body-field and section-field ownership cannot conceal paragraph edits in t
     expected: { body: { background: { themeTint: "AA" } } },
     parts: { body: { background: null } },
   });
-  for (const step of [section, restoreSection, restoreBackground]) {
+  const createHeader = stepFor(
+    {
+      type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+      sectionIndex: 0,
+      story: { kind: "header", rId: "rIdNewHeader" },
+      referenceType: "default",
+      content: [paragraph("00000006")],
+    },
+    before,
+  );
+  for (const step of [section, restoreSection, restoreBackground, createHeader]) {
     expect(localityStepFailures(step)).toEqual([]);
     const changed = structuredClone(step.edit.document);
     const target = changed.package.document.content.at(0);
