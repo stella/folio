@@ -142,9 +142,12 @@ const editFixtureText = async ({
     text,
     replacement,
   });
-  const savedBytes = await repackDocx(fromProseDoc(editedPm, parsed), {
-    updateModifiedDate: false,
-  });
+  const savedBytes = await repackDocx(
+    fromProseDoc(editedPm, parsed, { stylesheetSource: { type: "package" } }),
+    {
+      updateModifiedDate: false,
+    },
+  );
   const reopened = await parseDocx(savedBytes);
 
   return {
@@ -221,9 +224,12 @@ describe("corpus edit/save/reopen", () => {
     );
     const state = EditorState.create({ doc: originalPm });
     const editedPm = state.apply(state.tr.insert(state.doc.content.size, markerParagraph)).doc;
-    const savedBytes = await repackDocx(fromProseDoc(editedPm, parsed), {
-      updateModifiedDate: false,
-    });
+    const savedBytes = await repackDocx(
+      fromProseDoc(editedPm, parsed, { stylesheetSource: { type: "package" } }),
+      {
+        updateModifiedDate: false,
+      },
+    );
     const reopenedPm = toProseDoc(await parseDocx(savedBytes));
 
     expect(reopenedPm.textContent).toBe(`${originalPm.textContent}${marker}`);

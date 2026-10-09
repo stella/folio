@@ -56,7 +56,9 @@ export const toggleAndSave = async (
   for (const text of texts) {
     state = runAt(state, paragraphPosition(state, text), command);
   }
-  return new Uint8Array(await repackDocx(fromProseDoc(state.doc, document)));
+  return new Uint8Array(
+    await repackDocx(fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } })),
+  );
 };
 
 export const labelsOf = async (bytes: Uint8Array): Promise<string[]> =>

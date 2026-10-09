@@ -82,7 +82,8 @@ describe("paragraph propertyChanges PM round-trip", () => {
       },
     };
     const pmDoc = toProseDoc(document as never);
-    const roundtripped = fromProseDoc(pmDoc).package.document.content[0] as Paragraph | undefined;
+    const roundtripped = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })
+      .package.document.content[0] as Paragraph | undefined;
 
     expect(roundtripped?.propertyChanges).toEqual([samplePropertyChange]);
   });
@@ -98,6 +99,8 @@ describe("paragraph propertyChanges PM round-trip", () => {
           },
         },
       } as never),
+      undefined,
+      { stylesheetSource: { type: "package" } },
     ).package.document.content[0] as Paragraph;
     const second = fromProseDoc(
       toProseDoc({
@@ -108,6 +111,8 @@ describe("paragraph propertyChanges PM round-trip", () => {
           },
         },
       } as never),
+      undefined,
+      { stylesheetSource: { type: "package" } },
     ).package.document.content[0] as Paragraph;
 
     expect(second.propertyChanges).toEqual(first.propertyChanges);
@@ -134,7 +139,8 @@ describe("paragraph propertyChanges PM round-trip", () => {
       },
     };
     const pmDoc = toProseDoc(document as never);
-    const roundtripped = fromProseDoc(pmDoc).package.document.content[0] as Paragraph | undefined;
+    const roundtripped = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } })
+      .package.document.content[0] as Paragraph | undefined;
     // No phantom propertyChanges should be attached.
     expect(roundtripped?.propertyChanges).toBeUndefined();
   });
@@ -177,7 +183,9 @@ describe("run propertyChanges PM round-trip", () => {
       suggestionId: null,
     });
 
-    const roundtripped = fromProseDoc(pmDoc).package.document.content.at(0);
+    const roundtripped = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     const roundtrippedRun =
       roundtripped?.type === "paragraph"
         ? roundtripped.content.find((content) => content.type === "run")
@@ -206,7 +214,9 @@ describe("run propertyChanges PM round-trip", () => {
       },
     };
 
-    const roundtripped = fromProseDoc(toProseDoc(document as never)).package.document.content.at(0);
+    const roundtripped = fromProseDoc(toProseDoc(document as never), undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     const run =
       roundtripped?.type === "paragraph"
         ? roundtripped.content.find((content) => content.type === "run")

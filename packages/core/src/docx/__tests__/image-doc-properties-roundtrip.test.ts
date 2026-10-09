@@ -124,6 +124,7 @@ describe("wp:docPr image metadata round-trip", () => {
       const editorRoundTrip = fromProseDoc(
         toProseDoc(documentWithImage(image)),
         documentWithImage(image),
+        { stylesheetSource: { type: "package" } },
       );
       expect(firstImage(editorRoundTrip)).toMatchObject({
         docPrName: "Authored name",

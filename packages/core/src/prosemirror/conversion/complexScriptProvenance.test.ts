@@ -43,7 +43,9 @@ const firstRunFormatting = (document: Document): TextFormatting | undefined => {
 
 const editableRoundTrip = (document: Document): TextFormatting | undefined =>
   firstRunFormatting(
-    fromProseDoc(toProseDoc(document, { styles: document.package.styles }), document),
+    fromProseDoc(toProseDoc(document, { styles: document.package.styles }), document, {
+      stylesheetSource: { type: "package" },
+    }),
   );
 
 const reopenThroughDocx = async (document: Document): Promise<Document> =>
@@ -132,7 +134,11 @@ describe("complex-script run-property provenance", () => {
       ]),
     ]);
 
-    expect(firstRunFormatting(fromProseDoc(pmDocument))).toEqual({
+    expect(
+      firstRunFormatting(
+        fromProseDoc(pmDocument, undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    ).toEqual({
       bold: true,
       italic: true,
       fontSize: 22,
@@ -160,7 +166,7 @@ describe("complex-script run-property provenance", () => {
     state = applyCommand(state, toggleItalic);
     state = applyCommand(state, setFontSize(22));
 
-    const authored = fromProseDoc(state.doc, base);
+    const authored = fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } });
     const expected = {
       bold: true,
       boldCs: true,
@@ -339,7 +345,9 @@ describe("complex-script run-property provenance", () => {
       expect(json).not.toContain("_authoredOff");
       expect(json).not.toContain("_authoredValues");
 
-      const saved = fromProseDoc(proseDocument, document);
+      const saved = fromProseDoc(proseDocument, document, {
+        stylesheetSource: { type: "package" },
+      });
       expect(firstRunFormatting(saved)).toEqual(formatting);
       await assertTwoPackageCycles(saved, formatting);
     },
@@ -363,7 +371,9 @@ describe("complex-script run-property provenance", () => {
 
       expect(json).toContain("_authored");
 
-      const saved = fromProseDoc(proseDocument, document);
+      const saved = fromProseDoc(proseDocument, document, {
+        stylesheetSource: { type: "package" },
+      });
       expect(firstRunFormatting(saved)).toEqual(formatting);
       await assertTwoPackageCycles(saved, formatting);
     },
@@ -377,7 +387,7 @@ describe("complex-script run-property provenance", () => {
       throw new Error("Expected bold mark type");
     }
     const withoutBold = state.apply(state.tr.removeMark(1, 7, bold)).doc;
-    const cleared = fromProseDoc(withoutBold, document);
+    const cleared = fromProseDoc(withoutBold, document, { stylesheetSource: { type: "package" } });
 
     expect(firstRunFormatting(cleared)).toBeUndefined();
     await assertTwoPackageCycles(cleared, undefined);
@@ -385,7 +395,7 @@ describe("complex-script run-property provenance", () => {
     const plain = documentWithRun({});
     const plainState = EditorState.create({ doc: clonedEditorDocument(plain) });
     const withBold = plainState.apply(plainState.tr.addMark(1, 7, bold.create())).doc;
-    const authored = fromProseDoc(withBold, plain);
+    const authored = fromProseDoc(withBold, plain, { stylesheetSource: { type: "package" } });
 
     expect(firstRunFormatting(authored)).toEqual({ bold: true });
     await assertTwoPackageCycles(authored, { bold: true });

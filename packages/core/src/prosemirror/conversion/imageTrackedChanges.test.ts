@@ -52,7 +52,7 @@ function firstParagraph(doc: Document): Paragraph | undefined {
 describe("tracked image insertion round-trip", () => {
   test("inserted image serializes inside a <w:ins> wrapper", () => {
     const pmDoc = makeMarkedImageDoc("insertion", 200);
-    const result = fromProseDoc(pmDoc);
+    const result = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
     const paragraph = firstParagraph(result);
     expect(paragraph).toBeDefined();
 
@@ -74,7 +74,7 @@ describe("tracked image insertion round-trip", () => {
 
   test("inserted image reloads with the insertion mark re-applied", () => {
     const pmDoc = makeMarkedImageDoc("insertion", 201);
-    const result = fromProseDoc(pmDoc);
+    const result = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
     const reloaded = toProseDoc(result);
 
     let markedImages = 0;
@@ -89,7 +89,7 @@ describe("tracked image insertion round-trip", () => {
 
   test("deleted image serializes inside a <w:del> wrapper", () => {
     const pmDoc = makeMarkedImageDoc("deletion", 300);
-    const result = fromProseDoc(pmDoc);
+    const result = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
     const paragraph = firstParagraph(result);
     expect(paragraph).toBeDefined();
 
@@ -110,7 +110,7 @@ describe("tracked image insertion round-trip", () => {
 
   test("deleted image reloads with the deletion mark re-applied", () => {
     const pmDoc = makeMarkedImageDoc("deletion", 301);
-    const result = fromProseDoc(pmDoc);
+    const result = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
     const reloaded = toProseDoc(result);
 
     let markedImages = 0;
@@ -202,7 +202,7 @@ describe("tracked image insertion round-trip", () => {
     ]);
     const pmDoc = schema.nodes["doc"]!.create({}, [paragraph]);
 
-    const result = fromProseDoc(pmDoc);
+    const result = fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } });
     const reloaded = toProseDoc(result);
 
     let markedTextRuns = 0;

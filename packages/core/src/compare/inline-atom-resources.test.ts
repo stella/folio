@@ -138,7 +138,10 @@ describe("prepareTargetInlineAtom image resources", () => {
         paragraph.copy(paragraph.content.append(Fragment.from(prepared))),
       ),
     );
-    const saved = await repackDocx(fromProseDoc(mergedPm, base), { updateModifiedDate: false });
+    const saved = await repackDocx(
+      fromProseDoc(mergedPm, base, { stylesheetSource: { type: "package" } }),
+      { updateModifiedDate: false },
+    );
     const zip = await JSZip.loadAsync(saved);
     const xml = await zip.file("word/document.xml")!.async("text");
     const rels = await zip.file("word/_rels/document.xml.rels")!.async("text");
@@ -256,7 +259,10 @@ describe("prepareTargetInlineAtom image resources", () => {
     const editedImage = image.type.create(mergeImageAttrs(image, { width: 100, height: 50 }));
     const edited = pm.copy(pm.content.replaceChild(0, paragraph.copy(Fragment.from(editedImage))));
 
-    const saved = await repackDocx(fromProseDoc(edited, parsed), { updateModifiedDate: false });
+    const saved = await repackDocx(
+      fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } }),
+      { updateModifiedDate: false },
+    );
     const zip = await JSZip.loadAsync(saved);
     const xml = await zip.file("word/document.xml")!.async("text");
     expect(xml).toContain('<wp:extent cx="952500" cy="476250"/>');

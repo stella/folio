@@ -94,7 +94,9 @@ describe("the forced leg asks for the reuse it means", () => {
     expect(projectedWithoutReuse(proseDoc, parsed).package.document.content).toHaveLength(
       parsed.package.document.content.length,
     );
-    expect(() => fromProseDoc(proseDoc, parsed, { reuse: "matched" })).toThrow(/not implemented/);
+    expect(() =>
+      fromProseDoc(proseDoc, parsed, { reuse: "matched", stylesheetSource: { type: "package" } }),
+    ).toThrow(/not implemented/);
   });
 });
 

@@ -109,7 +109,9 @@ const documentXmlOf = async (saved: ArrayBuffer): Promise<string> =>
 /** Parse, project through the editor and back, save: the trip that used to lose it. */
 const throughTheEditor = async (body: string): Promise<string> => {
   const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
-  const projected = fromProseDoc(toProseDoc(parsed), parsed);
+  const projected = fromProseDoc(toProseDoc(parsed), parsed, {
+    stylesheetSource: { type: "package" },
+  });
   return documentXmlOf(await repackDocx(projected, { updateModifiedDate: false }));
 };
 

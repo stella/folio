@@ -156,7 +156,7 @@ const stateToDocument = (state: EditorState, originalDoc: Document | null): Docu
 
   // fromProseDoc preserves the base document structure when provided
   // canonical-gap: pm-save-projection
-  return fromProseDoc(state.doc, originalDoc);
+  return fromProseDoc(state.doc, originalDoc, { stylesheetSource: { type: "package" } });
 };
 
 export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorApi => {

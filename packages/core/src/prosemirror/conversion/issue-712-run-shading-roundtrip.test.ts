@@ -52,10 +52,16 @@ const firstRunFormatting = (document: Document): Run["formatting"] => {
 
 // The runShading mark color, as it would round-trip out to the model on save.
 const roundTripShading = (formatting: Run["formatting"]): ShadingProperties | undefined =>
-  firstRunFormatting(fromProseDoc(toProseDoc(wrap(formatting)), wrap(formatting)))?.shading;
+  firstRunFormatting(
+    fromProseDoc(toProseDoc(wrap(formatting)), wrap(formatting), {
+      stylesheetSource: { type: "package" },
+    }),
+  )?.shading;
 
 const saveAndReopenShading = (formatting: Run["formatting"]): ShadingProperties | undefined => {
-  const saved = fromProseDoc(toProseDoc(wrap(formatting)), wrap(formatting));
+  const saved = fromProseDoc(toProseDoc(wrap(formatting)), wrap(formatting), {
+    stylesheetSource: { type: "package" },
+  });
   return firstRunFormatting({
     package: {
       ...saved.package,
@@ -222,14 +228,20 @@ describe("Issue #712 — run shading round-trips and renders", () => {
     "preserves an otherwise invisible authored shading shape through DOCX reopen",
     async ({ authored, serialized }) => {
       const input = wrap({ shading: authored });
-      const firstBuffer = await createDocx(fromProseDoc(toProseDoc(input), input));
+      const firstBuffer = await createDocx(
+        fromProseDoc(toProseDoc(input), input, { stylesheetSource: { type: "package" } }),
+      );
       const firstReopen = await parseDocx(firstBuffer, {
         detectVariables: false,
         preloadFonts: false,
       });
       expect(firstRunFormatting(firstReopen)?.shading).toEqual(serialized);
 
-      const secondBuffer = await createDocx(fromProseDoc(toProseDoc(firstReopen), firstReopen));
+      const secondBuffer = await createDocx(
+        fromProseDoc(toProseDoc(firstReopen), firstReopen, {
+          stylesheetSource: { type: "package" },
+        }),
+      );
       const secondReopen = await parseDocx(secondBuffer, {
         detectVariables: false,
         preloadFonts: false,

@@ -61,7 +61,7 @@ describe("HTML list paste", () => {
 
   test("defines every pasted list instance in the saved DOCX model", async () => {
     const doc = pasted("<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>");
-    const saved = fromProseDoc(doc);
+    const saved = fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } });
     const referenced = new Set<number>();
     doc.forEach((paragraph) => {
       const numId = paragraph.attrs["numPr"]?.numId;
@@ -102,7 +102,7 @@ describe("HTML list paste", () => {
       { text: "Nested", level: 1 },
       { text: "Omega", level: 0 },
     ]);
-    const saved = fromProseDoc(pastedDoc, base);
+    const saved = fromProseDoc(pastedDoc, base, { stylesheetSource: { type: "package" } });
     expect((await createDocx(saved)).byteLength).toBeGreaterThan(0);
   });
 });

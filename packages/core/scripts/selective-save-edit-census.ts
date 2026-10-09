@@ -168,7 +168,9 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
     }
     const sourceOrdinal = censusParagraphOrdinals(
       originalXml,
-      serializeDocument(fromProseDoc(initial.doc, parsed)),
+      serializeDocument(
+        fromProseDoc(initial.doc, parsed, { stylesheetSource: { type: "package" } }),
+      ),
     ).get(target.paraId);
     if (sourceOrdinal === undefined) {
       ineligible += 1;
@@ -222,7 +224,7 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
         const tracked = paragraphChangeTrackerKey.getState(state);
         if (tracked === undefined)
           throw new EditCensusError({ message: "Missing paragraph change tracker" });
-        const document = fromProseDoc(state.doc, parsed);
+        const document = fromProseDoc(state.doc, parsed, { stylesheetSource: { type: "package" } });
         const selective = await attemptSelectiveSave(document, sourceBuffer, tracked);
         const saved = selective ?? (await repackDocx(document, { updateModifiedDate: false }));
         const savedZip = await JSZip.loadAsync(saved);

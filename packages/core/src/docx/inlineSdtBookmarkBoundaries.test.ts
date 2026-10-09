@@ -184,7 +184,9 @@ const wrapParagraph = (paragraph: Paragraph): Document => ({
 /** The paragraph as it comes back from the editor with nothing edited. */
 const throughTheEditor = (paragraph: Paragraph): Paragraph => {
   const input = wrapParagraph(paragraph);
-  const first = fromProseDoc(toProseDoc(input), input).package.document.content.at(0);
+  const first = fromProseDoc(toProseDoc(input), input, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (first?.type !== "paragraph") {
     throw new Error("Expected the round trip to give a paragraph back");
   }
@@ -286,7 +288,9 @@ describe("a bookmark that starts inside the control and ends outside it", () => 
     });
     const applied = state.applyTransaction(state.tr.insertText("!", 1));
 
-    const first = fromProseDoc(applied.state.doc, input).package.document.content.at(0);
+    const first = fromProseDoc(applied.state.doc, input, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
     if (first?.type !== "paragraph") {
       throw new Error("Expected a paragraph");
     }

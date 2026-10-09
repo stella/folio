@@ -8,7 +8,7 @@ const roundTrip = (runs: Run[]): Run[] => {
   const source: Document = {
     package: { document: { content: [{ type: "paragraph", content: runs }] } },
   };
-  const saved = fromProseDoc(toProseDoc(source), source);
+  const saved = fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } });
   const paragraph = saved.package.document.content.at(0);
   if (paragraph?.type !== "paragraph") {
     throw new Error("Expected one paragraph");

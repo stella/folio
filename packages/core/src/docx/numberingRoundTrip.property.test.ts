@@ -184,7 +184,9 @@ const documentWith = (paragraph: Omit<ParagraphBlock, "type" | "content">): Docu
 };
 
 const paragraphNumberingOf = (document: Document): ParagraphNumberingOverride | undefined => {
-  const block = fromProseDoc(toProseDoc(document), document).package.document.content.at(0);
+  const block = fromProseDoc(toProseDoc(document), document, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (block?.type !== "paragraph") {
     throw new Error("Expected a paragraph");
   }
@@ -228,7 +230,9 @@ describe("the editor round trip keeps what the paragraph stated", () => {
                   ],
                 }),
           });
-          const block = fromProseDoc(toProseDoc(document), document).package.document.content.at(0);
+          const block = fromProseDoc(toProseDoc(document), document, {
+            stylesheetSource: { type: "package" },
+          }).package.document.content.at(0);
           if (block?.type !== "paragraph") {
             throw new Error("Expected a paragraph");
           }

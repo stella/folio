@@ -455,7 +455,9 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
       panic("The generated style-numbered paragraph has no captured property source.");
     }
 
-    const restored = firstParagraph(fromProseDoc(toProseDoc(parsed), parsed));
+    const restored = firstParagraph(
+      fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
+    );
 
     expect(sourceParagraph.formatting?.numPr).toEqual(NUM_PR);
     expect(sourceParagraph.formatting?.numPrFromStyle).toEqual(NUM_PR);

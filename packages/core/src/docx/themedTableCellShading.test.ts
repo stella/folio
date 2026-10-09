@@ -127,7 +127,7 @@ describe("themed table cell shading", () => {
 
     expect(tableCellBackgrounds(pmDocument)).toEqual(["DAE3F3", "70AD47"]);
 
-    const rebuilt = fromProseDoc(pmDocument, original);
+    const rebuilt = fromProseDoc(pmDocument, original, { stylesheetSource: { type: "package" } });
     const repacked = await repackDocx(rebuilt, { updateModifiedDate: false });
     const repackedZip = await JSZip.loadAsync(repacked);
     const documentXml = await repackedZip.file("word/document.xml")?.async("string");

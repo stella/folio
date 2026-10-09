@@ -169,10 +169,16 @@ export type FontSizeAttrs = {
 export const formatProseMirrorDocumentIssues: (issues: ProseMirrorDocumentValidationIssue[]) => string[];
 
 // @public
-export function fromProseDoc(pmDoc: Node_2, baseDocument?: import__stll_docx_core_model.Document, input?: FromProseDocOptions): import__stll_docx_core_model.Document;
+export function fromProseDoc(pmDoc: Node_2, baseDocument: import__stll_docx_core_model.Document | undefined, input: FromProseDocOptions): import__stll_docx_core_model.Document;
 
 // @public
 export type FromProseDocOptions = {
+    stylesheetSource: {
+        type: "package";
+    } | {
+        type: "supplied";
+        styles: import__stll_docx_core_model.StyleDefinitions;
+    };
     reuse?: ProjectionReuse;
 };
 

@@ -269,7 +269,9 @@ describe("grouped drawings in the run parser", () => {
   test("keeps a group replayable across an editor round-trip that changes nothing", () => {
     const document: Document = { package: { document: parseDocumentBody(GROUPED_BODY_XML) } };
 
-    const roundTripped = firstDrawingOf(fromProseDoc(toProseDoc(document), document));
+    const roundTripped = firstDrawingOf(
+      fromProseDoc(toProseDoc(document), document, { stylesheetSource: { type: "package" } }),
+    );
 
     expect(roundTripped.rawXmlMode).toBe(DRAWING_RAW_XML_MODES.PREVIEW_ONLY);
     expect(classifyDrawingSafety(roundTripped)).toBe("replayable");
@@ -303,7 +305,9 @@ describe("grouped drawings in the run parser", () => {
       ),
     ).doc;
 
-    const edited = firstDrawingOf(fromProseDoc(resized, document));
+    const edited = firstDrawingOf(
+      fromProseDoc(resized, document, { stylesheetSource: { type: "package" } }),
+    );
 
     // The group is the content and the image is only a render of it, so the
     // save still replays the group: the resize is what is lost, not the group.

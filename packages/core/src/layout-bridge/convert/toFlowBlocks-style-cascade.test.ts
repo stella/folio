@@ -972,9 +972,10 @@ describe("toFlowBlocks style cascade", () => {
       if (tableBlock?.kind === "table") {
         expect(firstTableX(tableBlock)).toBe(expectedX);
       }
-      expect(fromProseDoc(pmDoc, document).package.document.content[0]?.formatting).toEqual(
-        formatting,
-      );
+      expect(
+        fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } }).package.document
+          .content[0]?.formatting,
+      ).toEqual(formatting);
     }
 
     const styledTable: Table = {
@@ -1011,7 +1012,9 @@ describe("toFlowBlocks style cascade", () => {
     if (editedBlock?.kind === "table") {
       expect(firstTableX(editedBlock)).toBe(160);
     }
-    const savedEditedTable = fromProseDoc(editedPmDoc, styledDocument).package.document.content[0];
+    const savedEditedTable = fromProseDoc(editedPmDoc, styledDocument, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0];
     expect(savedEditedTable?.type).toBe("table");
     if (savedEditedTable?.type === "table") {
       expect(savedEditedTable.formatting).toEqual({
@@ -1077,7 +1080,8 @@ describe("toFlowBlocks style cascade", () => {
     expect(tableNode?.child(1).attrs["_resolvedJustification"]).toBe("right");
     expect(tableNode?.child(1).attrs["_originalFormatting"]).toEqual({ justification: "left" });
 
-    const savedTable = fromProseDoc(pmDoc, document).package.document.content[0];
+    const savedTable = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } })
+      .package.document.content[0];
     expect(savedTable?.type).toBe("table");
     if (savedTable?.type === "table") {
       expect(savedTable.rows.map((row) => row.formatting)).toEqual([
@@ -1487,7 +1491,9 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
   test("keeps named and table-style spacing inherited after reconstruction", () => {
     const document = buildDocument();
     const pmDoc = toProseDoc(document, { styles });
-    const rebuiltTable = fromProseDoc(pmDoc, document).package.document.content.at(1);
+    const rebuiltTable = fromProseDoc(pmDoc, document, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(1);
     if (rebuiltTable?.type !== "table") {
       panic("expected a rebuilt table");
     }

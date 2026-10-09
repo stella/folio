@@ -94,7 +94,9 @@ describe("pPrChange accept/reject (real schema)", () => {
     expect(attrs["alignment"]).toBeNull();
     expect(attrs["_propertyChanges"]).toBeNull();
 
-    const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Paragraph;
+    const roundtripped = fromProseDoc(view.state.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Paragraph;
     expect(roundtripped.propertyChanges).toBeUndefined();
     expect(roundtripped.formatting?.indentLeft).toBe(1440);
     expect(roundtripped.formatting?.alignment).toBeUndefined();
@@ -110,7 +112,9 @@ describe("pPrChange accept/reject (real schema)", () => {
     expect(attrs["indentLeft"]).toBe(720);
     expect(attrs["_propertyChanges"]).toBeNull();
 
-    const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Paragraph;
+    const roundtripped = fromProseDoc(view.state.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Paragraph;
     expect(roundtripped.propertyChanges).toBeUndefined();
     expect(roundtripped.formatting?.alignment).toBe("center");
     expect(roundtripped.formatting?.indentLeft).toBe(720);
@@ -363,7 +367,9 @@ describe("pPrChange accept/reject (real schema)", () => {
 
       expect(view.state.doc.child(0).attrs["alignment"]).toBe("left");
       expect(view.state.doc.child(0).attrs["_propertyChanges"]).toBeNull();
-      const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Paragraph;
+      const roundtripped = fromProseDoc(view.state.doc, undefined, {
+        stylesheetSource: { type: "package" },
+      }).package.document.content[0] as Paragraph;
       expect(roundtripped.formatting?.alignment).toBe("left");
       expect(roundtripped.propertyChanges).toBeUndefined();
     }
@@ -375,7 +381,9 @@ describe("pPrChange accept/reject (real schema)", () => {
     expect(rejectAIEditRevision([101, 103])(view.state, view.dispatch)).toBe(true);
 
     expect(view.state.doc.child(0).attrs["alignment"]).toBe("right");
-    const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Paragraph;
+    const roundtripped = fromProseDoc(view.state.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Paragraph;
     expect(roundtripped.propertyChanges).toEqual([
       {
         type: "paragraphPropertyChange",
@@ -387,7 +395,10 @@ describe("pPrChange accept/reject (real schema)", () => {
     expect(rejectAIEditRevision(102)(view.state, view.dispatch)).toBe(true);
     expect(view.state.doc.child(0).attrs["alignment"]).toBe("left");
     expect(
-      (fromProseDoc(view.state.doc).package.document.content[0] as Paragraph).propertyChanges,
+      (
+        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }).package
+          .document.content[0] as Paragraph
+      ).propertyChanges,
     ).toBeUndefined();
   });
 });
@@ -430,7 +441,9 @@ describe("sectPrChange accept/reject (real schema)", () => {
     });
     expect(sectionBreakTypeOf(attrs["_sectionProperties"])).toBe("continuous");
 
-    const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Paragraph;
+    const roundtripped = fromProseDoc(view.state.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Paragraph;
     expect(roundtripped.sectionProperties?.propertyChanges).toBeUndefined();
     expect(roundtripped.sectionProperties?.pageWidth).toBe(11_906);
     expect(roundtripped.sectionProperties?.headerReferences).toEqual([
@@ -453,7 +466,9 @@ describe("sectPrChange accept/reject (real schema)", () => {
     });
     expect(sectionBreakTypeOf(attrs["_sectionProperties"])).toBe("nextPage");
 
-    const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Paragraph;
+    const roundtripped = fromProseDoc(view.state.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Paragraph;
     expect(roundtripped.sectionProperties?.propertyChanges).toBeUndefined();
     expect(roundtripped.sectionProperties?.pageWidth).toBe(12_240);
   });
@@ -517,7 +532,9 @@ describe("table property-change accept/reject (real schema)", () => {
 
   test("toProseDoc/fromProseDoc round-trips unresolved table property changes", () => {
     const state = makeState([makeTable()]);
-    const roundtripped = fromProseDoc(state.doc).package.document.content[0] as Table;
+    const roundtripped = fromProseDoc(state.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Table;
 
     expect(roundtripped.propertyChanges).toEqual([tblChange]);
     expect(roundtripped.rows[0]?.propertyChanges).toEqual([trChange]);
@@ -550,7 +567,9 @@ describe("table property-change accept/reject (real schema)", () => {
     expect(cell.attrs["backgroundColor"]).toBe("00FF00");
     expect(cell.attrs["tcPrChange"]).toBeNull();
 
-    const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Table;
+    const roundtripped = fromProseDoc(view.state.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Table;
     expect(roundtripped.propertyChanges).toBeUndefined();
     expect(roundtripped.formatting?.width).toEqual({ value: 4000, type: "pct" });
     expect(roundtripped.formatting?.justification).toBeUndefined();
@@ -589,7 +608,9 @@ describe("table property-change accept/reject (real schema)", () => {
     expect(cell.attrs["backgroundColor"]).toBe("FF0000");
     expect(cell.attrs["tcPrChange"]).toBeNull();
 
-    const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Table;
+    const roundtripped = fromProseDoc(view.state.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content[0] as Table;
     expect(roundtripped.propertyChanges).toBeUndefined();
     expect(roundtripped.formatting?.justification).toBe("center");
     expect(roundtripped.rows[0]?.propertyChanges).toBeUndefined();

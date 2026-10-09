@@ -214,7 +214,9 @@ const savedThroughEditor = async (propertiesXml: string): Promise<string> => {
   const parsed = await parseDocx(await packageWithParagraphProperties(propertiesXml), {
     preloadFonts: false,
   });
-  const projected = fromProseDoc(toProseDoc(parsed), parsed);
+  const projected = fromProseDoc(toProseDoc(parsed), parsed, {
+    stylesheetSource: { type: "package" },
+  });
   return await savedDocumentXml(
     await repackDocx(withEditedFormatting(projected), { updateModifiedDate: false }),
   );

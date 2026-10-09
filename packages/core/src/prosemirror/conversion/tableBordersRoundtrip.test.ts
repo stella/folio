@@ -118,7 +118,9 @@ describe("w:tblBorders round-trip", () => {
     };
     const document = makeDocumentWithTableBorders(borders);
 
-    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const roundTripped = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(expectFirstTable(roundTripped).formatting?.borders).toEqual(borders);
   });
@@ -136,7 +138,9 @@ describe("w:tblBorders round-trip", () => {
       cell.formatting = { borders: { top: singleBorder, bottom: singleBorder } };
     }
 
-    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const roundTripped = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
 
     expect(expectFirstTable(roundTripped).formatting?.borders).toBeUndefined();
   });
@@ -151,7 +155,9 @@ describe("w:tblBorders round-trip", () => {
       insideV: { style: "none" },
     };
     const document = makeDocumentWithTableBorders(borders);
-    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const roundTripped = fromProseDoc(toProseDoc(document), document, {
+      stylesheetSource: { type: "package" },
+    });
 
     const xml = serializeTable(expectFirstTable(roundTripped), serializeParagraph);
     expect(xml).toContain(
@@ -167,7 +173,9 @@ describe("w:tblBorders round-trip", () => {
     const pmDoc = toProseDoc(document);
     const state = applyTableBorderPreset(stateWithCursorInFirstCell(pmDoc), "all");
 
-    const roundTripped = fromProseDoc(state.doc, document);
+    const roundTripped = fromProseDoc(state.doc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = expectFirstTable(roundTripped);
 
     const wordDefault = {
@@ -206,7 +214,9 @@ describe("w:tblBorders round-trip", () => {
     const pmDoc = toProseDoc(document);
     const state = applyTableBorderPreset(stateWithCursorInFirstCell(pmDoc), "none");
 
-    const roundTripped = fromProseDoc(state.doc, document);
+    const roundTripped = fromProseDoc(state.doc, document, {
+      stylesheetSource: { type: "package" },
+    });
     const table = expectFirstTable(roundTripped);
 
     const none = { style: "none" };

@@ -58,7 +58,9 @@ const paragraphContentOf = (document: Document): ParagraphContent[] => {
 /** One pass through the editor: model to ProseMirror and back. */
 const roundTrip = (content: Paragraph["content"]): ParagraphContent[] => {
   const source = documentWith(content);
-  return paragraphContentOf(fromProseDoc(toProseDoc(source), source));
+  return paragraphContentOf(
+    fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+  );
 };
 
 /**

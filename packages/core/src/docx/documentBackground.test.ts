@@ -21,7 +21,9 @@ const documentXml = (prefix: string, namespace: string): string =>
 
 const editorRoundTrip = (source: string): string => {
   const document: Document = { package: { document: parseDocumentBody(source) } };
-  return serializeDocument(fromProseDoc(toProseDoc(document), document));
+  return serializeDocument(
+    fromProseDoc(toProseDoc(document), document, { stylesheetSource: { type: "package" } }),
+  );
 };
 
 describe("document background round trip", () => {

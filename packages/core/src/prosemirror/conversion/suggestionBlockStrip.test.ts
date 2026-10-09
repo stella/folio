@@ -70,6 +70,8 @@ describe("block/table suggestion strip", () => {
         para("keep me"),
         para("proposed paragraph", { _suggestedInsert: structuralInsert(900, "s1") }),
       ]),
+      undefined,
+      { stylesheetSource: { type: "package" } },
     );
     expect(blocks(model).length).toBe(1);
     expect(plainText(model)).not.toContain("proposed paragraph");
@@ -82,6 +84,8 @@ describe("block/table suggestion strip", () => {
         para("before"),
         table([row([cell("proposed cell")])], { _suggestedInsert: structuralInsert(901, "s2") }),
       ]),
+      undefined,
+      { stylesheetSource: { type: "package" } },
     );
     expect(blocks(model).some((b) => b.type === "table")).toBe(false);
     expect(plainText(model)).not.toContain("proposed cell");
@@ -96,6 +100,8 @@ describe("block/table suggestion strip", () => {
           row([cell("suggested added")], { trIns: suggested(11, "s3") }),
         ]),
       ]),
+      undefined,
+      { stylesheetSource: { type: "package" } },
     );
     const t = firstTable(model);
     expect(t.rows.length).toBe(2);
@@ -109,6 +115,8 @@ describe("block/table suggestion strip", () => {
   test("a suggested-deleted row serializes as a plain row (deletion never happened)", () => {
     const model = fromProseDoc(
       doc([table([row([cell("stays")], { trDel: suggested(12, "s4") }), row([cell("other")])])]),
+      undefined,
+      { stylesheetSource: { type: "package" } },
     );
     const t = firstTable(model);
     expect(t.rows.length).toBe(2);
@@ -128,6 +136,8 @@ describe("block/table suggestion strip", () => {
           ]),
         ]),
       ]),
+      undefined,
+      { stylesheetSource: { type: "package" } },
     );
     const t = firstTable(model);
     expect(t.rows[0]?.cells.length).toBe(1);
@@ -142,6 +152,8 @@ describe("block/table suggestion strip", () => {
           row([cell("a"), cell("b", { cellMarker: { kind: "del", info: suggested(14, "s6") } })]),
         ]),
       ]),
+      undefined,
+      { stylesheetSource: { type: "package" } },
     );
     const t = firstTable(model);
     expect(t.rows[0]?.cells.length).toBe(2);
@@ -165,6 +177,8 @@ describe("block/table suggestion strip", () => {
           schema.text("nested proposed", [insMark]),
         ]),
       ]),
+      undefined,
+      { stylesheetSource: { type: "package" } },
     );
     expect(blocks(model).length).toBe(1);
     expect(plainText(model)).not.toContain("nested proposed");

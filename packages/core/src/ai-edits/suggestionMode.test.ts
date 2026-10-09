@@ -248,7 +248,9 @@ describe("suggested apply mode", () => {
     });
     expect(flagged).toBe(true);
 
-    const model = fromProseDoc(view.state.doc);
+    const model = fromProseDoc(view.state.doc, undefined, {
+      stylesheetSource: { type: "package" },
+    });
     expect(JSON.stringify(model.package.document.content)).not.toContain("proposed new block");
   });
 
@@ -265,7 +267,11 @@ describe("suggested apply mode", () => {
     });
     expect(result.applied.at(0)?.suggestionId).toBe("del");
 
-    const xml = serializeParagraph(firstParagraph(fromProseDoc(view.state.doc)));
+    const xml = serializeParagraph(
+      firstParagraph(
+        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    );
     expect(xml).toContain("delete me please");
     expect(xml).not.toContain("<w:del");
   });
@@ -298,7 +304,11 @@ describe("suggested apply mode", () => {
     // The live doc shows the proposed bold; the strip reverts it on serialize.
     expect(marksInDoc(view.state).some((m) => m.type.name === "bold")).toBe(true);
 
-    const xml = serializeParagraph(firstParagraph(fromProseDoc(view.state.doc)));
+    const xml = serializeParagraph(
+      firstParagraph(
+        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    );
     expect(xml).not.toContain("<w:rPrChange");
     expect(xml).not.toContain("<w:b/>");
   });
@@ -422,7 +432,9 @@ describe("suggested apply mode", () => {
   test("suggested changes are stripped from serialized output until accepted", () => {
     const view = makeView("the quick brown fox");
     applySuggestedReplace(view, "quick", "swift");
-    const paragraph = firstParagraph(fromProseDoc(view.state.doc));
+    const paragraph = firstParagraph(
+      fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+    );
     const xml = serializeParagraph(paragraph);
     expect(xml).not.toContain("swift");
     expect(xml).not.toContain("<w:ins");
@@ -439,7 +451,11 @@ describe("suggestion commands", () => {
     expect(acceptAllChanges()(view.state, view.dispatch)).toBe(false);
     expect(view.state.doc.toJSON()).toEqual(before);
     expect(getSuggestions(view.state).map(({ suggestionId }) => suggestionId)).toEqual(["op-1"]);
-    const xml = serializeParagraph(firstParagraph(fromProseDoc(view.state.doc)));
+    const xml = serializeParagraph(
+      firstParagraph(
+        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    );
     expect(xml).not.toContain("swift");
     expect(xml).not.toContain("<w:ins");
   });
@@ -480,7 +496,11 @@ describe("suggestion commands", () => {
     expect(getSuggestions(view.state)).toEqual([]);
 
     // The accepted change now serializes as a real tracked change.
-    const xml = serializeParagraph(firstParagraph(fromProseDoc(view.state.doc)));
+    const xml = serializeParagraph(
+      firstParagraph(
+        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    );
     expect(xml).toContain("<w:ins");
     expect(xml).toContain("swift");
     expect(xml).toContain('w:author="Alice"');
@@ -553,7 +573,11 @@ describe("suggestion commands", () => {
     // The suggested replacement text is gone and the original survives.
     expect(view.state.doc.textContent).toBe("the quick brown fox");
     expect(getSuggestions(view.state)).toEqual([]);
-    const xml = serializeParagraph(firstParagraph(fromProseDoc(view.state.doc)));
+    const xml = serializeParagraph(
+      firstParagraph(
+        fromProseDoc(view.state.doc, undefined, { stylesheetSource: { type: "package" } }),
+      ),
+    );
     expect(xml).not.toContain("swift");
     expect(xml).not.toContain("<w:ins");
     expect(xml).not.toContain("<w:del");

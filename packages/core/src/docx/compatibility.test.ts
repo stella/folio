@@ -487,9 +487,12 @@ describe("DOCX compatibility inspection", () => {
         editableTextPosition + "Editable text".length,
       ),
     ).doc;
-    const saved = await repackDocx(fromProseDoc(editedPmDocument, parsed), {
-      updateModifiedDate: false,
-    });
+    const saved = await repackDocx(
+      fromProseDoc(editedPmDocument, parsed, { stylesheetSource: { type: "package" } }),
+      {
+        updateModifiedDate: false,
+      },
+    );
     const reopened = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
     const reopenedDrawing = firstRawDrawing(reopened);
 
@@ -541,7 +544,10 @@ describe("DOCX compatibility inspection", () => {
     const edited = state.apply(
       state.tr.insertText("Edited body", bodyTextPosition, bodyTextPosition + "Body text".length),
     ).doc;
-    const saved = await repackDocx(fromProseDoc(edited, parsed), { updateModifiedDate: false });
+    const saved = await repackDocx(
+      fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } }),
+      { updateModifiedDate: false },
+    );
     const savedHeaderXml = await (
       await JSZip.loadAsync(saved)
     )
@@ -613,7 +619,9 @@ describe("DOCX compatibility inspection", () => {
     expect(firstRawDrawing(parsed)).toBeUndefined();
     expect(inspectDocxCompatibility(parsed).canSafelyEdit).toBe(true);
 
-    const pmRoundTripped = fromProseDoc(toProseDoc(parsed), parsed);
+    const pmRoundTripped = fromProseDoc(toProseDoc(parsed), parsed, {
+      stylesheetSource: { type: "package" },
+    });
     expect(firstShape(pmRoundTripped)?.shape.geometryAdjustments).toEqual(expectedAdjustments);
 
     const saved = await repackDocx(pmRoundTripped, { updateModifiedDate: false });

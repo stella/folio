@@ -99,7 +99,7 @@ const checkFixedPoint = async (parsed: Document): Promise<FixedPointOutcome> => 
 
   const repacked = await Result.tryPromise({
     try: async () => {
-      const back = fromProseDoc(original.value, parsed);
+      const back = fromProseDoc(original.value, parsed, { stylesheetSource: { type: "package" } });
       return await repackDocx(back, { updateModifiedDate: false });
     },
     catch: (cause: unknown) => cause,

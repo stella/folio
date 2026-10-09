@@ -89,9 +89,11 @@ describe("text-box content provenance properties", () => {
       fc.property(generatedTextBody, (body) => {
         const source = documentWithTextBody(body);
         const projected = toProseDoc(source);
-        const restored = fromProseDoc(projected, source);
+        const restored = fromProseDoc(projected, source, { stylesheetSource: { type: "package" } });
         const reprojected = toProseDoc(restored);
-        const restoredAgain = fromProseDoc(reprojected, restored);
+        const restoredAgain = fromProseDoc(reprojected, restored, {
+          stylesheetSource: { type: "package" },
+        });
 
         expect(textBodyContent(restored)).toEqual(body);
         expect(textBodyContent(restoredAgain)).toEqual(body);
@@ -138,7 +140,7 @@ describe("text-box content provenance properties", () => {
         const edited = schema.node("doc", projected.attrs, [
           textBox.type.create(textBox.attrs, [editedParagraph]),
         ]);
-        const restored = fromProseDoc(edited, source);
+        const restored = fromProseDoc(edited, source, { stylesheetSource: { type: "package" } });
         const reprojected = toProseDoc(restored);
         const body = textBodyContent(restored);
 
@@ -163,9 +165,13 @@ describe("text-box content provenance properties", () => {
           }
         }
 
-        expect(stableProjectionIdentity(toProseDoc(fromProseDoc(reprojected, restored)))).toBe(
-          stableProjectionIdentity(reprojected),
-        );
+        expect(
+          stableProjectionIdentity(
+            toProseDoc(
+              fromProseDoc(reprojected, restored, { stylesheetSource: { type: "package" } }),
+            ),
+          ),
+        ).toBe(stableProjectionIdentity(reprojected));
       }),
       propertyConfig({ numRuns: 200 }),
     );

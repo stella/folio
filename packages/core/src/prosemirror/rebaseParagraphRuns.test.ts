@@ -117,10 +117,15 @@ test(
             );
           };
           check(state.doc);
-          const reopened = await parseDocx(await createDocx(fromProseDoc(state.doc, base)), {
-            preloadFonts: false,
-            detectVariables: false,
-          });
+          const reopened = await parseDocx(
+            await createDocx(
+              fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
+            ),
+            {
+              preloadFonts: false,
+              detectVariables: false,
+            },
+          );
           check(toProseDoc(reopened));
         },
       ),

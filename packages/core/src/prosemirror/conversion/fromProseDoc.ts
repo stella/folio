@@ -11,7 +11,7 @@ import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
  * - Handle marks -> TextFormatting conversion
  */
 
-import { panic } from "better-result";
+import { panic, TaggedError } from "better-result";
 import { DRAWING_RAW_XML_MODES, relationshipIdOf } from "@stll/docx-core/model";
 import {
   assertNoteReferenceOccurrences,
@@ -32,6 +32,7 @@ import {
   isStyleSourcedParagraphNumbering,
   modelParagraphFormattingEmission,
 } from "../../internal/paragraphFormattingSerialization";
+import { getDocumentSourceBaseline } from "../../docx/headerFooterVerbatim";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
 import { normalizeFoldedListNumbers } from "../../docx/foldedListNumberFields";
@@ -107,6 +108,7 @@ import type {
   BookmarkStart,
   Document,
   DocumentBody,
+  StyleDefinitions,
   Paragraph,
   ParagraphPropertyChange,
   PreservedInline,
@@ -194,6 +196,7 @@ import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import {
   paragraphFormattingForRun,
   paragraphRunStyleContext,
+  resolveParagraphInheritedRunFormatting,
   resolveEffectiveRunStyleFormatting,
   type RunStyleResolver,
 } from "../runStyleFormatting";
@@ -673,16 +676,156 @@ export type ProjectionReuse = "none" | "matched";
 
 /** How the conversion treats records the editor did not change. */
 export type FromProseDocOptions = {
+  /** The stylesheet authority used to construct the projection. */
+  stylesheetSource: { type: "package" } | { type: "supplied"; styles: StyleDefinitions };
   /** Defaults to `"none"`, the only value implemented. */
   reuse?: ProjectionReuse;
+};
+
+type SaveStylesheetDivergence =
+  | { type: "style"; styleId: string }
+  | { type: "docDefaults" }
+  | { type: "sourceUnavailable" };
+
+class SaveStylesheetSourceMismatch extends TaggedError("SaveStylesheetSourceMismatch")<{
+  message: string;
+  divergences: readonly SaveStylesheetDivergence[];
+}> {}
+
+const assertSuppliedStylesMatchSource = (
+  styles: StyleDefinitions,
+  baseDocument: Document | undefined,
+) => {
+  if (!baseDocument?.originalBuffer) return;
+  const source = getDocumentSourceBaseline(baseDocument);
+  switch (source.type) {
+    case "missing":
+    case "mismatch":
+      throw new SaveStylesheetSourceMismatch({
+        message: "The parsed package stylesheet source is unavailable.",
+        divergences: [{ type: "sourceUnavailable" }],
+      });
+    case "captured": {
+      const sourceStyles = source.resourceStyles;
+      // Without a source styles part the saver materializes the full supplied stylesheet.
+      if (!sourceStyles) return;
+      const suppliedById = new Map(styles.styles.map((style) => [style.styleId, style]));
+      const sourceById = new Map(sourceStyles.styles.map((style) => [style.styleId, style]));
+      const divergentIds = new Set<string>();
+      for (const style of sourceStyles.styles) {
+        if (canonicalJson(style) !== canonicalJson(suppliedById.get(style.styleId)))
+          divergentIds.add(style.styleId);
+      }
+      // The append-only writer emits the first new definition for an id.
+      // The resolver must not select a different later definition for that same id.
+      for (const style of styles.styles) {
+        if (canonicalJson(style) !== canonicalJson(suppliedById.get(style.styleId)))
+          divergentIds.add(style.styleId);
+      }
+      const persistedStyles = {
+        ...sourceStyles,
+        styles: [
+          ...sourceStyles.styles,
+          ...styles.styles.filter(({ styleId }) => !sourceById.has(styleId)),
+        ],
+      };
+      const suppliedResolver = createStyleEngine(styles);
+      const persistedResolver = createStyleEngine(persistedStyles);
+      for (const [supplied, persisted] of [
+        [suppliedResolver.getDefaultParagraphStyle(), persistedResolver.getDefaultParagraphStyle()],
+        [suppliedResolver.getDefaultCharacterStyle(), persistedResolver.getDefaultCharacterStyle()],
+        [suppliedResolver.getDefaultTableStyle(), persistedResolver.getDefaultTableStyle()],
+      ]) {
+        if (supplied?.styleId === persisted?.styleId) continue;
+        if (supplied) divergentIds.add(supplied.styleId);
+        if (persisted) divergentIds.add(persisted.styleId);
+      }
+      const divergences: SaveStylesheetDivergence[] = [];
+      for (const styleId of divergentIds) divergences.push({ type: "style", styleId });
+      if (canonicalJson(styles.docDefaults) !== canonicalJson(sourceStyles.docDefaults))
+        divergences.push({ type: "docDefaults" });
+      if (divergences.length === 0) return;
+      throw new SaveStylesheetSourceMismatch({
+        message: `Supplied stylesheet differs from the parsed package: ${[
+          ...divergentIds,
+          ...(divergences.some(({ type }) => type === "docDefaults") ? ["docDefaults"] : []),
+        ].join(", ")}.`,
+        divergences,
+      });
+    }
+    default: {
+      const unreachable: never = source;
+      return panic(`Unexpected stylesheet source baseline: ${JSON.stringify(unreachable)}`);
+    }
+  }
+};
+
+const saveStylesheet = (
+  source: FromProseDocOptions["stylesheetSource"],
+  baseDocument: Document | undefined,
+) => {
+  switch (source.type) {
+    case "package":
+      return baseDocument?.package.styles;
+    case "supplied":
+      assertSuppliedStylesMatchSource(source.styles, baseDocument);
+      return source.styles;
+    default: {
+      const unreachable: never = source;
+      return panic(`Unexpected stylesheet source: ${JSON.stringify(unreachable)}`);
+    }
+  }
+};
+
+class MissingSaveStylesheet extends TaggedError("MissingSaveStylesheet")<{
+  message: string;
+}> {}
+
+type SaveStylesheetAvailabilityOptions = {
+  pmDoc: PMNode;
+  styles: StyleDefinitions | undefined;
+  baseDocument: Document | undefined;
+  stylesheetSource: FromProseDocOptions["stylesheetSource"];
+};
+
+const assertSaveStylesheetAvailable = ({
+  pmDoc,
+  styles,
+  baseDocument,
+  stylesheetSource,
+}: SaveStylesheetAvailabilityOptions) => {
+  if (styles !== undefined) return;
+  // A concrete package's missing styles part is authoritative absence, not
+  // missing authority. Unknown references do not create inherited formatting.
+  if (stylesheetSource.type === "package" && baseDocument !== undefined) return;
+  pmDoc.descendants((node) => {
+    const referencedStyle = (() => {
+      switch (node.type.name) {
+        case "paragraph": {
+          const attrs = expectParagraphAttrs(node);
+          return attrs.styleId ?? attrs._originalFormatting?.runProperties?.styleId;
+        }
+        case "table":
+          return expectTableAttrs(node).styleId;
+        default:
+          return undefined;
+      }
+    })();
+    if (referencedStyle != null || node.marks.some(({ type }) => type.name === "characterStyle"))
+      throw new MissingSaveStylesheet({
+        message: "Saving style-dependent content requires its authoritative stylesheet.",
+      });
+  });
 };
 
 /** Convert a ProseMirror document to the document model. */
 export function fromProseDoc(
   pmDoc: PMNode,
-  baseDocument?: Document,
-  { reuse = "none" }: FromProseDocOptions = {},
+  baseDocument: Document | undefined,
+  { stylesheetSource, reuse = "none" }: FromProseDocOptions,
 ): Document {
+  const styles = saveStylesheet(stylesheetSource, baseDocument);
+  assertSaveStylesheetAvailable({ pmDoc, styles, baseDocument, stylesheetSource });
   assertNoteReferenceOccurrences(pmDoc);
   switch (reuse) {
     case "none": {
@@ -722,11 +865,8 @@ export function fromProseDoc(
       ? validateParagraphPropertySourceTokens(pmDoc, baseDocument, baseContract)
       : null;
 
-  const blocks = extractBlocks(
-    pmDoc,
-    "resolve",
-    baseDocument?.package.styles ? createStyleEngine(baseDocument.package.styles) : null,
-  );
+  // Match the reader's empty-styles resolver when the source has no styles part.
+  const blocks = extractBlocks(pmDoc, "resolve", createStyleEngine(styles));
   joinCommentRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
@@ -767,6 +907,7 @@ export function fromProseDoc(
       package: {
         ...baseDocument.package,
         document: documentBody,
+        ...(styles ? { styles } : {}),
         ...(numbering ? { numbering } : {}),
       },
     };
@@ -778,6 +919,7 @@ export function fromProseDoc(
   return {
     package: {
       document: documentBody,
+      ...(styles ? { styles } : {}),
       ...(numbering ? { numbering } : {}),
     },
   };
@@ -799,13 +941,7 @@ const hasSuggestedInsertion = (marks: readonly Mark[]): boolean =>
  */
 function stripSuggestedInlineMarks(
   marks: readonly Mark[],
-  {
-    baseParagraphFormatting,
-    inheritedFormatting,
-    paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
-    styleResolver,
-  }: RunFormattingContext,
+  readFormattingContext: () => RunFormattingContext,
 ): readonly Mark[] {
   const hasSuggestedDeletion = marks.some(
     (mark) => mark.type.name === "deletion" && isSuggestedMark(mark),
@@ -826,6 +962,13 @@ function stripSuggestedInlineMarks(
   );
 
   if (suggestedRunPropertyChange) {
+    const {
+      baseParagraphFormatting,
+      inheritedFormatting,
+      paragraphMarkFormatting,
+      paragraphMarkPrecedesStyle,
+      styleResolver,
+    } = readFormattingContext();
     const previousFormatting = expectRunPropertyChangeMarkAttrs(
       suggestedRunPropertyChange,
     ).changes.at(0)?.previousFormatting;
@@ -986,6 +1129,25 @@ function isSuggestedInsertedNode(node: PMNode): boolean {
   return false;
 }
 
+const savedParagraphRunStyleContext = (
+  paragraph: PMNode,
+  styleResolver?: RunStyleResolver | null,
+) => {
+  const context = paragraphRunStyleContext(paragraph, styleResolver);
+  if (paragraph.content.size === 0) return context;
+  const attrs = expectParagraphAttrs(paragraph);
+  const source = resolveParagraphInheritedRunFormatting({
+    styleId: attrs.styleId,
+    styleResolver,
+    tableRunFormatting: attrs._tableRunFormatting,
+    paragraphMarkFormatting:
+      attrs.styleId === undefined ? context.paragraphMarkFormatting : undefined,
+  });
+  // Caret defaults may carry formatting across an empty split without emitting
+  // paragraph properties. Only the source cascade can make a saved run inherit.
+  return { ...context, paragraphFormatting: source.inheritedFormatting };
+};
+
 /**
  * Recursively rewrite a ProseMirror node tree, removing every suggested
  * tracked change. Returns `null` when the node itself must be dropped: a
@@ -995,19 +1157,13 @@ function isSuggestedInsertedNode(node: PMNode): boolean {
  */
 function mapSuggestionStrippedNode(
   node: PMNode,
-  formattingContext: RunFormattingContext = {
-    baseParagraphFormatting: undefined,
-    inheritedFormatting: undefined,
-    paragraphMarkFormatting: undefined,
-    paragraphMarkPrecedesStyle: false,
-    styleResolver: null,
-  },
+  readFormattingContext: () => RunFormattingContext,
 ): PMNode | null {
   if (node.isInline) {
     if (hasSuggestedInsertion(node.marks)) {
       return null;
     }
-    const marks = stripSuggestedInlineMarks(node.marks, formattingContext);
+    const marks = stripSuggestedInlineMarks(node.marks, readFormattingContext);
     return marks === node.marks ? node : node.mark(marks);
   }
 
@@ -1018,22 +1174,28 @@ function mapSuggestionStrippedNode(
   const nextAttrs = stripSuggestedNodeAttrs(node);
   const children: PMNode[] = [];
   let changed = nextAttrs !== null;
-  const paragraphStyleContext =
+  // Ordinary paragraphs need no style resolution during suggestion stripping.
+  // Resolve this context only when a run-property suggestion needs reconstruction.
+  let resolvedChildContext: RunFormattingContext | undefined;
+  const readChildFormattingContext =
     node.type.name === "paragraph"
-      ? paragraphRunStyleContext(node, formattingContext.styleResolver)
-      : undefined;
-  const childFormattingContext = paragraphStyleContext
-    ? {
-        baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
-        inheritedFormatting: paragraphStyleContext.paragraphFormatting,
-        paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle: paragraphStyleContext.paragraphMarkPrecedesStyle,
-        styleResolver: formattingContext.styleResolver,
-      }
-    : formattingContext;
+      ? () => {
+          if (resolvedChildContext) return resolvedChildContext;
+          const { styleResolver } = readFormattingContext();
+          const paragraphStyleContext = savedParagraphRunStyleContext(node, styleResolver);
+          resolvedChildContext = {
+            baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
+            inheritedFormatting: paragraphStyleContext.paragraphFormatting,
+            paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
+            paragraphMarkPrecedesStyle: paragraphStyleContext.paragraphMarkPrecedesStyle,
+            styleResolver,
+          };
+          return resolvedChildContext;
+        }
+      : readFormattingContext;
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
-    const mapped = mapSuggestionStrippedNode(child, childFormattingContext);
+    const mapped = mapSuggestionStrippedNode(child, readChildFormattingContext);
     if (mapped === null) {
       changed = true;
       return;
@@ -1060,13 +1222,13 @@ function mapSuggestionStrippedNode(
  */
 function stripSuggestedProvenance(doc: PMNode, styleResolver: StyleEngine | null): PMNode {
   return (
-    mapSuggestionStrippedNode(doc, {
+    mapSuggestionStrippedNode(doc, () => ({
       baseParagraphFormatting: undefined,
       inheritedFormatting: undefined,
       paragraphMarkFormatting: undefined,
       paragraphMarkPrecedesStyle: false,
       styleResolver,
-    }) ?? doc
+    })) ?? doc
   );
 }
 
@@ -1811,7 +1973,7 @@ function convertPMParagraph(
   styleResolver: StyleEngine | null = null,
 ): Paragraph {
   const attrs = expectParagraphAttrs(node);
-  const paragraphStyleContext = paragraphRunStyleContext(node, styleResolver);
+  const paragraphStyleContext = savedParagraphRunStyleContext(node, styleResolver);
   let content = extractParagraphContent(
     node,
     documentCounts,
@@ -2730,7 +2892,9 @@ function extractParagraphContent(
   const paragraph = coalesceNoteReferenceOccurrences(originalParagraph);
   const content: ParagraphContent[] = [];
   const paragraphStyleContext =
-    paragraph.type.name === "paragraph" ? paragraphRunStyleContext(paragraph) : undefined;
+    inheritedFormattingOverride === undefined && paragraph.type.name === "paragraph"
+      ? savedParagraphRunStyleContext(paragraph)
+      : undefined;
   const formattingContext =
     inheritedFormattingOverride ??
     ({
@@ -5858,7 +6022,7 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
  */
 export function updateDocumentContent(originalDocument: Document, pmDoc: PMNode): Document {
   // canonical-gap: pm-save-projection
-  return fromProseDoc(pmDoc, originalDocument);
+  return fromProseDoc(pmDoc, originalDocument, { stylesheetSource: { type: "package" } });
 }
 
 /**

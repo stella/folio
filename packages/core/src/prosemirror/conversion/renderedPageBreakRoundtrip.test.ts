@@ -12,7 +12,7 @@ describe("renderedPageBreakBefore round-trip", () => {
     ]);
     const doc = schema.node("doc", null, [paragraph]);
 
-    const document = fromProseDoc(doc);
+    const document = fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } });
     const parsed = document.package.document.content.at(0);
     if (parsed?.type !== "paragraph") {
       panic("Expected the converted paragraph");
@@ -55,7 +55,9 @@ describe("renderedPageBreakBefore round-trip", () => {
       schema.node("renderedPageBreak"),
       schema.text("Next page"),
     ]);
-    const document = fromProseDoc(schema.node("doc", null, [paragraph]));
+    const document = fromProseDoc(schema.node("doc", null, [paragraph]), undefined, {
+      stylesheetSource: { type: "package" },
+    });
     const parsed = document.package.document.content.at(0);
 
     expect(parsed).toMatchObject({

@@ -66,6 +66,7 @@ test(
           const expectedContent = fromProseDoc(
             createHarnessState(expected, "editing").doc,
             expected,
+            { stylesheetSource: { type: "package" } },
           ).package.document.content;
           for (const command of [
             rejectAllChanges(),
@@ -78,9 +79,10 @@ test(
                 resolved = state.apply(tr);
               }),
             ).toBe(true);
-            expect(fromProseDoc(resolved.doc, source).package.document.content).toEqual(
-              expectedContent,
-            );
+            expect(
+              fromProseDoc(resolved.doc, source, { stylesheetSource: { type: "package" } }).package
+                .document.content,
+            ).toEqual(expectedContent);
             const expectedDoc = createHarnessState(expected, "editing").doc;
             expect(resolved.doc.eq(expectedDoc)).toBe(true);
           }

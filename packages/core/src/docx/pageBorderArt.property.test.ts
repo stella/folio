@@ -205,7 +205,9 @@ describe("page-border art relationship ids survive a rebuild", () => {
           // back. Only Word can tell, so the written namespace is asserted.
           expect(await artAttributeNames(saved)).toEqual(expectedAttributeNames(art));
 
-          const edited = fromProseDoc(toProseDoc(opened), opened);
+          const edited = fromProseDoc(toProseDoc(opened), opened, {
+            stylesheetSource: { type: "package" },
+          });
           expect(readArt(await parse(await save(edited)))).toEqual(art);
         }),
         propertyConfig({ numRuns: 40 }),

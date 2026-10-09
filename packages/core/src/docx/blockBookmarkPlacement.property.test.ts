@@ -259,7 +259,9 @@ describe("a bookmark marker at block level keeps its container and its ordinal",
           const parsed = await parseDocx(await buildDocx(placement.body(id)), {
             preloadFonts: false,
           });
-          const document = fromProseDoc(toProseDoc(parsed), parsed);
+          const document = fromProseDoc(toProseDoc(parsed), parsed, {
+            stylesheetSource: { type: "package" },
+          });
           const saved = await repackDocx(document, { updateModifiedDate: false });
 
           expect({ key, ...anchorsOf(await documentXmlOf(saved), id) }).toEqual({
@@ -285,7 +287,10 @@ describe("an edit inside a spanned cell keeps the bookmark's extent", () => {
     const edited = proseDoc.type.schema.nodeFromJSON(
       JSON.parse(JSON.stringify(proseDoc.toJSON()).replace('"text":"a"', '"text":"a edited"')),
     );
-    const saved = await repackDocx(fromProseDoc(edited, parsed), { updateModifiedDate: false });
+    const saved = await repackDocx(
+      fromProseDoc(edited, parsed, { stylesheetSource: { type: "package" } }),
+      { updateModifiedDate: false },
+    );
     const xml = await documentXmlOf(saved);
 
     expect(xml).toContain("a edited");

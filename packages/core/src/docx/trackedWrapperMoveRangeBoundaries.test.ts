@@ -75,7 +75,9 @@ const wrapParagraph = (paragraph: Paragraph): Document => ({
 
 const throughEditor = (paragraph: Paragraph): Paragraph => {
   const document = wrapParagraph(paragraph);
-  const rebuilt = fromProseDoc(toProseDoc(document), document).package.document.content.at(0);
+  const rebuilt = fromProseDoc(toProseDoc(document), document, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (rebuilt?.type !== "paragraph") {
     throw new Error("Expected the editor round trip to rebuild one paragraph");
   }

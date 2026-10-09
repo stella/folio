@@ -181,7 +181,7 @@ const expectHonest = async (
   parsed: Document,
   expectedCodes: readonly string[],
 ): Promise<Document> => {
-  const rebuilt = fromProseDoc(doc, parsed);
+  const rebuilt = fromProseDoc(doc, parsed, { stylesheetSource: { type: "package" } });
   expectShownIsWritten(bodyParagraphs(rebuilt));
   expect(paragraphTokens(rebuilt).flatMap(codes)).toEqual([...expectedCodes]);
 
@@ -351,7 +351,11 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
     const { buffer, parsed, state } = await fixture();
     const edited = typeInto(state, PLAIN_PARAGRAPH_ID, "Plain.", "!");
 
-    const saved = await saveDocx(fromProseDoc(edited.doc, parsed), buffer, [PLAIN_PARAGRAPH_ID]);
+    const saved = await saveDocx(
+      fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+      buffer,
+      [PLAIN_PARAGRAPH_ID],
+    );
 
     await expectSavedFields(saved, parsed);
     expect(await documentXmlOf(saved.bytes)).toContain("P!lain.");
@@ -366,10 +370,11 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
       "!",
     );
 
-    const saved = await saveDocx(fromProseDoc(edited.doc, parsed), buffer, [
-      LEADING.paraId,
-      INLINE.paraId,
-    ]);
+    const saved = await saveDocx(
+      fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+      buffer,
+      [LEADING.paraId, INLINE.paraId],
+    );
 
     await expectSavedFields(saved, parsed, {
       [LEADING.paraId]: typedInto(LEADING.body, "!"),
@@ -380,19 +385,27 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
   test("a full rewrite keeps the fields of every paragraph", async () => {
     const { parsed, state } = await fixture();
 
-    const saved = await rewritten(fromProseDoc(state.doc, parsed));
+    const saved = await rewritten(
+      fromProseDoc(state.doc, parsed, { stylesheetSource: { type: "package" } }),
+    );
 
     await expectSavedFields(saved, parsed);
   });
 
   test("a second save writes what the first one did", async () => {
     const { parsed, bare } = await fixture();
-    const once = await repackDocx(fromProseDoc(bare.doc, parsed), { updateModifiedDate: false });
+    const once = await repackDocx(
+      fromProseDoc(bare.doc, parsed, { stylesheetSource: { type: "package" } }),
+      { updateModifiedDate: false },
+    );
     const reopened = await openDocx(once);
 
-    const twice = await repackDocx(fromProseDoc(toProseDoc(reopened), reopened), {
-      updateModifiedDate: false,
-    });
+    const twice = await repackDocx(
+      fromProseDoc(toProseDoc(reopened), reopened, { stylesheetSource: { type: "package" } }),
+      {
+        updateModifiedDate: false,
+      },
+    );
 
     expect(await documentXmlOf(twice)).toBe(await documentXmlOf(once));
   });
@@ -411,7 +424,11 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
     expect(bodyParagraphs(parsed).at(0)?.listRendering?.marker.endsWith("\t(a)")).toBe(true);
     const edited = typeInto(editorState(parsed), LEADING.paraId, "Body text", "!");
 
-    const saved = await saveDocx(fromProseDoc(edited.doc, parsed), buffer, [LEADING.paraId]);
+    const saved = await saveDocx(
+      fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+      buffer,
+      [LEADING.paraId],
+    );
 
     const markup = paragraphMarkupOf(await documentXmlOf(saved.bytes), LEADING.paraId);
     expect(markup).toMatch(/<w:numberingChange\b[^>]*w:original="\(a\)"/u);
@@ -460,7 +477,7 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
       "commentReference",
     ]);
     const edited = typeInto(editorState(parsed), PLAIN_PARAGRAPH_ID, "Plain.", "!");
-    const document = fromProseDoc(edited.doc, parsed);
+    const document = fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } });
 
     // Another paragraph edited: where the save patches, this one is its source bytes.
     const patched = await saveDocx(document, buffer, [PLAIN_PARAGRAPH_ID]);
@@ -488,7 +505,11 @@ describe("the save's rule for a field an edit moved", () => {
 
     const typed = state.apply(state.tr.insertText("X", position + 1));
 
-    const saved = await saveDocx(fromProseDoc(typed.doc, parsed), buffer, [SIMPLE.paraId]);
+    const saved = await saveDocx(
+      fromProseDoc(typed.doc, parsed, { stylesheetSource: { type: "package" } }),
+      buffer,
+      [SIMPLE.paraId],
+    );
     const markup = paragraphMarkupOf(await documentXmlOf(saved.bytes), SIMPLE.paraId);
     expect(inlineTokens(markup)).toEqual([...SIMPLE_FIELD_TOKENS, "text:Xcd"]);
     const reopened = await openDocx(saved.bytes);
@@ -521,7 +542,11 @@ describe("the save's rule for a field an edit moved", () => {
     const from = positionOfText(typed.doc, SIMPLE.paraId, "d");
     const edited = typed.apply(typed.tr.delete(from, from + 1));
 
-    const saved = await saveDocx(fromProseDoc(edited.doc, parsed), buffer, [SIMPLE.paraId]);
+    const saved = await saveDocx(
+      fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
+      buffer,
+      [SIMPLE.paraId],
+    );
 
     const markup = paragraphMarkupOf(await documentXmlOf(saved.bytes), SIMPLE.paraId);
     expect(inlineTokens(markup)).toEqual([...SIMPLE_FIELD_TOKENS, "text:c!"]);
@@ -636,7 +661,9 @@ describe("the save's rule for a field an edit moved", () => {
 
     const marked = state.apply(state.tr.addMark(field.position, field.position + 1, deletion));
 
-    const [paragraph] = bodyParagraphs(fromProseDoc(marked.doc, parsed));
+    const [paragraph] = bodyParagraphs(
+      fromProseDoc(marked.doc, parsed, { stylesheetSource: { type: "package" } }),
+    );
     if (!paragraph) {
       throw new Error("The document keeps its first paragraph");
     }
@@ -763,7 +790,11 @@ test(
         // No paragraph of its own edited.
         const beside = typeInto(opened, PLAIN_PARAGRAPH_ID, "Plain.", TYPED);
         await expectSaved(
-          await saveDocx(fromProseDoc(beside.doc, parsed), buffer, [PLAIN_PARAGRAPH_ID]),
+          await saveDocx(
+            fromProseDoc(beside.doc, parsed, { stylesheetSource: { type: "package" } }),
+            buffer,
+            [PLAIN_PARAGRAPH_ID],
+          ),
           parsed,
           specs,
         );
@@ -775,7 +806,7 @@ test(
         }
         await expectSaved(
           await saveDocx(
-            fromProseDoc(edited.doc, parsed),
+            fromProseDoc(edited.doc, parsed, { stylesheetSource: { type: "package" } }),
             buffer,
             specs.map(({ paraId }) => paraId),
           ),
@@ -784,7 +815,13 @@ test(
         );
 
         // The whole part rewritten.
-        await expectSaved(await rewritten(fromProseDoc(opened.doc, parsed)), parsed, specs);
+        await expectSaved(
+          await rewritten(
+            fromProseDoc(opened.doc, parsed, { stylesheetSource: { type: "package" } }),
+          ),
+          parsed,
+          specs,
+        );
       }),
       {
         numRuns: 30,
@@ -1015,7 +1052,9 @@ describe("saving after splits, joins, typing and copies in the editor", () => {
             state = applyStep(state, step);
           }
 
-          const paragraphs = bodyParagraphs(fromProseDoc(state.doc, parsed));
+          const paragraphs = bodyParagraphs(
+            fromProseDoc(state.doc, parsed, { stylesheetSource: { type: "package" } }),
+          );
           expectShownIsWritten(paragraphs);
           const written = paragraphs.flatMap((paragraph) =>
             inlineTokens(serializeParagraph(paragraph)),
@@ -1149,7 +1188,9 @@ describe("a document with no LISTNUM field", () => {
     test(`${path} preserves saved XML bytes independently of editor metadata`, async () => {
       const buffer = await Bun.file(new URL(`../../../../${path}`, import.meta.url)).arrayBuffer();
       const parsed = await openDocx(buffer);
-      const rebuilt = fromProseDoc(toProseDoc(parsed), parsed);
+      const rebuilt = fromProseDoc(toProseDoc(parsed), parsed, {
+        stylesheetSource: { type: "package" },
+      });
       const written = await documentXmlOf(await repackDocx(rebuilt, { updateModifiedDate: false }));
       if ("file" in saved) {
         const reference = await Bun.file(
@@ -1169,7 +1210,9 @@ describe("a document with no LISTNUM field", () => {
       const parsed = await openDocx(buffer);
       const before = uneditedParagraphMarkup(parsed);
       expect(before.length).toBeGreaterThan(0);
-      const rebuilt = fromProseDoc(toProseDoc(parsed), parsed);
+      const rebuilt = fromProseDoc(toProseDoc(parsed), parsed, {
+        stylesheetSource: { type: "package" },
+      });
       expect(uneditedParagraphMarkup(rebuilt)).toEqual(before);
     });
   }

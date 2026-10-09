@@ -36,6 +36,7 @@ for (const namespace of [TRANSITIONAL, "http://purl.oclc.org/ooxml/wordprocessin
         expect(prose.content.size).toBe(7);
         const restored = fromProseDoc(prose.type.schema.nodeFromJSON(prose.toJSON()), source, {
           reuse: "none",
+          stylesheetSource: { type: "package" },
         });
         const paragraph = restored.package.document.content.at(0);
         if (paragraph?.type !== "paragraph") panic("Expected restored paragraph");
@@ -202,7 +203,10 @@ for (const kind of ["footnote", "endnote"] as const) {
         expect(withNoteReferenceMark(kind, marked)).toStrictEqual(marked);
         const prose = toProseDoc(source);
         const transported = prose.type.schema.nodeFromJSON(prose.toJSON());
-        const restored = fromProseDoc(transported, source, { reuse: "none" });
+        const restored = fromProseDoc(transported, source, {
+          reuse: "none",
+          stylesheetSource: { type: "package" },
+        });
         const paragraph = restored.package.document.content.at(0);
         if (paragraph?.type !== "paragraph") panic("Expected restored note paragraph");
         expect(paragraph.content).toEqual(content);

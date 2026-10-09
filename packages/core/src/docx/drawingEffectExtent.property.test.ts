@@ -167,7 +167,10 @@ type Leg = (typeof LEGS)[number];
 
 const savedPart = async (body: string, leg: Leg): Promise<string> => {
   const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
-  const document = leg === "editor" ? fromProseDoc(toProseDoc(parsed), parsed) : parsed;
+  const document =
+    leg === "editor"
+      ? fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } })
+      : parsed;
   resizePictures(document);
   return partOf(await repackDocx(document, { updateModifiedDate: false }));
 };

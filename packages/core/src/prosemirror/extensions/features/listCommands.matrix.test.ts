@@ -376,7 +376,7 @@ type ListInvariantsOptions = {
  * that patches only the changed parts of the source package when it can.
  */
 const savesOf = async (editor: Editor, document: Document): Promise<ArrayBuffer[]> => {
-  const model = fromProseDoc(editor.state.doc, document);
+  const model = fromProseDoc(editor.state.doc, document, { stylesheetSource: { type: "package" } });
   const tracker = getChangeTrackerState(editor.state);
   const { originalBuffer } = document;
   if (!tracker || !originalBuffer) {
@@ -454,7 +454,9 @@ const typeAt = (editor: Editor, text: string, marker: string): void => {
 
 /** Save, check every reference is defined, and read the labels back. */
 const savedLabels = async ({ document, editor }: Session): Promise<string[]> => {
-  const saved = await repackDocx(fromProseDoc(editor.state.doc, document));
+  const saved = await repackDocx(
+    fromProseDoc(editor.state.doc, document, { stylesheetSource: { type: "package" } }),
+  );
   expectEveryReferenceDefined(
     await parseDocx(saved, { preloadFonts: false, detectVariables: false }),
   );
@@ -774,7 +776,9 @@ describe("list changes while suggesting", () => {
                 beforeAttrs["indentLeft"],
               );
 
-              const saved = fromProseDoc(editor.state.doc, session.document);
+              const saved = fromProseDoc(editor.state.doc, session.document, {
+                stylesheetSource: { type: "package" },
+              });
               const reopened = await parseDocx(await repackDocx(saved), {
                 preloadFonts: false,
                 detectVariables: false,

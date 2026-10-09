@@ -182,7 +182,10 @@ describe("picture regeneration fidelity", () => {
       ),
     ).doc;
 
-    const saved = await repackDocx(fromProseDoc(resized, parsed), { updateModifiedDate: false });
+    const saved = await repackDocx(
+      fromProseDoc(resized, parsed, { stylesheetSource: { type: "package" } }),
+      { updateModifiedDate: false },
+    );
     const reopened = firstDrawing(await openDocx(saved));
 
     expect(reopened.image.size).toEqual({ width: 381_000, height: 381_000 });

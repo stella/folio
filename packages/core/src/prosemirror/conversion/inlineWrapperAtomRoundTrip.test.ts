@@ -119,7 +119,9 @@ const parseParagraphXml = (xml: string): Paragraph => {
 const saveThroughEditor = (paragraph: Paragraph): Paragraph => {
   const source = createEmptyDocument();
   source.package.document.content = [paragraph];
-  return firstParagraph(fromProseDoc(toProseDoc(source), source));
+  return firstParagraph(
+    fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+  );
 };
 
 describe("transparent wrappers around atomic inline content", () => {
@@ -177,7 +179,9 @@ describe("transparent wrappers around atomic inline content", () => {
     for (const [child, atom] of Object.entries(ATOMS)) {
       test(`keeps w:${element} around ${child} through editor projection and save`, () => {
         const source = documentWith(WRAPPERS[element](atom()));
-        const roundTripped = fromProseDoc(toProseDoc(source), source);
+        const roundTripped = fromProseDoc(toProseDoc(source), source, {
+          stylesheetSource: { type: "package" },
+        });
         const paragraph = firstParagraph(roundTripped);
         const wrapper = paragraph.content.at(0);
 

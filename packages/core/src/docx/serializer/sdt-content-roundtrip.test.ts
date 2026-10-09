@@ -154,7 +154,9 @@ describe("inline SDT serialization round-trip", () => {
       package: { document: { content: [paragraph] } } as Document["package"],
     } as Document;
     const pmDoc = toProseDoc(baseDocument);
-    const roundTripped = fromProseDoc(pmDoc, baseDocument);
+    const roundTripped = fromProseDoc(pmDoc, baseDocument, {
+      stylesheetSource: { type: "package" },
+    });
 
     const rtParagraph = roundTripped.package.document.content.find(
       (c): c is Paragraph => c.type === "paragraph",

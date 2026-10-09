@@ -120,7 +120,7 @@ import {
   getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
   isParagraphMarkSuppressionEligible,
-  resolveParagraphBodyRunFormatting,
+  resolveParagraphInheritedRunFormatting,
   stripParagraphMarkFormattingForBodyRuns,
   stripParagraphMarkOnlyFormatting,
   suppressParagraphMarkFormatting,
@@ -859,23 +859,14 @@ function convertParagraph(
     baseToggleCascade: orderedToggleFormatting,
     defaultFormatting: ordinaryBaseWithDefaultCharacter,
     defaultToggleCascade: defaultCharacterStyleCascade,
-  } = resolveParagraphBodyRunFormatting({
+    inheritedFormatting: defaultRunFormatting,
+    inheritedToggleCascade: defaultToggleCascade,
+  } = resolveParagraphInheritedRunFormatting({
     styleId: paragraph.formatting?.styleId,
     tableRunFormatting: extraRunFormatting,
     styleResolver,
+    paragraphMarkFormatting: inheritableParagraphRunFormatting,
   });
-  const ordinaryDefaultRunFormatting = mergeTextFormatting(
-    ordinaryBaseWithDefaultCharacter,
-    inheritableParagraphRunFormatting,
-  );
-  const defaultToggleCascade = cascadeStyleTextFormatting(
-    [
-      { cascade: defaultCharacterStyleCascade, type: "carried" },
-      { formatting: inheritableParagraphRunFormatting, type: "direct" },
-    ],
-    { ordinaryFormatting: ordinaryDefaultRunFormatting },
-  );
-  const defaultRunFormatting = defaultToggleCascade.formatting;
   if (extraRunFormatting !== undefined || paragraph.content.length > 0) {
     // The paragraph-mark font paints an empty paragraph's glyph. Once the
     // paragraph has body content, its default is the body-run cascade instead.

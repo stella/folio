@@ -184,7 +184,7 @@ describe("toProseDoc", () => {
       { kind: "text", text: "\uF06F", fontFamily: "Wingdings" },
     ]);
 
-    const rebuilt = fromProseDoc(pmDoc, document);
+    const rebuilt = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
     const rebuiltParagraph = rebuilt.package.document.content.at(0);
     const rebuiltRun =
       rebuiltParagraph?.type === "paragraph" ? rebuiltParagraph.content.at(0) : undefined;
@@ -256,7 +256,7 @@ describe("toProseDoc", () => {
     expect(textBox?.type.name).toBe("textBox");
     expect(textBox?.textContent).toBe("Cell card");
 
-    const rebuilt = fromProseDoc(pmDoc, document);
+    const rebuilt = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
     const rebuiltTable = rebuilt.package.document.content.at(0);
     const rebuiltParagraph =
       rebuiltTable?.type === "table" ? rebuiltTable.rows[0]?.cells[0]?.content[0] : undefined;
@@ -1047,7 +1047,7 @@ describe("toProseDoc", () => {
       "BodyCharacter",
     );
 
-    const rebuilt = fromProseDoc(doc, document);
+    const rebuilt = fromProseDoc(doc, document, { stylesheetSource: { type: "package" } });
     const rebuiltParagraph = rebuilt.package.document.content.at(0);
     const rebuiltRun =
       rebuiltParagraph?.type === "paragraph" ? rebuiltParagraph.content.at(0) : null;
@@ -1324,7 +1324,7 @@ describe("toProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const attrs = firstTableCellAttrs(document);
-    const rebuilt = fromProseDoc(pmDoc, document);
+    const rebuilt = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
     const rebuiltTable = rebuilt.package.document.content.at(0);
     const rebuiltCell =
       rebuiltTable?.type === "table" ? rebuiltTable.rows.at(0)?.cells.at(0) : null;
@@ -1377,7 +1377,7 @@ describe("toProseDoc", () => {
       ]),
     ]);
 
-    const rebuilt = fromProseDoc(editedPmDoc, document);
+    const rebuilt = fromProseDoc(editedPmDoc, document, { stylesheetSource: { type: "package" } });
     const rebuiltTable = rebuilt.package.document.content.at(0);
     const rebuiltCell =
       rebuiltTable?.type === "table" ? rebuiltTable.rows.at(0)?.cells.at(0) : null;
@@ -1426,7 +1426,7 @@ describe("toProseDoc", () => {
 
     const pmDoc = toProseDoc(document);
     const attrs = firstTableCellAttrs(document);
-    const rebuilt = fromProseDoc(pmDoc, document);
+    const rebuilt = fromProseDoc(pmDoc, document, { stylesheetSource: { type: "package" } });
     const rebuiltTable = rebuilt.package.document.content.at(0);
     const rebuiltCell =
       rebuiltTable?.type === "table" ? rebuiltTable.rows.at(0)?.cells.at(0) : null;
@@ -1447,7 +1447,7 @@ describe("toProseDoc", () => {
         ]),
       ]),
     ]);
-    const cleared = fromProseDoc(clearedPmDoc, document);
+    const cleared = fromProseDoc(clearedPmDoc, document, { stylesheetSource: { type: "package" } });
     const clearedTable = cleared.package.document.content.at(0);
     const clearedCell =
       clearedTable?.type === "table" ? clearedTable.rows.at(0)?.cells.at(0) : null;
@@ -1895,7 +1895,7 @@ describe("toProseDoc", () => {
     const override = field?.marks.find(({ type }) => type.name === "runFormattingOverride");
     expect(override?.attrs.noProof).toBe(true);
 
-    const rebuilt = fromProseDoc(prose, document);
+    const rebuilt = fromProseDoc(prose, document, { stylesheetSource: { type: "package" } });
     const paragraph = rebuilt.package.document.content.at(0);
     const rebuiltField = paragraph?.type === "paragraph" ? paragraph.content.at(0) : null;
     if (rebuiltField?.type !== "simpleField" || rebuiltField.content.at(0)?.type !== "run") {

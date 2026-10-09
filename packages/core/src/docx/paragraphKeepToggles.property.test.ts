@@ -174,7 +174,7 @@ const setTogglesThroughTheEditor = (document: Document, toggles: Toggles): Docum
       paragraph.type.create({ ...paragraph.attrs, ...toggles }, paragraph.content, paragraph.marks),
     ),
   );
-  return fromProseDoc(next, document);
+  return fromProseDoc(next, document, { stylesheetSource: { type: "package" } });
 };
 
 describe("keep toggles a command sets reach w:pPr", () => {
@@ -227,7 +227,11 @@ describe("keep toggles a command sets reach w:pPr", () => {
 
           // Untouched: the editor round trip keeps the paragraph's own values
           // and does not materialise the style's.
-          const roundTripped = await parse(await save(fromProseDoc(toProseDoc(opened), opened)));
+          const roundTripped = await parse(
+            await save(
+              fromProseDoc(toProseDoc(opened), opened, { stylesheetSource: { type: "package" } }),
+            ),
+          );
           expect(readDirect(roundTripped)).toEqual(testCase.paragraph);
 
           // Commanded: every toggle the command states lands in `w:pPr`,

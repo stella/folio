@@ -93,7 +93,9 @@ describe("moveFrom / moveTo PM round-trip", () => {
 
   test("fromProseDoc re-emits moveFrom / moveTo elements based on moveKind", () => {
     const doc = asDocument([paragraphWith([makeMoveFrom()]), paragraphWith([makeMoveTo()])]);
-    const roundtripped = fromProseDoc(toProseDoc(doc));
+    const roundtripped = fromProseDoc(toProseDoc(doc), undefined, {
+      stylesheetSource: { type: "package" },
+    });
 
     const p1 = roundtripped.package.document.content[0] as Paragraph;
     const p2 = roundtripped.package.document.content[1] as Paragraph;
@@ -125,7 +127,7 @@ describe("moveFrom / moveTo PM round-trip", () => {
 
     expect(trackedMark?.attrs["utcDate"]).toBe(UTC_DATE);
 
-    const roundTripped = fromProseDoc(cloned);
+    const roundTripped = fromProseDoc(cloned, undefined, { stylesheetSource: { type: "package" } });
     const paragraph = roundTripped.package.document.content.at(0) as Paragraph;
     const outputChange = paragraph.content.at(0);
     expect(outputChange?.type).toBe(type);
@@ -150,7 +152,9 @@ describe("moveFrom / moveTo PM round-trip", () => {
       paragraphWith([makeInsertion(REVA)]),
       paragraphWith([makeDeletion(REVA)]),
     ]);
-    const roundtripped = fromProseDoc(toProseDoc(doc));
+    const roundtripped = fromProseDoc(toProseDoc(doc), undefined, {
+      stylesheetSource: { type: "package" },
+    });
 
     const p1 = roundtripped.package.document.content[0] as Paragraph;
     const p2 = roundtripped.package.document.content[1] as Paragraph;
@@ -177,7 +181,9 @@ describe("moveFrom / moveTo PM round-trip", () => {
       content: [runText("moved here")],
     };
     const doc = asDocument([paragraphWith([moveFrom]), paragraphWith([moveTo])]);
-    const roundtripped = fromProseDoc(toProseDoc(doc));
+    const roundtripped = fromProseDoc(toProseDoc(doc), undefined, {
+      stylesheetSource: { type: "package" },
+    });
 
     const p1 = roundtripped.package.document.content[0] as Paragraph;
     const p2 = roundtripped.package.document.content[1] as Paragraph;

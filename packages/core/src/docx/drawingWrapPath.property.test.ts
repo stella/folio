@@ -202,7 +202,9 @@ const firstImage = (document: Document): Image | null => {
 
 const editorRoundTrip = (image: Image): Image | null => {
   const source = documentWithImage(image);
-  return firstImage(fromProseDoc(toProseDoc(source), source));
+  return firstImage(
+    fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+  );
 };
 
 const ROUND_TRIPS = {

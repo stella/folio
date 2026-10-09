@@ -25,7 +25,7 @@ import {
 import { singletonManager } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc, headerFooterToProseDoc } from "./toProseDoc";
-import type { Paragraph, ParagraphContent, Run } from "../../types/document";
+import type { Paragraph, ParagraphContent, Run, TextFormatting } from "../../types/document";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 
@@ -35,7 +35,7 @@ const FROM = 2;
 const LABEL = "123";
 type Kind = (typeof KINDS)[number];
 
-const sourceDocument = async (kind: Kind) => {
+const sourceDocument = async (kind: Kind, formatting: TextFormatting = { bold: true }) => {
   const source = createEmptyDocument({ initialText: "LR" });
   source.package.document.content = [
     {
@@ -45,7 +45,7 @@ const sourceDocument = async (kind: Kind) => {
         { type: "run", content: [{ type: "text", text: "L" }] },
         ...Array.from({ length: 3 }, () => ({
           type: "run" as const,
-          formatting: { bold: true },
+          formatting,
           content: [
             {
               type: kind === "footnote" ? ("footnoteRef" as const) : ("endnoteRef" as const),
@@ -265,8 +265,12 @@ test("arbitrary digit splits preserve adjacent occurrences and whole-unit revisi
         const doc = state.doc.copy(Fragment.from(splitParagraph));
         const splitState = EditorState.create({ doc, plugins: state.plugins });
         await assertRoundtrip(splitState, bases[kind]);
-        expect(fromProseDoc(doc, bases[kind]).package.document.content).toEqual(
-          fromProseDoc(state.doc, bases[kind]).package.document.content,
+        expect(
+          fromProseDoc(doc, bases[kind], { stylesheetSource: { type: "package" } }).package.document
+            .content,
+        ).toEqual(
+          fromProseDoc(state.doc, bases[kind], { stylesheetSource: { type: "package" } }).package
+            .document.content,
         );
       },
     ),
@@ -361,6 +365,78 @@ test("random public edits keep occurrences saveable or visibly refuse before com
   );
 });
 
+test("pasted note formatting survives empty splits without paragraph-mark defaults", async () => {
+  await assertProperty(
+    fc.asyncProperty(
+      fc.constantFrom(...KINDS),
+      fc.record({ bold: fc.boolean(), italic: fc.boolean() }),
+      fc.integer({ min: 1, max: 3 }),
+      async (kind, formatting, splits) => {
+        for (const context of ["plain", "styled", "character-styled"] as const) {
+          const source = await sourceDocument(kind, formatting);
+          const paragraph = source.package.document.content.at(0);
+          if (paragraph?.type !== "paragraph") return panic("Missing reference paragraph.");
+          paragraph.content.pop();
+          if (context === "styled") {
+            const styles = source.package.styles;
+            if (!styles) return panic("Missing source styles.");
+            styles.styles.push({
+              styleId: "NotePaste",
+              type: "paragraph",
+              name: "Note paste",
+              basedOn: "Normal",
+              rPr: { bold: !formatting.bold, italic: !formatting.italic },
+            });
+            paragraph.formatting = { ...paragraph.formatting, styleId: "NotePaste" };
+          }
+          if (context === "character-styled") {
+            const styles = source.package.styles;
+            if (!styles) return panic("Missing source styles.");
+            styles.styles.push({
+              styleId: "NotePasteCharacter",
+              type: "character",
+              name: "Note paste character",
+              rPr: { bold: !formatting.bold, italic: !formatting.italic },
+            });
+            for (const item of paragraph.content) {
+              if (
+                item.type !== "run" ||
+                !item.content.some(
+                  (content) => content.type === "footnoteRef" || content.type === "endnoteRef",
+                )
+              )
+                continue;
+              item.formatting = { ...item.formatting, styleId: "NotePasteCharacter" };
+            }
+          }
+          const base = await parseShapeDocument(new Uint8Array(await createDocx(source)));
+          const view = new HeadlessEditorView(createHarnessState(base, "editing"));
+          const reference = view.state.doc.nodeAt(FROM);
+          if (!reference?.isText) return panic("Missing copy source occurrence.");
+          const slice = new Slice(Fragment.from(reference), 0, 0);
+          for (let split = 0; split < splits; split += 1) {
+            view.state = view.state.apply(
+              view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, view.state.doc.content.size - 1),
+              ),
+            );
+            expect(view.pressKey("Enter")).toBe(true);
+            expect(view.state.selection.$from.parent.content.size).toBe(0);
+            expect(
+              view.state.selection.$from.parent.attrs._originalFormatting?.runProperties,
+            ).toBeUndefined();
+          }
+          const before = occurrences(view.state.doc).size;
+          view.paste(slice);
+          expect(occurrences(view.state.doc).size).toBe(before + 1);
+          await assertRoundtrip(view.state, base);
+        }
+      },
+    ),
+    { numRuns: 30 },
+  );
+});
+
 test("unattributed or mixed-owner serializer inputs panic instead of guessing", async () => {
   const base = await sourceDocument("footnote");
   const state = createHarnessState(base, "editing");
@@ -369,7 +445,9 @@ test("unattributed or mixed-owner serializer inputs panic instead of guessing", 
   mixed.addMark(FROM, FROM + 1, state.schema.mark("italic"));
   expect(state.apply(mixed)).toBe(state);
   expect(noteReferenceTransactionIssue(mixed)).toBeInstanceOf(NoteReferenceEditRefusal);
-  expect(() => fromProseDoc(mixed.doc)).toThrow();
+  expect(() =>
+    fromProseDoc(mixed.doc, undefined, { stylesheetSource: { type: "package" } }),
+  ).toThrow();
   const mark = state.doc
     .nodeAt(FROM)
     ?.marks.find((candidate) => candidate.type.name === "footnoteRef");
@@ -381,7 +459,9 @@ test("unattributed or mixed-owner serializer inputs panic instead of guessing", 
   );
   expect(state.apply(unowned)).toBe(state);
   expect(noteReferenceTransactionIssue(unowned)).toBeInstanceOf(NoteReferenceEditRefusal);
-  expect(() => fromProseDoc(unowned.doc)).toThrow();
+  expect(() =>
+    fromProseDoc(unowned.doc, undefined, { stylesheetSource: { type: "package" } }),
+  ).toThrow();
 });
 
 test("DOM and clipboard preserve unit attribution while pasted occurrences get fresh identities", async () => {

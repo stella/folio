@@ -233,7 +233,9 @@ type SaveOptions = { subject: MarkerCase; viaEditor: boolean };
 
 const saveEdited = async ({ subject, viaEditor }: SaveOptions): Promise<SaveResult> => {
   const parsed = await parseDocx(await buildDocx(subject), { preloadFonts: false });
-  const document = viaEditor ? fromProseDoc(toProseDoc(parsed), parsed) : parsed;
+  const document = viaEditor
+    ? fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } })
+    : parsed;
   const first = document.package.document.content.at(0);
   if (first?.type !== "paragraph") {
     throw new Error("the fixture did not parse as a paragraph");

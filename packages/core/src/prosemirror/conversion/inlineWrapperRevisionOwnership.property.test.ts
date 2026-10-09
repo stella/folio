@@ -58,7 +58,9 @@ const parseParagraphXml = (xml: string): Paragraph => {
 
 const throughEditor = (paragraph: Paragraph): Paragraph => {
   const source = { package: { document: { content: [paragraph] } } };
-  const block = fromProseDoc(toProseDoc(source), source).package.document.content.at(0);
+  const block = fromProseDoc(toProseDoc(source), source, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (block?.type !== "paragraph") {
     throw new Error("The editor round trip lost its paragraph");
   }

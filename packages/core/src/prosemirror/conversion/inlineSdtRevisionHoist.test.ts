@@ -86,7 +86,9 @@ const paragraphContentOf = (document: Document): ParagraphContent[] => {
 /** The paragraph as a save rebuilds it from the editor. */
 const saved = (content: Paragraph["content"]): ParagraphContent[] => {
   const source = documentWith(content);
-  return paragraphContentOf(fromProseDoc(toProseDoc(source), source));
+  return paragraphContentOf(
+    fromProseDoc(toProseDoc(source), source, { stylesheetSource: { type: "package" } }),
+  );
 };
 
 const insertedControl = (item: ParagraphContent | undefined): InlineSdt => {
@@ -174,7 +176,11 @@ describe("resolving a revision that covers a whole control", () => {
     content: Paragraph["content"],
     command: typeof acceptAllChanges,
   ): ParagraphContent[] =>
-    paragraphContentOf(fromProseDoc(resolvedDoc(content, command), documentWith(content)));
+    paragraphContentOf(
+      fromProseDoc(resolvedDoc(content, command), documentWith(content), {
+        stylesheetSource: { type: "package" },
+      }),
+    );
 
   const INSERTED = [REVISION_OUTSIDE_CONTROL, run(" after")];
   const DELETED = [
@@ -295,7 +301,11 @@ describe("resolving a revision that covers a whole control", () => {
     content: Paragraph["content"],
     mode: "accept" | "reject",
   ): ParagraphContent[] =>
-    paragraphContentOf(fromProseDoc(headlessResolvedDoc(content, mode), documentWith(content)));
+    paragraphContentOf(
+      fromProseDoc(headlessResolvedDoc(content, mode), documentWith(content), {
+        stylesheetSource: { type: "package" },
+      }),
+    );
 
   test("the headless resolver removes an enclosed control too", () => {
     const rebuilt = headlessResolved(INSERTED, "reject");

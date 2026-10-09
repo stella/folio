@@ -9,6 +9,12 @@
       "seed": -479275576,
       "note": "#1160: direct replacement seed covering live block fields",
       "date": "2026-09-28"
+    },
+    {
+      "seed": 11,
+      "path": "16:0:1:1:1:2",
+      "note": "A concrete package with an absent styles part preserves unresolved references and visible direct formatting.",
+      "date": "2026-10-09"
     }
   ],
   "over generated paragraphs and edits, accepted and rejected": [
@@ -39,6 +45,12 @@
       "seed": -1368426772,
       "note": "the oracle joined prose across a retained note reference and predicted a false refusal",
       "date": "2026-09-28"
+    },
+    {
+      "seed": 11,
+      "path": "8:2:0:1:1:1:1:1:1:1:1:1:1",
+      "note": "A concrete package with an absent styles part preserves unresolved references and visible direct formatting.",
+      "date": "2026-10-09"
     }
   ]
 }

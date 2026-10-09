@@ -24,7 +24,9 @@ const documentHolding = (content: Paragraph["content"]): Document => ({
 const projectedParagraph = (source: Document): Paragraph => {
   const prose = toProseDoc(source);
   const cloned = prose.type.schema.nodeFromJSON(prose.toJSON());
-  const block = fromProseDoc(cloned, source).package.document.content.at(0);
+  const block = fromProseDoc(cloned, source, {
+    stylesheetSource: { type: "package" },
+  }).package.document.content.at(0);
   if (block?.type !== "paragraph") {
     throw new Error("The editor projection lost its paragraph.");
   }

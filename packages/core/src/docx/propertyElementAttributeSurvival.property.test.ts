@@ -225,7 +225,9 @@ const savedAfterEdit = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
 
 const savedThroughEditor = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
   const parsed = await parseDocx(buffer, { preloadFonts: false });
-  const projected = fromProseDoc(toProseDoc(parsed), parsed);
+  const projected = fromProseDoc(toProseDoc(parsed), parsed, {
+    stylesheetSource: { type: "package" },
+  });
   return await repackDocx(withEditedFormatting(projected), { updateModifiedDate: false });
 };
 
