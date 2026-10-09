@@ -362,6 +362,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
             view.composing &&
             (event.inputType === "insertText" || event.inputType === "insertReplacementText");
           const nativeStillComposing = view.composing;
+          if (nativeFinal) composition.authorizeNative(view, "explicitFinal");
           const recovered = composition.recover(view);
           composition.forgetCompleted();
           proposal = { type: "idle" };
