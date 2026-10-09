@@ -243,6 +243,23 @@ impl PartIndex {
         Ok(())
     }
 
+    fn empty(
+        &mut self,
+        reader: &NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+    ) -> Result<(), ProjectionError> {
+        let (namespace, local) = reader.resolver().resolve_element(element.name());
+        if !matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref() == PACKAGE_NAMESPACE) {
+            return Err(ProjectionError::InvalidFlatOpcPackage);
+        }
+        match (self.depth, local.as_ref()) {
+            (0, b"package") if !self.root_seen => self.root_seen = true,
+            (2, b"binaryData") if !self.payload_seen => self.payload_seen = true,
+            _ => return Err(ProjectionError::InvalidFlatOpcPackage),
+        }
+        Ok(())
+    }
+
     fn end(&mut self) -> Result<(), ProjectionError> {
         if self.depth == 2 {
             let name = self
@@ -277,6 +294,7 @@ fn index_parts(
             .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?
         {
             Event::Start(element) => state.start(&mut reader, &element, limits)?,
+            Event::Empty(element) => state.empty(&reader, &element)?,
             Event::End(_) => state.end()?,
             Event::Text(text) if text.as_ref().iter().all(u8::is_ascii_whitespace) => {}
             Event::Decl(_) | Event::Comment(_) | Event::PI(_) => {}

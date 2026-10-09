@@ -463,3 +463,23 @@ fn inherited_default_namespace_and_package_paragraph_ids_remain_document_facts()
             .is_some()
     );
 }
+
+#[test]
+fn unrelated_zero_byte_binary_parts_preserve_selected_document_projection() {
+    let main = document("<w:p><w:r><w:t>Selected</w:t></w:r></w:p>");
+    let root_relationships = relationships("word/document.xml");
+    let parts = [
+        ("/_rels/.rels", root_relationships.as_str()),
+        ("/word/document.xml", main.as_str()),
+    ];
+    let expected =
+        project_main_document_xml(flat_opc(&parts).as_bytes(), DocxLimits::default(), allocate)
+            .unwrap();
+    for payload in ["<pkg:binaryData/>", "<pkg:binaryData></pkg:binaryData>"] {
+        let package = flat_opc(&parts).replace("</pkg:package>", &format!("<pkg:part pkg:name=\"/media/empty.bin\" pkg:contentType=\"application/octet-stream\">{payload}</pkg:part></pkg:package>"));
+        assert_eq!(
+            project_main_document_xml(package.as_bytes(), DocxLimits::default(), allocate).unwrap(),
+            expected
+        );
+    }
+}
