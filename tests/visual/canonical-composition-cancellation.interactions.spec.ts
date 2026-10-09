@@ -3,6 +3,8 @@ import { test, assertCanonicalInputTimersSettled } from "./canonicalTimerProbe";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
+import { CANONICAL_BROWSER_HISTORY_REPLAYS } from "./canonicalBrowserTrace";
+import { runCanonicalHistoryReplay } from "./canonicalHistoryReplay";
 import {
   reactPort,
   vuePort,
@@ -30,6 +32,22 @@ const expectCancelledSelection = async (
   expect(after?.textSelection?.selected).toBe("alpha");
   expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("alpha");
 };
+
+for (const [seed, path] of [
+  [431, "8"],
+  [47, "4"],
+  [131, "8"],
+  [557, "18"],
+  [1791442067, "1"],
+] as const) {
+  const replay = CANONICAL_BROWSER_HISTORY_REPLAYS.find(
+    (candidate) => candidate.seed === seed && candidate.path === path,
+  );
+  if (replay === undefined) throw new TypeError(`Missing composition replay ${seed}/${path}`);
+  test(`native composition history replay ${seed} ${path}`, async ({ page }) => {
+    await runCanonicalHistoryReplay(page, replay);
+  });
+}
 
 test("native composition cancellation preserves a selection", async ({ page }) => {
   const source = await canonicalLoadFixture(
