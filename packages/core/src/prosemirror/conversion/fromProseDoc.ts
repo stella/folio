@@ -2750,7 +2750,9 @@ function extractParagraphContent(
   const paragraph = coalesceNoteReferenceOccurrences(originalParagraph);
   const content: ParagraphContent[] = [];
   const paragraphStyleContext =
-    paragraph.type.name === "paragraph" ? savedParagraphRunStyleContext(paragraph) : undefined;
+    inheritedFormattingOverride === undefined && paragraph.type.name === "paragraph"
+      ? savedParagraphRunStyleContext(paragraph)
+      : undefined;
   const formattingContext =
     inheritedFormattingOverride ??
     ({
