@@ -8,7 +8,7 @@ import {
   type DocumentOp,
 } from "@stll/docx-core/ops";
 import { panic } from "better-result";
-import type { Document, DocumentBody, Paragraph, Footnote, Endnote } from "../types/document";
+import type { Document, DocumentBody, Footnote, Endnote } from "../types/document";
 import { computeListRendering, getCachedNumberingMap } from "../docx/numberingParser";
 import {
   mergeParagraphNumbering,
@@ -17,7 +17,7 @@ import {
 } from "../docx/numberingReference";
 import { computeListMarker, type ComputeListMarkerOptions } from "../docx/listMarkerComputation";
 import {
-  copyParagraphPropertySource,
+  cloneParagraphWithPropertySource,
   paragraphFormattingWithAuthoredIndentation,
   assignParagraphIndentationProjection,
   sameParagraphIndentationProjection,
@@ -76,7 +76,7 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
         listRenderingDefinitionsMatch(cached, definition)
           ? { ...cached }
           : definition;
-      const next: Paragraph = { ...paragraph };
+      const next = cloneParagraphWithPropertySource(paragraph, {});
       if (
         formatting?.numPrFromStyle !== undefined &&
         formatting.numPr !== undefined &&
@@ -186,7 +186,6 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
         canonicalJson(next.listRendering) === canonicalJson(cached)
       )
         return paragraph;
-      copyParagraphPropertySource(next, paragraph);
       return next;
     });
     return content.every((paragraph, index) => paragraph === body.content[index])
