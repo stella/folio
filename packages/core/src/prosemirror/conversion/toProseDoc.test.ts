@@ -2244,7 +2244,7 @@ describe("toProseDoc", () => {
     expect(commentMark?.attrs.commentId).toBe(42);
   });
 
-  test("applies active comment ranges to every text-emitting inline branch", () => {
+  test("applies active comment ranges to every inline carrier", () => {
     const document: Document = {
       package: {
         document: {
@@ -2316,7 +2316,9 @@ describe("toProseDoc", () => {
       }
     }
 
-    expect(commentMarkedNodeTypes).toEqual(["text", "text", "text"]);
+    expect(commentMarkedNodeTypes).toEqual(["text", "text", "field", "text", "math"]);
+    // All emitted carriers sit inside the same source range, including atoms.
+    expect(commentMarkedNodeTypes).toHaveLength(paragraph?.childCount ?? 0);
   });
 
   test("keeps a comment range out of a text box, and a text box's out of the body", () => {

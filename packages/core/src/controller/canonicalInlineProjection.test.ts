@@ -191,6 +191,28 @@ test("generated nonempty bookmark and move ranges preserve native gap geometry",
   );
 });
 
+test("nonempty comment ranges map their mark transitions to source gap ordinals", () => {
+  const contents = [
+    [run("L"), PAIRS.commentRangeStart[0], run("x"), PAIRS.commentRangeStart[1], run("R")],
+  ] satisfies ParagraphContent[][];
+  for (const content of contents) {
+    const source = { type: "paragraph", paraId: "12345678", content } satisfies Paragraph;
+    const document = documentFor(source);
+    expect(createCanonicalSession(document).isOk()).toBe(true);
+    const mapped = projectCanonicalInline({
+      source,
+      paragraph: toProseDoc(document).child(0),
+      pairedBookmarkIds: new Set(),
+    }).unwrap();
+    expect(mapped.boundaries).toEqual([
+      [{ position: 0, zeroWidthBefore: 0 }],
+      [{ position: 1, zeroWidthBefore: 1 }],
+      [{ position: 2, zeroWidthBefore: 1 }],
+      [{ position: 3, zeroWidthBefore: 0 }],
+    ]);
+  }
+});
+
 const commentRangeContent = [
   run("L"),
   PAIRS.commentRangeStart[0],

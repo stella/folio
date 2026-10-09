@@ -1,0 +1,9 @@
+{
+  "${kind} preserves pending deletion ownership across saves": [
+    {
+      "seed": 1700696396,
+      "note": "Full visible-range replacement over nested hidden revisions.",
+      "date": "2026-10-08"
+    }
+  ]
+}

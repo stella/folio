@@ -1146,7 +1146,8 @@ function applyCommentMarks(nodes: PMNode[], commentIds: Set<number>): PMNode[] {
     .map((commentId) => commentMarkType.create({ commentId }));
 
   return nodes.map((node) => {
-    if (!node.isText && (!node.isInline || !node.type.allowsMarkType(commentMarkType))) {
+    // The paragraph owns marks on inline nodes; a node's mark policy governs its children.
+    if (!node.isInline) {
       return node;
     }
     let marks = node.marks;
