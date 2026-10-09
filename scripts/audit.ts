@@ -43,7 +43,7 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
     // (@stll/folio-nuxt devDependencies nuxt and @nuxt/module-builder ->
     // @nuxt/cli -> listhen, which uses it for local HTTPS certificates). No
     // published package depends on it, and folio never verifies RSA
-    // signatures. No patched node-forge exists yet. Tracked in #1344.
+    // signatures. No patched node-forge exists yet.
     advisory: "GHSA-86w9-cpqp-85rv",
     packageName: "node-forge",
     vulnerableThrough: "1.4.0",
@@ -55,8 +55,7 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
     // patterns. It reaches the tree only through development tooling
     // (@tailwindcss/cli, nuxt and @nuxt/module-builder -> @parcel/watcher ->
     // micromatch). No published package depends on it, and folio never
-    // expands untrusted patterns. No patched braces exists yet. Tracked in
-    // #1484.
+    // expands untrusted patterns. No patched braces exists yet.
     advisory: "GHSA-vfj7-8cjw-p6xm",
     packageName: "braces",
     vulnerableThrough: "3.0.3",
@@ -65,7 +64,7 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
   },
   {
     // 2026-10-06: no patched sprintf-js is published. It arrives through
-    // @rushstack/ts-command-line's argparse ~1.0.9 pin. Tracked in #1563.
+    // @rushstack/ts-command-line's argparse ~1.0.9 pin.
     advisory: "GHSA-hp3w-g68c-fv3c",
     packageName: "sprintf-js",
     vulnerableThrough: "1.1.3",
