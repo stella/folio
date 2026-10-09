@@ -273,6 +273,33 @@ export const resolveParagraphBodyRunFormatting = ({
   };
 };
 
+type ResolveParagraphInheritedRunFormattingOptions = ResolveParagraphBodyRunFormattingOptions & {
+  paragraphMarkFormatting: TextFormatting | undefined;
+};
+
+/** One source cascade for imported body runs and the saver inheritance baseline. */
+export const resolveParagraphInheritedRunFormatting = (
+  options: ResolveParagraphInheritedRunFormattingOptions,
+) => {
+  const body = resolveParagraphBodyRunFormatting(options);
+  const ordinaryFormatting = mergeTextFormatting(
+    body.defaultFormatting,
+    options.paragraphMarkFormatting,
+  );
+  const inheritedToggleCascade = cascadeStyleTextFormatting(
+    [
+      { cascade: body.defaultToggleCascade, type: "carried" },
+      { formatting: options.paragraphMarkFormatting, type: "direct" },
+    ],
+    { ordinaryFormatting },
+  );
+  return {
+    ...body,
+    inheritedFormatting: inheritedToggleCascade.formatting,
+    inheritedToggleCascade,
+  };
+};
+
 export const paragraphRunStyleContext = (
   paragraph: PMNode,
   styleResolver?: RunStyleResolver | null,

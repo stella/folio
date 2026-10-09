@@ -194,6 +194,7 @@ import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import {
   paragraphFormattingForRun,
   paragraphRunStyleContext,
+  resolveParagraphInheritedRunFormatting,
   resolveEffectiveRunStyleFormatting,
   type RunStyleResolver,
 } from "../runStyleFormatting";
@@ -986,6 +987,25 @@ function isSuggestedInsertedNode(node: PMNode): boolean {
   return false;
 }
 
+const savedParagraphRunStyleContext = (
+  paragraph: PMNode,
+  styleResolver?: RunStyleResolver | null,
+) => {
+  const context = paragraphRunStyleContext(paragraph, styleResolver);
+  if (paragraph.content.size === 0) return context;
+  const attrs = expectParagraphAttrs(paragraph);
+  const source = resolveParagraphInheritedRunFormatting({
+    styleId: attrs.styleId,
+    styleResolver,
+    tableRunFormatting: attrs._tableRunFormatting,
+    paragraphMarkFormatting:
+      attrs.styleId === undefined ? context.paragraphMarkFormatting : undefined,
+  });
+  // Caret defaults may carry formatting across an empty split without emitting
+  // paragraph properties. Only the source cascade can make a saved run inherit.
+  return { ...context, paragraphFormatting: source.inheritedFormatting };
+};
+
 /**
  * Recursively rewrite a ProseMirror node tree, removing every suggested
  * tracked change. Returns `null` when the node itself must be dropped: a
@@ -1020,7 +1040,7 @@ function mapSuggestionStrippedNode(
   let changed = nextAttrs !== null;
   const paragraphStyleContext =
     node.type.name === "paragraph"
-      ? paragraphRunStyleContext(node, formattingContext.styleResolver)
+      ? savedParagraphRunStyleContext(node, formattingContext.styleResolver)
       : undefined;
   const childFormattingContext = paragraphStyleContext
     ? {
@@ -1811,7 +1831,7 @@ function convertPMParagraph(
   styleResolver: StyleEngine | null = null,
 ): Paragraph {
   const attrs = expectParagraphAttrs(node);
-  const paragraphStyleContext = paragraphRunStyleContext(node, styleResolver);
+  const paragraphStyleContext = savedParagraphRunStyleContext(node, styleResolver);
   let content = extractParagraphContent(
     node,
     documentCounts,
@@ -2730,7 +2750,7 @@ function extractParagraphContent(
   const paragraph = coalesceNoteReferenceOccurrences(originalParagraph);
   const content: ParagraphContent[] = [];
   const paragraphStyleContext =
-    paragraph.type.name === "paragraph" ? paragraphRunStyleContext(paragraph) : undefined;
+    paragraph.type.name === "paragraph" ? savedParagraphRunStyleContext(paragraph) : undefined;
   const formattingContext =
     inheritedFormattingOverride ??
     ({

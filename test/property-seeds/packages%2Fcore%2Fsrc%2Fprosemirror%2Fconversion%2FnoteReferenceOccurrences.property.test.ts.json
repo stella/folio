@@ -27,6 +27,20 @@
       "path": "21:3:3:8:7:9:15:15:16:15:15:15:15:15:15",
       "note": "A whole-reference formatting edit after deletion, join, and reference paste must preserve bold through save and reopen.",
       "date": "2026-10-08"
+    },
+    {
+      "seed": -296849852,
+      "path": "48:2:0:5:6:15:17:19:22:21:18:22:22:23:23",
+      "note": "A pasted whole note reference retains bold after split/join changes its paragraph context and through save/reopen.",
+      "date": "2026-10-09"
+    }
+  ],
+  "pasted note formatting survives empty splits without paragraph-mark defaults": [
+    {
+      "seed": 20261009,
+      "path": "8:0:2:2",
+      "note": "The source-baseline ablation loses bold and italic on a pasted reference after an empty split without paragraph-mark defaults.",
+      "date": "2026-10-09"
     }
   ]
 }
