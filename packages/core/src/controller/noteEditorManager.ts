@@ -23,7 +23,10 @@ import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
-import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import {
+  createDocumentStylesPlugin,
+  createDocumentStyleContextPlugin,
+} from "../prosemirror/plugins/documentStyles";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
 import type {
@@ -39,6 +42,7 @@ import type {
 } from "../types/document";
 import type { NoteStoryKey } from "../types/editor-story";
 
+import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 
@@ -195,21 +199,21 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
     active = null;
   };
 
+  const getOwnedDocument = (): Document | null =>
+    usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)
+      ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? null)
+      : deps.getDocument();
+
   const sync = (): void => {
     const host = deps.getHost();
     if (!host) return;
     // Pending IME input owns its view until the shared session commits.
     if (
-      usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories) &&
+      usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting) &&
       !deps.getCanonicalApi?.()?.getCanonicalStoryProjection(OP_STORIES.MAIN)
     )
       return;
-    const document = usesCanonicalSession(
-      deps.getExperimentalSession?.(),
-      CANONICAL_GAP.secondaryStories,
-    )
-      ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? deps.getDocument())
-      : deps.getDocument();
+    const document = getOwnedDocument();
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
@@ -237,7 +241,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       const existing = mounted.get(key);
       if (existing) {
         if (existing.mountNode.parentElement !== host) host.append(existing.mountNode);
-        if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories)) {
+        if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
           const projected = deps
             .getCanonicalApi?.()
             ?.getCanonicalStoryProjection({ kind: storyKey.kind, id: storyKey.noteId });
@@ -318,21 +322,21 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         getView: () => view,
         getApi: () => deps.getCanonicalApi?.() ?? null,
         enabled: () =>
-          usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories),
+          usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting),
         onRefusal: deps.onSessionRefusal,
         onSelectionChange: () =>
           deps.onTransaction?.({ ...storyKey, view, docChanged: false, selectionChanged: true }),
       });
       const canonicalProjection = usesCanonicalSession(
         deps.getExperimentalSession?.(),
-        CANONICAL_GAP.secondaryStories,
+        CANONICAL_GAP.authorityRouting,
       )
         ? deps
             .getCanonicalApi?.()
             ?.getCanonicalStoryProjection({ kind: storyKey.kind, id: storyKey.noteId })
         : null;
       if (
-        usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories) &&
+        usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting) &&
         !canonicalProjection
       ) {
         manager.destroy();
@@ -345,7 +349,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           ? EditorState.create({
               doc: canonicalProjection,
               plugins: [
-                createDocumentStylesPlugin(styles),
+                createDocumentStyleContextPlugin(styles),
                 createDocumentNumberingPlugin(numbering),
               ],
             })
@@ -401,10 +405,17 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
     destroy,
     getActive: () => active,
     getView: (story) => mounted.get(storyMapKey(story))?.view ?? null,
-    listStories: () => enumerateDocumentNoteStories(deps.getDocument()),
+    listStories: () => enumerateDocumentNoteStories(getOwnedDocument()),
     snapshotDocument: (document) => {
-      if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.secondaryStories))
-        return deps.getCanonicalApi?.()?.getCanonicalDocument() ?? document;
+      if (usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting)) {
+        const canonical = deps.getCanonicalApi?.()?.getCanonicalDocument();
+        if (canonical) return canonical;
+        throw new CanonicalSessionError({
+          gap: CANONICAL_GAP.authorityRouting,
+          reason: "refused",
+          message: "Canonical story snapshot is unavailable.",
+        });
+      }
       let footnotes = document.package.footnotes;
       let endnotes = document.package.endnotes;
       let footnotesChanged = false;
