@@ -18,7 +18,7 @@ type Mutation = {
   id: string;
   bug: string;
   file: string;
-  before: string;
+  before: string | RegExp;
   after: string;
   check: string;
   scenarios: string[];
@@ -70,10 +70,8 @@ const MUTATIONS: Mutation[] = [
     id: "nested-deletion-on-save",
     bug: "Saving an insertion omits its nested deletion mark.",
     file: "docx/serializer/paragraphSerializer.js",
-    before:
-      'case "mathEquation": return item.ommlXml;\n\t\t\tcase "insertion":\n\t\t\tcase "deletion":',
-    after:
-      'case "mathEquation": return item.ommlXml;\n\t\t\tcase "deletion": return "";\n\t\t\tcase "insertion":',
+    before: /case "insertion":\s*case "deletion":\s*case "moveFrom":/gu,
+    after: 'case "deletion": break;\n\t\t\tcase "insertion":\n\t\t\tcase "moveFrom":',
     check: "saved tracked-change follow-up scenarios",
     scenarios: ["requested-outcome.test.ts", "operations.test.ts"],
     only: "(replaceInPendingInsertion|replaceRangeInPendingInsertion|deletePendingInsertion) \\(tracked-changes\\)",
@@ -165,7 +163,10 @@ const oneTarball = async (dir: string) => {
 };
 
 const patchExactlyOnce = (source: string, mutation: Mutation) => {
-  const count = source.split(mutation.before).length - 1;
+  const count =
+    typeof mutation.before === "string"
+      ? source.split(mutation.before).length - 1
+      : [...source.matchAll(mutation.before)].length;
   if (count !== 1) {
     throw new Error(
       `${mutation.id}: expected one mutation seam in ${mutation.file}, found ${count}`,

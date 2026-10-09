@@ -1,0 +1,16 @@
+{
+  "random formatting and text edit sequences preserve authored paragraph defaults through save and reopen": [
+    {
+      "seed": -1872064758,
+      "path": "0:1:1:1:2:2:5:5:5:6:8:6:7:7:7:7:7",
+      "note": "After authored empty-paragraph bold, paste and explicit clear, a caret toggle must not change existing text on save/reopen.",
+      "date": "2026-10-08"
+    },
+    {
+      "seed": -841637276,
+      "path": "17:3:2:4:4:9:10:10:10:5:5:5:5",
+      "note": "Split and join before an empty-paragraph formatting command preserve the current paragraph ownership through save/reopen.",
+      "date": "2026-10-08"
+    }
+  ]
+}

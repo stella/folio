@@ -467,6 +467,7 @@ export type ParagraphAttrs = {
     runInWithNext?: boolean;
     _originalFormatting?: import__stll_docx_core_model.ParagraphFormatting;
     _resolvedFormatting?: import__stll_docx_core_model.ParagraphFormatting;
+    _styleResolvedFormatting?: import__stll_docx_core_model.ParagraphFormatting;
     _autospacingBase?: {
         before?: number | null;
         after?: number | null;

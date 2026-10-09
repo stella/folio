@@ -496,7 +496,7 @@ export type SimpleField = {
    * `EG_PContent` admits can sit here, `w:bdo` / `w:dir` / `w:smartTag` /
    * `w:customXml` among them.
    */
-  content: (Run | Hyperlink | InlineWrapper | PreservedInline)[];
+  content: (Run | Hyperlink | InlineWrapper | PreservedInline | TrackedRunChange)[];
   /** `@w:fldLock`: absent states nothing, `false` is an explicit unlock. */
   fldLock?: boolean;
   /** `@w:dirty`: absent states nothing, `false` explicitly forbids a recompute. */

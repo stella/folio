@@ -94,43 +94,7 @@ export const LEGACY_NODE_REPLACEMENTS = [
   | { operation: string; status: "expectedFailure"; kind: ViolationKind }
 )[];
 
-export const SINGLE_COPIED_PARAGRAPH_OPERATION = "paste:single-copied-paragraph";
-export const LEGACY_LIST_PASTE_READBACK_GAP = {
-  reason:
-    "Legacy tracked cross-paragraph paste retains inherited list indentation on the following plain paragraph after save",
-  operations: [
-    ...new Set(LIST_PASTE_RESOLUTION_KEYS.map(({ operation }) => operation)),
-    SINGLE_COPIED_PARAGRAPH_OPERATION,
-  ],
-  shapes: ["single-decimal-list", "single-bullet-list", "mixed-lists", "outline-level-numbered"],
-  placements: ["cross-paragraph"],
-  modes: ["suggesting"],
-  kinds: ["readback-painted"],
-} as const satisfies KnownConformanceGap;
-
 export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
-  LEGACY_LIST_PASTE_READBACK_GAP,
-  {
-    reason:
-      "Legacy style changes materialize inherited list indentation as direct properties on save",
-    operations: [
-      "command:applyStyle(Heading1)",
-      "command:applyStyle(Heading2)",
-      "command:clearStyle",
-    ],
-    shapes: ["single-decimal-list", "single-bullet-list", "outline-level-numbered"],
-    placements: ["caret-middle"],
-    kinds: ["readback-blocks"],
-  },
-  {
-    reason:
-      "Legacy tracked paragraph joins retain inherited list indentation on the following plain paragraph after save",
-    operations: ["key:Delete"],
-    shapes: ["single-decimal-list", "single-bullet-list", "mixed-lists", "outline-level-numbered"],
-    placements: ["caret-end", "cross-paragraph"],
-    modes: ["suggesting"],
-    kinds: ["readback-painted"],
-  },
   // ---------------------------------------------------------------- lists --
   {
     reason:

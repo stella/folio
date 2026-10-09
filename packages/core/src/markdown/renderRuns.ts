@@ -754,21 +754,10 @@ export function renderParagraphInline(
         // Render the visible result content.
         const runs = item.type === "simpleField" ? item.content : item.fieldResult;
         for (const child of runs) {
-          if (child.type === "run") {
-            out += renderRuns(ctx, pkg, [child], paraId);
-            continue;
-          }
-          if (child.type === "hyperlink") {
-            out += renderHyperlink(ctx, pkg, child, paraId);
-            continue;
-          }
-          // A transparent wrapper carries no markdown of its own, so it is
-          // read through to the content it holds; a capture contributes
-          // whatever text it puts on the line.
           out +=
-            child.type === "inlineWrapper"
-              ? renderParagraphInline(ctx, pkg, child.content, paraId, UNKNOWN_NEIGHBORS)
-              : child.text;
+            child.type === "preservedInline"
+              ? child.text
+              : renderParagraphInline(ctx, pkg, [child], paraId, UNKNOWN_NEIGHBORS);
         }
         break;
       }

@@ -7,11 +7,6 @@ import {
   runLegacyConformanceCase,
   type ConformanceOperation,
 } from "../../__tests__/editorCommandConformance";
-import {
-  gapCovers,
-  LEGACY_LIST_PASTE_READBACK_GAP,
-  SINGLE_COPIED_PARAGRAPH_OPERATION,
-} from "../../__tests__/editorCommandConformance.known";
 import { EDITOR_MODES, textblocks } from "../../__tests__/editorHarness";
 import { LIST_PASTE_RESOLUTION_CASES } from "../../__tests__/editorCommandConformance.listPaste";
 
@@ -43,7 +38,7 @@ test.each(
 // A single copied paragraph has no inserted internal break to carry the
 // replaced paragraph's properties: the first-part change must restore them.
 const singleParagraphPaste = {
-  id: SINGLE_COPIED_PARAGRAPH_OPERATION,
+  id: "paste:single-copied-paragraph",
   placements: [],
   run: ({ view, focus }) => {
     const { node, pos } =
@@ -76,7 +71,7 @@ test.each(
   expect(result?.violations).toEqual([]);
 });
 
-// These exact legacy replays must keep failing; the standing authority above is canonical.
+// Legacy paragraph-property transfers preserve the same strict save/readback contract.
 const legacyPasteCases = LIST_PASTE_RESOLUTION_CASES.filter(
   ({ placement }) => placement === "cross-paragraph",
 );
@@ -85,32 +80,13 @@ const legacySingleParagraphCases = legacyPasteCases
   .map(({ shape, placement }) => ({ shape, placement, operation: singleParagraphPaste }));
 test.each(
   [...legacyPasteCases, ...legacySingleParagraphCases].map(
-    (input) =>
-      [
-        `${LEGACY_LIST_PASTE_READBACK_GAP.shapes.some((id) => id === input.shape.id) ? "EXPECTED FAILURE" : "strict"} / ${input.shape.id} / ${input.operation.id}`,
-        input,
-      ] as const,
+    (input) => [`${input.shape.id} / ${input.operation.id}`, input] as const,
   ),
 )(
   "explicit legacy cross-paragraph list paste readback: %s",
   async (_label, { shape, operation, placement }) => {
     const result = await runLegacyConformanceCase({ shape, operation, placement });
     expect(result).not.toBeNull();
-    const violations = result?.violations ?? [];
-    const key = { shape: shape.id, operation: operation.id, placement };
-    if (!LEGACY_LIST_PASTE_READBACK_GAP.shapes.some((id) => id === shape.id)) {
-      expect(violations).toEqual([]);
-      return;
-    }
-    expect(violations.length).toBeGreaterThan(0);
-    expect(
-      violations.filter(
-        ({ kind, mode }) => !gapCovers(LEGACY_LIST_PASTE_READBACK_GAP, key, kind, mode),
-      ),
-    ).toEqual([]);
-    for (const violation of violations)
-      expect(violation.detail).toMatch(
-        /(?:indentLeft: ∅ ≠ 720; indentFirstLine: ∅ ≠ -360|indentLeft: 720 ≠ ∅; indentFirstLine: -360 ≠ ∅)/u,
-      );
+    expect(result?.violations).toEqual([]);
   },
 );

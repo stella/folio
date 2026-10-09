@@ -42,10 +42,7 @@ import type {
 import { isStyleSourcedParagraphNumbering } from "../../internal/paragraphFormattingSerialization";
 import { expectParagraphAttrs } from "../attrs";
 import { directParagraphAlignment } from "../paragraphAlignment";
-import {
-  directParagraphIndentation,
-  DIRECT_PARAGRAPH_INDENTATION_KEYS,
-} from "../paragraphIndentation";
+import { directParagraphIndentation } from "../paragraphIndentation";
 import {
   PARAGRAPH_FORMATTING_WRITE_BACK,
   STYLE_RESOLVED_PARAGRAPH_FIELDS,
@@ -180,10 +177,6 @@ export const PPR_CHANGE_SCOPED_ATTR_KEYS = [
 const PPR_CHANGE_SCOPED_ATTR_KEY_SET: ReadonlySet<string> = new Set(PPR_CHANGE_SCOPED_ATTR_KEYS);
 
 /** Effective/bookkeeping attrs whose tracked snapshot must use direct provenance instead. */
-const PPR_INDENTATION_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set(
-  DIRECT_PARAGRAPH_INDENTATION_KEYS,
-);
-
 const PPR_SPACING_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set([
   "spaceBefore",
   "spaceAfter",
@@ -227,14 +220,17 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
   for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
     if (
       key === "alignment" ||
+      key === "indentLeft" ||
+      key === "indentRight" ||
+      key === "indentFirstLine" ||
+      key === "hangingIndent" ||
       PPR_SPACING_ATTR_KEYS.has(key) ||
-      PPR_INDENTATION_ATTR_KEYS.has(key) ||
       (key === "numPr" && isStyleSourcedParagraphNumbering(attrs.numPr, attrs.numPrFromStyle))
     ) {
       continue;
     }
-    // A value the style lends is not the paragraph's own `w:pPr`: a record
-    // holds what the paragraph states, as a save would write it.
+    // Inherited values are excluded; indentation uses the shared authored
+    // cluster reader below, including the first-line/hanging alternative.
     if (styleSuppliedParagraphValue(attrs, key)) {
       continue;
     }

@@ -3,7 +3,7 @@ import { panic } from "better-result";
 import type { FolioContentParagraphIndentation } from "../compare/content-types";
 import type { ParagraphFormatting } from "../types/document";
 import { paragraphNumberingReferenceId } from "../docx/numberingReference";
-import type { ParagraphAttrsPatch } from "./schema/nodes";
+import type { ParagraphAttrs } from "./schema/nodes";
 
 type ModelIndentation = Pick<ParagraphFormatting, keyof FolioContentParagraphIndentation>;
 type IndentationModelAgreement = [FolioContentParagraphIndentation, ModelIndentation] extends [
@@ -13,7 +13,7 @@ type IndentationModelAgreement = [FolioContentParagraphIndentation, ModelIndenta
   ? unknown
   : never;
 
-export const DIRECT_PARAGRAPH_INDENTATION_KEYS = [
+const DIRECT_PARAGRAPH_INDENTATION_KEYS = [
   "indentLeft",
   "indentRight",
   "indentFirstLine",
@@ -73,17 +73,6 @@ export const paragraphIndentationFromFormatting = (
 
 const PARAGRAPH_INDENTATION_VALUE_KEYS = ["indentLeft", "indentRight", "indentFirstLine"] as const;
 
-export type ParagraphIndentationAttrs = Pick<
-  ParagraphAttrsPatch,
-  | "_originalFormatting"
-  | "_resolvedFormatting"
-  | "numPr"
-  | "indentLeft"
-  | "indentRight"
-  | "indentFirstLine"
-  | "hangingIndent"
->;
-
 /**
  * Read direct indentation without materializing values inherited from a style:
  * the `w:ind` a save writes for the paragraph.
@@ -95,7 +84,7 @@ export type ParagraphIndentationAttrs = Pick<
  * with a negative `indentFirstLine`, as the model states it.
  */
 export const directParagraphIndentation = (
-  attrs: ParagraphIndentationAttrs,
+  attrs: ParagraphAttrs,
 ): DirectParagraphIndentation | undefined => {
   const original = attrs._originalFormatting ?? undefined;
   const resolved = attrs._resolvedFormatting;

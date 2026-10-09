@@ -221,6 +221,16 @@ const render = async (): Promise<GeneratedFile[]> => {
     "  ...SEQUENCE_CHILDREN,",
     "} as const;",
     "",
+    "/** WordprocessingML children permitted directly inside CT_RunTrackChange. */",
+    `export const TRACKED_RUN_WORDPROCESSING_CHILDREN = [${declaredChildren(
+      space,
+      "ins",
+      "CT_RunTrackChange",
+    )
+      .toSorted()
+      .map((name) => JSON.stringify(name))
+      .join(", ")}] as const;`,
+    "",
     "/** A container the shared child dispatcher covers. */",
     "export type DispatchedContainer = keyof typeof CONTAINER_CHILDREN;",
     "",

@@ -176,6 +176,7 @@ export function paragraphStyleCascadeAttrs({
   const resolvedFormatting = styleResolvedParagraphFormatting(stylePpr);
   if (resolvedFormatting) {
     attrs._resolvedFormatting = resolvedFormatting;
+    attrs._styleResolvedFormatting = resolvedFormatting;
   }
 
   // Apply style-based values as defaults (inline overrides)

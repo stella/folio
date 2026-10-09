@@ -30,13 +30,13 @@ import {
 import { resolveListState, type ListType } from "../../listState";
 import { removedNumberingAttr, type ParagraphNumberingAttr } from "../../numberingAttr";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
-import { getDocumentStyleResolver } from "../../plugins/documentStyleState";
 import {
   makeRevisionInfo,
   SUGGESTION_META,
   SUGGESTED_TEXT_INPUT_META,
   suggestRangeDeletion,
 } from "../../plugins/suggestionMode";
+import type { NumberingMap } from "../../../docx/numberingParser";
 import { listLevelAttrPatch, listLevelIndentRemovalPatch } from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
@@ -59,14 +59,13 @@ function chainCommands(...commands: Command[]): Command {
   };
 }
 
-function clearListAttrs(attrs: ParagraphAttrs, state: EditorState): Record<string, unknown> {
+function clearListAttrs(
+  attrs: ParagraphAttrs,
+  numbering: NumberingMap | null,
+): Record<string, unknown> {
   return {
     ...attrs,
-    ...listLevelIndentRemovalPatch(attrs, {
-      numbering: getDocumentNumbering(state),
-      styleFormatting: getDocumentStyleResolver(state)?.resolveParagraphStyle(attrs.styleId)
-        .paragraphFormatting,
-    }),
+    ...listLevelIndentRemovalPatch(attrs, numbering),
     numPr: removedNumberingAttr(attrs.numPrFromStyle),
     ...CLEARED_LIST_RENDERING_ATTRS,
   };
@@ -134,17 +133,14 @@ const numberParagraphs = ({ state, tr, from, to, requests }: NumberParagraphsOpt
       // The definition, not the id, says what the paragraph now renders: the
       // full attr group, so the painter, the next command and the save all
       // read the same level.
-      next: listItemAttrs({
-        attrs: expectParagraphAttrs(node),
-        numPr: {
+      next: listItemAttrs(
+        expectParagraphAttrs(node),
+        {
           numId: target.numId,
           ilvl: paragraphNumberingLevel(expectParagraphAttrs(node).numPr) ?? target.ilvl,
         },
-        numbering: target.numbering,
-        styleFormatting: getDocumentStyleResolver(state)?.resolveParagraphStyle(
-          expectParagraphAttrs(node).styleId,
-        ).paragraphFormatting,
-      }),
+        target.numbering,
+      ),
     })),
   });
   return true;
@@ -177,7 +173,7 @@ function toggleList(intent: ActiveListType): Command {
           .map(({ pos, node }) => ({
             pos,
             node,
-            next: clearListAttrs(expectParagraphAttrs(node), state),
+            next: clearListAttrs(expectParagraphAttrs(node), getDocumentNumbering(state)),
           })),
       });
     } else {
@@ -211,11 +207,7 @@ const attrsForListLevel = (
     ...listLevelAttrPatch(
       attrs,
       { numId: attrs.numPr.numId, ilvl: level },
-      {
-        numbering: getDocumentNumbering(state),
-        styleFormatting: getDocumentStyleResolver(state)?.resolveParagraphStyle(attrs.styleId)
-          .paragraphFormatting,
-      },
+      getDocumentNumbering(state),
     ),
   };
 };
@@ -278,7 +270,7 @@ const decreaseListLevel: Command = (state, dispatch) => {
     dispatch(
       state.tr
         .setNodeMarkup(paragraphPos, undefined, {
-          ...clearListAttrs(attrs, state),
+          ...clearListAttrs(attrs, getDocumentNumbering(state)),
           indentLeft: null,
           indentFirstLine: null,
           hangingIndent: null,
@@ -315,7 +307,11 @@ const removeList: Command = (state, dispatch) => {
       !seen.has(pos)
     ) {
       seen.add(pos);
-      tr = tr.setNodeMarkup(pos, undefined, clearListAttrs(expectParagraphAttrs(node), state));
+      tr = tr.setNodeMarkup(
+        pos,
+        undefined,
+        clearListAttrs(expectParagraphAttrs(node), getDocumentNumbering(state)),
+      );
     }
   });
 
@@ -389,7 +385,7 @@ function exitListOnEmptyEnter(): Command {
           {
             pos: $from.before(),
             node: paragraph,
-            next: clearListAttrs(attrs, state),
+            next: clearListAttrs(attrs, getDocumentNumbering(state)),
           },
         ],
       });
@@ -469,7 +465,7 @@ function backspaceExitList(): Command {
           {
             pos: $from.before(),
             node: paragraph,
-            next: clearListAttrs(attrs, state),
+            next: clearListAttrs(attrs, getDocumentNumbering(state)),
           },
         ],
       });
@@ -542,7 +538,7 @@ function decreaseListIndent(): Command {
         const currentLevel = attrs.numPr.ilvl ?? 0;
         if (currentLevel <= 0) {
           tr = tr.setNodeMarkup(pos, undefined, {
-            ...clearListAttrs(attrs, state),
+            ...clearListAttrs(attrs, getDocumentNumbering(state)),
             indentLeft: null,
             indentFirstLine: null,
             hangingIndent: null,

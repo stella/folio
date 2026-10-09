@@ -12,5 +12,13 @@
       "date": "2026-10-02",
       "note": "Retain source-generated moveFrom paragraph-mark metadata inside hidden wrappers across namespace-bound private codec transport."
     }
+  ],
+  "generated nested lifting refuses provenance and unsplit revisions retain it": [
+    {
+      "seed": -1446296186,
+      "path": "43:0:0:0:0:0:0",
+      "note": "Nested moved hyperlinks must survive serializer/parser segmentation and preserve link identity.",
+      "date": "2026-10-08"
+    }
   ]
 }

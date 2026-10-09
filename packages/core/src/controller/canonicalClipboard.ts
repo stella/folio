@@ -9,6 +9,7 @@ import {
 } from "@stll/docx-core/model";
 import { createNumberingIdAllocator } from "../docx/numberingIds";
 import { visitInlineContentSlots, visitParagraphRuns } from "../docx/paragraphTraversal";
+import { copyParagraphIndentationProjection } from "../docx/paragraphPropertySource";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
@@ -330,7 +331,9 @@ export const prepareCanonicalPaste = ({
   const paragraphs: Paragraph[] = [];
   for (const block of converted.value) {
     if (block.type !== "paragraph") return refuse("The clipboard contains an unsupported block.");
-    paragraphs.push(structuredClone(block));
+    const paragraph = structuredClone(block);
+    copyParagraphIndentationProjection({ target: paragraph, source: block });
+    paragraphs.push(paragraph);
   }
   if (moveTarget === undefined && (plain || sourceDocument === undefined))
     flattenClipboardStyleReferences(paragraphs);

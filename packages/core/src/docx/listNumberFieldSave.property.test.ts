@@ -63,6 +63,7 @@ import {
 } from "./__tests__/listNumberFieldFixture";
 import { repackDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
+import { visitDocxParagraphs } from "./paragraphTraversal";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -1071,9 +1072,8 @@ const FIXTURES: readonly Pinned[] = [
   {
     path: "tests/visual/fixtures/sample.docx",
     projection: {
-      // List-level indentation is resolved provenance, not authored paragraph formatting.
-      digest: "e356df8a8c8776368a27085d45e3aa813adcafb7ce2f01ef0f6436a5d7449271",
-      length: 90_446,
+      digest: "fd0875e97bc22ea278d26fd465730fabb4c4cc57c01c87941691090ace8a65c9",
+      length: 91_140,
     },
     saved: { file: "sample.document.xml" },
   },
@@ -1095,7 +1095,7 @@ const FIXTURES: readonly Pinned[] = [
   },
   {
     path: "tests/visual/fixtures/docx-editor-demo.docx",
-    projection: { length: 445_409 },
+    projection: { length: 445_877 },
     saved: {
       digest: "6bac5af14f8a58ea6627768ea747a8fc8ec69ce3e3edae1c41d720de84f81dee",
       length: 59_324,
@@ -1105,9 +1105,28 @@ const FIXTURES: readonly Pinned[] = [
 
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 
+const uneditedParagraphMarkup = ({ package: pkg }: Document): string[] => {
+  const paragraphs: string[] = [];
+  visitDocxParagraphs(
+    {
+      // Sections partition the body; they are not additional serialized stories.
+      documentBody: {
+        content: pkg.document.content,
+        ...(pkg.document.comments === undefined ? {} : { comments: pkg.document.comments }),
+      },
+      headers: pkg.headers,
+      footers: pkg.footers,
+      footnotes: pkg.footnotes,
+      endnotes: pkg.endnotes,
+    },
+    (paragraph) => paragraphs.push(serializeParagraph(paragraph)),
+  );
+  return paragraphs;
+};
+
 describe("a document with no LISTNUM field", () => {
   for (const { path, projection, saved } of FIXTURES) {
-    test(`${path} projects and saves as it did`, async () => {
+    test(`${path} preserves its editor projection`, async () => {
       const buffer = await Bun.file(new URL(`../../../../${path}`, import.meta.url)).arrayBuffer();
       expect(/LISTNUM/iu.test(await documentXmlOf(buffer))).toBe(false);
 
@@ -1116,17 +1135,18 @@ describe("a document with no LISTNUM field", () => {
       const json = JSON.stringify(doc.toJSON());
 
       expect(json).not.toContain("foldedListNumber");
-      // The fixture and the length go with the digest, so a mismatch says
-      // which document moved and whether it grew or shrank.
       expect({
         fixture: path,
         length: json.length,
         ...("digest" in projection ? { digest: sha256(json) } : {}),
       }).toEqual({ fixture: path, ...projection });
+    });
 
-      const written = await documentXmlOf(
-        await repackDocx(fromProseDoc(doc, parsed), { updateModifiedDate: false }),
-      );
+    test(`${path} preserves saved XML bytes independently of editor metadata`, async () => {
+      const buffer = await Bun.file(new URL(`../../../../${path}`, import.meta.url)).arrayBuffer();
+      const parsed = await openDocx(buffer);
+      const rebuilt = fromProseDoc(toProseDoc(parsed), parsed);
+      const written = await documentXmlOf(await repackDocx(rebuilt, { updateModifiedDate: false }));
       if ("file" in saved) {
         const reference = await Bun.file(
           new URL(`./__tests__/__fixtures__/list-number-invisible/${saved.file}`, import.meta.url),
@@ -1138,6 +1158,15 @@ describe("a document with no LISTNUM field", () => {
           ...saved,
         });
       }
+    });
+
+    test(`${path} preserves every unedited paragraph across all stories`, async () => {
+      const buffer = await Bun.file(new URL(`../../../../${path}`, import.meta.url)).arrayBuffer();
+      const parsed = await openDocx(buffer);
+      const before = uneditedParagraphMarkup(parsed);
+      expect(before.length).toBeGreaterThan(0);
+      const rebuilt = fromProseDoc(toProseDoc(parsed), parsed);
+      expect(uneditedParagraphMarkup(rebuilt)).toEqual(before);
     });
   }
 });

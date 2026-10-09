@@ -43,7 +43,7 @@ const MAX_PRESERVED_TEXT_LENGTH = 100_000;
 
 const collectTextContent = (element: XmlElement, into: string[]): void => {
   for (const child of getChildElements(element)) {
-    if (getLocalName(child.name) === "t") {
+    if (getLocalName(child.name) === "t" || getLocalName(child.name) === "delText") {
       into.push(getTextContent(child));
       continue;
     }
@@ -105,6 +105,7 @@ const VISIBLE_TEXT_INLINE_CHILDREN: ReadonlySet<string> = new Set([
   "customXml",
   "fldSimple",
   "hyperlink",
+  "sdt",
   "smartTag",
 ]);
 

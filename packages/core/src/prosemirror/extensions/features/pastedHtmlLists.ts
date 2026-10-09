@@ -9,7 +9,6 @@ import { createNumberingMap, type NumberingMap } from "../../../docx/numberingPa
 import { expectParagraphAttrs } from "../../attrs";
 import { completeNumberingForDoc } from "../../listInstanceReferences";
 import { listItemAttrs } from "../../listNumbering";
-import { getDocumentStyleResolver } from "../../plugins/documentStyleState";
 import { getPackageNumberingDefinitions } from "../../plugins/documentNumbering";
 
 const isList = (element: Element): boolean =>
@@ -138,14 +137,7 @@ export const numberPastedHtmlLists = (slice: Slice, view: EditorView): Slice => 
         }
         const { _pastedHtmlList: _consumed, ...unhinted } = attrs;
         result = node.type.create(
-          listItemAttrs({
-            attrs: unhinted,
-            numPr: { numId: group.numId, ilvl: hint.level },
-            numbering,
-            styleFormatting: getDocumentStyleResolver(view.state)?.resolveParagraphStyle(
-              attrs.styleId,
-            ).paragraphFormatting,
-          }),
+          listItemAttrs(unhinted, { numId: group.numId, ilvl: hint.level }, numbering),
           node.content,
           node.marks,
         );

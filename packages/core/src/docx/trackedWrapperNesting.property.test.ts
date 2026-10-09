@@ -49,17 +49,21 @@ const WRAPPERS: Layer[] = [
  * inside another is the inner one's answer, which is the spelling folio
  * writes for `<w:del><w:ins>`.
  */
-const markup = (layers: readonly Layer[]): string => {
+const markup = (layers: readonly Layer[], siblings: boolean): string => {
   let removed = false;
-  for (const layer of layers) {
+  const dispositions = layers.map((layer) => {
     removed = layer.removes ?? removed;
-  }
+    return removed;
+  });
 
   let stack = removed ? "<w:r><w:delText>x</w:delText></w:r>" : "<w:r><w:t>x</w:t></w:r>";
   for (let index = layers.length - 1; index >= 0; index -= 1) {
     // SAFETY: index walks the array's own bounds downwards.
     const layer = layers[index]!;
-    stack = `${layer.open}${stack}${layer.close}`;
+    const textTag = dispositions[index] ? "delText" : "t";
+    const before = siblings ? `<w:r><w:${textTag}>before</w:${textTag}></w:r>` : "";
+    const after = siblings ? `<w:r><w:${textTag}>after</w:${textTag}></w:r>` : "";
+    stack = `${layer.open}${before}${stack}${after}${layer.close}`;
   }
   return stack;
 };
@@ -83,8 +87,8 @@ const layerStack = fc.array(fc.oneof(...[...REVISIONS, ...WRAPPERS].map(fc.const
 describe("nesting a revision and a transparent wrapper", () => {
   test("a save keeps the authored stack", () => {
     fc.assert(
-      fc.property(layerStack, (layers) => {
-        const authored = markup(layers);
+      fc.property(layerStack, fc.boolean(), (layers, siblings) => {
+        const authored = markup(layers, siblings);
         expect(bodyOf(save(authored))).toBe(authored);
       }),
       propertyConfig(),
@@ -93,8 +97,8 @@ describe("nesting a revision and a transparent wrapper", () => {
 
   test("a second save changes nothing", () => {
     fc.assert(
-      fc.property(layerStack, (layers) => {
-        const once = bodyOf(save(markup(layers)));
+      fc.property(layerStack, fc.boolean(), (layers, siblings) => {
+        const once = bodyOf(save(markup(layers, siblings)));
         expect(bodyOf(save(once))).toBe(once);
       }),
       propertyConfig(),

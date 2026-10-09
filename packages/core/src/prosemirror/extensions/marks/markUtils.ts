@@ -23,6 +23,7 @@ import {
   expectCharacterStyleMarkAttrs,
   expectEmphasisMarkAttrs,
   expectFontFamilyMarkAttrs,
+  expectParagraphAttrs,
   expectRunFormattingOverrideMarkAttrs,
   expectRunShadingMarkAttrs,
   expectStrikeMarkAttrs,
@@ -253,18 +254,16 @@ function saveStoredMarksToParagraph(
     return tr;
   }
 
-  if (marks.length === 0) {
-    return tr.setNodeMarkup($from.before(), undefined, {
-      ...paragraph.attrs,
-      defaultTextFormatting: null,
-    });
-  }
-
-  const defaultTextFormatting = marksToTextFormatting(marks);
-
+  const attrs = expectParagraphAttrs(paragraph);
+  const defaultTextFormatting = marks.length === 0 ? null : marksToTextFormatting(marks);
   return tr.setNodeMarkup($from.before(), undefined, {
     ...paragraph.attrs,
     defaultTextFormatting,
+    // This command authors the paragraph default, which the save path treats as inherited.
+    _originalFormatting: {
+      ...attrs._originalFormatting,
+      runProperties: defaultTextFormatting ?? undefined,
+    },
   });
 }
 
