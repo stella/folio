@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { test } from "./canonicalTimerProbe";
+import { assertCanonicalInputTimersSettled, test } from "./canonicalTimerProbe";
 import { evaluateCanonicalPage, waitForCanonicalPageReady } from "./canonicalPageNavigation";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
@@ -245,6 +245,8 @@ test("native composition updates preserve a loaded projection through cancellati
       updates: ["shall", "café 東京 é"],
       completion: "cancel",
     });
+    await page.waitForFunction(() => globalThis.__folioCanonicalInputTimers?.size === 0);
+    await assertCanonicalInputTimersSettled(page);
     await expectNoRefusals(page);
     const after = await snapshot(page);
     expect(after?.document).toEqual(before?.document);

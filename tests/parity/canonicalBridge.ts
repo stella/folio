@@ -53,6 +53,31 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
       composing: view.composing,
     });
     const records: ReturnType<typeof record>[] = [];
+    const events: (
+      | { type: "beforeinput"; inputType: string; data: string | null; isComposing: boolean }
+      | { type: "compositionend"; data: string }
+    )[] = [];
+    const controller = new AbortController();
+    view.dom.addEventListener(
+      "beforeinput",
+      (event) => {
+        events.push({
+          type: "beforeinput",
+          inputType: event.inputType,
+          data: event.data,
+          isComposing: event.isComposing,
+        });
+      },
+      { capture: true, signal: controller.signal },
+    );
+    view.dom.addEventListener(
+      "compositionend",
+      (event) => {
+        if (event instanceof CompositionEvent)
+          events.push({ type: "compositionend", data: event.data });
+      },
+      { capture: true, signal: controller.signal },
+    );
     const dispatch = view.dispatch;
     view.dispatch = (transaction) => {
       records.push(record(transaction));
@@ -60,7 +85,8 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     };
     return () => {
       view.dispatch = dispatch;
-      return records;
+      controller.abort();
+      return { transactions: records, events };
     };
   },
   nativeComposing: () => getRef()?.getEditor()?.getView()?.composing ?? null,
