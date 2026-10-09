@@ -255,7 +255,17 @@ impl PartIndex {
         }
         match (self.depth, local.as_ref()) {
             (0, b"package") if !self.root_seen => self.root_seen = true,
-            (2, b"binaryData") if !self.payload_seen => self.payload_seen = true,
+            (2, b"xmlData" | b"binaryData") if !self.payload_seen => {
+                self.payload_seen = true;
+                if local.as_ref() == b"xmlData" {
+                    let position = usize::try_from(reader.buffer_position())
+                        .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?;
+                    self.current_xml = Some(XmlPart {
+                        range: position..position,
+                        namespaces: Vec::new(),
+                    });
+                }
+            }
             _ => return Err(ProjectionError::InvalidFlatOpcPackage),
         }
         Ok(())
@@ -339,6 +349,9 @@ fn extract(
         .ok_or(ProjectionError::InvalidFlatOpcPackage)?;
     if bytes.len() > maximum {
         return Err(too_large);
+    }
+    if bytes.is_empty() {
+        return Ok(Vec::new());
     }
     let mut reader = Reader::from_reader(bytes);
     loop {
