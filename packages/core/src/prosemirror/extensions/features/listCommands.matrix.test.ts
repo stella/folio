@@ -791,7 +791,16 @@ describe("list changes while suggesting", () => {
                   theme: reopened.package.theme,
                 }).child(1),
               );
-              expect(reopenedAttrs.indentLeft).toBe(beforeAttrs["indentLeft"]);
+              // Node schemas use null or undefined for an absent effective value.
+              expect(reopenedAttrs.indentLeft ?? undefined).toBe(
+                beforeAttrs["indentLeft"] ?? undefined,
+              );
+              expect(reopenedAttrs.indentFirstLine ?? undefined).toBe(
+                beforeAttrs["indentFirstLine"] ?? undefined,
+              );
+              expect(reopenedAttrs.hangingIndent ?? false).toBe(
+                beforeAttrs["hangingIndent"] ?? false,
+              );
             }
           }
         }),

@@ -1109,7 +1109,11 @@ const uneditedParagraphMarkup = ({ package: pkg }: Document): string[] => {
   const paragraphs: string[] = [];
   visitDocxParagraphs(
     {
-      documentBody: pkg.document,
+      // Sections partition the body; they are not additional serialized stories.
+      documentBody: {
+        content: pkg.document.content,
+        ...(pkg.document.comments === undefined ? {} : { comments: pkg.document.comments }),
+      },
       headers: pkg.headers,
       footers: pkg.footers,
       footnotes: pkg.footnotes,
