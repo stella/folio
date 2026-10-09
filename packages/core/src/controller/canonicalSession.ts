@@ -1694,10 +1694,10 @@ export const createCanonicalSession = (
   const owned = cloneDocumentWithParagraphPropertySources(document);
   const identified = normalizeForOps(owned);
   preservePropertySources({ target: identified, source: owned });
+  const validated = validateOpsDocument(identified);
+  if (validated.isErr()) return refuse(validated.error.message);
   const normalized = normalizeCanonicalListRendering(identified).document;
   preservePropertySources({ target: normalized, source: owned });
-  const validated = validateOpsDocument(normalized);
-  if (validated.isErr()) return refuse(validated.error.message);
   const projected = project({ document: normalized, styles });
   if (projected.isErr()) return projected;
   return Result.ok(

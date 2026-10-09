@@ -8,7 +8,11 @@ import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { createEmptyDocument } from "../utils/createDocument";
 import { schema } from "../prosemirror/schema";
-import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
+import {
+  createCanonicalSession,
+  CanonicalSessionError,
+  publishCanonicalProjection,
+} from "./canonicalSession";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 import { validateDocxPackage } from "@stll/docx-core";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
@@ -304,39 +308,77 @@ test(
   propertyTestTimeout(30_000),
 );
 
-test("activation assigns identities before normalizing inherited list overrides", async () => {
-  await assertProperty(
-    fc.asyncProperty(
-      fc.array(fc.integer({ min: 0, max: 2 }), { minLength: 1, maxLength: 4 }),
-      fc.constantFrom("bullet" as const, "numbered" as const),
-      async (levels, kind) => {
-        const minted = mintListInstance(undefined, { kind });
-        const document = createEmptyDocument();
-        document.package.numbering = minted.definitions;
-        document.package.document.content = levels.map((ilvl) => ({
-          type: "paragraph",
-          formatting: {
-            numPrFromStyle: { kind: "reference", numId: minted.numId, ilvl: 0 },
-            numPr: { kind: "levelOnly", ilvl },
-          },
-          content: [{ type: "run", content: [{ type: "text", text: "List item" }] }],
-        }));
-        const original = structuredClone(document);
-        const result = createCanonicalSession(document);
-        expect(result.isOk()).toBe(true);
-        const session = result.unwrap();
-        const identities = new Set<string>();
-        for (const block of session.document.package.document.content) {
-          expect(block.type).toBe("paragraph");
-          if (block.type !== "paragraph") continue;
-          expect(block.paraId).toBeDefined();
-          if (block.paraId !== undefined) identities.add(block.paraId);
-          expect(block.formatting?.numPr?.kind).toBe("reference");
-        }
-        expect(identities.size).toBe(levels.length);
-        expect(document).toStrictEqual(original);
-      },
-    ),
-    { numRuns: 20 },
-  );
-});
+test(
+  "activation validates identities before normalizing inherited list overrides",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.array(fc.integer({ min: 0, max: 2 }), { minLength: 1, maxLength: 4 }),
+        fc.constantFrom("bullet" as const, "numbered" as const),
+        async (levels, kind) => {
+          const minted = mintListInstance(undefined, { kind });
+          const document = createEmptyDocument();
+          document.package.numbering = minted.definitions;
+          document.package.document.content = levels.map((ilvl) => ({
+            type: "paragraph",
+            formatting: {
+              numPrFromStyle: { kind: "reference", numId: minted.numId, ilvl: 0 },
+              numPr: { kind: "levelOnly", ilvl },
+            },
+            content: [{ type: "run", content: [{ type: "text", text: "List item" }] }],
+          }));
+          const original = structuredClone(document);
+          const refused = createCanonicalSession(document);
+          expect(refused.isErr()).toBe(true);
+          if (refused.isErr()) expect(refused.error).toBeInstanceOf(CanonicalSessionError);
+          expect(document).toStrictEqual(original);
+          const input = (await prepareCanonicalDocxInput(await createDocx(document))).unwrap();
+          const identified = await parseDocx(input, { preloadFonts: false });
+          // Restore the generated style inheritance/override shape after the load-time ID owner.
+          for (const [index, block] of identified.package.document.content.entries()) {
+            if (block.type !== "paragraph") continue;
+            const ilvl = levels.at(index);
+            if (ilvl === undefined) continue;
+            block.formatting = {
+              numPrFromStyle: { kind: "reference", numId: minted.numId, ilvl: 0 },
+              numPr: { kind: "levelOnly", ilvl },
+            };
+          }
+          const identifiedOriginal = structuredClone(identified);
+          const duplicate = structuredClone(identified);
+          const first = duplicate.package.document.content.at(0);
+          expect(first).toBeDefined();
+          if (first === undefined) return;
+          duplicate.package.document.content.push(structuredClone(first));
+          const duplicateOriginal = structuredClone(duplicate);
+          const duplicateResult = createCanonicalSession(duplicate);
+          expect(duplicateResult.isErr()).toBe(true);
+          if (duplicateResult.isErr())
+            expect(duplicateResult.error).toBeInstanceOf(CanonicalSessionError);
+          expect(duplicate).toStrictEqual(duplicateOriginal);
+          const result = createCanonicalSession(identified);
+          expect(result.isOk()).toBe(true);
+          const session = result.unwrap();
+          const identities = new Set<string>();
+          for (const [index, block] of session.document.package.document.content.entries()) {
+            expect(block.type).toBe("paragraph");
+            if (block.type !== "paragraph") continue;
+            expect(block.paraId).toBeDefined();
+            if (block.paraId !== undefined) identities.add(block.paraId);
+            expect(block.formatting?.numPr).toEqual({
+              kind: "reference",
+              numId: minted.numId,
+              ilvl: levels.at(index),
+            });
+            expect(block.listRendering?.level).toBe(levels.at(index));
+          }
+          expect(identities.size).toBe(levels.length);
+          expect(structuredClone(identified)).toStrictEqual(identifiedOriginal);
+          expect(document).toStrictEqual(original);
+        },
+      ),
+      { numRuns: 20 },
+    );
+  },
+  propertyTestTimeout(5_000),
+);

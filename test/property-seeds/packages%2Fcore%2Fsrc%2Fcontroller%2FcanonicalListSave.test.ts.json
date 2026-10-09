@@ -19,6 +19,20 @@
       "path": "1:0:0:1",
       "note": "Style numbering cancellation must clear stale inherited-numbering provenance in the canonical model, matching the serialized direct override.",
       "date": "2026-10-08"
+    },
+    {
+      "seed": 1529073804,
+      "path": "0:0:0:0",
+      "note": "Numbering removal must clear inherited indentation in the authority before save/reopen.",
+      "date": "2026-10-09"
+    }
+  ],
+  "activation validates identities before normalizing inherited list overrides": [
+    {
+      "seed": 1288634722,
+      "path": "0:0:0",
+      "note": "Missing paragraph identities must not reach canonical normalization inverse generation.",
+      "date": "2026-10-09"
     }
   ]
 }

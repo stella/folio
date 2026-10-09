@@ -56,6 +56,8 @@ type ParagraphIndentationProjection = Readonly<{
   authored: Readonly<IndentationFormatting>;
 }>;
 const indentationProjections = new WeakMap<object, ParagraphIndentationProjection>();
+// An explicit clear must not be overwritten when source captures follow a derivation.
+const assignedIndentationProjections = new WeakSet<Paragraph>();
 
 const indentationProjectionFor = (paragraph: Paragraph) => {
   const handle: unknown = Object.getOwnPropertyDescriptor(
@@ -67,6 +69,21 @@ const indentationProjectionFor = (paragraph: Paragraph) => {
     : undefined;
 };
 
+type SameParagraphIndentationProjectionOptions = { left: Paragraph; right: Paragraph };
+
+/** Fixed points retain both authored indentation and its effective baseline. */
+export const sameParagraphIndentationProjection = ({
+  left,
+  right,
+}: SameParagraphIndentationProjectionOptions): boolean => {
+  const a = indentationProjectionFor(left);
+  const b = indentationProjectionFor(right);
+  if (a === undefined || b === undefined) return a === b;
+  return INDENTATION_FIELDS.every(
+    (key) => a.effective[key] === b.effective[key] && a.authored[key] === b.authored[key],
+  );
+};
+
 type CopyParagraphIndentationProjectionOptions = { target: Paragraph; source: Paragraph };
 
 /** Retain effective-value provenance without copying a durable source identity. */
@@ -74,7 +91,11 @@ export const copyParagraphIndentationProjection = ({
   target,
   source,
 }: CopyParagraphIndentationProjectionOptions): void => {
-  if (Object.hasOwn(target, paragraphIndentationProjection)) return;
+  if (
+    assignedIndentationProjections.has(target) ||
+    Object.hasOwn(target, paragraphIndentationProjection)
+  )
+    return;
   const descriptor = Object.getOwnPropertyDescriptor(source, paragraphIndentationProjection);
   if (descriptor && indentationProjectionFor(source)) {
     Object.defineProperty(target, paragraphIndentationProjection, descriptor);
@@ -100,6 +121,7 @@ export const assignParagraphIndentationProjection = ({
   authored,
   inherited,
 }: AssignParagraphIndentationProjectionOptions): void => {
+  assignedIndentationProjections.add(paragraph);
   const effective = { ...inherited, ...indentationFields(authored) };
   // Absent authored fields inherit; explicit zero and false override.
   for (const key of INDENTATION_FIELDS) {
@@ -113,6 +135,11 @@ export const assignParagraphIndentationProjection = ({
     Reflect.deleteProperty(effective, "hangingIndent");
   }
   paragraph.formatting = { ...authored, ...effective };
+  if (Object.keys(paragraph.formatting).length === 0) delete paragraph.formatting;
+  if (Object.values(effective).every((value) => value === undefined)) {
+    Reflect.deleteProperty(paragraph, paragraphIndentationProjection);
+    return;
+  }
   const handle = Object.freeze({});
   indentationProjections.set(
     handle,

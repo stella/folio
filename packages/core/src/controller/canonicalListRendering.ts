@@ -15,14 +15,26 @@ import {
   sameStatedParagraphNumbering,
 } from "../docx/numberingReference";
 import { computeListMarker, type ComputeListMarkerOptions } from "../docx/listMarkerComputation";
-import { copyParagraphPropertySource } from "../docx/paragraphPropertySource";
+import {
+  copyParagraphPropertySource,
+  paragraphFormattingWithAuthoredIndentation,
+  assignParagraphIndentationProjection,
+  sameParagraphIndentationProjection,
+} from "../docx/paragraphPropertySource";
+import {
+  paragraphIndentationFromFormatting,
+  withDirectParagraphIndentation,
+} from "../prosemirror/paragraphIndentation";
 import { listRenderingDefinitionsMatch } from "../prosemirror/conversion/listRenderingDefinition";
 import { canonicalJson } from "../utils/canonicalJson";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import { listIndentationProvenancePatch } from "../prosemirror/styles/resolvedStyleAttrs";
 
 type CanonicalListNormalization = { document: Document; inverse: DocumentOp[] };
 
 export const normalizeCanonicalListRendering = (document: Document): CanonicalListNormalization => {
   const inverse: DocumentOp[] = [];
+  const styles = createStyleResolver(document.package.styles);
   const numbering =
     document.package.numbering === undefined
       ? null
@@ -92,6 +104,22 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
           patch: { numPr: formatting.numPr ?? null },
         });
       }
+      const authored = paragraphIndentationFromFormatting(
+        paragraphFormattingWithAuthoredIndentation(paragraph),
+      );
+      const inheritance = listIndentationProvenancePatch({
+        direct: authored,
+        styleFormatting: styles.resolveParagraphStyle(next.formatting?.styleId).paragraphFormatting,
+        numberingSource: next.formatting?.numPrFromStyle === undefined ? "paragraph" : "style",
+        numPr:
+          numPr?.kind === "reference" ? { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 } : undefined,
+        numbering,
+      });
+      assignParagraphIndentationProjection({
+        paragraph: next,
+        authored: withDirectParagraphIndentation(next.formatting, authored),
+        inherited: paragraphIndentationFromFormatting(inheritance._resolvedFormatting) ?? {},
+      });
       if (rendering === null) delete next.listRendering;
       else {
         // Counters consume templates, never a marker substituted on an earlier pass.
@@ -104,7 +132,8 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
       }
       computeListMarker(next, counters);
       if (
-        next.formatting === formatting &&
+        sameParagraphIndentationProjection({ left: next, right: paragraph }) &&
+        canonicalJson(next.formatting) === canonicalJson(formatting) &&
         canonicalJson(next.listRendering) === canonicalJson(cached)
       )
         return paragraph;
