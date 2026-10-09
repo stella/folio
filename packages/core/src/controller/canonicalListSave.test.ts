@@ -33,6 +33,115 @@ import { normalizeCanonicalListRendering } from "./canonicalListRendering";
 import { CANONICAL_SAVE_FALLBACK_DIAGNOSTIC } from "../../../../test/canonicalSaveDiagnostics";
 
 test(
+  "generated LISTNUM level edits preserve child counters, history and save/reopen",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 6 }),
+        fc.integer({ min: 1, max: 3 }),
+        fc.constantFrom("leading", "inside"),
+        async (level, fieldCount, position) => {
+          const minted = mintListInstance(undefined, { kind: "numbered" });
+          for (const abstract of minted.definitions.abstractNums) {
+            for (const entry of abstract.levels) {
+              entry.numFmt = "decimal";
+              entry.lvlText = `%${entry.ilvl + 1}.`;
+              entry.start = 1;
+            }
+          }
+          const text = {
+            type: "run",
+            content: [{ type: "text", text: "Body" }],
+          } satisfies Paragraph["content"][number];
+          const fields = Array.from(
+            { length: fieldCount },
+            () =>
+              ({
+                type: "complexField",
+                fieldType: "LISTNUM",
+                instruction: "LISTNUM",
+                fieldCode: [],
+                fieldResult: [{ type: "run", content: [{ type: "text", text: "1" }] }],
+              }) satisfies Paragraph["content"][number],
+          );
+          const host = {
+            type: "paragraph",
+            paraId: "10000001",
+            formatting: { numPr: { kind: "reference", numId: minted.numId, ilvl: 0 } },
+            content: position === "leading" ? [...fields, text] : [text, ...fields],
+          } satisfies Paragraph;
+          const following = {
+            type: "paragraph",
+            paraId: "10000002",
+            formatting: { numPr: { kind: "reference", numId: minted.numId, ilvl: level + 1 } },
+            content: [text],
+          } satisfies Paragraph;
+          const parsed = await parseDocx(
+            await createDocx({
+              package: { numbering: minted.definitions, document: { content: [host, following] } },
+            }),
+            { preloadFonts: false },
+          );
+          const session = createCanonicalSession(parsed).unwrap();
+          let state = EditorState.create({ schema, doc: session.projection.doc });
+          const before = structuredClone(session.document);
+          const at = session.projection.inputAddressAt(1).unwrap();
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: session
+              .prepareIntent(state, {
+                type: "formatParagraph",
+                at,
+                patch: { numPr: { kind: "reference", numId: minted.numId, ilvl: level } },
+              })
+              .unwrap(),
+          }).unwrap().state;
+          const after = structuredClone(session.document);
+          const marker = (document: typeof parsed) => {
+            const paragraph = document.package.document.content.at(1);
+            if (paragraph?.type !== "paragraph") throw new TypeError("Missing child paragraph");
+            return paragraph.listRendering?.marker;
+          };
+          expect(marker(session.document)).toBe(`${fieldCount + 1}.`);
+          for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
+            const saved = await serializeCanonicalSave({
+              snapshot: session.captureSaveSnapshot(),
+              options: { mode },
+            });
+            const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+            expect(marker(reopened)).toBe(`${fieldCount + 1}.`);
+            expect(structuredClone(reopened.package.document.content)).toEqual(
+              after.package.document.content,
+            );
+          }
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: session.prepareUndo(state).unwrap(),
+          }).unwrap().state;
+          expect(structuredClone(session.document)).toEqual(before);
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: session.prepareRedo(state).unwrap(),
+          }).unwrap().state;
+          expect(structuredClone(session.document)).toEqual(after);
+          expect(marker(session.document)).toBe(`${fieldCount + 1}.`);
+        },
+      ),
+      {
+        examples: [
+          [1, 1, "inside"],
+          [1, 1, "leading"],
+        ],
+      },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+test(
   "generated pasted lists preserve save/reopen fidelity through full-save fallbacks and history",
   async () => {
     await assertProperty(

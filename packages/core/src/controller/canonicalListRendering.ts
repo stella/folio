@@ -30,6 +30,11 @@ import { listRenderingDefinitionsMatch } from "../prosemirror/conversion/listRen
 import { canonicalJson } from "../utils/canonicalJson";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { listIndentationProvenancePatch } from "../prosemirror/styles/resolvedStyleAttrs";
+import {
+  foldListNumberFields,
+  unfoldedListNumberContent,
+  planParagraphListNumberFold,
+} from "../docx/foldedListNumberFields";
 
 type CanonicalListNormalization = { document: Document; inverse: DocumentOp[] };
 
@@ -145,8 +150,29 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
       }
       if (rendering === null) delete next.listRendering;
       else {
+        const fields = foldListNumberFields(
+          paragraph.content.map(unfoldedListNumberContent),
+          () => undefined,
+        ).fieldCount;
+        if (fields === 0) delete rendering.implicitChildLevelAdvances;
+        else rendering.implicitChildLevelAdvances = fields;
         // Counters consume templates, never a marker substituted on an earlier pass.
         const template = rendering.markerTemplate ?? rendering.marker;
+        const fold = planParagraphListNumberFold(
+          paragraph.content,
+          !rendering.isBullet && template !== "" && !template.includes("\t"),
+        );
+        if (fold.suffix === undefined) delete rendering.foldedMarkerSuffix;
+        else rendering.foldedMarkerSuffix = fold.suffix;
+        const child = numbering?.getLevel(rendering.numId, rendering.level + 1)?.pPr;
+        if (
+          fold.suffix !== undefined &&
+          child?.hangingIndent === true &&
+          child.indentFirstLine !== undefined &&
+          child.indentFirstLine < 0
+        )
+          rendering.markerSecondSlotOffsetTwips = -child.indentFirstLine;
+        else delete rendering.markerSecondSlotOffsetTwips;
         rendering.marker =
           rendering.foldedMarkerSuffix !== undefined && !template.includes("\t")
             ? `${template}\t${rendering.foldedMarkerSuffix}`

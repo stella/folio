@@ -1,4 +1,12 @@
 {
+  "generated LISTNUM level edits preserve child counters, history and save/reopen": [
+    {
+      "seed": 1391099934,
+      "path": "0:0",
+      "note": "Parsed LISTNUM instructions and folded captures retain child-level advances after a level edit, including exact history and save/reopen.",
+      "date": "2026-10-09"
+    }
+  ],
   "generated pasted lists preserve save/reopen fidelity through full-save fallbacks and history": [
     {
       "seed": 1529073804,
