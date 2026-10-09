@@ -118,31 +118,52 @@ test("seed 666618706 keeps note formatting after split, format, split and paste"
 test("split paragraphs retain authored run defaults through typed and pasted content", async () => {
   await assertProperty(
     fc.asyncProperty(
-      fc.record({ bold: fc.boolean(), italic: fc.boolean() }),
-      fc.constantFrom("start", "end"),
-      fc.constantFrom("type", "pasteReference"),
-      async (runProperties, endpoint, action) => {
+      fc.record({
+        runProperties: fc.record({ bold: fc.boolean(), italic: fc.boolean() }),
+        paragraphProperties: fc.record({
+          contextualSpacing: fc.boolean(),
+          snapToGrid: fc.boolean(),
+          spaceAfter: fc.integer({ min: 0, max: 720 }),
+        }),
+        endpoint: fc.constantFrom("start", "middle", "end"),
+        action: fc.constantFrom("type", "pasteReference"),
+      }),
+      async ({ runProperties, paragraphProperties, endpoint, action }) => {
         const source = await sourceDocument(runProperties);
         const paragraph = source.package.document.content.at(0);
         if (paragraph?.type !== "paragraph") return panic("Missing source paragraph.");
         // One authored reference keeps this invariant independent of adjacent occurrence coalescing.
         paragraph.content.splice(2, 2);
+        paragraph.formatting = { ...paragraph.formatting, ...paragraphProperties };
         const base = await parseShapeDocument(new Uint8Array(await createDocx(source)));
         const view = new HeadlessEditorView(createHarnessState(base, "editing"));
         const reference = view.state.doc.nodeAt(2);
         if (!reference?.isText) return panic("Missing source reference.");
-        const position = endpoint === "start" ? 1 : view.state.doc.content.size - 1;
+        const position = {
+          start: 1,
+          middle: view.state.doc.content.size - 2,
+          end: view.state.doc.content.size - 1,
+        }[endpoint];
         view.state = view.state.apply(
           view.state.tr.setSelection(TextSelection.create(view.state.doc, position)),
         );
         expect(view.pressKey("Enter")).toBe(true);
-        expect(view.state.selection.$from.parent.attrs._originalFormatting).toEqual({
+        expect(view.state.selection.$from.parent.attrs._originalFormatting).toMatchObject({
           runProperties,
+          ...paragraphProperties,
         });
         if (action === "type") view.typeText("x");
         else view.paste(new Slice(Fragment.from(reference), 0, 0));
         const saved = await saveHarnessState(view.state, base);
-        const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "editing");
+        const addedParagraph = saved.model.package.document.content.at(1);
+        if (addedParagraph?.type !== "paragraph") return panic("Missing split paragraph.");
+        expect(addedParagraph.formatting).toMatchObject(paragraphProperties);
+        const reopenedDocument = await parseShapeDocument(saved.bytes);
+        const reopenedParagraph = reopenedDocument.package.document.content.at(1);
+        if (reopenedParagraph?.type !== "paragraph")
+          return panic("Missing reopened split paragraph.");
+        expect(reopenedParagraph.formatting).toMatchObject(paragraphProperties);
+        const reopened = createHarnessState(reopenedDocument, "editing");
         expect(tokens(reopened.doc)).toEqual(tokens(view.state.doc));
       },
     ),

@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Preserve authored paragraph run defaults across splits and subsequent content edits.
+Preserve authored paragraph and run formatting across splits and subsequent content edits.
