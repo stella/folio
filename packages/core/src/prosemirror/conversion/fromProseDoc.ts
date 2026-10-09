@@ -51,6 +51,7 @@ import {
   copyDocumentParagraphPropertySources,
   copyParagraphPropertyCapture,
   copyParagraphPropertySource,
+  paragraphFormattingWithAuthoredIndentation,
   decodeTableCellParagraphSourcePayload,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
@@ -418,6 +419,27 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
   const baseFormatting = baseParagraph.formatting;
   if (!baseFormatting) {
     return;
+  }
+  const hasIndentation =
+    baseFormatting.indentLeft !== undefined ||
+    baseFormatting.indentRight !== undefined ||
+    baseFormatting.indentFirstLine !== undefined ||
+    baseFormatting.hangingIndent !== undefined;
+  if (hasIndentation) {
+    const authored = paragraphFormattingWithAuthoredIndentation(baseParagraph);
+    const inheritedIndentation =
+      authored?.indentLeft !== baseFormatting.indentLeft ||
+      authored?.indentRight !== baseFormatting.indentRight ||
+      authored?.indentFirstLine !== baseFormatting.indentFirstLine ||
+      authored?.hangingIndent !== baseFormatting.hangingIndent;
+    if (
+      inheritedIndentation &&
+      canonicalJson(modelParagraphFormattingEmission(paragraph.formatting)) ===
+        canonicalJson(modelParagraphFormattingEmission(authored))
+    ) {
+      paragraph.formatting = { ...baseFormatting };
+      return;
+    }
   }
   const { numPr, numPrFromStyle } = baseFormatting;
   if (!numPr || !numPrFromStyle || !isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)) {

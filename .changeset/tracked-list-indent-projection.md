@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Preserve inherited numbering indentation when carrying paragraph properties and applying styles.
+Preserve authored and inherited indentation through tracked paragraph edits, list changes, styles, and save/reopen.

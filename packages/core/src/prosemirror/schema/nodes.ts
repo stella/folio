@@ -368,6 +368,9 @@ export type ParagraphAttrs = {
    */
   _resolvedFormatting?: ParagraphFormatting;
 
+  /** Style-only inheritance baseline, before numbering-level indentation. PM-only. */
+  _styleResolvedFormatting?: ParagraphFormatting;
+
   /** Import-effective spacing baseline for HTML auto-spacing detection.
    *  PM-only; never serialized back into DOCX formatting. */
   _autospacingBase?: {
