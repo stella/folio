@@ -44,12 +44,9 @@ type UseDrawerFocusOptions = {
   returnFocusRef?: RefObject<HTMLElement | null>;
 };
 
-export const useDrawerFocus = ({
-  container,
-  onClose,
-  initial = "item",
-  returnFocusRef,
-}: UseDrawerFocusOptions) => {
+export const useDrawerFocus = (options: UseDrawerFocusOptions) => {
+  const { container, onClose, returnFocusRef } = options;
+  const initial = options.initial ?? "item";
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
