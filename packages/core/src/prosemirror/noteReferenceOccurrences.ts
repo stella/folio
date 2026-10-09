@@ -48,7 +48,7 @@ const readOccurrences = (paragraph: PMNode) => {
       return;
     }
     const attrs = readFootnoteRefMarkAttrs(reference);
-    if (!attrs.ok || attrs.value.occurrenceId.length === 0 || !node.isText) {
+    if (!attrs.ok || !node.isText) {
       issue = "Note references require attributed text occurrences.";
       return;
     }

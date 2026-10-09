@@ -195,7 +195,7 @@ describe("createHiddenEditorManager", () => {
 });
 
 test(
-  "external note types reach paste refusal in both session modes without mutation",
+  "external note attribution reaches paste refusal in both session modes without mutation",
   () => {
     GlobalRegistrator.register();
     try {
@@ -205,12 +205,23 @@ test(
             .stringMatching(/^[a-z]{1,12}$/u)
             .filter((kind) => kind !== "footnote" && kind !== "endnote"),
           (noteType) => {
-            const cases = (["legacy", "canonical"] as const).flatMap((session) =>
-              (["sup", "span"] as const).flatMap((tag) =>
-                (["footnote", "endnote"] as const).map((kind) => ({ session, tag, kind })),
-              ),
-            );
-            for (const { session, tag, kind } of cases) {
+            const cases = (["legacy", "canonical"] as const)
+              .flatMap((session) =>
+                (["sup", "span"] as const).flatMap((tag) =>
+                  (["footnote", "endnote"] as const).map((kind) => ({ session, tag, kind })),
+                ),
+              )
+              .flatMap(({ session, tag, kind }) => [
+                {
+                  session,
+                  tag,
+                  kind,
+                  pastedType: noteType,
+                  occurrenceId: "8bf05044-8197-4ca1-8207-600164d5dd24",
+                },
+                { session, tag, kind, pastedType: kind, occurrenceId: "" },
+              ]);
+            for (const { session, tag, kind, pastedType, occurrenceId } of cases) {
               const host = document.createElement("div");
               document.body.append(host);
               const source = createEmptyDocument({ initialText: "Before" });
@@ -231,8 +242,8 @@ test(
                 const reference = document.createElement(tag);
                 reference.className = `docx-${kind}-ref`;
                 reference.dataset["id"] = "123";
-                reference.dataset["noteOccurrence"] = "8bf05044-8197-4ca1-8207-600164d5dd24";
-                reference.dataset["noteType"] = noteType;
+                reference.dataset["noteOccurrence"] = occurrenceId;
+                reference.dataset["noteType"] = pastedType;
                 reference.textContent = "123";
                 expect(() => view.pasteHTML(reference.outerHTML)).not.toThrow();
                 expect(view.state.doc).toBe(before.doc);
