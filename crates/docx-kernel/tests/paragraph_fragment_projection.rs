@@ -99,30 +99,40 @@ fn assert_partial(projection: &DocumentProjection) {
     let facts = &projection.structural_facts;
     assert_eq!(
         facts.indentation,
-        StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment)
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment),
+        "fragment indentation evidence must never claim document completeness"
     );
     assert_eq!(
         facts.numbering_hierarchy,
-        StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment)
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment),
+        "fragment numbering_hierarchy evidence must never claim document completeness"
     );
     assert_eq!(
         facts.bookmarks,
-        StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment)
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment),
+        "fragment bookmarks evidence must never claim document completeness"
     );
     assert_eq!(
         facts.internal_references,
-        StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment)
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment),
+        "fragment internal_references evidence must never claim document completeness"
     );
     assert_eq!(
         facts.outline_levels,
-        StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment)
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::ParagraphFragment),
+        "fragment outline_levels evidence must never claim document completeness"
     );
-    assert_eq!(projection.paragraphs.len(), 1);
+    assert_eq!(
+        projection.paragraphs.len(),
+        1,
+        "fragment must contain exactly one paragraph"
+    );
     assert!(
         projection
             .paragraphs
             .iter()
-            .all(|paragraph| paragraph.structure.is_none())
+            .all(|paragraph| paragraph.structure.is_none()),
+        "fragment-local table coordinates cannot identify document locations"
     );
 }
 

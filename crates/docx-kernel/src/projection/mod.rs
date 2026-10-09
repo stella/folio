@@ -438,7 +438,7 @@ where
 {
     limits.maximum_paragraphs = limits.maximum_paragraphs.min(1);
     let mut projection = project_parts(
-        flat_opc::extract_parts(xml, limits)?,
+        &flat_opc::extract_parts(xml, limits)?,
         limits,
         ProjectionOptions::default(),
         allocate_id,
