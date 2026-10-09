@@ -1,3 +1,4 @@
+import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
@@ -441,11 +442,17 @@ export const matchInlineProvenance = ({
           .create({ revisionId: nextRevisionId++, author, date: revisionStamp.date })
           .addToSet(marks);
         const text = state.doc.textBetween(change.live.from, change.live.to);
-        transaction.addMark(
-          change.live.from,
-          change.live.to,
-          deletionType.create({ revisionId: nextRevisionId++, author, date: revisionStamp.date }),
-        );
+        addTrackedDeletionMark({
+          insertionPolicy: "preserve-pending",
+          tr: transaction,
+          from: change.live.from,
+          to: change.live.to,
+          mark: deletionType.create({
+            revisionId: nextRevisionId++,
+            author,
+            date: revisionStamp.date,
+          }),
+        });
         transaction.insert(change.live.to, state.schema.text(text, marks));
         changedTargetBlockIds.add(change.targetBlockId);
         continue;
