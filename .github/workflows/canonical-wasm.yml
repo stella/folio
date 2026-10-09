@@ -71,8 +71,20 @@ jobs:
             exit 1
           fi
           git worktree add --detach "$RUNNER_TEMP/footprint-base" "$BASE_SHA"
+          install_cli() {
+            mapfile -t versions < <(cargo metadata --manifest-path "$1" --locked --format-version 1 --features wasm | jq -r '[.packages[] | select(.name == "wasm-bindgen") | .version] | unique | .[]')
+            if (( ${#versions[@]} != 1 )); then
+              echo "expected exactly one wasm-bindgen version per revision" >&2
+              exit 1
+            fi
+            if [[ "$(wasm-bindgen --version)" != "wasm-bindgen ${versions[0]}" ]]; then
+              cargo install wasm-bindgen-cli --version "${versions[0]}" --locked --force
+            fi
+          }
+          install_cli Cargo.toml
           cargo rustc --locked --release --target wasm32-unknown-unknown --features wasm -p stella-docx-kernel -- -C strip=none
           wasm-bindgen target/wasm32-unknown-unknown/release/stella_docx_kernel.wasm --target web --remove-producers-section --out-dir "$RUNNER_TEMP/footprint-head" --out-name projection
+          install_cli "$RUNNER_TEMP/footprint-base/Cargo.toml"
           cargo rustc --manifest-path "$RUNNER_TEMP/footprint-base/Cargo.toml" --locked --release --target wasm32-unknown-unknown --features wasm -p stella-docx-kernel -- -C strip=none
           wasm-bindgen "$RUNNER_TEMP/footprint-base/target/wasm32-unknown-unknown/release/stella_docx_kernel.wasm" --target web --remove-producers-section --out-dir "$RUNNER_TEMP/footprint-base-output" --out-name projection
           bun scripts/projection-footprint.ts "$RUNNER_TEMP/footprint-base-output/projection_bg.wasm" "$RUNNER_TEMP/footprint-head/projection_bg.wasm" "$RUNNER_TEMP/projection-footprint.json"
