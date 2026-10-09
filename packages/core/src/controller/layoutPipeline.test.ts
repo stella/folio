@@ -676,7 +676,11 @@ describe("runLayoutPipeline", () => {
         content: [makeStyleToggleParagraph()],
       },
     ];
-    const footnoteRef = schema.mark("footnoteRef", { id: "1", noteType: "footnote" });
+    const footnoteRef = schema.mark("footnoteRef", {
+      occurrenceId: "fixture-note",
+      id: "1",
+      noteType: "footnote",
+    });
     const state = EditorState.create({
       doc: schema.node("doc", null, [
         schema.node("paragraph", null, [schema.text("Body"), schema.text("1", [footnoteRef])]),
@@ -738,7 +742,7 @@ describe("runLayoutPipeline", () => {
     // area; the positive-id continuationNotice must not shift the numbering.
     const session = createLayoutSession();
     const footnoteMark = (id: number, noteType: "footnote" | "endnote") =>
-      schema.mark("footnoteRef", { id: String(id), noteType });
+      schema.mark("footnoteRef", { occurrenceId: `fixture-${id}`, id: String(id), noteType });
     const state = EditorState.create({
       doc: schema.node("doc", null, [
         schema.node("paragraph", null, [

@@ -165,7 +165,11 @@ describe("canonical clipboard", () => {
               kind === "comment"
                 ? schema.node("commentReference", { commentId: 7 })
                 : schema.text("7", [
-                    schema.marks["footnoteRef"].create({ id: "7", noteType: kind }),
+                    schema.marks["footnoteRef"].create({
+                      occurrenceId: "03f2b59c-bca8-4830-b10e-c5ce004a3d9d",
+                      id: "7",
+                      noteType: kind,
+                    }),
                   ]);
             const slice = new Slice(Fragment.from(schema.node("paragraph", null, copied)), 1, 1);
             const before = session.document;

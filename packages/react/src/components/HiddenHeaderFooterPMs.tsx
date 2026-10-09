@@ -34,7 +34,7 @@ export type HiddenHeaderFooterPMsProps = {
   document: Document | null;
   experimentalSession?: "canonical";
   getCanonicalApi?: () => HiddenEditorApi | null;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap) => void;
+  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
   styles?: StyleDefinitions | null;
   theme?: Theme | null;
   defaultTabStopTwips?: number | null;
@@ -97,7 +97,7 @@ export const HiddenHeaderFooterPMs = memo(
       getTheme: () => themeRef.current,
       getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
       getExperimentalSession: () => sessionRef.current,
-      onSessionRefusal: (reason, gap) => refusalRef.current?.(reason, gap),
+      onSessionRefusal: (reason, gap, error) => refusalRef.current?.(reason, gap, error),
       onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
         onTransactionRef.current?.(rId, kind, view, docChanged, selectionChanged);
       },

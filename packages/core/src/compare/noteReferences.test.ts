@@ -11,8 +11,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { sourceDocumentOf } from "../ai-edits/snapshot";
+import { expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
 import { fromMarkdown } from "../markdown";
 import { createDocx, ensureParaIds } from "../server";
 import type { Endnote, Footnote, Paragraph, RunContent } from "../types/document";
@@ -99,12 +103,9 @@ const BASE: readonly (readonly Piece[])[] = [
   ["Either party may terminate", { footnote: 40 }, " on notice."],
 ];
 
-const expectExactRedline = async (
-  target: readonly (readonly Piece[])[],
-  targetNotes: Notes = NOTES,
-) => {
-  const base = await buildDocx(BASE);
-  const revised = await buildDocx(target, targetNotes);
+type ExactComparisonPair = { base: ArrayBuffer; revised: ArrayBuffer };
+
+const expectExactComparison = async ({ base, revised }: ExactComparisonPair) => {
   const compared = await compareDocx(base, revised, OPTIONS);
   if (compared.isErr()) throw compared.error;
   const { buffer, changes } = compared.value;
@@ -116,6 +117,25 @@ const expectExactRedline = async (
   // A reference written back as literal `[^1]` or as its bare note id reads
   // as text, not as a reference.
   expect(await referencesOf(await resolved(buffer, "accept"))).toEqual(await referencesOf(revised));
+};
+
+const expectExactRedline = async (
+  target: readonly (readonly Piece[])[],
+  targetNotes: Notes = NOTES,
+) =>
+  expectExactComparison({
+    base: await buildDocx(BASE),
+    revised: await buildDocx(target, targetNotes),
+  });
+
+const importedOccurrenceIds = async (buffer: ArrayBuffer) => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const ids: string[] = [];
+  sourceDocumentOf(reviewer.snapshot()).descendants((node) => {
+    const mark = node.marks.find(({ type }) => type.name === "footnoteRef");
+    if (mark) ids.push(expectFootnoteRefMarkAttrs(mark).occurrenceId);
+  });
+  return new Set(ids);
 };
 
 describe("comparing documents whose note references move", () => {
@@ -161,6 +181,41 @@ describe("comparing documents whose note references move", () => {
 });
 
 describe("comparing documents whose kept paragraphs gain or lose note references", () => {
+  test(
+    "restored references get result-owned identities across document-local import collisions",
+    async () => {
+      await assertProperty(
+        fc.asyncProperty(
+          fc.integer({ min: 0, max: BASE.length - 1 }),
+          fc.array(
+            fc.oneof(
+              fc.constantFrom(...FOOTNOTE_IDS).map((footnote) => ({ footnote })),
+              fc.constantFrom(...ENDNOTE_IDS).map((endnote) => ({ endnote })),
+            ),
+            { minLength: 1, maxLength: 3 },
+          ),
+          async (blockIndex, references) => {
+            // Each independently imported document starts in the same local identity
+            // namespace. Vary which kept paragraph gains both kinds and repeated IDs.
+            const target = BASE.map((pieces, index) =>
+              index === blockIndex
+                ? [...pieces, " Additional references", ...references.flatMap((ref) => [" ", ref])]
+                : pieces,
+            );
+            const base = await buildDocx(BASE);
+            const revised = await buildDocx(target);
+            const baseIds = await importedOccurrenceIds(base);
+            const targetIds = await importedOccurrenceIds(revised);
+            expect([...baseIds].some((id) => targetIds.has(id))).toBe(true);
+            await expectExactComparison({ base, revised });
+          },
+        ),
+        { numRuns: 20 },
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
   test("a kept paragraph gains a footnote reference", async () => {
     await expectExactRedline([
       BASE[0]!,

@@ -125,6 +125,7 @@ export type FontSizeAttrs = {
 
 // @public (undocumented)
 export type FootnoteRefAttrs = {
+    occurrenceId: string;
     id: string | number;
     noteType?: "footnote" | "endnote";
     vertAlign?: "baseline" | "superscript";

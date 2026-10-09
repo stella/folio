@@ -1,3 +1,8 @@
+import {
+  markNoteReferenceReplay,
+  noteReferenceTransactionIssue,
+} from "../prosemirror/noteReferenceOccurrences";
+
 import { restoreCanonicalSelection } from "./canonicalSelection";
 import { createCanonicalSectionPropertiesOperation } from "./canonicalOperations";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
@@ -451,7 +456,7 @@ export type HiddenEditorManagerDeps = {
   getExperimentalSession?: () => "canonical" | undefined;
   getEditingMode?: () => EditorMode;
   getSuggestionAuthor?: () => string;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap) => void;
+  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
   /**
    * Identity of the loaded document as tracked by the adapter's loader: the
    * same value across internal edits (so typing does not trigger an external
@@ -986,7 +991,13 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           lastInputRule = undefined;
           editorSession.session.breakUndoGroup();
         }
+        const modules = deps.getCollaborationModules();
+        if (modules && transaction.getMeta(modules.yProseMirror.ySyncPluginKey) !== undefined)
+          markNoteReferenceReplay(transaction);
         const applied = view.state.applyTransaction(transaction);
+        const noteIssue = noteReferenceTransactionIssue(transaction);
+        if (noteIssue)
+          deps.onSessionRefusal?.(noteIssue.message, CANONICAL_GAP.dispatch, noteIssue);
         if (editorSession.type === "canonical" && !applied.state.doc.eq(view.state.doc)) {
           refuse("A plugin attempted an unclassified canonical document mutation.");
           return;
