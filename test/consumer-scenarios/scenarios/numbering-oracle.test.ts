@@ -3,18 +3,34 @@ import { test } from "node:test";
 
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import { fromMarkdown } from "@stll/folio-core/markdown";
-import { createDocx, parseDocx, paragraph } from "@stll/folio-core/server";
+import {
+  hashFolioAIBlockText,
+  normalizeFolioAIBlockText,
+} from "@stll/folio-core/ai-edits/snapshot";
+import {
+  createDocx,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  paragraph,
+  parseDocx,
+} from "@stll/folio-core/server";
+import type { FolioAIBlockParagraphProperties } from "@stll/folio-core/ai-edits/types";
+
+import { runFlow } from "../support/fuzz.ts";
+import { modelPendingTextEffect } from "../support/pending-text-oracle.ts";
 
 import {
   decimalLevel,
   directNumberedDocument,
   openReviewer,
   packDocument,
-  styleNumberedDocument,
   storiesDocument,
+  emojiDocument,
   toArrayBuffer,
+  styleNumberedDocument,
 } from "../support/documents.ts";
 import {
+  applyChecked,
+  capture,
   compareWithModel,
   expectOperation,
   modelOf,
@@ -97,7 +113,7 @@ test("a paragraph pending deletion has no numbering provenance and none is expec
   assert.ok(pending);
   // The accepted pre-state no longer holds the paragraph; the reviewer lists it blank.
   const accepted = live.filter((row) => row !== pending);
-  const listed = live.map((row) => (row === pending ? { ...row, text: "" } : row));
+  const listed = live.map((row) => (row === pending ? Object.assign({}, row, { text: "" }) : row));
   const facts = await numberingFactsOf(bytes);
   facts.direct.delete(pending.id);
 
@@ -119,7 +135,7 @@ test("a paragraph pending deletion has no numbering provenance and none is expec
   const lacking = await numberingFactsOf(bytes);
   lacking.direct.delete(kept.id);
   const restyleKept = { type: "setBlockParagraphProperties", blockId: kept.id } as const;
-  for (const mode of ["direct", "tracked-changes"] as const) {
+  for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
     const model = modelOf(accepted, listed);
     model.numberingFacts = lacking;
     model.mode = mode;
@@ -128,43 +144,6 @@ test("a paragraph pending deletion has no numbering provenance and none is expec
       /Numbering provenance missing/u,
     );
   }
-
-  // Suggested mode reads the document without its suggestions: a paragraph a
-  // pending suggestion added is not in it, and its numbering is left open.
-  const suggested = modelOf(live);
-  suggested.numberingFacts = lacking;
-  suggested.mode = "suggested";
-  expectOperation(suggested, { ...restyleKept, properties: { styleId: "Heading2" } });
-  assert.deepEqual(suggested.unmodelled, []);
-  const restyled = (listLevel: number | undefined, listReference: Row["listReference"]): Row[] =>
-    live.map((row) =>
-      row.id === kept.id
-        ? {
-            ...row,
-            styleId: "Heading2",
-            kind: "heading",
-            headingLevel: 2,
-            listLevel,
-            listReference,
-          }
-        : row,
-    );
-  for (const result of [restyled(undefined, undefined), restyled(1, { numId: 5, level: 1 })]) {
-    assert.deepEqual(
-      compareWithModel(suggested, result).filter((problem) => /listLevel|numbering/u.test(problem)),
-      [],
-    );
-  }
-  // The rest of the request is still held to.
-  assert.match(
-    compareWithModel(
-      suggested,
-      live.map((row) =>
-        row.id === kept.id ? Object.assign({}, row, { styleId: "Heading3" }) : row,
-      ),
-    ).join("\n"),
-    /styleId/u,
-  );
 });
 
 test("style inheritance folds independent numbering slots and cancellation", async () => {
@@ -204,6 +183,470 @@ test("style inheritance folds independent numbering slots and cancellation", asy
     paragraphNumberingFromSlots({ numId: 5, ilvl: 2 }),
   );
   assert.deepEqual(facts.styles.get("CancelledList"), { kind: "none" });
+});
+
+test(
+  "pending numbering provenance survives insertion and restyling across every editable story",
+  { timeout: 60_000 },
+  async () => {
+    const document = await parseDocx(toArrayBuffer(await storiesDocument()), {
+      preloadFonts: false,
+    });
+    document.package.numbering ??= { abstractNums: [], nums: [] };
+    for (const numId of [900, 901]) {
+      assert.ok(!document.package.numbering.nums.some((entry) => entry.numId === numId));
+      document.package.numbering.abstractNums.push({
+        abstractNumId: numId,
+        levels: [decimalLevel(0, "%1."), decimalLevel(1, "%1.%2.")],
+      });
+      document.package.numbering.nums.push({ numId, abstractNumId: numId });
+    }
+    assert.ok(document.package.styles);
+    document.package.styles.styles.push(
+      {
+        styleId: "OracleList",
+        type: "paragraph",
+        pPr: { numPr: paragraphNumberingFromSlots({ numId: 900, ilvl: 0 }) },
+      },
+      {
+        styleId: "OracleOtherList",
+        type: "paragraph",
+        pPr: { numPr: paragraphNumberingFromSlots({ numId: 901, ilvl: 0 }) },
+      },
+    );
+    const bytes = await packDocument(document);
+    const stories = (await openReviewer(bytes)).listStories();
+    assert.deepEqual(
+      new Set(stories.map(({ handle }) => handle.type)),
+      new Set(["main", "header", "footer", "footnote", "endnote"]),
+    );
+    const cases = [
+      {
+        properties: { numbering: { numId: 901, level: 0 } },
+        direct: paragraphNumberingFromSlots({ numId: 901, ilvl: 0 }),
+      },
+      {
+        properties: { numbering: { numId: 900, level: 1 } },
+        direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
+      },
+      {
+        properties: { numbering: { numId: 900, level: 0 } },
+        direct: undefined,
+      },
+      {
+        properties: { listLevel: 1 },
+        direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
+      },
+      { properties: { numbering: null }, direct: { kind: "none" } },
+      { properties: { styleId: "Heading3" }, direct: undefined },
+    ] as const satisfies readonly {
+      properties: FolioAIBlockParagraphProperties;
+      direct: ReturnType<typeof paragraphNumberingFromSlots>;
+    }[];
+    for (const { handle: story } of stories) {
+      for (const { properties, direct } of cases) {
+        for (const inheritFormatting of [true, false]) {
+          const reviewer = await openReviewer(bytes);
+          const anchor = rowsOf(reviewer, story).find((row) => row.text.length > 0);
+          assert.ok(anchor);
+          const initial = reviewer.applyDocumentOperationsToStory({
+            story,
+            batch: {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              operations: [
+                {
+                  id: "style",
+                  type: "setBlockParagraphProperties",
+                  blockId: anchor.id,
+                  properties: { styleId: "OracleList" },
+                },
+              ],
+              mode: "direct",
+            },
+          });
+          assert.equal(initial.applied.length, 1);
+          const pending = reviewer.applyDocumentOperationsToStory({
+            story,
+            batch: {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              operations: [
+                {
+                  id: "pending",
+                  type: "setBlockParagraphProperties",
+                  blockId: anchor.id,
+                  properties,
+                },
+              ],
+              mode: "suggested",
+            },
+          });
+          assert.equal(pending.applied.length, 1);
+          const pre = await capture(reviewer, "suggested", { story });
+          assert.equal(pre.numberingSource.type, "live");
+          if (pre.numberingSource.type !== "live") throw new Error("Expected live provenance");
+          const facts = pre.numberingSource.facts;
+          assert.equal(facts.styles.get("Heading2"), undefined, "Requested heading is unnumbered");
+          assert.deepEqual(
+            facts.styles.get("OracleList"),
+            paragraphNumberingFromSlots({ numId: 900, ilvl: 0 }),
+          );
+          for (const row of pre.rows.filter((candidate) => candidate.kind !== "diagnostic"))
+            assert.ok(facts.direct.has(row.id));
+          assert.deepEqual(facts.direct.get(anchor.id), direct);
+          const model = modelOf(pre.rows);
+          model.numberingFacts = facts;
+          model.mode = "suggested";
+          const operation = {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: "Inserted requested heading",
+            styleId: "Heading2",
+            inheritFormatting,
+          } as const;
+          expectOperation(model, operation);
+          const result = reviewer.applyDocumentOperationsToStory({
+            story,
+            batch: {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              operations: [operation],
+              mode: "suggested",
+            },
+          });
+          assert.equal(result.applied.length, 1);
+          assert.deepEqual(result.issues, []);
+          const actual = rowsOf(reviewer, story);
+          assert.deepEqual(compareWithModel(model, actual), []);
+          const inserted = actual.find((row) => row.text === operation.text);
+          assert.ok(inserted);
+          for (const corrupted of [
+            { listLevel: (inserted.listLevel ?? 0) + 1 },
+            {
+              listReference: {
+                numId: inserted.listReference?.numId === 900 ? 901 : 900,
+                level: inserted.listReference?.level ?? 0,
+              },
+            },
+          ]) {
+            assert.match(
+              compareWithModel(
+                model,
+                actual.map((row) =>
+                  row.id === inserted.id ? Object.assign({}, row, corrupted) : row,
+                ),
+              ).join("\n"),
+              /listLevel|numbering/u,
+            );
+          }
+          const beforeStyle = await capture(reviewer, "suggested", { story });
+          assert.equal(beforeStyle.numberingSource.type, "live");
+          if (beforeStyle.numberingSource.type !== "live")
+            throw new Error("Expected live provenance");
+          const styleModel = modelOf(beforeStyle.rows);
+          styleModel.numberingFacts = beforeStyle.numberingSource.facts;
+          styleModel.mode = "suggested";
+          const styleOperation = {
+            id: "restyle",
+            type: "setBlockParagraphProperties",
+            blockId: anchor.id,
+            properties: { styleId: "OracleOtherList" },
+          } as const;
+          expectOperation(styleModel, styleOperation);
+          const restyled = reviewer.applyDocumentOperationsToStory({
+            story,
+            batch: {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              operations: [styleOperation],
+              mode: "suggested",
+            },
+          });
+          assert.equal(restyled.applied.length, 1);
+          assert.deepEqual(restyled.issues, []);
+          assert.deepEqual(compareWithModel(styleModel, rowsOf(reviewer, story)), []);
+          const changed = rowsOf(reviewer, story).find((row) => row.id === anchor.id);
+          assert.ok(changed);
+          assert.deepEqual(
+            changed.listReference,
+            direct?.kind === "none"
+              ? undefined
+              : {
+                  numId: direct?.kind === "reference" ? direct.numId : 901,
+                  level: direct?.ilvl ?? 0,
+                },
+          );
+          if (direct?.kind === "reference") {
+            assert.match(
+              compareWithModel(
+                styleModel,
+                rowsOf(reviewer, story).map((row) =>
+                  row.id === anchor.id
+                    ? Object.assign({}, row, {
+                        listReference: {
+                          numId: direct.numId === 900 ? 901 : 900,
+                          level: direct.ilvl ?? 0,
+                        },
+                      })
+                    : row,
+                ),
+              ).join("\n"),
+              /numbering/u,
+            );
+          }
+        }
+      }
+    }
+  },
+);
+
+test("direct heading insertion beside a newly authored bullet keeps its direct numbering", async () => {
+  const reviewer = await openReviewer(await emojiDocument());
+  const anchor = rowsOf(reviewer).find((row) => row.text.length > 0);
+  assert.ok(anchor);
+  const first = await applyChecked(
+    reviewer,
+    [
+      {
+        type: "insertAfterBlock",
+        blockId: anchor.id,
+        text: "A second-level heading.",
+        styleId: "Heading2",
+      },
+      {
+        type: "insertAfterBlock",
+        blockId: anchor.id,
+        text: "A new bullet.",
+        numbering: { start: "new", kind: "bullet" },
+      },
+    ],
+    "direct",
+    "legacy heading and bullet batch",
+  );
+  assert.equal(first.applied.length, 2);
+  const bullet = rowsOf(reviewer).find((row) => row.text === "A new bullet.");
+  assert.ok(bullet);
+  const second = await applyChecked(
+    reviewer,
+    [
+      {
+        type: "insertAfterBlock",
+        blockId: bullet.id,
+        text: "Period buyer clause supplier supplier payment written.",
+        styleId: "Heading2",
+      },
+    ],
+    "direct",
+    "legacy direct-numbered heading insertion",
+  );
+  assert.equal(second.applied.length, 1);
+});
+
+type PendingRecord = ReturnType<
+  Awaited<ReturnType<typeof openReviewer>>["exportPendingSuggestions"]
+>[number];
+
+/** Text-only expectations for the pinned flow, independent of operation application. */
+const expectedPendingLoads = (
+  records: readonly PendingRecord[],
+  savedText: ReadonlyMap<string, string>,
+) => {
+  const textByBlock = new Map(savedText);
+  return records.map(({ suggestionId, anchor, operation }) => {
+    const text = textByBlock.get(anchor.blockId);
+    if (text === undefined)
+      return { status: "stale", suggestionId, reason: "missingAnchor" } as const;
+    if (hashFolioAIBlockText(normalizeFolioAIBlockText(text)) !== anchor.originalTextHash)
+      return { status: "stale", suggestionId, reason: "textChanged" } as const;
+    if (
+      anchor.startOffset !== undefined &&
+      anchor.endOffset !== undefined &&
+      anchor.selectedTextHash !== undefined &&
+      hashFolioAIBlockText(text.slice(anchor.startOffset, anchor.endOffset)) !==
+        anchor.selectedTextHash
+    )
+      return { status: "stale", suggestionId, reason: "textChanged" } as const;
+    modelPendingTextEffect(operation, textByBlock);
+    return { status: "restaged", suggestionId } as const;
+  });
+};
+
+test(
+  "suggested collision numbering survives host persistence and tracked DOCX save",
+  { timeout: 30_000 },
+  async () => {
+    let checked = false;
+    await runFlow(1873083933, 16, "collisions", {
+      generation: "targeted",
+      checks: [
+        {
+          name: "numbered proposal persistence",
+          check: async ({ flow, index, saved }) => {
+            if (index !== 14) return;
+            checked = true;
+            const text = "Delivery payment clause.";
+            const expected = { numId: 2, level: 0 };
+            const inserted = rowsOf(flow.reviewer).find((row) => row.text === text);
+            assert.ok(inserted);
+            assert.deepEqual(inserted.listReference, expected);
+            const records = flow.reviewer.exportPendingSuggestions();
+            const proposal = records.find(
+              ({ operation }) =>
+                (operation.type === "insertAfterBlock" || operation.type === "insertBeforeBlock") &&
+                operation.text === text,
+            );
+            assert.ok(proposal);
+            const { bytes } = await saved();
+            const reopened = await openReviewer(bytes);
+            // Proposals are host-owned, outside DOCX until explicitly accepted.
+            assert.ok(!rowsOf(reopened).some((row) => row.text === text));
+            const savedText = new Map(
+              reopened.snapshot().blocks.map((block) => [block.id, block.text]),
+            );
+            const expectedLoads = expectedPendingLoads(records, savedText);
+            const loaded = reopened.loadPendingSuggestions(JSON.parse(JSON.stringify(records)));
+            assert.deepEqual(loaded, expectedLoads);
+            // Pin both sides of sequential replay: a later anchor is stale, while
+            // the second replacement depends on the first replacement's text effect.
+            for (const pinned of [
+              { status: "stale", suggestionId: "op-1", reason: "textChanged" },
+              { status: "restaged", suggestionId: "s-2" },
+            ] as const) {
+              assert.deepEqual(
+                expectedLoads.find(({ suggestionId }) => suggestionId === pinned.suggestionId),
+                pinned,
+              );
+              assert.deepEqual(
+                loaded.find(({ suggestionId }) => suggestionId === pinned.suggestionId),
+                pinned,
+              );
+            }
+            // Earlier proposals may change this anchor during replay. Stage the success
+            // control against the saved baseline instead of requiring a stale record to load.
+            // The live anchor inherits list numbering only through a pending deletion
+            // that the saved baseline does not contain, so anchor the control on the
+            // nearest saved paragraph that carries the same numbering.
+            const { operation } = proposal;
+            assert.ok(operation.type === "insertAfterBlock");
+            const savedRows = rowsOf(await openReviewer(bytes));
+            const liveAnchorAt = savedRows.findIndex((row) => row.id === operation.blockId);
+            assert.ok(liveAnchorAt >= 0, "The live anchor exists in the saved baseline");
+            const numberedAnchor = savedRows
+              .slice(0, liveAnchorAt + 1)
+              .findLast((row) => row.listReference !== undefined);
+            assert.ok(numberedAnchor, "The saved baseline keeps a numbered anchor");
+            assert.deepEqual(numberedAnchor.listReference, expected);
+            const staging = await openReviewer(bytes);
+            const staged = await applyChecked(
+              staging,
+              [
+                {
+                  ...operation,
+                  id: "saved-heading-roundtrip",
+                  blockId: numberedAnchor.id,
+                },
+              ],
+              "suggested",
+              "heading proposal against saved baseline",
+            );
+            assert.equal(staged.applied.length, 1);
+            assert.deepEqual(
+              rowsOf(staging).find((row) => row.text === text)?.listReference,
+              expected,
+              "Staging on the saved baseline inherits the anchor's numbering",
+            );
+            const freshRecords = staging.exportPendingSuggestions();
+            assert.equal(freshRecords.length, 1);
+            const freshProposal = freshRecords.at(0);
+            assert.ok(freshProposal);
+            const expectedFreshLoads = expectedPendingLoads(freshRecords, savedText);
+            assert.deepEqual(expectedFreshLoads, [
+              { status: "restaged", suggestionId: freshProposal.suggestionId },
+            ]);
+            // Positive control: change the saved paragraph itself, not a load result.
+            const changedDocument = await parseDocx(toArrayBuffer(bytes), { preloadFonts: false });
+            const changedParagraph = changedDocument.package.document.content.find(
+              (block) => block.type === "paragraph" && block.paraId === freshProposal.anchor.paraId,
+            );
+            assert.ok(changedParagraph?.type === "paragraph");
+            changedParagraph.content = [
+              { type: "run", content: [{ type: "text", text: "Changed saved anchor." }] },
+            ];
+            const changed = await openReviewer(await packDocument(changedDocument));
+            const changedText = new Map(
+              changed.snapshot().blocks.map((block) => [block.id, block.text]),
+            );
+            const staleControl = expectedPendingLoads(freshRecords, changedText);
+            assert.deepEqual(staleControl, [
+              { status: "stale", suggestionId: freshProposal.suggestionId, reason: "textChanged" },
+            ]);
+            assert.deepEqual(changed.loadPendingSuggestions(freshRecords), staleControl);
+            const restaged = await openReviewer(bytes);
+            assert.deepEqual(
+              restaged.loadPendingSuggestions(JSON.parse(JSON.stringify(freshRecords))),
+              expectedFreshLoads,
+            );
+            const restored = rowsOf(restaged).find((row) => row.text === text);
+            assert.ok(restored);
+            assert.deepEqual(restored.listReference, expected);
+            assert.equal(restaged.acceptSuggestion(freshProposal.suggestionId), true);
+            const tracked = await openReviewer(new Uint8Array(await restaged.toBuffer()));
+            const persisted = rowsOf(tracked).find((row) => row.text === text);
+            assert.ok(persisted);
+            assert.deepEqual(persisted.listReference, expected);
+            assert.ok(tracked.getChanges().some((change) => change.text.includes(text)));
+            tracked.acceptAll();
+            const accepted = await openReviewer(new Uint8Array(await tracked.toBuffer()));
+            const authored = rowsOf(accepted).find((row) => row.text === text);
+            assert.ok(authored);
+            assert.deepEqual(authored.listReference, expected);
+          },
+        },
+      ],
+    });
+    assert.equal(checked, true, "The generated seed must reach its reported insertion");
+  },
+);
+
+test("a pending inserted anchor has complete live numbering provenance", async () => {
+  const reviewer = await openReviewer(await directNumberedDocument());
+  const anchor = rowsOf(reviewer).find((row) => row.text === "Unnumbered body text.");
+  assert.ok(anchor);
+  const staged = await applyChecked(
+    reviewer,
+    [
+      {
+        type: "insertAfterBlock",
+        blockId: anchor.id,
+        text: "Pending numbered anchor",
+        numbering: { numId: 7, level: 0 },
+      },
+    ],
+    "suggested",
+    "stage new numbered paragraph",
+  );
+  assert.equal(staged.applied.length, 1);
+  const pending = rowsOf(reviewer).find((row) => row.text === "Pending numbered anchor");
+  assert.ok(pending);
+  const pre = await capture(reviewer, "suggested");
+  assert.equal(pre.numberingSource.type, "live");
+  if (pre.numberingSource.type !== "live") throw new Error("Expected live provenance");
+  assert.deepEqual(
+    pre.numberingSource.facts.direct.get(pending.id),
+    paragraphNumberingFromSlots({ numId: 7, ilvl: 0 }),
+  );
+  const inserted = await applyChecked(
+    reviewer,
+    [
+      {
+        type: "insertAfterBlock",
+        blockId: pending.id,
+        text: "Heading after proposal",
+        styleId: "Heading2",
+      },
+    ],
+    "suggested",
+    "inherit proposal numbering",
+  );
+  assert.equal(inserted.applied.length, 1);
 });
 
 test("package numbering provenance covers allocated paragraph identities in every editable story", async () => {
