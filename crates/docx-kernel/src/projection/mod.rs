@@ -252,6 +252,8 @@ where
     project_parts(parts, limits, options, allocate_id)
 }
 
+// Both package entry points must share dependency preparation and projection.
+#[inline(never)]
 fn project_parts<F>(
     parts: DocumentParts,
     limits: DocxLimits,

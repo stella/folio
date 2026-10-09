@@ -56,6 +56,7 @@ impl Default for DocumentRelationshipPaths {
     }
 }
 
+#[inline(never)]
 pub(super) fn main_document_path(xml: &[u8]) -> Result<Vec<u8>, ProjectionError> {
     let mut reader = NsReader::from_reader(xml);
     reader.config_mut().check_end_names = true;
@@ -110,6 +111,7 @@ pub(super) fn document_relationships_path(
     Ok(format!("{prefix}_rels/{file_name}.rels").into_bytes())
 }
 
+#[inline(never)]
 pub(super) fn document_relationship_paths(
     xml: &[u8],
     document_path: &[u8],
