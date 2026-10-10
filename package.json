@@ -29,6 +29,7 @@
     "check:lockfile-versions": "bun scripts/check-lockfile-workspace-versions.ts",
     "check:lockfile-overrides": "bun scripts/check-lockfile-overrides.ts",
     "check:dedupe": "bun dedupe --check",
+    "check:toolchain": "stll-toolchain-check",
     "check:quarantine-excludes": "bun scripts/check-quarantine-excludes.ts",
     "check:normalization-warnings": "bun scripts/check-normalization-warnings.ts",
     "check:canonical-cutover": "bun scripts/check-canonical-cutover.ts",
@@ -152,7 +153,7 @@
     "@playwright/test": "^1.61.1",
     "@rolldown/plugin-babel": "^0.2.2",
     "@stll/folio-core": "workspace:*",
-    "@stll/oxlint-config": "0.4.0",
+    "@stll/oxlint-config": "0.8.0",
     "@types/babel__core": "^7.20.5",
     "@types/node": "^26.2.0",
     "@types/pngjs": "6.0.5",
@@ -164,7 +165,7 @@
     "babel-plugin-react-compiler": "^1.0.0",
     "better-result": "3.0.1",
     "binaryen": "131.0.0",
-    "bun-types": "1.4.1",
+    "bun-types": "1.4.3",
     "dependency-cruiser": "18.2.0",
     "fast-check": "^4.9.0",
     "fast-xml-parser": "^5.10.1",
@@ -204,5 +205,5 @@
     "undici": "8.10.2",
     "valibot": "1.5.0"
   },
-  "packageManager": "bun@1.4.1"
+  "packageManager": "bun@1.4.3"
 }
