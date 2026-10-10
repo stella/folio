@@ -306,6 +306,7 @@ import { getBuiltinTableStyle } from "./ui/table-styles";
 import type { TableStylePreset } from "./ui/table-styles";
 import type { TableAction } from "@stll/folio-core/utils/tableOperations";
 import { Tooltip } from "./ui/Tooltip";
+import { canonicalJson } from "@stll/folio-core/utils/canonicalJson";
 import { useFolioComments } from "./useFolioComments";
 
 /** No headings to track while the outline is not shown. */
@@ -356,7 +357,7 @@ type LiveDocumentOperationUndoEntry = {
   undoHandle: FolioDocumentOperationUndoHandle;
   afterState: EditorView["state"];
   commentsBefore: Comment[];
-  commentsAfter: Comment[];
+  commentsAfterJson: string;
 };
 
 let documentOperationUndoHandleCursor = Date.now();
@@ -644,11 +645,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   });
   const [outlineHeadings, setHeadingInfos] = useState<HeadingInfo[]>([]);
 
-  const [, setTrackedChanges] = useState<TrackedChangeEntry[]>([]);
+  const [, setTrackedChangeEntries] = useState<TrackedChangeEntry[]>([]);
   // Mirrors the tracked-change entries so the sidebar accept/reject handlers
   // can resolve a specific `revisionId` from a (from, to) range without
   // subscribing to the state value (avoids extra re-renders / dep churn).
   const trackedChangesRef = useRef<TrackedChangeEntry[]>([]);
+  const setTrackedChanges = useCallback((entries: TrackedChangeEntry[]) => {
+    trackedChangesRef.current = entries;
+    setTrackedChangeEntries(entries);
+  }, []);
   const [anchorPositions, setAnchorPositions] =
     useState<Map<string, number>>(EMPTY_ANCHOR_POSITIONS);
 
@@ -726,9 +731,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         merged.push({ ...entry });
       }
     }
-    trackedChangesRef.current = merged;
     setTrackedChanges(merged);
-  }, []);
+  }, [setTrackedChanges]);
 
   // Clean up debounce timers on unmount
   useEffect(
@@ -1441,6 +1445,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       setAddCommentYPosition,
       setCommentSelectionRange,
       setComments,
+      setTrackedChanges,
       setFloatingCommentBtn,
       setHfEditPosition,
       setIsAddingComment,
@@ -3420,7 +3425,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         if (
           existingUndoEntry &&
           (!view.state.doc.eq(existingUndoEntry.afterState.doc) ||
-            commentsRef.current !== existingUndoEntry.commentsAfter)
+            canonicalJson(commentsRef.current) !== existingUndoEntry.commentsAfterJson)
         ) {
           documentOperationUndoEntriesRef.current.length = 0;
         }
@@ -3462,16 +3467,18 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
 
         const batchComments = appliedOperationComments(createdComments, result.applied);
-        if (batchComments.length > 0) {
-          updateComments((currentComments) => [...currentComments, ...batchComments]);
-        }
+        const commentsAfter =
+          batchComments.length > 0
+            ? [...commentsRef.current, ...batchComments]
+            : commentsRef.current;
+        if (batchComments.length > 0) replaceComments(commentsAfter);
 
         if (result.undoHandle !== null) {
           documentOperationUndoEntriesRef.current.push({
             undoHandle: result.undoHandle,
             afterState: view.state,
             commentsBefore,
-            commentsAfter: commentsRef.current,
+            commentsAfterJson: canonicalJson(commentsAfter),
           });
         }
 
@@ -3499,7 +3506,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
         if (
           !view.state.doc.eq(entry.afterState.doc) ||
-          commentsRef.current !== entry.commentsAfter
+          canonicalJson(commentsRef.current) !== entry.commentsAfterJson
         ) {
           return { status: "rejected", undoHandle, reason: "documentChanged" };
         }
