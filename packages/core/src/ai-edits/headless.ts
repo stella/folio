@@ -1265,7 +1265,8 @@ export class FolioDocxReviewer {
         }
       }
     }
-    let styleNumberingReferenceMap = numberingReferenceMap;
+    // Without a numbering import, style definitions retain their source references.
+    let styleNumberingReferenceMap = numberingReferenceMap ?? new Map<number, number>();
     if (numberingReferenceMap !== undefined) {
       const references = styleClosureNumberingReferences(sourcePackage.styles, [
         ...referencedStyleIds,
@@ -1283,9 +1284,7 @@ export class FolioDocxReviewer {
       }
     }
     const result = importReferencedStyleDefinitions({
-      ...(styleNumberingReferenceMap === undefined
-        ? {}
-        : { numberingReferenceMap: styleNumberingReferenceMap }),
+      numberingReferenceMap: styleNumberingReferenceMap,
       sourceStyles: sourcePackage.styles,
       destinationStyles,
       sourceTheme: sourcePackage.theme,
