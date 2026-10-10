@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 
@@ -380,3 +380,108 @@ test("a rejected background renewal surfaces its error", () => {
   expect(result.exitCode).not.toBe(0);
   expect(result.stderr.toString()).toContain("renewal failed");
 });
+
+test.each(["initial", "poll", "watcher"] as const)(
+  "a rejected flush check surfaces from the %s invocation",
+  async (invocation) => {
+    const requestId = "rejected-check";
+    const token = "editor-token";
+    const requestPath = flushRequestPathFor(file, requestId);
+    await writeFile(
+      requestPath,
+      JSON.stringify({
+        id: requestId,
+        leaseToken: token,
+        owner: "folio-cli",
+        pid: process.pid,
+        host: hostname(),
+        txId: "flush-check-test",
+        requestedAt: new Date().toISOString(),
+        deadline: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+    const modulePath = path.join(import.meta.dir, "editor-lease.ts");
+    const source = `
+      import { mock } from "bun:test";
+      import * as fs from "node:fs";
+      import * as promises from "node:fs/promises";
+      process.on("uncaughtException", (error) => {
+        console.error("surfaced:" + error.message);
+        process.exit(23);
+      });
+      // A bare rejection is deliberately distinct from the explicit error path.
+      process.on("unhandledRejection", () => process.exit(0));
+      const invocation = ${JSON.stringify(invocation)};
+      const requestName = ${JSON.stringify(path.basename(requestPath))};
+      let reads = 0;
+      let watcherCallback;
+      let pollCallback;
+      const watcher = { on() { return this; }, close() {} };
+      mock.module("node:fs", () => ({
+        ...fs,
+        watch: (_directory, callback) => { watcherCallback = callback; return watcher; },
+      }));
+      mock.module("node:fs/promises", () => ({
+        ...promises,
+        readdir: async () => invocation === "initial" || reads++ > 0 ? [requestName] : [],
+      }));
+      globalThis.setInterval = (callback) => {
+        pollCallback = callback;
+        return { unref() {} };
+      };
+      globalThis.clearInterval = () => {};
+      const { watchFlushRequests } = await import(${JSON.stringify(modulePath)});
+      watchFlushRequests({
+        documentPath: ${JSON.stringify(file)},
+        token: ${JSON.stringify(token)},
+        onRequest: () => { throw new Error("flush check failed"); },
+      });
+      // The empty initial check settles before a callback starts its check.
+      await new Promise(setImmediate);
+      if (invocation === "poll") pollCallback();
+      if (invocation === "watcher") watcherCallback("rename", requestName);
+      setTimeout(() => process.exit(0), 1000);
+    `;
+    const result = Bun.spawnSync([process.execPath, "--eval", source], {
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 3000,
+    });
+    expect(result.exitCode).toBe(23);
+    expect(result.stderr.toString()).toContain("surfaced:flush check failed");
+
+    // Prove the same scenario rejects removal of its specific catch handler.
+    const handlers = {
+      initial: "  check().catch(surfaceBackgroundError);\n  return {",
+      poll: "  const timer = setInterval(() => {\n    check().catch(surfaceBackgroundError);",
+      watcher:
+        "if (name === null || name.startsWith(prefix)) check().catch(surfaceBackgroundError);",
+    };
+    const moduleSource = await readFile(modulePath, "utf8");
+    const handler = handlers[invocation];
+    expect(moduleSource).toContain(handler);
+    const mutantPath = path.join(
+      import.meta.dir,
+      `.flush-check-mutant-${process.pid}-${invocation}.ts`,
+    );
+    try {
+      await writeFile(
+        mutantPath,
+        moduleSource.replace(handler, handler.replace(".catch(surfaceBackgroundError)", "")),
+      );
+      const mutant = Bun.spawnSync(
+        [
+          process.execPath,
+          "--eval",
+          source.replace(JSON.stringify(modulePath), JSON.stringify(mutantPath)),
+        ],
+        { stdout: "pipe", stderr: "pipe", timeout: 3000 },
+      );
+      // Without the handler, the child takes the distinct unhandled-rejection path.
+      expect(mutant.exitCode).toBe(0);
+      expect(mutant.stderr.toString()).not.toContain("surfaced:flush check failed");
+    } finally {
+      await rm(mutantPath, { force: true });
+    }
+  },
+);
