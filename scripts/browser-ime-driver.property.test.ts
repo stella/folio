@@ -47,7 +47,10 @@ test("generated IME lifecycles deliver every update and terminate native composi
           : [{ kind: "cancel" }, { kind: "finish", completion: action.completion }],
       );
     }),
-    { numRuns: 100 },
+    {
+      numRuns: 100,
+      id: "generated IME lifecycles deliver every update and terminate native composition",
+    },
   );
 });
 

@@ -160,7 +160,10 @@ test(
           expect(reopened?.directIndentation).toEqual(live?.directIndentation);
         },
       ),
-      { numRuns: 18 },
+      {
+        numRuns: 18,
+        id: "zero numbering defaults stay absent from direct indentation across a style edit and save",
+      },
     );
   },
   propertyTestTimeout(30_000),

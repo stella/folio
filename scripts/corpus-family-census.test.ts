@@ -138,7 +138,7 @@ describe("mergeFamilyCensuses", () => {
           expect(merged.costs).toHaveLength(count);
         },
       ),
-      { numRuns: 30 },
+      { numRuns: 30, id: "interleaved shards preserve every file cost in canonical order" },
     );
   });
 

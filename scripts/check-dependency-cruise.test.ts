@@ -28,6 +28,7 @@ describe("dependency-cruiser coverage", () => {
           count >= MINIMUM_CRUISED_MODULES,
         );
       }),
+      { id: "rejects every count below the floor and accepts every count at or above it" },
     );
   });
 

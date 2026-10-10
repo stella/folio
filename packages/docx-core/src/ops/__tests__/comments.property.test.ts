@@ -168,7 +168,11 @@ test("generated comment histories preserve exact state, declaration order, opaqu
         );
       },
     ),
-    { seed: 20261004, numRuns: 50 },
+    {
+      seed: 20261004,
+      numRuns: 50,
+      id: "generated comment histories preserve exact state, declaration order, opaque markup and owned anchors",
+    },
   );
   expect([...seen].toSorted()).toEqual(Object.keys(COMMANDS).toSorted());
 });
@@ -256,7 +260,11 @@ test.each([...PARAGRAPH_MARK_CHANGE_KINDS, "properties" as const])(
           );
         },
       ),
-      { seed: 20261008, numRuns: 30 },
+      {
+        seed: 20261008,
+        numRuns: 30,
+        id: "generated paragraph revision comments preserve exact history for %s",
+      },
     );
   },
 );
@@ -294,7 +302,11 @@ test("every comment package-operation generator exercises its exact inverse in e
         }
       }
     }),
-    { seed: 20261005, numRuns: 8 },
+    {
+      seed: 20261005,
+      numRuns: 8,
+      id: "every comment package-operation generator exercises its exact inverse in every story",
+    },
   );
   expect([...observed].toSorted()).toEqual(Object.keys(COMMANDS).toSorted());
 });
@@ -430,7 +442,11 @@ test("generated text and revision histories retain live comment ownership and ex
         }
       },
     ),
-    { seed: 20261006, numRuns: 40 },
+    {
+      seed: 20261006,
+      numRuns: 40,
+      id: "generated text and revision histories retain live comment ownership and exact reversible state",
+    },
   );
 });
 
@@ -501,7 +517,12 @@ test("generated interior source-shaped comment histories undo and redo the compl
         expect(current).toStrictEqual(final);
       },
     ),
-    { testFile: import.meta.path, seed: 20261007, numRuns: 60 },
+    {
+      testFile: import.meta.path,
+      seed: 20261007,
+      numRuns: 60,
+      id: "generated interior source-shaped comment histories undo and redo the complete journal",
+    },
   );
 });
 
@@ -544,7 +565,12 @@ test("generated comment inverses refuse changes to unowned run fields", () => {
         document.package.document.content.at(1),
       );
     }),
-    { testFile: import.meta.path, seed: 20261008, numRuns: 40 },
+    {
+      testFile: import.meta.path,
+      seed: 20261008,
+      numRuns: 40,
+      id: "generated comment inverses refuse changes to unowned run fields",
+    },
   );
 });
 
@@ -618,7 +644,12 @@ test("generated tracked and controlled comment anchors allocate exact package-ow
         for (const id of newIds.control ?? []) expect(id).toBeGreaterThan(400);
       },
     ),
-    { testFile: import.meta.path, seed: 20261009, numRuns: 24 },
+    {
+      testFile: import.meta.path,
+      seed: 20261009,
+      numRuns: 24,
+      id: "generated tracked and controlled comment anchors allocate exact package-owned cut pools",
+    },
   );
 });
 

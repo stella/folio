@@ -91,7 +91,10 @@ test(
           }
         },
       ),
-      { numRuns: 12 },
+      {
+        numRuns: 12,
+        id: "pasted vertical spans resolve like direct replacement across table sizes",
+      },
     );
   },
   propertyTestTimeout(20_000),

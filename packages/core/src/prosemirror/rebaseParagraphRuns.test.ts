@@ -129,7 +129,10 @@ test(
           check(toProseDoc(reopened));
         },
       ),
-      { numRuns: 24 },
+      {
+        numRuns: 24,
+        id: "style commands preserve hyperlink character cascades and authored overrides across save",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -175,7 +178,10 @@ test(
         expect(tr.steps).toHaveLength(0);
         expect(tr.doc).toBe(state.doc);
       }),
-      { numRuns: 32 },
+      {
+        numRuns: 32,
+        id: "an unchanged cascade preserves run carriers and their authored provenance",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -233,7 +239,10 @@ test(
           expect(expectFontSizeMarkAttrs(size).size).toBe(operation === "applyStyle" ? 32 : 22);
         },
       ),
-      { numRuns: 27 },
+      {
+        numRuns: 27,
+        id: "paragraph style commands carry pending cursor formatting through changed and equal cascades",
+      },
     );
   },
   propertyTestTimeout(30_000),

@@ -157,7 +157,10 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
           assertExactModel(reopenedRun.propertyChanges?.at(0)?.boundaryJoins, boundaryJoins);
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "generated seam metadata survives ${wordNamespace} with arbitrary bound prefixes",
+      },
     );
   });
 }
@@ -479,7 +482,10 @@ test(
           );
         },
       ),
-      { numRuns: 80 },
+      {
+        numRuns: 80,
+        id: "generated nested lifting refuses provenance and unsplit revisions retain it",
+      },
     );
   },
   propertyTestTimeout(10_000),

@@ -263,6 +263,9 @@ test("random formatting and text edit sequences preserve authored paragraph defa
         }
       },
     ),
-    { numRuns: 20 },
+    {
+      numRuns: 20,
+      id: "random formatting and text edit sequences preserve authored paragraph defaults through save and reopen",
+    },
   );
 });

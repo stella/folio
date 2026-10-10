@@ -88,7 +88,10 @@ describe("mergeDocumentContent", () => {
             }
           },
         ),
-        { numRuns: 80 },
+        {
+          numRuns: 80,
+          id: "repeated merges keep numbering unique and bounded across loaded id ranges",
+        },
       );
     },
     propertyTestTimeout(10_000),

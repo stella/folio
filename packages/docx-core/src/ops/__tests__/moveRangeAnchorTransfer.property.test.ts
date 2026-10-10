@@ -258,6 +258,10 @@ test("generated mixed range transfers retain one original pair through suggested
       }),
       check,
     ),
-    { seed: 197, numRuns: 60 },
+    {
+      seed: 197,
+      numRuns: 60,
+      id: "generated mixed range transfers retain one original pair through suggested review and history",
+    },
   );
 });

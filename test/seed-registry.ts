@@ -8,7 +8,7 @@ import type { PinnedSeed } from "./property-testing";
 /**
  * One flat JSON file per test file, named encodeURIComponent(repo-relative path)
  * + `.json`. Decoding and re-encoding must match exactly: `%2F` is canonical,
- * alternate escape spellings are refused. Each object maps test titles to seeds.
+ * alternate escape spellings are refused. Each object maps explicit property IDs to seeds.
  */
 export const PROPERTY_SEEDS_FILE = "test/property-seeds";
 const LEGACY_FILE = "test/property-seeds.json";

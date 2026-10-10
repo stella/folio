@@ -167,6 +167,9 @@ test("split paragraphs retain authored run defaults through typed and pasted con
         expect(tokens(reopened.doc)).toEqual(tokens(view.state.doc));
       },
     ),
-    { numRuns: 30 },
+    {
+      numRuns: 30,
+      id: "split paragraphs retain authored run defaults through typed and pasted content",
+    },
   );
 });

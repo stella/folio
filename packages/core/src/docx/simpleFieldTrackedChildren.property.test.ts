@@ -272,7 +272,7 @@ test(
           ).toEqual(serializedRevisions);
         },
       ),
-      { numRuns: 40 },
+      { numRuns: 40, id: "simple field child revision ownership survives editor save and reopen" },
     );
   },
   propertyTestTimeout(30_000),
@@ -422,7 +422,7 @@ test(
           }
         },
       ),
-      { numRuns: 20 },
+      { numRuns: 20, id: "simple field non-text results survive resolution and save reopen" },
     );
   },
   propertyTestTimeout(30_000),

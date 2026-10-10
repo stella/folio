@@ -239,7 +239,11 @@ test("generated canonical histories save the model and preserve every block outs
         );
       },
     ),
-    { seed: 20261004, numRuns: 12 },
+    {
+      seed: 20261004,
+      numRuns: 12,
+      id: "generated canonical histories save the model and preserve every block outside cumulative touched ids",
+    },
   );
 });
 
@@ -325,7 +329,12 @@ test("generated browser-shaped paragraph splits save strict XML through history 
       expect([...exercisedShapes].sort()).toEqual([...STRUCTURAL_SAVE_SHAPES].sort());
       expect([...exercisedModes].sort()).toEqual([...STRUCTURAL_SAVE_MODES].sort());
     }),
-    { seed: 20261023, numRuns: 2, examples: [[0], [100]] },
+    {
+      seed: 20261023,
+      numRuns: 2,
+      examples: [[0], [100]],
+      id: "generated browser-shaped paragraph splits save strict XML through history replay",
+    },
   );
 });
 
@@ -477,6 +486,7 @@ for (const kind of RESOURCE_REPLACEMENT_KINDS) {
         redo.publish().unwrap();
         await refusal();
       }),
+      { id: "generated canonical ${kind} replacements refuse save rather than lose resources" },
     );
   });
 }

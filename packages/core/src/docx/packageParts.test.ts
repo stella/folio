@@ -27,7 +27,10 @@ test(
           expect((await reconcilePackageReferences(zip, 6)).danglingRelationships).toEqual([]);
         },
       ),
-      { numRuns: 24 },
+      {
+        numRuns: 24,
+        id: "encoded relationship targets resolve once and reconciliation retains their parts",
+      },
     );
   },
   propertyTestTimeout(30_000),

@@ -177,5 +177,6 @@ test("TOC splits preserve every endpoint between source bookmark markers", () =>
         }
       },
     ),
+    { id: "TOC splits preserve every endpoint between source bookmark markers" },
   );
 });

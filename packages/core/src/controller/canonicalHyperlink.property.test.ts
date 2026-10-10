@@ -192,7 +192,7 @@ test("every range intent handles AllSelection and restores exact undo redo", () 
       }
       expect([...exercised].sort()).toEqual(Object.keys(allSelectionCommands).sort());
     }),
-    { numRuns: 12 },
+    { numRuns: 12, id: "every range intent handles AllSelection and restores exact undo redo" },
   );
 });
 
@@ -316,7 +316,10 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
         }
       },
     ),
-    { numRuns: 15 },
+    {
+      numRuns: 15,
+      id: "generated hyperlink command histories preserve targets, bookmarks, probes and exact inverse",
+    },
   );
 });
 
@@ -353,7 +356,7 @@ test("tracked input addresses skip rendered deletions after bookmark atoms", () 
       });
       expect(exercised).toBeGreaterThan(0);
     }),
-    { numRuns: 10 },
+    { numRuns: 10, id: "tracked input addresses skip rendered deletions after bookmark atoms" },
   );
 });
 
@@ -470,6 +473,9 @@ test("generated collapsed removal covers every formatting segment of exactly one
         ).toEqual([]);
       },
     ),
-    { numRuns: 8 },
+    {
+      numRuns: 8,
+      id: "generated collapsed removal covers every formatting segment of exactly one contiguous hyperlink",
+    },
   );
 });

@@ -316,7 +316,10 @@ describe("semantic table edit properties", () => {
           }
         },
       ),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "final-column intent allocation covers every tracked paragraph and inline span",
+      },
     );
   });
   test("generated column edits change logical width and preserve surviving slot content", () => {
@@ -369,7 +372,10 @@ describe("semantic table edit properties", () => {
           }
         }
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "generated column edits change logical width and preserve surviving slot content",
+      },
     );
   });
 
@@ -453,7 +459,10 @@ describe("semantic table edit properties", () => {
         for (let rowIndex = 1; rowIndex < horizontal.height; rowIndex++)
           exact(splitTable.rows.at(rowIndex), horizontalBefore.rows.at(rowIndex));
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "merge and split have independent rectangle, content and topology effects",
+      },
     );
   });
 
@@ -490,7 +499,10 @@ describe("semantic table edit properties", () => {
         for (let rowIndex = splitHeight; rowIndex < f.height; rowIndex++)
           exact(after.rows.at(rowIndex), before.rows.at(rowIndex));
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "split generated horizontal and vertical spans preserves each row's original content",
+      },
     );
   });
 
@@ -581,7 +593,10 @@ describe("semantic table edit properties", () => {
           exact(undone.value.document, f.document);
         },
       ),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "generated mixed sequences reverse exactly and every property patch takes effect",
+      },
     );
   });
 
@@ -639,7 +654,10 @@ describe("semantic table edit properties", () => {
           tableOf(rowCleared.document, f.nested).rows.at(0)?.formatting?.hidden,
         ).toBeUndefined();
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "null patches restore missing, empty and own undefined formatting exactly",
+      },
     );
   });
 
@@ -805,7 +823,10 @@ describe("semantic table edit properties", () => {
           }
         },
       ),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "generated tracked compiler sequences accept to direct edits and reject to the exact baseline",
+      },
     );
   });
 
@@ -867,7 +888,10 @@ describe("semantic table edit properties", () => {
           invariants(result.value.document);
         }
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "deleting the only column removes its table, restores exactly and selects a surviving sibling",
+      },
     );
   });
 
@@ -920,7 +944,10 @@ describe("semantic table edit properties", () => {
           exact(result.value.document, decision === "accept" ? direct.document : f.document);
         }
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "empty vertical merge tracking keeps cell identities and compiles in both modes",
+      },
     );
   });
 
@@ -988,7 +1015,10 @@ describe("semantic table edit properties", () => {
           exact(f.document, snapshot);
         }
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "fresh-id counts and rectangles cutting spans are refused before mutation",
+      },
     );
   });
 
@@ -1031,7 +1061,10 @@ describe("semantic table edit properties", () => {
         expect(tableChange?.type).toBe("tablePropertyChange");
         exact(tableChange?.previousFormatting, before.formatting);
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "tracked property edits retain previous formatting and exact inverses",
+      },
     );
   });
 
@@ -1127,7 +1160,10 @@ describe("semantic table edit properties", () => {
           exact(document, snapshot);
         }
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "invalid geometry, colliding identities, tracked edits and stale inverses refuse atomically",
+      },
     );
     expect([...tallies.keys()].sort()).toEqual(
       [
@@ -1172,6 +1208,6 @@ test("table semantic allocation excludes lifetime-retired paragraph ids", () => 
       expect(changed.touched.inserted.length).toBeGreaterThan(0);
       expect(changed.touched.inserted.some((blockId) => reservedBlockIds.has(blockId))).toBe(false);
     }),
-    { numRuns: 12 },
+    { numRuns: 12, id: "table semantic allocation excludes lifetime-retired paragraph ids" },
   );
 });

@@ -117,7 +117,10 @@ describe("headless comment IDs", () => {
             );
           }
         }),
-        { numRuns: 12 },
+        {
+          numRuns: 12,
+          id: "comment and revision batches avoid loaded IDs and retain IDs on round-trip",
+        },
       );
     },
     propertyTestTimeout(30_000),

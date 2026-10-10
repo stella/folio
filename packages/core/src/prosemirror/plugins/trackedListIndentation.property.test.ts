@@ -195,7 +195,10 @@ test(
           expect(result?.violations, `${entry.shape} / ${entry.operation}`).toEqual([]);
         }
       }),
-      { numRuns: 8 },
+      {
+        numRuns: 8,
+        id: "list indentation provenance survives clipboard, Delete, and style operations",
+      },
     );
   },
   propertyTestTimeout(60_000),
@@ -221,7 +224,10 @@ test(
           expect(summarizeEffectiveParagraphs(rejected)).toEqual(reopened.effective);
         }
       }),
-      { numRuns: 8 },
+      {
+        numRuns: 8,
+        id: "rejecting an imported numbering-only paragraph change restores inherited list indentation",
+      },
     );
   },
   propertyTestTimeout(60_000),

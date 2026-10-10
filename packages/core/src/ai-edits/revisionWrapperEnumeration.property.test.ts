@@ -71,7 +71,10 @@ test(
           expect(revisionView(reopened)).toEqual(revisionView(reviewer));
         },
       ),
-      { numRuns: 40 },
+      {
+        numRuns: 40,
+        id: "tracked replacements followed by paragraph deletion preserve the revision census across save",
+      },
     );
   },
   propertyTestTimeout(20_000),

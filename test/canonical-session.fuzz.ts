@@ -166,7 +166,10 @@ test(
           }
         },
       ),
-      { numRuns: 20 },
+      {
+        numRuns: 20,
+        id: "canonical property flows preserve projection, exact history and saved content",
+      },
     );
     console.log(missing.markdown());
   },

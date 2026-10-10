@@ -117,7 +117,10 @@ test(
           expect(session.document).toEqual(pasted);
         },
       ),
-      { numRuns: 5 },
+      {
+        numRuns: 5,
+        id: "generated pasted lists preserve save/reopen fidelity through full-save fallbacks and history",
+      },
     );
   },
   propertyTestTimeout(30_000),

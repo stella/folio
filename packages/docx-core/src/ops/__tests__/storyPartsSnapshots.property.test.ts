@@ -98,6 +98,10 @@ test("generated narrow story restores preserve differing mounted snapshots and r
         }
       },
     ),
-    { seed: 20261019, numRuns: 40 },
+    {
+      seed: 20261019,
+      numRuns: 40,
+      id: "generated narrow story restores preserve differing mounted snapshots and reuse equivalent parts",
+    },
   );
 });

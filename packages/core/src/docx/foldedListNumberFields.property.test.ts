@@ -129,7 +129,10 @@ describe("the reader's fold of the LISTNUM fields that open a paragraph", () => 
           }
         }
       }),
-      { numRuns: 300 },
+      {
+        numRuns: 300,
+        id: "every item keeps its place, and a capture stands for the item that was there",
+      },
     );
   });
 
@@ -170,7 +173,10 @@ describe("the reader's fold of the LISTNUM fields that open a paragraph", () => 
         }
         expect(fold.cached).toEqual(cached);
       }),
-      { numRuns: 300 },
+      {
+        numRuns: 300,
+        id: "the captures are the fields ahead of anything shown, and the tabs that follow them",
+      },
     );
   });
 
@@ -186,7 +192,7 @@ describe("the reader's fold of the LISTNUM fields that open a paragraph", () => 
         expect(fold.cached).toEqual([]);
         expect(fold.fieldCount).toBe(content.filter(isListNumberField).length);
       }),
-      { numRuns: 100 },
+      { numRuns: 100, id: "an item with no markup to stand for it is left as it is" },
     );
   });
 });
@@ -231,7 +237,7 @@ describe("the rule for which captures stay hidden", () => {
         expect(plan.hidden.size).toBe(0);
         expect(plan.suffix).toBeUndefined();
       }),
-      { numRuns: 200 },
+      { numRuns: 200, id: "a marker that shows no fields hides none" },
     );
   });
 
@@ -247,7 +253,10 @@ describe("the rule for which captures stay hidden", () => {
         const captures = plan.order.filter((index) => isCapture(items[index]));
         expect(captures).toEqual(captures.toSorted((a, b) => a - b));
       }),
-      { numRuns: 300 },
+      {
+        numRuns: 300,
+        id: "it reorders nothing but one stretch of captures, and keeps every item once",
+      },
     );
   });
 
@@ -278,7 +287,10 @@ describe("the rule for which captures stay hidden", () => {
           }
         }
       }),
-      { numRuns: 300 },
+      {
+        numRuns: 300,
+        id: "a hidden capture has nothing shown ahead of it, and the marker shows exactly the hidden fields",
+      },
     );
   });
 
@@ -294,7 +306,10 @@ describe("the rule for which captures stay hidden", () => {
         expect(second.suffix).toBe(first.suffix);
         expect(carriedOut(after, second)).toEqual(after);
       }),
-      { numRuns: 300 },
+      {
+        numRuns: 300,
+        id: "one pass is enough: the items it leaves are already in the form it allows",
+      },
     );
   });
 

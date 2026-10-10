@@ -107,7 +107,10 @@ test(
           ).toBeGreaterThan(0);
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "range formatting composes with restyling without permitting direct formatting leaks",
+      },
     );
   },
   propertyTestTimeout(5_000),

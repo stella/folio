@@ -128,6 +128,7 @@ test(
             },
           ],
         ],
+        id: "rejecting inserted break chains restores cut controls without removing authored empty controls",
       },
     );
   },

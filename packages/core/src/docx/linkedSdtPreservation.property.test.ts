@@ -137,7 +137,10 @@ test(
           await assertTwoSaves(sourceDocument({ form, type, prefix, namespace }));
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "generated linked SDT field spans survive source parsing, editor projection and two saves",
+      },
     );
   },
   propertyTestTimeout(20_000),

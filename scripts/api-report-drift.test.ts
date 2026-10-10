@@ -30,7 +30,10 @@ test("new API entries report their commit path and full generated surface withou
           ).toBe(`new entry: commit api-reports/docx-core/zip.api.md\n${candidate}`);
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "new API entries report their commit path and full generated surface without a baseline",
+      },
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });

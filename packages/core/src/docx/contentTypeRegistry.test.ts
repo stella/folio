@@ -33,7 +33,10 @@ test(
           expect(registerContentTypeParts(next, [own, added])).toBe(next);
         },
       ),
-      { numRuns: 60 },
+      {
+        numRuns: 60,
+        id: "content-type registration preserves authored entries and treats equivalent part URIs once",
+      },
     );
   },
   propertyTestTimeout(30_000),

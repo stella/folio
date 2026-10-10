@@ -216,8 +216,17 @@ test(
     const expected = Object.entries(OPERATION_LAW_DISPOSITIONS).flatMap(([kind, disposition]) =>
       knownFailures(disposition, kind),
     );
-    if (expected.length > 0) await assertKnownProperty(property, expected, { numRuns: 135 });
-    else await assertProperty(property, { numRuns: 135 });
+    if (expected.length > 0)
+      await assertKnownProperty(property, {
+        numRuns: 135,
+        expectedFailures: expected,
+        id: "every operation preserves package inverse and declared scope laws",
+      });
+    else
+      await assertProperty(property, {
+        numRuns: 135,
+        id: "every operation preserves package inverse and declared scope laws without known failures",
+      });
   },
   propertyTestTimeout(120_000),
 );
@@ -236,7 +245,7 @@ test(
           await assertPackageOperationLaws({ kind: "setParagraphProps", document, seed, story });
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 100, id: "paragraph property package inverses retain authored stories" },
     );
     expect(cases).toBeGreaterThan(0);
   },
@@ -257,7 +266,7 @@ test(
           await assertPackageOperationLaws({ kind: "joinBlocks", document, seed, story });
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 100, id: "join package inverses retain authored stories" },
     );
     expect(cases).toBeGreaterThan(0);
   },
@@ -303,7 +312,7 @@ test(
           expect(mutated.get("word/document.xml")).not.toEqual(control.get("word/document.xml"));
         },
       ),
-      { numRuns: 12 },
+      { numRuns: 12, id: "operation sequence generation retains the parsed package control" },
     );
     expect(cases).toBeGreaterThan(0);
   },
@@ -322,7 +331,7 @@ test(
           story: "main",
         });
       }),
-      { numRuns: 30 },
+      { numRuns: 30, id: "created story removal restores authored package registrations exactly" },
     );
   },
   propertyTestTimeout(30_000),

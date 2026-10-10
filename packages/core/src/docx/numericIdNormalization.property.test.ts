@@ -210,7 +210,10 @@ test("range repair leaves malformed lexical identities for the parser's existing
         expect(normalizeImportedNumericIds(normalized)).toEqual(normalized);
       },
     ),
-    { numRuns: 40 },
+    {
+      numRuns: 40,
+      id: "range repair leaves malformed lexical identities for the parser's existing drop-and-warn path",
+    },
   );
 });
 

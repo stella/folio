@@ -795,6 +795,9 @@ describe("close reasons decide what a recurring class does", () => {
             if (unregistered.length === 0) expect(writes(full)).toBe(0);
           },
         ),
+        {
+          id: "superseded classes stay closed, reopens are explained, registered fingerprints write nothing",
+        },
       );
     },
     propertyTestTimeout(10_000),

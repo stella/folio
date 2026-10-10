@@ -393,7 +393,7 @@ describe("live comment threads match the saved package after every step", () => 
             }
           }
         }),
-        { numRuns: 40 },
+        { numRuns: 40, id: "over generated sessions across a table and a note" },
       );
     },
     propertyTestTimeout(240_000),

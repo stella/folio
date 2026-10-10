@@ -219,7 +219,10 @@ describe("canonical input boundary", () => {
           expect(boundary.isComposing).toBe(false);
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "generated Enter modifier traces refuse native composition lag without editing callbacks",
+      },
     );
   });
 
@@ -687,7 +690,11 @@ describe("canonical input boundary", () => {
           }
         }
       }),
-      { seed: 20261020, numRuns: 16 },
+      {
+        seed: 20261020,
+        numRuns: 16,
+        id: "generated text compositions preserve adjacent pictures and refuse picture mutations",
+      },
     );
   });
 
@@ -732,7 +739,10 @@ describe("canonical input boundary", () => {
           view.dom.parentElement?.remove();
         },
       ),
-      { numRuns: 50 },
+      {
+        numRuns: 50,
+        id: "generated cross-paragraph compositions lower one exact replacement or cancel",
+      },
     );
   });
 
@@ -818,7 +828,10 @@ describe("canonical input boundary", () => {
           view.dom.parentElement?.remove();
         },
       ),
-      { numRuns: 50 },
+      {
+        numRuns: 50,
+        id: "generated composition event traces lower one final replacement or cancel",
+      },
     );
   });
 
@@ -1007,7 +1020,10 @@ describe("canonical input boundary", () => {
           expect(refusals).toHaveLength(gestures.length);
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "generated clipboard gesture sequences report refusals without ending composition",
+      },
     );
   });
 

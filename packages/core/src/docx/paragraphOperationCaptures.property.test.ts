@@ -76,7 +76,10 @@ test(
           expect(mutated.get("word/document.xml")).not.toEqual(control.get("word/document.xml"));
         },
       ),
-      { numRuns: 12 },
+      {
+        numRuns: 12,
+        id: "operation sequences retain parsed paragraph captures through composition",
+      },
     );
   },
   propertyTestTimeout(60_000),
@@ -162,7 +165,10 @@ test(
           }
         },
       ),
-      { numRuns: 20 },
+      {
+        numRuns: 20,
+        id: "mixed durable and spread-derived paragraphs retain exact public content through editor save",
+      },
     );
   },
   propertyTestTimeout(60_000),

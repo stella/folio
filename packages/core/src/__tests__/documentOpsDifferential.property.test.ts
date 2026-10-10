@@ -212,8 +212,13 @@ test("PM and Document ops agree after every generated text and formatting step",
     if (event === "pull_request" || event === "merge_group") {
       throw new Error("Random differential flows run only in the nightly lane");
     }
-    assertProperty(property, { numRuns: 100 });
+    assertProperty(property, {
+      numRuns: 100,
+      id: "PM and Document ops agree after every generated text and formatting step with random flows",
+    });
     return;
   }
-  assertPinnedProperty(property);
+  assertPinnedProperty(property, {
+    id: "PM and Document ops agree after every generated text and formatting step",
+  });
 });

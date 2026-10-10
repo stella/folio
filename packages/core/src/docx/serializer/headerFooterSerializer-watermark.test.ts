@@ -333,7 +333,7 @@ test(
           expect(parseHeader(xml).watermark).toEqual(header.watermark);
         },
       ),
-      { numRuns: 30 },
+      { numRuns: 30, id: "structural story edits emit one captured watermark" },
     );
   },
   propertyTestTimeout(10_000),

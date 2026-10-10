@@ -566,7 +566,7 @@ describe("headless bulk revision resolution equivalence", () => {
             expect(() => bulk.doc.check()).not.toThrow();
           },
         ),
-        { numRuns: 30 },
+        { numRuns: 30, id: "headless bulk revision resolution equivalence" },
       );
     },
   );
@@ -604,7 +604,11 @@ describe("headless bulk revision resolution equivalence", () => {
           expect(bulkTracker).toEqual(legacyTracker);
         }
       }),
-      { seed: 2_609_090, numRuns: 24 },
+      {
+        seed: 2_609_090,
+        numRuns: 24,
+        id: "matches the legacy small-document semantics across generated nested revisions",
+      },
     );
   });
 

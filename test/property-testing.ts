@@ -1,4 +1,5 @@
 import fc from "fast-check";
+import { panic } from "better-result";
 import { NUM_RUNS_FACTOR_ENV, numRunsFactor } from "./property-run-factor";
 
 export { propertyTestTimeout } from "./property-timeout";
@@ -49,7 +50,7 @@ import {
  *     pins its own `seed` keeps it.
  *
  *  4. Pinned regression seeds. Each test/property-seeds/ file maps
- *     test titles to seeds. Readers join `<repo-relative file>::<test title>`
+ *     explicit property IDs to seeds. Readers join `<repo-relative file>::<id>`
  *     for lookup. Entries carry seeds and optional counterexample paths that
  *     once failed. `assertProperty`
  *     replays each of them before the property's generated runs, in every
@@ -203,19 +204,33 @@ export const enclosingTitles = (lines: readonly string[], line: number): string[
 
 type PropertyIdentity = {
   site: CallSite | undefined;
+  /** Stable registry identity, independent of describe nesting or display titles. */
+  id: string | undefined;
   /** The enclosing test's title as written, when one could be read. */
   title: string | undefined;
-  /** `<file>::<title>`, the joined seed-registry key. */
+  /** `<file>::<id>`, the joined seed-registry key. */
   key: string | undefined;
 };
 
 const identify = (): PropertyIdentity => {
   const site = callSite();
   if (site === undefined) {
-    return { site, title: undefined, key: undefined };
+    return { site, id: undefined, title: undefined, key: undefined };
   }
   const title = enclosingTitles(linesOf(site.absolute), site.line).at(-1);
-  return { site, title, key: title === undefined ? undefined : `${site.file}::${title}` };
+  return {
+    site,
+    id: title,
+    title,
+    key: title === undefined ? undefined : `${site.file}::${title}`,
+  };
+};
+
+const identifyProperty = (id: string): PropertyIdentity => {
+  if (typeof id !== "string" || id.trim() === "") return panic("A property needs an explicit ID.");
+  const { site, title } = identify();
+  if (site === undefined) return panic("A property ID needs an attributable source file.");
+  return { site, id, title, key: `${site.file}::${id}` };
 };
 
 // ---------------------------------------------------------------------------
@@ -241,7 +256,7 @@ export type PinnedSeed = {
 
 let pinnedSeeds: Record<string, readonly PinnedSeed[]> | undefined;
 
-/** Joined per-file registry, keyed `<file>::<test title>`. */
+/** Joined per-file registry, keyed `<file>::<id>`. */
 export const readPinnedSeeds = (): Record<string, readonly PinnedSeed[]> => {
   if (pinnedSeeds === undefined) {
     pinnedSeeds = readSeedRegistry();
@@ -373,7 +388,7 @@ const replayReporter =
     lines.push(`Replay: ${replay}`);
     if (pinned === undefined && identity.key !== undefined) {
       lines.push(
-        `Pin: add ${JSON.stringify(entry)} (with a note and date) under ${JSON.stringify(identity.title)} in ${registryFile}`,
+        `Pin: add ${JSON.stringify(entry)} (with a note and date) under ${JSON.stringify(identity.id)} in ${registryFile}`,
       );
     }
     if (isCi()) {
@@ -495,7 +510,7 @@ const configFor = <Ts>(
   if (!viaAssertProperty && pinnedFor(identity.key).length > 0) {
     throw new Error(
       `${String(identity.key)} has pinned seeds in ${PROPERTY_SEEDS_FILE}, which only replay through ` +
-        "assertProperty: write `assertProperty(property, { numRuns })` instead of " +
+        "assertProperty: write `assertProperty(property, { id, numRuns })` instead of " +
         "`fc.assert(property, propertyConfig({ numRuns }))`.",
     );
   }
@@ -506,16 +521,21 @@ const configFor = <Ts>(
  * `fc.assert(property, propertyConfig(params))`, after first replaying every
  * seed test/property-seeds/ pins for the calling test.
  */
+export type PropertyParameters<Ts> = fc.Parameters<Ts> & { id: string };
+
 export function assertProperty<Ts>(
   property: fc.IAsyncProperty<Ts>,
-  params?: fc.Parameters<Ts>,
+  params: PropertyParameters<Ts>,
 ): Promise<void>;
-export function assertProperty<Ts>(property: fc.IProperty<Ts>, params?: fc.Parameters<Ts>): void;
+export function assertProperty<Ts>(
+  property: fc.IProperty<Ts>,
+  params: PropertyParameters<Ts>,
+): void;
 export function assertProperty<Ts>(
   property: fc.IRawProperty<Ts>,
-  params: fc.Parameters<Ts> = {},
+  { id, ...params }: PropertyParameters<Ts>,
 ): Promise<void> | void {
-  const identity = identify();
+  const identity = identifyProperty(id);
   const pinned = pinnedFor(identity.key);
   // Examples run in the generated pass; including them in a pinned replay
   // shifts fast-check's path indices away from the recorded counterexample.
@@ -525,23 +545,24 @@ export function assertProperty<Ts>(
 }
 
 /** Run the raw law for pinned seeds and require every recorded cause in generated cases. */
+export type KnownPropertyParameters<Ts> = PropertyParameters<Ts> & {
+  expectedFailures: readonly KnownPropertyFailure<Ts>[];
+};
+
 export function assertKnownProperty<Ts>(
   property: fc.IAsyncProperty<Ts>,
-  expectedFailures: readonly KnownPropertyFailure<Ts>[],
-  params?: fc.Parameters<Ts>,
+  params: KnownPropertyParameters<Ts>,
 ): Promise<void>;
 export function assertKnownProperty<Ts>(
   property: fc.IProperty<Ts>,
-  expectedFailures: readonly KnownPropertyFailure<Ts>[],
-  params?: fc.Parameters<Ts>,
+  params: KnownPropertyParameters<Ts>,
 ): void;
 export function assertKnownProperty<Ts>(
   property: fc.IRawProperty<Ts>,
-  expectedFailures: readonly KnownPropertyFailure<Ts>[],
-  params: fc.Parameters<Ts> = {},
+  { id, expectedFailures, ...params }: KnownPropertyParameters<Ts>,
 ): Promise<void> | void {
   if (expectedFailures.length === 0) throw new Error("Known property requires a recorded cause");
-  const identity = identify();
+  const identity = identifyProperty(id);
   const seen = new Set<KnownPropertyFailure<Ts>>();
   const inspect = (value: Ts, outcome: fc.PreconditionFailure | fc.PropertyFailure | null) => {
     if (outcome === null || outcome instanceof fc.PreconditionFailure) return outcome;
@@ -600,17 +621,17 @@ export function assertKnownProperty<Ts>(
 /** Run only registry seeds for bugs already fixed, without a fresh generated pass. */
 export function assertPinnedProperty<Ts>(
   property: fc.IAsyncProperty<Ts>,
-  params?: fc.Parameters<Ts>,
+  params: PropertyParameters<Ts>,
 ): Promise<void>;
 export function assertPinnedProperty<Ts>(
   property: fc.IProperty<Ts>,
-  params?: fc.Parameters<Ts>,
+  params: PropertyParameters<Ts>,
 ): void;
 export function assertPinnedProperty<Ts>(
   property: fc.IRawProperty<Ts>,
-  params: fc.Parameters<Ts> = {},
+  { id, ...params }: PropertyParameters<Ts>,
 ): Promise<void> | void {
-  const identity = identify();
+  const identity = identifyProperty(id);
   const pinned = pinnedFor(identity.key);
   if (pinned.length === 0)
     throw new Error(`No fixed regression seeds registered for ${String(identity.key)}`);

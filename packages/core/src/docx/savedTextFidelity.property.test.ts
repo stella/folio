@@ -279,7 +279,7 @@ describe("a saved package says what the source said", () => {
         const saved = await parseDocx(savedPackage, { preloadFonts: false });
         expect(bodyText(saved.package.document.content)).toBe(read);
       }),
-      { numRuns: 120 },
+      { numRuns: 120, id: "a plain repack preserves the paragraph's text" },
     );
   });
 
@@ -303,7 +303,7 @@ describe("a saved package says what the source said", () => {
         const saved = await parseDocx(savedPackage, { preloadFonts: false });
         expect(bodyText(saved.package.document.content)).toBe(read);
       }),
-      { numRuns: 120 },
+      { numRuns: 120, id: "the editor round trip preserves the paragraph's text" },
     );
   });
 });

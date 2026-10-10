@@ -184,7 +184,10 @@ test("hyperlink intents have exact inverses and refuse unrepresentable suggestio
         }
       },
     ),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "hyperlink intents have exact inverses and refuse unrepresentable suggestions",
+    },
   );
 });
 
@@ -237,7 +240,10 @@ test("cross-paragraph hyperlinks preserve formatting and marker identities throu
         );
       }
     }),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "cross-paragraph hyperlinks preserve formatting and marker identities through exact inverses",
+    },
   );
 });
 
@@ -276,7 +282,10 @@ test("direct hyperlink intent targets follow the shared external URL policy atom
         }
       },
     ),
-    { numRuns: 24 },
+    {
+      numRuns: 24,
+      id: "direct hyperlink intent targets follow the shared external URL policy atomically",
+    },
   );
 });
 
