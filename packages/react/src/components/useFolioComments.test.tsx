@@ -45,6 +45,7 @@ type MountOptions = {
   doc?: Document;
   autoOpenReviewSidebar?: boolean;
   commentsProp?: Comment[];
+  controlledComments?: { current: Comment[] };
   onCommentsChange?: (comments: Comment[]) => void;
   /** Painted content root the highlight sync reads its anchors from. */
   editorContent?: HTMLElement;
@@ -64,6 +65,7 @@ const mount = ({
   doc,
   autoOpenReviewSidebar = false,
   commentsProp,
+  controlledComments,
   onCommentsChange,
   editorContent,
   onChildLayout,
@@ -82,7 +84,7 @@ const mount = ({
       autoOpenReviewSidebar,
       anchorPositions: new Map(),
       editorContentRef: { current: editorContent ?? null },
-      commentsProp,
+      commentsProp: controlledComments?.current ?? commentsProp,
       onCommentsChange,
       committedComments: committed?.current,
     });
@@ -227,7 +229,7 @@ describe("useFolioComments.setComments", () => {
     expect(changes).toEqual([next]);
   });
 
-  test("controlled: rejecting an update restores the mirror on a same-array host rerender", () => {
+  test("controlled: rejecting an update never changes the mirror, even before host rerender", () => {
     const initial = [makeComment(1)];
     const changes: Comment[][] = [];
     const harness = mount({
@@ -239,7 +241,8 @@ describe("useFolioComments.setComments", () => {
 
     act(() => {
       harness.hook.setComments(next);
-      expect(harness.hook.commentsRef.current).toBe(next);
+      expect(harness.hook.commentsRef.current).toBe(authoritative);
+      expect(harness.hook.commentsRef.current.map((comment) => comment.id)).toEqual([1]);
     });
 
     expect(changes).toEqual([next]);
@@ -261,6 +264,28 @@ describe("useFolioComments.setComments", () => {
       [1, 2],
       [1, 3],
     ]);
+  });
+
+  test("controlled: an accepted update enters the mirror only when the host commits it", () => {
+    const controlledComments = { current: [makeComment(1)] };
+    const harness = mount({
+      controlledComments,
+      onCommentsChange: (next) => {
+        controlledComments.current = next;
+      },
+    });
+    const authoritative = harness.hook.comments;
+    const next = [...authoritative, makeComment(2)];
+
+    act(() => {
+      harness.hook.setComments(next);
+      expect(controlledComments.current).toBe(next);
+      expect(harness.hook.commentsRef.current).toBe(authoritative);
+    });
+
+    harness.rerender();
+    expect(harness.hook.comments.map((comment) => comment.id)).toEqual([1, 2]);
+    expect(harness.hook.commentsRef.current).toBe(harness.hook.comments);
   });
 });
 

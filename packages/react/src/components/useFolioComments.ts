@@ -118,8 +118,9 @@ export function useFolioComments({
     () => (commentsProp !== undefined ? sanitizeControlledComments(commentsProp) : undefined),
     [commentsProp],
   );
-  const isControlledComments = sanitizedCommentsProp !== undefined;
-  const comments = isControlledComments ? sanitizedCommentsProp : internalComments;
+  const commentsMode = sanitizedCommentsProp === undefined ? "uncontrolled" : "controlled";
+  const isControlledComments = commentsMode === "controlled";
+  const comments = sanitizedCommentsProp ?? internalComments;
 
   // Reserve before browser events can mint comments, including controlled replies.
   useLayoutEffect(() => {
@@ -136,14 +137,13 @@ export function useFolioComments({
   const setCommentsDirty = useCallback((dirty: boolean) => {
     commentsDirtyRef.current = dirty;
   }, []);
-  // Reconcile every commit, including when a controlled host rejects an update
-  // and rerenders the same array. Event-time writes remain available until that
-  // commit. The hook keeps the writable handle private and exports a read-only
-  // view; mutate only through `setComments`.
+  // Controlled mirrors follow committed props only. Uncontrolled setters also
+  // publish synchronously so multiple event-time updates compose before commit.
+  // Export a read-only view; mutate only through `setComments`.
   const commentsRef = useRef(comments);
   useLayoutEffect(() => {
     commentsRef.current = comments;
-  });
+  }, [comments]);
   const readonlyCommentsRef: Readonly<RefObject<Comment[]>> = commentsRef;
   const onCommentsChangeRef = useRef(onCommentsChange);
   useLayoutEffect(() => {
@@ -172,19 +172,24 @@ export function useFolioComments({
       if (resolved === commentsRef.current) {
         return;
       }
-      for (const { id } of resolved) {
-        seedCommentIdAbove(id);
-      }
-      // The owning setter: the ref write is paired with the state update below
-      // (or, when controlled, with the host applying `onCommentsChange`), so
-      // same-tick readers and the next render agree.
-      commentsRef.current = resolved;
-      if (!isControlledComments) {
-        setInternalComments(resolved);
+      switch (commentsMode) {
+        case "controlled":
+          break;
+        case "uncontrolled":
+          for (const { id } of resolved) {
+            seedCommentIdAbove(id);
+          }
+          commentsRef.current = resolved;
+          setInternalComments(resolved);
+          break;
+        default: {
+          const unreachable: never = commentsMode;
+          return unreachable;
+        }
       }
       onCommentsChangeRef.current?.(resolved);
     },
-    [isControlledComments],
+    [commentsMode],
   );
 
   const [isAddingComment, setIsAddingComment] = useState(false);
