@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIBlock, FolioAIBlockTableLocation } from "../ai-edits/types";
+import type { FolioAIBlockTableLocation, FolioAIParagraphBlock } from "../ai-edits/types";
 import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import { getCompareSkipDisposition } from "./compare";
 import { classifyProjectionMismatch, revisedFinalParagraphMarks } from "./verification";
@@ -121,7 +121,7 @@ describe("classifyProjectionMismatch", () => {
   const projectedBlock = (
     tableLocation: FolioAIBlockTableLocation | undefined,
     text: string,
-  ): FolioAIBlock => ({
+  ): FolioAIParagraphBlock => ({
     id: "projected-block",
     kind: "paragraph",
     statedNumbering: INHERITED_PARAGRAPH_NUMBERING,

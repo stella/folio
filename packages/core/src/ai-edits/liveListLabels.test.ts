@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 import type { FolioDocumentOperation } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
@@ -122,8 +123,9 @@ describe("list labels after an operation", () => {
         "Closing remarks.",
       ].join("\n\n"),
     );
-    const numId = reviewer.getContent().find(({ text }) => text === "Balance on delivery")
-      ?.listReference?.numId;
+    const numId = expectParagraphBlock(
+      reviewer.getContent().find(({ text }) => text === "Balance on delivery"),
+    ).listReference?.numId;
     expect(numId).toBeDefined();
     apply(reviewer, "direct", [
       {
@@ -218,8 +220,9 @@ describe("list labels after an operation", () => {
 describe("a paragraph numbered at a level its list does not define", () => {
   test("shows no marker, reads as a paragraph that keeps its level, and does not count", async () => {
     const reviewer = await reviewerOf(LIST);
-    const numId = reviewer.getContent().find(({ text }) => text === "Deposit on signature")
-      ?.listReference?.numId;
+    const numId = expectParagraphBlock(
+      reviewer.getContent().find(({ text }) => text === "Deposit on signature"),
+    ).listReference?.numId;
     expect(numId).toBeDefined();
     apply(reviewer, "direct", [
       {

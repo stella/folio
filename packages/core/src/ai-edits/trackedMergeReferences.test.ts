@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import {
@@ -268,10 +269,9 @@ test(
             if (resolution === "accept") {
               expect(reviewer.getContent()).toHaveLength(1);
               expect(reviewer.getContent().at(0)?.styleId).toBe(properties.styleId);
-              expect(reviewer.getContent().at(0)?.directAlignment).toBe(properties.alignment);
-              expect(reviewer.getContent().at(0)?.directSpacing).toEqual(
-                properties.spacing ?? undefined,
-              );
+              const contentBlock = expectParagraphBlock(reviewer.getContent().at(0));
+              expect(contentBlock.directAlignment).toBe(properties.alignment);
+              expect(contentBlock.directSpacing).toEqual(properties.spacing ?? undefined);
             } else if (resolution === "reject-first-merge") {
               expect(reviewer.getContent()).toHaveLength(2);
               expect(paragraphProjection(reviewer.state.doc).at(0)?.properties).toEqual(

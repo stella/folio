@@ -8,6 +8,7 @@ import { createDocx } from "../docx/rezip";
 import type { Paragraph, ParagraphAlignment, Table } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 const OPTIONS = { author: "compare", timestamp: "2026-09-11T00:00:00.000Z" } as const;
 
@@ -122,12 +123,15 @@ const joinedDocument = (): Promise<ArrayBuffer> => documentWith(JOINED_BLOCKS);
 const splitDocument = (): Promise<ArrayBuffer> => documentWith(SPLIT_BLOCKS);
 
 const projectedBlocks = (reviewer: FolioDocxReviewer) =>
-  reviewer.snapshot().blocks.map(({ text, styleId, directAlignment, directSpacing }) => ({
-    text,
-    styleId,
-    directAlignment,
-    directSpacing,
-  }));
+  reviewer.snapshot().blocks.map((block) => {
+    const paragraphBlock = expectParagraphBlock(block);
+    return {
+      text: paragraphBlock.text,
+      styleId: paragraphBlock.styleId,
+      directAlignment: paragraphBlock.directAlignment,
+      directSpacing: paragraphBlock.directSpacing,
+    };
+  });
 
 const JOINED_PROJECTION = [
   {

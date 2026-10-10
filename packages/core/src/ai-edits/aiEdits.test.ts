@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { Schema, type MarkSpec } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
@@ -690,7 +691,7 @@ describe("Folio AI edit operations", () => {
       throw new Error("Expected text range handle");
     }
 
-    expect(snapshot.blocks.at(0)?.structuralBoundaries).toBeUndefined();
+    expect(expectParagraphBlock(snapshot.blocks.at(0)).structuralBoundaries).toBeUndefined();
     expect(resolveFolioAITextRange({ range, doc, snapshot })).toBeNull();
   });
 

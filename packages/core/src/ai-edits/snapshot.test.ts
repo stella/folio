@@ -12,6 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { type Node as PMNode, Schema } from "prosemirror-model";
 
 import { compareContent } from "../compare/content";
@@ -582,16 +583,16 @@ describe("createFolioAIEditSnapshot", () => {
       numberedParagraph({ numPr: numbered, listMarker: "4." }, "Item"),
     ]);
 
-    const blocks = createFolioAIEditSnapshot(doc).blocks.map(
-      ({ text, kind, headingLevel, displayLabel, listReference, statedNumbering }) => ({
+    const blocks = createFolioAIEditSnapshot(doc)
+      .blocks.map(expectParagraphBlock)
+      .map(({ text, kind, headingLevel, displayLabel, listReference, statedNumbering }) => ({
         text,
         kind,
         headingLevel,
         displayLabel,
         listReference: listReference ?? null,
         statedNumbering,
-      }),
-    );
+      }));
 
     expect(blocks).toEqual([
       {
@@ -651,6 +652,6 @@ test("opaque diagnostic blocks expose no paragraph numbering", () => {
   expect(diagnostic).toBeDefined();
   expect(diagnostic).not.toHaveProperty("statedNumbering");
   expect(diagnostic).not.toHaveProperty("listReference");
-  const plainBlock = blocks.find((block) => block.kind === "paragraph");
-  expect(plainBlock?.statedNumbering).toEqual({ kind: "inherit" });
+  const plainBlock = expectParagraphBlock(blocks.find((block) => block.kind === "paragraph"));
+  expect(plainBlock.statedNumbering).toEqual({ kind: "inherit" });
 });

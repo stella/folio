@@ -4,8 +4,9 @@ import fc from "fast-check";
 import { paragraphNumberingReference, NO_PARAGRAPH_NUMBERING } from "@stll/docx-core/model";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { FolioDocxReviewer } from "../ai-edits/headless";
-import type { FolioAIBlock } from "../ai-edits/types";
+import type { FolioAIParagraphBlock } from "../ai-edits/types";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
@@ -97,17 +98,18 @@ const ROUND_TRIP_CASES = (["Normal", "StyleNumbered"] as const).flatMap((targetS
 
 const paragraphProjection = async (buffer: ArrayBuffer) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
-  const paragraph = reviewer.snapshot().blocks.find(({ text }) => text === PARAGRAPH_TEXT);
-  if (!paragraph) throw new Error("The generated document lost its numbered paragraph.");
+  const paragraph = expectParagraphBlock(
+    reviewer.snapshot().blocks.find(({ text }) => text === PARAGRAPH_TEXT),
+  );
   return {
     kind: paragraph.kind,
     text: paragraph.text,
-    styleId: paragraph.styleId,
-    displayLabel: paragraph.displayLabel,
-    listReference: paragraph.listReference,
+    ...(paragraph.styleId !== undefined && { styleId: paragraph.styleId }),
+    ...(paragraph.displayLabel !== undefined && { displayLabel: paragraph.displayLabel }),
+    ...(paragraph.listReference !== undefined && { listReference: paragraph.listReference }),
     statedNumbering: paragraph.statedNumbering,
   } satisfies Pick<
-    FolioAIBlock,
+    FolioAIParagraphBlock,
     "kind" | "text" | "styleId" | "displayLabel" | "listReference" | "statedNumbering"
   >;
 };

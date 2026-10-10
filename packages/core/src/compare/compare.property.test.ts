@@ -498,8 +498,11 @@ const inlineFormattingSignature = (block: FolioAIBlock): string =>
     }),
   ]);
 
-const paragraphFormattingSignature = (block: FolioAIBlock): string =>
-  JSON.stringify([
+const paragraphFormattingSignature = (block: FolioAIBlock): string => {
+  if (block.kind === "diagnostic") {
+    return JSON.stringify([block.kind, block.text]);
+  }
+  return JSON.stringify([
     block.text,
     block.styleId,
     block.listReference,
@@ -507,6 +510,7 @@ const paragraphFormattingSignature = (block: FolioAIBlock): string =>
     block.directAlignment,
     block.directSpacing,
   ]);
+};
 
 /** Every block a story holds, as signatures in an order-independent form. */
 const signaturesOf = (

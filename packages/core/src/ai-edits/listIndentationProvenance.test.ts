@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
@@ -108,11 +109,12 @@ test.each(CASES)(
     expect(result.issues).toEqual([]);
     const text = inserts ? "Inserted" : "Anchor";
     const assertContent = (current: FolioDocxReviewer) => {
-      const block = current
+      const observedBlock = current
         .getContent()
         .filter(isFolioAIContentBlock)
         .find((entry) => entry.text === text);
-      if (!block) throw new TypeError("Combined list operation lost its target.");
+      if (!observedBlock) throw new TypeError("Combined list operation lost its target.");
+      const block = expectParagraphBlock(observedBlock);
       expect(block.styleId).toBe(withStyle ? "IndentBaseline" : anchor.styleId);
       expect(block.listReference).toEqual(
         removesNumbering ? undefined : { numId: numPr.numId, level: 1 },

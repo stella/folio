@@ -228,6 +228,7 @@ test("an undefined numbering level without a displayed marker reads as prose", (
     id: "4207D525",
     text: "No marker",
     kind: "paragraph",
+    statedNumbering: { kind: "inherit" },
     listReference: { numId: 7, level: 8 },
   };
   assert.deepEqual(contentView(block, formats), { text: "No marker", kind: "paragraph" });

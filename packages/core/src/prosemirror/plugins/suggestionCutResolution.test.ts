@@ -14,16 +14,19 @@ import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { deleteSelectionAsSuggestion } from "./suggestionMode";
 
 const project = (reviewer: FolioDocxReviewer) =>
-  reviewer
-    .snapshot()
-    .blocks.map(({ kind, text, displayLabel, listReference, statedNumbering, table }) => ({
-      kind,
-      text,
-      displayLabel,
-      listReference: listReference ?? null,
-      statedNumbering,
-      table,
-    }));
+  reviewer.snapshot().blocks.map((block) => {
+    if (block.kind === "diagnostic") {
+      return { kind: block.kind, text: block.text, diagnostic: block.diagnostic };
+    }
+    return {
+      kind: block.kind,
+      text: block.text,
+      displayLabel: block.displayLabel,
+      listReference: block.listReference ?? null,
+      statedNumbering: block.statedNumbering,
+      table: block.table,
+    };
+  });
 
 const cases = (["open", "closed"] as const).flatMap((clipboard) =>
   (["node", "image-range", "paragraph-range", "cross-paragraph"] as const).flatMap((range) =>

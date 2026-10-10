@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 import type { FolioDocumentOperation } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
@@ -21,12 +22,22 @@ const reviewerOf = async (markdown: string): Promise<FolioDocxReviewer> => {
 
 /** What a reader sees of each block: kind and list reference. */
 const kinds = (reviewer: FolioDocxReviewer): string[] =>
-  reviewer
-    .getContent()
-    .map(
-      ({ kind, listReference, text }) =>
-        `${kind}${listReference ? ` ${listReference.numId}:${listReference.level}` : ""} ${text}`,
-    );
+  reviewer.getContent().map((block) => {
+    switch (block.kind) {
+      case "paragraph":
+      case "heading":
+      case "listItem": {
+        const { listReference, text, kind } = block;
+        return `${kind}${listReference ? ` ${listReference.numId}:${listReference.level}` : ""} ${text}`;
+      }
+      case "diagnostic":
+        return `${block.kind} ${block.text}`;
+      default: {
+        const unreachable: never = block;
+        return unreachable;
+      }
+    }
+  });
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
   const block = reviewer.getContent().find((candidate) => candidate.text === text);
@@ -51,8 +62,9 @@ const numberingChanges: Record<string, (reviewer: FolioDocxReviewer) => FolioDoc
       numbering: {
         kind: "reference",
         numId:
-          reviewer.getContent().find(({ text }) => text === "Deposit on signature")?.listReference
-            ?.numId ?? 0,
+          expectParagraphBlock(
+            reviewer.getContent().find(({ text }) => text === "Deposit on signature"),
+          ).listReference?.numId ?? 0,
         ilvl: 0,
       },
     },

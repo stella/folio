@@ -29,6 +29,7 @@ import {
 } from "./redlineOperationLimit";
 import type { HeaderFooter, Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
+import { expectParagraphBlock } from "../../../test/paragraphBlock";
 
 type InlineFormattingSpec = { bold?: boolean; italic?: boolean };
 
@@ -773,12 +774,15 @@ describe("generateRedlineDocx inserted list items", () => {
     const saved = await reviewer.toBuffer();
     const reopened = await FolioDocxReviewer.fromBuffer(saved);
     return {
-      blocks: reopened.snapshot().blocks.map((block) => ({
-        text: block.text,
-        label: block.displayLabel ?? null,
-        listReference: block.listReference ?? null,
-        statedNumbering: block.statedNumbering,
-      })),
+      blocks: reopened.snapshot().blocks.map((block) => {
+        const paragraph = expectParagraphBlock(block);
+        return {
+          text: paragraph.text,
+          label: paragraph.displayLabel ?? null,
+          listReference: paragraph.listReference ?? null,
+          statedNumbering: paragraph.statedNumbering,
+        };
+      }),
       saved,
     };
   };

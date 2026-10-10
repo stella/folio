@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
+import type { FolioAIBlock, FolioAIEditSnapshot, FolioAIParagraphBlock } from "../ai-edits/types";
 import {
   compareContent,
   createContentComparisonWorkSession,
@@ -219,7 +219,7 @@ describe("neutral move scope", () => {
   });
 });
 
-const aiBlock = (id: string, text: string): FolioAIBlock => ({
+const aiBlock = (id: string, text: string): FolioAIParagraphBlock => ({
   id,
   kind: "paragraph",
   statedNumbering: INHERITED_PARAGRAPH_NUMBERING,

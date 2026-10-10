@@ -13,6 +13,7 @@ import {
   TAB_STOP_ALIGNMENT_VALUES,
 } from "../../types/documentEnumValues";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
+import { expectParagraphBlock } from "../../../../../test/paragraphBlock";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
@@ -738,9 +739,9 @@ describe("toFlowBlocks paragraph formatting", () => {
       ]),
     ]);
 
-    expect(createFolioAIEditSnapshot(doc).blocks.at(0)?.structuralBoundaries).toEqual([
-      { type: "pageBreak", offset: 1 },
-    ]);
+    expect(
+      expectParagraphBlock(createFolioAIEditSnapshot(doc).blocks.at(0)).structuralBoundaries,
+    ).toEqual([{ type: "pageBreak", offset: 1 }]);
     expect(toFlowBlocks(doc).map(({ kind }) => kind)).toEqual([
       "paragraph",
       "pageBreak",

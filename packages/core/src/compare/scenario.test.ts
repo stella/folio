@@ -4,9 +4,10 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
 import { buildNumberedListDocx } from "./__fixtures__/numbered-list";
 import { applyEditScript } from "./scenario";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 const blocksOf = async (buffer: ArrayBuffer) =>
-  (await FolioDocxReviewer.fromBuffer(buffer)).getContent();
+  (await FolioDocxReviewer.fromBuffer(buffer)).getContent().map(expectParagraphBlock);
 
 type MovedBlocksOptions = {
   base: ArrayBuffer;

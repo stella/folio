@@ -393,9 +393,20 @@ describe("operation batches never commit an unsaveable document", () => {
             cells: blocks.filter((block) => block.table !== undefined),
             definedNumIds: [
               ...new Set(
-                blocks.flatMap((block) =>
-                  block.listReference === undefined ? [] : [block.listReference.numId],
-                ),
+                blocks.flatMap((block) => {
+                  switch (block.kind) {
+                    case "paragraph":
+                    case "heading":
+                    case "listItem":
+                      return block.listReference === undefined ? [] : [block.listReference.numId];
+                    case "diagnostic":
+                      return [];
+                    default: {
+                      const unreachable: never = block;
+                      return unreachable;
+                    }
+                  }
+                }),
               ),
             ],
           };

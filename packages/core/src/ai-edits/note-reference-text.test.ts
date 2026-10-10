@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 import { fromMarkdown } from "../markdown";
 import { createDocx, docxToMarkdown, ensureParaIds } from "../server";
@@ -120,7 +121,8 @@ const expectEdited = async (
 
 describe("note references read as their markers", () => {
   test("every reader shows the marker Markdown writes, never the package id", async () => {
-    const { reviewer, block } = await open();
+    const { reviewer, block: observedBlock } = await open();
+    const block = expectParagraphBlock(observedBlock);
 
     expect(block.text).toBe(TEXT);
     expect(reviewer.snapshot().blocks[0]?.text).toBe(TEXT);

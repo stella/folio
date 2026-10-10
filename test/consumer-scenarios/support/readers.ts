@@ -9,6 +9,7 @@
  */
 
 import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
+import type { FolioAIBlock, FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 import { docxToMarkdown, isFolioAIContentBlock } from "@stll/folio-core/server";
 import { XMLParser } from "fast-xml-parser";
 import { marked, type Token } from "marked";
@@ -26,17 +27,21 @@ export type BlockView = {
   number?: string;
 };
 
-type ContentBlock = {
-  id: string;
-  kind: string;
-  text: string;
-  headingLevel?: number;
-  displayLabel?: string;
-  styleId?: string;
-  statedNumbering: Record<string, unknown>;
-  table?: unknown;
-  listReference?: { numId: number; level: number };
-};
+type ContentBlock = Pick<
+  FolioAIParagraphBlock,
+  | "id"
+  | "kind"
+  | "text"
+  | "headingLevel"
+  | "displayLabel"
+  | "styleId"
+  | "statedNumbering"
+  | "table"
+  | "listReference"
+>;
+
+const paragraphBlocks = (blocks: readonly FolioAIBlock[]): FolioAIParagraphBlock[] =>
+  blocks.filter((block): block is FolioAIParagraphBlock => block.kind !== "diagnostic");
 
 /** A bullet reads as `-` in Markdown and as its glyph elsewhere. */
 export const BULLET = "(bullet)";
@@ -522,12 +527,10 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
       .readNumberingDefinitions()
       .map(({ numId, level, format }) => [`${numId}:${level}`, format] as const),
   );
-  const bodyContent = reviewer.getContent() as ContentBlock[];
-  const content = bodyContent.filter((block) => isFolioAIContentBlock(block as never));
+  const bodyContent = paragraphBlocks(reviewer.getContent());
+  const content = bodyContent.filter(isFolioAIContentBlock);
   const bridge = createReviewerBridge(reviewer);
-  const snapshot = (bridge.snapshot().blocks as ContentBlock[]).filter((block) =>
-    isFolioAIContentBlock(block as never),
-  );
+  const snapshot = paragraphBlocks(bridge.snapshot().blocks).filter(isFolioAIContentBlock);
   const read = executeFolioToolCallUntyped("read_document", {}, bridge, {});
   if (!read.ok) {
     throw new Error(`read_document failed: ${read.error}`);
@@ -543,7 +546,7 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
   if (reviewer.getChanges().length > 0) {
     acceptedReviewer = await openReviewer(bytes);
     acceptedReviewer.acceptAll();
-    accepted = acceptedReviewer.getContent() as ContentBlock[];
+    accepted = paragraphBlocks(acceptedReviewer.getContent());
   }
   // `docxToMarkdown` writes no text-box paragraph the block readers list
   // (MARKDOWN_DROPS_TEXT_BOX, pinned in known-issues.test.ts); the rest of
@@ -557,7 +560,7 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
       view(String(row["text"]).trim(), asKind(String(row["kind"])), undefined, undefined),
     ),
     getContentAsMarkdown: accepted
-      .filter((block) => isFolioAIContentBlock(block as never))
+      .filter(isFolioAIContentBlock)
       .map((block) =>
         markdownComparable(contentView(block, numberingFormats), block.table !== undefined),
       ),
@@ -575,6 +578,13 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
     ).filter(isFolioAIContentBlock),
     rows,
     ids: content.map(({ id }) => id),
-    labels: content.map(labelFields),
+    labels: content.map((block) =>
+      labelFields({
+        statedNumbering: block.statedNumbering,
+        ...(block.displayLabel === undefined ? {} : { displayLabel: block.displayLabel }),
+        ...(block.headingLevel === undefined ? {} : { headingLevel: block.headingLevel }),
+        ...(block.listReference === undefined ? {} : { listReference: block.listReference }),
+      }),
+    ),
   };
 };

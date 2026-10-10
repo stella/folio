@@ -16,6 +16,7 @@ import { paragraphRejectAttrPatch } from "../prosemirror/commands/propertyChange
 import type { Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 const OPTIONS = { author: "compare", timestamp: "2026-09-08T00:00:00.000Z" } as const;
 const TEXT = "The agreement remains effective for the stated term.";
@@ -252,7 +253,9 @@ const expectDirectSpacing = (
   expected: FolioAIParagraphSpacing | undefined,
   index = 0,
 ): void => {
-  expect(reviewer.snapshot().blocks.at(index)?.directSpacing).toEqual(expected);
+  expect(expectParagraphBlock(reviewer.snapshot().blocks.at(index)).directSpacing).toEqual(
+    expected,
+  );
 };
 
 const expectCompareRoundTrip = async ({
@@ -528,7 +531,9 @@ describe("paragraph spacing comparison", () => {
       ]);
       const pending = await FolioDocxReviewer.fromBuffer(result.value.buffer);
       expect(pending.snapshot().blocks.at(0)?.text).toBe(INSERTED_TEXT);
-      expect(pending.snapshot().blocks.at(0)?.directSpacing).toEqual(directSpacing);
+      expect(expectParagraphBlock(pending.snapshot().blocks.at(0)).directSpacing).toEqual(
+        directSpacing,
+      );
 
       expect(pending.acceptAll()).toBeGreaterThan(0);
       const acceptedBuffer = await pending.toBuffer();
@@ -656,7 +661,7 @@ describe("paragraph spacing comparison", () => {
         retryable: false,
       }),
     ]);
-    expect(reopened.snapshot().blocks.at(0)?.directAlignment).toBeUndefined();
+    expect(expectParagraphBlock(reopened.snapshot().blocks.at(0)).directAlignment).toBeUndefined();
     expectDirectSpacing(reopened, firstTarget);
 
     const replacement = reopened.applyDocumentOperations({

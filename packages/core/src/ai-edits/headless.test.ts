@@ -15,6 +15,7 @@ import { EditorState } from "prosemirror-state";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { buildTextBoxTableDocument, findTextBoxShape } from "../__tests__/textBoxTableDocument";
 import { parseDocx } from "../docx/parser";
 import { ensureParaIds } from "../docx/ensureParaIds";
@@ -396,12 +397,12 @@ const paragraphContaining = (documentXml: string, needle: string): string => {
 
 const blockText = (block: FolioAIBlock): string => block.text;
 
-const findBlock = (blocks: FolioAIBlock[], needle: string): FolioAIBlock => {
+const findBlock = (blocks: FolioAIBlock[], needle: string) => {
   const block = blocks.find((b) => b.text.includes(needle));
   if (!block) {
     throw new Error(`no block containing ${JSON.stringify(needle)}`);
   }
-  return block;
+  return expectParagraphBlock(block);
 };
 
 describe("headless docx review round-trip", () => {
@@ -1948,7 +1949,9 @@ describe("headless docx review round-trip", () => {
       });
 
       expect(result.status).toBe("committed");
-      expect(reviewer.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(after);
+      expect(
+        expectParagraphBlock(reviewer.snapshotStory(story)?.blocks.at(0)).directAlignment,
+      ).toBe(after);
       expect(
         reviewer
           .readReviewedStory({ story, view: "current-markup" })
@@ -1964,25 +1967,33 @@ describe("headless docx review round-trip", () => {
 
       const accepting = await FolioDocxReviewer.fromBuffer(pending);
       expect(accepting.resolveReviewedStory({ story, view: "final" })).toBe(true);
-      expect(accepting.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(after);
+      expect(
+        expectParagraphBlock(accepting.snapshotStory(story)?.blocks.at(0)).directAlignment,
+      ).toBe(after);
       const accepted = await accepting.toBuffer();
       const acceptedXml = await partText(accepted, part);
       const acceptedParagraph = paragraphXmlContaining(acceptedXml, text);
       expect(acceptedParagraph).not.toContain("<w:pPrChange");
       expect(untrackedParagraphProperties(acceptedParagraph)).toBe(alignedStoryProperties(after));
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
-      expect(reopenedAccepted.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(after);
+      expect(
+        expectParagraphBlock(reopenedAccepted.snapshotStory(story)?.blocks.at(0)).directAlignment,
+      ).toBe(after);
 
       const rejecting = await FolioDocxReviewer.fromBuffer(pending);
       expect(rejecting.resolveReviewedStory({ story, view: "original" })).toBe(true);
-      expect(rejecting.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(before);
+      expect(
+        expectParagraphBlock(rejecting.snapshotStory(story)?.blocks.at(0)).directAlignment,
+      ).toBe(before);
       const rejected = await rejecting.toBuffer();
       const rejectedXml = await partText(rejected, part);
       const rejectedParagraph = paragraphXmlContaining(rejectedXml, text);
       expect(rejectedParagraph).not.toContain("<w:pPrChange");
       expect(untrackedParagraphProperties(rejectedParagraph)).toBe(alignedStoryProperties(before));
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
-      expect(reopenedRejected.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(before);
+      expect(
+        expectParagraphBlock(reopenedRejected.snapshotStory(story)?.blocks.at(0)).directAlignment,
+      ).toBe(before);
     },
   );
 

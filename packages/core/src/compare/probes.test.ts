@@ -37,6 +37,7 @@ import {
 import { compareDocx } from "./compare";
 import { applyEditScript, type EditScript } from "./scenario";
 import type { CompareChange } from "./types";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus");
 
@@ -915,9 +916,12 @@ describe("single-mutation probes", () => {
 
     const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     reviewer.resolveReviewedStory({ view: "final" });
-    expect(reviewer.getContent().map(({ listReference }) => listReference?.level ?? null)).toEqual(
-      withParagraph.map(({ level }) => level),
-    );
+    expect(
+      reviewer
+        .getContent()
+        .map(expectParagraphBlock)
+        .map(({ listReference }) => listReference?.level ?? null),
+    ).toEqual(withParagraph.map(({ level }) => level));
   });
 
   test("delete_paragraph: the paragraph MARK is deleted with the words", async () => {

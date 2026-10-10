@@ -340,14 +340,32 @@ const blockView = ({ text, kind, headingLevel, number }: BlockViewOptions): Bloc
 };
 
 /** The `read_document` row fields that restate a snapshot block's. */
-const rowFields = (row: FolioAgentBlock) => ({
-  blockId: row.blockId,
-  kind: row.kind,
-  displayLabel: row.displayLabel,
-  headingLevel: row.headingLevel,
-  statedNumbering: row.statedNumbering,
-  listReference: row.listReference,
-});
+const rowFields = (row: FolioAgentBlock) => {
+  switch (row.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return {
+        blockId: row.blockId,
+        kind: row.kind,
+        displayLabel: row.displayLabel,
+        headingLevel: row.headingLevel,
+        statedNumbering: row.statedNumbering,
+        listReference: row.listReference,
+      };
+    case "diagnostic":
+      return {
+        blockId: row.blockId,
+        kind: row.kind,
+        displayLabel: row.displayLabel,
+        headingLevel: row.headingLevel,
+      };
+    default: {
+      const unreachable: never = row;
+      return unreachable;
+    }
+  }
+};
 
 const MARKDOWN_OPTIONS = {
   annotations: "strip",
@@ -393,7 +411,50 @@ const readReviewer = (reviewer: FolioDocxReviewer, markdown: string) => {
 };
 
 type Block = ReturnType<FolioDocxReviewer["getContent"]>[number];
+type ParagraphBlock = Extract<Block, { kind: "paragraph" | "heading" | "listItem" }>;
 type Mode = "direct" | "tracked-changes";
+
+const isParagraphBlock = (block: Block): block is ParagraphBlock => {
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return true;
+    case "diagnostic":
+      return false;
+    default: {
+      const unreachable: never = block;
+      return unreachable;
+    }
+  }
+};
+
+const contentRowFields = (block: Block) => {
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return {
+        blockId: block.id,
+        kind: block.kind,
+        displayLabel: block.displayLabel,
+        headingLevel: block.headingLevel,
+        statedNumbering: block.statedNumbering,
+        listReference: block.listReference,
+      };
+    case "diagnostic":
+      return {
+        blockId: block.id,
+        kind: block.kind,
+        displayLabel: block.displayLabel,
+        headingLevel: block.headingLevel,
+      };
+    default: {
+      const unreachable: never = block;
+      return unreachable;
+    }
+  }
+};
 
 /** A small seeded generator (mulberry32), so a failing sequence replays from its seed. */
 const seeded = (seed: number) => {
@@ -418,8 +479,8 @@ type ListEdit = (
   step: number,
 ) => FolioDocumentOperation[] | null;
 
-const listed = (blocks: readonly Block[]): Block[] =>
-  blocks.filter((block) => block.listReference !== undefined);
+const listed = (blocks: readonly Block[]): ParagraphBlock[] =>
+  blocks.filter(isParagraphBlock).filter((block) => block.listReference !== undefined);
 
 /** The edits that change which items a list has, their levels, or where it restarts. */
 const LIST_EDITS: Record<string, ListEdit> = {
@@ -562,16 +623,7 @@ const expectLiveAndSavedAgree = async (reviewer: FolioDocxReviewer): Promise<voi
   const withMarkdown = reviewer.getChanges().length === 0;
   const live = readLive(reviewer);
   expectReadersAgree(live.views, withMarkdown);
-  expect(live.rows.map(rowFields)).toEqual(
-    live.content.map((block) => ({
-      blockId: block.id,
-      kind: block.kind,
-      displayLabel: block.displayLabel,
-      headingLevel: block.headingLevel,
-      statedNumbering: block.statedNumbering,
-      listReference: block.listReference,
-    })),
-  );
+  expect(live.rows.map(rowFields)).toEqual(live.content.map(contentRowFields));
 
   const saved = await readAll(new Uint8Array(await reviewer.toBuffer()));
   expect({ saved: saved.views.getContent }).toEqual({ saved: live.views.getContent });
@@ -688,16 +740,7 @@ describe("readers agree on numbered headings and lists", () => {
   test("read_document rows restate the snapshot's labels and numbering state", async () => {
     const { content, rows } = await readAll(await buildNumberedDocument());
 
-    expect(rows.map(rowFields)).toEqual(
-      content.map((block) => ({
-        blockId: block.id,
-        kind: block.kind,
-        displayLabel: block.displayLabel,
-        headingLevel: block.headingLevel,
-        statedNumbering: block.statedNumbering,
-        listReference: block.listReference,
-      })),
-    );
+    expect(rows.map(rowFields)).toEqual(content.map(contentRowFields));
     // Rows stay compact: a field the block lacks is absent, not `undefined`.
     const body = rows.find(({ text }) => text === "The Supplier delivers the goods.");
     expect(body && Object.keys(body).sort()).toEqual([
