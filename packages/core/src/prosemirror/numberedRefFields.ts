@@ -2,7 +2,7 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 
 import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { expectFieldAttrs, expectParagraphAttrs } from "./attrs";
-import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "../docx/numberingReference";
+import { effectiveParagraphNumberingReference } from "./numberingAttr";
 import {
   advanceVisibleListMarker,
   createListCounterState,
@@ -178,9 +178,9 @@ function numberTargetForAdvancedMarker(
   state: ListCounterState,
   contexts: NumberingContexts,
 ): NumberedTarget | null {
-  const numId = paragraphNumberingReferenceId(attrs.numPr);
+  const numbering = effectiveParagraphNumberingReference(attrs);
   if (
-    numId === undefined ||
+    numbering === undefined ||
     attrs.listIsBullet ||
     attrs.listMarkerHidden ||
     attrs.listNumFmt === "none" ||
@@ -188,9 +188,9 @@ function numberTargetForAdvancedMarker(
   ) {
     return null;
   }
+  const { numId, ilvl: level } = numbering;
   const marker = attrs.listMarkerAllCaps ? resolvedMarker.toLocaleUpperCase() : resolvedMarker;
 
-  const level = paragraphNumberingLevel(attrs.numPr) ?? 0;
   if (!Number.isInteger(level) || level < 0 || level > MAX_LIST_LEVEL) {
     return null;
   }

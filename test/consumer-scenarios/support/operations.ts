@@ -11,6 +11,7 @@ import {
   hashFolioAIBlockText,
   isFolioDocumentOperationModeSupported,
 } from "@stll/folio-core/server";
+import type { FolioAIBlock, FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
 import { type Random, sentence } from "./random.ts";
 import { gapWeight, weightedChoice } from "./feature-coverage.ts";
@@ -19,13 +20,13 @@ import { type Picker, uniformPicker, wordsOf } from "./targets.ts";
 export type Mode = "direct" | "tracked-changes" | "suggested";
 export const MODES: readonly Mode[] = ["direct", "tracked-changes", "suggested"];
 
-export type Block = {
-  id: string;
-  kind: string;
-  text: string;
-  listReference?: { numId: number; level: number };
-  table?: unknown;
-};
+type BlockFields = Pick<FolioAIBlock, "id" | "text" | "table">;
+export type Block =
+  | (BlockFields & {
+      kind: FolioAIParagraphBlock["kind"];
+      listReference?: NonNullable<FolioAIParagraphBlock["listReference"]>;
+    })
+  | (BlockFields & { kind: "diagnostic" });
 
 export type Operation = { type: string } & Record<string, unknown>;
 
@@ -41,7 +42,26 @@ type Generator = (blocks: readonly Block[], random: Random, pick?: Picker) => Op
 const withText = (blocks: readonly Block[]) => blocks.filter((block) => wordsOf(block.text).length);
 
 const numberingRefs = (blocks: readonly Block[]) =>
-  blocks.flatMap((block) => (block.listReference ? [block.listReference] : []));
+  blocks.flatMap((block) => {
+    switch (block.kind) {
+      case "paragraph":
+      case "heading":
+      case "listItem":
+        return block.listReference === undefined ? [] : [block.listReference];
+      case "diagnostic":
+        return [];
+      default: {
+        const unreachable: never = block;
+        return unreachable;
+      }
+    }
+  });
+
+const referenceNumbering = ({ numId, level }: { numId: number; level: number }) => ({
+  kind: "reference" as const,
+  numId,
+  ilvl: level,
+});
 
 const range = (block: Block, pick: Picker) => {
   if (wordsOf(block.text).length === 0) return null;
@@ -62,8 +82,13 @@ const paragraphProperties = (blocks: readonly Block[], random: Random) => {
     { alignment: "center" },
     { alignment: null },
     { spacing: { spaceBefore: 120, spaceAfter: 120 } },
-    { numbering: { start: "new", kind: random.pick(["numbered", "bullet"]) } },
-    ...(refs.length > 0 ? [{ numbering: random.pick(refs) }, { numbering: null }] : []),
+    { numbering: { kind: "newList", format: random.pick(["numbered", "bullet"]) } },
+    ...(refs.length > 0
+      ? [
+          { numbering: referenceNumbering(random.pick(refs)) },
+          { numbering: { kind: "none" as const } },
+        ]
+      : []),
   ]);
 };
 
@@ -112,8 +137,8 @@ export const GENERATORS: Record<string, Generator> = {
       {},
       { styleId: "Heading2" },
       { alignment: "right" },
-      { numbering: { start: "new", kind: random.pick(["numbered", "bullet"]) } },
-      ...(refs.length > 0 ? [{ numbering: random.pick(refs) }] : []),
+      { numbering: { kind: "newList", format: random.pick(["numbered", "bullet"]) } },
+      ...(refs.length > 0 ? [{ numbering: referenceNumbering(random.pick(refs)) }] : []),
     ]);
     return {
       type: "insertAfterBlock",
@@ -632,7 +657,7 @@ export const COLLISIONS: Record<string, Collision> = {
             type: "insertAfterBlock",
             blockId: block.id,
             text: "A new bullet.",
-            numbering: { start: "new", kind: "bullet" },
+            numbering: { kind: "newList", format: "bullet" },
           },
         ]
       : null;

@@ -39,9 +39,16 @@ bun add @stll/folio-agents
 
 A `read_document` / `read_section` block also carries, when present, the
 number or bullet the document shows beside it (`displayLabel`: `2.1.`, `a)`,
-`•`; an unnumbered heading's style id), its `headingLevel` (one-based) and
-its `listLevel` (zero-based). A numbered heading is `kind: "heading"` with its
-number in `displayLabel`; absent fields are omitted.
+`•`; an unnumbered heading's style id), its `headingLevel` (one-based),
+`statedNumbering` (the authored paragraph state), and `listReference` (the
+resolved numbering instance and zero-based level, when present). A numbered
+heading is `kind: "heading"` with its number in `displayLabel`; absent fields
+are omitted. Diagnostic blocks report preserved content Folio cannot interpret
+and omit paragraph numbering fields.
+
+For `suggest_changes`, `numbering` is a named state: `none`, `inherit`,
+`{ kind: "levelOnly", ilvl }`, `{ kind: "reference", numId, ilvl? }`, or
+`{ kind: "newList", format: "numbered" | "bullet", level? }`.
 
 Block ids and comment ids always come from a prior tool call
 (`read_document`, `find_text`, `read_comments`) within the same conversation —
@@ -49,7 +56,7 @@ never guess them. `suggest_changes` reports a plain-language reason when an
 operation is skipped (e.g. the block changed since it was last read, an
 earlier operation of the same call already deletes, rewrites, splits or merges
 its target, an offset falls inside a character, its `styleId` names no
-paragraph style the document defines, or its `numbering.numId` names an
+paragraph style the document defines, or a `numbering` reference names an
 instance the document does not define), so the model can re-read and retry.
 An operation whose result would leave a document that cannot be saved is
 skipped with `invalidResult` and nothing from it is applied. Successful

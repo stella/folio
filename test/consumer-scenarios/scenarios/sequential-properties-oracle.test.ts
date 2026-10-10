@@ -157,7 +157,11 @@ test("generated terminal deletions preserve property edits and rejection in real
           },
         ],
       } as const satisfies Parameters<typeof batch.applyDocumentOperations>[0];
-      assert.equal(batch.applyDocumentOperations(initialization).applied.length, 1);
+      assert.equal(
+        batch.applyDocumentOperations(initialization, { undefinedReferences: "refuse" }).applied
+          .length,
+        1,
+      );
       const before = new Uint8Array(await batch.toBuffer());
       const sequential = await openReviewer(before);
       const rejected = await openReviewer(before);
@@ -173,15 +177,24 @@ test("generated terminal deletions preserve property edits and rejection in real
         mode: "tracked-changes",
         operations,
       } as const satisfies Parameters<typeof batch.applyDocumentOperations>[0];
-      assert.equal(batch.applyDocumentOperations(request).applied.length, operations.length);
-      assert.equal(rejected.applyDocumentOperations(request).applied.length, operations.length);
+      assert.equal(
+        batch.applyDocumentOperations(request, { undefinedReferences: "refuse" }).applied.length,
+        operations.length,
+      );
+      assert.equal(
+        rejected.applyDocumentOperations(request, { undefinedReferences: "refuse" }).applied.length,
+        operations.length,
+      );
       for (const group of sequentialGroups({ applied: operations, preRows, mode: request.mode })) {
         const restated = group.map(({ id }) => {
           const operation = operations.find((candidate) => candidate.id === id);
           assert.ok(operation, `sequential group operation ${id} belongs to the batch`);
           return operation;
         });
-        const result = sequential.applyDocumentOperations({ ...request, operations: restated });
+        const result = sequential.applyDocumentOperations(
+          { ...request, operations: restated },
+          { undefinedReferences: "refuse" },
+        );
         assert.deepEqual(
           result.skipped,
           [],

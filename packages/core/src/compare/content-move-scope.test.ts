@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
+import type { FolioAIBlock, FolioAIEditSnapshot, FolioAIParagraphBlock } from "../ai-edits/types";
 import {
   compareContent,
   createContentComparisonWorkSession,
   detectFolioContentMoves,
 } from "./content";
 import type { FolioContentAlignmentStep } from "./content-alignment";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock } from "./content-types";
 import { planStoryCompare } from "./plan";
 import { alignFolioBlocks } from "../version-comparison";
@@ -14,6 +15,7 @@ import { alignFolioBlocks } from "../version-comparison";
 const block = (id: string, text: string): FolioContentBlock => ({
   id,
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text,
 });
 
@@ -34,6 +36,7 @@ const tableBlock = ({
 }): FolioContentBlock => ({
   id,
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text,
   containerPath: [{ kind: "cell", id: containerId }],
   table: {
@@ -216,9 +219,10 @@ describe("neutral move scope", () => {
   });
 });
 
-const aiBlock = (id: string, text: string): FolioAIBlock => ({
+const aiBlock = (id: string, text: string): FolioAIParagraphBlock => ({
   id,
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text,
 });
 

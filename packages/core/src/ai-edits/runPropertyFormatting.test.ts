@@ -334,9 +334,10 @@ const applyTrackedFormatting = async ({
     throw new Error("expected a formatting range");
   }
 
-  const result = reviewer.applyOperations([
-    { id: "format", type: "formatRange", range, formatting },
-  ]);
+  const result = reviewer.applyOperations(
+    [{ id: "format", type: "formatRange", range, formatting }],
+    { undefinedReferences: "refuse" },
+  );
   expect(result.skipped).toEqual([]);
   expect(result.applied.at(0)?.revisionId).toBeNumber();
   return reviewer.toBuffer();
@@ -606,11 +607,14 @@ describe("tracked run formatting", () => {
       throw new Error("expected an inherited formatting range");
     }
 
-    const authoredOff = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [{ id: "bold-off", type: "formatRange", range, formatting: { bold: false } }],
-    });
+    const authoredOff = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [{ id: "bold-off", type: "formatRange", range, formatting: { bold: false } }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(authoredOff.skipped).toEqual([]);
     const offBuffer = await reviewer.toBuffer();
     const reopenedOff = await FolioDocxReviewer.fromBuffer(offBuffer);
@@ -632,13 +636,21 @@ describe("tracked run formatting", () => {
     if (!clearRange) {
       throw new Error("expected a direct-off formatting range");
     }
-    const cleared = reopenedOff.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        { id: "bold-inherit", type: "formatRange", range: clearRange, formatting: { bold: null } },
-      ],
-    });
+    const cleared = reopenedOff.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "bold-inherit",
+            type: "formatRange",
+            range: clearRange,
+            formatting: { bold: null },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(cleared.skipped).toEqual([]);
     const reopenedCleared = await FolioDocxReviewer.fromBuffer(await reopenedOff.toBuffer());
     const clearedRun = reopenedCleared
@@ -703,14 +715,17 @@ describe("tracked run formatting", () => {
       throw new Error("expected an inherited formatting range");
     }
 
-    const result = reviewer.applyOperations([
-      {
-        id: "format-inherited",
-        type: "formatRange",
-        range,
-        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
-      },
-    ]);
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: "format-inherited",
+          type: "formatRange",
+          range,
+          formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.skipped).toEqual([]);
     expect(reviewer.readReviewedStory({ view: "current-markup" })?.changes).toEqual([
@@ -740,14 +755,17 @@ describe("tracked run formatting", () => {
       throw new Error("expected a mixed formatting range");
     }
 
-    const result = reviewer.applyOperations([
-      {
-        id: "clear-direct",
-        type: "formatRange",
-        range,
-        formatting: { fontFamily: null, fontSizePt: null, color: null },
-      },
-    ]);
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: "clear-direct",
+          type: "formatRange",
+          range,
+          formatting: { fontFamily: null, fontSizePt: null, color: null },
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.skipped).toEqual([]);
     expect(reviewer.readReviewedStory({ view: "current-markup" })?.changes).toEqual([
@@ -809,10 +827,13 @@ describe("tracked run formatting", () => {
       throw new Error("expected a formatting range");
     }
 
-    const result = reviewer.applyOperations([
-      { id: "bold", type: "formatRange", range, formatting: { bold: true } },
-      { id: "italic", type: "formatRange", range, formatting: { italic: true } },
-    ]);
+    const result = reviewer.applyOperations(
+      [
+        { id: "bold", type: "formatRange", range, formatting: { bold: true } },
+        { id: "italic", type: "formatRange", range, formatting: { italic: true } },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied.map(({ id }) => id)).toEqual(["italic"]);
     expect(result.skipped).toEqual([{ id: "bold", reason: "pendingRunPropertyChange" }]);
 
@@ -858,7 +879,10 @@ describe("tracked run formatting", () => {
           { id: "bold", type: "formatRange", range: firstRange, formatting: { bold: true } },
         ],
       },
-      { revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 700 } },
+      {
+        undefinedReferences: "refuse",
+        revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 700 },
+      },
     );
     expect(firstResult.nextRevisionId).toBe(701);
 
@@ -887,7 +911,10 @@ describe("tracked run formatting", () => {
           },
         ],
       },
-      { revisionStamp: { date: "2026-01-02T03:04:06.000Z", idSeed: 701 } },
+      {
+        undefinedReferences: "refuse",
+        revisionStamp: { date: "2026-01-02T03:04:06.000Z", idSeed: 701 },
+      },
     );
 
     expect(replacementResult.status).toBe("committed");
@@ -929,7 +956,10 @@ describe("tracked run formatting", () => {
           },
         ],
       },
-      { revisionStamp: { date: "2026-01-02T03:04:07.000Z", idSeed: 701 } },
+      {
+        undefinedReferences: "refuse",
+        revisionStamp: { date: "2026-01-02T03:04:07.000Z", idSeed: 701 },
+      },
     );
     expect(followupResult.applied.at(0)?.revisionIds).toEqual([701]);
     expect(followupResult.nextRevisionId).toBe(702);
@@ -1051,7 +1081,10 @@ describe("tracked run formatting", () => {
             },
           ],
         },
-        { revisionStamp: { date: "2026-09-09T00:00:00.000Z", idSeed: 900 } },
+        {
+          undefinedReferences: "refuse",
+          revisionStamp: { date: "2026-09-09T00:00:00.000Z", idSeed: 900 },
+        },
       );
       expect(result.skipped).toEqual([]);
       if (mode === "tracked-changes") {
@@ -1126,7 +1159,10 @@ describe("tracked run formatting", () => {
           { id: "format-carriers", type: "formatRange", range, formatting: { italic: true } },
         ],
       },
-      { revisionStamp: { date: "2026-09-09T00:00:00.000Z", idSeed: 900 } },
+      {
+        undefinedReferences: "refuse",
+        revisionStamp: { date: "2026-09-09T00:00:00.000Z", idSeed: 900 },
+      },
     );
 
     expect(result.applied).toEqual([]);
@@ -1167,6 +1203,7 @@ describe("tracked run formatting", () => {
     ]);
 
     const result = reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       batch: {
         version: 1,

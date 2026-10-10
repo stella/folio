@@ -111,7 +111,7 @@ describe("a body edit beside a text box with a Fallback", () => {
             replace: `${target.text}${MARKER}`,
           },
         ],
-        { mode: "direct" },
+        { undefinedReferences: "refuse", mode: "direct" },
       );
       expect(applied.applied.length).toBe(1);
 

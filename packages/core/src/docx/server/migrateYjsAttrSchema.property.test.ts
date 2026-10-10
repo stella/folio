@@ -19,7 +19,7 @@ import {
   paragraphNumberingFromSlots,
 } from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { schema } from "../../prosemirror/schema";
 import {
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
@@ -135,7 +135,7 @@ describe("migrateFolioYjsSnapshot", () => {
   test(
     "is a fixed point and leaves content alone",
     () => {
-      fc.assert(
+      assertProperty(
         fc.property(paragraphs, (blocks) => {
           const { unversioned } = syntheticSnapshot(blocks);
           const once = expectMigrated(unversioned);
@@ -156,7 +156,7 @@ describe("migrateFolioYjsSnapshot", () => {
           // pair and absent when the element stated neither slot.
           expect(proseDocumentOf(once.update).eq(proseDocument(blocks, currentAttrs))).toBe(true);
         }),
-        propertyConfig({ numRuns: 60 }),
+        { numRuns: 60 },
       );
     },
     propertyTestTimeout(20_000),
@@ -165,7 +165,7 @@ describe("migrateFolioYjsSnapshot", () => {
   test(
     "returns a current snapshot byte for byte",
     () => {
-      fc.assert(
+      assertProperty(
         fc.property(paragraphs, (blocks) => {
           const { versioned } = syntheticSnapshot(blocks);
           const migrated = expectMigrated(versioned);
@@ -173,7 +173,7 @@ describe("migrateFolioYjsSnapshot", () => {
           expect(migrated.fromVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
           expect(migrated.update).toBe(versioned);
         }),
-        propertyConfig({ numRuns: 60 }),
+        { numRuns: 60 },
       );
     },
     propertyTestTimeout(20_000),

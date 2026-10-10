@@ -1,3 +1,4 @@
+import type { ParagraphNumberingOverride } from "@stll/docx-core/model";
 import type { OutlineLevel, ParagraphAlignment, ParagraphFormatting } from "../types/document";
 
 /** How callers expect a block identifier to behave across document revisions. */
@@ -103,6 +104,33 @@ export type FolioContentParagraphIndentation = Pick<
 /** A concrete numbering instance and its zero-based level. */
 export type FolioContentListReference = { numId: number; level: number };
 
+/** Authored paragraph numbering state, separate from effective list membership. */
+export type FolioContentStatedNumbering = ParagraphNumberingOverride | { readonly kind: "inherit" };
+
+export const INHERITED_PARAGRAPH_NUMBERING = {
+  kind: "inherit",
+} as const satisfies FolioContentStatedNumbering;
+
+export const sameFolioContentStatedNumbering = (
+  left: FolioContentStatedNumbering,
+  right: FolioContentStatedNumbering,
+): boolean => {
+  if (left.kind !== right.kind) return false;
+  switch (left.kind) {
+    case "inherit":
+    case "none":
+      return true;
+    case "levelOnly":
+      return right.kind === "levelOnly" && left.ilvl === right.ilvl;
+    case "reference":
+      return right.kind === "reference" && left.numId === right.numId && left.ilvl === right.ilvl;
+    default: {
+      const unreachable: never = left;
+      return unreachable;
+    }
+  }
+};
+
 /**
  * The complete modeled attribute set of direct paragraph spacing. Optional
  * fields distinguish an absent attribute from an explicit zero or false value.
@@ -117,8 +145,8 @@ export type FolioContentParagraphSpacing = Pick<
   | "afterAutospacing"
 >;
 
-/** A representation-neutral block in one ordered document story. */
-export type FolioContentBlock<Kind extends string = string> = {
+/** Identity and shared projection fields for any block in one ordered story. */
+export type FolioContentBlockIdentity<Kind extends string = string> = {
   id: string;
   kind: Kind;
   text: string;
@@ -132,24 +160,30 @@ export type FolioContentBlock<Kind extends string = string> = {
    */
   displayLabel?: string;
   styleId?: string;
-  /** Authored `w:outlineLvl`; absent when heading depth comes only from a style. */
-  directOutlineLevel?: OutlineLevel;
-  /** Direct paragraph alignment; absent when alignment comes only from a style. */
-  directAlignment?: FolioContentParagraphAlignment;
-  /** Direct paragraph spacing; absent when every spacing value is inherited. */
-  directSpacing?: FolioContentParagraphSpacing;
-  /** Direct paragraph indentation; absent when every indentation value is inherited. */
-  directIndentation?: FolioContentParagraphIndentation;
-  /** Zero-based list indent level when the block carries numbering. */
-  listLevel?: number;
-  listReference?: FolioContentListReference;
   previewRuns?: readonly FolioContentRun[];
   table?: FolioContentTableLocation;
   /** Structural ancestry, ordered from the outermost to the innermost container. */
   containerPath?: readonly FolioContentContainerPathEntry[];
 };
 
+/** A paragraph block with authored paragraph numbering state. */
+export type FolioContentBlock<Kind extends FolioContentParagraphKind = FolioContentParagraphKind> =
+  FolioContentBlockIdentity<Kind> & {
+    /** Authored `w:outlineLvl`; absent when heading depth comes only from a style. */
+    directOutlineLevel?: OutlineLevel;
+    /** Direct paragraph alignment; absent when alignment comes only from a style. */
+    directAlignment?: FolioContentParagraphAlignment;
+    /** Direct paragraph spacing; absent when every spacing value is inherited. */
+    directSpacing?: FolioContentParagraphSpacing;
+    /** Direct paragraph indentation; absent when every indentation value is inherited. */
+    directIndentation?: FolioContentParagraphIndentation;
+    /** Effective list membership resolved from authored and inherited numbering. */
+    listReference?: FolioContentListReference;
+    /** Authored paragraph numbering override; `inherit` means no direct override. */
+    statedNumbering: FolioContentStatedNumbering;
+  };
+
 /** Every block of one story, in document order. */
-export type FolioContentSnapshot<Block extends FolioContentBlock = FolioContentBlock> = {
+export type FolioContentSnapshot<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
   blocks: readonly Block[];
 };

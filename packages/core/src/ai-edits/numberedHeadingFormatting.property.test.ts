@@ -93,18 +93,21 @@ test(
         expect(expected.runs).toEqual([{ text: TITLE, bold: entry.bold, italic: entry.italic }]);
 
         for (const level of entry.levels) {
-          const result = reviewer.applyDocumentOperations({
-            version: 1,
-            mode: entry.mode,
-            operations: [
-              {
-                id: "level",
-                type: "setBlockParagraphProperties",
-                blockId: block.id,
-                properties: { numbering: { numId: 7, level } },
-              },
-            ],
-          });
+          const result = reviewer.applyDocumentOperations(
+            {
+              version: 1,
+              mode: entry.mode,
+              operations: [
+                {
+                  id: "level",
+                  type: "setBlockParagraphProperties",
+                  blockId: block.id,
+                  properties: { numbering: { kind: "reference", numId: 7, ilvl: level } },
+                },
+              ],
+            },
+            { undefinedReferences: "refuse" },
+          );
           expect(result.skipped).toEqual([]);
           expect(headingState(reviewer, TITLE)).toEqual(expected);
           // Pending suggestions are excluded from the package, but numbering
@@ -114,19 +117,22 @@ test(
           reviewer.acceptAll();
           expect(headingState(reviewer, TITLE)).toEqual(expected);
         }
-        const inserted = reviewer.applyDocumentOperations({
-          version: 1,
-          mode: entry.mode,
-          operations: [
-            {
-              id: "insert",
-              type: "insertAfterBlock",
-              blockId: block.id,
-              text: INSERTED,
-              styleId: STYLE_ID,
-            },
-          ],
-        });
+        const inserted = reviewer.applyDocumentOperations(
+          {
+            version: 1,
+            mode: entry.mode,
+            operations: [
+              {
+                id: "insert",
+                type: "insertAfterBlock",
+                blockId: block.id,
+                text: INSERTED,
+                styleId: STYLE_ID,
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
         expect(inserted.skipped).toEqual([]);
         if (entry.mode === "suggested") expect(reviewer.acceptSuggestion("insert")).toBe(true);
         reviewer.acceptAll();

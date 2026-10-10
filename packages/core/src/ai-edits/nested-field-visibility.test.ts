@@ -225,7 +225,7 @@ describe("a nested field's instruction-region result stays hidden", () => {
           replace: "Edited",
         },
       ],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     expect(result.applied).toHaveLength(1);
     const afterEdit = reviewer.getContent().map((b) => b.text);

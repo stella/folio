@@ -438,11 +438,14 @@ describe("block operations on and next to an inline object's paragraph", () => {
             expect(await savedBody(source)).toEqual(expectedBody(ORIGINAL, object));
 
             const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
-            const result = reviewer.applyDocumentOperations({
-              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode,
-              operations: [scenario.operation(reviewer)],
-            });
+            const result = reviewer.applyDocumentOperations(
+              {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode,
+                operations: [scenario.operation(reviewer)],
+              },
+              { undefinedReferences: "refuse" },
+            );
             const reopened = await reopen(reviewer);
             expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
 
@@ -524,11 +527,14 @@ describe("a paragraph holding a text box, first in the body", () => {
 
   test("deleting it directly deletes the box", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildTextBoxCarrierFirst());
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [{ id: "delete", type: "deleteBlock", blockId: blockIdOf(reviewer, CARRIER) }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [{ id: "delete", type: "deleteBlock", blockId: blockIdOf(reviewer, CARRIER) }],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.applied.map(({ id }) => id)).toEqual(["delete"]);
     expect(texts(reviewer)).toEqual([TAIL]);
@@ -543,11 +549,14 @@ describe("a paragraph holding a text box, first in the body", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildTextBoxCarrierFirst(), {
       author: "Reviewer",
     });
-    reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [{ id: "delete", type: "deleteBlock", blockId: blockIdOf(reviewer, CARRIER) }],
-    });
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [{ id: "delete", type: "deleteBlock", blockId: blockIdOf(reviewer, CARRIER) }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     const pending = await reviewer.toBuffer();
     // The drawing run is inside the paragraph's deletion.
     expect(await bodyXml(pending)).toMatch(/<w:del [^>]*>(?:(?!<\/w:del>).)*<w:drawing/s);
@@ -571,11 +580,16 @@ describe("a paragraph holding a text box, first in the body", () => {
   for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const) {
     test(`${type} keeps the reader's order across a save`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await buildTextBoxCarrierFirst());
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "direct",
-        operations: [{ id: "insert", type, blockId: blockIdOf(reviewer, CARRIER), text: INSERTED }],
-      });
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "direct",
+          operations: [
+            { id: "insert", type, blockId: blockIdOf(reviewer, CARRIER), text: INSERTED },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
 
       expect(texts(reviewer)).toEqual(
         type === "insertAfterBlock"

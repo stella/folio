@@ -29,6 +29,10 @@ import type { Paragraph, ParagraphAlignment, Table, TableCell } from "../types/d
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../types/documentEnumValues";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
+
+const paragraphBlocksOf = (reviewer: FolioDocxReviewer) =>
+  reviewer.snapshot().blocks.map(expectParagraphBlock);
 
 const OPTIONS = { author: "compare", timestamp: "2026-09-08T00:00:00.000Z" } as const;
 const REVISION_STAMP = { date: OPTIONS.timestamp, idSeed: 1 } as const;
@@ -510,10 +514,11 @@ const expectDirectAlignmentModel = (
   expected: ParagraphAlignment | undefined,
   styleId: string | null = STYLE_ID,
 ): void => {
-  expect(reviewer.snapshot().blocks.at(0)).toEqual({
+  expect(paragraphBlocksOf(reviewer).at(0)).toEqual({
     id: "12345678",
     kind: "paragraph",
     text: TEXT,
+    statedNumbering: { kind: "inherit" },
     ...(styleId === null ? {} : { styleId }),
     ...(expected === undefined ? {} : { directAlignment: expected }),
   });
@@ -633,6 +638,7 @@ const applyParagraphProperties = ({
     panic("expected a paragraph property target");
   }
   return applyFolioAIEditOperations({
+    undefinedReferences: "refuse",
     view,
     snapshot,
     operations: [{ id, type: "setBlockParagraphProperties", blockId: block.id, properties }],
@@ -745,24 +751,34 @@ describe("paragraph alignment comparison", () => {
       const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
       expect(accepting.acceptAll()).toBeGreaterThan(0);
       expect(accepting.getChanges()).toEqual([]);
-      expect(accepting.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual([
+      expect(paragraphBlocksOf(accepting).map(({ directAlignment }) => directAlignment)).toEqual([
         undefined,
         alignment,
       ]);
       expect(
-        accepting.snapshot().blocks.map(({ kind, text, styleId, directAlignment }) => ({
-          kind,
-          text,
-          styleId,
-          directAlignment,
-        })),
+        paragraphBlocksOf(accepting).map(
+          ({ kind, text, styleId, directAlignment, statedNumbering }) => ({
+            kind,
+            text,
+            styleId,
+            directAlignment,
+            statedNumbering,
+          }),
+        ),
       ).toEqual([
-        { kind: "paragraph", text: TEXT, styleId: STYLE_ID, directAlignment: undefined },
+        {
+          kind: "paragraph",
+          text: TEXT,
+          styleId: STYLE_ID,
+          directAlignment: undefined,
+          statedNumbering: { kind: "inherit" },
+        },
         {
           kind: "paragraph",
           text: "The added paragraph keeps its authored alignment.",
           styleId: STYLE_ID,
           directAlignment: alignment,
+          statedNumbering: { kind: "inherit" },
         },
       ]);
       const accepted = await accepting.toBuffer();
@@ -773,23 +789,34 @@ describe("paragraph alignment comparison", () => {
       );
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
       expect(
-        reopenedAccepted.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+        paragraphBlocksOf(reopenedAccepted).map(({ directAlignment }) => directAlignment),
       ).toEqual([undefined, alignment]);
 
       const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
       expect(rejecting.rejectAll()).toBeGreaterThan(0);
       expect(rejecting.getChanges()).toEqual([]);
-      expect(rejecting.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual([
+      expect(paragraphBlocksOf(rejecting).map(({ directAlignment }) => directAlignment)).toEqual([
         undefined,
       ]);
       expect(
-        rejecting.snapshot().blocks.map(({ kind, text, styleId, directAlignment }) => ({
-          kind,
-          text,
-          styleId,
-          directAlignment,
-        })),
-      ).toEqual([{ kind: "paragraph", text: TEXT, styleId: STYLE_ID, directAlignment: undefined }]);
+        paragraphBlocksOf(rejecting).map(
+          ({ kind, text, styleId, directAlignment, statedNumbering }) => ({
+            kind,
+            text,
+            styleId,
+            directAlignment,
+            statedNumbering,
+          }),
+        ),
+      ).toEqual([
+        {
+          kind: "paragraph",
+          text: TEXT,
+          styleId: STYLE_ID,
+          directAlignment: undefined,
+          statedNumbering: { kind: "inherit" },
+        },
+      ]);
       const rejected = await rejecting.toBuffer();
       const rejectedXml = await mainDocumentXml(rejected);
       expect(rejectedXml).not.toContain("<w:pPrChange");
@@ -799,7 +826,7 @@ describe("paragraph alignment comparison", () => {
       );
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
       expect(
-        reopenedRejected.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+        paragraphBlocksOf(reopenedRejected).map(({ directAlignment }) => directAlignment),
       ).toEqual([undefined]);
     },
   );
@@ -848,7 +875,7 @@ describe("paragraph alignment comparison", () => {
       const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
       expect(accepting.acceptAll()).toBeGreaterThan(0);
       expect(accepting.getChanges()).toEqual([]);
-      expect(accepting.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual([
+      expect(paragraphBlocksOf(accepting).map(({ directAlignment }) => directAlignment)).toEqual([
         targetDirectAlignment,
         targetDirectAlignment,
       ]);
@@ -861,13 +888,13 @@ describe("paragraph alignment comparison", () => {
       ]);
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
       expect(
-        reopenedAccepted.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+        paragraphBlocksOf(reopenedAccepted).map(({ directAlignment }) => directAlignment),
       ).toEqual([targetDirectAlignment, targetDirectAlignment]);
 
       const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
       expect(rejecting.rejectAll()).toBeGreaterThan(0);
       expect(rejecting.getChanges()).toEqual([]);
-      expect(rejecting.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual([
+      expect(paragraphBlocksOf(rejecting).map(({ directAlignment }) => directAlignment)).toEqual([
         baseDirectAlignment,
       ]);
       const rejected = await rejecting.toBuffer();
@@ -879,7 +906,7 @@ describe("paragraph alignment comparison", () => {
       );
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
       expect(
-        reopenedRejected.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+        paragraphBlocksOf(reopenedRejected).map(({ directAlignment }) => directAlignment),
       ).toEqual([baseDirectAlignment]);
     },
   );
@@ -903,7 +930,7 @@ describe("paragraph alignment comparison", () => {
 
     const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     expect(accepting.acceptAll()).toBeGreaterThan(0);
-    expect(accepting.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual([
+    expect(paragraphBlocksOf(accepting).map(({ directAlignment }) => directAlignment)).toEqual([
       "center",
       undefined,
     ]);
@@ -913,12 +940,12 @@ describe("paragraph alignment comparison", () => {
     ).toBe(expectedParagraphProperties(undefined));
     const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
     expect(
-      reopenedAccepted.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+      paragraphBlocksOf(reopenedAccepted).map(({ directAlignment }) => directAlignment),
     ).toEqual(["center", undefined]);
 
     const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     expect(rejecting.rejectAll()).toBeGreaterThan(0);
-    expect(rejecting.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual([
+    expect(paragraphBlocksOf(rejecting).map(({ directAlignment }) => directAlignment)).toEqual([
       "center",
     ]);
     const rejected = await rejecting.toBuffer();
@@ -927,7 +954,7 @@ describe("paragraph alignment comparison", () => {
     );
     const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
     expect(
-      reopenedRejected.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+      paragraphBlocksOf(reopenedRejected).map(({ directAlignment }) => directAlignment),
     ).toEqual(["center"]);
   });
 
@@ -960,7 +987,7 @@ describe("paragraph alignment comparison", () => {
 
     const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     expect(accepting.acceptAll()).toBeGreaterThan(0);
-    expect(accepting.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual([
+    expect(paragraphBlocksOf(accepting).map(({ directAlignment }) => directAlignment)).toEqual([
       "left",
       "center",
     ]);
@@ -972,12 +999,12 @@ describe("paragraph alignment comparison", () => {
     );
     const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
     expect(
-      reopenedAccepted.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+      paragraphBlocksOf(reopenedAccepted).map(({ directAlignment }) => directAlignment),
     ).toEqual(["left", "center"]);
 
     const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     expect(rejecting.rejectAll()).toBeGreaterThan(0);
-    expect(rejecting.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual([
+    expect(paragraphBlocksOf(rejecting).map(({ directAlignment }) => directAlignment)).toEqual([
       "center",
     ]);
     const rejected = await rejecting.toBuffer();
@@ -988,7 +1015,7 @@ describe("paragraph alignment comparison", () => {
     );
     const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
     expect(
-      reopenedRejected.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+      paragraphBlocksOf(reopenedRejected).map(({ directAlignment }) => directAlignment),
     ).toEqual(["center"]);
   });
 
@@ -1034,17 +1061,24 @@ describe("paragraph alignment comparison", () => {
       const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
       expect(accepting.acceptAll()).toBeGreaterThan(0);
       expect(
-        accepting.snapshot().blocks.map(({ text, styleId, directAlignment }) => ({
+        paragraphBlocksOf(accepting).map(({ text, styleId, directAlignment, statedNumbering }) => ({
           text,
           styleId,
           directAlignment,
+          statedNumbering,
         })),
       ).toEqual([
-        { text: TEXT, styleId: STYLE_ID, directAlignment: "center" },
+        {
+          text: TEXT,
+          styleId: STYLE_ID,
+          directAlignment: "center",
+          statedNumbering: { kind: "inherit" },
+        },
         {
           text: "The added paragraph keeps its authored alignment.",
           styleId: insertedStyleId ?? undefined,
           directAlignment: insertedDirectAlignment,
+          statedNumbering: { kind: "inherit" },
         },
       ]);
       const accepted = await accepting.toBuffer();
@@ -1058,7 +1092,7 @@ describe("paragraph alignment comparison", () => {
         );
       }
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
-      expect(reopenedAccepted.snapshot().blocks.at(1)).toEqual(
+      expect(paragraphBlocksOf(reopenedAccepted).at(1)).toEqual(
         expect.objectContaining({
           text: "The added paragraph keeps its authored alignment.",
           ...(insertedStyleId === null ? {} : { styleId: insertedStyleId }),
@@ -1071,11 +1105,14 @@ describe("paragraph alignment comparison", () => {
       const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
       expect(rejecting.rejectAll()).toBeGreaterThan(0);
       expect(
-        rejecting.snapshot().blocks.map(({ styleId, directAlignment }) => ({
+        paragraphBlocksOf(rejecting).map(({ styleId, directAlignment, statedNumbering }) => ({
           styleId,
           directAlignment,
+          statedNumbering,
         })),
-      ).toEqual([{ styleId: STYLE_ID, directAlignment: "center" }]);
+      ).toEqual([
+        { styleId: STYLE_ID, directAlignment: "center", statedNumbering: { kind: "inherit" } },
+      ]);
       const rejected = await rejecting.toBuffer();
       const rejectedParagraph = firstParagraphXml(await mainDocumentXml(rejected));
       expect(rejectedParagraph).not.toContain("<w:pPrChange");
@@ -1083,7 +1120,7 @@ describe("paragraph alignment comparison", () => {
         expectedParagraphProperties("center"),
       );
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
-      expect(reopenedRejected.snapshot().blocks.at(0)).toEqual(
+      expect(paragraphBlocksOf(reopenedRejected).at(0)).toEqual(
         expect.objectContaining({ styleId: STYLE_ID, directAlignment: "center" }),
       );
     },
@@ -1148,6 +1185,7 @@ describe("paragraph alignment comparison", () => {
           panic("expected a table-cell insertion anchor");
         }
         const outcome = applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view,
           snapshot,
           operations: [operationFor(anchor.id)],
@@ -1220,6 +1258,7 @@ describe("paragraph alignment comparison", () => {
         panic("expected a table-cell insertion anchor");
       }
       const outcome = pendingReviewer.applyOperations([operationFor(anchor.id)], {
+        undefinedReferences: "refuse",
         revisionStamp: REVISION_STAMP,
       });
       expect(outcome.skipped).toEqual([]);
@@ -1229,7 +1268,7 @@ describe("paragraph alignment comparison", () => {
           ? [insertedDirectAlignment, "center", "center", undefined]
           : ["center", "center", insertedDirectAlignment, undefined];
       expect(
-        pendingReviewer.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+        paragraphBlocksOf(pendingReviewer).map(({ directAlignment }) => directAlignment),
       ).toEqual(pendingDirectAlignments);
       const pendingBuffer = await pendingReviewer.toBuffer();
       const pendingXml = await mainDocumentXml(pendingBuffer);
@@ -1242,7 +1281,7 @@ describe("paragraph alignment comparison", () => {
       const accepting = await FolioDocxReviewer.fromBuffer(pendingBuffer);
       expect(accepting.acceptAll()).toBeGreaterThan(0);
       expect(accepting.getChanges()).toEqual([]);
-      expect(accepting.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual(
+      expect(paragraphBlocksOf(accepting).map(({ directAlignment }) => directAlignment)).toEqual(
         pendingDirectAlignments,
       );
       const accepted = await accepting.toBuffer();
@@ -1253,13 +1292,13 @@ describe("paragraph alignment comparison", () => {
       );
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
       expect(
-        reopenedAccepted.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+        paragraphBlocksOf(reopenedAccepted).map(({ directAlignment }) => directAlignment),
       ).toEqual(pendingDirectAlignments);
 
       const rejecting = await FolioDocxReviewer.fromBuffer(pendingBuffer);
       expect(rejecting.rejectAll()).toBeGreaterThan(0);
       expect(rejecting.getChanges()).toEqual([]);
-      expect(rejecting.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual([
+      expect(paragraphBlocksOf(rejecting).map(({ directAlignment }) => directAlignment)).toEqual([
         "center",
         "center",
         undefined,
@@ -1272,7 +1311,7 @@ describe("paragraph alignment comparison", () => {
       );
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
       expect(
-        reopenedRejected.snapshot().blocks.map(({ directAlignment }) => directAlignment),
+        paragraphBlocksOf(reopenedRejected).map(({ directAlignment }) => directAlignment),
       ).toEqual(["center", "center", undefined]);
     },
   );
@@ -1293,6 +1332,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected an insertion anchor");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -1338,10 +1378,10 @@ describe("paragraph alignment provenance in editor state", () => {
       const reopened = await FolioDocxReviewer.fromBuffer(buffer);
       const expectedDirect =
         type === "insertBeforeBlock" ? ["right", "center"] : ["center", "right"];
-      expect(reopened.snapshot().blocks.map(({ directAlignment }) => directAlignment)).toEqual(
+      expect(paragraphBlocksOf(reopened).map(({ directAlignment }) => directAlignment)).toEqual(
         expectedDirect,
       );
-      expect(reopened.snapshot().blocks.at(insertedIndex)?.styleId).toBe(NEXT_STYLE_ID);
+      expect(paragraphBlocksOf(reopened).at(insertedIndex)?.styleId).toBe(NEXT_STYLE_ID);
     },
   );
 
@@ -1389,9 +1429,10 @@ describe("paragraph alignment provenance in editor state", () => {
       if (!anchor) {
         panic("expected a PM-created insertion anchor");
       }
-      expect(anchor.directAlignment).toBe("center");
+      expect(expectParagraphBlock(anchor).directAlignment).toBe("center");
 
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -1434,7 +1475,7 @@ describe("paragraph alignment provenance in editor state", () => {
         expectedParagraphProperties("center", NEXT_STYLE_ID),
       );
       const reopened = await FolioDocxReviewer.fromBuffer(saved);
-      expect(reopened.snapshot().blocks.at(insertedIndex)).toMatchObject({
+      expect(paragraphBlocksOf(reopened).at(insertedIndex)).toMatchObject({
         styleId: NEXT_STYLE_ID,
         directAlignment: "center",
       });
@@ -1462,6 +1503,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected an editable paragraph");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -1549,7 +1591,7 @@ describe("paragraph alignment provenance in editor state", () => {
     const pendingReviewer = await FolioDocxReviewer.fromBuffer(buffer, {
       author: OPTIONS.author,
     });
-    const pendingBlock = pendingReviewer.snapshot().blocks.at(0);
+    const pendingBlock = paragraphBlocksOf(pendingReviewer).at(0);
     if (!pendingBlock) {
       panic("expected a reviewable paragraph");
     }
@@ -1562,7 +1604,7 @@ describe("paragraph alignment provenance in editor state", () => {
           properties: styleTransitionProperties(transition),
         },
       ],
-      { revisionStamp: REVISION_STAMP },
+      { undefinedReferences: "refuse", revisionStamp: REVISION_STAMP },
     );
     expect(outcome.skipped).toEqual([]);
     expect(outcome.applied).toHaveLength(1);
@@ -1618,6 +1660,7 @@ describe("paragraph alignment provenance in editor state", () => {
       }
 
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -1654,6 +1697,7 @@ describe("paragraph alignment provenance in editor state", () => {
       expect(createFolioAIEditSnapshot(view.state.doc).blocks.at(0)).toEqual({
         id: "12345678",
         kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
         text: REPLACEMENT_TEXT,
         ...(styleId === null ? {} : { styleId }),
         ...(directAlignment === undefined ? {} : { directAlignment }),
@@ -1672,9 +1716,10 @@ describe("paragraph alignment provenance in editor state", () => {
       );
 
       const reopened = await FolioDocxReviewer.fromBuffer(buffer);
-      expect(reopened.snapshot().blocks.at(0)).toEqual({
+      expect(paragraphBlocksOf(reopened).at(0)).toEqual({
         id: "12345678",
         kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
         text: REPLACEMENT_TEXT,
         ...(styleId === null ? {} : { styleId }),
         ...(directAlignment === undefined ? {} : { directAlignment }),
@@ -1707,6 +1752,7 @@ describe("paragraph alignment provenance in editor state", () => {
       panic("expected a replacement block");
     }
     const outcome = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1741,9 +1787,10 @@ describe("paragraph alignment provenance in editor state", () => {
       expectedParagraphProperties(undefined, NEXT_STYLE_ID),
     );
     const reopened = await FolioDocxReviewer.fromBuffer(buffer);
-    expect(reopened.snapshot().blocks.at(0)).toEqual(
+    expect(paragraphBlocksOf(reopened).at(0)).toEqual(
       expect.objectContaining({
         kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
         text: REPLACEMENT_TEXT,
         styleId: NEXT_STYLE_ID,
       }),
@@ -1762,6 +1809,7 @@ describe("paragraph alignment provenance in editor state", () => {
       panic("expected a replacement block");
     }
     const outcome = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1799,7 +1847,7 @@ describe("paragraph alignment provenance in editor state", () => {
       expectedParagraphProperties("center", NEXT_STYLE_ID),
     );
     const reopened = await FolioDocxReviewer.fromBuffer(buffer);
-    expect(reopened.snapshot().blocks.at(0)).toEqual(
+    expect(paragraphBlocksOf(reopened).at(0)).toEqual(
       expect.objectContaining({
         id: "12345678",
         kind: "paragraph",
@@ -1833,6 +1881,7 @@ describe("paragraph alignment provenance in editor state", () => {
           panic("expected a replacement block");
         }
         const outcome = applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view,
           snapshot: createFolioAIEditSnapshot(view.state.doc),
           operations: [
@@ -1903,10 +1952,11 @@ describe("paragraph alignment provenance in editor state", () => {
       const accepting = await FolioDocxReviewer.fromBuffer(pendingBuffer);
       expect(accepting.acceptAll()).toBe(revisionIds.length);
       expect(accepting.getChanges()).toEqual([]);
-      expect(accepting.snapshot().blocks.at(0)).toEqual({
+      expect(paragraphBlocksOf(accepting).at(0)).toEqual({
         id: "12345678",
         kind: "paragraph",
         text: afterText,
+        statedNumbering: { kind: "inherit" },
         ...(afterStyleId === null ? {} : { styleId: afterStyleId }),
         ...(beforeDirect === undefined ? {} : { directAlignment: beforeDirect }),
       });
@@ -1918,15 +1968,16 @@ describe("paragraph alignment provenance in editor state", () => {
         expectedParagraphProperties(beforeDirect, afterStyleId),
       );
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
-      expect(reopenedAccepted.snapshot().blocks.at(0)).toEqual(accepting.snapshot().blocks.at(0));
+      expect(paragraphBlocksOf(reopenedAccepted).at(0)).toEqual(paragraphBlocksOf(accepting).at(0));
 
       const rejecting = await FolioDocxReviewer.fromBuffer(pendingBuffer);
       expect(rejecting.rejectAll()).toBe(revisionIds.length);
       expect(rejecting.getChanges()).toEqual([]);
-      expect(rejecting.snapshot().blocks.at(0)).toEqual({
+      expect(paragraphBlocksOf(rejecting).at(0)).toEqual({
         id: "12345678",
         kind: "paragraph",
         text: beforeText,
+        statedNumbering: { kind: "inherit" },
         styleId: STYLE_ID,
         ...(beforeDirect === undefined ? {} : { directAlignment: beforeDirect }),
       });
@@ -1938,7 +1989,7 @@ describe("paragraph alignment provenance in editor state", () => {
         expectedParagraphProperties(beforeDirect, STYLE_ID),
       );
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
-      expect(reopenedRejected.snapshot().blocks.at(0)).toEqual(rejecting.snapshot().blocks.at(0));
+      expect(paragraphBlocksOf(reopenedRejected).at(0)).toEqual(paragraphBlocksOf(rejecting).at(0));
     },
   );
 
@@ -1955,6 +2006,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected a replacement block");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -2065,10 +2117,11 @@ describe("paragraph alignment provenance in editor state", () => {
     const acceptedBuffer = await resolvingAccepted.toBuffer();
     const reopenedAccepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
     expect(reopenedAccepted.getChanges()).toEqual([]);
-    expect(reopenedAccepted.snapshot().blocks.at(0)).toEqual({
+    expect(paragraphBlocksOf(reopenedAccepted).at(0)).toEqual({
       id: "12345678",
       kind: "paragraph",
       text: REPLACEMENT_TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: NEXT_STYLE_ID,
       directAlignment: "center",
     });
@@ -2100,10 +2153,11 @@ describe("paragraph alignment provenance in editor state", () => {
       expectedParagraphProperties("center", STYLE_ID),
     );
     const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
-    expect(reopenedRejected.snapshot().blocks.at(0)).toEqual({
+    expect(paragraphBlocksOf(reopenedRejected).at(0)).toEqual({
       id: "12345678",
       kind: "paragraph",
       text: TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: STYLE_ID,
       directAlignment: "center",
     });
@@ -2122,6 +2176,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected a paragraph property block");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -2184,10 +2239,11 @@ describe("paragraph alignment provenance in editor state", () => {
     expect(resolvingAccepted.acceptAll()).toBe(1);
     const acceptedBuffer = await resolvingAccepted.toBuffer();
     const reopenedAccepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
-    expect(reopenedAccepted.snapshot().blocks.at(0)).toEqual({
+    expect(paragraphBlocksOf(reopenedAccepted).at(0)).toEqual({
       id: "12345678",
       kind: "paragraph",
       text: TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: NEXT_STYLE_ID,
     });
 
@@ -2199,10 +2255,11 @@ describe("paragraph alignment provenance in editor state", () => {
       fromProseDoc(rejecting.state.doc, source, { stylesheetSource: { type: "package" } }),
     );
     const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
-    expect(reopenedRejected.snapshot().blocks.at(0)).toEqual({
+    expect(paragraphBlocksOf(reopenedRejected).at(0)).toEqual({
       id: "12345678",
       kind: "paragraph",
       text: TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: STYLE_ID,
       directAlignment: "center",
     });
@@ -2231,6 +2288,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected an interleaved property-change block");
       }
       return applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [{ id, type: "setBlockParagraphProperties", blockId: block.id, properties }],
@@ -2348,10 +2406,11 @@ describe("paragraph alignment provenance in editor state", () => {
       fromProseDoc(view.state.doc, source, { stylesheetSource: { type: "package" } }),
     );
     const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
-    expect(reopenedRejected.snapshot().blocks.at(0)).toEqual({
+    expect(paragraphBlocksOf(reopenedRejected).at(0)).toEqual({
       id: "12345678",
       kind: "paragraph",
       text: TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: STYLE_ID,
       directAlignment: "center",
     });
@@ -2380,6 +2439,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected a preceding-suggestion block");
       }
       return applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [{ id, type: "setBlockParagraphProperties", blockId: block.id, properties }],
@@ -2427,10 +2487,11 @@ describe("paragraph alignment provenance in editor state", () => {
     expect(rejecting.rejectAll()).toBe(1);
     const rejectedBuffer = await rejecting.toBuffer();
     const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
-    expect(reopenedRejected.snapshot().blocks.at(0)).toEqual({
+    expect(paragraphBlocksOf(reopenedRejected).at(0)).toEqual({
       id: "12345678",
       kind: "paragraph",
       text: TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: STYLE_ID,
       directAlignment: "center",
     });
@@ -2722,6 +2783,7 @@ describe("paragraph alignment provenance in editor state", () => {
       panic("expected a paragraph without a styles plugin");
     }
     const outcome = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2748,7 +2810,9 @@ describe("paragraph alignment provenance in editor state", () => {
     expect(rejectedAttrs.styleId).toBe(STYLE_ID);
     expect(rejectedAttrs._originalFormatting).toEqual({ styleId: STYLE_ID });
     expect(rejectedAttrs._propertyChanges).toBeUndefined();
-    expect(createFolioAIEditSnapshot(view.state.doc).blocks.at(0)?.directAlignment).toBeUndefined();
+    expect(
+      expectParagraphBlock(createFolioAIEditSnapshot(view.state.doc).blocks.at(0)).directAlignment,
+    ).toBeUndefined();
 
     const rejectedBuffer = await createDocx(
       fromProseDoc(view.state.doc, source, { stylesheetSource: { type: "package" } }),
@@ -2805,6 +2869,7 @@ describe("paragraph alignment provenance in editor state", () => {
           panic("expected a paragraph for style-aware alignment clearing");
         }
         const outcome = applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view,
           snapshot,
           operations: [
@@ -2842,7 +2907,8 @@ describe("paragraph alignment provenance in editor state", () => {
           }),
         ]);
         expect(
-          createFolioAIEditSnapshot(view.state.doc).blocks.at(0)?.directAlignment,
+          expectParagraphBlock(createFolioAIEditSnapshot(view.state.doc).blocks.at(0))
+            .directAlignment,
         ).toBeUndefined();
         return view;
       };
@@ -2924,6 +2990,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected an editable paragraph");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -3049,7 +3116,9 @@ describe("paragraph alignment provenance in editor state", () => {
       ),
     ]);
 
-    expect(createFolioAIEditSnapshot(created).blocks.at(0)?.directAlignment).toBe("right");
+    expect(
+      expectParagraphBlock(createFolioAIEditSnapshot(created).blocks.at(0)).directAlignment,
+    ).toBe("right");
     expect(
       paragraphFormatting(fromProseDoc(created, source, { stylesheetSource: { type: "package" } })),
     ).toEqual({

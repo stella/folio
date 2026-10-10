@@ -7,6 +7,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { alignFolioContentBlocks, type FolioContentAlignedBlockEvent } from "./content-alignment";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock } from "./content-types";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -19,12 +20,14 @@ const positionalBlocks = (
     id: `${side}-${String(index)}`,
     idStability: "positional",
     kind: "paragraph",
+    statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
     text,
   }));
 
 const stableBlock = (id: string, text: string): FolioContentBlock => ({
   id,
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text,
 });
 

@@ -14,6 +14,7 @@ import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
 } from "@stll/folio-core/server";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 
 import {
   directNumberedDocument,
@@ -25,6 +26,7 @@ import {
   unusedNumberingDocument,
 } from "../support/documents.ts";
 import { assertHealthy, saveAndReopen, visibleState } from "../support/invariants.ts";
+import { paragraphBlocks } from "../support/readers.ts";
 import { reportScenarioFailure, shellQuote } from "../support/failure-fingerprints.ts";
 import { assertRequestedOutcome, capture } from "../support/oracle.ts";
 import { type Block, coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
@@ -38,7 +40,7 @@ import { resolvedText, settledText } from "../support/review.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
-const blocksOf = (reviewer: Reviewer): Block[] => reviewer.getContent() as Block[];
+const blocksOf = (reviewer: Reviewer): Block[] => reviewer.getContent();
 
 const matrixSeed = (fallback: number): number => {
   const raw = process.env["FOLIO_OPERATION_MATRIX_SEED"];
@@ -94,6 +96,7 @@ describe("applyDocumentOperations", () => {
           // These are separate batches; keep their proposal ids distinct across the run.
           const result = reviewer.applyDocumentOperations(
             coreBatch([{ ...operation, id: `op-${type}` }], mode) as never,
+            { undefinedReferences: "refuse" },
           );
           const outcome =
             result.applied.length > 0
@@ -165,14 +168,17 @@ describe("a batch that splits a block and deletes it", () => {
     const text = "The Buyer pays each invoice within thirty days.";
     const target = reviewer.getContent().find((block) => block.text === text);
     assert.ok(target);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        { id: "split", type: "splitBlock", blockId: target.id, offset: 20 },
-        { id: "delete", type: "deleteBlock", blockId: target.id },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          { id: "split", type: "splitBlock", blockId: target.id, offset: 20 },
+          { id: "delete", type: "deleteBlock", blockId: target.id },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.deepEqual(
       result.applied.map(({ id }) => id),
       ["split"],
@@ -195,11 +201,14 @@ describe("resolving tracked edits that build on pending ones", () => {
   const tracked = async () => {
     const reviewer = await openReviewer(await plainDocument());
     const apply = (operation: Record<string, unknown>) =>
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [{ id: "1", ...operation }],
-      } as never);
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [{ id: "1", ...operation }],
+        } as never,
+        { undefinedReferences: "refuse" },
+      );
     const block = (prefix: string) => {
       const found = reviewer.getContent().find(({ text }) => text.startsWith(prefix));
       assert.ok(found, `no block starts with "${prefix}"`);
@@ -262,17 +271,21 @@ describe("resolving tracked edits that build on pending ones", () => {
 describe("list labels after an operation", () => {
   test("an item inserted into a list reads its own number, and the items after it renumber, before a save", async () => {
     const reviewer = await openReviewer(await listDocument());
-    const anchor = reviewer.getContent().find((block) => block.text === "Deposit on signature");
+    const anchor = paragraphBlocks(reviewer.getContent()).find(
+      (block) => block.text === "Deposit on signature",
+    );
     assert.ok(anchor);
-    reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        { id: "1", type: "insertAfterBlock", blockId: anchor.id, text: "Interim payment" },
-      ],
-    });
-    const live = reviewer
-      .getContent()
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          { id: "1", type: "insertAfterBlock", blockId: anchor.id, text: "Interim payment" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    const live = paragraphBlocks(reviewer.getContent())
       .filter((block) => block.listReference?.numId === anchor.listReference?.numId)
       .map((block) => `${block.displayLabel} ${block.text}`);
     assert.deepEqual(
@@ -292,24 +305,30 @@ describe("list labels after an operation", () => {
     const reviewer = await openReviewer(await directNumberedDocument());
     const anchor = reviewer.getContent().find(({ text }) => text === "Unnumbered body text.");
     assert.ok(anchor);
-    reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        {
-          id: "1",
-          type: "insertAfterBlock",
-          blockId: anchor.id,
-          text: "Level eight.",
-          numbering: { numId: 7, level: 8 },
-        },
-      ],
-    });
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "1",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: "Level eight.",
+            numbering: paragraphNumberingReference({ numId: 7, ilvl: 8 }),
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     // No marker is painted for it: prose that keeps its level.
-    const unmarked = reviewer.getContent().find(({ text }) => text === "Level eight.");
+    const unmarked = paragraphBlocks(reviewer.getContent()).find(
+      ({ text }) => text === "Level eight.",
+    );
     assert.equal(unmarked?.kind, "paragraph");
     assert.equal(unmarked?.displayLabel, undefined);
-    assert.equal(unmarked?.listLevel, 8);
+    assert.deepEqual(unmarked?.statedNumbering, { kind: "reference", numId: 7, ilvl: 8 });
+    assert.deepEqual(unmarked?.listReference, { numId: 7, level: 8 });
     await assertHealthy(reviewer, "undefined level");
   });
 });
@@ -324,19 +343,22 @@ describe("an operation naming a paragraph style the package does not define", ()
           .find((block) => block.text === "Signed in two copies.");
         assert.ok(anchor);
         const before = visibleState(reviewer);
-        const result = reviewer.applyDocumentOperations({
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode,
-          operations: [
-            {
-              id: "1",
-              type: "insertAfterBlock",
-              blockId: anchor.id,
-              text: "An inserted clause.",
-              styleId,
-            },
-          ],
-        });
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: [
+              {
+                id: "1",
+                type: "insertAfterBlock",
+                blockId: anchor.id,
+                text: "An inserted clause.",
+                styleId,
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
         assert.deepEqual(result.applied, []);
         assert.deepEqual(
           result.skipped.map(({ reason }) => reason),
@@ -352,18 +374,21 @@ describe("an operation naming a paragraph style the package does not define", ()
     const reviewer = await openReviewer(await plainDocument());
     const target = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
     assert.ok(target);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "1",
-          type: "setBlockParagraphProperties",
-          blockId: target.id,
-          properties: { styleId: "NoSuchStyle" },
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "1",
+            type: "setBlockParagraphProperties",
+            blockId: target.id,
+            properties: { styleId: "NoSuchStyle" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.deepEqual(result.applied, []);
     assert.deepEqual(
       result.skipped.map(({ reason }) => reason),
@@ -376,18 +401,21 @@ describe("an operation naming a paragraph style the package does not define", ()
     const reviewer = await openReviewer(await plainDocument());
     const target = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
     assert.ok(target);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        {
-          id: "1",
-          type: "setBlockParagraphProperties",
-          blockId: target.id,
-          properties: { styleId: "Heading2" },
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "1",
+            type: "setBlockParagraphProperties",
+            blockId: target.id,
+            properties: { styleId: "Heading2" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.deepEqual(
       result.applied.map(({ id }) => id),
       ["1"],
@@ -405,19 +433,22 @@ describe("an operation naming a numbering instance the package does not define (
       const reviewer = await openReviewer(await unusedNumberingDocument());
       const anchor = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
       assert.ok(anchor);
-      const result = reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode,
-        operations: [
-          {
-            id: "1",
-            type: "insertAfterBlock",
-            blockId: anchor.id,
-            text: "An inserted clause.",
-            numbering: { numId: 1, level: 0 },
-          },
-        ],
-      });
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            {
+              id: "1",
+              type: "insertAfterBlock",
+              blockId: anchor.id,
+              text: "An inserted clause.",
+              numbering: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
       assert.deepEqual(result.applied, []);
       assert.deepEqual(
         result.skipped.map(({ reason }) => reason),
@@ -436,18 +467,21 @@ describe("an operation naming a numbering instance the package does not define (
     const reviewer = await openReviewer(await plainDocument());
     const target = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
     assert.ok(target);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "1",
-          type: "setBlockParagraphProperties",
-          blockId: target.id,
-          properties: { numbering: { numId: 3, level: 0 } },
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "1",
+            type: "setBlockParagraphProperties",
+            blockId: target.id,
+            properties: { numbering: paragraphNumberingReference({ numId: 3, ilvl: 0 }) },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.deepEqual(result.applied, []);
     assert.deepEqual(
       result.skipped.map(({ reason }) => reason),
@@ -479,6 +513,7 @@ describe("a batch that merges a block into one it deletes", () => {
           ],
           mode,
         ) as never,
+        { undefinedReferences: "refuse" },
       );
       texts.push(await resolvedText(new Uint8Array(await reviewer.toBuffer()), "accept"));
     }

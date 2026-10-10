@@ -23,6 +23,7 @@ import { createFolioAITextRangeHandle, trailingBodyBlockId } from "./ai-edits/sn
 import type {
   FolioAIBlock,
   FolioAIBlockParagraphProperties,
+  FolioAIParagraphBlock,
   FolioAIEditAppliedOperation,
   FolioAIEditOperation,
   FolioAIEditSkippedOperation,
@@ -38,6 +39,11 @@ import {
   type FolioDocumentPrivacyReport,
 } from "./docx/metadataPrivacy";
 import { FolioContentInlinePresentationProjectionError } from "./compare/content";
+import { importStyleClosureWithNumbering } from "./compare/import-style-closure";
+import {
+  createInsertedResourceProjection,
+  rebindInsertedResourceBlocks,
+} from "./compare/inserted-resource-snapshot";
 import { inlineFormattingSegments } from "./compare/formatting";
 import {
   GenerateRedlineDocxOperationLimitError,
@@ -45,6 +51,7 @@ import {
 } from "./redlineOperationLimit";
 import type { NumberingDefinitions } from "./types/document";
 import { alignFolioBlocks, type FolioAlignedBlockEvent } from "./version-comparison";
+import { classifyResourceReference } from "./ai-edits/referenceClassification";
 
 /** Options for {@link generateRedlineDocx}. */
 export type GenerateRedlineDocxOptions = {
@@ -67,6 +74,14 @@ export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
   receivedValue: unknown;
 }> {}
 
+/** Raised before body operations when revised resources cannot be imported atomically. */
+export class GenerateRedlineDocxResourceImportError extends TaggedError(
+  "GenerateRedlineDocxResourceImportError",
+)<{
+  message: string;
+  detail: string;
+}> {}
+
 /** A document story that could not be paired across the two input packages. */
 export type GenerateRedlineUnprocessedStory = {
   /** Story in the base package, or `null` when it exists only in the revision. */
@@ -77,6 +92,15 @@ export type GenerateRedlineUnprocessedStory = {
   reason: "missing-base-story" | "missing-revised-story";
 };
 
+/** A source-undefined style cleared so it cannot acquire unrelated base meaning. */
+export type GenerateRedlineReferenceWarning = {
+  /** Position in the revised story's ProseMirror projection. */
+  paragraphPosition: number;
+  story: FolioDocumentStoryHandle;
+  kind: "style";
+  id: string;
+};
+
 /** Result of {@link generateRedlineDocx}. */
 export type GenerateRedlineDocxResult = {
   /** The base package with generated tracked changes. */
@@ -85,6 +109,8 @@ export type GenerateRedlineDocxResult = {
   applied: FolioAIEditAppliedOperation[];
   /** Block operations that could not be applied. */
   skipped: FolioAIEditSkippedOperation[];
+  /** Undefined source references cleared to avoid binding to a base definition. */
+  referenceWarnings: GenerateRedlineReferenceWarning[];
   /** Package parts that could not be represented as story-scoped text edits. */
   unprocessedStories: GenerateRedlineUnprocessedStory[];
   /** Privacy transforms applied to the generated package. */
@@ -248,8 +274,6 @@ const buildRedlineOperations = ({
   return operations;
 };
 
-type InsertedListReference = { numId: number; level: number };
-
 /**
  * The revised value, or `null` to clear one the anchor would pass on, or
  * `undefined` when neither has one: an explicit `null` costs a restyle pass.
@@ -270,34 +294,40 @@ const insertedParagraphProperties = (
   block: FolioAIBlock,
   anchor: FolioAIBlock | undefined,
 ): FolioAIBlockParagraphProperties => {
-  const properties: FolioAIBlockParagraphProperties = {};
-  const styleId = statedOrCleared(block.styleId, anchor?.styleId);
-  if (styleId !== undefined) properties.styleId = styleId;
-  const alignment = statedOrCleared(block.directAlignment, anchor?.directAlignment);
-  if (alignment !== undefined) properties.alignment = alignment;
-  const spacing = statedOrCleared(block.directSpacing, anchor?.directSpacing);
-  if (spacing !== undefined) properties.spacing = spacing;
-  const indentation = statedOrCleared(block.directIndentation, anchor?.directIndentation);
-  if (indentation !== undefined) properties.indentation = indentation;
-  if (
-    block.listReference !== undefined ||
-    anchor?.listReference !== undefined ||
-    anchor?.listLevel !== undefined
-  ) {
-    properties.numbering = block.listReference ?? null;
-    properties.listLevel = block.listLevel ?? null;
-  } else if (block.listLevel !== undefined) {
-    properties.listLevel = block.listLevel;
+  const paragraph = paragraphBlockOf(block);
+  if (paragraph === undefined) {
+    return {};
   }
+  const anchorParagraph = anchor === undefined ? undefined : paragraphBlockOf(anchor);
+  const properties: FolioAIBlockParagraphProperties = {};
+  const styleId = statedOrCleared(paragraph.styleId, anchorParagraph?.styleId);
+  if (styleId !== undefined) properties.styleId = styleId;
+  const alignment = statedOrCleared(paragraph.directAlignment, anchorParagraph?.directAlignment);
+  if (alignment !== undefined) properties.alignment = alignment;
+  const spacing = statedOrCleared(paragraph.directSpacing, anchorParagraph?.directSpacing);
+  if (spacing !== undefined) properties.spacing = spacing;
+  const indentation = statedOrCleared(
+    paragraph.directIndentation,
+    anchorParagraph?.directIndentation,
+  );
+  if (indentation !== undefined) properties.indentation = indentation;
+  properties.numbering = paragraph.statedNumbering;
   return properties;
 };
 
-const insertedNumbering = (operation: FolioAIEditOperation): InsertedListReference | null => {
-  if (operation.type !== "insertBeforeBlock" && operation.type !== "insertAfterBlock") {
-    return null;
+const paragraphBlockOf = (block: FolioAIBlock): FolioAIParagraphBlock | undefined => {
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return block;
+    case "diagnostic":
+      return undefined;
+    default: {
+      const unreachable: never = block;
+      return panic("Unhandled redline block kind", { block: unreachable });
+    }
   }
-  const numbering = operation.numbering;
-  return numbering && !("start" in numbering) ? numbering : null;
 };
 
 /** The `w:numId`s whose `w:num` and abstract definition both exist. */
@@ -310,48 +340,73 @@ const definedNumIds = (numbering: NumberingDefinitions | null | undefined): Set<
   );
 };
 
-/**
- * Rebind every inserted list item to numbering the redline package defines.
- * The redline is the base package, where the revised version's `w:numId` may
- * name nothing, or another list: the referenced definitions are copied in,
- * under a fresh id wherever the base uses that one for different numbering.
- * A reference the revised package cannot resolve shows no number there
- * either, and is inserted without one.
- */
-const bindInsertedNumbering = (
-  baseReviewer: FolioDocxReviewer,
+/** Unresolvable source references have no visible list; retain only importable resources. */
+const insertedNumberingReferences = (
   revisedReviewer: FolioDocxReviewer,
-  operationsByStory: readonly (readonly FolioAIEditOperation[])[],
-): FolioAIEditOperation[][] => {
-  const baseAccess = getFolioDocxComparisonAccess(baseReviewer);
+  snapshots: readonly FolioAIEditSnapshot[],
+) => {
   const revisedNumbering = getFolioDocxComparisonAccess(revisedReviewer).numberingDefinitions();
   const resolvable = definedNumIds(revisedNumbering);
-  const references = operationsByStory.flatMap((operations) =>
-    operations.flatMap((operation) => {
-      const numbering = insertedNumbering(operation);
-      return numbering && resolvable.has(numbering.numId) ? [numbering] : [];
+  return snapshots.flatMap((snapshot) =>
+    snapshot.blocks.flatMap((block) => {
+      const paragraph = paragraphBlockOf(block);
+      const reference = paragraph?.listReference;
+      return reference && resolvable.has(reference.numId) ? [reference] : [];
     }),
   );
-  const remapped =
-    baseAccess.planTargetNumberingReferences(revisedNumbering, references) ??
-    panic("Resolvable revised numbering references could not be planned");
-  baseAccess.stageTargetNumbering(revisedNumbering, references, remapped);
-  // Staging is all or nothing; whatever it could not define is dropped here
-  // rather than written as a dangling reference.
-  const defined = definedNumIds(baseAccess.numberingDefinitions());
-  return operationsByStory.map((operations) =>
-    operations.map((operation) => {
-      const numbering = insertedNumbering(operation);
-      if (numbering === null) {
-        return operation;
-      }
-      const numId = remapped.get(numbering.numId) ?? numbering.numId;
-      if (!resolvable.has(numbering.numId) || !defined.has(numId)) {
-        return { ...operation, numbering: null, listLevel: null };
-      }
-      return { ...operation, numbering: { numId, level: numbering.level } };
-    }),
-  );
+};
+
+type PrepareInsertedReferencesOptions = {
+  original: FolioAIBlock;
+  rebound: FolioAIBlock;
+  sourceStyles: ReadonlySet<string>;
+  destinationStyles: ReadonlySet<string>;
+  paragraphPosition: number;
+  story: FolioDocumentStoryHandle;
+};
+
+const prepareInsertedReferences = ({
+  original,
+  rebound,
+  sourceStyles,
+  destinationStyles,
+  paragraphPosition,
+  story,
+}: PrepareInsertedReferencesOptions) => {
+  const source = paragraphBlockOf(original);
+  const imported = paragraphBlockOf(rebound);
+  const warnings: GenerateRedlineReferenceWarning[] = [];
+  if (source === undefined || imported === undefined) return { block: rebound, warnings };
+  let block = { ...imported };
+  if (source.styleId !== undefined) {
+    const disposition = classifyResourceReference({
+      kind: "style",
+      id: source.styleId,
+      sourceDefines: (id) => sourceStyles.has(id),
+      destinationDefines: (id) => destinationStyles.has(id),
+    });
+    if (disposition !== "sourceDefined") {
+      // Reprojection of another imported style must not lend destination
+      // formatting to this undefined source style, including nested blocks.
+      block = { ...source };
+    }
+    if (disposition === "destinationCollision") {
+      delete block.styleId;
+      warnings.push({ kind: "style", id: source.styleId, paragraphPosition, story });
+    } else if (disposition === "unknown") {
+      block.styleId = source.styleId;
+    }
+  }
+  if (source.statedNumbering.kind === "reference") {
+    // The parser already normalizes undefined numbering to none. Preserve the
+    // imported reference when restoring an unknown style's source projection.
+    block.statedNumbering = imported.statedNumbering;
+    if (imported.listReference === undefined) delete block.listReference;
+    else block.listReference = imported.listReference;
+    if (imported.displayLabel === undefined) delete block.displayLabel;
+    else block.displayLabel = imported.displayLabel;
+  }
+  return { block, warnings };
 };
 
 const resolveInputView = (
@@ -396,6 +451,12 @@ export const generateRedlineDocx = async (
 
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
+  const referenceWarnings: GenerateRedlineReferenceWarning[] = [];
+  const baseAccess = getFolioDocxComparisonAccess(baseReviewer);
+  const sourceAccess = getFolioDocxComparisonAccess(revisedReviewer);
+  const sourceStyles = new Set(
+    sourceAccess.styleDefinitions()?.styles.map(({ styleId }) => styleId),
+  );
   const unprocessedStories: GenerateRedlineUnprocessedStory[] = [];
   const wordDiff = createScopedWordDiffOptions({});
   let operationSequence = 0;
@@ -411,7 +472,8 @@ export const generateRedlineDocx = async (
   const plannedStories: {
     story: FolioDocumentStoryHandle;
     snapshot: FolioAIEditSnapshot;
-    operations: FolioAIEditOperation[];
+    revisedSnapshot: FolioAIEditSnapshot;
+    inserted: ReturnType<typeof createInsertedResourceProjection>;
   }[] = [];
   for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
     if (!pair.baseStory) {
@@ -436,25 +498,65 @@ export const generateRedlineDocx = async (
     if (!baseSnapshot || !revisedSnapshot) {
       panic("A matched document story could not be read");
     }
-    const operations = buildRedlineOperations({
-      baseSnapshot,
-      revisedBlocks: revisedSnapshot.blocks,
-      nextOperationId,
+    plannedStories.push({
+      story: pair.baseStory,
+      snapshot: baseSnapshot,
+      revisedSnapshot,
+      inserted: createInsertedResourceProjection({ base: baseSnapshot, revised: revisedSnapshot }),
     });
-    if (operations.length === 0) {
-      continue;
-    }
-    plannedStories.push({ story: pair.baseStory, snapshot: baseSnapshot, operations });
   }
 
-  // Numbering is package-wide: bind every story's inserted list items at once.
-  const boundOperations = bindInsertedNumbering(
-    baseReviewer,
-    revisedReviewer,
-    plannedStories.map(({ operations }) => operations),
+  const insertedSnapshots = plannedStories.map(({ inserted }) => inserted.snapshot);
+  const numberingReferences = insertedNumberingReferences(revisedReviewer, insertedSnapshots);
+  const resources = importStyleClosureWithNumbering({
+    destination: baseReviewer,
+    source: revisedReviewer,
+    snapshots: insertedSnapshots,
+    importedHeaderFooterSnapshots: insertedSnapshots,
+    numberingReferences,
+  });
+  const { styleImport } = resources;
+  if (styleImport.status === "unalignable" || resources.numberingStage === "conflict") {
+    const detail =
+      styleImport.status === "unalignable"
+        ? styleImport.detail
+        : `target numbering references ${numberingReferences.map(({ numId, level }) => `${numId}:${level}`).join(", ")} cannot be imported without changing existing references`;
+    throw new GenerateRedlineDocxResourceImportError({
+      message: `The revised style/numbering closure cannot be imported: ${detail}`,
+      detail,
+    });
+  }
+  // Imported resources can occupy an id that was previously dangling too.
+  const destinationStyles = new Set(
+    baseAccess.styleDefinitions()?.styles.map(({ styleId }) => styleId),
   );
-  for (const [index, { story, snapshot }] of plannedStories.entries()) {
-    const operations = boundOperations[index] ?? panic("A planned story lost its operations");
+  for (const [index, { story, snapshot, revisedSnapshot, inserted }] of plannedStories.entries()) {
+    const rebound =
+      resources.snapshots.at(index) ?? panic("A redline resource import lost its snapshot");
+    const insertedById = rebindInsertedResourceBlocks(inserted, rebound);
+    const originalBlocksById = new Map(revisedSnapshot.blocks.map((block) => [block.id, block]));
+    for (const [id, imported] of insertedById) {
+      const original =
+        originalBlocksById.get(id) ?? panic("A carried insertion lost its original block");
+      const anchor =
+        revisedSnapshot.anchors[id] ?? panic("A carried insertion lost its original position");
+      const prepared = prepareInsertedReferences({
+        original,
+        rebound: imported,
+        sourceStyles,
+        destinationStyles,
+        paragraphPosition: anchor.from,
+        story,
+      });
+      insertedById.set(id, prepared.block);
+      referenceWarnings.push(...prepared.warnings);
+    }
+    const operations = buildRedlineOperations({
+      baseSnapshot: snapshot,
+      revisedBlocks: revisedSnapshot.blocks.map((block) => insertedById.get(block.id) ?? block),
+      nextOperationId,
+    });
+    if (operations.length === 0) continue;
     const result = baseReviewer.applyDocumentOperationsToStory({
       story,
       snapshot,
@@ -464,9 +566,10 @@ export const generateRedlineDocx = async (
         operations,
       },
       wordDiff,
-      // The revised document's references, carried as it holds them; its
-      // styles are not imported, so refusing one would drop the paragraph.
-      undefinedStyles: "keep",
+      // Added paragraphs use the style closure imported through the collision owner.
+      // Defined resource closure refusal aborts before any body operation.
+      // Unknown styles retain their spelling; dangling numbering is normalized by the parser.
+      undefinedReferences: "keep",
     });
     applied.push(...result.applied);
     skipped.push(...result.skipped);
@@ -484,6 +587,7 @@ export const generateRedlineDocx = async (
     buffer: privacyResult.buffer,
     applied,
     skipped,
+    referenceWarnings,
     unprocessedStories,
     privacyReport: privacyResult.privacyReport,
   };

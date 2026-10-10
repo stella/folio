@@ -150,13 +150,16 @@ describe("folio CLI", () => {
         const editor = await openReviewer(new Uint8Array(await readFile(file)));
         const last = editor.getContent().at(-1);
         assert.ok(last);
-        editor.applyDocumentOperations({
-          version: 1,
-          mode: "direct",
-          operations: [
-            { id: "1", type: "insertAfterBlock", blockId: last.id, text: "Saved by an editor." },
-          ],
-        } as never);
+        editor.applyDocumentOperations(
+          {
+            version: 1,
+            mode: "direct",
+            operations: [
+              { id: "1", type: "insertAfterBlock", blockId: last.id, text: "Saved by an editor." },
+            ],
+          } as never,
+          { undefinedReferences: "refuse" },
+        );
         const editorFile = path.join(cwd, "editor-save.docx");
         await writeFile(editorFile, new Uint8Array(await editor.toBuffer()));
         const saved = await folio(

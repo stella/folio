@@ -13,6 +13,7 @@ import { panic } from "better-result";
 import { alignParagraphOrdinals, type ParagraphIdentity } from "../docx/paraIdAttribute";
 import type {
   FolioContentBlock,
+  FolioContentBlockIdentity,
   FolioContentIdStability,
   FolioContentParagraphKind,
   FolioContentTableLocation,
@@ -108,7 +109,7 @@ type BlockPairingFacts = {
   readonly table: BlockPairingTableFacts;
 };
 
-type PreparedAlignmentBlock<Block extends FolioContentBlock> = {
+type PreparedAlignmentBlock<Block extends FolioContentBlockIdentity> = {
   readonly block: Block;
   readonly index: number;
   readonly pairingFacts: BlockPairingFacts;
@@ -129,7 +130,7 @@ const blockKindsCanPair = (baseKind: string, revisedKind: string): boolean =>
   (Object.hasOwn(PARAGRAPH_MARK_KIND_FAMILY, baseKind) &&
     Object.hasOwn(PARAGRAPH_MARK_KIND_FAMILY, revisedKind));
 
-const folioContentIdStability = <Block extends FolioContentBlock>(
+const folioContentIdStability = <Block extends FolioContentBlockIdentity>(
   block: Block,
 ): FolioContentIdStability => block.idStability ?? "stable";
 
@@ -242,12 +243,12 @@ export const longestIncreasingFolioContentPairs = (
   return ordered.toReversed();
 };
 
-const containerPathKeyOf = ({ containerPath }: FolioContentBlock): string | null =>
+const containerPathKeyOf = ({ containerPath }: FolioContentBlockIdentity): string | null =>
   containerPath === undefined || containerPath.length === 0
     ? null
     : JSON.stringify(containerPath.map(({ kind, id }) => [kind, id]));
 
-const blockPairingTableFactsOf = ({ table }: FolioContentBlock): BlockPairingTableFacts => {
+const blockPairingTableFactsOf = ({ table }: FolioContentBlockIdentity): BlockPairingTableFacts => {
   if (!table) {
     return { type: "body" };
   }
@@ -260,13 +261,13 @@ const blockPairingTableFactsOf = ({ table }: FolioContentBlock): BlockPairingTab
   };
 };
 
-type PrepareAlignmentBlocksOptions<Block extends FolioContentBlock> = {
+type PrepareAlignmentBlocksOptions<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly Block[];
   revisedBlocks: readonly Block[];
   idStability: (block: Block) => FolioContentIdStability;
 };
 
-const prepareAlignmentBlocks = <Block extends FolioContentBlock>({
+const prepareAlignmentBlocks = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
   idStability,
@@ -347,7 +348,7 @@ const blocksCanPair = ({
   );
 };
 
-const uniqueStableBlocks = <Block extends FolioContentBlock>(
+const uniqueStableBlocks = <Block extends FolioContentBlockIdentity>(
   blocks: readonly PreparedAlignmentBlock<Block>[],
 ): ReadonlyMap<string, PreparedAlignmentBlock<Block> | null> => {
   const blocksById = new Map<string, PreparedAlignmentBlock<Block> | null>();
@@ -360,7 +361,7 @@ const uniqueStableBlocks = <Block extends FolioContentBlock>(
   return blocksById;
 };
 
-type PairByStableIdOptions<Block extends FolioContentBlock> = {
+type PairByStableIdOptions<Block extends FolioContentBlockIdentity> = {
   base: readonly PreparedAlignmentBlock<Block>[];
   revised: readonly PreparedAlignmentBlock<Block>[];
   canPair: (
@@ -370,7 +371,7 @@ type PairByStableIdOptions<Block extends FolioContentBlock> = {
 };
 
 /** Stable identity is authoritative only when it is unique on both sides. */
-const pairByStableId = <Block extends FolioContentBlock>({
+const pairByStableId = <Block extends FolioContentBlockIdentity>({
   base,
   revised,
   canPair,
@@ -394,7 +395,7 @@ const pairByStableId = <Block extends FolioContentBlock>({
   return longestIncreasingFolioContentPairs(candidates);
 };
 
-type PairByResidualIdContinuityOptions<Block extends FolioContentBlock> = {
+type PairByResidualIdContinuityOptions<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly PreparedAlignmentBlock<Block>[];
   revisedBlocks: readonly PreparedAlignmentBlock<Block>[];
   baseFrom: number;
@@ -416,7 +417,7 @@ type PairByResidualIdContinuityOptions<Block extends FolioContentBlock> = {
  * already bounded by stable/exact anchors, so it cannot turn a positional id
  * into a move or pull a block across an established correspondence.
  */
-const pairByResidualIdContinuity = <Block extends FolioContentBlock>({
+const pairByResidualIdContinuity = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
   baseFrom,
@@ -467,7 +468,7 @@ const pairByResidualIdContinuity = <Block extends FolioContentBlock>({
   return longestIncreasingFolioContentPairs(candidates);
 };
 
-type PairByUniqueExactTextOptions<Block extends FolioContentBlock> = {
+type PairByUniqueExactTextOptions<Block extends FolioContentBlockIdentity> = {
   base: readonly PreparedAlignmentBlock<Block>[];
   revised: readonly PreparedAlignmentBlock<Block>[];
   baseFrom: number;
@@ -481,7 +482,7 @@ type PairByUniqueExactTextOptions<Block extends FolioContentBlock> = {
 };
 
 /** Exact anchors are gap-local; repeated or blank text is not identity evidence. */
-const pairByUniqueExactText = <Block extends FolioContentBlock>({
+const pairByUniqueExactText = <Block extends FolioContentBlockIdentity>({
   base,
   revised,
   baseFrom,
@@ -547,7 +548,7 @@ const pairByUniqueExactText = <Block extends FolioContentBlock>({
   });
 };
 
-type PairByNestedUniqueExactTextOptions<Block extends FolioContentBlock> =
+type PairByNestedUniqueExactTextOptions<Block extends FolioContentBlockIdentity> =
   PairByUniqueExactTextOptions<Block> & { workSession: FolioContentAlignmentWorkSession };
 
 /**
@@ -558,7 +559,7 @@ type PairByNestedUniqueExactTextOptions<Block extends FolioContentBlock> =
  * charged to the structural allowance; a refused pass leaves its sub-gap to
  * the similarity pairing.
  */
-const pairByNestedUniqueExactText = <Block extends FolioContentBlock>({
+const pairByNestedUniqueExactText = <Block extends FolioContentBlockIdentity>({
   workSession,
   ...gap
 }: PairByNestedUniqueExactTextOptions<Block>): FolioContentBlockPair[] => {
@@ -629,7 +630,7 @@ const pairsInAnchorGaps = ({
   return pairs;
 };
 
-type CrossedExactTextBlocksOptions<Block extends FolioContentBlock> = {
+type CrossedExactTextBlocksOptions<Block extends FolioContentBlockIdentity> = {
   base: readonly PreparedAlignmentBlock<Block>[];
   revised: readonly PreparedAlignmentBlock<Block>[];
   anchors: readonly FolioContentBlockPair[];
@@ -652,7 +653,7 @@ type CrossedExactTextBlocksOptions<Block extends FolioContentBlock> = {
  * document contains, and the move pass would never see the removal and the
  * arrival it is there to pair.
  */
-const crossedExactTextBlocks = <Block extends FolioContentBlock>({
+const crossedExactTextBlocks = <Block extends FolioContentBlockIdentity>({
   base,
   revised,
   anchors,
@@ -761,7 +762,7 @@ const gapBlockSimilarity = (
   return { status: "measured", value: (2 * shared) / (base.total + revised.total) };
 };
 
-type PairGapBySimilarityOptions<Block extends FolioContentBlock> = {
+type PairGapBySimilarityOptions<Block extends FolioContentBlockIdentity> = {
   base: readonly PreparedAlignmentBlock<Block>[];
   revised: readonly PreparedAlignmentBlock<Block>[];
   canPair: (base: PreparedAlignmentBlock<Block>, revised: PreparedAlignmentBlock<Block>) => boolean;
@@ -782,7 +783,7 @@ type GapSimilarityPairing = {
  * the neighbour it pushed down, and every block after it with the next one's
  * wording. Null when the work budget refuses the gap.
  */
-const pairGapBySimilarity = <Block extends FolioContentBlock>({
+const pairGapBySimilarity = <Block extends FolioContentBlockIdentity>({
   base,
   revised,
   canPair,
@@ -866,12 +867,14 @@ const pairGapBySimilarity = <Block extends FolioContentBlock>({
   return { pairs, candidateBase, candidateRevised };
 };
 
-export type FolioContentAlignedBlockEvent<Block extends FolioContentBlock = FolioContentBlock> =
+export type FolioContentAlignedBlockEvent<
+  Block extends FolioContentBlockIdentity = FolioContentBlock,
+> =
   | { type: "pair"; baseBlock: Block; revisedBlock: Block }
   | { type: "baseOnly"; block: Block }
   | { type: "revisedOnly"; block: Block };
 
-export type AlignFolioContentBlocksOptions<Block extends FolioContentBlock> = {
+export type AlignFolioContentBlocksOptions<Block extends FolioContentBlockIdentity> = {
   workSession?: FolioContentAlignmentWorkSession;
   /** Let an already-aligned structural slot outrank differing authored IDs. */
   stableIdMismatch?: "pair" | "separate";
@@ -879,12 +882,12 @@ export type AlignFolioContentBlocksOptions<Block extends FolioContentBlock> = {
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
-type AlignFolioContentBlocksInScopeOptions<Block extends FolioContentBlock> =
+type AlignFolioContentBlocksInScopeOptions<Block extends FolioContentBlockIdentity> =
   AlignFolioContentBlocksOptions<Block> & {
     structuralScope: BlockAlignmentStructuralScope;
   };
 
-const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
+const alignFolioContentBlocksInScope = <Block extends FolioContentBlockIdentity>(
   baseBlocks: readonly Block[],
   revisedBlocks: readonly Block[],
   options: AlignFolioContentBlocksInScopeOptions<Block>,
@@ -1086,7 +1089,7 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
   return events;
 };
 
-export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
+export const alignFolioContentBlocks = <Block extends FolioContentBlockIdentity>(
   baseBlocks: readonly Block[],
   revisedBlocks: readonly Block[],
   options: AlignFolioContentBlocksOptions<Block> = {},
@@ -1096,15 +1099,15 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
     structuralScope: "document",
   });
 
-export type FolioContentAlignmentStep<Block extends FolioContentBlock = FolioContentBlock> =
-  | { type: "pair"; baseBlock: Block; revisedBlock: Block }
-  | { type: "baseOnly"; block: Block; moveScope: FolioContentMoveScope }
-  | { type: "revisedOnly"; block: Block; moveScope: FolioContentMoveScope }
-  | { type: "baseRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | { type: "revisedRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | { type: "baseTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | { type: "revisedTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | TableColumnAlignmentStep<Block>;
+export type FolioContentAlignmentStep<Block extends FolioContentBlockIdentity = FolioContentBlock> =
+    | { type: "pair"; baseBlock: Block; revisedBlock: Block }
+    | { type: "baseOnly"; block: Block; moveScope: FolioContentMoveScope }
+    | { type: "revisedOnly"; block: Block; moveScope: FolioContentMoveScope }
+    | { type: "baseRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
+    | { type: "revisedRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
+    | { type: "baseTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
+    | { type: "revisedTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
+    | TableColumnAlignmentStep<Block>;
 
 /** @internal Legal move bucket and alignment gap for one unpaired block. */
 export type FolioContentMoveScope = {
@@ -1119,7 +1122,7 @@ type MoveScopeContext = {
 
 const BODY_MOVE_BUCKET = 0;
 
-const scopedAlignmentSteps = <Block extends FolioContentBlock>(
+const scopedAlignmentSteps = <Block extends FolioContentBlockIdentity>(
   events: readonly FolioContentAlignedBlockEvent<Block>[],
   context: MoveScopeContext,
   bucketForBlock: (block: Block) => number,
@@ -1140,7 +1143,7 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
   return steps;
 };
 
-type DocumentSegment<Block extends FolioContentBlock> =
+type DocumentSegment<Block extends FolioContentBlockIdentity> =
   | {
       kind: "body";
       blocks: Block[];
@@ -1150,11 +1153,11 @@ type DocumentSegment<Block extends FolioContentBlock> =
   | { kind: "table"; blocks: Block[]; containerPathKey: null; structuralKey: string };
 
 const contentBlocksShareContainerPath = (
-  left: FolioContentBlock,
-  right: FolioContentBlock,
+  left: FolioContentBlockIdentity,
+  right: FolioContentBlockIdentity,
 ): boolean => containerPathKeyOf(left) === containerPathKeyOf(right);
 
-const splitSegments = <Block extends FolioContentBlock>(
+const splitSegments = <Block extends FolioContentBlockIdentity>(
   blocks: readonly Block[],
 ): DocumentSegment<Block>[] => {
   const segments: DocumentSegment<Block>[] = [];
@@ -1191,7 +1194,7 @@ const splitSegments = <Block extends FolioContentBlock>(
   return segments;
 };
 
-export const groupFolioContentTableRows = <Block extends FolioContentBlock>(
+export const groupFolioContentTableRows = <Block extends FolioContentBlockIdentity>(
   blocks: readonly Block[],
 ): Block[][] => {
   const rows = new Map<string, Block[]>();
@@ -1225,7 +1228,7 @@ export const groupFolioContentTableRows = <Block extends FolioContentBlock>(
  * block of another cell interrupts them, and inside one table segment the only
  * cell that can interrupt another is one of a table nested in it.
  */
-const cellRunOrdinals = <Block extends FolioContentBlock>(
+const cellRunOrdinals = <Block extends FolioContentBlockIdentity>(
   blocks: readonly Block[],
 ): ReadonlyMap<Block, number> => {
   const ordinals = new Map<Block, number>();
@@ -1248,7 +1251,9 @@ const cellRunOrdinals = <Block extends FolioContentBlock>(
   return ordinals;
 };
 
-const groupTables = <Block extends FolioContentBlock>(blocks: readonly Block[]): Block[][] => {
+const groupTables = <Block extends FolioContentBlockIdentity>(
+  blocks: readonly Block[],
+): Block[][] => {
   const tables = new Map<number, Block[]>();
   for (const block of blocks) {
     const tableIndex = block.table?.tableIndex;
@@ -1340,7 +1345,7 @@ const foldContentDigest = (lanes: Int32Array, text: string): void => {
 const renderContentDigest = (lanes: Int32Array, blockCount: number): string =>
   `${String(blockCount)}:${[...lanes].map((lane) => (lane >>> 0).toString(36)).join(":")}`;
 
-type CreateContentStructureProfileOptions<Block extends FolioContentBlock> = {
+type CreateContentStructureProfileOptions<Block extends FolioContentBlockIdentity> = {
   blocks: readonly Block[];
   blockStructure: (block: Block) => readonly ContentStructureAtom[];
   idStability: (block: Block) => FolioContentIdStability;
@@ -1348,7 +1353,7 @@ type CreateContentStructureProfileOptions<Block extends FolioContentBlock> = {
   retainContainerIdentity?: boolean;
 };
 
-const createContentStructureProfile = <Block extends FolioContentBlock>({
+const createContentStructureProfile = <Block extends FolioContentBlockIdentity>({
   blocks,
   blockStructure,
   idStability,
@@ -1480,7 +1485,7 @@ const contentStructureProfileSimilarity = (
   return { status: "measured", value: (2 * shared) / (base.tokens.total + revised.tokens.total) };
 };
 
-const tableStructureProfile = <Block extends FolioContentBlock>(
+const tableStructureProfile = <Block extends FolioContentBlockIdentity>(
   blocks: readonly Block[],
   idStability: (block: Block) => FolioContentIdStability,
 ): ContentStructureProfile => {
@@ -1508,7 +1513,7 @@ const tableStructureProfile = <Block extends FolioContentBlock>(
   });
 };
 
-const rowStructureProfile = <Block extends FolioContentBlock>(
+const rowStructureProfile = <Block extends FolioContentBlockIdentity>(
   blocks: readonly Block[],
   idStability: (block: Block) => FolioContentIdStability,
 ): ContentStructureProfile => {
@@ -2136,11 +2141,11 @@ const alignProfiledContentSequence = <Item>({
   return aligned;
 };
 
-const rowLocation = <Block extends FolioContentBlock>(
+const rowLocation = <Block extends FolioContentBlockIdentity>(
   row: readonly Block[],
 ): FolioContentTableLocation | null => row.at(0)?.table ?? null;
 
-type AlignRowCellsOptions<Block extends FolioContentBlock> = {
+type AlignRowCellsOptions<Block extends FolioContentBlockIdentity> = {
   baseRow: readonly Block[];
   revisedRow: readonly Block[];
   workSession: FolioContentAlignmentWorkSession;
@@ -2152,7 +2157,7 @@ type AlignRowCellsOptions<Block extends FolioContentBlock> = {
   cellRuns: ReadonlyMap<Block, number>;
 };
 
-const alignRowCells = <Block extends FolioContentBlock>({
+const alignRowCells = <Block extends FolioContentBlockIdentity>({
   baseRow,
   revisedRow,
   workSession,
@@ -2222,7 +2227,7 @@ const alignRowCells = <Block extends FolioContentBlock>({
   return steps;
 };
 
-type AlignCellRunOptions<Block extends FolioContentBlock> = {
+type AlignCellRunOptions<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly Block[];
   revisedBlocks: readonly Block[];
   workSession: FolioContentAlignmentWorkSession;
@@ -2231,7 +2236,7 @@ type AlignCellRunOptions<Block extends FolioContentBlock> = {
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
-const alignCellRun = <Block extends FolioContentBlock>({
+const alignCellRun = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
   workSession,
@@ -2270,19 +2275,19 @@ const alignCellRun = <Block extends FolioContentBlock>({
   return scopedAlignmentSteps(aligned, moveScopeContext, bucketForBlock);
 };
 
-type TableRowAlignment<Block extends FolioContentBlock> =
+type TableRowAlignment<Block extends FolioContentBlockIdentity> =
   | { type: "pair"; baseRow: readonly Block[]; revisedRow: readonly Block[] }
   | { type: "baseOnly"; row: readonly Block[] }
   | { type: "revisedOnly"; row: readonly Block[] };
 
-type PairTableRowsOptions<Block extends FolioContentBlock> = {
+type PairTableRowsOptions<Block extends FolioContentBlockIdentity> = {
   baseRows: readonly Block[][];
   revisedRows: readonly Block[][];
   workSession: FolioContentAlignmentWorkSession;
   idStability: (block: Block) => FolioContentIdStability;
 };
 
-const pairTableRows = <Block extends FolioContentBlock>({
+const pairTableRows = <Block extends FolioContentBlockIdentity>({
   baseRows,
   revisedRows,
   workSession,
@@ -2338,7 +2343,7 @@ const pairTableRows = <Block extends FolioContentBlock>({
   });
 };
 
-type AlignTableRowsOptions<Block extends FolioContentBlock> = {
+type AlignTableRowsOptions<Block extends FolioContentBlockIdentity> = {
   rows: readonly TableRowAlignment<Block>[];
   workSession: FolioContentAlignmentWorkSession;
   moveScopeContext: MoveScopeContext;
@@ -2349,7 +2354,7 @@ type AlignTableRowsOptions<Block extends FolioContentBlock> = {
   cellRuns: ReadonlyMap<Block, number>;
 };
 
-const alignTableRows = <Block extends FolioContentBlock>({
+const alignTableRows = <Block extends FolioContentBlockIdentity>({
   rows,
   workSession,
   moveScopeContext,
@@ -2398,7 +2403,7 @@ const alignTableRows = <Block extends FolioContentBlock>({
   return steps;
 };
 
-const rowCellSpansEqual = <Block extends FolioContentBlock>(
+const rowCellSpansEqual = <Block extends FolioContentBlockIdentity>(
   baseRow: readonly Block[],
   revisedRow: readonly Block[],
 ): boolean => {
@@ -2428,15 +2433,16 @@ const rowCellSpansEqual = <Block extends FolioContentBlock>(
   });
 };
 
-const rowHasVerticalSpan = <Block extends FolioContentBlock>(row: readonly Block[]): boolean =>
-  row.some(({ table }) => table !== undefined && table.rowSpan > 1);
+const rowHasVerticalSpan = <Block extends FolioContentBlockIdentity>(
+  row: readonly Block[],
+): boolean => row.some(({ table }) => table !== undefined && table.rowSpan > 1);
 
-type TableStructurePlan<Block extends FolioContentBlock> = {
+type TableStructurePlan<Block extends FolioContentBlockIdentity> = {
   steps: FolioContentAlignmentStep<Block>[];
   representable: boolean;
 };
 
-type BuildTablePlanOptions<Block extends FolioContentBlock> = {
+type BuildTablePlanOptions<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly Block[];
   revisedBlocks: readonly Block[];
   workSession: FolioContentAlignmentWorkSession;
@@ -2446,7 +2452,7 @@ type BuildTablePlanOptions<Block extends FolioContentBlock> = {
   cellRuns: ReadonlyMap<Block, number>;
 };
 
-const buildTablePlan = <Block extends FolioContentBlock>({
+const buildTablePlan = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
   workSession,
@@ -2487,7 +2493,7 @@ const buildTablePlan = <Block extends FolioContentBlock>({
   };
 };
 
-type BuildTableSegmentPlanOptions<Block extends FolioContentBlock> = {
+type BuildTableSegmentPlanOptions<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly Block[];
   revisedBlocks: readonly Block[];
   workSession: FolioContentAlignmentWorkSession;
@@ -2496,7 +2502,7 @@ type BuildTableSegmentPlanOptions<Block extends FolioContentBlock> = {
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
-const buildTableSegmentPlan = <Block extends FolioContentBlock>({
+const buildTableSegmentPlan = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
   workSession,
@@ -2561,21 +2567,21 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
   return { steps, representable };
 };
 
-type TableDocumentSegment<Block extends FolioContentBlock> = Extract<
+type TableDocumentSegment<Block extends FolioContentBlockIdentity> = Extract<
   DocumentSegment<Block>,
   { kind: "table" }
 >;
 
-const isTableDocumentSegment = <Block extends FolioContentBlock>(
+const isTableDocumentSegment = <Block extends FolioContentBlockIdentity>(
   segment: DocumentSegment<Block>,
 ): segment is TableDocumentSegment<Block> => segment.kind === "table";
 
-type TableSegmentProfiles<Block extends FolioContentBlock> = {
+type TableSegmentProfiles<Block extends FolioContentBlockIdentity> = {
   items: readonly ProfiledContentSequenceItem<TableDocumentSegment<Block>>[];
   ordinalBySegment: ReadonlyMap<TableDocumentSegment<Block>, number>;
 };
 
-const profileTableSegments = <Block extends FolioContentBlock>(
+const profileTableSegments = <Block extends FolioContentBlockIdentity>(
   segments: readonly DocumentSegment<Block>[],
   idStability: (block: Block) => FolioContentIdStability,
 ): TableSegmentProfiles<Block> => {
@@ -2733,16 +2739,16 @@ const profilesShareContentAnchor = (
   return revised.anchors.texts.some((text) => baseTexts.has(text)) ? "shares" : "disjoint";
 };
 
-type BodyDocumentSegment<Block extends FolioContentBlock> = Extract<
+type BodyDocumentSegment<Block extends FolioContentBlockIdentity> = Extract<
   DocumentSegment<Block>,
   { kind: "body" }
 >;
 
-const isBodyDocumentSegment = <Block extends FolioContentBlock>(
+const isBodyDocumentSegment = <Block extends FolioContentBlockIdentity>(
   segment: DocumentSegment<Block>,
 ): segment is BodyDocumentSegment<Block> => segment.kind === "body";
 
-const profileBodySegments = <Block extends FolioContentBlock>(
+const profileBodySegments = <Block extends FolioContentBlockIdentity>(
   segments: readonly DocumentSegment<Block>[],
   idStability: (block: Block) => FolioContentIdStability,
 ): readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[] =>
@@ -2761,12 +2767,12 @@ const profileBodySegments = <Block extends FolioContentBlock>(
       : [],
   );
 
-type TrustedBodyPair<Block extends FolioContentBlock> = {
+type TrustedBodyPair<Block extends FolioContentBlockIdentity> = {
   base: BodyDocumentSegment<Block>;
   revised: BodyDocumentSegment<Block>;
 };
 
-const exactBodyPairsInRange = <Block extends FolioContentBlock>(
+const exactBodyPairsInRange = <Block extends FolioContentBlockIdentity>(
   base: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
   revised: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
   exactKeyByProfile: ReadonlyMap<ContentStructureProfile, number>,
@@ -2807,7 +2813,7 @@ const exactBodyPairsInRange = <Block extends FolioContentBlock>(
   );
 };
 
-const trustedBodyPairs = <Block extends FolioContentBlock>(
+const trustedBodyPairs = <Block extends FolioContentBlockIdentity>(
   base: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
   revised: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
 ): TrustedBodyPair<Block>[] => {
@@ -2855,7 +2861,7 @@ const trustedBodyPairs = <Block extends FolioContentBlock>(
     }));
 };
 
-const segmentGaps = <Block extends FolioContentBlock>(
+const segmentGaps = <Block extends FolioContentBlockIdentity>(
   segments: readonly DocumentSegment<Block>[],
   anchors: readonly BodyDocumentSegment<Block>[],
 ): ReadonlyMap<DocumentSegment<Block>, number> => {
@@ -2873,12 +2879,12 @@ const segmentGaps = <Block extends FolioContentBlock>(
   return gaps;
 };
 
-type PairedTableSegments<Block extends FolioContentBlock> = {
+type PairedTableSegments<Block extends FolioContentBlockIdentity> = {
   baseToRevised: ReadonlyMap<TableDocumentSegment<Block>, TableDocumentSegment<Block>>;
   revisedToBase: ReadonlyMap<TableDocumentSegment<Block>, TableDocumentSegment<Block>>;
 };
 
-type PairTableSegmentsInGapsOptions<Block extends FolioContentBlock> = {
+type PairTableSegmentsInGapsOptions<Block extends FolioContentBlockIdentity> = {
   base: TableSegmentProfiles<Block>;
   revised: TableSegmentProfiles<Block>;
   baseGaps: ReadonlyMap<DocumentSegment<Block>, number>;
@@ -2887,7 +2893,7 @@ type PairTableSegmentsInGapsOptions<Block extends FolioContentBlock> = {
   workSession: FolioContentAlignmentWorkSession;
 };
 
-const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
+const pairTableSegmentsInGaps = <Block extends FolioContentBlockIdentity>({
   base,
   revised,
   baseGaps,
@@ -2973,7 +2979,7 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
   return { baseToRevised, revisedToBase };
 };
 
-const segmentIndexesByKey = <Block extends FolioContentBlock>(
+const segmentIndexesByKey = <Block extends FolioContentBlockIdentity>(
   segments: readonly DocumentSegment<Block>[],
 ): ReadonlyMap<string, readonly number[]> => {
   const indexes = new Map<string, number[]>();
@@ -3006,7 +3012,7 @@ const firstIndexAfter = (indexes: readonly number[] | undefined, cursor: number)
   return indexes[low] ?? null;
 };
 
-const segmentsCanPair = <Block extends FolioContentBlock>(
+const segmentsCanPair = <Block extends FolioContentBlockIdentity>(
   base: DocumentSegment<Block>,
   revised: DocumentSegment<Block>,
 ): boolean => {
@@ -3022,14 +3028,14 @@ const segmentsCanPair = <Block extends FolioContentBlock>(
   return base.containerPathKey === revised.containerPathKey;
 };
 
-type AlignSegmentsOptions<Block extends FolioContentBlock> = {
+type AlignSegmentsOptions<Block extends FolioContentBlockIdentity> = {
   baseSegments: readonly DocumentSegment<Block>[];
   revisedSegments: readonly DocumentSegment<Block>[];
   workSession: FolioContentAlignmentWorkSession;
   idStability: (block: Block) => FolioContentIdStability;
 };
 
-const alignSegments = <Block extends FolioContentBlock>({
+const alignSegments = <Block extends FolioContentBlockIdentity>({
   baseSegments,
   revisedSegments,
   workSession,
@@ -3172,7 +3178,7 @@ const alignSegments = <Block extends FolioContentBlock>({
   return paired;
 };
 
-const unpairedSegmentSteps = <Block extends FolioContentBlock>(
+const unpairedSegmentSteps = <Block extends FolioContentBlockIdentity>(
   segment: DocumentSegment<Block>,
   side: "base" | "revised",
   moveScopeContext: MoveScopeContext,
@@ -3199,7 +3205,7 @@ const unpairedSegmentSteps = <Block extends FolioContentBlock>(
   ];
 };
 
-export type AlignFolioContentStructureOptions<Block extends FolioContentBlock> = {
+export type AlignFolioContentStructureOptions<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly Block[];
   revisedBlocks: readonly Block[];
   workSession?: FolioContentAlignmentWorkSession;
@@ -3210,7 +3216,7 @@ export type AlignFolioContentStructureOptions<Block extends FolioContentBlock> =
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
-export const alignFolioContentStructure = <Block extends FolioContentBlock>({
+export const alignFolioContentStructure = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
   workSession = createFolioContentAlignmentWorkSession(),
@@ -3278,8 +3284,8 @@ export const alignFolioContentStructure = <Block extends FolioContentBlock>({
 };
 
 export const contentBlocksShareContainer = (
-  left: FolioContentBlock,
-  right: FolioContentBlock,
+  left: FolioContentBlockIdentity,
+  right: FolioContentBlockIdentity,
 ): boolean => {
   if (!contentBlocksShareContainerPath(left, right)) {
     return false;

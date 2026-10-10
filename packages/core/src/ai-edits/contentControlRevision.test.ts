@@ -103,7 +103,7 @@ const deleteControlText = async (
         replace: "",
       },
     ],
-    { mode },
+    { undefinedReferences: "refuse", mode },
   );
   expect(result.skipped).toEqual([]);
   return { reviewer, original, blockId: blockWithControl.id };
@@ -164,6 +164,7 @@ describe("deleting all of a content control's text", () => {
       throw new Error("expected a block");
     }
     reviewer.applyOperations([{ id: "drop", type: "deleteBlock", blockId: block.id }], {
+      undefinedReferences: "refuse",
       mode: "tracked-changes",
     });
     const saved = await reviewer.toBuffer();

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   hashFolioAIBlockText,
@@ -222,22 +223,23 @@ test(
     );
     const cases = [
       {
-        properties: { numbering: { numId: 901, level: 0 } },
+        properties: { numbering: paragraphNumberingReference({ numId: 901, ilvl: 0 }) },
         direct: paragraphNumberingFromSlots({ numId: 901, ilvl: 0 }),
       },
       {
-        properties: { numbering: { numId: 900, level: 1 } },
+        properties: { numbering: paragraphNumberingReference({ numId: 900, ilvl: 1 }) },
         direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
       },
       {
-        properties: { numbering: { numId: 900, level: 0 } },
-        direct: undefined,
+        properties: { numbering: paragraphNumberingReference({ numId: 900, ilvl: 0 }) },
+        direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 0 }),
       },
       {
-        properties: { listLevel: 1 },
+        properties: { numbering: { kind: "levelOnly", ilvl: 1 } },
         direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
       },
-      { properties: { numbering: null }, direct: { kind: "none" } },
+      { properties: { numbering: { kind: "none" } }, direct: { kind: "none" } },
+      { properties: { numbering: { kind: "inherit" } }, direct: undefined },
       { properties: { styleId: "Heading3" }, direct: undefined },
     ] as const satisfies readonly {
       properties: FolioAIBlockParagraphProperties;
@@ -250,6 +252,7 @@ test(
           const anchor = rowsOf(reviewer, story).find((row) => row.text.length > 0);
           assert.ok(anchor);
           const initial = reviewer.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
             story,
             batch: {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -266,6 +269,7 @@ test(
           });
           assert.equal(initial.applied.length, 1);
           const pending = reviewer.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
             story,
             batch: {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -306,6 +310,7 @@ test(
           } as const;
           expectOperation(model, operation);
           const result = reviewer.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
             story,
             batch: {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -353,6 +358,7 @@ test(
           } as const;
           expectOperation(styleModel, styleOperation);
           const restyled = reviewer.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
             story,
             batch: {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -415,7 +421,7 @@ test("direct heading insertion beside a newly authored bullet keeps its direct n
         type: "insertAfterBlock",
         blockId: anchor.id,
         text: "A new bullet.",
-        numbering: { start: "new", kind: "bullet" },
+        numbering: { kind: "newList", format: "bullet" },
       },
     ],
     "direct",
@@ -617,7 +623,7 @@ test("a pending inserted anchor has complete live numbering provenance", async (
         type: "insertAfterBlock",
         blockId: anchor.id,
         text: "Pending numbered anchor",
-        numbering: { numId: 7, level: 0 },
+        numbering: { kind: "reference", numId: 7, ilvl: 0 },
       },
     ],
     "suggested",

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
+import type { FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
 import { assertReadersAgree } from "../support/invariants.ts";
 import {
@@ -228,8 +229,12 @@ test("an undefined numbering level without a displayed marker reads as prose", (
     id: "4207D525",
     text: "No marker",
     kind: "paragraph",
+    statedNumbering: { kind: "inherit" },
     listReference: { numId: 7, level: 8 },
-  };
+  } as const satisfies Pick<
+    FolioAIParagraphBlock,
+    "id" | "kind" | "text" | "statedNumbering" | "listReference"
+  >;
   assert.deepEqual(contentView(block, formats), { text: "No marker", kind: "paragraph" });
   assert.throws(
     () => contentView({ ...block, displayLabel: "1." }, formats),
@@ -276,11 +281,14 @@ test("removing the prose between custom-numbered blocks keeps every saved reader
     const reviewer = await openReviewer(await directNumberedDocument());
     const separator = reviewer.getContent().find(({ text }) => text === "Unnumbered body text.");
     assert.ok(separator);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations: [{ id: "delete-separator", type: "deleteBlock", blockId: separator.id }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [{ id: "delete-separator", type: "deleteBlock", blockId: separator.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.equal(result.applied.length, 1);
     reviewer.acceptAll();
     await assertReadersAgree(
@@ -355,20 +363,23 @@ test("partial numbered deletions retain empty structure across saved review reso
     let reviewer = await openReviewer(await directNumberedDocument());
     const target = reviewer.getContent().find((block) => block.text === text);
     assert.ok(target);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        { id: "s-1", type: "deleteBlock", blockId: target.id },
-        {
-          id: "s-2",
-          type: "replaceInBlock",
-          blockId: target.id,
-          find: "Numbered",
-          replace: "revised",
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          { id: "s-1", type: "deleteBlock", blockId: target.id },
+          {
+            id: "s-2",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Numbered",
+            replace: "revised",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.equal(result.applied.length, 1);
     reviewer = await openReviewer(new Uint8Array(await reviewer.toBuffer()), "Second Reviewer");
     const deletion = reviewer.getChanges().find((change) => change.type === "deletion");

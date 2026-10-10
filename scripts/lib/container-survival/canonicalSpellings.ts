@@ -147,14 +147,14 @@ const RENAME_SITES = {
   "CT_Ind @start": [
     {
       file: PARAGRAPH_FORMATTING,
-      line: 216,
+      line: 207,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"]',
     },
   ],
   "CT_Ind @end": [
     {
       file: PARAGRAPH_FORMATTING,
-      line: 217,
+      line: 208,
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"]',
     },
   ],
@@ -238,7 +238,7 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "A tab stop with no w:leader draws no leader: the attribute is optional, the committed " +
       "graph records no default, and `none` is the member of ST_TabTlc that says so. folio " +
       "reads the token and writes the attribute only for a leader that draws something.",
-    writtenBy: [{ file: PARAGRAPH_FORMATTING, line: 156, writes: 'leader !== "none"' }],
+    writtenBy: [{ file: PARAGRAPH_FORMATTING, line: 147, writes: 'leader !== "none"' }],
   },
 ] as const satisfies readonly CanonicalSpelling[];
 

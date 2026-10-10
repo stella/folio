@@ -42,6 +42,7 @@ import type {
   FolioAIBlock,
   FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
+  FolioAIParagraphBlock,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
 } from "../ai-edits/types";
@@ -368,8 +369,7 @@ const toFolioAIBlockParagraphProperties = (
 ): FolioAIBlockParagraphProperties => ({
   ...(properties.styleId !== undefined && { styleId: properties.styleId }),
   ...(properties.outlineLevel !== undefined && { outlineLevel: properties.outlineLevel }),
-  ...(properties.listLevel !== undefined && { listLevel: properties.listLevel }),
-  ...(properties.listReference !== undefined && { numbering: properties.listReference }),
+  ...(properties.numbering !== undefined && { numbering: properties.numbering }),
   ...(properties.alignment !== undefined && { alignment: properties.alignment }),
   ...(properties.spacing !== undefined && { spacing: properties.spacing }),
   ...(properties.indentation !== undefined && { indentation: properties.indentation }),
@@ -768,8 +768,7 @@ const withTrailingDeletionRules = ({
           text: insert.text,
           ...(insert.moveId !== undefined && { moveId: insert.moveId }),
           styleId: insert.styleId ?? null,
-          listLevel: insert.listLevel ?? null,
-          numbering: insert.numbering ?? null,
+          ...(insert.numbering !== undefined && { numbering: insert.numbering }),
           indentation: insert.indentation ?? null,
           ...(insert.lineBreakMode !== undefined && { lineBreakMode: insert.lineBreakMode }),
           ...(insert.hardPageBreak !== undefined && { hardPageBreak: insert.hardPageBreak }),
@@ -952,11 +951,25 @@ export const planStoryCompare = ({
   const moveIdOf = (baseBlockId: string): string => `move-${baseBlockId}`;
 
   const pushInsertOperation = (block: FolioAIBlock, anchorId: string | null): void => {
+    let paragraph: FolioAIParagraphBlock;
+    switch (block.kind) {
+      case "paragraph":
+      case "heading":
+      case "listItem":
+        paragraph = block;
+        break;
+      case "diagnostic":
+        return;
+      default: {
+        const unreachable: never = block;
+        return panic("Unhandled comparison block kind", { block: unreachable });
+      }
+    }
     const moveSourceId = moveSourceByTargetBlockId.get(block.id);
-    const structuralBoundary = block.structuralBoundaries?.at(0);
+    const structuralBoundary = paragraph.structuralBoundaries?.at(0);
     const hardPageBreak =
       block.text.length === 0 &&
-      block.structuralBoundaries?.length === 1 &&
+      paragraph.structuralBoundaries?.length === 1 &&
       structuralBoundary?.type === "pageBreak" &&
       structuralBoundary.offset === 0
         ? { ...(structuralBoundary.clear !== undefined && { clear: structuralBoundary.clear }) }
@@ -969,13 +982,12 @@ export const planStoryCompare = ({
     // Total over the properties an operation can set, so one added to the
     // contract cannot be left to inheritance here.
     const paragraphProperties = {
-      styleId: block.styleId ?? null,
-      outlineLevel: block.directOutlineLevel ?? null,
-      listLevel: block.listLevel ?? null,
-      numbering: block.listReference ?? null,
-      alignment: block.directAlignment ?? null,
-      spacing: block.directSpacing ?? null,
-      indentation: block.directIndentation ?? null,
+      styleId: paragraph.styleId ?? null,
+      outlineLevel: paragraph.directOutlineLevel ?? null,
+      numbering: paragraph.statedNumbering,
+      alignment: paragraph.directAlignment ?? null,
+      spacing: paragraph.directSpacing ?? null,
+      indentation: paragraph.directIndentation ?? null,
     } satisfies Required<Pick<InsertOperation, keyof FolioAIBlockParagraphProperties>>;
     const shared = {
       text: block.text,

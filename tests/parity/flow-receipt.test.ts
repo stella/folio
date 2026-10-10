@@ -38,7 +38,10 @@ test.each(cases)(
         mode: "direct",
         operations: [operation],
       } as const satisfies FolioDocumentOperationBatch;
-      assertGeneratedFlowReceipt(reviewer.applyDocumentOperations(batch), operation);
+      assertGeneratedFlowReceipt(
+        reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
+        operation,
+      );
     }
   },
 );
@@ -60,7 +63,7 @@ test("rejects insertion receipts with the wrong discriminator or anchor", async 
     mode: "direct",
     operations: [operation],
   } as const satisfies FolioDocumentOperationBatch;
-  const result = reviewer.applyDocumentOperations(batch);
+  const result = reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" });
   const wrongType = structuredClone(result);
   const wrongTypeReceipt = wrongType.receipts.at(0);
   assert.ok(wrongTypeReceipt);

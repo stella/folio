@@ -68,6 +68,7 @@ export type {
   FolioContentParagraphSpacing,
   FolioContentRun,
   FolioContentSnapshot,
+  FolioContentStatedNumbering,
   FolioContentTableLocation,
 } from "./compare/content-types";
 export {
@@ -153,11 +154,14 @@ export {
   normalizeFolioAIBlockText,
   WORD_DIFF_GRANULARITIES,
   type FolioWordDiffOptions,
+  type FolioUndefinedReferencePolicy,
   type WordDiffGranularity,
   type WordDiffNormalization,
   type WordDiffOptions,
   type WordDiffSegment,
   type FolioAIBlock,
+  type FolioAIParagraphBlock,
+  type FolioAIDiagnosticBlock,
   type FolioAIBlockAnchor,
   type FolioAIBlockTableLocation,
   type FolioRevisionStamp,

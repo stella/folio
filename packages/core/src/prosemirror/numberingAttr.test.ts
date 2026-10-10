@@ -14,6 +14,8 @@ import { Panic } from "better-result";
 
 import { paragraphRejectOriginalFormatting } from "./commands/propertyChangeScope";
 import {
+  effectiveParagraphNumbering,
+  effectiveParagraphNumberingReference,
   paragraphNumberingAttr,
   paragraphNumberingFromAttrValue,
   readParagraphNumberingAttr,
@@ -111,5 +113,26 @@ describe("a rejected w:pPrChange rebuilds the serializer's pPr source", () => {
       typeof paragraphRejectOriginalFormatting
     >[0];
     expect(() => paragraphRejectOriginalFormatting(storedByAnOlderBuild, null)).toThrow(Panic);
+  });
+});
+
+describe("effective paragraph numbering", () => {
+  test.each([
+    {},
+    { numPr: paragraphNumberingAttr({ kind: "none" }) },
+    { numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: 3 }) },
+  ])("no effective reference is typed none, never level zero", (sources) => {
+    expect(effectiveParagraphNumbering(sources)).toEqual({ kind: "none" });
+    expect(effectiveParagraphNumberingReference(sources)).toBeUndefined();
+  });
+
+  test("only an existing reference defaults an omitted level to zero", () => {
+    const stated = paragraphNumberingAttr({ kind: "reference", numId: 4 });
+    expect(effectiveParagraphNumberingReference({ numPr: stated })).toEqual({
+      kind: "reference",
+      numId: 4,
+      ilvl: 0,
+    });
+    expect(stated).toEqual({ kind: "reference", numId: 4 });
   });
 });

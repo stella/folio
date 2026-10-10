@@ -16,19 +16,29 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import {
+  insertedTextBoxDocument,
+  INSERTED_TEXT_BOX_STYLE,
+} from "./__tests__/insertedTextBoxDocument";
 import { buildTextBoxTableDocument, findTextBoxShape } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
 import { compareDocx } from "./compare/compare";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
-import { generateRedlineDocx, InvalidGenerateRedlineDocxOptionsError } from "./redline";
+import {
+  generateRedlineDocx,
+  GenerateRedlineDocxResourceImportError,
+  InvalidGenerateRedlineDocxOptionsError,
+} from "./redline";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import {
   GenerateRedlineDocxOperationLimitError,
   MAX_GENERATED_REDLINE_OPERATIONS,
 } from "./redlineOperationLimit";
 import type { HeaderFooter, Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
+import { expectParagraphBlock } from "../../../test/paragraphBlock";
 
 type InlineFormattingSpec = { bold?: boolean; italic?: boolean };
 
@@ -246,7 +256,7 @@ const withPendingMainChange = async (source: ArrayBuffer, text: string): Promise
   }
   reviewer.applyOperations(
     [{ id: "source-change", type: "replaceBlock", blockId: target.id, text }],
-    { mode: "tracked-changes" },
+    { undefinedReferences: "refuse", mode: "tracked-changes" },
   );
   return reviewer.toBuffer();
 };
@@ -765,7 +775,7 @@ describe("generateRedlineDocx inserted list items", () => {
   const BULLET = { numId: 1, abstractNumId: 1, numFmt: "bullet", lvlText: "•" };
   const DECIMAL = { numId: 2, abstractNumId: 2, numFmt: "decimal", lvlText: "%1." };
 
-  /** Label and text of every block once every tracked change is accepted or rejected. */
+  /** Reader projection after every tracked change is accepted or rejected. */
   const resolved = async (buffer: ArrayBuffer, resolution: "accept" | "reject") => {
     const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
     if (resolution === "accept") reviewer.acceptAll();
@@ -773,11 +783,15 @@ describe("generateRedlineDocx inserted list items", () => {
     const saved = await reviewer.toBuffer();
     const reopened = await FolioDocxReviewer.fromBuffer(saved);
     return {
-      blocks: reopened.snapshot().blocks.map((block) => ({
-        text: block.text,
-        label: block.displayLabel ?? null,
-        level: block.listLevel ?? null,
-      })),
+      blocks: reopened.snapshot().blocks.map((block) => {
+        const paragraph = expectParagraphBlock(block);
+        return {
+          text: paragraph.text,
+          label: paragraph.displayLabel ?? null,
+          listReference: paragraph.listReference ?? null,
+          statedNumbering: paragraph.statedNumbering,
+        };
+      }),
       saved,
     };
   };
@@ -796,15 +810,115 @@ describe("generateRedlineDocx inserted list items", () => {
     return { referenced, defined };
   };
 
+  const expectedRows = (
+    paragraphs: readonly ListParagraphSpec[],
+    numbering: readonly NumberingSpec[],
+  ) => {
+    const counters = new Map<string, number>();
+    return paragraphs.map(({ text, numId, ilvl }) => {
+      if (numId === undefined) {
+        return {
+          text,
+          label: null,
+          level: null,
+          statedNumbering: { kind: "inherit" as const },
+          numFmt: undefined,
+        };
+      }
+      const definition = numbering.find((candidate) => candidate.numId === numId);
+      expect(definition, `Fixture numbering ${numId} is defined`).toBeDefined();
+      if (!definition) throw new Error(`Fixture numbering ${numId} is not defined`);
+      const level = ilvl ?? 0;
+      const label =
+        definition.numFmt === "bullet"
+          ? definition.lvlText
+          : definition.lvlText.replace(/%(?<level>\d+)/gu, (match, value: string) => {
+              const counterLevel = Number(value) - 1;
+              const key = `${numId}:${counterLevel}`;
+              const count = counters.get(key) ?? 0;
+              if (counterLevel === level) counters.set(key, count + 1);
+              return String(counterLevel === level ? count + 1 : counters.get(key) || 1);
+            });
+      return {
+        text,
+        label,
+        level,
+        statedNumbering: { kind: "reference" as const, ilvl: level },
+        numFmt: definition.numFmt,
+      };
+    });
+  };
+
+  const numberingFormatsOf = async (buffer: ArrayBuffer): Promise<Map<number, string>> => {
+    const document = await parseDocx(buffer, { detectVariables: false, preloadFonts: false });
+    const abstracts = new Map(
+      (document.package.numbering?.abstractNums ?? []).map((entry) => [entry.abstractNumId, entry]),
+    );
+    return new Map(
+      (document.package.numbering?.nums ?? []).flatMap((entry) => {
+        const abstract = abstracts.get(entry.abstractNumId);
+        const level = abstract?.levels.find((candidate) => candidate.ilvl === 0);
+        return level?.numFmt === undefined ? [] : [[entry.numId, level.numFmt]];
+      }),
+    );
+  };
+
+  const expectRowsFromFixture = async (
+    actual: Awaited<ReturnType<typeof resolved>>,
+    paragraphs: readonly ListParagraphSpec[],
+    numbering: readonly NumberingSpec[],
+  ) => {
+    const expected = expectedRows(paragraphs, numbering);
+    const formats = await numberingFormatsOf(actual.saved);
+    expect(actual.blocks).toHaveLength(expected.length);
+    for (const [index, expectedRow] of expected.entries()) {
+      const row = actual.blocks[index];
+      expect(row).toBeDefined();
+      if (!row) throw new Error(`Resolved block ${index} is absent`);
+      expect(row.text).toBe(expectedRow.text);
+      expect(row.label).toBe(expectedRow.label);
+      expect(row.listReference?.level ?? null).toBe(expectedRow.level);
+      expect(
+        row.statedNumbering.kind === "reference"
+          ? { kind: row.statedNumbering.kind, ilvl: row.statedNumbering.ilvl }
+          : row.statedNumbering,
+      ).toEqual(expectedRow.statedNumbering);
+      if (expectedRow.numFmt === undefined) {
+        expect(row.listReference).toBeNull();
+      } else {
+        expect(row.listReference).not.toBeNull();
+        expect(row.statedNumbering.kind).toBe("reference");
+        if (row.statedNumbering.kind !== "reference" || row.listReference === null) {
+          throw new Error(`Resolved block ${index} lost its authored list reference`);
+        }
+        expect(row.statedNumbering.numId).toBe(row.listReference.numId);
+        expect(formats.get(row.listReference.numId)).toBe(expectedRow.numFmt);
+      }
+    }
+  };
+
   /** Accepting the redline gives the revision, rejecting it the base, and no numId dangles. */
-  const expectRoundTrip = async (base: ArrayBuffer, revised: ArrayBuffer) => {
+  const expectRoundTrip = async ({
+    base,
+    baseParagraphs,
+    baseNumbering,
+    revised,
+    revisedParagraphs,
+    revisedNumbering,
+  }: {
+    base: ArrayBuffer;
+    baseParagraphs: readonly ListParagraphSpec[];
+    baseNumbering: readonly NumberingSpec[];
+    revised: ArrayBuffer;
+    revisedParagraphs: readonly ListParagraphSpec[];
+    revisedNumbering: readonly NumberingSpec[];
+  }) => {
     const result = await generateRedlineDocx(base, revised);
     expect(result.skipped).toEqual([]);
     const accepted = await resolved(result.buffer, "accept");
-    expect(accepted.blocks).toEqual((await resolved(revised, "accept")).blocks);
-    expect((await resolved(result.buffer, "reject")).blocks).toEqual(
-      (await resolved(base, "accept")).blocks,
-    );
+    await expectRowsFromFixture(accepted, revisedParagraphs, revisedNumbering);
+    const rejected = await resolved(result.buffer, "reject");
+    await expectRowsFromFixture(rejected, baseParagraphs, baseNumbering);
     for (const buffer of [result.buffer, accepted.saved]) {
       const { referenced, defined } = await numIdsOf(buffer);
       for (const numId of referenced) expect(defined).toContain(numId);
@@ -813,91 +927,316 @@ describe("generateRedlineDocx inserted list items", () => {
   };
 
   test("an inserted bullet keeps its bullet and level, and rejecting removes it", async () => {
-    const base = await buildListDocx(
-      [
-        { text: "Intro.", paraId: "10000001" },
-        { text: "Existing bullet.", paraId: "10000002", numId: 1 },
-        { text: "Outro.", paraId: "10000003" },
-      ],
-      [BULLET],
-    );
-    const revised = await buildListDocx(
-      [
-        { text: "Intro.", paraId: "10000001" },
-        { text: "Existing bullet.", paraId: "10000002", numId: 1 },
-        { text: "New nested bullet.", paraId: "10000004", numId: 1, ilvl: 1 },
-        { text: "Outro.", paraId: "10000003" },
-        { text: "Trailing bullet.", paraId: "10000005", numId: 1 },
-      ],
-      [BULLET],
-    );
-    const { accepted } = await expectRoundTrip(base, revised);
-    expect(accepted.blocks).toEqual([
-      { text: "Intro.", label: null, level: null },
-      { text: "Existing bullet.", label: "•", level: 0 },
-      { text: "New nested bullet.", label: "•", level: 1 },
-      { text: "Outro.", label: null, level: null },
-      { text: "Trailing bullet.", label: "•", level: 0 },
-    ]);
+    const baseParagraphs = [
+      { text: "Intro.", paraId: "10000001" },
+      { text: "Existing bullet.", paraId: "10000002", numId: 1 },
+      { text: "Outro.", paraId: "10000003" },
+    ];
+    const revisedParagraphs = [
+      { text: "Intro.", paraId: "10000001" },
+      { text: "Existing bullet.", paraId: "10000002", numId: 1 },
+      { text: "New nested bullet.", paraId: "10000004", numId: 1, ilvl: 1 },
+      { text: "Outro.", paraId: "10000003" },
+      { text: "Trailing bullet.", paraId: "10000005", numId: 1 },
+    ];
+    const base = await buildListDocx(baseParagraphs, [BULLET]);
+    const revised = await buildListDocx(revisedParagraphs, [BULLET]);
+    await expectRoundTrip({
+      base,
+      baseParagraphs,
+      baseNumbering: [BULLET],
+      revised,
+      revisedParagraphs,
+      revisedNumbering: [BULLET],
+    });
   });
 
   test("an inserted numbered item takes its number, and a plain insertion stays plain", async () => {
-    const base = await buildListDocx(
-      [
-        { text: "First.", paraId: "20000001", numId: 2 },
-        { text: "Third.", paraId: "20000002", numId: 2 },
-      ],
-      [DECIMAL],
-    );
-    const revised = await buildListDocx(
-      [
-        { text: "Plain before the list.", paraId: "20000003" },
-        { text: "First.", paraId: "20000001", numId: 2 },
-        { text: "Second.", paraId: "20000004", numId: 2 },
-        { text: "Third.", paraId: "20000002", numId: 2 },
-      ],
-      [DECIMAL],
-    );
-    const { accepted } = await expectRoundTrip(base, revised);
-    expect(accepted.blocks.map(({ label, text }) => [label, text])).toEqual([
-      [null, "Plain before the list."],
-      ["1.", "First."],
-      ["2.", "Second."],
-      ["3.", "Third."],
-    ]);
+    const baseParagraphs = [
+      { text: "First.", paraId: "20000001", numId: 2 },
+      { text: "Third.", paraId: "20000002", numId: 2 },
+    ];
+    const revisedParagraphs = [
+      { text: "Plain before the list.", paraId: "20000003" },
+      { text: "First.", paraId: "20000001", numId: 2 },
+      { text: "Second.", paraId: "20000004", numId: 2 },
+      { text: "Third.", paraId: "20000002", numId: 2 },
+    ];
+    const base = await buildListDocx(baseParagraphs, [DECIMAL]);
+    const revised = await buildListDocx(revisedParagraphs, [DECIMAL]);
+    await expectRoundTrip({
+      base,
+      baseParagraphs,
+      baseNumbering: [DECIMAL],
+      revised,
+      revisedParagraphs,
+      revisedNumbering: [DECIMAL],
+    });
   });
 
   test("numbering defined only in the revised package is carried into the redline", async () => {
-    const base = await buildListDocx([{ text: "Intro.", paraId: "30000001" }], []);
-    const revised = await buildListDocx(
-      [
-        { text: "Intro.", paraId: "30000001" },
-        { text: "Only numbered in the revision.", paraId: "30000002", numId: 2 },
-      ],
-      [DECIMAL],
-    );
-    const { accepted, redline } = await expectRoundTrip(base, revised);
-    expect(accepted.blocks.at(-1)).toEqual({
-      text: "Only numbered in the revision.",
-      label: "1.",
-      level: 0,
+    const baseParagraphs = [{ text: "Intro.", paraId: "30000001" }];
+    const revisedParagraphs = [
+      { text: "Intro.", paraId: "30000001" },
+      { text: "Only numbered in the revision.", paraId: "30000002", numId: 2 },
+    ];
+    const base = await buildListDocx(baseParagraphs, []);
+    const revised = await buildListDocx(revisedParagraphs, [DECIMAL]);
+    const { accepted, redline } = await expectRoundTrip({
+      base,
+      baseParagraphs,
+      baseNumbering: [],
+      revised,
+      revisedParagraphs,
+      revisedNumbering: [DECIMAL],
     });
     expect((await numIdsOf(redline)).referenced.size).toBe(1);
+    expect(accepted.blocks.at(-1)?.statedNumbering).toEqual({
+      kind: "reference",
+      numId: accepted.blocks.at(-1)?.listReference?.numId,
+      ilvl: 0,
+    });
   });
 
   test("a numId the base uses for a different list is remapped, not reused", async () => {
-    const base = await buildListDocx(
-      [{ text: "Numbered in the base.", paraId: "40000001", numId: 1 }],
-      [{ ...DECIMAL, numId: 1, abstractNumId: 1 }],
-    );
-    const revised = await buildListDocx(
-      [
-        { text: "Numbered in the base.", paraId: "40000001", numId: 2 },
-        { text: "A bullet under the same id.", paraId: "40000002", numId: 1 },
-      ],
-      [BULLET, DECIMAL],
-    );
-    const { accepted } = await expectRoundTrip(base, revised);
+    const baseParagraphs = [{ text: "Numbered in the base.", paraId: "40000001", numId: 1 }];
+    const baseNumbering = [{ ...DECIMAL, numId: 1, abstractNumId: 1 }];
+    const revisedParagraphs = [
+      { text: "Numbered in the base.", paraId: "40000001", numId: 2 },
+      { text: "A bullet under the same id.", paraId: "40000002", numId: 1 },
+    ];
+    const revisedNumbering = [BULLET, DECIMAL];
+    const base = await buildListDocx(baseParagraphs, baseNumbering);
+    const revised = await buildListDocx(revisedParagraphs, revisedNumbering);
+    const { accepted } = await expectRoundTrip({
+      base,
+      baseParagraphs,
+      baseNumbering,
+      revised,
+      revisedParagraphs,
+      revisedNumbering,
+    });
     expect(accepted.blocks.map(({ label }) => label)).toEqual(["1.", "•"]);
+    const [numbered, bullet] = accepted.blocks;
+    expect(numbered?.statedNumbering).toEqual({
+      kind: "reference",
+      numId: numbered?.listReference?.numId,
+      ilvl: 0,
+    });
+    expect(bullet?.statedNumbering).toEqual({
+      kind: "reference",
+      numId: bullet?.listReference?.numId,
+      ilvl: 0,
+    });
+    expect(numbered?.listReference?.numId).not.toBe(bullet?.listReference?.numId);
   });
+
+  test("style-only insertions keep the revised colliding style after acceptance and base on rejection", async () => {
+    // Earlier fixtures generated only direct references, leaving inherited list resources unexercised.
+    for (const { ilvl, stated } of [undefined, 0, 1].flatMap((styleLevel) =>
+      ["inherit", "levelOnly"].map((statedKind) => ({ ilvl: styleLevel, stated: statedKind })),
+    )) {
+      type StyleNumberingFixtureOptions = {
+        inserted: boolean;
+        revised: boolean;
+        revisedBullet?: boolean;
+        styleClosure?: "portable" | "missingLink";
+      };
+      const makeDocument = ({
+        inserted,
+        revised,
+        revisedBullet = true,
+        styleClosure = "portable",
+      }: StyleNumberingFixtureOptions) => {
+        const document = createEmptyDocument();
+        const styleNumId = revised ? 2 : 1;
+        document.package.document.content = [
+          {
+            type: "paragraph",
+            paraId: "81000001",
+            textId: "81000001",
+            content: [{ type: "run", content: [{ type: "text", text: "Anchor." }] }],
+          },
+          ...(inserted
+            ? [
+                {
+                  type: "paragraph" as const,
+                  paraId: "81000002",
+                  textId: "81000002",
+                  formatting: {
+                    styleId: "Numbered",
+                    ...(stated === "levelOnly" && {
+                      numPr: { kind: "levelOnly" as const, ilvl: 0 },
+                    }),
+                  },
+                  content: [
+                    {
+                      type: "run" as const,
+                      content: [{ type: "text" as const, text: "Inserted by style." }],
+                    },
+                  ],
+                },
+              ]
+            : []),
+        ];
+        document.package.styles = {
+          styles: [
+            { type: "paragraph", styleId: "Normal", name: "Normal", default: true },
+            {
+              type: "paragraph",
+              styleId: "Numbered",
+              name: "Numbered",
+              ...(styleClosure === "missingLink" && { link: "MissingStyle" }),
+              pPr: {
+                numPr: paragraphNumberingReference({
+                  numId: styleNumId,
+                  ...(ilvl === undefined ? {} : { ilvl }),
+                }),
+              },
+            },
+          ],
+        };
+        document.package.numbering = {
+          abstractNums: [
+            {
+              abstractNumId: 1,
+              levels: [0, 1].map((level) => ({ ilvl: level, numFmt: "decimal", lvlText: "%1." })),
+            },
+            {
+              abstractNumId: 2,
+              levels: [0, 1].map((level) => ({
+                ilvl: level,
+                numFmt: revised && revisedBullet ? "bullet" : "decimal",
+                lvlText: revised && revisedBullet ? "▪" : "%1.",
+              })),
+            },
+          ],
+          nums: [
+            { numId: 1, abstractNumId: 1 },
+            { numId: 2, abstractNumId: 2 },
+          ],
+        };
+        return createDocx(document);
+      };
+
+      const base = await makeDocument({ inserted: false, revised: false });
+      const revised = await makeDocument({ inserted: true, revised: true });
+      const result = await generateRedlineDocx(base, revised);
+      expect(result.skipped).toEqual([]);
+
+      const accepting = await FolioDocxReviewer.fromBuffer(result.buffer);
+      accepting.acceptAll();
+      const acceptedBuffer = await accepting.toBuffer();
+      const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+      const acceptedBlock = expectParagraphBlock(accepted.snapshot().blocks.at(-1));
+      expect(acceptedBlock.text).toBe("Inserted by style.");
+      expect(acceptedBlock.statedNumbering).toEqual(
+        stated === "inherit" ? { kind: "inherit" } : { kind: "levelOnly", ilvl: 0 },
+      );
+      expect(acceptedBlock.listReference?.level).toBe(stated === "levelOnly" ? 0 : (ilvl ?? 0));
+      expect(acceptedBlock.displayLabel).toBe("▪");
+      const acceptedDocument = accepted.toDocument();
+      const acceptedParagraph = acceptedDocument.package.document.content.at(-1);
+      if (acceptedParagraph?.type !== "paragraph") throw new Error("Expected inserted paragraph");
+      expect(acceptedParagraph.formatting?.styleId).not.toBe("Numbered");
+      expect(acceptedParagraph.formatting?.numPr).toEqual(
+        stated === "inherit" ? undefined : { kind: "levelOnly", ilvl: 0 },
+      );
+      expect(acceptedParagraph.formatting?.numPrFromStyle).toEqual(
+        paragraphNumberingReference({
+          numId: acceptedBlock.listReference?.numId ?? 0,
+          ...(ilvl === undefined ? {} : { ilvl }),
+        }),
+      );
+
+      const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
+      rejecting.rejectAll();
+      const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+      expect(rejected.snapshot().blocks.map((block) => block.text)).toEqual(["Anchor."]);
+      expect(
+        rejected.toDocument().package.styles?.styles.find((style) => style.styleId === "Numbered")
+          ?.pPr?.numPr,
+      ).toEqual(paragraphNumberingReference({ numId: 1, ...(ilvl === undefined ? {} : { ilvl }) }));
+
+      const identicalRevision = await makeDocument({
+        inserted: true,
+        revised: false,
+        revisedBullet: false,
+      });
+      const identicalResult = await generateRedlineDocx(base, identicalRevision);
+      const identicalReviewer = await FolioDocxReviewer.fromBuffer(identicalResult.buffer);
+      identicalReviewer.acceptAll();
+      const identicalAccepted = await FolioDocxReviewer.fromBuffer(
+        await identicalReviewer.toBuffer(),
+      );
+      const identicalParagraph = identicalAccepted.toDocument().package.document.content.at(-1);
+      if (identicalParagraph?.type !== "paragraph")
+        throw new Error("Expected identical-definition insertion");
+      expect(identicalParagraph.formatting?.styleId).toBe("Numbered");
+      expect(identicalAccepted.snapshot().blocks.at(-1)?.listReference?.numId).toBe(1);
+
+      const unsupportedRevision = await makeDocument({
+        inserted: true,
+        revised: true,
+        styleClosure: "missingLink",
+      });
+      const refusal = await generateRedlineDocx(base, unsupportedRevision).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(refusal).toBeInstanceOf(GenerateRedlineDocxResourceImportError);
+      expect(refusal).toMatchObject({
+        _tag: "GenerateRedlineDocxResourceImportError",
+        detail: "referenced target style MissingStyle is missing",
+      });
+    }
+  });
+});
+
+test("the current text-redline contract flattens new carriers and imports their paragraph styles once", async () => {
+  for (const innerContent of ["paragraph", "tableCell"] as const) {
+    const base = await createDocx(
+      insertedTextBoxDocument({ side: "base", innerContent, suffix: "inserted" }),
+    );
+    const revised = await createDocx(
+      insertedTextBoxDocument({ side: "revised", innerContent, suffix: "inserted" }),
+    );
+    const result = await generateRedlineDocx(base, revised);
+    expect(result.skipped).toEqual([]);
+    expect(result.unprocessedStories).toEqual([]);
+    const accepting = await FolioDocxReviewer.fromBuffer(result.buffer);
+    expect(accepting.acceptAll()).toBeGreaterThan(0);
+    const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+    expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([
+      "Unchanged anchor",
+      "Parent text inserted",
+      "Inner text inserted",
+    ]);
+    const inserted = accepted
+      .snapshot()
+      .blocks.filter(({ text }) => text !== "Unchanged anchor")
+      .map((block) => expectParagraphBlock(block));
+    expect(inserted).toHaveLength(2);
+    const importedStyleIds = new Set(inserted.map(({ styleId }) => styleId));
+    expect(importedStyleIds.size).toBe(1);
+    expect(importedStyleIds.has(INSERTED_TEXT_BOX_STYLE)).toBe(false);
+    for (const block of inserted) {
+      expect(block.previewRuns).toContainEqual(expect.objectContaining({ bold: true }));
+    }
+    const styles = accepted.toDocument().package.styles?.styles ?? [];
+    expect(styles.filter(({ styleId }) => importedStyleIds.has(styleId))).toHaveLength(1);
+    expect(styles.find(({ styleId }) => styleId === INSERTED_TEXT_BOX_STYLE)?.rPr?.bold).toBe(
+      false,
+    );
+    // Insertions currently carry text and paragraph properties, not container structure.
+    expect(accepted.toDocument().package.document.content.map(({ type }) => type)).toEqual([
+      "paragraph",
+      "paragraph",
+      "paragraph",
+    ]);
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
+    expect(rejecting.rejectAll()).toBeGreaterThan(0);
+    const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+    expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual(["Unchanged anchor"]);
+  }
 });

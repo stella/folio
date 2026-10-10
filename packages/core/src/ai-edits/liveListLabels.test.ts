@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 import type { FolioDocumentOperation } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
@@ -39,7 +40,10 @@ const apply = (
   mode: "direct" | "tracked-changes",
   operations: FolioDocumentOperation[],
 ): void => {
-  const result = reviewer.applyDocumentOperations({ version: 1, mode, operations });
+  const result = reviewer.applyDocumentOperations(
+    { version: 1, mode, operations },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.issues).toEqual([]);
   expect(result.status).toBe("committed");
 };
@@ -122,15 +126,18 @@ describe("list labels after an operation", () => {
         "Closing remarks.",
       ].join("\n\n"),
     );
-    const numId = reviewer.getContent().find(({ text }) => text === "Balance on delivery")
-      ?.listReference?.numId;
+    const numId = expectParagraphBlock(
+      reviewer.getContent().find(({ text }) => text === "Balance on delivery"),
+    ).listReference?.numId;
     expect(numId).toBeDefined();
     apply(reviewer, "direct", [
       {
         id: "1",
         type: "setBlockParagraphProperties",
         blockId: blockId(reviewer, "Balance on delivery"),
-        properties: { numbering: { numId: numId ?? 0, level: 1 } },
+        properties: {
+          numbering: { kind: "reference", numId: numId ?? 0, ilvl: 1 },
+        },
       },
     ]);
 
@@ -151,7 +158,7 @@ describe("list labels after an operation", () => {
         id: "1",
         type: "setBlockParagraphProperties",
         blockId: blockId(reviewer, "Balance on delivery"),
-        properties: { numbering: { start: "new", kind: "numbered" } },
+        properties: { numbering: { kind: "newList", format: "numbered" } },
       },
     ]);
 
@@ -216,8 +223,9 @@ describe("list labels after an operation", () => {
 describe("a paragraph numbered at a level its list does not define", () => {
   test("shows no marker, reads as a paragraph that keeps its level, and does not count", async () => {
     const reviewer = await reviewerOf(LIST);
-    const numId = reviewer.getContent().find(({ text }) => text === "Deposit on signature")
-      ?.listReference?.numId;
+    const numId = expectParagraphBlock(
+      reviewer.getContent().find(({ text }) => text === "Deposit on signature"),
+    ).listReference?.numId;
     expect(numId).toBeDefined();
     apply(reviewer, "direct", [
       {
@@ -225,7 +233,7 @@ describe("a paragraph numbered at a level its list does not define", () => {
         type: "insertAfterBlock",
         blockId: blockId(reviewer, "Deposit on signature"),
         text: "Level eight.",
-        numbering: { numId: numId ?? 0, level: 8 },
+        numbering: { kind: "reference", numId: numId ?? 0, ilvl: 8 },
       },
     ]);
 
@@ -243,7 +251,7 @@ describe("a paragraph numbered at a level its list does not define", () => {
     ]) {
       expect(current.getContent().find(({ text }) => text === "Level eight.")).toMatchObject({
         kind: "paragraph",
-        listLevel: 8,
+        statedNumbering: { kind: "reference", numId, ilvl: 8 },
         listReference: { numId, level: 8 },
       });
     }

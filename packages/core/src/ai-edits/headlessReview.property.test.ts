@@ -160,14 +160,14 @@ describe("headless reviewer invariants (full corpus)", () => {
             const op = replaceOp(targets[selector % targets.length]!, replace);
 
             const tracked = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
-            const applied = tracked.applyOperations([op]);
+            const applied = tracked.applyOperations([op], { undefinedReferences: "refuse" });
             if (applied.applied.length === 0) {
               return;
             }
             tracked.acceptAll();
 
             const direct = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
-            direct.applyOperations([op], { mode: "direct" });
+            direct.applyOperations([op], { undefinedReferences: "refuse", mode: "direct" });
 
             expect(blockTexts(tracked)).toEqual(blockTexts(direct));
           },
@@ -197,7 +197,7 @@ describe("headless reviewer invariants (full corpus)", () => {
             const op = replaceOp(targets[selector % targets.length]!, replace);
 
             const tracked = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
-            const applied = tracked.applyOperations([op]);
+            const applied = tracked.applyOperations([op], { undefinedReferences: "refuse" });
             if (applied.applied.length === 0) {
               return;
             }
@@ -224,7 +224,10 @@ describe("headless reviewer invariants (full corpus)", () => {
           continue;
         }
         const target = targets[0]!;
-        const applied = reviewer.applyOperations([replaceOp(target, "ZZWORD")], { mode: "direct" });
+        const applied = reviewer.applyOperations([replaceOp(target, "ZZWORD")], {
+          undefinedReferences: "refuse",
+          mode: "direct",
+        });
         if (applied.applied.length === 0) {
           continue;
         }
@@ -296,7 +299,10 @@ describe("headless reviewer invariants (full corpus)", () => {
             };
 
             const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
-            const applied = reviewer.applyOperations([op], { mode: "direct" });
+            const applied = reviewer.applyOperations([op], {
+              undefinedReferences: "refuse",
+              mode: "direct",
+            });
             if (applied.applied.length === 0) {
               return;
             }
@@ -344,15 +350,20 @@ describe("headless reviewer invariants (full corpus)", () => {
             const targetB = targets[selectorB % targets.length]!;
 
             const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
-            const firstApply = reviewer.applyOperations([
-              {
-                id: "insert-1",
-                type: "insertAfterBlock",
-                blockId: targetA.blockId,
-                text: lines.join("\n"),
-              },
-            ]);
-            const secondApply = reviewer.applyOperations([replaceOp(targetB, "ZZWORD")]);
+            const firstApply = reviewer.applyOperations(
+              [
+                {
+                  id: "insert-1",
+                  type: "insertAfterBlock",
+                  blockId: targetA.blockId,
+                  text: lines.join("\n"),
+                },
+              ],
+              { undefinedReferences: "refuse" },
+            );
+            const secondApply = reviewer.applyOperations([replaceOp(targetB, "ZZWORD")], {
+              undefinedReferences: "refuse",
+            });
 
             const revisionIds = [
               ...firstApply.applied.flatMap((op) => op.revisionIds ?? []),

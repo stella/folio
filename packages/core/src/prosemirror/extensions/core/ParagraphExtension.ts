@@ -18,11 +18,7 @@ import { Fragment } from "prosemirror-model";
 import type { Node as PMNode, NodeSpec } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
-import {
-  headingOutlineLevel,
-  paragraphNumberingLevel,
-  paragraphNumberingReferenceId,
-} from "@stll/docx-core/model";
+import { headingOutlineLevel } from "@stll/docx-core/model";
 
 import { PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR } from "../../../docx/paragraphPropertySource";
 
@@ -50,6 +46,7 @@ import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
 import { rebaseParagraphRuns } from "../../rebaseParagraphRuns";
 import { expectParagraphAttrs } from "../../attrs";
+import { effectiveParagraphNumberingReference } from "../../numberingAttr";
 import { autospacingMatchesBase } from "../../autospacingBase";
 import { removeSectionBreakAtSelection, setSectionBreakType } from "../../commands/sectionBreak";
 import {
@@ -85,11 +82,9 @@ import type { ExtensionRuntime } from "../types";
 function paragraphAttrsToDOMStyle(attrs: ParagraphAttrs): string {
   const rawIndentLeft: unknown = Reflect.get(attrs, "indentLeft");
   let indentLeft = typeof rawIndentLeft === "number" ? rawIndentLeft : undefined;
-  if (
-    paragraphNumberingReferenceId(attrs.numPr) !== undefined &&
-    (rawIndentLeft === null || rawIndentLeft === undefined)
-  ) {
-    indentLeft = ((paragraphNumberingLevel(attrs.numPr) ?? 0) + 1) * 720;
+  const numbering = effectiveParagraphNumberingReference(attrs);
+  if (numbering !== undefined && (rawIndentLeft === null || rawIndentLeft === undefined)) {
+    indentLeft = (numbering.ilvl + 1) * 720;
   }
 
   const formatting: ParagraphFormatting = {
@@ -151,21 +146,17 @@ function numFmtToClass(numFmt: CounterFormat | undefined): string {
 }
 
 function getListClass(
-  numPr?: ParagraphAttrs["numPr"],
-  listIsBullet?: boolean,
-  listNumFmt?: CounterFormat,
+  attrs: Pick<ParagraphAttrs, "numPr" | "numPrFromStyle" | "listIsBullet" | "listNumFmt">,
 ): string {
-  if (paragraphNumberingReferenceId(numPr) === undefined) {
-    return "";
-  }
+  const numbering = effectiveParagraphNumberingReference(attrs);
+  if (numbering === undefined) return "";
+  const level = numbering.ilvl;
 
-  const level = paragraphNumberingLevel(numPr) ?? 0;
-
-  if (listIsBullet) {
+  if (attrs.listIsBullet) {
     return `docx-list-bullet docx-list-level-${level}`;
   }
 
-  const formatClass = numFmtToClass(listNumFmt);
+  const formatClass = numFmtToClass(attrs.listNumFmt);
   return `docx-list-numbered ${formatClass} docx-list-level-${level}`;
 }
 
@@ -556,7 +547,7 @@ const paragraphNodeSpec: NodeSpec = {
   toDOM(node) {
     const attrs = expectParagraphAttrs(node);
     const style = paragraphAttrsToDOMStyle(attrs);
-    const listClass = getListClass(attrs.numPr, attrs.listIsBullet, attrs.listNumFmt);
+    const listClass = getListClass(attrs);
 
     const domAttrs: Record<string, string> = {};
 
@@ -870,8 +861,7 @@ function makeDecreaseIndent(amount: number = 720): Command {
         // A numbered paragraph that states no left indent reads its level's,
         // so reaching zero there has to be stated.
         const numbered =
-          paragraphNumberingReferenceId(expectParagraphAttrs(node).numPr ?? undefined) !==
-          undefined;
+          effectiveParagraphNumberingReference(expectParagraphAttrs(node)) !== undefined;
         tr = tr.setNodeMarkup(pos, undefined, {
           ...node.attrs,
           indentLeft: newIndent > 0 || numbered ? newIndent : null,
@@ -954,9 +944,9 @@ function makeApplyStyle() {
             // it the level's indentation where the restyled paragraph states
             // none, as a reopen reads it.
             const listAttrs = listAttrsFromResolvedStyle(resolvedAttrs, resolvedAttrs.numbering);
-            const directNumId =
-              current.numPrFromStyle == null
-                ? paragraphNumberingReferenceId(current.numPr ?? undefined)
+            const directNumbering =
+              current.numPrFromStyle == null && current.numPr?.kind === "reference"
+                ? current.numPr
                 : undefined;
             if (listAttrs) {
               Object.assign(newAttrs, listAttrs);
@@ -966,7 +956,7 @@ function makeApplyStyle() {
                 numPr: null,
                 numPrFromStyle: null,
               });
-            } else if (directNumId !== undefined) {
+            } else if (directNumbering !== undefined) {
               Object.assign(
                 newAttrs,
                 listIndentationProvenancePatch({
@@ -974,8 +964,8 @@ function makeApplyStyle() {
                   styleFormatting: resolvedAttrs.paragraphFormatting,
                   numberingSource: "paragraph",
                   numPr: {
-                    numId: directNumId,
-                    ilvl: paragraphNumberingLevel(current.numPr ?? undefined) ?? 0,
+                    numId: directNumbering.numId,
+                    ilvl: directNumbering.ilvl ?? 0,
                   },
                   numbering: resolvedAttrs.numbering ?? getDocumentNumbering(state),
                 }),
@@ -1123,8 +1113,7 @@ export const ParagraphExtension = createNodeExtension({
             const indentLeft = Math.max(0, (attrs.indentLeft ?? 0) - (amount ?? 720));
             return {
               indentLeft:
-                indentLeft > 0 ||
-                paragraphNumberingReferenceId(attrs.numPr ?? undefined) !== undefined
+                indentLeft > 0 || effectiveParagraphNumberingReference(attrs) !== undefined
                   ? indentLeft
                   : null,
             };

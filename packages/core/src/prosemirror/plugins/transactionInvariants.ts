@@ -22,7 +22,8 @@ import type { Node as PMNode } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 
-import { paragraphNumberingReferenceId } from "../../docx/numberingReference";
+import { expectParagraphAttrs } from "../attrs";
+import { effectiveParagraphNumberingReference } from "../numberingAttr";
 import { validateProseMirrorDocument } from "../validation";
 import { getDocumentNumbering, hasDocumentNumbering } from "./documentNumbering";
 
@@ -86,9 +87,7 @@ const numberingReferenceIssues = (state: EditorState): TransactionInvariantIssue
     if (node.type.name !== "paragraph") {
       return true;
     }
-    const numId = paragraphNumberingReferenceId(
-      node.attrs["numPr"] as Parameters<typeof paragraphNumberingReferenceId>[0],
-    );
+    const numId = effectiveParagraphNumberingReference(expectParagraphAttrs(node))?.numId;
     if (numId !== undefined && !numbering?.hasNumbering(numId)) {
       issues.push({
         path: `paragraph at ${pos}.numPr.numId`,

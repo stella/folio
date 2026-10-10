@@ -18,15 +18,46 @@ export const visibleState = (reviewer: Reviewer) => ({
   // The number or bullet beside a block is part of what a reader sees: after
   // an operation adds, removes or renumbers list items, the reviewer shows
   // the numbers the saved package opens with.
-  blocks: reviewer.getContent().map((block) => ({
-    id: block.id,
-    kind: block.kind,
-    text: block.text,
-    idStability: block.idStability,
-    headingLevel: block.headingLevel,
-    displayLabel: block.displayLabel,
-    listLevel: block.listLevel,
-  })),
+  blocks: reviewer.getContent().map((block) => {
+    switch (block.kind) {
+      case "paragraph":
+      case "heading":
+      case "listItem":
+        if (block.listReference === undefined) {
+          return {
+            id: block.id,
+            kind: block.kind,
+            text: block.text,
+            idStability: block.idStability,
+            headingLevel: block.headingLevel,
+            displayLabel: block.displayLabel,
+            statedNumbering: block.statedNumbering,
+          };
+        }
+        return {
+          id: block.id,
+          kind: block.kind,
+          text: block.text,
+          idStability: block.idStability,
+          headingLevel: block.headingLevel,
+          displayLabel: block.displayLabel,
+          statedNumbering: block.statedNumbering,
+          listReference: block.listReference,
+        };
+      case "diagnostic":
+        return {
+          id: block.id,
+          kind: block.kind,
+          text: block.text,
+          idStability: block.idStability,
+          diagnostic: block.diagnostic,
+        };
+      default: {
+        const unreachable: never = block;
+        return unreachable;
+      }
+    }
+  }),
   // Which kinds of change by whom. How a reader groups revisions into
   // entries (a nested `w:ins > w:del` reads as one entry after a reopen, two
   // before) is not what a save must keep; what they resolve to is checked by

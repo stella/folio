@@ -62,7 +62,7 @@ const buildSyntheticBase = async (): Promise<ArrayBuffer> => {
       blockId: anchorId,
       text: `Synthetic clause ${String(index)} sets out the agreed position.`,
     })),
-    { mode: "direct" },
+    { undefinedReferences: "refuse", mode: "direct" },
   );
   return await reviewer.toBuffer();
 };
@@ -85,6 +85,7 @@ const withPriorRevisions = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => 
       text: `${block.text} As previously amended.`,
     })),
     {
+      undefinedReferences: "refuse",
       mode: "tracked-changes",
       snapshot,
       revisionStamp: { date: "2023-01-01T00:00:00.000Z", idSeed: 900 },
@@ -498,14 +499,19 @@ const inlineFormattingSignature = (block: FolioAIBlock): string =>
     }),
   ]);
 
-const paragraphFormattingSignature = (block: FolioAIBlock): string =>
-  JSON.stringify([
+const paragraphFormattingSignature = (block: FolioAIBlock): string => {
+  if (block.kind === "diagnostic") {
+    return JSON.stringify([block.kind, block.text]);
+  }
+  return JSON.stringify([
     block.text,
     block.styleId,
-    block.listLevel,
+    block.listReference,
+    block.statedNumbering,
     block.directAlignment,
     block.directSpacing,
   ]);
+};
 
 /** Every block a story holds, as signatures in an order-independent form. */
 const signaturesOf = (

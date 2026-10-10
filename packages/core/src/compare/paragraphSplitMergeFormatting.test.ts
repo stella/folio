@@ -8,6 +8,7 @@ import { createDocx } from "../docx/rezip";
 import type { Paragraph, ParagraphAlignment, Table } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 const OPTIONS = { author: "compare", timestamp: "2026-09-11T00:00:00.000Z" } as const;
 
@@ -122,12 +123,15 @@ const joinedDocument = (): Promise<ArrayBuffer> => documentWith(JOINED_BLOCKS);
 const splitDocument = (): Promise<ArrayBuffer> => documentWith(SPLIT_BLOCKS);
 
 const projectedBlocks = (reviewer: FolioDocxReviewer) =>
-  reviewer.snapshot().blocks.map(({ text, styleId, directAlignment, directSpacing }) => ({
-    text,
-    styleId,
-    directAlignment,
-    directSpacing,
-  }));
+  reviewer.snapshot().blocks.map((block) => {
+    const paragraphBlock = expectParagraphBlock(block);
+    return {
+      text: paragraphBlock.text,
+      styleId: paragraphBlock.styleId,
+      directAlignment: paragraphBlock.directAlignment,
+      directSpacing: paragraphBlock.directSpacing,
+    };
+  });
 
 const JOINED_PROJECTION = [
   {
@@ -196,29 +200,32 @@ describe("paragraph split and merge formatting", () => {
     if (!joinedBlockId) {
       panic("expected a joined paragraph block id");
     }
-    const split = splitting.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "split",
-          type: "splitBlock",
-          blockId: joinedBlockId,
-          offset: 5,
-          separator: " ",
-          firstParagraphProperties: {
-            styleId: FIRST_SPLIT_FORMATTING.styleId,
-            alignment: FIRST_SPLIT_FORMATTING.alignment,
-            spacing: FIRST_SPLIT_FORMATTING.spacing,
+    const split = splitting.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "split",
+            type: "splitBlock",
+            blockId: joinedBlockId,
+            offset: 5,
+            separator: " ",
+            firstParagraphProperties: {
+              styleId: FIRST_SPLIT_FORMATTING.styleId,
+              alignment: FIRST_SPLIT_FORMATTING.alignment,
+              spacing: FIRST_SPLIT_FORMATTING.spacing,
+            },
+            secondParagraphProperties: {
+              styleId: SECOND_SPLIT_FORMATTING.styleId,
+              alignment: SECOND_SPLIT_FORMATTING.alignment,
+              spacing: SECOND_SPLIT_FORMATTING.spacing,
+            },
           },
-          secondParagraphProperties: {
-            styleId: SECOND_SPLIT_FORMATTING.styleId,
-            alignment: SECOND_SPLIT_FORMATTING.alignment,
-            spacing: SECOND_SPLIT_FORMATTING.spacing,
-          },
-        },
-      ],
-    });
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(split.skipped).toEqual([]);
     expect(projectedBlocks(splitting)).toEqual(SPLIT_PROJECTION);
 
@@ -227,23 +234,26 @@ describe("paragraph split and merge formatting", () => {
     if (!firstSplitBlockId) {
       panic("expected a split paragraph block id");
     }
-    const merge = merging.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "merge",
-          type: "mergeBlockWithNext",
-          blockId: firstSplitBlockId,
-          separator: " ",
-          mergedParagraphProperties: {
-            styleId: JOINED_FORMATTING.styleId,
-            alignment: JOINED_FORMATTING.alignment,
-            spacing: JOINED_FORMATTING.spacing,
+    const merge = merging.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: firstSplitBlockId,
+            separator: " ",
+            mergedParagraphProperties: {
+              styleId: JOINED_FORMATTING.styleId,
+              alignment: JOINED_FORMATTING.alignment,
+              spacing: JOINED_FORMATTING.spacing,
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(merge.skipped).toEqual([]);
     expect(projectedBlocks(merging)).toEqual(JOINED_PROJECTION);
   });
@@ -348,36 +358,42 @@ describe("paragraph split and merge formatting", () => {
       panic("expected a joined paragraph block id");
     }
     expect(
-      reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "pending",
-            type: "setBlockParagraphProperties",
-            blockId,
-            properties: { alignment: "both" },
-          },
-        ],
-      }).skipped,
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "pending",
+              type: "setBlockParagraphProperties",
+              blockId,
+              properties: { alignment: "both" },
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).skipped,
     ).toEqual([]);
 
-    const outcome = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      atomic: true,
-      operations: [
-        {
-          id: "split",
-          type: "splitBlock",
-          blockId,
-          offset: 5,
-          separator: " ",
-          firstParagraphProperties: { styleId: FIRST_SPLIT_FORMATTING.styleId },
-          secondParagraphProperties: { styleId: SECOND_SPLIT_FORMATTING.styleId },
-        },
-      ],
-    });
+    const outcome = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        atomic: true,
+        operations: [
+          {
+            id: "split",
+            type: "splitBlock",
+            blockId,
+            offset: 5,
+            separator: " ",
+            firstParagraphProperties: { styleId: FIRST_SPLIT_FORMATTING.styleId },
+            secondParagraphProperties: { styleId: SECOND_SPLIT_FORMATTING.styleId },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(outcome.status).toBe("rejected");
     expect(outcome.applied).toEqual([]);
@@ -392,34 +408,40 @@ describe("paragraph split and merge formatting", () => {
       panic("expected a split paragraph block id");
     }
     expect(
-      reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "pending",
-            type: "setBlockParagraphProperties",
-            blockId,
-            properties: { alignment: "both" },
-          },
-        ],
-      }).skipped,
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "pending",
+              type: "setBlockParagraphProperties",
+              blockId,
+              properties: { alignment: "both" },
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).skipped,
     ).toEqual([]);
 
-    const outcome = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      atomic: true,
-      operations: [
-        {
-          id: "merge",
-          type: "mergeBlockWithNext",
-          blockId,
-          separator: " ",
-          mergedParagraphProperties: { styleId: JOINED_FORMATTING.styleId },
-        },
-      ],
-    });
+    const outcome = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        atomic: true,
+        operations: [
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId,
+            separator: " ",
+            mergedParagraphProperties: { styleId: JOINED_FORMATTING.styleId },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(outcome.status).toBe("rejected");
     expect(outcome.applied).toEqual([]);

@@ -174,6 +174,7 @@ for (const oracle of oracles) {
                   })),
                 }
               : batch,
+            { undefinedReferences: "refuse" },
           );
           assert.equal(result.applied.length, 2, "both requested operations must apply");
           await assertRequestedOutcome(
@@ -198,7 +199,7 @@ for (const oracle of oracles) {
         }
         const checksBefore = relation === null ? 0 : relationCheckCount(relation);
         const relations = await startRelations({ fixture, reviewer, mode: "direct", seed: 7 });
-        const receipt = reviewer.applyDocumentOperations(batch);
+        const receipt = reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" });
         assert.equal(receipt.applied.length, 2, "both relation operations must apply");
         // The relation itself compares the fault; roundtrip checks must not catch it first.
         const saved = await saveAndReopen(reviewer, "oracle sensitivity", { compare: false });

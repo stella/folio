@@ -8,6 +8,7 @@ import type { ParagraphFormatting } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 import {
   modelParagraphFormattingEmission,
+  isStyleSourcedParagraphNumbering,
   type ModeledParagraphFormattingEmission,
 } from "./paragraphFormattingSerialization";
 
@@ -93,7 +94,7 @@ describe("paragraph formatting emission model", () => {
     expect(Object.keys(COMPLETE_FORMATTING).length).toBe(33);
     expect(modeled).toEqual({
       propertiesXml:
-        '<w:pStyle w:val="BodyText"/><w:keepNext/><w:keepLines w:val="0"/><w:pageBreakBefore w:val="0"/><w:framePr w:dropCap="drop" w:lines="2"/><w:widowControl/><w:suppressLineNumbers w:val="0"/><w:pBdr><w:bottom w:val="single" w:sz="8"/></w:pBdr><w:shd w:val="clear" w:fill="E0E0E0"/><w:tabs><w:tab w:val="left" w:pos="720" w:leader="dot"/></w:tabs><w:suppressAutoHyphens/><w:kinsoku/><w:overflowPunct w:val="0"/><w:bidi w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="120" w:line="240" w:lineRule="auto" w:beforeAutospacing="1" w:afterAutospacing="0"/><w:ind w:left="720" w:right="0" w:hanging="360"/><w:contextualSpacing/><w:jc w:val="center"/><w:outlineLvl w:val="2"/>',
+        '<w:pStyle w:val="BodyText"/><w:keepNext/><w:keepLines w:val="0"/><w:pageBreakBefore w:val="0"/><w:framePr w:dropCap="drop" w:lines="2"/><w:widowControl/><w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr><w:suppressLineNumbers w:val="0"/><w:pBdr><w:bottom w:val="single" w:sz="8"/></w:pBdr><w:shd w:val="clear" w:fill="E0E0E0"/><w:tabs><w:tab w:val="left" w:pos="720" w:leader="dot"/></w:tabs><w:suppressAutoHyphens/><w:kinsoku/><w:overflowPunct w:val="0"/><w:bidi w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="120" w:line="240" w:lineRule="auto" w:beforeAutospacing="1" w:afterAutospacing="0"/><w:ind w:left="720" w:right="0" w:hanging="360"/><w:contextualSpacing/><w:jc w:val="center"/><w:outlineLvl w:val="2"/>',
       paragraphMarkPropertiesInnerXml: '<w:b/><w:specVanish w:val="0"/>',
     });
   });
@@ -199,17 +200,18 @@ describe("paragraph formatting emission model", () => {
       { propertiesXml: '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>' },
     ],
     [
-      "style-sourced",
+      "authored reference equal to its style",
       { kind: "reference", numId: 7, ilvl: 1 },
       { kind: "reference", numId: 7, ilvl: 1 },
-      {},
+      { propertiesXml: '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr>' },
     ],
     [
-      "implicit style level zero",
+      "authored id equal to its style",
       { kind: "reference", numId: 7 },
       { kind: "reference", numId: 7, ilvl: 0 },
-      {},
+      { propertiesXml: '<w:numPr><w:numId w:val="7"/></w:numPr>' },
     ],
+    ["inherited style reference", undefined, { kind: "reference", numId: 7, ilvl: 0 }, {}],
     [
       "level stated without an id",
       { kind: "levelOnly", ilvl: 2 },
@@ -228,6 +230,24 @@ describe("paragraph formatting emission model", () => {
       expect(modelParagraphFormattingEmission({ numPr, numPrFromStyle })).toEqual(expected);
     },
   );
+
+  test("numbering ownership never depends on equal resolved values", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 100 }),
+        fc.integer({ min: 0, max: 8 }),
+        (numId, ilvl) => {
+          const inherited = { kind: "reference", numId, ilvl } as const;
+          expect(isStyleSourcedParagraphNumbering(inherited, inherited)).toBe(false);
+          expect(isStyleSourcedParagraphNumbering({ kind: "levelOnly", ilvl }, inherited)).toBe(
+            false,
+          );
+          expect(isStyleSourcedParagraphNumbering(undefined, inherited)).toBe(true);
+        },
+      ),
+      propertyConfig({ numRuns: 128 }),
+    );
+  });
 
   test("generated models reconstruct the exact fallback XML", () => {
     fc.assert(

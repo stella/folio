@@ -25,7 +25,9 @@ test("saved-only comment loss fails the edit outcome check", async () => {
     comment: { text: "Review the supplier clause." },
   };
   const pre = await capture(reviewer, "direct");
-  const receipt = reviewer.applyDocumentOperations(coreBatch([operation], "direct") as never);
+  const receipt = reviewer.applyDocumentOperations(coreBatch([operation], "direct") as never, {
+    undefinedReferences: "refuse",
+  });
   assert.equal(receipt.applied.length, 1);
 
   const saved = new Uint8Array(await reviewer.toBuffer());
@@ -62,7 +64,9 @@ test("a refused edit is checked after save and reopen", async () => {
   const reviewer = await openReviewer(await plainDocument());
   const pre = await capture(reviewer, "direct");
   const operation = { type: "deleteBlock", blockId: "missing-block" };
-  const receipt = reviewer.applyDocumentOperations(coreBatch([operation], "direct") as never);
+  const receipt = reviewer.applyDocumentOperations(coreBatch([operation], "direct") as never, {
+    undefinedReferences: "refuse",
+  });
   assert.equal(receipt.applied.length, 0);
 
   assert.deepEqual(
@@ -91,6 +95,7 @@ test("saved-only revision loss fails the reject check", async () => {
   const pre = await capture(tracked, "tracked-changes");
   const trackedReceipt = tracked.applyDocumentOperations(
     coreBatch([operation], "tracked-changes") as never,
+    { undefinedReferences: "refuse" },
   );
   assert.equal(trackedReceipt.applied.length, 1);
   assert.deepEqual(
@@ -108,6 +113,7 @@ test("saved-only revision loss fails the reject check", async () => {
   const flattened = await openReviewer(original);
   const directReceipt = flattened.applyDocumentOperations(
     coreBatch([operation], "direct") as never,
+    { undefinedReferences: "refuse" },
   );
   assert.equal(directReceipt.applied.length, 1);
   await assert.rejects(

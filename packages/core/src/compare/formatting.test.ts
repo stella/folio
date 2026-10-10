@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIBlock, FolioAIInlineBooleanProperty } from "../ai-edits/types";
+import type { FolioAIParagraphBlock, FolioAIInlineBooleanProperty } from "../ai-edits/types";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
 import { inlineFormattingSegments } from "./formatting";
 
-const block = (previewRuns: FolioAIBlock["previewRuns"]): FolioAIBlock => ({
+const block = (previewRuns: FolioAIParagraphBlock["previewRuns"]): FolioAIParagraphBlock => ({
   id: "block",
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text: "Contract",
   previewRuns,
 });
@@ -28,7 +30,7 @@ const blockWithBooleanState = (
   property: (typeof INLINE_BOOLEAN_PROPERTIES)[number],
   inherited: boolean,
   direct: (typeof DIRECT_BOOLEAN_STATES)[number],
-): FolioAIBlock => {
+): FolioAIParagraphBlock => {
   const effective = "value" in direct ? direct.value : inherited;
   return block([
     {

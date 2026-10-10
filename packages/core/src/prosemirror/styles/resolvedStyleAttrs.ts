@@ -1,14 +1,9 @@
-/**
- * Shared helper for projecting a resolved paragraph style onto ProseMirror
- * paragraph node attrs.
- *
- * Both `applyStyle` (toolbar style picker) and the Enter handler's
- * next-style switch need to write the same set of style-controlled attrs.
- * Keeping the projection in one place ensures the two paths stay in sync —
- * a style applied via the picker and a style applied on Enter produce
- * identical paragraph attrs.
- */
+import { panic } from "better-result";
 
+import {
+  effectiveParagraphNumbering,
+  effectiveParagraphNumberingReference,
+} from "../numberingAttr";
 import {
   computeListRendering,
   numberingLevelHasMarkerSlot,
@@ -32,6 +27,16 @@ import type { ParagraphFormatting } from "../../types/document";
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
+/**
+ * Shared helper for projecting a resolved paragraph style onto ProseMirror
+ * paragraph node attrs.
+ *
+ * Both `applyStyle` (toolbar style picker) and the Enter handler's
+ * next-style switch need to write the same set of style-controlled attrs.
+ * Keeping the projection in one place ensures the two paths stay in sync —
+ * a style applied via the picker and a style applied on Enter produce
+ * identical paragraph attrs.
+ */
 type ResolvedStyleIdentity = {
   styleId: string;
   styleName?: string;
@@ -128,7 +133,7 @@ export function listAttrsFromResolvedStyle(
   }
 
   const { numId, ilvl = 0 } = numPr;
-  const attrs = listAttrsFromNumbering({ numId, ilvl }, numbering);
+  const attrs = { ...listAttrsFromNumbering({ numId, ilvl }, numbering), numPr: null };
   attrs.numPrFromStyle = paragraphNumberingAttr(paragraphNumberingReference({ numId, ilvl }));
   Object.assign(
     attrs,
@@ -268,7 +273,7 @@ export function listLevelIndentRemovalPatch(
   attrs: Readonly<ParagraphAttrs>,
   numbering: NumberingMap | null | undefined,
 ): ParagraphAttrsPatch {
-  if (attrs.numPr?.kind !== "reference") {
+  if (effectiveParagraphNumbering(attrs)?.kind !== "reference") {
     return {};
   }
   const direct = directParagraphIndentation(attrs);
@@ -299,17 +304,26 @@ export function listLevelAttrPatch(
     | "indentFirstLine"
     | "hangingIndent"
   >,
-  numPr: { numId: number; ilvl: number },
+  ilvl: number,
   numbering: NumberingMap | null | undefined,
 ): ParagraphAttrsPatch {
+  const reference = effectiveParagraphNumberingReference(attrs);
+  if (reference === undefined) {
+    panic("Cannot change list level without an effective numbering reference");
+  }
+  const numPr = { numId: reference.numId, ilvl };
   const direct = directParagraphIndentation(attrs);
   return {
     ...listAttrsFromNumbering(numPr, numbering),
+    ...(attrs.numPr?.kind !== "reference" && attrs.numPrFromStyle?.kind === "reference"
+      ? { numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: numPr.ilvl }) }
+      : {}),
     listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances ?? null,
     ...listIndentationProvenancePatch({
       direct,
       styleFormatting: attrs._styleResolvedFormatting,
-      numberingSource: attrs.numPrFromStyle == null ? "paragraph" : "style",
+      numberingSource:
+        attrs.numPr?.kind === "reference" || attrs.numPrFromStyle == null ? "paragraph" : "style",
       numPr,
       numbering,
     }),

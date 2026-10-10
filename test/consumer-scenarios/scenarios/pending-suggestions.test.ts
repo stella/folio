@@ -14,19 +14,22 @@ test("pending suggestions round-trip through the packed public API", async () =>
   const target = reviewer.getContent().find(({ text }) => text.includes("thirty days"));
   assert.ok(target);
 
-  const applied = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "suggested",
-    operations: [
-      {
-        id: "payment-proposal",
-        type: "replaceInBlock",
-        blockId: target.id,
-        find: "thirty days",
-        replace: "fourteen days",
-      },
-    ],
-  });
+  const applied = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "suggested",
+      operations: [
+        {
+          id: "payment-proposal",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "thirty days",
+          replace: "fourteen days",
+        },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   assert.equal(applied.applied.length, 1);
   const proposed = reviewer.getContent().map(({ text }) => text);
   assert.notDeepEqual(proposed, original);

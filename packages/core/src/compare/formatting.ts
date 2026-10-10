@@ -1,11 +1,14 @@
 /** Character-aligned inline-formatting comparison of two text-equal blocks. */
 
 import { canonicalInlinePresentationSegments } from "../internal/compare/inline-presentation";
-import type { FolioContentBlock, FolioContentInlineComparisonResult } from "./content-types";
+import type {
+  FolioContentBlockIdentity,
+  FolioContentInlineComparisonResult,
+} from "./content-types";
 
 type InlineFormattingSegmentsOptions = {
-  baseBlock: FolioContentBlock;
-  targetBlock: FolioContentBlock;
+  baseBlock: FolioContentBlockIdentity;
+  targetBlock: FolioContentBlockIdentity;
   maxSegments: number;
 };
 

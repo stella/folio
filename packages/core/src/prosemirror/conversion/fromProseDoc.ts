@@ -1,3 +1,4 @@
+import { effectiveParagraphNumbering } from "../numberingAttr";
 import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 /**
  * ProseMirror to Document Conversion
@@ -452,7 +453,7 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
     }
   }
   const { numPr, numPrFromStyle } = baseFormatting;
-  if (!numPr || !numPrFromStyle || !isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)) {
+  if (numPrFromStyle == null || (numPr != null && numPr.kind !== "levelOnly")) {
     return;
   }
   if (
@@ -461,7 +462,11 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
   ) {
     return;
   }
-  paragraph.formatting = { ...paragraph.formatting, numPr, numPrFromStyle };
+  paragraph.formatting = {
+    ...paragraph.formatting,
+    ...(numPr === undefined ? {} : { numPr }),
+    numPrFromStyle,
+  };
 };
 
 const restoreParagraphPropertySources = (
@@ -1953,7 +1958,7 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
  * list markers on the way out of the editor.
  */
 function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering"] {
-  const numId = paragraphNumberingReferenceId(attrs.numPr);
+  const numId = paragraphNumberingReferenceId(effectiveParagraphNumbering(attrs));
   if (numId === undefined) {
     return undefined;
   }
@@ -2052,7 +2057,7 @@ function convertPMParagraph(
   if (pFormatting) {
     paragraph.formatting = pFormatting;
   }
-  if (attrs.numPr?.kind === "reference") {
+  if (effectiveParagraphNumbering(attrs)?.kind === "reference") {
     const inheritedIndentation = paragraphIndentationFromFormatting(attrs._resolvedFormatting);
     if (inheritedIndentation) {
       assignParagraphIndentationProjection({
@@ -2433,7 +2438,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   const snapToGrid = authored("snapToGrid", attrs.snapToGrid);
   // A zero left or first-line indent is stated only where a numbering level
   // could supply another value; elsewhere it reads as the absent default.
-  const numbered = paragraphNumberingReferenceId(attrs.numPr ?? undefined) !== undefined;
+  const numbered = paragraphNumberingReferenceId(effectiveParagraphNumbering(attrs)) !== undefined;
   const statedIndent = (value: number | undefined): number | undefined =>
     value === 0 && !numbered ? undefined : value;
   const indentLeft = statedIndent(authored("indentLeft", attrs.indentLeft));

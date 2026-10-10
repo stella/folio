@@ -93,7 +93,9 @@ const operationsFor = ({
               (_, index) => `Inserted paragraph ${String(index)}.`,
             ).join("\n"),
             formattingScope: "allParagraphs" as const,
-            ...(numbered && { numbering: { start: "new" as const, kind: "numbered" as const } }),
+            ...(numbered && {
+              numbering: { kind: "newList" as const, format: "numbered" as const },
+            }),
           },
         ]),
   ] satisfies FolioDocumentOperation[];
@@ -109,8 +111,8 @@ const apply = ({ reviewer, story, mode, operations }: ApplyOptions): void => {
   const batch = { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, mode, operations };
   const result =
     story === undefined
-      ? reviewer.applyDocumentOperations(batch)
-      : reviewer.applyDocumentOperationsToStory({ story, batch });
+      ? reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" })
+      : reviewer.applyDocumentOperationsToStory({ undefinedReferences: "refuse", story, batch });
   expect(result.applied.map(({ id }) => id).toSorted()).toEqual(
     operations.map(({ id }) => id).toSorted(),
   );

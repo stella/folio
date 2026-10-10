@@ -104,7 +104,7 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
       const ref = requireRef();
       const snapshot = ref.createAIEditSnapshot();
       if (!snapshot) throw new Error("Host flow snapshot unavailable");
-      return ref.applyDocumentOperations({ snapshot, batch });
+      return ref.applyDocumentOperations({ undefinedReferences: "refuse", snapshot, batch });
     },
     readFlowDocument: () => {
       const ref = requireRef();
@@ -139,6 +139,7 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
       const snapshot = ref?.createAIEditSnapshot();
       if (!ref || !snapshot) return false;
       const result = ref.applyAIEditOperations({
+        undefinedReferences: "refuse",
         snapshot,
         mode: "suggested",
         operations: [SCROLL_TARGET_SUGGESTION],

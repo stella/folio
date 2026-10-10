@@ -12,6 +12,8 @@
 export type { FolioContentParagraphKind } from "./compare/content-types";
 export type {
   FolioAIBlock,
+  FolioAIParagraphBlock,
+  FolioAIDiagnosticBlock,
   FolioAIBlockAnchor,
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,
@@ -156,8 +158,10 @@ export {
 export {
   generateRedlineDocx,
   InvalidGenerateRedlineDocxOptionsError,
+  GenerateRedlineDocxResourceImportError,
   type GenerateRedlineDocxOptions,
   type GenerateRedlineDocxResult,
+  type GenerateRedlineReferenceWarning,
   type GenerateRedlineUnprocessedStory,
 } from "./redline";
 export type {

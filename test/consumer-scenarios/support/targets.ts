@@ -11,6 +11,7 @@
  */
 
 import type { FolioDocumentStoryHandle } from "@stll/folio-core/server";
+import type { FolioAIBlock, FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
 import type { openReviewer } from "./documents.ts";
 import type { Random } from "./random.ts";
@@ -61,15 +62,15 @@ export const FEATURES: readonly Feature[] = [
 ];
 
 /** The fields of a reader's block the targeting reads. */
-export type TargetBlock = {
-  id: string;
-  kind: string;
-  text: string;
-  listReference?: unknown;
-  table?: unknown;
-  previewRuns?: readonly { text: string }[];
-  structuralBoundaries?: readonly { type: string; offset: number; length?: number }[];
-};
+export type TargetBlock =
+  | Pick<
+      FolioAIParagraphBlock,
+      "id" | "text" | "table" | "previewRuns" | "kind" | "listReference" | "structuralBoundaries"
+    >
+  | Pick<
+      Extract<FolioAIBlock, { kind: "diagnostic" }>,
+      "id" | "text" | "table" | "previewRuns" | "kind"
+    >;
 
 type TableLocation = { tableIndex: number; rowIndex: number; cellIndex: number };
 
@@ -189,10 +190,8 @@ const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
 export const blocksOfStory = (
   reviewer: Reviewer,
   story: FolioDocumentStoryHandle = { type: "main" },
-): TargetBlock[] =>
-  story.type === "main"
-    ? (reviewer.getContent() as TargetBlock[])
-    : ((reviewer.snapshotStory(story)?.blocks ?? []) as TargetBlock[]);
+): readonly FolioAIBlock[] =>
+  story.type === "main" ? reviewer.getContent() : (reviewer.snapshotStory(story)?.blocks ?? []);
 
 const tableEdge = (block: TargetBlock, blocks: readonly TargetBlock[]): boolean => {
   const at = block.table as TableLocation | undefined;
@@ -238,11 +237,25 @@ export const featureIndex = (
     const opensComment = found.has("commentAnchor");
     if (insideComment) found.add("commentAnchor");
     if (opensComment) insideComment = !insideComment;
-    if (block.listReference !== undefined || block.kind === "listItem") found.add("listItem");
-    if (tableEdge(block, blocks)) found.add("tableEdge");
-    if (block.structuralBoundaries?.some((boundary) => boundary.type === "noteReference")) {
-      found.add("noteReference");
+    switch (block.kind) {
+      case "paragraph":
+      case "heading":
+      case "listItem":
+        if (block.listReference !== undefined || block.kind === "listItem") {
+          found.add("listItem");
+        }
+        if (block.structuralBoundaries?.some((boundary) => boundary.type === "noteReference")) {
+          found.add("noteReference");
+        }
+        break;
+      case "diagnostic":
+        break;
+      default: {
+        const unreachable: never = block;
+        throw new Error(`Unhandled content block: ${unreachable}`);
+      }
     }
+    if (tableEdge(block, blocks)) found.add("tableEdge");
     if ((block.previewRuns?.length ?? 0) > 1) found.add("formatBoundary");
     if (index === 0 || index === blocks.length - 1) found.add("storyEdge");
     if (ASTRAL.test(block.text)) found.add("surrogateBoundary");
@@ -284,9 +297,9 @@ export const boundariesOf = (block: TargetBlock): number[] => {
       points.add(offset);
     }
   }
-  for (const boundary of block.structuralBoundaries ?? []) {
+  for (const boundary of block.kind === "diagnostic" ? [] : (block.structuralBoundaries ?? [])) {
     points.add(boundary.offset);
-    points.add(boundary.offset + (boundary.length ?? 0));
+    if (boundary.type === "noteReference") points.add(boundary.offset + boundary.length);
   }
   for (const { start, end } of astralGraphemes(block.text)) {
     points.add(start);
@@ -323,7 +336,7 @@ const edgeSpans = (block: TargetBlock): Span[] => {
       });
     }
   }
-  for (const boundary of block.structuralBoundaries ?? []) {
+  for (const boundary of block.kind === "diagnostic" ? [] : (block.structuralBoundaries ?? [])) {
     if (boundary.type === "noteReference" && boundary.length) {
       spans.push({
         word: block.text.slice(boundary.offset, boundary.offset + boundary.length),
@@ -404,7 +417,10 @@ export const biasedPicker = (random: Random, options: BiasOptions): Picker => {
 };
 
 /** The ledger's story for a block of the story `index` describes. */
-export const storyKindOf = (index: FeatureIndex, block: TargetBlock | undefined): StoryKind => {
+export const storyKindOf = (
+  index: FeatureIndex,
+  block: { id: string; table?: unknown } | undefined,
+): StoryKind => {
   if (block && index.inTextBox.has(block.id)) return "textbox";
   if (index.story.type !== "main") return index.story.type;
   return block?.table !== undefined ? "tableCell" : "body";

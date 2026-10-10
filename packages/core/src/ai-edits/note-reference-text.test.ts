@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 import { fromMarkdown } from "../markdown";
 import { createDocx, docxToMarkdown, ensureParaIds } from "../server";
@@ -120,7 +121,8 @@ const expectEdited = async (
 
 describe("note references read as their markers", () => {
   test("every reader shows the marker Markdown writes, never the package id", async () => {
-    const { reviewer, block } = await open();
+    const { reviewer, block: observedBlock } = await open();
+    const block = expectParagraphBlock(observedBlock);
 
     expect(block.text).toBe(TEXT);
     expect(reviewer.snapshot().blocks[0]?.text).toBe(TEXT);
@@ -143,7 +145,7 @@ describe("a text operation cannot reach a note reference", () => {
     const { reviewer, block } = await open();
     const result = reviewer.applyOperations(
       [{ id: "id", type: "replaceInBlock", blockId: block.id, find: "30", replace: "X" }],
-      { mode },
+      { undefinedReferences: "refuse", mode },
     );
     expect(result.skipped).toEqual([{ id: "id", reason: "missingFind" }]);
   });
@@ -195,7 +197,7 @@ describe("a text operation cannot reach a note reference", () => {
       },
     ];
     for (const operation of operations) {
-      const result = reviewer.applyOperations([operation], { mode });
+      const result = reviewer.applyOperations([operation], { undefinedReferences: "refuse", mode });
       expect({ id: operation.id, skipped: result.skipped }).toEqual({
         id: operation.id,
         skipped: refused(operation.id),
@@ -219,7 +221,7 @@ describe("prose beside a note reference stays editable", () => {
           replace: "Term C[^1], and",
         },
       ],
-      { mode },
+      { undefinedReferences: "refuse", mode },
     );
     expect(result.skipped).toEqual([]);
     await expectEdited(reviewer, mode, "Term C[^1], and Term B[^2] see[^e1].");
@@ -230,7 +232,7 @@ describe("prose beside a note reference stays editable", () => {
     const rewritten = "Terms A[^1] and B[^2] (see[^e1]).";
     const result = reviewer.applyOperations(
       [{ id: "block", type: "replaceBlock", blockId: block.id, text: rewritten }],
-      { mode },
+      { undefinedReferences: "refuse", mode },
     );
     expect(result.skipped).toEqual([]);
     await expectEdited(reviewer, mode, rewritten);
@@ -250,7 +252,7 @@ describe("prose beside a note reference stays editable", () => {
             comment: { text: "Check the note." },
           },
         ],
-        { mode },
+        { undefinedReferences: "refuse", mode },
       );
       expect(result.skipped).toEqual([]);
       expect(reviewer.getComments().map((comment) => comment.anchoredText)).toEqual(["Term B[^2]"]);

@@ -28,7 +28,7 @@ import {
   setNumberingValue,
 } from "../../listNumbering";
 import { resolveListState, type ListType } from "../../listState";
-import { removedNumberingAttr, type ParagraphNumberingAttr } from "../../numberingAttr";
+import { effectiveParagraphNumberingReference, removedNumberingAttr } from "../../numberingAttr";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import {
   makeRevisionInfo,
@@ -71,13 +71,8 @@ function clearListAttrs(
   };
 }
 
-type ActiveListParagraphAttrs = ParagraphAttrs & {
-  numPr: Extract<ParagraphNumberingAttr, { kind: "reference" }>;
-};
-
-function hasActiveListNumbering(attrs: ParagraphAttrs): attrs is ActiveListParagraphAttrs {
-  return attrs.numPr?.kind === "reference";
-}
+const hasActiveListNumbering = (attrs: ParagraphAttrs): boolean =>
+  effectiveParagraphNumberingReference(attrs) !== undefined;
 
 // ============================================================================
 // LIST COMMANDS
@@ -137,7 +132,10 @@ const numberParagraphs = ({ state, tr, from, to, requests }: NumberParagraphsOpt
         expectParagraphAttrs(node),
         {
           numId: target.numId,
-          ilvl: paragraphNumberingLevel(expectParagraphAttrs(node).numPr) ?? target.ilvl,
+          ilvl:
+            paragraphNumberingLevel(
+              effectiveParagraphNumberingReference(expectParagraphAttrs(node)),
+            ) ?? target.ilvl,
         },
         target.numbering,
       ),
@@ -160,7 +158,8 @@ function toggleList(intent: ActiveListType): Command {
 
     const numbering = getDocumentNumbering(state);
     const isItemOfKind = (node: PMNode): boolean =>
-      resolveListState(numbering, expectParagraphAttrs(node).numPr).type === intent;
+      resolveListState(numbering, effectiveParagraphNumberingReference(expectParagraphAttrs(node)))
+        .type === intent;
     const tr = state.tr;
     if (isItemOfKind(paragraph)) {
       // Only the items of that kind leave it: a plain paragraph in the
@@ -199,16 +198,11 @@ const attrsForListLevel = (
   attrs: ParagraphAttrs,
   level: number,
 ): ParagraphAttrsPatch => {
-  if (!hasActiveListNumbering(attrs)) {
-    panic("Cannot change the level of a list without a numbering id");
-  }
+  const numbering = effectiveParagraphNumberingReference(attrs);
+  if (numbering === undefined) panic("Cannot change the level of a list without a numbering id");
   return {
     ...attrs,
-    ...listLevelAttrPatch(
-      attrs,
-      { numId: attrs.numPr.numId, ilvl: level },
-      getDocumentNumbering(state),
-    ),
+    ...listLevelAttrPatch(attrs, level, getDocumentNumbering(state)),
   };
 };
 
@@ -224,7 +218,7 @@ const increaseListLevel: Command = (state, dispatch) => {
     return false;
   }
 
-  const currentLevel = attrs.numPr.ilvl ?? 0;
+  const currentLevel = effectiveParagraphNumberingReference(attrs)?.ilvl ?? 0;
   if (currentLevel >= 8) {
     return false;
   }
@@ -258,7 +252,7 @@ const decreaseListLevel: Command = (state, dispatch) => {
     return false;
   }
 
-  const currentLevel = attrs.numPr.ilvl ?? 0;
+  const currentLevel = effectiveParagraphNumberingReference(attrs)?.ilvl ?? 0;
 
   if (!dispatch) {
     return true;
@@ -341,14 +335,9 @@ export function getListInfo(state: EditorState): { numId: number; ilvl: number }
     return null;
   }
   const attrs = expectParagraphAttrs(paragraph);
-  if (!hasActiveListNumbering(attrs)) {
-    return null;
-  }
-
-  return {
-    numId: attrs.numPr.numId,
-    ilvl: attrs.numPr.ilvl ?? 0,
-  };
+  const numbering = effectiveParagraphNumberingReference(attrs);
+  if (numbering === undefined) return null;
+  return { numId: numbering.numId, ilvl: numbering.ilvl ?? 0 };
 }
 
 // ============================================================================
@@ -480,14 +469,14 @@ function increaseListIndent(): Command {
     const { $from, $to } = state.selection;
 
     // Collect all list paragraphs in the selection range
-    const positions: { pos: number; attrs: ActiveListParagraphAttrs }[] = [];
+    const positions: { pos: number; attrs: ParagraphAttrs }[] = [];
     state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
       if (node.type.name === "paragraph") {
         const attrs = expectParagraphAttrs(node);
         if (!hasActiveListNumbering(attrs)) {
           return;
         }
-        const currentLevel = attrs.numPr.ilvl ?? 0;
+        const currentLevel = effectiveParagraphNumberingReference(attrs)?.ilvl ?? 0;
         if (currentLevel < 8) {
           positions.push({ pos, attrs });
         }
@@ -504,7 +493,11 @@ function increaseListIndent(): Command {
         tr = tr.setNodeMarkup(
           pos,
           undefined,
-          attrsForListLevel(state, attrs, (attrs.numPr.ilvl ?? 0) + 1),
+          attrsForListLevel(
+            state,
+            attrs,
+            (effectiveParagraphNumberingReference(attrs)?.ilvl ?? 0) + 1,
+          ),
         );
       }
       dispatch(tr);
@@ -518,7 +511,7 @@ function decreaseListIndent(): Command {
     const { $from, $to } = state.selection;
 
     // Collect all list paragraphs in the selection range
-    const positions: { pos: number; attrs: ActiveListParagraphAttrs }[] = [];
+    const positions: { pos: number; attrs: ParagraphAttrs }[] = [];
     state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
       if (node.type.name === "paragraph") {
         const attrs = expectParagraphAttrs(node);
@@ -535,7 +528,7 @@ function decreaseListIndent(): Command {
     if (dispatch) {
       let tr = state.tr;
       for (const { pos, attrs } of positions) {
-        const currentLevel = attrs.numPr.ilvl ?? 0;
+        const currentLevel = effectiveParagraphNumberingReference(attrs)?.ilvl ?? 0;
         if (currentLevel <= 0) {
           tr = tr.setNodeMarkup(pos, undefined, {
             ...clearListAttrs(attrs, getDocumentNumbering(state)),
@@ -582,7 +575,9 @@ function insertTab(): Command {
 const acceptsListMarker = (paragraph: PMNode): boolean =>
   paragraph.type.name === "paragraph" &&
   // Toggling a list that already carries numbering would change or remove it.
-  paragraphNumberingReferenceId(expectParagraphAttrs(paragraph).numPr) === undefined;
+  paragraphNumberingReferenceId(
+    effectiveParagraphNumberingReference(expectParagraphAttrs(paragraph)),
+  ) === undefined;
 
 /**
  * Replace a typed marker with the list the toolbar button produces: the same

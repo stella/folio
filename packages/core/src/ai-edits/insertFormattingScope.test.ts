@@ -19,7 +19,7 @@ import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 type InsertExtras = Partial<
   Pick<
     Extract<FolioDocumentOperation, { type: "insertAfterBlock" }>,
-    "formattingScope" | "listLevel" | "numbering" | "styleId"
+    "formattingScope" | "numbering" | "styleId"
   >
 >;
 
@@ -55,11 +55,14 @@ const insertAfter = async ({
   if (!anchor) {
     throw new Error(`fixture must expose the ${anchorText} anchor`);
   }
-  const result = reviewer.applyDocumentOperations({
-    version: 1,
-    mode: "tracked-changes",
-    operations: [{ id: "insert", type: "insertAfterBlock", blockId: anchor.id, text, ...extras }],
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: 1,
+      mode: "tracked-changes",
+      operations: [{ id: "insert", type: "insertAfterBlock", blockId: anchor.id, text, ...extras }],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.status).toBe("committed");
   expect(result.issues).toEqual([]);
 
@@ -86,26 +89,37 @@ const LIST_HEAD = [listItem("Alpha", "1."), listItem("Beta", "2.")];
 const TAIL = [bodyParagraph("Tail.")];
 
 describe("insertAfterBlock formattingScope", () => {
-  const allParagraphVariants: { name: string; extras: (numId: number) => InsertExtras }[] = [
-    { name: "inherited numbering", extras: () => ({}) },
-    { name: "explicit listLevel", extras: () => ({ listLevel: 0 }) },
-    { name: "explicit numbering", extras: (numId) => ({ numbering: { numId, level: 0 } }) },
+  const allParagraphVariants: {
+    name: string;
+    extras: (numId: number) => InsertExtras;
+    expected: InsertedOutline;
+  }[] = [
+    {
+      name: "copied numbering",
+      extras: () => ({}),
+      expected: [listItem("Gamma", "3."), listItem("Delta", "4."), listItem("Epsilon", "5.")],
+    },
+    {
+      name: "explicit level-only numbering",
+      extras: () => ({ numbering: { kind: "levelOnly", ilvl: 0 } }),
+      // This fixture has direct numbering and no style numbering to inherit.
+      expected: [bodyParagraph("Gamma"), bodyParagraph("Delta"), bodyParagraph("Epsilon")],
+    },
+    {
+      name: "explicit numbering reference",
+      extras: (numId) => ({ numbering: { kind: "reference", numId, ilvl: 0 } }),
+      expected: [listItem("Gamma", "3."), listItem("Delta", "4."), listItem("Epsilon", "5.")],
+    },
   ];
 
-  for (const { name, extras } of allParagraphVariants) {
-    test(`"allParagraphs" numbers every split paragraph after save and reopen: ${name}`, async () => {
+  for (const { name, extras, expected } of allParagraphVariants) {
+    test(`"allParagraphs" applies the stated numbering to every split paragraph after save and reopen: ${name}`, async () => {
       const { numId } = await numberedListDocx();
       const outline = await insertAfterBeta(THREE_ITEMS, {
         formattingScope: "allParagraphs",
         ...extras(numId),
       });
-      expect(outline).toEqual([
-        ...LIST_HEAD,
-        listItem("Gamma", "3."),
-        listItem("Delta", "4."),
-        listItem("Epsilon", "5."),
-        ...TAIL,
-      ]);
+      expect(outline).toEqual([...LIST_HEAD, ...expected, ...TAIL]);
     });
   }
 
@@ -119,7 +133,7 @@ describe("insertAfterBlock formattingScope", () => {
       const { numId } = await numberedListDocx();
       const outline = await insertAfterBeta(THREE_ITEMS, {
         ...(formattingScope !== undefined && { formattingScope }),
-        numbering: { numId, level: 0 },
+        numbering: { kind: "reference", numId, ilvl: 0 },
       });
       expect(outline).toEqual([
         ...LIST_HEAD,

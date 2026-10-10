@@ -12,6 +12,7 @@ import { EditorView } from 'prosemirror-view';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
 import { ParagraphMarkChangeKind } from '@stll/docx-core/model';
+import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
 import { Result } from 'better-result';
@@ -171,7 +172,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     wordDiff?: FolioWordDiffOptions;
     tableTemplates?: FolioTableTemplates;
     replacementBackground?: FolioReplacementBackground;
-    undefinedStyles?: FolioUndefinedStylePolicy;
+    undefinedReferences: FolioUndefinedReferencePolicy;
 };
 
 // @public (undocumented)
@@ -260,7 +261,7 @@ export const COMPARE_REVISION_FORMATS: readonly ["word", "folio-exact"];
 export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable", "unsupported-content"];
 
 // @public
-export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "inline-structure", "table-geometry", "section-properties", "style", "list-level", "alignment", "spacing", "indentation", "inline-formatting", "whitespace", "text"];
+export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "inline-structure", "table-geometry", "section-properties", "style", "list-level", "numbering-source", "alignment", "spacing", "indentation", "inline-formatting", "whitespace", "text"];
 
 // @public
 export const COMPARE_VERIFICATION_INVARIANTS: readonly ["accept-reproduces-target", "reject-reproduces-base"];
@@ -427,10 +428,10 @@ export type CompareCompatibility = {
 };
 
 // @public
-export const compareContent: <Block extends FolioContentBlock = FolioContentBlock>(options: CompareContentOptions<Block>) => Result<FolioContentComparison<Block>, FolioContentComparisonError>;
+export const compareContent: <Block extends FolioContentBlockIdentity = FolioContentBlock>(options: CompareContentOptions<Block>) => Result<FolioContentComparison<Block>, FolioContentComparisonError>;
 
 // @public
-export type CompareContentOptions<Block extends FolioContentBlock = FolioContentBlock> = {
+export type CompareContentOptions<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
     base: FolioContentSnapshot<Block>;
     revised: FolioContentSnapshot<Block>;
     granularity?: WordDiffGranularity;
@@ -829,16 +830,10 @@ export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_mod
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly import__stll_docx_core_model.ParagraphAlignment[];
 
 // @public
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 12;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 13;
 
 // @public (undocumented)
-export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
-    structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
-    diagnostic?: {
-        type: "opaqueCarrier";
-        carrier: string;
-    };
-};
+export type FolioAIBlock = FolioAIParagraphBlock | FolioAIDiagnosticBlock;
 
 // @public (undocumented)
 export type FolioAIBlockAnchor = {
@@ -876,6 +871,14 @@ export type FolioAIBlockTableLocation = FolioContentTableLocation;
 // @public (undocumented)
 export type FolioAIComment = {
     text: string;
+};
+
+// @public (undocumented)
+export type FolioAIDiagnosticBlock = FolioContentBlockIdentity<"diagnostic"> & {
+    diagnostic: {
+        type: "opaqueCarrier";
+        carrier: string;
+    };
 };
 
 // @public (undocumented)
@@ -942,7 +945,7 @@ export type FolioAIEditNormalization =
 export type FolioAIEditNormalizationCode = FolioAIEditNormalization["code"];
 
 // @public (undocumented)
-export type FolioAIEditOperation = FolioAIEditReviewMeta & {
+export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEditReviewMeta & {
     precondition?: FolioAIEditPrecondition;
     suggestionId?: string;
 } & ({
@@ -983,8 +986,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     };
     styleId?: string | null;
     outlineLevel?: import__stll_docx_core_model.OutlineLevel | null;
-    listLevel?: number | null;
-    numbering?: FolioAIListNumbering | null;
+    numbering?: Numbering;
     alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
     spacing?: FolioAIParagraphSpacing | null;
     indentation?: FolioAIParagraphIndentation | null;
@@ -1030,8 +1032,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     offset: number;
     separator?: string;
     blockId: string;
-    firstParagraphProperties?: FolioAIBlockParagraphProperties;
-    secondParagraphProperties?: FolioAIBlockParagraphProperties;
+    firstParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
+    secondParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
 } |
 /**
 * Add a whole table next to the anchor block, its rows marked inserted in
@@ -1064,7 +1066,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     id: string;
     type: "setBlockParagraphProperties";
     blockId: string;
-    properties: FolioAIBlockParagraphProperties;
+    properties: FolioAIBlockParagraphProperties<Numbering>;
 } |
 /**
 * Join the block with the one after it, the mirror of `splitBlock`: in
@@ -1081,7 +1083,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     type: "mergeBlockWithNext";
     separator?: string;
     blockId: string;
-    mergedParagraphProperties?: FolioAIBlockParagraphProperties;
+    mergedParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
 } | {
     id: string;
     type: "commentOnBlock";
@@ -1263,6 +1265,11 @@ export type FolioAIInlineFormatting = FolioContentInlineFormatting;
 // @public
 export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
 
+// @public (undocumented)
+export type FolioAIParagraphBlock = FolioContentBlock<FolioContentParagraphKind> & {
+    structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+};
+
 // @public
 export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
 
@@ -1279,30 +1286,20 @@ export type FolioBlockId = string & {
 };
 
 // @public
-export type FolioContentBlock<Kind extends string = string> = {
-    id: string;
-    kind: Kind;
-    text: string;
-    idStability?: FolioContentIdStability;
-    headingLevel?: number;
-    displayLabel?: string;
-    styleId?: string;
+export type FolioContentBlock<Kind extends FolioContentParagraphKind = FolioContentParagraphKind> = FolioContentBlockIdentity<Kind> & {
     directOutlineLevel?: import__stll_docx_core_model.OutlineLevel;
     directAlignment?: FolioContentParagraphAlignment;
     directSpacing?: FolioContentParagraphSpacing;
     directIndentation?: FolioContentParagraphIndentation;
-    listLevel?: number;
     listReference?: FolioContentListReference;
-    previewRuns?: readonly FolioContentRun[];
-    table?: FolioContentTableLocation;
-    containerPath?: readonly FolioContentContainerPathEntry[];
+    statedNumbering: FolioContentStatedNumbering;
 };
 
 // @public
 export type FolioContentBlockProperty = "kind" | "headingLevel" | "displayLabel";
 
 // @public
-export type FolioContentComparison<Block extends FolioContentBlock = FolioContentBlock> = {
+export type FolioContentComparison<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
     events: readonly FolioContentComparisonEvent<Block>[];
     structuralChanges: readonly FolioContentStructuralChange[];
 };
@@ -1311,7 +1308,7 @@ export type FolioContentComparison<Block extends FolioContentBlock = FolioConten
 export type FolioContentComparisonError = InvalidFolioContentComparisonError | FolioContentComparisonLimitError | FolioContentInlinePresentationProjectionError;
 
 // @public
-export type FolioContentComparisonEvent<Block extends FolioContentBlock = FolioContentBlock> = ({
+export type FolioContentComparisonEvent<Block extends FolioContentBlockIdentity = FolioContentBlock> = ({
     type: "unchanged";
 } & PairedEvent<Block>) | ({
     type: "modified";
@@ -1429,8 +1426,7 @@ export type FolioContentParagraphAlignment = import__stll_docx_core_model.Paragr
 export type FolioContentParagraphFormattingPatch = {
     styleId?: string | null;
     outlineLevel?: FolioContentBlock["directOutlineLevel"] | null;
-    listLevel?: number | null;
-    listReference?: FolioContentListReference | null;
+    numbering?: FolioContentStatedNumbering;
     alignment?: FolioContentBlock["directAlignment"] | null;
     spacing?: FolioContentParagraphSpacing | null;
     indentation?: FolioContentParagraphIndentation | null;
@@ -1456,8 +1452,13 @@ export type FolioContentRun = {
 };
 
 // @public
-export type FolioContentSnapshot<Block extends FolioContentBlock = FolioContentBlock> = {
+export type FolioContentSnapshot<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
     blocks: readonly Block[];
+};
+
+// @public
+export type FolioContentStatedNumbering = ParagraphNumberingOverride | {
+    readonly kind: "inherit";
 };
 
 // @public
@@ -1681,6 +1682,9 @@ export type FolioRevisionStamp = {
     date: string;
     idSeed: number;
 };
+
+// @public
+export type FolioUndefinedReferencePolicy = "refuse" | "keep";
 
 // @public
 export type FolioWordDiffOptions = {

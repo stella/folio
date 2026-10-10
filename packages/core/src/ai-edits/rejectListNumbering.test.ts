@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 import type { FolioDocumentOperation } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
@@ -21,12 +22,22 @@ const reviewerOf = async (markdown: string): Promise<FolioDocxReviewer> => {
 
 /** What a reader sees of each block: kind and list reference. */
 const kinds = (reviewer: FolioDocxReviewer): string[] =>
-  reviewer
-    .getContent()
-    .map(
-      ({ kind, listReference, text }) =>
-        `${kind}${listReference ? ` ${listReference.numId}:${listReference.level}` : ""} ${text}`,
-    );
+  reviewer.getContent().map((block) => {
+    switch (block.kind) {
+      case "paragraph":
+      case "heading":
+      case "listItem": {
+        const { listReference, text, kind } = block;
+        return `${kind}${listReference ? ` ${listReference.numId}:${listReference.level}` : ""} ${text}`;
+      }
+      case "diagnostic":
+        return `${block.kind} ${block.text}`;
+      default: {
+        const unreachable: never = block;
+        return unreachable;
+      }
+    }
+  });
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
   const block = reviewer.getContent().find((candidate) => candidate.text === text);
@@ -41,7 +52,7 @@ const numberingChanges: Record<string, (reviewer: FolioDocxReviewer) => FolioDoc
     id: "1",
     type: "setBlockParagraphProperties",
     blockId: blockId(reviewer, "Closing remarks."),
-    properties: { numbering: { start: "new", kind: "numbered" } },
+    properties: { numbering: { kind: "newList", format: "numbered" } },
   }),
   "the existing list": (reviewer) => ({
     id: "1",
@@ -49,10 +60,12 @@ const numberingChanges: Record<string, (reviewer: FolioDocxReviewer) => FolioDoc
     blockId: blockId(reviewer, "Closing remarks."),
     properties: {
       numbering: {
+        kind: "reference",
         numId:
-          reviewer.getContent().find(({ text }) => text === "Deposit on signature")?.listReference
-            ?.numId ?? 0,
-        level: 0,
+          expectParagraphBlock(
+            reviewer.getContent().find(({ text }) => text === "Deposit on signature"),
+          ).listReference?.numId ?? 0,
+        ilvl: 0,
       },
     },
   }),
@@ -60,7 +73,7 @@ const numberingChanges: Record<string, (reviewer: FolioDocxReviewer) => FolioDoc
     id: "1",
     type: "setBlockParagraphProperties",
     blockId: blockId(reviewer, "Balance on delivery"),
-    properties: { numbering: null },
+    properties: { numbering: { kind: "none" } },
   }),
 };
 
@@ -71,11 +84,14 @@ describe("rejecting a tracked numbering change", () => {
         "Intro.\n\n1. Deposit on signature\n2. Balance on delivery\n\nClosing remarks.",
       );
       const before = kinds(reviewer);
-      const result = reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "tracked-changes",
-        operations: [change(reviewer)],
-      });
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [change(reviewer)],
+        },
+        { undefinedReferences: "refuse" },
+      );
       expect(result.issues).toEqual([]);
       expect(kinds(reviewer)).not.toEqual(before);
 

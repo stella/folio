@@ -4,6 +4,7 @@ export {
   type FolioAIEditView,
   type FolioWordDiffOptions,
   type FolioRevisionStamp,
+  type FolioUndefinedReferencePolicy,
 } from "./apply";
 export type { FolioContentParagraphKind } from "../compare/content-types";
 export {
@@ -65,6 +66,8 @@ export type {
 } from "./word-diff";
 export type {
   FolioAIBlock,
+  FolioAIParagraphBlock,
+  FolioAIDiagnosticBlock,
   FolioAIBlockAnchor,
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,

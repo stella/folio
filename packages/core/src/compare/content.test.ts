@@ -14,6 +14,7 @@ import {
   type FolioContentComparisonEvent,
   type FolioContentTextSegment,
 } from "./content";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock, FolioContentSnapshot } from "./content-types";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -34,8 +35,9 @@ const contentBlock = ({
   id,
   text,
   kind = "paragraph",
+  statedNumbering = INHERITED_PARAGRAPH_NUMBERING,
   ...properties
-}: TestBlockOptions): TestBlock => ({ id, kind, text, ...properties });
+}: TestBlockOptions): TestBlock => ({ id, kind, text, statedNumbering, ...properties });
 
 type TableBlockOptions = {
   id: string;
@@ -198,6 +200,7 @@ describe("representation-neutral comparison stream", () => {
       contentBlock({
         id: "heading",
         kind: "heading",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
         text: "Terms",
         headingLevel: 1,
         styleId: "Heading1",
@@ -214,6 +217,7 @@ describe("representation-neutral comparison stream", () => {
       contentBlock({
         id: "heading",
         kind: "heading",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
         text: "Terms",
         headingLevel: 1,
         styleId: "Heading1",
@@ -700,7 +704,7 @@ describe("representation-neutral comparison stream", () => {
       id: "clause",
       text: "Payment is due.",
       styleId: "Body",
-      listLevel: 0,
+      statedNumbering: { kind: "levelOnly", ilvl: 0 },
       directAlignment: "left",
       directSpacing: { spaceBefore: 0, lineSpacingRule: "auto" },
     });
@@ -708,7 +712,7 @@ describe("representation-neutral comparison stream", () => {
       id: "clause",
       text: "Payment is due.",
       styleId: "Clause",
-      listLevel: 1,
+      statedNumbering: { kind: "levelOnly", ilvl: 1 },
       directAlignment: "center",
       directSpacing: { spaceAfter: 120, lineSpacingRule: "exact" },
     });
@@ -723,7 +727,7 @@ describe("representation-neutral comparison stream", () => {
         formatting: {
           paragraph: {
             styleId: "Clause",
-            listLevel: 1,
+            numbering: { kind: "levelOnly", ilvl: 1 },
             alignment: "center",
             spacing: { spaceAfter: 120, lineSpacingRule: "exact" },
           },
@@ -737,6 +741,7 @@ describe("representation-neutral comparison stream", () => {
     const base = contentBlock({
       id: "heading",
       kind: "heading",
+      statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
       text: "Scope",
       styleId: "Heading1",
       directOutlineLevel: { kind: "heading", level: 0 },
@@ -745,6 +750,7 @@ describe("representation-neutral comparison stream", () => {
     const revised = contentBlock({
       id: "heading",
       kind: "heading",
+      statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
       text: "Scope",
       styleId: "Heading2",
       directOutlineLevel: { kind: "heading", level: 1 },
@@ -1776,4 +1782,28 @@ describe("comparison projection invariants", () => {
       propertyConfig({ numRuns: 100 }),
     );
   });
+});
+
+test("diagnostic input cannot invent authored or effective paragraph numbering", () => {
+  const diagnostic = { id: "opaque", kind: "diagnostic", text: "Preserved carrier" } as const;
+  expect(
+    compareContent({ base: { blocks: [diagnostic] }, revised: { blocks: [diagnostic] } }).isOk(),
+  ).toBe(true);
+  for (const [field, value] of [
+    ["statedNumbering", { kind: "inherit" }],
+    ["listReference", { numId: 4, level: 0 }],
+  ] as const) {
+    const result = compareContent({
+      base: { blocks: [{ ...diagnostic, [field]: value }] },
+      revised: { blocks: [diagnostic] },
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error("Diagnostic numbering must be refused");
+    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(result.error).toMatchObject({
+      input: "base",
+      blockIndex: 0,
+      field: `blocks[0].${field}`,
+    });
+  }
 });

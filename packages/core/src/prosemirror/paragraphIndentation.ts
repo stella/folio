@@ -2,8 +2,8 @@ import { panic } from "better-result";
 
 import type { FolioContentParagraphIndentation } from "../compare/content-types";
 import type { ParagraphFormatting } from "../types/document";
-import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import type { ParagraphAttrs } from "./schema/nodes";
+import { effectiveParagraphNumberingReference } from "./numberingAttr";
 
 type ModelIndentation = Pick<ParagraphFormatting, keyof FolioContentParagraphIndentation>;
 type IndentationModelAgreement = [FolioContentParagraphIndentation, ModelIndentation] extends [
@@ -88,7 +88,7 @@ export const directParagraphIndentation = (
 ): DirectParagraphIndentation | undefined => {
   const original = attrs._originalFormatting ?? undefined;
   const resolved = attrs._resolvedFormatting;
-  const numbered = paragraphNumberingReferenceId(attrs.numPr ?? undefined) !== undefined;
+  const numbered = effectiveParagraphNumberingReference(attrs) !== undefined;
   const indentation: DirectParagraphIndentation = {};
   for (const key of PARAGRAPH_INDENTATION_VALUE_KEYS) {
     const value = attrs[key];

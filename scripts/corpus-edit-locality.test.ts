@@ -31,7 +31,10 @@ const editedBlockTexts = async (buffer: ArrayBuffer): Promise<string[]> => {
   if (target === undefined) {
     throw new Error("the fixture has no editable block");
   }
-  reviewer.applyOperations([insertOneCharacterOperation(target)], { mode: "direct" });
+  reviewer.applyOperations([insertOneCharacterOperation(target)], {
+    undefinedReferences: "refuse",
+    mode: "direct",
+  });
   const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
   return reopened.snapshot().blocks.map((block) => block.text);
 };

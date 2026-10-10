@@ -17,7 +17,7 @@ import { escapeXmlText } from "@stll/docx-core";
 
 import { buildTextBoxTableDocument } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
-import type { FolioAIBlock } from "./ai-edits/types";
+import type { FolioAIParagraphBlock } from "./ai-edits/types";
 import { compareContent } from "./compare/content";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
@@ -1080,14 +1080,39 @@ describe("exceedsLcsBudget: shared structural cell-budget guard", () => {
 describe("alignFolioBlocks: non-quadratic exact anchors", () => {
   // Neither side carries a stable (non-`seq-NNNN`) block id. Unique exact
   // text remains an anchor even after the structural LCS budget is spent.
-  const base: FolioAIBlock[] = [
-    { id: "seq-0001", kind: "paragraph", text: "Alpha paragraph." },
-    { id: "seq-0002", kind: "paragraph", text: "Gamma paragraph." },
+  const base: FolioAIParagraphBlock[] = [
+    {
+      id: "seq-0001",
+      kind: "paragraph",
+      text: "Alpha paragraph.",
+      statedNumbering: { kind: "inherit" },
+    },
+    {
+      id: "seq-0002",
+      kind: "paragraph",
+      text: "Gamma paragraph.",
+      statedNumbering: { kind: "inherit" },
+    },
   ];
-  const revised: FolioAIBlock[] = [
-    { id: "seq-0003", kind: "paragraph", text: "Alpha paragraph." },
-    { id: "seq-0004", kind: "paragraph", text: "Epsilon paragraph." },
-    { id: "seq-0005", kind: "paragraph", text: "Gamma paragraph." },
+  const revised: FolioAIParagraphBlock[] = [
+    {
+      id: "seq-0003",
+      kind: "paragraph",
+      text: "Alpha paragraph.",
+      statedNumbering: { kind: "inherit" },
+    },
+    {
+      id: "seq-0004",
+      kind: "paragraph",
+      text: "Epsilon paragraph.",
+      statedNumbering: { kind: "inherit" },
+    },
+    {
+      id: "seq-0005",
+      kind: "paragraph",
+      text: "Gamma paragraph.",
+      statedNumbering: { kind: "inherit" },
+    },
   ];
 
   test("a fresh budget recovers the position-shifted exact match", () => {
@@ -1141,15 +1166,18 @@ describe("compareDocxVersions: as-accepted semantics", () => {
     if (!target) {
       throw new Error("expected a block in the base document");
     }
-    revisedReviewer.applyOperations([
-      {
-        id: "t1",
-        type: "replaceInBlock",
-        blockId: target.id,
-        find: "due.",
-        replace: "due promptly.",
-      },
-    ]);
+    revisedReviewer.applyOperations(
+      [
+        {
+          id: "t1",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "due.",
+          replace: "due promptly.",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     const revised = await revisedReviewer.toBuffer();
 
     // Sanity: the revised snapshot's clean text is already the accepted view.

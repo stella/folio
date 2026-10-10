@@ -19,9 +19,7 @@
  */
 
 import assert from "node:assert/strict";
-import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
-import { sourceDocumentOf } from "@stll/folio-core/ai-edits/snapshot";
-import { readParagraphNumberingAttr } from "@stll/folio-core/prosemirror/numberingAttr";
+import type { FolioContentStatedNumbering } from "@stll/folio-core/compare/content-types";
 
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
@@ -49,7 +47,6 @@ import {
   type FeatureIndex,
   featureIndex,
   storyKindOf,
-  type TargetBlock,
   touchesSurrogate,
 } from "./targets.ts";
 
@@ -57,7 +54,14 @@ type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 type ParsedDocument = Awaited<ReturnType<typeof parseDocx>>;
 type ParsedBlock = ParsedDocument["package"]["document"]["content"][number];
 type ParsedInline = Extract<ParsedBlock, { type: "paragraph" }>["content"][number];
-type Numbering = NonNullable<Extract<ParsedBlock, { type: "paragraph" }>["formatting"]>["numPr"];
+type ParsedNumbering = NonNullable<
+  NonNullable<Extract<ParsedBlock, { type: "paragraph" }>["formatting"]>["numPr"]
+>;
+/** Expected numbering uses input numeric facts, without invoking the production allocator. */
+type Numbering =
+  | Exclude<ParsedNumbering, { kind: "reference" }>
+  | Pick<Extract<ParsedNumbering, { kind: "reference" }>, "kind" | "numId" | "ilvl">
+  | undefined;
 type NumberingFacts = {
   styles: Map<string, Numbering>;
   direct: Map<string, Numbering>;
@@ -81,52 +85,19 @@ const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
   }
 };
 
-/** Omit wholly style-sourced numbering; a changed reference stays authored in full. */
-const directNumberingOf = ({
-  numPr,
-  numPrFromStyle,
-}: {
-  numPr: Numbering;
-  numPrFromStyle: Numbering;
-}): Numbering => {
-  if (numPr === undefined || numPrFromStyle === undefined) return numPr;
-  if (numPr.kind !== numPrFromStyle.kind) return numPr;
-  switch (numPr.kind) {
-    case "none":
-      return undefined;
-    case "reference":
-      if (numPrFromStyle.kind !== "reference" || numPr.numId !== numPrFromStyle.numId) return numPr;
-      return (numPr.ilvl ?? 0) === (numPrFromStyle.ilvl ?? 0) ? undefined : numPr;
-    case "levelOnly":
-      return numPrFromStyle.kind === "levelOnly" && numPr.ilvl === numPrFromStyle.ilvl
-        ? undefined
-        : numPr;
-    default: {
-      const unhandled: never = numPr;
-      throw new Error(`Unhandled direct numbering ${JSON.stringify(unhandled)}`);
-    }
-  }
-};
-
 /** Capture the authored story, including proposals omitted from the saved model. */
 const liveNumberingFacts = (reviewer: Reviewer, story: Story): NumberingFacts => {
   const facts = numberingFactsFromDocument(reviewer.toDocument());
   const snapshot = reviewer.snapshotStory(story);
   if (!snapshot) return facts;
-  const doc = sourceDocumentOf(snapshot);
   const { anchors, blocks } = snapshot;
   for (const block of blocks) {
     if (block.kind === "diagnostic") continue;
     const anchor = anchors[block.id];
     assert.ok(anchor, `Live block ${block.id} has no anchor`);
-    const node = doc.nodeAt(anchor.from);
-    assert.ok(node?.type.name === "paragraph", `Live block ${block.id} has no paragraph`);
     facts.direct.set(
       block.id,
-      directNumberingOf({
-        numPr: readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined,
-        numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]) ?? undefined,
-      }),
+      block.statedNumbering.kind === "inherit" ? undefined : block.statedNumbering,
     );
   }
   return facts;
@@ -199,8 +170,7 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
         case "paragraph": {
           for (const content of block.content) visitInline(content);
           if (block.paraId === undefined) break;
-          const { numPr, numPrFromStyle } = block.formatting ?? {};
-          direct.set(block.paraId, directNumberingOf({ numPr, numPrFromStyle }));
+          direct.set(block.paraId, block.formatting?.numPr);
           break;
         }
         case "table":
@@ -240,17 +210,15 @@ export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFact
   for (const { handle } of reviewer.listStories()) {
     const snapshot = reviewer.snapshotStory(handle);
     assert.ok(snapshot, "A discovered story must have a snapshot");
-    const doc = sourceDocumentOf(snapshot);
     const { anchors, blocks } = snapshot;
     for (const block of blocks) {
       if (block.kind === "diagnostic" || facts.direct.has(block.id)) continue;
       const anchor = anchors[block.id];
       assert.ok(anchor, `Block ${block.id} must have an anchor`);
-      const node = doc.nodeAt(anchor.from);
-      assert.ok(node?.type.name === "paragraph", `Block ${block.id} must have a paragraph`);
-      const numPr = readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined;
-      const numPrFromStyle = readParagraphNumberingAttr(node.attrs["numPrFromStyle"]) ?? undefined;
-      facts.direct.set(block.id, directNumberingOf({ numPr, numPrFromStyle }));
+      facts.direct.set(
+        block.id,
+        block.statedNumbering.kind === "inherit" ? undefined : block.statedNumbering,
+      );
     }
   }
   return facts;
@@ -283,6 +251,9 @@ export type Row = {
   headingLevel?: number;
   /** The outline level the paragraph states itself, over its style's. */
   directOutlineLevel?: { kind: "heading"; level: number } | { kind: "bodyText" };
+  /** The authored numbering override reported by the reader snapshot. */
+  statedNumbering?: FolioContentStatedNumbering;
+  /** Effective display level, derived from listReference by rowsOf. */
   listLevel?: number;
   listReference?: { numId: number; level: number };
   displayLabel?: string;
@@ -303,8 +274,53 @@ type Story = FolioDocumentStoryHandle;
 const MAIN: Story = { type: "main" };
 
 /** The blocks of `story` (the body by default) a reader lists. */
-export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] =>
-  blocksOfStory(reviewer, story) as unknown as Row[];
+export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] => {
+  const rows: Row[] = [];
+  for (const block of blocksOfStory(reviewer, story)) {
+    switch (block.kind) {
+      case "paragraph":
+      case "heading":
+      case "listItem": {
+        const row: Row = { id: block.id, kind: block.kind, text: block.text };
+        if (block.styleId !== undefined) row.styleId = block.styleId;
+        if (block.headingLevel !== undefined) row.headingLevel = block.headingLevel;
+        if (block.directOutlineLevel !== undefined)
+          row.directOutlineLevel = block.directOutlineLevel;
+        row.statedNumbering = block.statedNumbering;
+        if (block.directAlignment !== undefined) row.directAlignment = block.directAlignment;
+        if (block.directSpacing !== undefined) row.directSpacing = { ...block.directSpacing };
+        if (block.listReference !== undefined) {
+          row.listReference = block.listReference;
+          row.listLevel = block.listReference.level;
+        }
+        if (block.displayLabel !== undefined) row.displayLabel = block.displayLabel;
+        if (block.table !== undefined) row.table = block.table;
+        if (block.previewRuns !== undefined) {
+          row.previewRuns = block.previewRuns.map((run) => {
+            const preview = {
+              text: run.text,
+              bold: run.bold,
+              italic: run.italic,
+              underline: run.underline,
+            };
+            if (run.directFormatting === undefined) return preview;
+            return { ...preview, directFormatting: { ...run.directFormatting } };
+          });
+        }
+        rows.push(row);
+        break;
+      }
+      case "diagnostic":
+        rows.push({ id: block.id, kind: block.kind, text: block.text });
+        break;
+      default: {
+        const unreachable: never = block;
+        throw new Error(`Unhandled content block: ${unreachable}`);
+      }
+    }
+  }
+  return rows;
+};
 
 const save = async (reviewer: Reviewer): Promise<Uint8Array> =>
   new Uint8Array(await reviewer.toBuffer());
@@ -647,10 +663,11 @@ const requestedStyleNumbering = (
     }
     direct = facts.direct.get(row.id);
   } else if (row.listReference) {
-    direct = paragraphNumberingFromSlots({
+    direct = {
+      kind: "reference",
       numId: row.listReference.numId,
       ilvl: row.listReference.level,
-    });
+    };
   }
   return numberingOver(style, direct);
 };
@@ -785,9 +802,35 @@ const paragraphRequest = (
     });
   }
   if ("numbering" in request) {
-    const numbering = request["numbering"] as Record<string, unknown> | null;
+    const numbering = request["numbering"] as Record<string, unknown>;
     const preKind = pre?.kind ?? inherited?.kind;
-    if (numbering === null) {
+    const requestedStyleId = request["styleId"];
+    assert.ok(
+      requestedStyleId === undefined ||
+        requestedStyleId === null ||
+        typeof requestedStyleId === "string",
+      "A requested style id must be a string or null",
+    );
+    const styleId = requestedStyleId ?? pre?.styleId ?? inherited?.styleId ?? null;
+    const styleNumbering = requestedStyleNumbering(model, styleId);
+    if (styleNumbering === UNKNOWN_NUMBERING) {
+      fields.listLevel = ANY;
+    } else if (numbering["kind"] === "inherit") {
+      const effective = styleNumbering;
+      fields.listLevel = effective?.kind === "reference" ? (effective.ilvl ?? 0) : undefined;
+      if ((pre ?? inherited) && preKind !== "heading")
+        fields.kind = effective?.kind === "reference" ? "listItem" : "paragraph";
+      checks.push((row) => {
+        if (effective?.kind === "reference") {
+          return row.listReference?.numId === effective.numId
+            ? null
+            : `style numbering ${effective.numId} was lost or changed`;
+        }
+        return row.listReference === undefined
+          ? null
+          : `style inheritance introduced unexpected numbering ${JSON.stringify(row.listReference)}`;
+      });
+    } else if (numbering["kind"] === "none") {
       fields.listLevel = undefined;
       checks.push((row) =>
         row.listReference === undefined
@@ -795,8 +838,8 @@ const paragraphRequest = (
           : `still numbered ${JSON.stringify(row.listReference)}`,
       );
       if (preKind === "listItem") fields.kind = "paragraph";
-    } else if (numbering["start"] === "new") {
-      const kind = numbering["kind"];
+    } else if (numbering["kind"] === "newList") {
+      const kind = numbering["format"];
       fields.listLevel = typeof numbering["level"] === "number" ? numbering["level"] : 0;
       if ((pre ?? inherited) && preKind !== "heading") fields.kind = "listItem";
       const used = new Set(
@@ -812,19 +855,50 @@ const paragraphRequest = (
           return `a new numbered list reads "${row.displayLabel}"`;
         return null;
       });
-    } else {
-      const reference = { numId: numbering["numId"], level: numbering["level"] };
-      fields.listLevel = reference.level as number;
+    } else if (numbering["kind"] === "reference") {
+      const numId = numbering["numId"];
+      assert.ok(typeof numId === "number", "A reference request must name a numeric list id");
+      const effective = numberingOver(styleNumbering, {
+        kind: "reference",
+        numId,
+        ...(typeof numbering["ilvl"] === "number" ? { ilvl: numbering["ilvl"] } : {}),
+      });
+      const reference =
+        effective?.kind === "reference"
+          ? { numId: effective.numId, level: effective.ilvl ?? 0 }
+          : undefined;
+      fields.listLevel = reference?.level;
       if ((pre ?? inherited) && preKind !== "heading") fields.kind = "listItem";
-      checks.push((row) =>
-        row.listReference?.numId === reference.numId && row.listReference?.level === reference.level
+      if (reference)
+        checks.push((row) =>
+          row.listReference?.numId === reference.numId &&
+          row.listReference?.level === reference.level
+            ? null
+            : `numbered ${JSON.stringify(row.listReference)}, not ${JSON.stringify(reference)}`,
+        );
+    } else if (numbering["kind"] === "levelOnly") {
+      const effective = numberingOver(styleNumbering, {
+        kind: "levelOnly",
+        ilvl: numbering["ilvl"] as number,
+      });
+      const reference =
+        effective?.kind === "reference"
+          ? { numId: effective.numId, level: effective.ilvl ?? 0 }
+          : undefined;
+      fields.listLevel = reference?.level;
+      if (reference && (pre ?? inherited) && preKind !== "heading") fields.kind = "listItem";
+      checks.push((row) => {
+        if (reference) {
+          return row.listReference?.numId === reference.numId &&
+            row.listReference?.level === reference.level
+            ? null
+            : `numbered ${JSON.stringify(row.listReference)}, not ${JSON.stringify(reference)}`;
+        }
+        return row.listReference === undefined
           ? null
-          : `numbered ${JSON.stringify(row.listReference)}, not ${JSON.stringify(reference)}`,
-      );
+          : `level-only override unexpectedly numbered ${JSON.stringify(row.listReference)}`;
+      });
     }
-  }
-  if (typeof request["listLevel"] === "number" && !("numbering" in request)) {
-    fields.listLevel = request["listLevel"];
   }
   return { fields, checks };
 };
@@ -1679,7 +1753,7 @@ const recordOutcome = (pre: Pre, outcome: Outcome): void => {
     if (typeof operation !== "object" || operation === null) continue;
     const range = operation["range"] as { blockId?: unknown } | undefined;
     const blockId = operation["blockId"] ?? range?.blockId;
-    const block = pre.liveRows.find((row) => row.id === blockId) as TargetBlock | undefined;
+    const block = pre.liveRows.find((row) => row.id === blockId);
     const features = new Set<Feature | "none">(pre.targets.features.get(String(blockId)) ?? []);
     // A block with an astral character counts as a surrogate boundary only
     // where the operation's own offsets meet one.
@@ -1820,7 +1894,9 @@ export const applyChecked = async (
 ): Promise<{ applied: string[]; issues: string[] }> => {
   const pre = await capture(reviewer, mode);
   const batch = coreBatch(operations, mode);
-  const result = reviewer.applyDocumentOperations(batch as never);
+  const result = reviewer.applyDocumentOperations(batch as never, {
+    undefinedReferences: "refuse",
+  });
   const applied = new Set(result.applied.map(({ id }) => id));
   const issues = result.issues.map((issue) => `${issue.operationId}: ${issue.code}`);
   await assertRequestedOutcome(

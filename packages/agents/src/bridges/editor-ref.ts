@@ -15,7 +15,11 @@ import {
   getFolioDocumentOperationIssues,
   getFolioDocumentOperationReceipts,
 } from "@stll/folio-core/server";
-import type { FolioCommentAnchor, FolioReviewChange } from "@stll/folio-core/ai-edits";
+import type {
+  FolioCommentAnchor,
+  FolioReviewChange,
+  FolioUndefinedReferencePolicy,
+} from "@stll/folio-core/ai-edits";
 import { createReply } from "@stll/folio-core/docx/replyToComment";
 import type { Comment } from "@stll/folio-core/types/content";
 
@@ -25,6 +29,7 @@ import type { FolioAgentChange, FolioAgentComment, FolioAgentCommentReply } from
 import { toAgentChange } from "./shared";
 
 export type FolioAgentEditorApplyDocumentOperationsOptions = {
+  undefinedReferences: FolioUndefinedReferencePolicy;
   snapshot: FolioAIEditSnapshot;
   batch: FolioDocumentOperationBatch;
   mode?: FolioAIEditApplyMode;
@@ -50,6 +55,7 @@ export type FolioAgentEditorRefLike = {
   createAIEditSnapshot(): FolioAIEditSnapshot | null;
   /** `DocxEditorRef.applyAIEditOperations`. */
   applyAIEditOperations(options: {
+    undefinedReferences: FolioUndefinedReferencePolicy;
     snapshot: FolioAIEditSnapshot;
     operations: FolioAIEditOperation[];
     mode?: FolioAIEditApplyMode;
@@ -214,6 +220,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
       const versionedBatch = batch.mode === undefined ? { ...batch, mode } : batch;
       if (ref.applyDocumentOperations) {
         const result = ref.applyDocumentOperations({
+          undefinedReferences: "refuse",
           snapshot,
           batch: versionedBatch,
           mode,
@@ -261,6 +268,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
         };
       }
       const result = ref.applyAIEditOperations({
+        undefinedReferences: "refuse",
         snapshot,
         operations: [...versionedBatch.operations],
         author,

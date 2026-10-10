@@ -34,15 +34,18 @@ const build = async (type: (typeof TYPES)[number]): Promise<FolioDocxReviewer> =
   });
   const blockId = reviewer.getContent().find((block) => block.text === "Value")?.id;
   if (blockId === undefined) throw new Error("fixture must expose the Value cell");
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "tracked-changes",
-    operations: [
-      type === "insertTableColumn"
-        ? { id: "op", type, blockId, position: "after" }
-        : { id: "op", type, blockId },
-    ],
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        type === "insertTableColumn"
+          ? { id: "op", type, blockId, position: "after" }
+          : { id: "op", type, blockId },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.skipped).toEqual([]);
   expect(result.applied[0]?.revisionIds).toHaveLength(3);
   return reviewer;

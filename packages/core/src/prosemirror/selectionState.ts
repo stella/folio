@@ -1,3 +1,4 @@
+import { effectiveParagraphNumbering } from "./numberingAttr";
 /**
  * Selection State Utilities
  *
@@ -136,7 +137,10 @@ export function extractSelectionSnapshot(state: EditorState): SelectionSnapshot 
     styleId,
     startParagraphIndex,
     endParagraphIndex,
-    listState: resolveListState(getDocumentNumbering(state), paragraphFormatting.numPr),
+    listState: resolveListState(
+      getDocumentNumbering(state),
+      effectiveParagraphNumbering(paragraphAttrs ?? {}),
+    ),
   };
 }
 

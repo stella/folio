@@ -10,7 +10,6 @@ import { escapeXmlAttribute, serializeOnOffElement } from "@stll/docx-core";
 import {
   outlineLevelStatedValue,
   paragraphNumberingSlots,
-  sameEffectiveParagraphNumbering,
   type ParagraphNumberingOverride,
 } from "@stll/docx-core/model";
 import { serializeSequenceChildren } from "@stll/docx-core/schema";
@@ -102,19 +101,11 @@ type ExhaustiveParagraphFormatting = ExhaustiveFields<
   ClassifiedParagraphFormattingField
 >;
 
-/**
- * Whether resolved numbering still belongs to the paragraph's style tier.
- *
- * Effective equality, not stated: the resolved field carries the level the
- * cascade supplied even where the style stated none, and a paragraph whose
- * numbering came wholly from its style must still not emit a direct
- * `<w:numPr>`.
- */
+/** Only an absent paragraph override leaves numbering wholly to its style. */
 export const isStyleSourcedParagraphNumbering = (
   numPr: ParagraphNumberingOverride | null | undefined,
   numPrFromStyle: ParagraphNumberingOverride | null | undefined,
-): boolean =>
-  numPr != null && numPrFromStyle != null && sameEffectiveParagraphNumbering(numPr, numPrFromStyle);
+): boolean => numPr == null && numPrFromStyle != null;
 
 /** Exact fallback-emission instructions for the modeled part of `w:pPr`. */
 export type ModeledParagraphFormattingEmission = Readonly<{
@@ -422,7 +413,6 @@ export const modelParagraphFormattingEmission = (
     pageBreakBefore,
     contextualSpacing,
     numPr,
-    numPrFromStyle,
     numberingChangeXml,
     numberingInsertionXml,
     outlineLevel,
@@ -447,16 +437,7 @@ export const modelParagraphFormattingEmission = (
       ["pageBreakBefore", serializeOnOffElement(pageBreakBefore, "pageBreakBefore")],
       ["framePr", serializeFrameProperties(frame)],
       ["widowControl", serializeOnOffElement(widowControl, "widowControl")],
-      [
-        "numPr",
-        isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)
-          ? serializeNumbering({
-              numPr: undefined,
-              numberingChangeXml,
-              numberingInsertionXml,
-            })
-          : serializeNumbering({ numPr, numberingChangeXml, numberingInsertionXml }),
-      ],
+      ["numPr", serializeNumbering({ numPr, numberingChangeXml, numberingInsertionXml })],
       ["suppressLineNumbers", serializeOnOffElement(suppressLineNumbers, "suppressLineNumbers")],
       ["pBdr", serializeParagraphBorders(borders)],
       ["shd", serializeShading(shading)],

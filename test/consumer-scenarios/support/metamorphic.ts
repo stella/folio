@@ -144,22 +144,36 @@ const save = async (reviewer: Reviewer): Promise<Uint8Array> => {
 };
 
 /** What a reader sees of a block, ids aside: a new block's id is the allocator's choice. */
-const blockView = (row: Row) => ({
-  kind: row.kind,
-  text: row.text,
-  styleId: row.styleId,
-  headingLevel: row.headingLevel,
-  listLevel: row.listLevel,
-  displayLabel: row.displayLabel,
-  table: row.table && {
+const blockView = (row: Row & { statedNumbering?: Record<string, unknown> }) => {
+  const table = row.table && {
     tableIndex: row.table.tableIndex,
     rowIndex: row.table.rowIndex,
     cellIndex: row.table.cellIndex,
     gridColumnIndex: row.table.gridColumnIndex,
     columnSpan: row.table.columnSpan,
     rowSpan: row.table.rowSpan,
-  },
-});
+  };
+  const shared = {
+    kind: row.kind,
+    text: row.text,
+    styleId: row.styleId,
+    headingLevel: row.headingLevel,
+    displayLabel: row.displayLabel,
+    table,
+  };
+  if (row.kind === "diagnostic") return shared;
+  if (row.statedNumbering === undefined) {
+    throw new Error(`Reader row ${row.id} is missing statedNumbering`);
+  }
+  if (row.listReference === undefined) {
+    return { ...shared, statedNumbering: row.statedNumbering };
+  }
+  return {
+    ...shared,
+    statedNumbering: row.statedNumbering,
+    listReference: row.listReference,
+  };
+};
 
 type Comment = { text: string; anchor: string };
 /** Comments by text and anchor; the order two comments on one range come in is not compared. */
@@ -683,8 +697,8 @@ const replayInto = (shadows: Shadows, entry: TraceEntry, context: string): boole
   const apply = (reviewer: Reviewer, mode: Mode, selected: readonly AnyOperation[]): Result => {
     const batch = contractBatch(mode, selected);
     return story.type === "main"
-      ? reviewer.applyDocumentOperations(batch)
-      : reviewer.applyDocumentOperationsToStory({ story, batch });
+      ? reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" })
+      : reviewer.applyDocumentOperationsToStory({ undefinedReferences: "refuse", story, batch });
   };
   const tracked = apply(shadows.tracked, "tracked-changes", operations);
   if (shadows.suggested) apply(shadows.suggested, "suggested", operations);
@@ -965,8 +979,12 @@ export const startRelations = async ({
     const preState = exactState(copy);
     const applyToCopy = (target: Reviewer, operations: Batch): Result =>
       story.type === "main"
-        ? target.applyDocumentOperations(operations)
-        : target.applyDocumentOperationsToStory({ story, batch: operations });
+        ? target.applyDocumentOperations(operations, { undefinedReferences: "refuse" })
+        : target.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
+            story,
+            batch: operations,
+          });
     const again = applyToCopy(copy, structuredClone(batch));
     const applied = operationsOf(batch).filter((operation) => appliedIds(again).has(operation.id));
     assert.deepEqual(

@@ -130,11 +130,14 @@ for (const [kind, operation] of Object.entries(operations)) {
             if (!block) throw new Error("fixture block missing");
             const originalMarks = hiddenMarks(sourceDocumentOf(reviewer.snapshot()));
             expect(originalMarks).toHaveLength(1);
-            const result = reviewer.applyDocumentOperations({
-              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode: "tracked-changes",
-              operations: [operation({ blockId: block.id, text: block.text })],
-            });
+            const result = reviewer.applyDocumentOperations(
+              {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode: "tracked-changes",
+                operations: [operation({ blockId: block.id, text: block.text })],
+              },
+              { undefinedReferences: "refuse" },
+            );
             expect(result.applied).toHaveLength(1);
             expect(hiddenMarks(sourceDocumentOf(reviewer.snapshot()))).toEqual(originalMarks);
             const saved = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());

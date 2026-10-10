@@ -38,19 +38,22 @@ test(
             const block = reviewer.getContent().at(0);
             if (!block) throw new Error("the fixture paragraph is missing");
             const replacement = `${word}${index}`;
-            const result = reviewer.applyDocumentOperations({
-              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode: "tracked-changes",
-              operations: [
-                {
-                  id: "replace",
-                  type: "replaceInBlock",
-                  blockId: block.id,
-                  find,
-                  replace: replacement,
-                },
-              ],
-            });
+            const result = reviewer.applyDocumentOperations(
+              {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode: "tracked-changes",
+                operations: [
+                  {
+                    id: "replace",
+                    type: "replaceInBlock",
+                    blockId: block.id,
+                    find,
+                    replace: replacement,
+                  },
+                ],
+              },
+              { undefinedReferences: "refuse" },
+            );
             expect(result.applied).toHaveLength(1);
             const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
               author: anotherAuthor ? "Second Reviewer" : "Reviewer",
@@ -61,11 +64,14 @@ test(
           }
           const block = reviewer.getContent().at(0);
           if (!block) throw new Error("the fixture paragraph is missing");
-          const result = reviewer.applyDocumentOperations({
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode: "tracked-changes",
-            operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
-          });
+          const result = reviewer.applyDocumentOperations(
+            {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode: "tracked-changes",
+              operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
+            },
+            { undefinedReferences: "refuse" },
+          );
           expect(result.applied).toHaveLength(1);
           const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
           expect(revisionView(reopened)).toEqual(revisionView(reviewer));

@@ -2,6 +2,7 @@ import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import type { ColorValue, Style, StyleDefinitions, TextFormatting, Theme } from "../types/document";
 import { resolveColorToHex } from "../utils/colorResolver";
 import { canonicalJson } from "../utils/canonicalJson";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { resolveThemeFont } from "../utils/fontResolver";
 
 export type ImportReferencedStyleDefinitionsOptions = {
@@ -12,6 +13,7 @@ export type ImportReferencedStyleDefinitionsOptions = {
   referencedStyleIds: readonly string[];
   reservedStyleIds?: readonly string[];
   materializeDefaultParagraphStyle?: boolean;
+  numberingReferenceMap?: ReadonlyMap<number, number>;
 };
 
 export type ImportReferencedStyleDefinitionsResult =
@@ -26,6 +28,31 @@ export type ImportReferencedStyleDefinitionsResult =
 
 const styleDependencies = ({ basedOn, link, next }: StyleDefinitions["styles"][number]) =>
   [basedOn, link, next].filter((styleId): styleId is string => styleId !== undefined);
+
+/** Numbering resources in the same transitive closure the style importer owns. */
+export const styleClosureNumberingReferences = (
+  styles: StyleDefinitions | undefined,
+  referencedStyleIds: readonly string[],
+): { numId: number; level: number }[] => {
+  const definitions = new Map(styles?.styles.map((style) => [style.styleId, style]));
+  const pending = [...referencedStyleIds];
+  const seen = new Set<string>();
+  const references: { numId: number; level: number }[] = [];
+  while (pending.length > 0) {
+    const id = pending.pop();
+    if (id === undefined || seen.has(id)) continue;
+    seen.add(id);
+    const style = definitions.get(id);
+    if (style === undefined) continue; // The importer reports missing closure definitions.
+    const numbering = style.pPr?.numPr;
+    if (numbering?.kind === "reference") {
+      // OOXML defaults an omitted ilvl to zero within an existing reference.
+      references.push({ numId: numbering.numId, level: numbering.ilvl ?? 0 });
+    }
+    pending.push(...styleDependencies(style));
+  }
+  return references;
+};
 
 const themesMatch = (
   sourceTheme: Theme | undefined,
@@ -397,14 +424,39 @@ const remapImportedStyle = ({
  * part in OOXML style resolution even when a style definition itself is new.
  */
 export const importReferencedStyleDefinitions = ({
-  sourceStyles,
+  sourceStyles: originalSourceStyles,
   destinationStyles,
   sourceTheme,
   destinationTheme,
   referencedStyleIds,
   reservedStyleIds = [],
   materializeDefaultParagraphStyle = false,
+  numberingReferenceMap,
 }: ImportReferencedStyleDefinitionsOptions): ImportReferencedStyleDefinitionsResult => {
+  const sourceStyles =
+    originalSourceStyles && numberingReferenceMap && numberingReferenceMap.size > 0
+      ? {
+          ...originalSourceStyles,
+          styles: originalSourceStyles.styles.map((style) => {
+            const numbering = style.pPr?.numPr;
+            const numId =
+              numbering?.kind === "reference"
+                ? numberingReferenceMap.get(numbering.numId)
+                : undefined;
+            if (numId === undefined || numbering?.kind !== "reference") return style;
+            return {
+              ...style,
+              pPr: {
+                ...style.pPr,
+                numPr: paragraphNumberingReference({
+                  numId,
+                  ...(numbering.ilvl !== undefined && { ilvl: numbering.ilvl }),
+                }),
+              },
+            };
+          }),
+        }
+      : originalSourceStyles;
   const requested = [...new Set(referencedStyleIds)].toSorted();
   if (requested.length === 0 && !materializeDefaultParagraphStyle) {
     return {
@@ -446,7 +498,7 @@ export const importReferencedStyleDefinitions = ({
     }
     const source = sourceById.get(styleId);
     if (!source) {
-      return { status: "unalignable", detail: "a referenced target style is missing" };
+      return { status: "unalignable", detail: `referenced target style ${styleId} is missing` };
     }
     required.add(styleId);
     pending.push(...styleDependencies(source));
@@ -461,7 +513,7 @@ export const importReferencedStyleDefinitions = ({
     const source = sourceById.get(styleId);
     const destination = destinationById.get(styleId);
     if (!source) {
-      return { status: "unalignable", detail: "a referenced target style is missing" };
+      return { status: "unalignable", detail: `referenced target style ${styleId} is missing` };
     }
     const conflictsWithBase =
       destination !== undefined && canonicalJson(source) !== canonicalJson(destination);
@@ -515,7 +567,7 @@ export const importReferencedStyleDefinitions = ({
     if (result.status === "unalignable") {
       return {
         status: "unalignable",
-        detail: "a referenced style has formatting that cannot be materialized",
+        detail: `referenced style ${style.styleId} has formatting that cannot be materialized`,
       };
     }
     materializedStyles.push(
@@ -602,7 +654,7 @@ export const importReferencedStyleDefinitions = ({
     ) {
       return {
         status: "unalignable",
-        detail: "a referenced style differs after materializing its formatting",
+        detail: `referenced style ${style.styleId} differs after materializing its formatting`,
       };
     }
   }

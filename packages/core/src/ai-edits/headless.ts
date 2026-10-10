@@ -1,5 +1,6 @@
 import { getHeaderFooterText, getEndnoteText, getFootnoteText } from "../docx/storyPlainText";
 import JSZip from "jszip";
+import { classifyResourceReference } from "./referenceClassification";
 import { rebindDrawingImageRelationship } from "../docx/drawingRelationships";
 import {
   captureSectionReferenceInventory,
@@ -9,6 +10,7 @@ import {
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import {
   importReferencedStyleDefinitions,
+  styleClosureNumberingReferences,
   type ImportReferencedStyleDefinitionsResult,
 } from "../compare/style-resources";
 import { expectCharacterStyleMarkAttrs, expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
@@ -144,7 +146,7 @@ import {
 import type {
   FolioReplacementBackground,
   FolioRevisionStamp,
-  FolioUndefinedStylePolicy,
+  FolioUndefinedReferencePolicy,
   FolioWordDiffOptions,
 } from "./apply";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
@@ -316,6 +318,8 @@ export type FolioDocxReviewerOptions = {
 
 /** Options for {@link FolioDocxReviewer.applyOperations}. */
 export type FolioApplyOperationsOptions = {
+  /** Required policy for undefined style and numbering references. */
+  undefinedReferences: FolioUndefinedReferencePolicy;
   /** `"tracked-changes"` (default) produces ins/del redlines; `"direct"` edits in place. */
   mode?: FolioAIEditApplyMode;
   /**
@@ -485,13 +489,6 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
    * the target document — keeps them instead.
    */
   replacementBackground?: FolioReplacementBackground;
-  /**
-   * What an operation naming a paragraph style the document does not define
-   * does. Refusing it is the default; a caller copying another document's
-   * style references — `compareDocx` and `generateRedlineDocx` reproducing the
-   * revised document — keeps them instead.
-   */
-  undefinedStyles?: FolioUndefinedStylePolicy;
 };
 
 export type { FolioRevisionStamp };
@@ -513,8 +510,6 @@ type FolioSecondaryStoryState = {
   initialState: EditorState;
   state: EditorState;
 };
-
-type FolioResolvedStoryBlock = Omit<FolioAIBlock, "idStability">;
 
 /** Blocks whose id folio minted, because the package names no id for them. */
 const mintedBlockOrdinals = (snapshot: FolioAIEditSnapshot): ReadonlySet<number> => {
@@ -546,7 +541,7 @@ const resolvedStoryBlockProjection = (
   block: FolioAIBlock,
   ordinal: number,
   minted: ReadonlySet<number>,
-): FolioResolvedStoryBlock => {
+) => {
   const persisted = { ...block };
   delete persisted.idStability;
   return minted.has(ordinal) ? { ...persisted, id: `minted-${String(ordinal)}` } : persisted;
@@ -555,7 +550,7 @@ const resolvedStoryBlockProjection = (
 type FolioResolvedStoryExpectation = {
   story: FolioEditableDocumentStoryHandle;
   text: string;
-  blocks: readonly FolioResolvedStoryBlock[];
+  blocks: readonly ReturnType<typeof resolvedStoryBlockProjection>[];
   /** Positions the resolved story held a minted id at, read back after the save. */
   minted: ReadonlySet<number>;
 };
@@ -619,7 +614,7 @@ type ApplyDocumentOperationsInternalOptions = {
   wordDiff?: FolioWordDiffOptions;
   tableTemplates?: FolioTableTemplates;
   replacementBackground?: FolioReplacementBackground;
-  undefinedStyles?: FolioUndefinedStylePolicy;
+  undefinedReferences: FolioUndefinedReferencePolicy;
   createUndoEntry: boolean;
 };
 
@@ -761,13 +756,16 @@ const sameReferencedNumberingLevels = ({
   return true;
 };
 
+type StageTargetStylesOptions = {
+  source: FolioDocxReviewer;
+  snapshots: readonly FolioAIEditSnapshot[];
+  importedHeaderFooterSnapshots: readonly FolioAIEditSnapshot[];
+  numberingReferenceMap?: ReadonlyMap<number, number>;
+};
+
 type FolioDocxComparisonAccess = {
   stageTerminalTableReviewCarrier: (target: PMNode) => boolean;
-  stageTargetStyles: (
-    source: FolioDocxReviewer,
-    snapshots: readonly FolioAIEditSnapshot[],
-    importedHeaderFooterSnapshots: readonly FolioAIEditSnapshot[],
-  ) => ImportReferencedStyleDefinitionsResult;
+  stageTargetStyles: (options: StageTargetStylesOptions) => ImportReferencedStyleDefinitionsResult;
   createComparisonHeaderFooter: (
     source: FolioDocxReviewer,
     story: FolioHeaderFooterStoryHandle,
@@ -779,6 +777,7 @@ type FolioDocxComparisonAccess = {
   projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
   snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
   numberingDefinitions: () => NumberingDefinitions | null | undefined;
+  styleDefinitions: () => Document["package"]["styles"];
   planTargetNumberingReferences: (
     target: NumberingDefinitions | null | undefined,
     references: readonly { numId: number; level: number }[],
@@ -1083,7 +1082,7 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
  * const { blocks } = reviewer.snapshot();
  * reviewer.applyOperations([
  *   { id: "1", type: "replaceInBlock", blockId: blocks[0].id, find: "$50k", replace: "$500k" },
- * ]);
+ * ], { undefinedReferences: "refuse" });
  * const reviewed = await reviewer.toBuffer();
  * ```
  */
@@ -1137,8 +1136,7 @@ export class FolioDocxReviewer {
       this,
       Object.freeze({
         stageTerminalTableReviewCarrier: (target) => this.stageTerminalTableReviewCarrier(target),
-        stageTargetStyles: (source, snapshots, importedHeaderFooterSnapshots) =>
-          this.stageTargetStyles(source, snapshots, importedHeaderFooterSnapshots),
+        stageTargetStyles: (options) => this.stageTargetStyles(options),
         createComparisonHeaderFooter: (source, story) =>
           this.createComparisonHeaderFooter(source, story),
         finalSectionProperties: () => this.currentFinalSectionProperties(),
@@ -1198,6 +1196,7 @@ export class FolioDocxReviewer {
         projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
         snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
         numberingDefinitions: () => this.baseDocument.package.numbering,
+        styleDefinitions: () => this.importedStyles ?? this.baseDocument.package.styles,
         planTargetNumberingReferences: (target, references) =>
           this.planTargetNumberingReferences(target, references),
         stageTargetNumbering: (target, references, remappedNumIds) =>
@@ -1206,16 +1205,19 @@ export class FolioDocxReviewer {
     );
   }
 
-  private stageTargetStyles(
-    source: FolioDocxReviewer,
-    snapshots: readonly FolioAIEditSnapshot[],
-    importedHeaderFooterSnapshots: readonly FolioAIEditSnapshot[],
-  ): ImportReferencedStyleDefinitionsResult {
+  private stageTargetStyles({
+    source,
+    snapshots,
+    importedHeaderFooterSnapshots,
+    numberingReferenceMap,
+  }: StageTargetStylesOptions): ImportReferencedStyleDefinitionsResult {
     const destination = this.baseDocument.package;
     const sourcePackage = source.baseDocument.package;
     const destinationStyles = this.importedStyles ?? destination.styles;
-    const existing = new Set(destinationStyles?.styles.map(({ styleId }) => styleId));
-    const sourceStyleIds = new Set(sourcePackage.styles?.styles.map(({ styleId }) => styleId));
+    const sourceStylesById = new Map(
+      sourcePackage.styles?.styles.map((style) => [style.styleId, style]),
+    );
+    const destinationStyleIds = new Set(destinationStyles?.styles.map(({ styleId }) => styleId));
     const collect = (document: PMNode): Set<string> => {
       const references = new Set<string>();
       document.descendants((node) => {
@@ -1251,7 +1253,16 @@ export class FolioDocxReviewer {
         materializeDefaultParagraphStyle = true;
       }
       for (const styleId of collect(sourceDocumentOf(snapshot))) {
-        if (sourceStyleIds.has(styleId) && !existing.has(styleId)) referencedStyleIds.add(styleId);
+        if (
+          classifyResourceReference({
+            kind: "style",
+            id: styleId,
+            sourceDefines: (id) => sourceStylesById.has(id),
+            destinationDefines: (id) => destinationStyleIds.has(id),
+          }) === "sourceDefined"
+        ) {
+          referencedStyleIds.add(styleId);
+        }
       }
     }
     const reservedStyleIds = new Set<string>();
@@ -1264,7 +1275,26 @@ export class FolioDocxReviewer {
         }
       }
     }
+    // Without a numbering import, style definitions retain their source references.
+    let styleNumberingReferenceMap = numberingReferenceMap ?? new Map<number, number>();
+    if (numberingReferenceMap !== undefined) {
+      const references = styleClosureNumberingReferences(sourcePackage.styles, [
+        ...referencedStyleIds,
+      ]);
+      const remaining = references.filter(({ numId }) => !numberingReferenceMap.has(numId));
+      const planned = this.planTargetNumberingReferences(sourcePackage.numbering, remaining);
+      if (planned === null)
+        return { status: "unalignable", detail: "a referenced style has undefined numbering" };
+      styleNumberingReferenceMap = new Map([...planned, ...numberingReferenceMap]);
+      if (this.stageTargetNumbering(sourcePackage.numbering, remaining, planned) === "conflict") {
+        return {
+          status: "unalignable",
+          detail: "a referenced style's numbering could not be imported",
+        };
+      }
+    }
     const result = importReferencedStyleDefinitions({
+      numberingReferenceMap: styleNumberingReferenceMap,
       sourceStyles: sourcePackage.styles,
       destinationStyles,
       sourceTheme: sourcePackage.theme,
@@ -1479,6 +1509,7 @@ export class FolioDocxReviewer {
       },
       apply: (record, snapshot) => {
         const result = this.applyDocumentOperationsInternal({
+          undefinedReferences: "refuse",
           story: record.story,
           batch: {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -1710,7 +1741,7 @@ export class FolioDocxReviewer {
    */
   applyOperations(
     operations: FolioAIEditOperation[],
-    options: FolioApplyOperationsOptions = {},
+    options: FolioApplyOperationsOptions,
   ): FolioAIEditApplyResult {
     const { applied, skipped } = this.applyDocumentOperationsInternal({
       story: MAIN_STORY,
@@ -1722,6 +1753,7 @@ export class FolioDocxReviewer {
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && { revisionStamp: options.revisionStamp }),
       ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
+      undefinedReferences: options.undefinedReferences,
       createUndoEntry: false,
     });
     return { applied, skipped };
@@ -1735,7 +1767,7 @@ export class FolioDocxReviewer {
    */
   applyDocumentOperations(
     batch: FolioDocumentOperationBatch,
-    options: FolioApplyDocumentOperationsOptions = {},
+    options: FolioApplyDocumentOperationsOptions,
   ): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story: MAIN_STORY,
@@ -1743,6 +1775,7 @@ export class FolioDocxReviewer {
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && { revisionStamp: options.revisionStamp }),
       ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
+      undefinedReferences: options.undefinedReferences,
       createUndoEntry: true,
     });
   }
@@ -1756,7 +1789,7 @@ export class FolioDocxReviewer {
     wordDiff,
     tableTemplates,
     replacementBackground,
-    undefinedStyles,
+    undefinedReferences,
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story,
@@ -1766,7 +1799,7 @@ export class FolioDocxReviewer {
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
-      ...(undefinedStyles !== undefined && { undefinedStyles }),
+      undefinedReferences,
       createUndoEntry: true,
     });
   }
@@ -1791,7 +1824,7 @@ export class FolioDocxReviewer {
     wordDiff,
     tableTemplates,
     replacementBackground,
-    undefinedStyles,
+    undefinedReferences,
     createUndoEntry,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
@@ -1815,7 +1848,7 @@ export class FolioDocxReviewer {
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
-      ...(undefinedStyles !== undefined && { undefinedStyles }),
+      undefinedReferences,
       createCommentId: (text) => {
         const comment = createReviewerComment({
           id: this.nextCommentId(),
@@ -2735,6 +2768,7 @@ export class FolioDocxReviewer {
         },
       };
       const result = applyFolioDocumentOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         batch: {
@@ -3590,6 +3624,7 @@ export const applyFolioAIEditsToBuffer = async (
     ...(options.author !== undefined && { author: options.author }),
   });
   const { applied, skipped } = reviewer.applyOperations(operations, {
+    undefinedReferences: "refuse",
     ...(options.mode !== undefined && { mode: options.mode }),
     ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
   });
