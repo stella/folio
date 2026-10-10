@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 use proptest::prelude::{prop_assert_eq, proptest};
+use std::fmt::Write;
 use stella_docx_kernel::{
     DocxLimits, FormattingFactStatus, FormattingUnknownReason, InternalParagraphId,
     ParagraphIdentityFacts, ProjectionError, TextFormattingSpan, TextStyle,
@@ -22,9 +23,11 @@ fn package(runs: &[(String, bool)], include_styles: bool, table: bool) -> String
     let mut content = String::new();
     for (text, highlighted) in runs {
         let highlight = if *highlighted { "yellow" } else { "none" };
-        content.push_str(&format!(
+        write!(
+            content,
             r#"<w:r><w:rPr><w:rStyle w:val="Character"/><w:highlight w:val="{highlight}"/></w:rPr><w:t>{text}</w:t></w:r>"#,
-        ));
+        )
+        .expect("writing fixture markup to a String cannot fail");
     }
     let paragraph = format!(
         r#"<w:p xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" w14:paraId="00000001"><w:pPr><w:pStyle w:val="Paragraph"/></w:pPr>{content}</w:p>"#,
