@@ -43,7 +43,7 @@ jobs:
         with:
           bun-version-file: "package.json"
 
-      # The script only reads bunfig.toml and bun.lock, so no install is needed.
+      # The script reads each install root's bunfig.toml and bun.lock; no install is needed.
       - name: Prune expired excludes
         id: prune
         run: |
@@ -51,7 +51,7 @@ jobs:
 
           bun scripts/check-quarantine-excludes.ts --prune
 
-          if git diff --quiet -- bunfig.toml; then
+          if git diff --quiet -- bunfig.toml plugins/vscode/bunfig.toml; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Nothing expired." >> "$GITHUB_STEP_SUMMARY"
             exit 0
@@ -90,7 +90,7 @@ jobs:
           git config user.email "${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com"
 
           git checkout -b "$PRUNE_BRANCH"
-          git add bunfig.toml
+          git add bunfig.toml plugins/vscode/bunfig.toml
           git commit -m "chore(deps): remove expired quarantine excludes
 
           The release-age gate admits these packages on its own now, and an

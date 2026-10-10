@@ -48,7 +48,7 @@
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname, "..");
-const LOCKFILE = "bun.lock";
+export const quarantineInstallRoots = [".", "plugins/vscode"] as const;
 const BUNFIG = "bunfig.toml";
 const SCRIPT_PATH = "scripts/check-quarantine-excludes.ts";
 const EXPIRY_MARKER = "quarantine-expires:";
@@ -279,42 +279,44 @@ export const pruneExpiredExcludes = ({
 };
 
 const prune = async (): Promise<void> => {
-  const bunfigPath = join(ROOT, BUNFIG);
-  const { bunfig, pruned } = pruneExpiredExcludes({
-    bunfig: await Bun.file(bunfigPath).text(),
-  });
-
-  if (pruned.length === 0) {
-    console.log(`${BUNFIG}: no expired quarantine excludes to remove.`);
-    return;
+  for (const directory of quarantineInstallRoots) {
+    const label = join(directory, BUNFIG);
+    const bunfigPath = join(ROOT, label);
+    const { bunfig, pruned } = pruneExpiredExcludes({
+      bunfig: await Bun.file(bunfigPath).text(),
+    });
+    if (pruned.length === 0) {
+      console.log(`${label}: no expired quarantine excludes to remove.`);
+      continue;
+    }
+    await Bun.write(bunfigPath, bunfig);
+    console.log(
+      `${label}: removed ${pruned.length} expired quarantine exclude(s): ${pruned.join(", ")}.`,
+    );
   }
-
-  await Bun.write(bunfigPath, bunfig);
-  console.log(
-    `${BUNFIG}: removed ${pruned.length} expired quarantine exclude(s): ${pruned.join(", ")}.`,
-  );
 };
 
 const check = async (): Promise<void> => {
-  const result = checkQuarantineExcludes({
-    bunfig: await Bun.file(join(ROOT, BUNFIG)).text(),
-    lockfile: await Bun.file(join(ROOT, LOCKFILE)).text(),
-  });
-
-  if (result.warnings.length > 0) {
-    console.warn(`${result.warnings.join("\n")}\n`);
+  let failed = false;
+  for (const directory of quarantineInstallRoots) {
+    const label = join(directory, BUNFIG);
+    const result = checkQuarantineExcludes({
+      bunfig: await Bun.file(join(ROOT, label)).text(),
+      lockfile: await Bun.file(join(ROOT, directory, "bun.lock")).text(),
+    });
+    if (result.warnings.length > 0) {
+      console.warn(`${label}: ${result.warnings.join("\n")}\n`);
+    }
+    if (result.errors.length > 0) {
+      console.error(`${label}: ${result.errors.join("\n\n")}`);
+      failed = true;
+      continue;
+    }
+    console.log(
+      `${label}: ${result.excludeCount} quarantine excludes cover all ${result.firstPartyCount} registry-backed first-party packages; ${result.activeTemporaryCount} temporary exclude(s) remain active.`,
+    );
   }
-
-  if (result.errors.length > 0) {
-    console.error(result.errors.join("\n\n"));
-    process.exit(1);
-  }
-
-  console.log(
-    `${BUNFIG}: ${result.excludeCount} quarantine excludes cover all ` +
-      `${result.firstPartyCount} registry-backed first-party packages; ` +
-      `${result.activeTemporaryCount} temporary exclude(s) remain active.`,
-  );
+  if (failed) process.exit(1);
 };
 
 if (import.meta.main) {

@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import packageJson from "../package.json";
-import { checkQuarantineExcludes, pruneExpiredExcludes } from "./check-quarantine-excludes";
+import {
+  checkQuarantineExcludes,
+  pruneExpiredExcludes,
+  quarantineInstallRoots,
+} from "./check-quarantine-excludes";
 
 const SCRIPT_PATH = "scripts/check-quarantine-excludes.ts";
 
@@ -276,4 +282,35 @@ describe("quarantine exclude wiring", () => {
     expect(workflow).toContain(`bun ${SCRIPT_PATH} --prune`);
     expect(workflow).toContain(`bun ${SCRIPT_PATH}\n`);
   });
+});
+
+test("the prune command removes expired exceptions from every independent install root", () => {
+  const root = mkdtempSync(join(tmpdir(), "folio-quarantine-"));
+  try {
+    mkdirSync(join(root, "scripts"));
+    writeFileSync(
+      join(root, SCRIPT_PATH),
+      readFileSync(new URL("./check-quarantine-excludes.ts", import.meta.url), "utf8"),
+    );
+    for (const directory of quarantineInstallRoots) {
+      mkdirSync(join(root, directory), { recursive: true });
+      writeFileSync(
+        join(root, directory, "bunfig.toml"),
+        createBunfig('"bun-types", # quarantine-expires: 2000-01-01T00:00:00.000Z'),
+      );
+      writeFileSync(join(root, directory, "bun.lock"), lockfile);
+    }
+    expect(quarantineInstallRoots).toContain("plugins/vscode");
+    const result = Bun.spawnSync([process.execPath, join(root, SCRIPT_PATH), "--prune"], {
+      cwd: root,
+    });
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    for (const directory of quarantineInstallRoots) {
+      const bunfig = readFileSync(join(root, directory, "bunfig.toml"), "utf8");
+      expect(bunfig).not.toContain('"bun-types"');
+      expect(bunfig).toContain('"@stll/conditions"');
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

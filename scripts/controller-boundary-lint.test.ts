@@ -11,7 +11,7 @@ setDefaultTimeout(30_000);
 
 const lintPath = (relativePath: string, marker: string): number => {
   const result = Bun.spawnSync(
-    ["bun", "--bun", "oxlint", "-c", "oxlint.config.ts", "--no-ignore", relativePath],
+    ["bun", "--bun", "oxlint", "-c", "oxlint.fixtures.config.ts", "--no-ignore", relativePath],
     { cwd: REPOSITORY_ROOT },
   );
   const output = `${result.stdout.toString()}${result.stderr.toString()}`;
