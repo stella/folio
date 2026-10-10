@@ -11,6 +11,7 @@ import { HiddenProseMirror, type HiddenProseMirrorRef } from "./HiddenProseMirro
 import type { FlowBlock, Layout, Measure } from "@stll/folio-core/layout-engine/types";
 import { useSelectionOverlay } from "./SelectionOverlay";
 import { PagedEditor, type PagedEditorRef } from "./PagedEditor";
+import { Plugin } from "prosemirror-state";
 import { IntlProvider } from "use-intl";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 
@@ -41,6 +42,24 @@ const createDocumentIO = (buffer: ArrayBuffer) => ({
   loadDocument: () => undefined,
   loadDocx: async () => undefined,
 });
+
+const createSeedProbe = () => {
+  let initializations = 0;
+  return {
+    plugins: [
+      new Plugin({
+        state: {
+          init: () => {
+            initializations++;
+            return null;
+          },
+          apply: () => null,
+        },
+      }),
+    ],
+    getInitializations: () => initializations,
+  };
+};
 
 const createSelectionMeasureProvider = (installed: MeasureProvider) =>
   ({
@@ -250,6 +269,52 @@ test("persistent paged controller reads document I/O from the latest commit", as
     await render(replacement);
     expect(editor.current?.getEditor()).toBe(controller);
     expect(await controller.getDocx()).toBe(replacement);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+test("deferred hidden view reuses the latest committed pre-view document seed", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<PagedEditorRef>();
+  const messages = getFolioMessages("en");
+  const probe = createSeedProbe();
+  const documentIO = createDocumentIO(new ArrayBuffer(0));
+  const render = async (
+    documentModel: ReturnType<typeof createEmptyDocument>,
+    identity: string,
+  ) => {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" timeZone="UTC" messages={messages}>
+          <PagedEditor
+            ref={editor}
+            document={documentModel}
+            documentIdentity={identity}
+            markupView="all-markup"
+            documentIO={documentIO}
+            externalPlugins={probe.plugins}
+          />
+        </IntlProvider>,
+      ),
+    );
+  };
+  try {
+    await render(createEmptyDocument({ initialText: "First" }), "first");
+    const controller = editor.current?.getEditor() ?? panic("Expected an editor controller");
+    expect(controller.getView()).toBeNull();
+    await render(createEmptyDocument({ initialText: "Replacement" }), "replacement");
+    expect(editor.current?.getEditor()).toBe(controller);
+    expect(controller.getView()).toBeNull();
+    const initializedBeforeRequest = probe.getInitializations();
+    expect(initializedBeforeRequest).toBeGreaterThan(0);
+    await act(async () => editor.current?.ensureView({ focus: false }));
+    const view = controller.getView() ?? panic("Expected the requested hidden view");
+    expect(view.state.doc.textContent).toBe("Replacement");
+    expect(probe.getInitializations()).toBe(initializedBeforeRequest);
   } finally {
     await act(async () => root.unmount());
     container.remove();

@@ -69,7 +69,6 @@ import {
   browserClock,
   createLayoutScheduler,
   TRANSACTION_LAYOUT_TIMING,
-  type LayoutScheduler,
 } from "@stll/folio-core/controller/layoutScheduler";
 import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
@@ -679,6 +678,51 @@ const loadSelectionGeometry = (): Promise<SelectionGeometryModule> => {
   );
 
   return selectionGeometryPromise;
+};
+
+type PagedRuntimeInputs = {
+  controller: Omit<Parameters<typeof createFolioEditor>[0], "emitter" | "getDocumentIO"> & {
+    getDocumentIO: () => FolioEditorDocumentIO;
+  };
+  hyphenation: Parameters<typeof createHyphenationReadiness>[0];
+  readState: () => EditorState | null;
+};
+
+// Construct the persistent runtime without reading refs. The commit phase
+// publishes its event-time inputs before descendants request editor views.
+const createPagedRuntime = (emitter: Parameters<typeof createFolioEditor>[0]["emitter"]) => {
+  let inputs: PagedRuntimeInputs | null = null;
+  let selectionUpdate: ((state: EditorState) => void) | null = null;
+  const readInputs = () => inputs ?? panic("Paged runtime inputs must be committed before use.");
+  return {
+    commit: (next: PagedRuntimeInputs) => {
+      inputs = next;
+    },
+    commitSelectionUpdate: (next: (state: EditorState) => void) => {
+      selectionUpdate = next;
+    },
+    updateSelection: (state: EditorState) => {
+      const update = selectionUpdate ?? panic("Selection callback must be committed before use.");
+      update(state);
+    },
+    folioEditor: createFolioEditor({
+      getEditorApi: () => readInputs().controller.getEditorApi(),
+      getLayout: () => readInputs().controller.getLayout(),
+      runLayout: (state, options) => readInputs().controller.runLayout(state, options),
+      getDocumentIO: () => readInputs().controller.getDocumentIO(),
+      emitter,
+    }),
+    hyphenationReadiness: createHyphenationReadiness({
+      relayout: () => readInputs().hyphenation.relayout(),
+      onError: (error) => readInputs().hyphenation.onError(error),
+    }),
+    layoutScheduler: createLayoutScheduler({
+      readState: () => readInputs().readState(),
+      runLayout: (state, options) => readInputs().controller.runLayout(state, options),
+      ...TRANSACTION_LAYOUT_TIMING,
+      clock: browserClock,
+    }),
+  };
 };
 
 // HF caret overlay — minimal "paint the caret + selection rects for the
@@ -1406,6 +1450,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // doc emission points below can publish to it.
     const [folioEmitter] = useState(createFolioEditorEmitter);
     const folioEmitterRef = useRef(folioEmitter);
+    const [runtime] = useState(() => createPagedRuntime(folioEmitter));
+    const { folioEditor, hyphenationReadiness, layoutScheduler } = runtime;
     const hiddenPMRef = useRef<HiddenProseMirrorRef>(null);
     const hfPMsRef = useRef<HiddenHeaderFooterPMsRef>(null);
     const noteEditorRef = useRef<NoteStoryEditorRef>(null);
@@ -1508,14 +1554,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // Reactive "has the hidden editor been requested" signal. The manager owns
     // the actual view creation imperatively (via ensureView); this flag only
     // drives the pre-hidden initial-layout coordination below.
-    const [shouldCreateHiddenEditorView, setShouldCreateHiddenEditorView] = useState(
+    const [hiddenEditorRequested, setShouldCreateHiddenEditorView] = useState(
       () => collaboration !== undefined,
     );
+    const shouldCreateHiddenEditorView = hiddenEditorRequested || collaboration !== undefined;
     const shouldFocusHiddenEditorOnReadyRef = useRef(collaboration !== undefined);
-    const [precomputedInitialSnapshot, setPrecomputedInitialSnapshot] = useState<{
-      document: Document;
-      state: EditorState;
-    } | null>(null);
     const layoutSessionRef = useRef(createLayoutSession());
     const precomputedInitialStateRef = useRef<EditorState | null>(null);
     const precomputedInitialDocumentRef = useRef<Document | null>(null);
@@ -1601,8 +1644,24 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const revealSelectionOverlayTimerRef = useRef<number | null>(null);
     const [selectionOverlayRequestGate] = useState(createLatestRequestGate);
 
-    const validPrecomputedInitialState =
-      precomputedInitialSnapshot?.document === document ? precomputedInitialSnapshot.state : null;
+    const validPrecomputedInitialState = useMemo(() => {
+      if (shouldCreateHiddenEditorView || collaboration !== undefined || !document) return null;
+      return createHiddenEditorState({
+        document,
+        styles,
+        manager: extensionManager,
+        externalPlugins,
+        collaborationModules: null,
+        reason: "mount",
+      });
+    }, [
+      shouldCreateHiddenEditorView,
+      collaboration,
+      document,
+      styles,
+      extensionManager,
+      externalPlugins,
+    ]);
     useLayoutEffect(() => {
       precomputedInitialStateRef.current = validPrecomputedInitialState;
     }, [validPrecomputedInitialState]);
@@ -1670,15 +1729,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       },
       [],
     );
-
-    // Eagerly request the hidden editor when collaborating (matches the former
-    // `shouldCreateHiddenEditorView` initial-true for collaboration); the manager
-    // defers the actual creation until the collaboration modules load.
-    useLayoutEffect(() => {
-      if (collaboration !== undefined) {
-        hiddenPMRef.current?.ensureView();
-      }
-    }, [collaboration]);
 
     const queueHiddenEditorSelection = useCallback(
       (selection: PendingHiddenEditorSelection) => {
@@ -1762,12 +1812,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       },
       [experimentalSession],
     );
-
-    useEffect(() => {
-      if (collaboration !== undefined) {
-        ensureHiddenEditorView();
-      }
-    }, [collaboration, ensureHiddenEditorView]);
 
     // Column resize state
     const isResizingColumnRef = useRef(false);
@@ -1930,25 +1974,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // One per editor: a layout run that lacked a hyphenation dictionary re-runs
     // when it loads (the load already invalidated measured paragraphs) or
     // reports the failure once. Unmount cancels loads still pending.
-    const [hyphenationReadiness] = useState(() =>
-      createHyphenationReadiness({
-        relayout: () => {
-          // Before the hidden view exists the pages come from a pre-view
-          // layout; re-run that state, or view readiness (which skips a
-          // document already laid out) would leave them unhyphenated.
-          const view = hiddenPMRef.current?.getView();
-          const state = view?.state ?? layoutSessionRef.current.lastEditorState;
-          if (!state) {
-            return;
-          }
-          runLayoutPipelineRef.current(state, { reason: "hyphenation-ready" });
-          if (view) {
-            updateSelectionOverlayRef.current(view.state);
-          }
-        },
-        onError: (error) => onErrorRef.current?.(error),
-      }),
-    );
     useEffect(() => hyphenationReadiness.cancel, [hyphenationReadiness]);
 
     // The layout inputs the committed layout was laid out with. A pass reads
@@ -2028,7 +2053,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         pageSize,
         margins,
         pageGap,
-        zoom,
         showMarginGuides,
         marginGuideColor,
         pageRenderer,
@@ -2056,6 +2080,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         styles,
         markupView,
         layoutInputSignature,
+        hyphenationReadiness,
       ],
     );
     const runLayoutPipelineRef = useRef(runLayoutPipeline);
@@ -2067,15 +2092,36 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     useLayoutEffect(() => {
       documentIORef.current = documentIO;
     }, [documentIO]);
-    const [folioEditor] = useState(() =>
-      createFolioEditor({
-        getEditorApi: () => hiddenPMRef.current,
-        getLayout: () => layoutRef.current,
-        runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
-        getDocumentIO: () => documentIORef.current,
-        emitter: folioEmitter,
-      }),
-    );
+    useLayoutEffect(() => {
+      runtime.commit({
+        controller: {
+          getEditorApi: () => hiddenPMRef.current,
+          getLayout: () => layoutRef.current,
+          runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
+          getDocumentIO: () => documentIORef.current,
+        },
+        hyphenation: {
+          relayout: () => {
+            const view = hiddenPMRef.current?.getView();
+            const state = view?.state ?? layoutSessionRef.current.lastEditorState;
+            if (!state) return;
+            runLayoutPipelineRef.current(state, { reason: "hyphenation-ready" });
+            if (view) runtime.updateSelection(view.state);
+          },
+          onError: (error) => onErrorRef.current?.(error),
+        },
+        readState: () => hiddenPMRef.current?.getState() ?? precomputedInitialStateRef.current,
+      });
+    }, [runtime]);
+    // Eagerly request the hidden editor when collaborating (matches the former
+    // `shouldCreateHiddenEditorView` initial-true for collaboration); the manager
+    // defers the actual creation until the collaboration modules load.
+    useLayoutEffect(() => {
+      if (collaboration !== undefined) {
+        hiddenPMRef.current?.ensureView();
+      }
+    }, [collaboration]);
+
     const getActiveEditorStory = useCallback(
       () =>
         resolveActiveEditorStory({
@@ -2100,14 +2146,17 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // Painter-level settings: changing one does not change the layout, so
     // nothing else would repaint. `pageRenderer` belongs here for the same
     // reason, and the Vue adapter watches the same three.
-    const paintSettingsInitializedRef = useRef(false);
+    const paintSettings = useMemo(
+      () => ({ marginGuideColor, showMarginGuides, pageRenderer }),
+      [marginGuideColor, showMarginGuides, pageRenderer],
+    );
+    const previousPaintSettingsRef = useRef<typeof paintSettings | null>(null);
     useEffect(() => {
-      if (!paintSettingsInitializedRef.current) {
-        paintSettingsInitializedRef.current = true;
-        return;
-      }
+      const previous = previousPaintSettingsRef.current;
+      previousPaintSettingsRef.current = paintSettings;
+      if (previous === null || previous === paintSettings) return;
       folioEditor.relayout();
-    }, [folioEditor, marginGuideColor, showMarginGuides, pageRenderer]);
+    }, [folioEditor, paintSettings]);
 
     // =========================================================================
     // Coalesced Layout (rAF throttle)
@@ -2116,68 +2165,63 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // The "when to lay out" policy (coalesce a typing burst into one pass, with a
     // latency cap) lives in the framework-agnostic layout scheduler; this adapter
     // just feeds it transactions and points it at runLayoutPipeline.
-    const layoutSchedulerRef = useRef<LayoutScheduler | null>(null);
-    if (layoutSchedulerRef.current === null) {
-      layoutSchedulerRef.current = createLayoutScheduler({
-        // The pass lays out the state the editor holds when it runs, never the
-        // one a transaction produced before a document load replaced it.
-        readState: () => hiddenPMRef.current?.getState() ?? precomputedInitialStateRef.current,
-        runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
-        ...TRANSACTION_LAYOUT_TIMING,
-        clock: browserClock,
-      });
-    }
     const documentChangeNotifyTimerRef = useRef<number | null>(null);
     const compositionNotificationRetryRef = useRef<(() => void) | null>(null);
     // A note follows its reference: a reference whose deletion the reported
     // edits rejected gives its note back its text, and deleting it again (as
     // undoing that reject does) takes the text with it.
     const [noteFollower] = useState<NoteReferenceFollower>(createNoteReferenceFollower);
+    const noteFollowerDocumentRef = useRef(documentIdentity);
     useEffect(() => {
+      if (noteFollowerDocumentRef.current === documentIdentity) return;
+      noteFollowerDocumentRef.current = documentIdentity;
       noteFollower.reset();
     }, [documentIdentity, noteFollower]);
 
     const flushDocumentChangeNotification = useCallback(() => {
-      if (documentChangeNotifyTimerRef.current !== null) {
-        window.clearTimeout(documentChangeNotifyTimerRef.current);
-        documentChangeNotifyTimerRef.current = null;
-      }
+      const flush = () => {
+        if (documentChangeNotifyTimerRef.current !== null) {
+          window.clearTimeout(documentChangeNotifyTimerRef.current);
+          documentChangeNotifyTimerRef.current = null;
+        }
 
-      if (hiddenPMRef.current?.isCanonicalComposing()) {
-        const activeView =
-          getActiveEditorStory().view ?? panic("Canonical composition requires an editor view.");
-        if (compositionNotificationRetryRef.current === null) {
-          compositionNotificationRetryRef.current = afterCanonicalCompositionSettles(
-            activeView,
-            () => {
-              compositionNotificationRetryRef.current = null;
-              flushDocumentChangeNotification();
-            },
+        if (hiddenPMRef.current?.isCanonicalComposing()) {
+          const activeView =
+            getActiveEditorStory().view ?? panic("Canonical composition requires an editor view.");
+          if (compositionNotificationRetryRef.current === null) {
+            compositionNotificationRetryRef.current = afterCanonicalCompositionSettles(
+              activeView,
+              () => {
+                compositionNotificationRetryRef.current = null;
+                flush();
+              },
+            );
+          }
+          return;
+        }
+        compositionNotificationRetryRef.current?.();
+        compositionNotificationRetryRef.current = null;
+
+        let newDoc = hiddenPMRef.current?.getDocument();
+        const body = hiddenPMRef.current?.getState()?.doc;
+        if (newDoc && body && !usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) {
+          newDoc = noteFollower.reconcile(newDoc, body);
+        }
+        if (newDoc) {
+          onDocumentChangeRef.current?.(
+            usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)
+              ? cloneDocumentWithParagraphPropertySources(newDoc)
+              : newDoc,
+          );
+          folioEmitterRef.current.emit(
+            "docChange",
+            usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
+              ? cloneDocumentWithParagraphPropertySources(newDoc)
+              : newDoc,
           );
         }
-        return;
-      }
-      compositionNotificationRetryRef.current?.();
-      compositionNotificationRetryRef.current = null;
-
-      let newDoc = hiddenPMRef.current?.getDocument();
-      const body = hiddenPMRef.current?.getState()?.doc;
-      if (newDoc && body && !usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) {
-        newDoc = noteFollower.reconcile(newDoc, body);
-      }
-      if (newDoc) {
-        onDocumentChangeRef.current?.(
-          usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)
-            ? cloneDocumentWithParagraphPropertySources(newDoc)
-            : newDoc,
-        );
-        folioEmitterRef.current.emit(
-          "docChange",
-          usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
-            ? cloneDocumentWithParagraphPropertySources(newDoc)
-            : newDoc,
-        );
-      }
+      };
+      flush();
     }, [experimentalSession, noteFollower, getActiveEditorStory]);
 
     const scheduleDocumentChangeNotification = useCallback(() => {
@@ -2194,13 +2238,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // Thin adapter over the framework-agnostic scheduler. Repeated calls in the
     // coalescing window paint once for the burst.
     const scheduleLayout = useCallback(() => {
-      layoutSchedulerRef.current?.schedule();
-    }, []);
+      layoutScheduler.schedule();
+    }, [layoutScheduler]);
 
     // Clean up the pending layout pass and the doc-change timer on unmount.
     useEffect(
       () => () => {
-        layoutSchedulerRef.current?.dispose();
+        layoutScheduler.dispose();
         compositionNotificationRetryRef.current?.();
         compositionNotificationRetryRef.current = null;
         if (documentChangeNotifyTimerRef.current !== null) {
@@ -2208,7 +2252,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           documentChangeNotifyTimerRef.current = null;
         }
       },
-      [],
+      [layoutScheduler],
     );
 
     /**
@@ -2517,10 +2561,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       [layout, blocks, measures, getCaretFromDom, selectionOverlayRequestGate, zoom, markupView],
       // NOTE: onSelectionChange removed from dependencies - accessed via ref to prevent infinite loops
     );
-    const updateSelectionOverlayRef = useRef(updateSelectionOverlay);
     useLayoutEffect(() => {
-      updateSelectionOverlayRef.current = updateSelectionOverlay;
-    }, [updateSelectionOverlay]);
+      runtime.commitSelectionUpdate(updateSelectionOverlay);
+    }, [runtime, updateSelectionOverlay]);
 
     useEffect(() => {
       const pagesContainer = pagesContainerRef.current;
@@ -2532,7 +2575,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         animationFrame = requestAnimationFrame(() => {
           animationFrame = null;
           const state = hiddenPMRef.current?.getState();
-          if (state) updateSelectionOverlayRef.current(state);
+          if (state) runtime.updateSelection(state);
         });
       };
       pagesContainer.addEventListener(PAINTER_PAINTED_EVENT, repaintSelection);
@@ -2540,7 +2583,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         if (animationFrame !== null) cancelAnimationFrame(animationFrame);
         pagesContainer.removeEventListener(PAINTER_PAINTED_EVENT, repaintSelection);
       };
-    }, []);
+    }, [runtime]);
 
     // Project anonymization match ranges onto container-space
     // rectangles. Mirrors the SelectionOverlay flow: prefer real
@@ -3079,6 +3122,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      *      `renderHfFromContentOrPm` on the next layout tick.
      */
     const [hfCaretSelection, setHfCaretSelection] = useState<HfCaretSelection | null>(null);
+    const [previousHfEditMode, setPreviousHfEditMode] = useState(hfEditMode);
+    if (previousHfEditMode !== hfEditMode) {
+      setPreviousHfEditMode(hfEditMode);
+      if (!hfEditMode) setHfCaretSelection(null);
+    }
     // Page number (1-indexed) of the painted slot the user most recently
     // clicked / dispatched into. Persisted across HF PM transactions so
     // typing after a click on page 5 keeps the caret on page 5 — without
@@ -3181,10 +3229,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // surface lets a Shift-click resolve an anchor in the wrong PM
     // (e.g. body anchor used as the HF range start, or vice versa) and
     // produces a nonsense selection.
+    const dragSurfaceModeRef = useRef(hfEditMode);
     useEffect(() => {
-      if (!hfEditMode) {
-        setHfCaretSelection(null);
-      }
+      if (dragSurfaceModeRef.current === hfEditMode) return;
+      dragSurfaceModeRef.current = hfEditMode;
       dragAnchorRef.current = null;
       activeHfDragSurfaceRef.current = null;
       activeHfPageNumberRef.current = null;
@@ -3886,17 +3934,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         startPointerTextSelection(e.clientX, e.clientY);
       },
       [
-        getPositionFromMouse,
-        findCellPosFromPmPos,
         readOnly,
         hfEditMode,
         onBodyClick,
-        zoom,
-        onHyperlinkClick,
         clearTableInsertTimer,
         focusHiddenEditor,
         startPointerTextSelection,
         queueHiddenEditorSelection,
+        buildImageSelectionInfo,
+        findImageElement,
+        findCellPosInDoc,
       ],
     );
 
@@ -4860,7 +4907,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           }
         }
       },
-      [getPositionFromMouse, onHeaderFooterDoubleClick, onHyperlinkClick, readOnly],
+      [
+        getPositionFromMouse,
+        onHeaderFooterDoubleClick,
+        onHyperlinkClick,
+        readOnly,
+        hfEditMode,
+        scrollToPositionImpl,
+      ],
     );
 
     /**
@@ -5250,7 +5304,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       ) {
         preHiddenInitialLayoutDoneRef.current = false;
         precomputedInitialDocumentRef.current = null;
-        setPrecomputedInitialSnapshot(null);
       }
 
       if (
@@ -5262,20 +5315,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       }
 
       if (!document) {
-        ensureHiddenEditorView();
+        hiddenPMRef.current?.ensureView();
         return undefined;
       }
 
-      const initialState = createHiddenEditorState({
-        document,
-        styles,
-        manager: extensionManager,
-        externalPlugins,
-        collaborationModules: null,
-        reason: "mount",
-      });
+      const initialState = validPrecomputedInitialState;
+      if (!initialState) return undefined;
       precomputedInitialDocumentRef.current = document;
-      setPrecomputedInitialSnapshot({ document, state: initialState });
       anonymizationMatchesRef.current =
         anonymizationDecorationsKey.getState(initialState)?.matches ?? [];
       directivesRef.current = templateDirectivesKey.getState(initialState)?.ranges ?? [];
@@ -5311,12 +5357,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     }, [
       collaboration,
       document,
-      ensureHiddenEditorView,
-      extensionManager,
-      externalPlugins,
+      validPrecomputedInitialState,
       runLayoutPipeline,
       shouldCreateHiddenEditorView,
-      styles,
       updateAnonymizationOverlay,
       updateDirectivesOverlay,
       updateSelectionOverlay,
@@ -5531,11 +5574,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             }
             runLayoutPipelineRef.current(state, { reason: "font-ready" });
             if (view) {
-              updateSelectionOverlayRef.current(view.state);
+              runtime.updateSelection(view.state);
             }
           },
         }),
-      [],
+      [runtime],
     );
 
     // Register the document's embedded fonts (obfuscated `word/fonts/*.odttf`) as
@@ -5574,7 +5617,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         resetCanvasContext();
         clearAllCaches();
         runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
-        updateSelectionOverlayRef.current(view.state);
+        runtime.updateSelection(view.state);
         return undefined;
       });
       return () => {
@@ -5582,7 +5625,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         removeFontFaces(registered);
         setEmbeddedFontFamilyMap(null);
       };
-    }, [embeddedFontBuffer]);
+    }, [embeddedFontBuffer, runtime]);
 
     // Register the host app's custom font faces (the `fonts` prop) on the same
     // best-effort FontFace path, then re-layout via the identical font-ready tail
@@ -5609,7 +5652,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         resetCanvasContext();
         clearAllCaches();
         runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
-        updateSelectionOverlayRef.current(view.state);
+        runtime.updateSelection(view.state);
       };
 
       void loadHostFontFaces(hostFonts).then((faces) => {
@@ -5636,7 +5679,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         removeFontFaces(registered);
         remeasureForFontChange();
       };
-    }, [hostFonts]);
+    }, [hostFonts, runtime]);
 
     // Re-layout when non-document layout inputs change (e.g., after HF editor save
     // or parent-driven page setup/theme updates).
@@ -6031,6 +6074,24 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       transformOrigin: "top left",
     };
 
+    const handleContainedFocus = useCallback(
+      (event: React.FocusEvent<HTMLDivElement>) => containedHandler(handleContainerFocus)(event),
+      [handleContainerFocus],
+    );
+    const handleContainedContainerMouseDown = useCallback(
+      (event: React.MouseEvent<HTMLDivElement>) =>
+        containedHandler(handleContainerMouseDown)(event),
+      [handleContainerMouseDown],
+    );
+    const handleContainedPagesMouseDown = useCallback(
+      (event: React.MouseEvent<HTMLDivElement>) => containedHandler(handlePagesMouseDown)(event),
+      [handlePagesMouseDown],
+    );
+    const handleContainedPagesClick = useCallback(
+      (event: React.MouseEvent<HTMLDivElement>) => containedHandler(handlePagesClick)(event),
+      [handlePagesClick],
+    );
+
     return (
       <div
         ref={containerRef}
@@ -6042,10 +6103,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         tabIndex={0}
         role="textbox"
         aria-multiline
-        onFocus={containedHandler(handleContainerFocus)}
+        onFocus={handleContainedFocus}
         onBlur={handleContainerBlur}
         onKeyDown={handleKeyDown}
-        onMouseDown={containedHandler(handleContainerMouseDown)}
+        onMouseDown={handleContainedContainerMouseDown}
       >
         {/* Persistent off-screen ProseMirror per HF rId — the painter reads
           from these views when a slot's view exists (see HF unification port,
@@ -6121,9 +6182,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               ref={pagesContainerRef}
               className={`${PAGES_CONTAINER_CLASS}${readOnly ? " paged-editor--readonly" : ""}${hfEditMode ? ` paged-editor--hf-editing paged-editor--editing-${hfEditMode}` : ""}`}
               style={pagesContainerStyles}
-              onMouseDown={containedHandler(handlePagesMouseDown)}
+              onMouseDown={handleContainedPagesMouseDown}
               onMouseMove={handlePagesMouseMove}
-              onClick={containedHandler(handlePagesClick)}
+              onClick={handleContainedPagesClick}
               onContextMenu={handlePagesContextMenu}
               aria-hidden="true" // Visual only, PM provides semantic content
             />
