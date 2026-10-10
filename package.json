@@ -40,6 +40,7 @@
     "check:docx-kernel": "bun --filter '@stll/docx-core' wasm:check",
     "check:shaper": "bun --filter '@stll/folio-core' wasm:check",
     "check:docx-kernel-version": "bun scripts/sync-docx-kernel-version.ts",
+    "kernel:check": "cargo fmt --all -- --check && cargo clippy -p stella-docx-kernel --all-targets -- -D warnings && cargo clippy -p stella-docx-kernel --lib --features wasm --target wasm32-unknown-unknown -- -D warnings && cargo clippy -p stella-text-shaper --all-targets -- -D warnings && cargo clippy -p stella-text-shaper --lib --features wasm --target wasm32-unknown-unknown -- -D warnings && bun run rust:hawk",
     "rust:hawk": "cargo +1.97.1 hawk check --target-dir target/hawk -D warnings -A hawk::dead_public -A hawk::unnecessary_public",
     "corpus:fetch": "bun scripts/corpus-sources.ts fetch",
     "corpus:check": "bun scripts/corpus-sources.ts check",
