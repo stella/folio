@@ -31,20 +31,31 @@ type ResourceFixtureOptions = {
   removal: boolean;
   independent: boolean;
   suffix: string;
+  refusal: "missingLinkedStyle" | "missingDirectStyle";
 };
 
-const resourceFixture = ({ side, removal, independent, suffix }: ResourceFixtureOptions) => {
+const resourceFixture = ({
+  side,
+  removal,
+  independent,
+  suffix,
+  refusal,
+}: ResourceFixtureOptions) => {
   const document = createEmptyDocument();
   document.package.styles = {
     styles: [
       { type: "paragraph", styleId: NORMAL_STYLE, name: "Normal", default: true },
-      {
-        type: "paragraph",
-        styleId: UNSUPPORTED_STYLE,
-        name: "Unsupported style",
-        ...(side === "revised" && { link: "MissingStyle" }),
-        rPr: { bold: side === "revised" },
-      },
+      ...(refusal === "missingLinkedStyle"
+        ? [
+            {
+              type: "paragraph",
+              styleId: UNSUPPORTED_STYLE,
+              name: "Unsupported style",
+              ...(side === "revised" && { link: "MissingStyle" }),
+              rPr: { bold: side === "revised" },
+            } as const,
+          ]
+        : []),
       {
         type: "paragraph",
         styleId: SUPPORTED_STYLE,
@@ -73,40 +84,56 @@ test("a failing insertion style closure refuses the whole redline without changi
   try {
     await assertProperty(
       fc.asyncProperty(fc.stringMatching(/^[a-z]{1,20}$/u), async (suffix) => {
-        for (const { removal, independent } of INSERTION_CASES) {
-          const base = await resourceFixture({ side: "base", removal, independent, suffix });
-          const revised = await resourceFixture({ side: "revised", removal, independent, suffix });
-          const baseBytes = new Uint8Array(base).slice();
-          const revisedBytes = new Uint8Array(revised).slice();
-          const original = await FolioDocxReviewer.fromBuffer(base);
-          const target = await FolioDocxReviewer.fromBuffer(revised);
-          const originalTexts = original.snapshot().blocks.map((block) => block.text);
-          // Separate stable-anchor gaps ensure replacement includes a deletion
-          // and insertion, rather than silently becoming a paired text edit.
-          const events = alignFolioBlocks(original.snapshot().blocks, target.snapshot().blocks);
-          expect(events.filter((event) => event.type === "baseOnly")).toHaveLength(removal ? 1 : 0);
-          expect(events.filter((event) => event.type === "revisedOnly")).toHaveLength(
-            independent ? 2 : 1,
-          );
-          const outcome = await generateRedlineDocx(base, revised).then(
-            (value) => ({ status: "returned" as const, value }),
-            (error: unknown) => ({ status: "refused" as const, error }),
-          );
-          expect(applySpy).not.toHaveBeenCalled();
-          expect(outcome.status).toBe("refused");
-          if (outcome.status !== "refused") panic("A partial redline was returned");
-          expect(outcome.error).toBeInstanceOf(GenerateRedlineDocxResourceImportError);
-          expect(outcome.error).toMatchObject({
-            _tag: "GenerateRedlineDocxResourceImportError",
-            detail: "referenced target style MissingStyle is missing",
-            message: expect.any(String),
-          });
-          expect(new Uint8Array(base)).toEqual(baseBytes);
-          expect(new Uint8Array(revised)).toEqual(revisedBytes);
-          const reopened = await FolioDocxReviewer.fromBuffer(base);
-          expect(reopened.snapshot().blocks.map((block) => block.text)).toEqual(originalTexts);
-          expect(reopened.acceptAll()).toBe(0);
-          expect(reopened.rejectAll()).toBe(0);
+        for (const refusal of ["missingLinkedStyle", "missingDirectStyle"] as const) {
+          for (const { removal, independent } of INSERTION_CASES) {
+            const base = await resourceFixture({
+              side: "base",
+              removal,
+              independent,
+              suffix,
+              refusal,
+            });
+            const revised = await resourceFixture({
+              side: "revised",
+              removal,
+              independent,
+              suffix,
+              refusal,
+            });
+            const baseBytes = new Uint8Array(base).slice();
+            const revisedBytes = new Uint8Array(revised).slice();
+            const original = await FolioDocxReviewer.fromBuffer(base);
+            const target = await FolioDocxReviewer.fromBuffer(revised);
+            const originalTexts = original.snapshot().blocks.map((block) => block.text);
+            // Separate stable-anchor gaps ensure replacement includes a deletion
+            // and insertion, rather than silently becoming a paired text edit.
+            const events = alignFolioBlocks(original.snapshot().blocks, target.snapshot().blocks);
+            expect(events.filter((event) => event.type === "baseOnly")).toHaveLength(
+              removal ? 1 : 0,
+            );
+            expect(events.filter((event) => event.type === "revisedOnly")).toHaveLength(
+              independent ? 2 : 1,
+            );
+            const outcome = await generateRedlineDocx(base, revised).then(
+              (value) => ({ status: "returned" as const, value }),
+              (error: unknown) => ({ status: "refused" as const, error }),
+            );
+            expect(applySpy).not.toHaveBeenCalled();
+            expect(outcome.status).toBe("refused");
+            if (outcome.status !== "refused") panic("A partial redline was returned");
+            expect(outcome.error).toBeInstanceOf(GenerateRedlineDocxResourceImportError);
+            expect(outcome.error).toMatchObject({
+              _tag: "GenerateRedlineDocxResourceImportError",
+              detail: `referenced target style ${refusal === "missingLinkedStyle" ? "MissingStyle" : UNSUPPORTED_STYLE} is missing`,
+              message: expect.any(String),
+            });
+            expect(new Uint8Array(base)).toEqual(baseBytes);
+            expect(new Uint8Array(revised)).toEqual(revisedBytes);
+            const reopened = await FolioDocxReviewer.fromBuffer(base);
+            expect(reopened.snapshot().blocks.map((block) => block.text)).toEqual(originalTexts);
+            expect(reopened.acceptAll()).toBe(0);
+            expect(reopened.rejectAll()).toBe(0);
+          }
         }
       }),
       // Every generated text exercises all four removal/insertion combinations.
