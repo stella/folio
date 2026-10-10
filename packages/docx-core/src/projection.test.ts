@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 
 import {
   DocxProjectionError,
+  docxProjectionSchemaVersion,
   initializeDocxProjection,
   projectCompressedDocx,
   projectMainDocumentXml,
@@ -73,6 +74,9 @@ describe("DOCX projection TypeScript binding", () => {
   test("projects raw main-document paragraphs exactly like compressed input", async () => {
     const projection = await projectMainDocumentXml(new TextEncoder().encode(documentXml));
     const compressed = await projectCompressedDocx(await createDocument());
+    const schemaVersion = await docxProjectionSchemaVersion();
+    expect(projection[0]).toBe(schemaVersion);
+    expect(compressed[0]).toBe(schemaVersion);
     expect(projection[0]).toBe(compressed[0]);
     expect(projection[1]).toEqual(compressed[1]);
     expect(projection[4]).toEqual(documentOnlyFormatting);

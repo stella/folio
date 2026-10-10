@@ -296,6 +296,7 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "DocxProjectionInitializationError",
       "initializeDocxProjection",
       "projectCompressedDocx",
+      "docxProjectionSchemaVersion",
       "projectCompressedDocxWithReviewFacts",
     ],
   },

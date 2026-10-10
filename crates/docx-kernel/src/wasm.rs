@@ -18,6 +18,12 @@ const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 6;
 const DOCX_PACKAGE_PROJECTION_SCHEMA_VERSION: u32 = 2;
 const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 2;
 
+/// The version used by the document projection serializer.
+#[wasm_bindgen(js_name = docxProjectionSchemaVersion)]
+pub fn docx_projection_schema_version() -> u32 {
+    DOCX_PROJECTION_SCHEMA_VERSION
+}
+
 #[wasm_bindgen(typescript_custom_section)]
 const TYPESCRIPT_TYPES: &str = r#"
 export type DocxProjectionFormattingSpan = readonly [
