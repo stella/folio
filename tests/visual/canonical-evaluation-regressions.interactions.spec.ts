@@ -207,9 +207,16 @@ test("canonical history load survives browser collection while its evaluation is
     for (let reload = 0; reload < 3; reload++) {
       await loadReady(page, loadedFixture);
       await select(page, 2);
+      const before = await snapshot(page);
+      await clearRefusals(page);
       await page.keyboard.press("Shift+Enter");
+      const edited = await snapshot(page);
+      expect(edited?.document).not.toEqual(before?.document);
       await page.keyboard.press(`${MODIFIER}+z`);
+      expect((await snapshot(page))?.document).toEqual(before?.document);
       await page.keyboard.press(`${MODIFIER}+Shift+z`);
+      expect((await snapshot(page))?.document).toEqual(edited?.document);
+      await expectNoRefusals(page);
     }
     await initializeCanonicalBrowserHistory(page, source);
     const actions = canonicalHistoryReplayActions(CANONICAL_EVALUATION_HISTORY_REPLAY);
