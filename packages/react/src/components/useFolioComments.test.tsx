@@ -77,8 +77,7 @@ const mount = ({
   };
   const Host = () => {
     const [, setTick] = useState(0);
-    bump = () => setTick((tick) => tick + 1);
-    latest = useFolioComments({
+    const hook = useFolioComments({
       doc: doc ?? null,
       autoOpenReviewSidebar,
       anchorPositions: new Map(),
@@ -87,7 +86,11 @@ const mount = ({
       onCommentsChange,
       committedComments: committed?.current,
     });
-    return <Child hook={latest} />;
+    useLayoutEffect(() => {
+      bump = () => setTick((tick) => tick + 1);
+      latest = hook;
+    });
+    return <Child hook={hook} />;
   };
   const root = createRoot(document.createElement("div"));
   roots.push(root);

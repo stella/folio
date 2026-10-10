@@ -203,29 +203,39 @@ function useRailTickTops({
   resolvePct,
   scrollContainerRef,
 }: RailTickTopsOptions): number[] {
-  const [height, setHeight] = useState(0);
+  const [measurement, setMeasurement] = useState<{
+    height: number;
+    percentages: (number | null)[];
+  }>({ height: 0, percentages: [] });
   useLayoutEffect(() => {
     const list = listRef.current;
-    if (!enabled || !list) {
-      return undefined;
-    }
-    setHeight(list.clientHeight);
-    const observer = new ResizeObserver(() => setHeight(list.clientHeight));
+    if (!enabled || !list) return undefined;
+    const update = () => {
+      const container = scrollContainerRef.current;
+      const height = list.clientHeight;
+      const percentages = items.map((item) => (container ? resolvePct(item.id, container) : null));
+      setMeasurement((previous) =>
+        previous.height === height &&
+        previous.percentages.length === percentages.length &&
+        previous.percentages.every((value, index) => value === percentages.at(index))
+          ? previous
+          : { height, percentages },
+      );
+    };
+    update();
+    const observer = new ResizeObserver(update);
     observer.observe(list);
     return () => observer.disconnect();
-  }, [enabled, listRef]);
-
-  if (!enabled || height === 0) {
-    return [];
-  }
-  const container = scrollContainerRef.current;
+  }, [enabled, items, listRef, resolvePct, scrollContainerRef]);
+  const { height, percentages } = measurement;
+  if (!enabled || height === 0) return [];
   const span = Math.max(0, height - TICK_PITCH_PX);
   if (items.length * TICK_PITCH_PX > height) {
     const step = items.length > 1 ? span / (items.length - 1) : 0;
     return items.map((_, index) => index * step);
   }
-  const tops = items.map((item, index) => {
-    const pct = container ? resolvePct(item.id, container) : null;
+  const tops = items.map((_, index) => {
+    const pct = percentages.at(index) ?? null;
     const fraction = pct === null ? index / Math.max(1, items.length - 1) : pct / 100;
     return fraction * span;
   });

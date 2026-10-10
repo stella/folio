@@ -4,7 +4,7 @@
  * Thin React binding around the framework-agnostic FindReplaceManager. The
  * manager owns the active find result (matches + cursor) and runs the
  * document-level replace operations; this hook keeps the React glue: the
- * `findResultRef` the dialog reads, the live-document accessor, scroll/select
+ * `currentResult` the dialog reads, the live-document accessor, scroll/select
  * side effects, and the dialog-state wiring.
  *
  * The dialog visibility/search-text state itself is managed by `useFindReplace`
@@ -12,7 +12,7 @@
  * operations (find, replace, scroll-to-match) on top.
  */
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
 import type { Document } from "@stll/folio-core/types/document";
@@ -40,8 +40,8 @@ type UseFindReplaceParams = {
 };
 
 export type UseFindReplaceReturn = {
-  /** Ref holding the current find result (needed by FindReplaceDialog) */
-  findResultRef: React.RefObject<FindResult | null>;
+  /** Reactive current find result for FindReplaceDialog. */
+  currentResult: FindResult | null;
   /** Execute a find operation */
   handleFind: (searchText: string, options: FindOptions) => FindResult | null;
   /** Navigate to the next match */
@@ -67,8 +67,7 @@ export function useFindReplace({
   selectMatch,
 }: UseFindReplaceParams): UseFindReplaceReturn {
   const manager = useMemo(() => new FindReplaceManager<FindMatch>(), []);
-  // Mirror of the manager's result for FindReplaceDialog, which reads the ref.
-  const findResultRef = useRef<FindResult | null>(null);
+  const [currentResult, setCurrentResult] = useState<FindResult | null>(null);
   const { setMatches, goToMatch } = findReplace;
 
   const readDocumentState = useCallback(
@@ -90,13 +89,13 @@ export function useFindReplace({
       const currentDocument = readDocumentState();
       if (!currentDocument || !searchText.trim()) {
         manager.clear();
-        findResultRef.current = null;
+        setCurrentResult(null);
         return null;
       }
 
       const matches = findInDocument(currentDocument, searchText, options);
       const result = manager.setMatches(matches);
-      findResultRef.current = result;
+      setCurrentResult(result);
       setMatches(matches, 0);
 
       if (matches.length > 0) {
@@ -114,7 +113,7 @@ export function useFindReplace({
     if (!stepped) {
       return null;
     }
-    findResultRef.current = manager.getResult();
+    setCurrentResult(manager.getResult());
     goToMatch(stepped.index);
     revealMatch(stepped.match);
     return stepped.match;
@@ -125,7 +124,7 @@ export function useFindReplace({
     if (!stepped) {
       return null;
     }
-    findResultRef.current = manager.getResult();
+    setCurrentResult(manager.getResult());
     goToMatch(stepped.index);
     revealMatch(stepped.match);
     return stepped.match;
@@ -163,7 +162,7 @@ export function useFindReplace({
       }
 
       handleDocumentChange(outcome.document);
-      findResultRef.current = null;
+      setCurrentResult(null);
       setMatches([], 0);
 
       return outcome.replacedCount;
@@ -172,7 +171,7 @@ export function useFindReplace({
   );
 
   return {
-    findResultRef,
+    currentResult,
     handleFind,
     handleFindNext,
     handleFindPrevious,

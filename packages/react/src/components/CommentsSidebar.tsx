@@ -598,12 +598,11 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (activeCommentId === null) {
-      return;
-    }
-    setExpandedCard(`comment-${activeCommentId}`);
-  }, [activeCommentId]);
+  const [previousActiveCommentId, setPreviousActiveCommentId] = useState(activeCommentId);
+  if (previousActiveCommentId !== activeCommentId) {
+    setPreviousActiveCommentId(activeCommentId);
+    if (activeCommentId !== null) setExpandedCard(`comment-${activeCommentId}`);
+  }
 
   const handleCardClick = (cardId: string, commentId?: number) => {
     const nextExpandedCard = expandedCard === cardId ? null : cardId;
@@ -908,7 +907,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     const cardId = `comment-${comment.id}`;
     const isExpanded = expandedCard === cardId;
     const isActive = activeCommentId === comment.id;
-    const yPos = cardPositions.get(cardId) ?? lastKnownCardPositionsRef.current.get(cardId);
+    const yPos = cardPositions.get(cardId);
     return (
       // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- card is a clickable container with nested buttons/input; role="button" would be invalid, keyboard handler provides Enter/Space access
       <div
