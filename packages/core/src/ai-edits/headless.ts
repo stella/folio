@@ -1214,7 +1214,6 @@ export class FolioDocxReviewer {
     const destination = this.baseDocument.package;
     const sourcePackage = source.baseDocument.package;
     const destinationStyles = this.importedStyles ?? destination.styles;
-    const existing = new Set(destinationStyles?.styles.map(({ styleId }) => styleId));
     const sourceStyleIds = new Set(sourcePackage.styles?.styles.map(({ styleId }) => styleId));
     const collect = (document: PMNode): Set<string> => {
       const references = new Set<string>();
@@ -1251,7 +1250,7 @@ export class FolioDocxReviewer {
         materializeDefaultParagraphStyle = true;
       }
       for (const styleId of collect(sourceDocumentOf(snapshot))) {
-        if (sourceStyleIds.has(styleId) && !existing.has(styleId)) referencedStyleIds.add(styleId);
+        if (sourceStyleIds.has(styleId)) referencedStyleIds.add(styleId);
       }
     }
     const reservedStyleIds = new Set<string>();

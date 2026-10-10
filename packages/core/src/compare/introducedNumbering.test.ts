@@ -4,6 +4,10 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
+
+const paragraphBlocksOf = (reviewer: FolioDocxReviewer) =>
+  reviewer.snapshot().blocks.map(expectParagraphBlock);
 
 const paragraph = (text: string, paraId: string, numId?: number) => ({
   type: "paragraph" as const,
@@ -218,11 +222,11 @@ test("imports target-only numbering for an introduced list and preserves rejecti
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
-  expect(accepting.snapshot().blocks.at(1)?.listReference).toEqual({ numId: 5, level: 0 });
+  expect(paragraphBlocksOf(accepting).at(1)?.listReference).toEqual({ numId: 5, level: 0 });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
-  expect(rejecting.snapshot().blocks.map(({ text }) => text)).toEqual(["Anchor paragraph."]);
+  expect(paragraphBlocksOf(rejecting).map(({ text }) => text)).toEqual(["Anchor paragraph."]);
 });
 
 test("preserves an absent authored list level on a retained paragraph", async () => {
@@ -244,11 +248,10 @@ test("preserves an absent authored list level on a retained paragraph", async ()
   if (acceptedParagraph?.type !== "paragraph") {
     throw new Error("Expected the retained paragraph after acceptance");
   }
-  expect(acceptedParagraph.formatting?.numPr).toEqual({ kind: "reference", numId: 5 });
-  expect(accepted.snapshot().blocks.at(0)?.statedNumbering).toEqual({
-    kind: "reference",
-    numId: 5,
-  });
+  expect(acceptedParagraph.formatting?.numPr).toBeUndefined();
+  expect(acceptedParagraph.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 5 });
+  expect(paragraphBlocksOf(accepted).at(0)?.statedNumbering).toEqual({ kind: "inherit" });
+  expect(paragraphBlocksOf(accepted).at(0)?.listReference).toEqual({ numId: 5, level: 0 });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
@@ -258,7 +261,8 @@ test("preserves an absent authored list level on a retained paragraph", async ()
     throw new Error("Expected the retained paragraph after rejection");
   }
   expect(rejectedParagraph.formatting?.numPr).toEqual({ kind: "reference", numId: 5, ilvl: 0 });
-  expect(rejected.snapshot().blocks.at(0)?.statedNumbering).toEqual({
+  expect(rejectedParagraph.formatting?.numPrFromStyle).toBeUndefined();
+  expect(paragraphBlocksOf(rejected).at(0)?.statedNumbering).toEqual({
     kind: "reference",
     numId: 5,
     ilvl: 0,
@@ -285,8 +289,10 @@ test("preserves an absent list level when restyling a retained paragraph into a 
     throw new Error("Expected the restyled paragraph after acceptance");
   }
   expect(acceptedParagraph.formatting?.styleId).toBe("RetainedNumbered");
-  expect(acceptedParagraph.formatting?.numPr).toEqual({ kind: "reference", numId: 5 });
-  expect(accepted.snapshot().blocks.at(0)?.statedNumbering).toEqual({ kind: "inherit" });
+  expect(acceptedParagraph.formatting?.numPr).toBeUndefined();
+  expect(acceptedParagraph.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 5 });
+  expect(paragraphBlocksOf(accepted).at(0)?.listReference).toEqual({ numId: 5, level: 0 });
+  expect(paragraphBlocksOf(accepted).at(0)?.statedNumbering).toEqual({ kind: "inherit" });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
@@ -297,7 +303,8 @@ test("preserves an absent list level when restyling a retained paragraph into a 
   }
   expect(rejectedParagraph.formatting?.styleId).toBe("Normal");
   expect(rejectedParagraph.formatting?.numPr).toBeUndefined();
-  expect(rejected.snapshot().blocks.at(0)?.listReference).toBeUndefined();
+  expect(rejectedParagraph.formatting?.numPrFromStyle).toBeUndefined();
+  expect(paragraphBlocksOf(rejected).at(0)?.listReference).toBeUndefined();
 });
 
 test("preserves a style-sourced introduced list instance without materializing level zero", async () => {
@@ -319,15 +326,24 @@ test("preserves a style-sourced introduced list instance without materializing l
   if (introduced?.type !== "paragraph") {
     throw new Error("Expected the introduced paragraph after acceptance");
   }
-  expect(introduced.formatting?.styleId).toBe("TargetNumbered");
+  const importedStyleId = introduced.formatting?.styleId;
+  expect(importedStyleId).not.toBe("TargetNumbered");
+  expect(
+    accepted.toDocument().package.styles?.styles.find(({ styleId }) => styleId === importedStyleId)
+      ?.pPr?.numPr,
+  ).toEqual({ kind: "reference", numId: 5 });
+  expect(
+    accepted.toDocument().package.styles?.styles.find(({ styleId }) => styleId === "TargetNumbered")
+      ?.pPr?.numPr,
+  ).toEqual({ kind: "reference", numId: 3 });
   expect(introduced.formatting?.numPr).toBeUndefined();
   expect(introduced.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 5 });
-  expect(accepted.snapshot().blocks.at(1)?.listReference).toEqual({ numId: 5, level: 0 });
-  expect(accepted.snapshot().blocks.at(1)?.statedNumbering).toEqual({ kind: "inherit" });
+  expect(paragraphBlocksOf(accepted).at(1)?.listReference).toEqual({ numId: 5, level: 0 });
+  expect(paragraphBlocksOf(accepted).at(1)?.statedNumbering).toEqual({ kind: "inherit" });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
-  expect(rejecting.snapshot().blocks.map(({ text }) => text)).toEqual([
+  expect(paragraphBlocksOf(rejecting).map(({ text }) => text)).toEqual([
     "Independently numbered anchor.",
   ]);
 });
@@ -346,7 +362,7 @@ test("rebinds a colliding target numbering definition through a tracked paragrap
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(accepting.acceptAll()).toBeGreaterThan(0);
-  expect(accepting.snapshot().blocks.at(0)?.listReference).toEqual({ numId: 6, level: 0 });
+  expect(paragraphBlocksOf(accepting).at(0)?.listReference).toEqual({ numId: 6, level: 0 });
   expect(
     accepting.readNumberingDefinitions().find(({ numId, level }) => numId === 6 && level === 0)
       ?.format,
@@ -354,7 +370,7 @@ test("rebinds a colliding target numbering definition through a tracked paragrap
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
-  expect(rejecting.snapshot().blocks.at(0)?.listReference).toEqual({ numId: 5, level: 0 });
+  expect(paragraphBlocksOf(rejecting).at(0)?.listReference).toEqual({ numId: 5, level: 0 });
   expect(
     rejecting.readNumberingDefinitions().find(({ numId, level }) => numId === 5 && level === 0)
       ?.format,
@@ -410,7 +426,7 @@ test("rebinds a colliding numbering definition in an inserted table row", async 
   expect(accepting.acceptAll()).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
   expect(
-    accepted.snapshot().blocks.map(({ text, listReference }) => ({ text, listReference })),
+    paragraphBlocksOf(accepted).map(({ text, listReference }) => ({ text, listReference })),
   ).toEqual([
     { text: "Shared table list item.", listReference: { numId: 6, level: 0 } },
     { text: "Inserted table list item.", listReference: { numId: 6, level: 0 } },
@@ -424,7 +440,7 @@ test("rebinds a colliding numbering definition in an inserted table row", async 
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
   const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
   expect(
-    rejected.snapshot().blocks.map(({ text, listReference }) => ({ text, listReference })),
+    paragraphBlocksOf(rejected).map(({ text, listReference }) => ({ text, listReference })),
   ).toEqual([{ text: "Shared table list item.", listReference: { numId: 5, level: 0 } }]);
 });
 
