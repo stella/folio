@@ -12,7 +12,6 @@
 
 import { panic, TaggedError } from "better-result";
 import { Fragment } from "prosemirror-model";
-import { createStyleResolver } from "./prosemirror/styles/styleResolver";
 
 import {
   FolioDocxReviewer,
@@ -27,8 +26,6 @@ import {
   sourceDocumentOf,
   styleResolverOf,
   createFolioAIEditSnapshotWithStyleResolver,
-  remapFolioAIEditSnapshotStyleReferences,
-  remapFolioAIEditSnapshotNumberingReferences,
 } from "./ai-edits/snapshot";
 import type {
   FolioAIBlock,
@@ -49,6 +46,7 @@ import {
   type FolioDocumentPrivacyReport,
 } from "./docx/metadataPrivacy";
 import { FolioContentInlinePresentationProjectionError } from "./compare/content";
+import { importStyleClosureWithNumbering } from "./compare/import-style-closure";
 import { inlineFormattingSegments } from "./compare/formatting";
 import {
   GenerateRedlineDocxOperationLimitError,
@@ -325,36 +323,20 @@ const definedNumIds = (numbering: NumberingDefinitions | null | undefined): Set<
   );
 };
 
-/**
- * Rebind every inserted list item to numbering the redline package defines.
- * The redline is the base package, where the revised version's `w:numId` may
- * name nothing, or another list: the referenced definitions are copied in,
- * under a fresh id wherever the base uses that one for different numbering.
- * A reference the revised package cannot resolve shows no number there
- * either, and is inserted without one.
- */
-const stageInsertedNumbering = (
-  baseReviewer: FolioDocxReviewer,
+/** Unresolvable source references have no visible list; retain only importable resources. */
+const insertedNumberingReferences = (
   revisedReviewer: FolioDocxReviewer,
   snapshots: readonly FolioAIEditSnapshot[],
-): ReadonlyMap<number, number> => {
-  const baseAccess = getFolioDocxComparisonAccess(baseReviewer);
+) => {
   const revisedNumbering = getFolioDocxComparisonAccess(revisedReviewer).numberingDefinitions();
   const resolvable = definedNumIds(revisedNumbering);
-  const references = snapshots.flatMap((snapshot) =>
+  return snapshots.flatMap((snapshot) =>
     snapshot.blocks.flatMap((block) => {
       const paragraph = paragraphBlockOf(block);
       const reference = paragraph?.listReference;
       return reference && resolvable.has(reference.numId) ? [reference] : [];
     }),
   );
-  const remapped =
-    baseAccess.planTargetNumberingReferences(revisedNumbering, references) ??
-    panic("Resolvable revised numbering references could not be planned");
-  if (baseAccess.stageTargetNumbering(revisedNumbering, references, remapped) === "conflict") {
-    panic("Planned revised numbering could not be staged");
-  }
-  return remapped;
 };
 
 /** Only added paragraphs contribute style resources; retain their source nodes and context. */
@@ -469,30 +451,18 @@ export const generateRedlineDocx = async (
   }
 
   const insertedSnapshots = plannedStories.map(({ inserted }) => inserted);
-  const numberingReferenceMap = stageInsertedNumbering(
-    baseReviewer,
-    revisedReviewer,
-    insertedSnapshots,
-  );
-  const styleImport = getFolioDocxComparisonAccess(baseReviewer).stageTargetStyles({
+  const resources = importStyleClosureWithNumbering({
+    destination: baseReviewer,
     source: revisedReviewer,
     snapshots: insertedSnapshots,
     importedHeaderFooterSnapshots: insertedSnapshots,
-    numberingReferenceMap,
+    numberingReferences: insertedNumberingReferences(revisedReviewer, insertedSnapshots),
   });
+  const { styleImport } = resources;
   const defined = definedNumIds(getFolioDocxComparisonAccess(baseReviewer).numberingDefinitions());
-  for (const { story, snapshot, revisedSnapshot, inserted } of plannedStories) {
-    const imported =
-      styleImport.status === "unalignable"
-        ? inserted
-        : remapFolioAIEditSnapshotStyleReferences({
-            snapshot: inserted,
-            styleIdMap: styleImport.styleIdMap,
-            defaultParagraphStyleId: styleImport.defaultParagraphStyleId,
-            importedStyleResolver: createStyleResolver(styleImport.styles),
-            reconcileAuthoredFormatting: true,
-          });
-    const rebound = remapFolioAIEditSnapshotNumberingReferences(imported, numberingReferenceMap);
+  for (const [index, { story, snapshot, revisedSnapshot }] of plannedStories.entries()) {
+    const rebound =
+      resources.snapshots.at(index) ?? panic("A redline resource import lost its snapshot");
     const insertedById = new Map(rebound.blocks.map((block) => [block.id, block]));
     const operations = buildRedlineOperations({
       baseSnapshot: snapshot,

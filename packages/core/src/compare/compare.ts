@@ -1,7 +1,6 @@
 import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
 import { isAltChunkMarkup } from "../docx/altChunk";
 import { isOpaqueNestedRowMarkup, opaqueRevisionCarrierName } from "../docx/opaqueCarrier";
-import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 /**
  * Deterministic `.docx` compare: two packages in, one redlined package plus a
  * JSON change list out.
@@ -59,8 +58,6 @@ import {
   numberingReferenceKeysOf,
   detachFolioAIEditSnapshotExternalHyperlinks,
   relabelFolioAIEditSnapshotNoteReferences,
-  remapFolioAIEditSnapshotNumberingReferences,
-  remapFolioAIEditSnapshotStyleReferences,
   sourceDocumentOf,
   storyTablesOf,
 } from "../ai-edits/snapshot";
@@ -69,6 +66,7 @@ import { withComparisonNoteReferenceEdits } from "../ai-edits/note-references";
 import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
+import { importStyleClosureWithNumbering } from "./import-style-closure";
 import { sameAuthoredInlineProvenance } from "./inline-provenance";
 import { MISSING_NOTE_DETAIL, sameInlineAtoms } from "./inline-atoms";
 import { compareSectionBoundaryProperties } from "./section-boundary-properties";
@@ -423,9 +421,7 @@ export type ParsedComparison = {
   pairs: readonly ComparedStoryPair[];
   /** Package-level numbering differences, which belong to no story. */
   numberingChanges: readonly CompareChange[];
-  numberingStage: ReturnType<
-    ReturnType<typeof getFolioDocxComparisonAccess>["stageTargetNumbering"]
-  >;
+  numberingStage: ReturnType<typeof importStyleClosureWithNumbering>["numberingStage"];
   finalSectionComparison: FinalSectionComparison;
   styleImportFailure: string | undefined;
   unsupported: readonly CompareUnsupportedPart[];
@@ -616,7 +612,6 @@ export const parseComparison = async (
     });
   }
 
-  const targetNumbering = getFolioDocxComparisonAccess(targetReviewer).numberingDefinitions();
   const targetNumberingReferences = pairs.flatMap(({ targetSnapshot }) =>
     targetSnapshot.blocks.flatMap((block) => {
       switch (block.kind) {
@@ -633,58 +628,25 @@ export const parseComparison = async (
       }
     }),
   );
-  const targetNumberingReferenceMap = getFolioDocxComparisonAccess(
-    reviewer,
-  ).planTargetNumberingReferences(targetNumbering, targetNumberingReferences);
   const numberingChanges = compareNumbering(reviewer, targetReviewer, referencedNumberingLevels);
-  const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
-  const numberingStage =
-    targetNumberingReferenceMap === null
-      ? "conflict"
-      : comparisonAccess.stageTargetNumbering(
-          targetNumbering,
-          targetNumberingReferences,
-          targetNumberingReferenceMap,
-        );
-  const styleImport = getFolioDocxComparisonAccess(reviewer).stageTargetStyles({
+  const resources = importStyleClosureWithNumbering({
+    destination: reviewer,
     source: targetReviewer,
-    ...(targetNumberingReferenceMap !== null && {
-      numberingReferenceMap: targetNumberingReferenceMap,
-    }),
     snapshots: pairs.map(({ targetSnapshot }) => targetSnapshot),
     importedHeaderFooterSnapshots: [...importedHeaderFooterTargetSnapshots],
+    numberingReferences: targetNumberingReferences,
   });
-  const styleAlignedPairs =
-    styleImport.status === "unalignable"
-      ? pairs
-      : pairs.map(({ baseStory, targetStory, baseSnapshot, rawBaseSnapshot, targetSnapshot }) => ({
-          baseStory,
-          targetStory,
-          baseSnapshot,
-          rawBaseSnapshot: rawBaseSnapshot ?? baseSnapshot,
-          targetSnapshot: remapFolioAIEditSnapshotStyleReferences({
-            snapshot: targetSnapshot,
-            styleIdMap: styleImport.styleIdMap,
-            defaultParagraphStyleId: styleImport.defaultParagraphStyleId,
-            importedStyleResolver: createStyleResolver(styleImport.styles),
-            reconcileAuthoredFormatting: true,
-          }),
-        }));
-  const comparisonPairs =
-    targetNumberingReferenceMap === null
-      ? styleAlignedPairs
-      : styleAlignedPairs.map(
-          ({ baseStory, targetStory, baseSnapshot, rawBaseSnapshot, targetSnapshot }) => ({
-            baseStory,
-            targetStory,
-            baseSnapshot,
-            rawBaseSnapshot: rawBaseSnapshot ?? baseSnapshot,
-            targetSnapshot: remapFolioAIEditSnapshotNumberingReferences(
-              targetSnapshot,
-              targetNumberingReferenceMap,
-            ),
-          }),
-        );
+  const { styleImport, numberingStage } = resources;
+  const comparisonPairs = pairs.map(
+    ({ baseStory, targetStory, baseSnapshot, rawBaseSnapshot }, index) => ({
+      baseStory,
+      targetStory,
+      baseSnapshot,
+      rawBaseSnapshot: rawBaseSnapshot ?? baseSnapshot,
+      targetSnapshot:
+        resources.snapshots.at(index) ?? panic("A comparison resource import lost its snapshot"),
+    }),
+  );
 
   const finalSectionComparison = compareFinalSectionProperties({
     base: getFolioDocxComparisonAccess(reviewer).finalSectionProperties(),
