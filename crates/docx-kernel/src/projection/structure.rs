@@ -686,12 +686,12 @@ impl StyleSheet {
         &self,
         direct: &ParagraphProperties,
     ) -> Result<Option<(ParagraphAlignmentSetting, ParagraphAlignmentSource)>, ()> {
-        let table = self.table_style(&direct.table_style)?;
         let paragraph = self.paragraph_style(direct.style_id.as_deref())?;
-        if let Some(setting) = paragraph
-            .and_then(|style| style.properties.alignment)
-            .or_else(|| table.and_then(|style| style.properties.alignment))
-        {
+        if let Some(setting) = paragraph.and_then(|style| style.properties.alignment) {
+            return Ok(Some((setting, ParagraphAlignmentSource::Style)));
+        }
+        let table = self.table_style(&direct.table_style)?;
+        if let Some(setting) = table.and_then(|style| style.properties.alignment) {
             return Ok(Some((setting, ParagraphAlignmentSource::Style)));
         }
         Ok(self

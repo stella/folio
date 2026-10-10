@@ -160,3 +160,25 @@ fn fragment_alignment_separates_defaults_absence_and_unread_values() {
         }
     }
 }
+
+proptest! {
+    #[test]
+    fn paragraph_alignment_does_not_require_a_shadowed_table_style(
+        selected in 0_u8..4,
+        cyclic in proptest::bool::ANY,
+    ) {
+        let (token, value) = alignment(selected);
+        let table_definition = if cyclic {
+            r#"<w:basedOn w:val="Unread"/>"#
+        } else {
+            r#"<w:tblStylePr w:type="firstRow"><w:pPr><w:jc w:val="right"/></w:pPr></w:tblStylePr>"#
+        };
+        let styles = format!(r#"<w:styles xmlns:w="{W}"><w:style w:type="paragraph" w:styleId="Centered"><w:pPr><w:jc w:val="{token}"/></w:pPr></w:style><w:style w:type="table" w:default="1" w:styleId="Unread">{table_definition}</w:style></w:styles>"#);
+        let xml = package(&[r#"<w:pStyle w:val="Centered"/>"#.to_owned()], Some(&styles), true);
+        let projection = project_paragraph_fragment(xml.as_bytes(), DocxLimits::default(), allocate).unwrap();
+        prop_assert_eq!(projection.formatting_completeness.alignment, FormattingFactStatus::Known);
+        prop_assert_eq!(projection.paragraphs.first().unwrap().alignment, Some(ParagraphAlignmentFact {
+            value, source: ParagraphAlignmentSource::Style,
+        }));
+    }
+}
