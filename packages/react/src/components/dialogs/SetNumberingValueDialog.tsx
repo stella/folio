@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -27,11 +27,14 @@ const MAX_VALUE = 32767;
 const DEFAULT_VALUE = 1;
 
 /** *Set Numbering Value*: start the selected item's list over at a value. */
-export function SetNumberingValueDialog({
-  isOpen,
-  onClose,
-  onApply,
-}: SetNumberingValueDialogProps) {
+export function SetNumberingValueDialog(props: SetNumberingValueDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return <SetNumberingValueDialogForm {...props} />;
+}
+
+function SetNumberingValueDialogForm({ isOpen, onClose, onApply }: SetNumberingValueDialogProps) {
   const {
     Root: Dialog,
     Portal: DialogPortal,
@@ -45,12 +48,6 @@ export function SetNumberingValueDialog({
   const id = useId();
   // The raw field text, so the field can be cleared while a value is typed.
   const [text, setText] = useState(String(DEFAULT_VALUE));
-
-  useEffect(() => {
-    if (isOpen) {
-      setText(String(DEFAULT_VALUE));
-    }
-  }, [isOpen]);
 
   const inputId = `${id}-numbering-value`;
   const parsed = text.trim() === "" ? Number.NaN : Number(text);

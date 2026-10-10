@@ -45,7 +45,14 @@ export type HyperlinkPopupProps = {
   readOnly?: boolean;
 };
 
-export function HyperlinkPopup({
+export function HyperlinkPopup(props: HyperlinkPopupProps) {
+  if (!props.data) {
+    return null;
+  }
+  return <HyperlinkPopupContent {...props} data={props.data} />;
+}
+
+function HyperlinkPopupContent({
   data,
   onNavigate,
   onCopy,
@@ -53,11 +60,11 @@ export function HyperlinkPopup({
   onRemove,
   onClose,
   readOnly,
-}: HyperlinkPopupProps) {
+}: HyperlinkPopupProps & { data: HyperlinkPopupData }) {
   const t = useTranslations("folio");
   const [mode, setMode] = useState<"view" | "edit">("view");
-  const [editText, setEditText] = useState("");
-  const [editUrl, setEditUrl] = useState("");
+  const [editText, setEditText] = useState(data.displayText);
+  const [editUrl, setEditUrl] = useState(data.href);
   const popupRef = useRef<HTMLDivElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
   const [anchorPosition, setAnchorPosition] = useState<{
@@ -65,13 +72,13 @@ export function HyperlinkPopup({
     left: number;
   } | null>(null);
 
-  useEffect(() => {
-    if (data) {
-      setMode("view");
-      setEditText(data.displayText);
-      setEditUrl(data.href);
-    }
-  }, [data]);
+  const [previousData, setPreviousData] = useState(data);
+  if (data !== previousData) {
+    setPreviousData(data);
+    setMode("view");
+    setEditText(data.displayText);
+    setEditUrl(data.href);
+  }
 
   // Recompute popup position from the live anchor element on every scroll /
   // resize / layout change. `position: fixed` snapshots the click-time rect,
@@ -89,10 +96,6 @@ export function HyperlinkPopup({
   // `getBoundingClientRect()` returns all-zeros and the popup snaps to the
   // viewport top-left.
   useLayoutEffect(() => {
-    if (!data) {
-      setAnchorPosition(null);
-      return;
-    }
     const anchor = data.anchorEl;
     let rafId: number | null = null;
     const read = () => {

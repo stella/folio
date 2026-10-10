@@ -7,7 +7,7 @@
  * - Margins (top, bottom, left, right) in inches
  */
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
@@ -66,7 +66,14 @@ const DEFAULT_WIDTH = 12_240;
 const DEFAULT_HEIGHT = 15_840;
 const DEFAULT_MARGIN = 1440;
 
-export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: PageSetupDialogProps) {
+export function PageSetupDialog(props: PageSetupDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return <PageSetupDialogForm key={JSON.stringify(props.currentProps)} {...props} />;
+}
+
+function PageSetupDialogForm({ isOpen, onClose, onApply, currentProps }: PageSetupDialogProps) {
   const {
     Root: Dialog,
     Portal: DialogPortal,
@@ -78,29 +85,15 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const t = useTranslations("folio");
   const id = useId();
-  const [pageWidth, setPageWidth] = useState(DEFAULT_WIDTH);
-  const [pageHeight, setPageHeight] = useState(DEFAULT_HEIGHT);
-  const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
-  const [marginTop, setMarginTop] = useState(DEFAULT_MARGIN);
-  const [marginBottom, setMarginBottom] = useState(DEFAULT_MARGIN);
-  const [marginLeft, setMarginLeft] = useState(DEFAULT_MARGIN);
-  const [marginRight, setMarginRight] = useState(DEFAULT_MARGIN);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    const w = currentProps?.pageWidth || DEFAULT_WIDTH;
-    const h = currentProps?.pageHeight || DEFAULT_HEIGHT;
-    const orient = currentProps?.orientation || (w > h ? "landscape" : "portrait");
-    setPageWidth(w);
-    setPageHeight(h);
-    setOrientation(orient);
-    setMarginTop(currentProps?.marginTop ?? DEFAULT_MARGIN);
-    setMarginBottom(currentProps?.marginBottom ?? DEFAULT_MARGIN);
-    setMarginLeft(currentProps?.marginLeft ?? DEFAULT_MARGIN);
-    setMarginRight(currentProps?.marginRight ?? DEFAULT_MARGIN);
-  }, [isOpen, currentProps]);
+  const [pageWidth, setPageWidth] = useState(currentProps?.pageWidth || DEFAULT_WIDTH);
+  const [pageHeight, setPageHeight] = useState(currentProps?.pageHeight || DEFAULT_HEIGHT);
+  const [orientation, setOrientation] = useState<"portrait" | "landscape">(
+    currentProps?.orientation || (pageWidth > pageHeight ? "landscape" : "portrait"),
+  );
+  const [marginTop, setMarginTop] = useState(currentProps?.marginTop ?? DEFAULT_MARGIN);
+  const [marginBottom, setMarginBottom] = useState(currentProps?.marginBottom ?? DEFAULT_MARGIN);
+  const [marginLeft, setMarginLeft] = useState(currentProps?.marginLeft ?? DEFAULT_MARGIN);
+  const [marginRight, setMarginRight] = useState(currentProps?.marginRight ?? DEFAULT_MARGIN);
 
   const handlePageSizeChange = (index: number) => {
     if (index < 0) {

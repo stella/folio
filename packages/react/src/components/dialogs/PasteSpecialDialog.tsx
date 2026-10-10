@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -41,7 +41,14 @@ const PASTE_MODES: Array<{ value: PasteSpecialMode; label: string; description: 
   },
 ];
 
-export function PasteSpecialDialog({
+export function PasteSpecialDialog(props: PasteSpecialDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return <PasteSpecialDialogForm key={JSON.stringify(props.defaultMode)} {...props} />;
+}
+
+function PasteSpecialDialogForm({
   isOpen,
   onClose,
   onPaste,
@@ -59,12 +66,6 @@ export function PasteSpecialDialog({
   const t = useTranslations("folio");
   const id = useId();
   const [mode, setMode] = useState<PasteSpecialMode>(defaultMode);
-
-  useEffect(() => {
-    if (isOpen) {
-      setMode(defaultMode);
-    }
-  }, [isOpen, defaultMode]);
 
   const handlePaste = () => {
     onPaste(mode);
