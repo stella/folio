@@ -1283,7 +1283,9 @@ export class FolioDocxReviewer {
       }
     }
     const result = importReferencedStyleDefinitions({
-      numberingReferenceMap: styleNumberingReferenceMap,
+      ...(styleNumberingReferenceMap === undefined
+        ? {}
+        : { numberingReferenceMap: styleNumberingReferenceMap }),
       sourceStyles: sourcePackage.styles,
       destinationStyles,
       sourceTheme: sourcePackage.theme,
