@@ -1,5 +1,6 @@
 import { getHeaderFooterText, getEndnoteText, getFootnoteText } from "../docx/storyPlainText";
 import JSZip from "jszip";
+import { classifyStyleReference } from "./styleReference";
 import { rebindDrawingImageRelationship } from "../docx/drawingRelationships";
 import {
   captureSectionReferenceInventory,
@@ -1216,6 +1217,9 @@ export class FolioDocxReviewer {
     const destination = this.baseDocument.package;
     const sourcePackage = source.baseDocument.package;
     const destinationStyles = this.importedStyles ?? destination.styles;
+    const sourceStylesById = new Map(
+      sourcePackage.styles?.styles.map((style) => [style.styleId, style]),
+    );
     const collect = (document: PMNode): Set<string> => {
       const references = new Set<string>();
       document.descendants((node) => {
@@ -1251,7 +1255,9 @@ export class FolioDocxReviewer {
         materializeDefaultParagraphStyle = true;
       }
       for (const styleId of collect(sourceDocumentOf(snapshot))) {
-        referencedStyleIds.add(styleId);
+        if (classifyStyleReference(styleId, sourceStylesById).kind === "defined") {
+          referencedStyleIds.add(styleId);
+        }
       }
     }
     const reservedStyleIds = new Set<string>();

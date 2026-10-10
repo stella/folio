@@ -1,6 +1,7 @@
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../prosemirror/schema/nodes";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
 import { effectiveParagraphNumbering } from "../prosemirror/numberingAttr";
+import { classifyStyleReference } from "./styleReference";
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
   Fragment,
@@ -3817,10 +3818,8 @@ const applyFolioAIEditOperationsInternal = ({
     return id;
   };
   const styleResolver = getDocumentStyleResolver(view.state);
-  // `null` when the caller keeps undefined styles, or when the state carries no
-  // styles plugin at all, the one case that cannot say what the package defines.
-  const styleDefinitions =
-    undefinedStyles === "keep" ? null : getDocumentStyleDefinitions(view.state);
+  // A state without the styles plugin cannot say which definitions exist.
+  const styleDefinitions = getDocumentStyleDefinitions(view.state);
   // A new-list request becomes a reference to the instance minted for it, so
   // everything below applies one kind of numbering.
   const { operations, numbering } = resolveNewListOperations(
@@ -3911,7 +3910,11 @@ const applyFolioAIEditOperationsInternal = ({
       skipped.push({ id: operation.id, reason: "unsupportedBlock" });
       continue;
     }
-    const undefinedStyle = findUndefinedParagraphStyleReference(operation, styleDefinitions);
+    const undefinedStyle = findUndefinedParagraphStyleReference({
+      operation,
+      definitions: styleDefinitions,
+      undefinedStyles,
+    });
     if (undefinedStyle !== undefined) {
       skipped.push({
         id: operation.id,
@@ -8058,18 +8061,23 @@ const operationParagraphStyleReferences = (
   }
 };
 
+type FindUndefinedParagraphStyleReferenceOptions = {
+  operation: FolioAIEditOperation;
+  definitions: StyleDefinitionLookup;
+  undefinedStyles: FolioUndefinedStylePolicy;
+};
+
 /**
- * The first paragraph style the operation names that the document does not
- * define as a paragraph style. A `w:pStyle` naming no definition, or a table
- * or character style, confers no formatting: the paragraph keeps its body
- * look while the operation reports a restyle. Refused here, before anything
- * is applied, the way an undefined block id is. `null` definitions (a state
- * without the styles plugin) cannot say what is defined, and check nothing.
+ * Explicit editing requests refuse unavailable paragraph styles before apply.
+ * Source-preserving imports keep their references verbatim; closure import
+ * validates every defined resource separately. A state without the styles
+ * plugin cannot classify a reference and checks nothing.
  */
-const findUndefinedParagraphStyleReference = (
-  operation: FolioAIEditOperation,
-  definitions: StyleDefinitionLookup,
-): UndefinedParagraphStyleReference | undefined => {
+const findUndefinedParagraphStyleReference = ({
+  operation,
+  definitions,
+  undefinedStyles,
+}: FindUndefinedParagraphStyleReferenceOptions): UndefinedParagraphStyleReference | undefined => {
   if (definitions === null) {
     return undefined;
   }
@@ -8077,9 +8085,13 @@ const findUndefinedParagraphStyleReference = (
     if (styleId === null || styleId === undefined) {
       continue;
     }
-    const definition = definitions.get(styleId);
-    if (definition?.type !== "paragraph") {
-      return { path, styleId, definedAs: definition?.type };
+    const reference = classifyStyleReference(styleId, definitions);
+    if (undefinedStyles === "keep") continue;
+    if (reference.kind === "unknown") {
+      return { path, styleId, definedAs: undefined };
+    }
+    if (reference.definition.type !== "paragraph") {
+      return { path, styleId, definedAs: reference.definition.type };
     }
   }
   return undefined;

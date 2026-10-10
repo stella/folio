@@ -3,6 +3,7 @@ import { panic } from "better-result";
 import fc from "fast-check";
 
 import { assertProperty, propertyTestTimeout } from "../../../test/property-testing";
+import { expectParagraphBlock } from "../../../test/paragraphBlock";
 import { FolioDocxReviewer } from "./ai-edits/headless";
 import { createDocx } from "./docx/rezip";
 import { generateRedlineDocx, GenerateRedlineDocxResourceImportError } from "./redline";
@@ -31,7 +32,7 @@ type ResourceFixtureOptions = {
   removal: boolean;
   independent: boolean;
   suffix: string;
-  refusal: "missingLinkedStyle" | "missingDirectStyle";
+  styleCase: "missingLinkedStyle" | "unknownDirectStyle";
 };
 
 const resourceFixture = ({
@@ -39,13 +40,13 @@ const resourceFixture = ({
   removal,
   independent,
   suffix,
-  refusal,
+  styleCase,
 }: ResourceFixtureOptions) => {
   const document = createEmptyDocument();
   document.package.styles = {
     styles: [
       { type: "paragraph", styleId: NORMAL_STYLE, name: "Normal", default: true },
-      ...(refusal === "missingLinkedStyle"
+      ...(styleCase === "missingLinkedStyle"
         ? [
             {
               type: "paragraph",
@@ -84,21 +85,22 @@ test("a failing insertion style closure refuses the whole redline without changi
   try {
     await assertProperty(
       fc.asyncProperty(fc.stringMatching(/^[a-z]{1,20}$/u), async (suffix) => {
-        for (const refusal of ["missingLinkedStyle", "missingDirectStyle"] as const) {
+        for (const styleCase of ["missingLinkedStyle", "unknownDirectStyle"] as const) {
           for (const { removal, independent } of INSERTION_CASES) {
+            applySpy.mockClear();
             const base = await resourceFixture({
               side: "base",
               removal,
               independent,
               suffix,
-              refusal,
+              styleCase,
             });
             const revised = await resourceFixture({
               side: "revised",
               removal,
               independent,
               suffix,
-              refusal,
+              styleCase,
             });
             const baseBytes = new Uint8Array(base).slice();
             const revisedBytes = new Uint8Array(revised).slice();
@@ -118,15 +120,43 @@ test("a failing insertion style closure refuses the whole redline without changi
               (value) => ({ status: "returned" as const, value }),
               (error: unknown) => ({ status: "refused" as const, error }),
             );
-            expect(applySpy).not.toHaveBeenCalled();
-            expect(outcome.status).toBe("refused");
-            if (outcome.status !== "refused") panic("A partial redline was returned");
-            expect(outcome.error).toBeInstanceOf(GenerateRedlineDocxResourceImportError);
-            expect(outcome.error).toMatchObject({
-              _tag: "GenerateRedlineDocxResourceImportError",
-              detail: `referenced target style ${refusal === "missingLinkedStyle" ? "MissingStyle" : UNSUPPORTED_STYLE} is missing`,
-              message: expect.any(String),
-            });
+            if (styleCase === "missingLinkedStyle") {
+              expect(applySpy).not.toHaveBeenCalled();
+              expect(outcome.status).toBe("refused");
+              if (outcome.status !== "refused") panic("A partial redline was returned");
+              expect(outcome.error).toBeInstanceOf(GenerateRedlineDocxResourceImportError);
+              expect(outcome.error).toMatchObject({
+                _tag: "GenerateRedlineDocxResourceImportError",
+                detail: "referenced target style MissingStyle is missing",
+                message: expect.any(String),
+              });
+            } else {
+              expect(outcome.status).toBe("returned");
+              if (outcome.status !== "returned") panic("An unknown direct style was refused");
+              expect(outcome.value.skipped).toEqual([]);
+              expect(applySpy).toHaveBeenCalledTimes(1);
+              const accepting = await FolioDocxReviewer.fromBuffer(outcome.value.buffer);
+              expect(accepting.acceptAll()).toBeGreaterThan(0);
+              const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+              expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual(
+                target.snapshot().blocks.map(({ text }) => text),
+              );
+              const replacement = expectParagraphBlock(
+                accepted
+                  .snapshot()
+                  .blocks.find(({ text }) => text === `Unsupported replacement ${suffix}`),
+              );
+              expect(replacement.styleId).toBe(UNSUPPORTED_STYLE);
+              expect(
+                accepted
+                  .toDocument()
+                  .package.styles?.styles.some(({ styleId }) => styleId === UNSUPPORTED_STYLE),
+              ).toBe(false);
+              const rejecting = await FolioDocxReviewer.fromBuffer(outcome.value.buffer);
+              expect(rejecting.rejectAll()).toBeGreaterThan(0);
+              const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+              expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual(originalTexts);
+            }
             expect(new Uint8Array(base)).toEqual(baseBytes);
             expect(new Uint8Array(revised)).toEqual(revisedBytes);
             const reopened = await FolioDocxReviewer.fromBuffer(base);

@@ -482,8 +482,9 @@ export const generateRedlineDocx = async (
       },
       wordDiff,
       // Added paragraphs use the style closure imported through the collision owner.
-      // Resource closure refusal aborts the whole redline before any body operation.
-      undefinedStyles: "refuse",
+      // Defined resource closure refusal aborts before any body operation.
+      // Unknown direct references retain the source spelling and carry no definition.
+      undefinedStyles: "keep",
     });
     applied.push(...result.applied);
     skipped.push(...result.skipped);
