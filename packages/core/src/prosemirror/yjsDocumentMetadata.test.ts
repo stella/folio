@@ -14,6 +14,7 @@ import {
   FOLIO_YJS_ATTR_SCHEMA_VERSION,
   FolioYjsAttrSchemaVersionError,
   FolioYjsNoteReferenceSchemaError,
+  FolioYjsNumberingSourceSchemaError,
   attrSchemaMigrationSteps,
   readYjsAttrSchemaVersion,
   writeYjsDocumentMetadata,
@@ -363,6 +364,7 @@ describe("note-reference occurrence schema cutover", () => {
       });
       expect(() => applyAttrSchemaMigrations(ydoc, fragment, version)).toThrow(
         FolioYjsNoteReferenceSchemaError,
+        FolioYjsNumberingSourceSchemaError,
       );
       expect(() => applyAttrSchemaMigrations(ydoc, fragment, version)).toThrow(
         `Yjs schema ${version}`,
@@ -372,4 +374,55 @@ describe("note-reference occurrence schema cutover", () => {
       ydoc.destroy();
     },
   );
+});
+
+describe("stated numbering source schema cutover", () => {
+  test.each([0, 7, 11, 12] as const)(
+    "schema %s refuses ambiguous sources without mutation",
+    (version) => {
+      for (const location of ["attrs", "_originalFormatting", "_propertyChanges"] as const) {
+        for (const numId of [7, 8]) {
+          const ydoc = new Y.Doc();
+          const ambiguous = {
+            numPr: { kind: "reference", numId, ilvl: 2 },
+            numPrFromStyle: { kind: "reference", numId: 7, ilvl: 0 },
+          };
+          const attributes = (() => {
+            if (location === "attrs") return ambiguous;
+            if (location === "_originalFormatting") return { _originalFormatting: ambiguous };
+            return { _propertyChanges: [{ previousFormatting: ambiguous }] };
+          })();
+          const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+          prosemirrorToYXmlFragment(
+            schema.node("doc", null, [schema.node("paragraph", attributes)]),
+            fragment,
+          );
+          ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, version);
+          const before = Y.encodeStateAsUpdate(ydoc);
+          expect(() => applyAttrSchemaMigrations(ydoc, fragment, version)).toThrow(
+            FolioYjsNumberingSourceSchemaError,
+          );
+          expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
+          expect(readYjsAttrSchemaVersion(ydoc).unwrap()).toBe(version);
+          ydoc.destroy();
+        }
+      }
+    },
+  );
+
+  test("current snapshots preserve authored references regardless of the style value", () => {
+    for (const numId of [7, 8]) {
+      const ydoc = new Y.Doc();
+      const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT_NAME);
+      const paragraph = schema.node("paragraph", {
+        numPr: { kind: "reference", numId, ilvl: 2 },
+        numPrFromStyle: { kind: "reference", numId: 7, ilvl: 0 },
+      });
+      prosemirrorToYXmlFragment(schema.node("doc", null, [paragraph]), fragment);
+      const before = Y.encodeStateAsUpdate(ydoc);
+      expect(applyAttrSchemaMigrations(ydoc, fragment, FOLIO_YJS_ATTR_SCHEMA_VERSION)).toBe(0);
+      expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
+      ydoc.destroy();
+    }
+  });
 });

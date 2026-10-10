@@ -7,6 +7,7 @@ import { schema } from "../../prosemirror/schema";
 import {
   applyAttrSchemaMigrations,
   FolioYjsNoteReferenceSchemaError,
+  FolioYjsNumberingSourceSchemaError,
   readYjsAttrSchemaVersion,
   readYjsParagraphSourceContract,
   withParagraphSourceContract,
@@ -104,7 +105,10 @@ const readProseMirrorDocument = (yjsUpdate: Uint8Array) => {
     },
     catch: (cause) => {
       if (cause instanceof FolioYjsDocxMaterializationError) return cause;
-      if (cause instanceof FolioYjsNoteReferenceSchemaError)
+      if (
+        cause instanceof FolioYjsNoteReferenceSchemaError ||
+        cause instanceof FolioYjsNumberingSourceSchemaError
+      )
         return new FolioYjsDocxMaterializationError({
           code: "stale_attr_schema",
           message: cause.message,
