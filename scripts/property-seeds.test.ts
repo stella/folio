@@ -814,7 +814,7 @@ describe("pinned regression seeds", () => {
   });
 
   test("every imported property driver declares a literal ID in its options", () => {
-    // Exercise the runner environment that caught the undeclared rg dependency.
+    // Verify discovery works without executables on PATH.
     const previousPath = process.env["PATH"];
     process.env["PATH"] = "";
     try {
