@@ -40,7 +40,7 @@ import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 
 import { panic, Result } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
-import type { NumberingDefinitions, SectionProperties } from "../types/document";
+import type { SectionProperties } from "../types/document";
 
 import {
   FolioDocxReviewer,
@@ -423,9 +423,9 @@ export type ParsedComparison = {
   pairs: readonly ComparedStoryPair[];
   /** Package-level numbering differences, which belong to no story. */
   numberingChanges: readonly CompareChange[];
-  targetNumbering: NumberingDefinitions | null | undefined;
-  targetNumberingReferences: readonly { numId: number; level: number }[];
-  targetNumberingReferenceMap: ReadonlyMap<number, number>;
+  numberingStage: ReturnType<
+    ReturnType<typeof getFolioDocxComparisonAccess>["stageTargetNumbering"]
+  >;
   finalSectionComparison: FinalSectionComparison;
   styleImportFailure: string | undefined;
   unsupported: readonly CompareUnsupportedPart[];
@@ -616,8 +616,41 @@ export const parseComparison = async (
     });
   }
 
+  const targetNumbering = getFolioDocxComparisonAccess(targetReviewer).numberingDefinitions();
+  const targetNumberingReferences = pairs.flatMap(({ targetSnapshot }) =>
+    targetSnapshot.blocks.flatMap((block) => {
+      switch (block.kind) {
+        case "diagnostic":
+          return [];
+        case "paragraph":
+        case "heading":
+        case "listItem":
+          return block.listReference ? [block.listReference] : [];
+        default: {
+          const unreachable: never = block;
+          return panic("Unhandled comparison block kind", { block: unreachable });
+        }
+      }
+    }),
+  );
+  const targetNumberingReferenceMap = getFolioDocxComparisonAccess(
+    reviewer,
+  ).planTargetNumberingReferences(targetNumbering, targetNumberingReferences);
+  const numberingChanges = compareNumbering(reviewer, targetReviewer, referencedNumberingLevels);
+  const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
+  const numberingStage =
+    targetNumberingReferenceMap === null
+      ? "conflict"
+      : comparisonAccess.stageTargetNumbering(
+          targetNumbering,
+          targetNumberingReferences,
+          targetNumberingReferenceMap,
+        );
   const styleImport = getFolioDocxComparisonAccess(reviewer).stageTargetStyles({
     source: targetReviewer,
+    ...(targetNumberingReferenceMap !== null && {
+      numberingReferenceMap: targetNumberingReferenceMap,
+    }),
     snapshots: pairs.map(({ targetSnapshot }) => targetSnapshot),
     importedHeaderFooterSnapshots: [...importedHeaderFooterTargetSnapshots],
   });
@@ -637,26 +670,6 @@ export const parseComparison = async (
             reconcileAuthoredFormatting: true,
           }),
         }));
-  const targetNumbering = getFolioDocxComparisonAccess(targetReviewer).numberingDefinitions();
-  const targetNumberingReferences = styleAlignedPairs.flatMap(({ targetSnapshot }) =>
-    targetSnapshot.blocks.flatMap((block) => {
-      switch (block.kind) {
-        case "diagnostic":
-          return [];
-        case "paragraph":
-        case "heading":
-        case "listItem":
-          return block.listReference ? [block.listReference] : [];
-        default: {
-          const unreachable: never = block;
-          return panic("Unhandled comparison block kind", { block: unreachable });
-        }
-      }
-    }),
-  );
-  const targetNumberingReferenceMap = getFolioDocxComparisonAccess(
-    reviewer,
-  ).planTargetNumberingReferences(targetNumbering, targetNumberingReferences);
   const comparisonPairs =
     targetNumberingReferenceMap === null
       ? styleAlignedPairs
@@ -693,10 +706,8 @@ export const parseComparison = async (
     },
     packageDate,
     pairs: comparisonPairs,
-    numberingChanges: compareNumbering(reviewer, targetReviewer, referencedNumberingLevels),
-    targetNumbering,
-    targetNumberingReferences,
-    targetNumberingReferenceMap: targetNumberingReferenceMap ?? new Map(),
+    numberingChanges,
+    numberingStage,
     finalSectionComparison,
     styleImportFailure: styleImport.status === "unalignable" ? styleImport.detail : undefined,
     unsupported,
@@ -901,9 +912,7 @@ export const applyComparison = (
     revisionFormat,
     terminalTableCarrierStaged,
     numberingChanges,
-    targetNumbering,
-    targetNumberingReferences,
-    targetNumberingReferenceMap,
+    numberingStage,
     finalSectionComparison,
     styleImportFailure,
     pairs,
@@ -933,11 +942,6 @@ export const applyComparison = (
     );
   }
   const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
-  const numberingStage = comparisonAccess.stageTargetNumbering(
-    targetNumbering,
-    targetNumberingReferences,
-    targetNumberingReferenceMap,
-  );
   const changes: CompareChange[] = [...numberingChanges];
   const failures: CompareVerificationFailure[] = [];
   if (styleImportFailure !== undefined)

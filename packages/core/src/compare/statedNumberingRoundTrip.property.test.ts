@@ -78,6 +78,68 @@ const buildDocument = async (
   return await createDocx(document);
 };
 
+const buildInheritedCollisionDocument = async ({
+  statedNumbering,
+  numFmt,
+  styleId,
+}: {
+  statedNumbering: FolioContentStatedNumbering;
+  numFmt: "decimal" | "lowerRoman";
+  styleId: "BaseNumbered" | "StyleNumbered";
+}): Promise<ArrayBuffer> => {
+  const document = createEmptyDocument();
+  document.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "1234ABCD",
+      textId: "1234ABCD",
+      formatting: {
+        styleId,
+        ...(statedNumbering.kind !== "inherit" && { numPr: statedNumbering }),
+      },
+      content: [
+        {
+          type: "run",
+          content: [{ type: "text", text: PARAGRAPH_TEXT }],
+        },
+      ],
+    },
+  ];
+  document.package.styles = {
+    styles: [
+      { type: "paragraph", styleId: "Normal", name: "Normal", default: true },
+      {
+        type: "paragraph",
+        styleId: "BaseNumbered",
+        name: "Base Numbered",
+        pPr: { numPr: paragraphNumberingReference({ numId: 5 }) },
+      },
+      {
+        type: "paragraph",
+        styleId: "StyleNumbered",
+        name: "Style Numbered",
+        pPr: { numPr: paragraphNumberingReference({ numId: 5 }) },
+      },
+    ],
+  };
+  document.package.numbering = {
+    abstractNums: [
+      {
+        abstractNumId: 5,
+        levels: [
+          {
+            ilvl: 0,
+            numFmt,
+            lvlText: "%1.",
+          },
+        ],
+      },
+    ],
+    nums: [{ numId: 5, abstractNumId: 5 }],
+  };
+  return await createDocx(document);
+};
+
 const TARGET_STATED_NUMBERINGS: readonly FolioContentStatedNumbering[] = [
   INHERITED_PARAGRAPH_NUMBERING,
   NO_PARAGRAPH_NUMBERING,
@@ -143,6 +205,82 @@ test("accept and reject preserve authored numbering independently from rendered 
         expect(rejecting.rejectAll()).toBeGreaterThan(0);
         const rejectedProjection = await paragraphProjection(await rejecting.toBuffer());
         expect(rejectedProjection).toEqual(baseProjection);
+      }
+    }),
+    { numRuns: 1 },
+  );
+});
+
+const INHERITED_COLLISION_CASES = [
+  {
+    statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+    targetMarker: "i.",
+    targetNumbering: "lowerRoman",
+  },
+  {
+    statedNumbering: { kind: "levelOnly", ilvl: 0 },
+    targetMarker: "i.",
+    targetNumbering: "lowerRoman",
+  },
+] as const;
+
+test("accept and reject preserve style-only numbering across colliding definitions", async () => {
+  await assertProperty(
+    fc.asyncProperty(fc.constant(INHERITED_COLLISION_CASES), async (cases) => {
+      const baseBuffer = await buildInheritedCollisionDocument({
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+        numFmt: "decimal",
+        styleId: "BaseNumbered",
+      });
+      const baseProjection = await paragraphProjection(baseBuffer);
+      expect(baseProjection.statedNumbering).toEqual(INHERITED_PARAGRAPH_NUMBERING);
+      expect(baseProjection.displayLabel).toBe("1.");
+
+      for (const { statedNumbering, targetMarker, targetNumbering } of cases) {
+        const targetBuffer = await buildInheritedCollisionDocument({
+          statedNumbering,
+          numFmt: targetNumbering,
+          styleId: "StyleNumbered",
+        });
+        const targetProjection = await paragraphProjection(targetBuffer);
+        expect(targetProjection.statedNumbering).toEqual(statedNumbering);
+        expect(targetProjection.displayLabel).toBe(targetMarker);
+
+        const compared = await compareDocx(baseBuffer, targetBuffer, COMPARE_OPTIONS);
+        if (compared.isErr()) throw compared.error;
+        expect(compared.value.verification).toEqual({ status: "verified" });
+
+        const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+        expect(accepting.acceptAll()).toBeGreaterThan(0);
+        const acceptedBuffer = await accepting.toBuffer();
+        const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+        const acceptedProjection = await paragraphProjection(acceptedBuffer);
+        expect(acceptedProjection.statedNumbering).toEqual(statedNumbering);
+        expect(acceptedProjection.styleId).not.toBe("BaseNumbered");
+        expect(acceptedProjection.displayLabel).toBe(targetMarker);
+        expect(acceptedProjection.listReference).toBeDefined();
+        expect(accepted.readNumberingDefinitions()).toContainEqual(
+          expect.objectContaining({
+            numId: acceptedProjection.listReference?.numId,
+            format: targetNumbering,
+          }),
+        );
+
+        const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+        expect(rejecting.rejectAll()).toBeGreaterThan(0);
+        const rejectedBuffer = await rejecting.toBuffer();
+        const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
+        const rejectedProjection = await paragraphProjection(rejectedBuffer);
+        expect(rejectedProjection.statedNumbering).toEqual(INHERITED_PARAGRAPH_NUMBERING);
+        expect(rejectedProjection.styleId).toBe("BaseNumbered");
+        expect(rejectedProjection.displayLabel).toBe("1.");
+        expect(rejectedProjection.listReference).toBeDefined();
+        expect(rejected.readNumberingDefinitions()).toContainEqual(
+          expect.objectContaining({
+            numId: rejectedProjection.listReference?.numId,
+            format: "decimal",
+          }),
+        );
       }
     }),
     { numRuns: 1 },
