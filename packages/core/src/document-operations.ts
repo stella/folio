@@ -3,7 +3,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import { sanitizeXmlCharacters, type ValidateDocumentModelIssue } from "@stll/docx-core";
-import { paragraphNumberingReference } from "@stll/docx-core/model";
+import { isNumberingReference, paragraphNumberingReference } from "@stll/docx-core/model";
 
 import { LIST_KINDS, type ListKind } from "./docx/listNumberingInstances";
 import { outlineLevelFromAttrValue } from "./prosemirror/outlineLevelAttr";
@@ -665,7 +665,9 @@ const readClearableNumbering = ({
   if (kind === "reference") {
     assertAllowedKeys(candidate, numberingPath, ["kind", "numId", "ilvl"]);
     const numId = readNonNegativeInteger(candidate, "numId", numberingPath);
-    if (numId === 0) return invalidBatch(`${numberingPath}.numId`, "expected a positive integer");
+    if (!isNumberingReference(numId)) {
+      return invalidBatch(`${numberingPath}.numId`, "expected a positive integer");
+    }
     if (candidate["ilvl"] === undefined) return paragraphNumberingReference({ numId });
     const ilvl = readNonNegativeInteger(candidate, "ilvl", numberingPath);
     if (ilvl > MAX_NEW_LIST_LEVEL) {

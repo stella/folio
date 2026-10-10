@@ -13,6 +13,7 @@ import {
   docxToMarkdown,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
 } from "@stll/folio-core/server";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { toMarkdown } from "@stll/folio-core/markdown";
 
 import {
@@ -189,7 +190,7 @@ describe("fixed findings", () => {
           id: "numbering",
           type: "setBlockParagraphProperties",
           blockId: "31617F9A",
-          properties: { numbering: { kind: "reference", numId: 7, ilvl: 0 } },
+          properties: { numbering: paragraphNumberingReference({ numId: 7, ilvl: 0 }) },
         },
       ],
     });
@@ -335,8 +336,13 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     text: string,
     field: "previewRuns" | "directIndentation",
   ): Promise<void> => {
-    const pick = (from: Reviewer) =>
-      from.getContent().find((block) => block.text === text)?.[field];
+    const pick = (from: Reviewer) => {
+      const block = from.getContent().find((candidate) => candidate.text === text);
+      assert.ok(block, "Expected the paragraph under comparison");
+      if (block.kind === "diagnostic")
+        assert.fail("Expected paragraph fields, got a diagnostic block");
+      return block[field];
+    };
     assert.deepEqual(
       pick(await reopen(reviewer)),
       pick(reviewer),

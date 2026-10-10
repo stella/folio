@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
+import type { FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
 import { assertReadersAgree } from "../support/invariants.ts";
 import {
@@ -230,7 +231,10 @@ test("an undefined numbering level without a displayed marker reads as prose", (
     kind: "paragraph",
     statedNumbering: { kind: "inherit" },
     listReference: { numId: 7, level: 8 },
-  };
+  } as const satisfies Pick<
+    FolioAIParagraphBlock,
+    "id" | "kind" | "text" | "statedNumbering" | "listReference"
+  >;
   assert.deepEqual(contentView(block, formats), { text: "No marker", kind: "paragraph" });
   assert.throws(
     () => contentView({ ...block, displayLabel: "1." }, formats),

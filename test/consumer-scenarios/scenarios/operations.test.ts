@@ -14,6 +14,7 @@ import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
 } from "@stll/folio-core/server";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 
 import {
   directNumberedDocument,
@@ -303,7 +304,7 @@ describe("list labels after an operation", () => {
           type: "insertAfterBlock",
           blockId: anchor.id,
           text: "Level eight.",
-          numbering: { kind: "reference", numId: 7, ilvl: 8 },
+          numbering: paragraphNumberingReference({ numId: 7, ilvl: 8 }),
         },
       ],
     });
@@ -419,7 +420,7 @@ describe("an operation naming a numbering instance the package does not define (
             type: "insertAfterBlock",
             blockId: anchor.id,
             text: "An inserted clause.",
-            numbering: { numId: 1, level: 0 },
+            numbering: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
           },
         ],
       });
@@ -449,7 +450,7 @@ describe("an operation naming a numbering instance the package does not define (
           id: "1",
           type: "setBlockParagraphProperties",
           blockId: target.id,
-          properties: { numbering: { numId: 3, level: 0 } },
+          properties: { numbering: paragraphNumberingReference({ numId: 3, ilvl: 0 }) },
         },
       ],
     });

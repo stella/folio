@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   hashFolioAIBlockText,
@@ -222,15 +223,15 @@ test(
     );
     const cases = [
       {
-        properties: { numbering: { kind: "reference", numId: 901, ilvl: 0 } },
+        properties: { numbering: paragraphNumberingReference({ numId: 901, ilvl: 0 }) },
         direct: paragraphNumberingFromSlots({ numId: 901, ilvl: 0 }),
       },
       {
-        properties: { numbering: { kind: "reference", numId: 900, ilvl: 1 } },
+        properties: { numbering: paragraphNumberingReference({ numId: 900, ilvl: 1 }) },
         direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
       },
       {
-        properties: { numbering: { kind: "reference", numId: 900, ilvl: 0 } },
+        properties: { numbering: paragraphNumberingReference({ numId: 900, ilvl: 0 }) },
         direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 0 }),
       },
       {

@@ -8,6 +8,7 @@
  */
 
 import { panic, Result, TaggedError } from "better-result";
+import { isNumberingReference } from "@stll/docx-core/model";
 
 import {
   createWordDiffSession,
@@ -303,6 +304,9 @@ const limitExceeded = ({
 const isFiniteInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value);
 
+const isNonNegativeInteger = (value: unknown): value is number =>
+  isFiniteInteger(value) && value >= 0;
+
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
@@ -319,8 +323,8 @@ const validStatedNumbering = (value: unknown): value is FolioContentStatedNumber
       return isFiniteInteger(value["ilvl"]) && value["ilvl"] >= 0;
     case "reference":
       return (
-        isFiniteInteger(value["numId"]) &&
-        value["numId"] > 0 &&
+        isNonNegativeInteger(value["numId"]) &&
+        isNumberingReference(value["numId"]) &&
         (value["ilvl"] === undefined || (isFiniteInteger(value["ilvl"]) && value["ilvl"] >= 0))
       );
     default:

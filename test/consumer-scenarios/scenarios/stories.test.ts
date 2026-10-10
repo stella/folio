@@ -20,7 +20,6 @@ import { SECOND_REVIEWER } from "../support/fuzz.ts";
 import { assertHealthy } from "../support/invariants.ts";
 import { assertRequestedOutcome, capture } from "../support/oracle.ts";
 import {
-  type Block,
   coreBatch,
   GENERATORS,
   MODES,
@@ -137,7 +136,7 @@ describe("operations in every header, footer and note", () => {
       for (const story of stories) {
         for (const type of Object.keys(GENERATORS)) {
           if (!supports(type, mode)) continue;
-          const blocks = blocksOfStory(reviewer, story) as Block[];
+          const blocks = blocksOfStory(reviewer, story);
           const pick = biasedPicker(random, { index: featureIndex(reviewer, story), recent: [] });
           const operation = GENERATORS[type]?.(blocks, random, pick);
           if (!operation) continue;
@@ -210,7 +209,7 @@ describe("operations aimed at every feature of the body", () => {
           const type = FEATURE_OPERATIONS[(index + offset) % FEATURE_OPERATIONS.length] as string;
           if (!supports(type, mode)) continue;
           const operation = GENERATORS[type]?.(
-            reviewer.getContent() as Block[],
+            reviewer.getContent(),
             random,
             featurePicker(reviewer, feature, random),
           );
@@ -236,9 +235,7 @@ describe("operations aimed at every feature of the body", () => {
       const random = createRandom(mode.length * 151);
       for (const type of FEATURE_OPERATIONS) {
         const index = featureIndex(reviewer);
-        const blocks = (reviewer.getContent() as Block[]).filter((block) =>
-          index.inTextBox.has(block.id),
-        );
+        const blocks = reviewer.getContent().filter((block) => index.inTextBox.has(block.id));
         if (!supports(type, mode) || blocks.length === 0) continue;
         const pick = biasedPicker(random, { index, recent: [] });
         const operation = GENERATORS[type]?.(blocks, random, pick);
@@ -296,7 +293,7 @@ describe("a document carried across sessions", () => {
           for (const type of ["replaceInBlock", "insertAfterBlock", "formatRange"]) {
             if (!supports(type, mode)) continue;
             const index = featureIndex(reviewer, story);
-            const blocks = (blocksOfStory(reviewer, story) as Block[]).filter(
+            const blocks = blocksOfStory(reviewer, story).filter(
               (block) => !index.features.get(block.id)?.has("commentAnchor"),
             );
             const pick = biasedPicker(random, { index, recent: [] });
