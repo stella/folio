@@ -138,7 +138,7 @@ export default library({
     "packages/core/src/generated/**",
     // Lint-rule fixtures contain deliberate violations; the repo-wide run must
     // skip them. scripts/no-untranslated-jsx-literal.test.ts lints them
-    // explicitly with `--no-ignore` to assert the rule's behaviour.
+    // explicitly through oxlint.fixtures.config.ts to assert the rule's behaviour.
     "test/__fixtures__/**",
   ],
   overrides: [

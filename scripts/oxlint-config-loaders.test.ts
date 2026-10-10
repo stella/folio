@@ -36,7 +36,15 @@ type LintResult = { exitCode: number; output: string };
 
 const lintFixtures = (loader: Loader): LintResult => {
   const result = Bun.spawnSync(
-    [...LOADERS[loader], "-c", "oxlint.config.ts", "--no-ignore", "-f", "json", ...FIXTURES],
+    [
+      ...LOADERS[loader],
+      "-c",
+      "oxlint.fixtures.config.ts",
+      "--no-ignore",
+      "-f",
+      "json",
+      ...FIXTURES,
+    ],
     {
       cwd: REPO_ROOT,
     },

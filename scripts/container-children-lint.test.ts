@@ -16,7 +16,7 @@ const lintFixture = (fixture: string, marker: string) => {
       "--bun",
       "oxlint",
       "-c",
-      "oxlint.config.ts",
+      "oxlint.fixtures.config.ts",
       "--no-ignore",
       path.join("test", "__fixtures__", fixture),
     ],
