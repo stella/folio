@@ -514,8 +514,6 @@ type FolioSecondaryStoryState = {
   state: EditorState;
 };
 
-type FolioResolvedStoryBlock = Omit<FolioAIBlock, "idStability">;
-
 /** Blocks whose id folio minted, because the package names no id for them. */
 const mintedBlockOrdinals = (snapshot: FolioAIEditSnapshot): ReadonlySet<number> => {
   const ordinals = new Set<number>();
@@ -546,7 +544,7 @@ const resolvedStoryBlockProjection = (
   block: FolioAIBlock,
   ordinal: number,
   minted: ReadonlySet<number>,
-): FolioResolvedStoryBlock => {
+) => {
   const persisted = { ...block };
   delete persisted.idStability;
   return minted.has(ordinal) ? { ...persisted, id: `minted-${String(ordinal)}` } : persisted;
@@ -555,7 +553,7 @@ const resolvedStoryBlockProjection = (
 type FolioResolvedStoryExpectation = {
   story: FolioEditableDocumentStoryHandle;
   text: string;
-  blocks: readonly FolioResolvedStoryBlock[];
+  blocks: readonly ReturnType<typeof resolvedStoryBlockProjection>[];
   /** Positions the resolved story held a minted id at, read back after the save. */
   minted: ReadonlySet<number>;
 };

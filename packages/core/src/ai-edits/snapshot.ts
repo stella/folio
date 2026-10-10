@@ -61,7 +61,6 @@ import type {
   FolioAIBlock,
   FolioAIParagraphBlock,
   FolioAIBlockAnchor,
-  FolioAIBlockKind,
   FolioAIBlockPreviewRun,
   FolioAIBlockStructuralBoundary,
   FolioAIBlockTableLocation,
@@ -987,10 +986,7 @@ export const createFolioAIEditSnapshotWithStyleResolver = (
  * numbering) reads as prose and is a paragraph, keeping its `statedNumbering` and
  * effective `listReference`.
  */
-const getBlockKind = (
-  headingLevel: number | undefined,
-  listLabel: string | undefined,
-): FolioAIBlockKind => {
+const getBlockKind = (headingLevel: number | undefined, listLabel: string | undefined) => {
   if (headingLevel !== undefined) {
     return "heading";
   }
