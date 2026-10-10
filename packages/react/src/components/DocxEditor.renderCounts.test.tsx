@@ -82,6 +82,10 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
       await act(async () => {
         editor.current?.ensureEditorView({ focus: false });
       });
+      // Let mount-time font/layout and history notifications settle before measuring.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      });
       const view = views.at(-1) ?? panic("The editor did not publish its body view");
       const startCommit = commits.length;
       const startChanges = changes.length;
@@ -108,6 +112,11 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
         expect(view.state.selection.from).toBe(position);
         expect(view.state.selection.to).toBe(position + 1);
       }
+      const immediateCommits = commits.length;
+      // Document projection is deliberately debounced off the keypress path.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      });
       expect(changes.length).toBeGreaterThan(startChanges);
       expect(typing.some((count) => count > 0)).toBe(true);
       console.info(
@@ -117,6 +126,7 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
           typing,
           selection,
           commits: commits.length - startCommit,
+          settledCommits: commits.length - immediateCommits,
           durationMs: commits.slice(startCommit).reduce((sum, duration) => sum + duration, 0),
         }),
       );

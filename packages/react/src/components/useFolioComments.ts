@@ -10,6 +10,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -205,6 +206,9 @@ export function useFolioComments({
   // Initialize once when authoritative comments become available. The loader
   // explicitly resets this lifecycle when it replaces the document.
   const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [loadedCommentsNotification, setLoadedCommentsNotification] = useState<{
+    comments: Comment[];
+  } | null>(null);
   const resetLoadedComments = useCallback(() => setCommentsLoaded(false), []);
   const bodyComments = committedComments ?? doc?.package.document.comments;
   if (
@@ -216,6 +220,7 @@ export function useFolioComments({
     setCommentsLoaded(true);
     if (committedComments == null && !isControlledComments) {
       setInternalComments(bodyComments);
+      setLoadedCommentsNotification({ comments: bodyComments });
     }
     setVisibleCommentAuthors(null);
     setActiveCommentId(null);
@@ -223,6 +228,18 @@ export function useFolioComments({
       setShowCommentsSidebar(true);
     }
   }
+
+  const notifyLoadedComments = useEffectEvent((loaded: Comment[]) => onCommentsChange?.(loaded));
+  const lastLoadedNotificationRef = useRef<typeof loadedCommentsNotification>(null);
+  useEffect(() => {
+    if (
+      loadedCommentsNotification === null ||
+      lastLoadedNotificationRef.current === loadedCommentsNotification
+    )
+      return;
+    lastLoadedNotificationRef.current = loadedCommentsNotification;
+    notifyLoadedComments(loadedCommentsNotification.comments);
+  }, [loadedCommentsNotification]);
 
   const listedComments = committedComments ?? comments;
 
@@ -317,18 +334,22 @@ export function useFolioComments({
     }
   }, [visibleCommentIds, activeCommentId, editorContentRef]);
 
+  // A layout-map commit can replace painted marks without changing thread metadata.
+  const highlightLayoutCommit = useEffectEvent(
+    (_positions: Map<string, number>, sync: () => void) => sync(),
+  );
   useLayoutEffect(() => {
-    syncCommentHighlightStyles();
+    highlightLayoutCommit(anchorPositions, syncCommentHighlightStyles);
   }, [syncCommentHighlightStyles, anchorPositions]);
 
-  useEffect(() => {
-    syncCommentHighlightStyles();
+  const scheduleHighlightCommit = useEffectEvent((_comments: Comment[], sync: () => void) => {
+    sync();
     let secondFrame: number | null = null;
     const firstFrame = requestAnimationFrame(() => {
-      syncCommentHighlightStyles();
-      secondFrame = requestAnimationFrame(syncCommentHighlightStyles);
+      sync();
+      secondFrame = requestAnimationFrame(sync);
     });
-    const timeout = setTimeout(syncCommentHighlightStyles, 120);
+    const timeout = setTimeout(sync, 120);
     return () => {
       cancelAnimationFrame(firstFrame);
       if (secondFrame !== null) {
@@ -336,7 +357,11 @@ export function useFolioComments({
       }
       clearTimeout(timeout);
     };
-  }, [comments, syncCommentHighlightStyles]);
+  });
+  useEffect(
+    () => scheduleHighlightCommit(comments, syncCommentHighlightStyles),
+    [comments, syncCommentHighlightStyles],
+  );
 
   return {
     comments,

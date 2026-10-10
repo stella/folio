@@ -109,6 +109,33 @@ const mount = ({
 };
 
 describe("useFolioComments.setComments", () => {
+  test("loaded comments notify after commit once per document initialization", () => {
+    const doc = createEmptyDocument();
+    const loaded = [makeComment(41)];
+    doc.package.document.comments = loaded;
+    const changes: Comment[][] = [];
+    const harness = mount({ doc, onCommentsChange: (next) => changes.push(next) });
+    expect(changes).toEqual([loaded]);
+    expect(harness.hook.comments).toBe(loaded);
+    harness.rerender();
+    expect(changes).toEqual([loaded]);
+    act(() => harness.hook.resetLoadedComments());
+    expect(changes).toEqual([loaded, loaded]);
+  });
+
+  test("a layout commit reapplies highlights to newly painted marks", () => {
+    const editorContent = document.createElement("div");
+    const harness = mount({ commentsProp: [makeComment(42)], editorContent });
+    act(() => harness.hook.setActiveCommentId(42));
+    const mark = document.createElement("span");
+    mark.className = "layout-run-text";
+    writeCommentAnchorIds(mark, [42]);
+    editorContent.append(mark);
+    harness.rerender();
+    expect(mark.dataset["activeComment"]).toBe("true");
+    expect(mark.style.borderBottom).not.toBe("");
+  });
+
   test.each(["loaded", "controlled"] as const)(
     "reserves %s comment IDs before creating a comment",
     (source) => {

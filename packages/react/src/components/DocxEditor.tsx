@@ -1331,11 +1331,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const handleActiveNoteStoryChange = useCallback(
     (story: NoteStoryKey | null) => {
       setActiveNoteStory(story);
+      requestAnimationFrame(refreshBodyHistoryAvailability);
       if (story && hfEditPosition) {
         handleBodyClick();
       }
     },
-    [handleBodyClick, hfEditPosition],
+    [handleBodyClick, hfEditPosition, refreshBodyHistoryAvailability],
   );
 
   const handleHeaderFooterStoryOpen = useCallback(
