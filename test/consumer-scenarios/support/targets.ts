@@ -299,7 +299,7 @@ export const boundariesOf = (block: TargetBlock): number[] => {
   }
   for (const boundary of block.kind === "diagnostic" ? [] : (block.structuralBoundaries ?? [])) {
     points.add(boundary.offset);
-    points.add(boundary.offset + (boundary.length ?? 0));
+    if (boundary.type === "noteReference") points.add(boundary.offset + boundary.length);
   }
   for (const { start, end } of astralGraphemes(block.text)) {
     points.add(start);

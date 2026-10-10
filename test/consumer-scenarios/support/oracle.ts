@@ -60,7 +60,7 @@ type ParsedNumbering = NonNullable<
 /** Expected numbering uses input numeric facts, without invoking the production allocator. */
 type Numbering =
   | Exclude<ParsedNumbering, { kind: "reference" }>
-  | (Omit<Extract<ParsedNumbering, { kind: "reference" }>, "numId"> & { numId: number })
+  | Pick<Extract<ParsedNumbering, { kind: "reference" }>, "kind" | "numId" | "ilvl">
   | undefined;
 type NumberingFacts = {
   styles: Map<string, Numbering>;
