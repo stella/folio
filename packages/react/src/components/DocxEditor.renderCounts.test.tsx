@@ -100,22 +100,50 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
         await new Promise((resolve) => setTimeout(resolve, 450));
       });
       const api = editor.current?.getEditor() ?? panic("The editor API did not mount");
-      const view = api.getView() ?? panic("The editor did not create its body view");
+      const getView = () => api.getView() ?? panic("The editor did not create its body view");
+      if (experimentalSession) {
+        await act(async () => {
+          const view = getView();
+          view.dispatch(
+            view.state.tr.setSelection(
+              TextSelection.create(view.state.doc, view.state.doc.content.size - 1),
+            ),
+          );
+        });
+      }
       const startCommit = commits.length;
       const startChanges = changes.length;
+      let expectedText = "Hello";
       for (const character of " abcdef") {
         const before = commits.length;
         await act(async () => {
+          const view = getView();
+          if (experimentalSession) {
+            // Canonical mutations enter through DOM input ownership; direct
+            // document transactions are refused by the canonical session.
+            const event = new InputEvent("beforeinput", {
+              bubbles: true,
+              cancelable: true,
+              inputType: "insertText",
+              data: character,
+            });
+            view.dom.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(true);
+            return;
+          }
           view.dispatch(view.state.tr.insertText(character, view.state.doc.content.size - 1));
         });
         typing.push(commits.length - before);
+        expectedText += character;
+        expect(getView().state.doc.textContent).toBe(expectedText);
       }
-      expect(view.state.doc.textContent).toBe("Hello abcdef");
+      expect(getView().state.doc.textContent).toBe("Hello abcdef");
       // A selected range changes on every operation; this must exercise the
       // real selection callbacks rather than a no-op selection transaction.
       for (const position of [1, 2, 3, 4, 5, 6]) {
         const before = commits.length;
         await act(async () => {
+          const view = getView();
           view.dispatch(
             view.state.tr.setSelection(
               TextSelection.create(view.state.doc, position, position + 1),
@@ -123,8 +151,8 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
           );
         });
         selection.push(commits.length - before);
-        expect(view.state.selection.from).toBe(position);
-        expect(view.state.selection.to).toBe(position + 1);
+        expect(getView().state.selection.from).toBe(position);
+        expect(getView().state.selection.to).toBe(position + 1);
       }
       const immediateCommits = commits.length;
       // Document projection is deliberately debounced off the keypress path.
