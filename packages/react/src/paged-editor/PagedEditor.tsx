@@ -661,7 +661,7 @@ type RemoteSelectionOverlayProps = {
   blocks: FlowBlock[];
   layout: Layout;
   measures: Measure[];
-  pagesContainer: HTMLDivElement | null;
+  getPagesContainer: () => HTMLDivElement | null;
   remoteSelection: HiddenProseMirrorRemoteSelection;
   zoom: number;
 };
@@ -701,40 +701,48 @@ type HfCaretSelection = {
 
 function HfCaretOverlay({
   selection,
-  pagesContainer,
-  hiddenHost,
-  editorView,
+  getSurface,
   zoom,
 }: {
   selection: HfCaretSelection;
-  pagesContainer: HTMLDivElement | null;
-  hiddenHost: HTMLElement | null;
-  editorView: EditorView | null;
+  getSurface: (rId: string) => {
+    pagesContainer: HTMLDivElement | null;
+    hiddenHost: HTMLElement | null;
+    editorView: EditorView | null;
+  };
   zoom: number;
 }) {
-  const [caret, setCaret] = useState<{
-    x: number;
-    y: number;
-    height: number;
-  } | null>(null);
+  const [caretProjection, setCaretProjection] = useState<{
+    caret: { x: number; y: number; height: number } | null;
+    pagesContainer: HTMLDivElement | null;
+  }>({ caret: null, pagesContainer: null });
+  const { caret, pagesContainer: portalTarget } = caretProjection;
   const [rangeRects, setRangeRects] = useState<
     { x: number; y: number; width: number; height: number }[]
   >([]);
 
+  const { rId, kind, from, to, pageNumber } = selection;
+
   useEffect(() => {
+    const { pagesContainer, hiddenHost } = getSurface(rId);
     if (!pagesContainer) {
       return;
     }
     const recompute = () => {
+      const currentSurface = getSurface(rId);
       const cr = pagesContainer.getBoundingClientRect();
       const zoomDivisor = zoom !== 0 ? zoom : 1;
-      const geometry = resolveHeaderFooterSelectionGeometry(pagesContainer, selection, zoomDivisor);
-      setCaret(geometry.caret);
+      const geometry = resolveHeaderFooterSelectionGeometry(
+        pagesContainer,
+        { rId, kind, from, to, ...(pageNumber === undefined ? {} : { pageNumber }) },
+        zoomDivisor,
+      );
+      setCaretProjection({ caret: geometry.caret, pagesContainer });
       setRangeRects(geometry.ranges);
       if (geometry.caret) {
         syncImeCaretAnchor({
-          hiddenHost,
-          editorView,
+          hiddenHost: currentSurface.hiddenHost,
+          editorView: currentSurface.editorView,
           visibleCaret: {
             left: cr.left + geometry.caret.x * zoomDivisor,
             top: cr.top + geometry.caret.y * zoomDivisor,
@@ -742,7 +750,11 @@ function HfCaretOverlay({
         });
         return;
       }
-      syncImeCaretAnchor({ hiddenHost, editorView, visibleCaret: null });
+      syncImeCaretAnchor({
+        hiddenHost: currentSurface.hiddenHost,
+        editorView: currentSurface.editorView,
+        visibleCaret: null,
+      });
     };
     recompute();
     const onPainted = () => recompute();
@@ -774,19 +786,9 @@ function HfCaretOverlay({
     // actually changes; otherwise every handleHfPmTransaction-driven
     // setHfCaretSelection allocates a new object and we'd churn the
     // DOM lookup + getBoundingClientRect chain on every keystroke.
-  }, [
-    selection.rId,
-    selection.kind,
-    selection.from,
-    selection.to,
-    selection.pageNumber,
-    pagesContainer,
-    hiddenHost,
-    editorView,
-    zoom,
-  ]);
+  }, [rId, kind, from, to, pageNumber, getSurface, zoom]);
 
-  if (!pagesContainer) {
+  if (!portalTarget) {
     return null;
   }
   // Portal into pagesContainer so the absolute-positioned caret + rects
@@ -831,7 +833,7 @@ function HfCaretOverlay({
         />
       )}
     </>,
-    pagesContainer,
+    portalTarget,
   );
 }
 
@@ -983,28 +985,23 @@ const RemoteSelectionOverlay = ({
   blocks,
   layout,
   measures,
-  pagesContainer,
+  getPagesContainer,
   remoteSelection,
   zoom,
 }: RemoteSelectionOverlayProps) => {
   const [geometry, setGeometry] = useState<RemoteSelectionGeometry | null>(null);
 
   useEffect(() => {
-    if (!pagesContainer) {
-      setGeometry(null);
-      return undefined;
-    }
-
-    const offset = getPageOverlayOffset(pagesContainer, zoom);
-    if (!offset) {
-      setGeometry(null);
-      return undefined;
-    }
-
     let cancelled = false;
     void loadSelectionGeometry().then(
       ({ getCaretPosition, selectionToRects }) => {
         if (cancelled) {
+          return undefined;
+        }
+        const pagesContainer = getPagesContainer();
+        const offset = pagesContainer ? getPageOverlayOffset(pagesContainer, zoom) : null;
+        if (!offset) {
+          setGeometry(null);
           return undefined;
         }
 
@@ -1051,7 +1048,7 @@ const RemoteSelectionOverlay = ({
     blocks,
     layout,
     measures,
-    pagesContainer,
+    getPagesContainer,
     remoteSelection.anchor,
     remoteSelection.head,
     zoom,
@@ -1407,7 +1404,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     }, [scrollContainerRefProp]);
     // FolioEditor event emitter (Seam 6), declared early so the layout/selection/
     // doc emission points below can publish to it.
-    const folioEmitterRef = useRef(createFolioEditorEmitter());
+    const [folioEmitter] = useState(createFolioEditorEmitter);
+    const folioEmitterRef = useRef(folioEmitter);
     const hiddenPMRef = useRef<HiddenProseMirrorRef>(null);
     const hfPMsRef = useRef<HiddenHeaderFooterPMsRef>(null);
     const noteEditorRef = useRef<NoteStoryEditorRef>(null);
@@ -1430,6 +1428,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     useEffect(() => {
       if (readOnly) noteEditorRef.current?.close();
     }, [readOnly]);
+
+    const getPagesContainer = useCallback(() => pagesContainerRef.current, []);
+    const getHeaderFooterSurface = useCallback(
+      (rId: string) => ({
+        pagesContainer: pagesContainerRef.current,
+        hiddenHost: hfPMsRef.current?.getHostElement() ?? null,
+        editorView: hfPMsRef.current?.getView(rId) ?? null,
+      }),
+      [],
+    );
 
     const getCanonicalApi = useCallback(() => hiddenPMRef.current, []);
 
@@ -1466,13 +1474,22 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const onErrorRef = useRef(onError);
     const lastTotalPagesRef = useRef<number | null>(null);
 
-    // Keep refs in sync with latest props
-    onSelectionChangeRef.current = onSelectionChange;
-    onSelectionTextChangeRef.current = onSelectionTextChange;
-    onEditorViewReadyRef.current = onEditorViewReady;
-    onDocumentChangeRef.current = onDocumentChange;
-    onTotalPagesChangeRef.current = onTotalPagesChange;
-    onErrorRef.current = onError;
+    // Publish callbacks only after this render commits.
+    useLayoutEffect(() => {
+      onSelectionChangeRef.current = onSelectionChange;
+      onSelectionTextChangeRef.current = onSelectionTextChange;
+      onEditorViewReadyRef.current = onEditorViewReady;
+      onDocumentChangeRef.current = onDocumentChange;
+      onTotalPagesChangeRef.current = onTotalPagesChange;
+      onErrorRef.current = onError;
+    }, [
+      onSelectionChange,
+      onSelectionTextChange,
+      onEditorViewReady,
+      onDocumentChange,
+      onTotalPagesChange,
+      onError,
+    ]);
     const handleSessionRefusal = useCallback(
       (message: string, gap: CanonicalGap, error?: Error) => {
         onErrorRef.current?.(error ?? new CanonicalSessionRefusalError({ gap, message }));
@@ -1482,11 +1499,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
     // State
     const [layout, setLayout] = useState<Layout | null>(null);
-    // Mirror `layout` in a ref so the layout pipeline reads the latest page-count
-    // estimate without `layout` in runLayoutPipeline's deps (which would recreate
-    // the callback every layout run and re-fire the effects keyed on its identity).
-    const layoutRef = useRef(layout);
-    layoutRef.current = layout;
+    // The pipeline publishes the completed layout before emitting its event.
+    // Keeping that imperative snapshot avoids callback churn and lets event
+    // subscribers read the completed layout before React commits its state.
+    const layoutRef = useRef<Layout | null>(null);
     const [blocks, setBlocks] = useState<FlowBlock[]>([]);
     const [measures, setMeasures] = useState<Measure[]>([]);
     // Reactive "has the hidden editor been requested" signal. The manager owns
@@ -1496,9 +1512,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       () => collaboration !== undefined,
     );
     const shouldFocusHiddenEditorOnReadyRef = useRef(collaboration !== undefined);
-    const [precomputedInitialState, setPrecomputedInitialState] = useState<EditorState | null>(
-      null,
-    );
+    const [precomputedInitialSnapshot, setPrecomputedInitialSnapshot] = useState<{
+      document: Document;
+      state: EditorState;
+    } | null>(null);
     const layoutSessionRef = useRef(createLayoutSession());
     const precomputedInitialStateRef = useRef<EditorState | null>(null);
     const precomputedInitialDocumentRef = useRef<Document | null>(null);
@@ -1532,7 +1549,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const [autocompleteCaret, setAutocompleteCaret] = useState<AutocompleteCaretRect | null>(null);
     const [autocompleteText, setAutocompleteText] = useState<string>("");
     const [autocompleteIsStreaming, setAutocompleteIsStreaming] = useState<boolean>(false);
-    const [directiveRectGroups, setDirectiveRectGroups] = useState<DirectiveRectGroup[]>([]);
+    const [directiveProjection, setDirectiveProjection] = useState<{
+      groups: DirectiveRectGroup[];
+      ranges: readonly DirectiveRange[];
+    }>({ groups: [], ranges: [] });
+    const directiveRectGroups = directiveProjection.groups;
     const [directiveGutter, setDirectiveGutter] = useState<DirectiveGutterGeometry | null>(null);
     // Caret/selection head PM position, kept only while a template document has
     // block directives — drives the innermost-block rail emphasis in the overlay.
@@ -1581,8 +1602,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const [selectionOverlayRequestGate] = useState(createLatestRequestGate);
 
     const validPrecomputedInitialState =
-      precomputedInitialDocumentRef.current === document ? precomputedInitialState : null;
-    precomputedInitialStateRef.current = validPrecomputedInitialState;
+      precomputedInitialSnapshot?.document === document ? precomputedInitialSnapshot.state : null;
+    useLayoutEffect(() => {
+      precomputedInitialStateRef.current = validPrecomputedInitialState;
+    }, [validPrecomputedInitialState]);
 
     // Image selection state
     const [selectedImageInfo, setSelectedImageInfo] = useState<ImageSelectionInfo | null>(null);
@@ -1889,7 +1912,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     );
 
     // Keep ref in sync with memoized painter
-    painterRef.current = painter;
+    useLayoutEffect(() => {
+      painterRef.current = painter;
+    }, [painter]);
 
     // =========================================================================
     // Layout Pipeline
@@ -1990,18 +2015,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           painterRef.current?.setBlockLookup(outcome.blockLookup);
         }
         if (outcome.layout) {
-          // Publish to the ref before emitting so layoutComplete handlers that
-          // call folioEditor.getLayout() observe the layout that just completed
-          // (setLayout is async; the ref mirror otherwise only refreshes on the
-          // next render). Paired with the setLayout call above, so this is the
-          // owning write the mirror rule allows.
-          // eslint-disable-next-line folio-ref-mirrors/no-write-to-render-mirrored-ref
+          // Publish before the event so subscribers observe this completed
+          // layout while React is still committing its state update.
           layoutRef.current = outcome.layout;
           laidOutLayoutInputSignatureRef.current = layoutInputSignature;
           folioEmitterRef.current.emit("layoutComplete", outcome.layout);
         }
       },
-      // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
       [
         contentWidth,
         columns,
@@ -2039,21 +2059,23 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       ],
     );
     const runLayoutPipelineRef = useRef(runLayoutPipeline);
-    runLayoutPipelineRef.current = runLayoutPipeline;
+    useLayoutEffect(() => {
+      runLayoutPipelineRef.current = runLayoutPipeline;
+    }, [runLayoutPipeline]);
 
     const documentIORef = useRef(documentIO);
-    documentIORef.current = documentIO;
-    const folioEditorRef = useRef<FolioEditor | null>(null);
-    if (!folioEditorRef.current) {
-      folioEditorRef.current = createFolioEditor({
+    useLayoutEffect(() => {
+      documentIORef.current = documentIO;
+    }, [documentIO]);
+    const [folioEditor] = useState(() =>
+      createFolioEditor({
         getEditorApi: () => hiddenPMRef.current,
         getLayout: () => layoutRef.current,
         runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
         getDocumentIO: () => documentIORef.current,
-        emitter: folioEmitterRef.current,
-      });
-    }
-    const folioEditor = folioEditorRef.current;
+        emitter: folioEmitter,
+      }),
+    );
     const getActiveEditorStory = useCallback(
       () =>
         resolveActiveEditorStory({
@@ -2496,7 +2518,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       // NOTE: onSelectionChange removed from dependencies - accessed via ref to prevent infinite loops
     );
     const updateSelectionOverlayRef = useRef(updateSelectionOverlay);
-    updateSelectionOverlayRef.current = updateSelectionOverlay;
+    useLayoutEffect(() => {
+      updateSelectionOverlayRef.current = updateSelectionOverlay;
+    }, [updateSelectionOverlay]);
 
     useEffect(() => {
       const pagesContainer = pagesContainerRef.current;
@@ -2740,7 +2764,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       );
       const pagesContainer = pagesContainerRef.current;
       if (ranges.length === 0 || !pagesContainer) {
-        setDirectiveRectGroups([]);
+        setDirectiveProjection({ groups: [], ranges: directivesRef.current });
         setDirectiveGutter(null);
         return;
       }
@@ -2754,7 +2778,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           measures,
         });
         if (isCurrentRequest()) {
-          setDirectiveRectGroups(projected);
+          setDirectiveProjection({ groups: projected, ranges: directivesRef.current });
         }
       })();
     }, [directivesOverlayRequestGate, layout, blocks, measures, zoom]);
@@ -3861,7 +3885,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         startPointerTextSelection(e.clientX, e.clientY);
       },
-      // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
       [
         getPositionFromMouse,
         findCellPosFromPmPos,
@@ -3888,43 +3911,45 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       });
 
     // Wire up the drag-extend callback after getPositionFromMouse is available
-    dragExtendRef.current = (cx: number, cy: number) => {
-      if (!isDraggingRef.current || dragAnchorRef.current === null) {
-        return;
-      }
-      const hfSurface = activeHfDragSurfaceRef.current;
-      if (hfSurface) {
-        const hfView = hfPMsRef.current?.getView(hfSurface.rId);
-        if (!hfView || !pagesContainerRef.current) {
+    useLayoutEffect(() => {
+      dragExtendRef.current = (cx: number, cy: number) => {
+        if (!isDraggingRef.current || dragAnchorRef.current === null) {
           return;
         }
-        const pmPos = clickToPositionInHfSlot(
-          pagesContainerRef.current,
-          hfSurface.kind,
-          hfSurface.rId,
-          cx,
-          cy,
-        );
+        const hfSurface = activeHfDragSurfaceRef.current;
+        if (hfSurface) {
+          const hfView = hfPMsRef.current?.getView(hfSurface.rId);
+          if (!hfView || !pagesContainerRef.current) {
+            return;
+          }
+          const pmPos = clickToPositionInHfSlot(
+            pagesContainerRef.current,
+            hfSurface.kind,
+            hfSurface.rId,
+            cx,
+            cy,
+          );
+          if (pmPos === null) {
+            return;
+          }
+          const docEnd = hfView.state.doc.content.size;
+          const anchor = Math.max(0, Math.min(dragAnchorRef.current, docEnd));
+          const head = Math.max(0, Math.min(pmPos, docEnd));
+          const $anchor = hfView.state.doc.resolve(anchor);
+          const $head = hfView.state.doc.resolve(head);
+          hfView.dispatch(hfView.state.tr.setSelection(TextSelection.between($anchor, $head)));
+          return;
+        }
+        if (!hiddenPMRef.current) {
+          return;
+        }
+        const pmPos = getPositionFromMouse(cx, cy);
         if (pmPos === null) {
           return;
         }
-        const docEnd = hfView.state.doc.content.size;
-        const anchor = Math.max(0, Math.min(dragAnchorRef.current, docEnd));
-        const head = Math.max(0, Math.min(pmPos, docEnd));
-        const $anchor = hfView.state.doc.resolve(anchor);
-        const $head = hfView.state.doc.resolve(head);
-        hfView.dispatch(hfView.state.tr.setSelection(TextSelection.between($anchor, $head)));
-        return;
-      }
-      if (!hiddenPMRef.current) {
-        return;
-      }
-      const pmPos = getPositionFromMouse(cx, cy);
-      if (pmPos === null) {
-        return;
-      }
-      hiddenPMRef.current.setSelection(dragAnchorRef.current, pmPos);
-    };
+        hiddenPMRef.current.setSelection(dragAnchorRef.current, pmPos);
+      };
+    }, [getPositionFromMouse]);
 
     /**
      * Handle mousemove - extend selection during drag.
@@ -4835,7 +4860,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           }
         }
       },
-      // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
       [getPositionFromMouse, onHeaderFooterDoubleClick, onHyperlinkClick, readOnly],
     );
 
@@ -5226,7 +5250,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       ) {
         preHiddenInitialLayoutDoneRef.current = false;
         precomputedInitialDocumentRef.current = null;
-        setPrecomputedInitialState(null);
+        setPrecomputedInitialSnapshot(null);
       }
 
       if (
@@ -5251,7 +5275,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         reason: "mount",
       });
       precomputedInitialDocumentRef.current = document;
-      setPrecomputedInitialState(initialState);
+      setPrecomputedInitialSnapshot({ document, state: initialState });
       anonymizationMatchesRef.current =
         anonymizationDecorationsKey.getState(initialState)?.matches ?? [];
       directivesRef.current = templateDirectivesKey.getState(initialState)?.ranges ?? [];
@@ -6146,7 +6170,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                 gutter={directiveGutter}
                 groups={directiveRectGroups}
                 caretPos={directiveCaretPos}
-                ranges={directivesRef.current}
+                ranges={directiveProjection.ranges}
               />
             )}
 
@@ -6178,9 +6202,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             {hfCaretSelection && (
               <HfCaretOverlay
                 selection={hfCaretSelection}
-                pagesContainer={pagesContainerRef.current}
-                hiddenHost={hfPMsRef.current?.getHostElement() ?? null}
-                editorView={hfPMsRef.current?.getView(hfCaretSelection.rId) ?? null}
+                getSurface={getHeaderFooterSurface}
                 zoom={zoom}
               />
             )}
@@ -6191,7 +6213,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                   blocks={blocks}
                   layout={layout}
                   measures={measures}
-                  pagesContainer={pagesContainerRef.current}
+                  getPagesContainer={getPagesContainer}
                   remoteSelection={remoteSelection}
                   zoom={zoom}
                 />

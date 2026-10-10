@@ -5,7 +5,7 @@
  * page centring all read the result, so they agree with what is on screen.
  */
 
-import { type RefObject, useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { type RefObject, useCallback, useLayoutEffect, useState } from "react";
 
 import {
   computePanelLayout,
@@ -71,11 +71,9 @@ export const usePanelLayout = ({
   // An overlay closes if its panel is no longer available.
   const outlineDrawn = layout.outline !== "none" && layout.outline !== "column";
   const commentsDrawn = layout.comments === "drawer";
-  useEffect(() => {
-    if ((overlay === "outline" && !outlineDrawn) || (overlay === "comments" && !commentsDrawn)) {
-      setOverlay("none");
-    }
-  }, [commentsDrawn, outlineDrawn, overlay]);
+  if ((overlay === "outline" && !outlineDrawn) || (overlay === "comments" && !commentsDrawn)) {
+    setOverlay("none");
+  }
 
   const layoutWithCommentsOpen = useCallback(
     () =>

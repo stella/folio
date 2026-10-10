@@ -9,7 +9,15 @@
  * in this sidebar.
  */
 
-import React, { useEffect, useState, useRef, useCallback, useMemo, useLayoutEffect } from "react";
+import React, {
+  useEffect,
+  useEffectEvent,
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+  useLayoutEffect,
+} from "react";
 
 import { CheckIcon, MoreVerticalIcon } from "lucide-react";
 import { useLocale, useTranslations } from "use-intl";
@@ -283,8 +291,17 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     setMeasuredLeft(Math.max(8, Math.min(rawLeft, maxVisibleLeft)));
   }, [editorContainerRef, isDrawer]);
 
+  const measureSidebarCommit = useEffectEvent(
+    (
+      _layout: { pageWidth: number; isAddingComment: boolean; commentCount: number },
+      measure: () => void,
+    ) => measure(),
+  );
   useLayoutEffect(() => {
-    updateSidebarLeft();
+    measureSidebarCommit(
+      { pageWidth, isAddingComment, commentCount: comments.length },
+      updateSidebarLeft,
+    );
   }, [updateSidebarLeft, pageWidth, isAddingComment, comments.length]);
 
   useEffect(() => {
@@ -552,10 +569,16 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   }, [editorContainerRef, updateCardPositions]);
 
   // Recalculate positions after a card expand/collapse or add-comment toggle.
-  useEffect(() => {
-    const raf = requestAnimationFrame(updateCardPositions);
-    return () => cancelAnimationFrame(raf);
-  }, [expandedCard, isAddingComment, updateCardPositions]);
+  const measureCardsCommit = useEffectEvent(
+    (_layout: { expandedCard: string | null; isAddingComment: boolean }, measure: () => void) => {
+      const raf = requestAnimationFrame(measure);
+      return () => cancelAnimationFrame(raf);
+    },
+  );
+  useEffect(
+    () => measureCardsCommit({ expandedCard, isAddingComment }, updateCardPositions),
+    [expandedCard, isAddingComment, updateCardPositions],
+  );
 
   // Watch the expanded card for size changes (reply textarea appearing, text wrapping, etc.)
   // and the add-comment input for the same. Fires when their actual rendered size changes.
@@ -598,12 +621,11 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (activeCommentId === null) {
-      return;
-    }
-    setExpandedCard(`comment-${activeCommentId}`);
-  }, [activeCommentId]);
+  const [previousActiveCommentId, setPreviousActiveCommentId] = useState(activeCommentId);
+  if (previousActiveCommentId !== activeCommentId) {
+    setPreviousActiveCommentId(activeCommentId);
+    if (activeCommentId !== null) setExpandedCard(`comment-${activeCommentId}`);
+  }
 
   const handleCardClick = (cardId: string, commentId?: number) => {
     const nextExpandedCard = expandedCard === cardId ? null : cardId;
@@ -908,7 +930,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     const cardId = `comment-${comment.id}`;
     const isExpanded = expandedCard === cardId;
     const isActive = activeCommentId === comment.id;
-    const yPos = cardPositions.get(cardId) ?? lastKnownCardPositionsRef.current.get(cardId);
+    const yPos = cardPositions.get(cardId);
     return (
       // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- card is a clickable container with nested buttons/input; role="button" would be invalid, keyboard handler provides Enter/Space access
       <div

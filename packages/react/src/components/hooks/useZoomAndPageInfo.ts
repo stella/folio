@@ -24,6 +24,7 @@ const FIT_TO_WIDTH_MAX_ZOOM = 1;
 
 export type UseZoomAndPageInfoArgs = {
   scrollContainerRef: RefObject<HTMLDivElement | null>;
+  scrollContainer: HTMLDivElement | null;
   pagedEditorRef: RefObject<PagedEditorRef | null>;
   /**
    * Initial zoom on mount as a number (1 = 100%), or `"fit-width"` to size the
@@ -53,6 +54,7 @@ export type UseZoomAndPageInfoReturn = {
 
 export function useZoomAndPageInfo({
   scrollContainerRef,
+  scrollContainer: scrollContainerEl,
   pagedEditorRef,
   initialZoom,
 }: UseZoomAndPageInfoArgs): UseZoomAndPageInfoReturn {
@@ -149,13 +151,7 @@ export function useZoomAndPageInfo({
     scheduleScrollPageInfoFade();
   }, [zoom, scheduleScrollPageInfoFade, updateScrollPageInfo, scrollContainerRef]);
 
-  // Scroll-driven page indicator. The scroll container is mounted by the
-  // child PagedEditor once the document has loaded, so the ref starts as null
-  // and becomes non-null on a later render. We read `ref.current` into a
-  // render-scoped const so it lands in the effect's dep array — that makes
-  // the effect re-fire (and attach the listener) when the container finally
-  // mounts. The container element is not expected to swap after that.
-  const scrollContainerEl = scrollContainerRef.current;
+  // Subscribe when the callback ref publishes the committed scroll container.
   useEffect(() => {
     if (!scrollContainerEl) {
       return;

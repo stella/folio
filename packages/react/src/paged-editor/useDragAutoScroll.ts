@@ -45,39 +45,42 @@ export function useDragAutoScroll({
     }
   }, []);
 
-  const tick = useCallback(() => {
-    if (!activeRef.current) {
-      return;
-    }
+  const tick = useCallback(
+    function scrollTick() {
+      if (!activeRef.current) {
+        return;
+      }
 
-    const container = getScrollParent();
-    if (!container) {
-      return;
-    }
+      const container = getScrollParent();
+      if (!container) {
+        return;
+      }
 
-    const rect = container.getBoundingClientRect();
-    const { x: mx, y: my } = lastMouseRef.current;
+      const rect = container.getBoundingClientRect();
+      const { x: mx, y: my } = lastMouseRef.current;
 
-    let scrollDelta = 0;
+      let scrollDelta = 0;
 
-    if (my < rect.top + EDGE_ZONE) {
-      // Near top edge — scroll up
-      const proximity = Math.max(0, rect.top + EDGE_ZONE - my);
-      scrollDelta = -Math.min(MAX_SPEED, (proximity / EDGE_ZONE) * MAX_SPEED);
-    } else if (my > rect.bottom - EDGE_ZONE) {
-      // Near bottom edge — scroll down
-      const proximity = Math.max(0, my - (rect.bottom - EDGE_ZONE));
-      scrollDelta = Math.min(MAX_SPEED, (proximity / EDGE_ZONE) * MAX_SPEED);
-    }
+      if (my < rect.top + EDGE_ZONE) {
+        // Near top edge — scroll up
+        const proximity = Math.max(0, rect.top + EDGE_ZONE - my);
+        scrollDelta = -Math.min(MAX_SPEED, (proximity / EDGE_ZONE) * MAX_SPEED);
+      } else if (my > rect.bottom - EDGE_ZONE) {
+        // Near bottom edge — scroll down
+        const proximity = Math.max(0, my - (rect.bottom - EDGE_ZONE));
+        scrollDelta = Math.min(MAX_SPEED, (proximity / EDGE_ZONE) * MAX_SPEED);
+      }
 
-    if (scrollDelta !== 0) {
-      scrollEditorBy(container, scrollDelta);
-      // After scrolling, extend the selection to the (now shifted) mouse position
-      onScrollExtendSelection(mx, my);
-    }
+      if (scrollDelta !== 0) {
+        scrollEditorBy(container, scrollDelta);
+        // After scrolling, extend the selection to the (now shifted) mouse position
+        onScrollExtendSelection(mx, my);
+      }
 
-    rafIdRef.current = requestAnimationFrame(tick);
-  }, [getScrollParent, onScrollExtendSelection]);
+      rafIdRef.current = requestAnimationFrame(scrollTick);
+    },
+    [getScrollParent, onScrollExtendSelection],
+  );
 
   const startAutoScroll = useCallback(() => {
     if (activeRef.current) {

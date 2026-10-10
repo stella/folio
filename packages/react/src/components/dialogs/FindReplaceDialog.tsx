@@ -9,17 +9,13 @@
  * - useFindReplace.ts   — React hook for dialog state management
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import type { CSSProperties, KeyboardEvent, ChangeEvent } from "react";
 
 import { ChevronDownIcon, ChevronUpIcon, SearchIcon, XIcon } from "lucide-react";
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
-import {
-  getFindDialogOpenBehavior,
-  shouldRefreshFindDialogSearch,
-} from "./findReplaceDialogBehavior";
 import { getFindReplaceOverlayStyle } from "./findReplaceDialogLayout";
 import { getFindEnterAction } from "./findReplaceInteraction";
 import type { FindOptions, FindResult, FindMatch } from "./findReplaceUtils";
@@ -89,7 +85,39 @@ export type FindReplaceDialogProps = {
 /**
  * FindReplaceDialog component - Modal for finding and replacing text
  */
-export function FindReplaceDialog({
+export function FindReplaceDialog(props: FindReplaceDialogProps): React.ReactElement | null {
+  // Search preferences survive closing; each opening starts a fresh query.
+  const [matchCase, setMatchCase] = useState(false);
+  const [matchWholeWord, setMatchWholeWord] = useState(false);
+  const { isOpen, onClearHighlights } = props;
+  useEffect(() => {
+    if (!isOpen) {
+      onClearHighlights?.();
+    }
+  }, [isOpen, onClearHighlights]);
+  if (!isOpen) {
+    return null;
+  }
+  return (
+    <FindReplaceDialogForm
+      key={props.initialSearchText}
+      {...props}
+      matchCase={matchCase}
+      matchWholeWord={matchWholeWord}
+      onMatchCaseChange={setMatchCase}
+      onMatchWholeWordChange={setMatchWholeWord}
+    />
+  );
+}
+
+type FindReplaceDialogFormProps = FindReplaceDialogProps & {
+  matchCase: boolean;
+  matchWholeWord: boolean;
+  onMatchCaseChange: (value: boolean) => void;
+  onMatchWholeWordChange: (value: boolean) => void;
+};
+
+function FindReplaceDialogForm({
   isOpen,
   onClose,
   onFind,
@@ -101,115 +129,82 @@ export function FindReplaceDialog({
   currentResult,
   className,
   style,
-}: FindReplaceDialogProps): React.ReactElement | null {
+  matchCase,
+  matchWholeWord,
+  onMatchCaseChange,
+  onMatchWholeWordChange,
+}: FindReplaceDialogFormProps): React.ReactElement | null {
   const id = React.useId();
   const t = useTranslations("folio");
   const { Button, Input, Checkbox } = useFolioUI();
   // State
-  const [searchText, setSearchText] = useState("");
-  const [matchCase, setMatchCase] = useState(false);
-  const [matchWholeWord, setMatchWholeWord] = useState(false);
-  const [result, setResult] = useState<FindResult | null>(null);
+  const [searchText, setSearchText] = useState(initialSearchText);
+  const [localResult, setResult] = useState<FindResult | null>(null);
+  const result = currentResult === undefined ? localResult : currentResult;
 
   // Refs
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const latestFindCallbacksRef = useRef({
-    onFind,
-    onHighlightMatches,
-    onClearHighlights,
-  });
-  latestFindCallbacksRef.current = {
-    onFind,
-    onHighlightMatches,
-    onClearHighlights,
-  };
-
-  const latestFindOptionsRef = useRef({ matchCase, matchWholeWord });
-  latestFindOptionsRef.current = { matchCase, matchWholeWord };
-
-  const latestSearchStateRef = useRef({ isOpen, searchText });
-  latestSearchStateRef.current = { isOpen, searchText };
-
-  // Sync with external result if provided
   useEffect(() => {
-    if (currentResult !== undefined) {
-      setResult(currentResult);
-    }
-  }, [currentResult]);
-
-  // Initialize when dialog opens
-  useEffect(() => {
-    const behavior = getFindDialogOpenBehavior({ isOpen, initialSearchText });
-
-    if (behavior.type === "closed") {
-      latestFindCallbacksRef.current.onClearHighlights?.();
-      return;
-    }
-
-    setSearchText(behavior.searchText);
-    setResult(null);
-
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     }, 100);
+    return () => clearTimeout(timeout);
+  }, []);
 
-    if (behavior.shouldFindInitialText) {
-      const callbacks = latestFindCallbacksRef.current;
-      const options = latestFindOptionsRef.current;
-      const searchResult = callbacks.onFind(behavior.searchText, {
-        matchCase: options.matchCase,
-        matchWholeWord: options.matchWholeWord,
-      });
+  const performSearch = useCallback(
+    (text = searchText, options = { matchCase, matchWholeWord }) => {
+      if (!text.trim()) {
+        setResult(null);
+        onClearHighlights?.();
+        return;
+      }
+      const searchResult = onFind(text, options);
       setResult(searchResult);
-      if (searchResult?.matches && callbacks.onHighlightMatches) {
-        callbacks.onHighlightMatches(searchResult.matches);
+      if (searchResult?.matches && onHighlightMatches) {
+        onHighlightMatches(searchResult.matches);
+      } else {
+        onClearHighlights?.();
       }
-    }
-  }, [isOpen, initialSearchText]);
+    },
+    [searchText, matchCase, matchWholeWord, onFind, onHighlightMatches, onClearHighlights],
+  );
 
-  const performSearch = useCallback(() => {
+  // Keep callback updates out of the query schedule. A search can update the
+  // host's callbacks without scheduling another search for the same query.
+  const performSearchRef = useRef(performSearch);
+  const clearHighlightsRef = useRef(onClearHighlights);
+  useLayoutEffect(() => {
+    performSearchRef.current = performSearch;
+    clearHighlightsRef.current = onClearHighlights;
+  }, [performSearch, onClearHighlights]);
+
+  useEffect(() => {
     if (!searchText.trim()) {
-      setResult(null);
-      if (onClearHighlights) {
-        onClearHighlights();
-      }
+      clearHighlightsRef.current?.();
       return;
     }
-
-    const searchResult = onFind(searchText, { matchCase, matchWholeWord });
-    setResult(searchResult);
-
-    if (searchResult?.matches && onHighlightMatches) {
-      onHighlightMatches(searchResult.matches);
-    } else if (onClearHighlights) {
-      onClearHighlights();
-    }
-  }, [searchText, matchCase, matchWholeWord, onFind, onHighlightMatches, onClearHighlights]);
-
-  const performSearchRef = useRef(performSearch);
-  performSearchRef.current = performSearch;
-
-  useEffect(() => {
-    if (shouldRefreshFindDialogSearch(latestSearchStateRef.current)) {
-      performSearchRef.current();
-    }
-  }, [matchCase, matchWholeWord]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    if (!searchText.trim()) {
-      setResult(null);
-      onClearHighlights?.();
-      return undefined;
-    }
-
-    const timeout = setTimeout(performSearch, 120);
+    const timeout = setTimeout(
+      () => performSearchRef.current(searchText, { matchCase, matchWholeWord }),
+      120,
+    );
     return () => clearTimeout(timeout);
-  }, [isOpen, searchText, performSearch, onClearHighlights]);
+  }, [searchText, matchCase, matchWholeWord]);
+
+  const handleMatchCaseChange = useCallback(
+    (value: boolean) => {
+      setResult(null);
+      onMatchCaseChange(value);
+    },
+    [onMatchCaseChange],
+  );
+  const handleMatchWholeWordChange = useCallback(
+    (value: boolean) => {
+      setResult(null);
+      onMatchWholeWordChange(value);
+    },
+    [onMatchWholeWordChange],
+  );
 
   const handleSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setSearchText(e.target.value);
@@ -403,11 +398,11 @@ export function FindReplaceDialog({
 
           <div className="ms-20 flex flex-wrap items-center gap-x-4 gap-y-2">
             <label className="text-muted-foreground flex items-center gap-2 text-xs">
-              <Checkbox checked={matchCase} onCheckedChange={setMatchCase} />
+              <Checkbox checked={matchCase} onCheckedChange={handleMatchCaseChange} />
               {t("findReplace.matchCase")}
             </label>
             <label className="text-muted-foreground flex items-center gap-2 text-xs">
-              <Checkbox checked={matchWholeWord} onCheckedChange={setMatchWholeWord} />
+              <Checkbox checked={matchWholeWord} onCheckedChange={handleMatchWholeWordChange} />
               {t("findReplace.wholeWords")}
             </label>
           </div>

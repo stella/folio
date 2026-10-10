@@ -2,7 +2,7 @@
  * Table Properties Dialog — width type, width value, alignment.
  */
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import {
@@ -44,7 +44,14 @@ const TABLE_JUSTIFICATION_LABEL_KEYS = {
   `dialogs.tableProperties.alignOptions.${string}`
 >;
 
-export function TablePropertiesDialog({
+export function TablePropertiesDialog(props: TablePropertiesDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return <TablePropertiesDialogForm key={JSON.stringify(props.currentProps)} {...props} />;
+}
+
+function TablePropertiesDialogForm({
   isOpen,
   onClose,
   onApply,
@@ -66,14 +73,6 @@ export function TablePropertiesDialog({
   const [justification, setJustification] = useState(
     toTablePropertyJustification(currentProps?.justification),
   );
-
-  useEffect(() => {
-    if (isOpen) {
-      setWidth(currentProps?.width ?? 0);
-      setWidthType(editableWidthType(currentProps?.widthType ?? "auto"));
-      setJustification(toTablePropertyJustification(currentProps?.justification));
-    }
-  }, [isOpen, currentProps]);
 
   const handleApply = useCallback(() => {
     const props: TableProperties = {

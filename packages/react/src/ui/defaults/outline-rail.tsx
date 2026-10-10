@@ -35,7 +35,22 @@ export function DefaultOutlineRail({
 }: FolioOutlineRailProps) {
   const listRef = useRef<HTMLOListElement>(null);
   const activeIndex = items.findIndex((item) => item.id === activeId);
-  const [focusIndex, setFocusIndex] = useState(Math.max(0, activeIndex));
+  const [focus, setFocus] = useState<OutlineFocus>({
+    type: "outside",
+    fallbackIndex: Math.max(0, activeIndex),
+  });
+  const focusIndex = (() => {
+    switch (focus.type) {
+      case "outside":
+        return activeIndex >= 0 ? activeIndex : focus.fallbackIndex;
+      case "inside":
+        return focus.index;
+      default: {
+        const exhaustive: never = focus;
+        return exhaustive;
+      }
+    }
+  })();
   const lastIndex = items.length - 1;
   const clampedFocusIndex = Math.max(0, Math.min(lastIndex, focusIndex));
   let minLevel = Infinity;
@@ -43,13 +58,8 @@ export function DefaultOutlineRail({
     minLevel = Math.min(minLevel, item.level);
   }
 
-  // The tab stop follows the active heading until the user moves it.
-  const focusWithin = useRef(false);
-  useEffect(() => {
-    if (!focusWithin.current && activeIndex >= 0) {
-      setFocusIndex(activeIndex);
-    }
-  }, [activeIndex]);
+  // Outside the list, the tab stop follows the active heading without a state update.
+  // Inside, focus events own the roving index so scrolling cannot move the tab stop.
 
   // Keep the active heading in view without scrolling any ancestor (a plain
   // `scrollIntoView` would also scroll the editor behind the panel).
@@ -101,7 +111,7 @@ export function DefaultOutlineRail({
         return;
       }
       event.preventDefault();
-      setFocusIndex(next);
+      setFocus({ type: "inside", index: next });
       const buttons = listRef.current?.querySelectorAll<HTMLButtonElement>("button");
       if (buttons) {
         [...buttons].at(next)?.focus();
@@ -129,13 +139,10 @@ export function DefaultOutlineRail({
       aria-label={ariaLabel}
       className={rail ? "folio-outline-ticks" : "folio-outline-list"}
       onKeyDown={handleKeyDown}
-      onFocus={() => {
-        focusWithin.current = true;
-      }}
       onBlur={(event) => {
         const next = event.relatedTarget;
         if (!(next instanceof Node && event.currentTarget.contains(next))) {
-          focusWithin.current = false;
+          setFocus({ type: "outside", fallbackIndex: clampedFocusIndex });
         }
       }}
     >
@@ -157,7 +164,13 @@ export function DefaultOutlineRail({
               )}
               data-depth={depth}
               onClick={() => jump(item)}
-              onFocus={() => setFocusIndex(index)}
+              onFocus={() => {
+                setFocus((previous) =>
+                  previous.type === "inside" && previous.index === index
+                    ? previous
+                    : { type: "inside", index },
+                );
+              }}
               tabIndex={index === clampedFocusIndex ? 0 : -1}
               title={rail ? undefined : item.label}
               type="button"
@@ -179,6 +192,8 @@ export function DefaultOutlineRail({
     </ol>
   );
 }
+
+type OutlineFocus = { type: "outside"; fallbackIndex: number } | { type: "inside"; index: number };
 
 /** Height of one tick's hit area; ticks never overlap by less than this. */
 const TICK_PITCH_PX = 12;
@@ -203,29 +218,39 @@ function useRailTickTops({
   resolvePct,
   scrollContainerRef,
 }: RailTickTopsOptions): number[] {
-  const [height, setHeight] = useState(0);
+  const [measurement, setMeasurement] = useState<{
+    height: number;
+    percentages: (number | null)[];
+  }>({ height: 0, percentages: [] });
   useLayoutEffect(() => {
     const list = listRef.current;
-    if (!enabled || !list) {
-      return undefined;
-    }
-    setHeight(list.clientHeight);
-    const observer = new ResizeObserver(() => setHeight(list.clientHeight));
+    if (!enabled || !list) return undefined;
+    const update = () => {
+      const container = scrollContainerRef.current;
+      const height = list.clientHeight;
+      const percentages = items.map((item) => (container ? resolvePct(item.id, container) : null));
+      setMeasurement((previous) =>
+        previous.height === height &&
+        previous.percentages.length === percentages.length &&
+        previous.percentages.every((value, index) => value === percentages.at(index))
+          ? previous
+          : { height, percentages },
+      );
+    };
+    update();
+    const observer = new ResizeObserver(update);
     observer.observe(list);
     return () => observer.disconnect();
-  }, [enabled, listRef]);
-
-  if (!enabled || height === 0) {
-    return [];
-  }
-  const container = scrollContainerRef.current;
+  }, [enabled, items, listRef, resolvePct, scrollContainerRef]);
+  const { height, percentages } = measurement;
+  if (!enabled || height === 0) return [];
   const span = Math.max(0, height - TICK_PITCH_PX);
   if (items.length * TICK_PITCH_PX > height) {
     const step = items.length > 1 ? span / (items.length - 1) : 0;
     return items.map((_, index) => index * step);
   }
-  const tops = items.map((item, index) => {
-    const pct = container ? resolvePct(item.id, container) : null;
+  const tops = items.map((_, index) => {
+    const pct = percentages.at(index) ?? null;
     const fraction = pct === null ? index / Math.max(1, items.length - 1) : pct / 100;
     return fraction * span;
   });

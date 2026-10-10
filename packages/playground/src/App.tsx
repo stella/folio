@@ -71,7 +71,6 @@ const isCollaborationDemo = (): boolean =>
 
 type LoadDocumentOptions = {
   fileName: string;
-  loadingStatus: string;
   missingStatus: string;
   url: string;
 };
@@ -603,14 +602,41 @@ export function App() {
     return <CollaborationApp />;
   }
 
+  return <DocumentPlayground />;
+}
+
+const DocumentPlayground = () => {
   const editorRef = useRef<DocxEditorRef>(null);
-  const scrollParityHost = useRef(buildScrollParityBridge(() => editorRef.current)).current;
+  const [scrollParityHost] = useState(() => buildScrollParityBridge(() => editorRef.current));
   const clipboardCallbackCountsRef = useRef({ copy: 0, cut: 0, paste: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(null);
+  const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("file") || params.has("showcase")) return null;
+    const paragraphCount = Number(params.get("paragraphs"));
+    return Number.isInteger(paragraphCount) && paragraphCount > 0
+      ? createLargeDocument(paragraphCount)
+      : createStellaStyleDocument();
+  });
   const [documentBuffer, setDocumentBuffer] = useState<ArrayBuffer | null>(null);
-  const [fileName, setFileName] = useState("Untitled.docx");
-  const [status, setStatus] = useState<PlaygroundStatus>(IDLE_PLAYGROUND_STATUS);
+  const [fileName, setFileName] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paragraphCount = Number(params.get("paragraphs"));
+    return !params.get("file") &&
+      !params.has("showcase") &&
+      Number.isInteger(paragraphCount) &&
+      paragraphCount > 0
+      ? `Generated ${paragraphCount} paragraphs.docx`
+      : "Untitled.docx";
+  });
+  const [status, setStatus] = useState<PlaygroundStatus>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("file"))
+      return { type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading fixture..." };
+    if (params.has("showcase"))
+      return { type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading showcase..." };
+    return IDLE_PLAYGROUND_STATUS;
+  });
   const [editorMode, setEditorMode] = useState<EditorMode>("editing");
   const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
   const query = new URLSearchParams(window.location.search);
@@ -625,9 +651,8 @@ export function App() {
     : undefined;
 
   const loadDocument = useCallback(
-    async ({ fileName: nextFileName, loadingStatus, missingStatus, url }: LoadDocumentOptions) => {
+    async ({ fileName: nextFileName, missingStatus, url }: LoadDocumentOptions) => {
       try {
-        setStatus({ type: PLAYGROUND_STATUS_TYPE.LOADING, message: loadingStatus });
         const response = await fetch(url);
         if (!response.ok) {
           setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: missingStatus });
@@ -648,17 +673,13 @@ export function App() {
     [],
   );
 
-  // Load fixture from ?file= query param (visual + interaction tests) or
-  // the showcase from ?showcase (README recording), or generate a body from
-  // ?paragraphs= (performance tests).
+  // Fetch fixture/showcase bytes after mount; local documents initialize in state.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const fixtureFile = params.get("file");
-    const paragraphCount = Number(params.get("paragraphs"));
     if (fixtureFile) {
       void loadDocument({
         fileName: fixtureFile,
-        loadingStatus: "Loading fixture...",
         missingStatus: `Fixture not found: ${fixtureFile}`,
         url: `/fixtures/${fixtureFile}`,
       });
@@ -667,19 +688,11 @@ export function App() {
     if (params.has("showcase")) {
       void loadDocument({
         fileName: SHOWCASE_FILE_NAME,
-        loadingStatus: "Loading showcase...",
         missingStatus: "Showcase document not found",
         url: SHOWCASE_URL,
       });
       return;
     }
-    if (Number.isInteger(paragraphCount) && paragraphCount > 0) {
-      setCurrentDocument(createLargeDocument(paragraphCount));
-      setFileName(`Generated ${paragraphCount} paragraphs.docx`);
-      return;
-    }
-    setCurrentDocument(createStellaStyleDocument());
-    setFileName("Untitled.docx");
   }, [loadDocument]);
 
   const handleNewDocument = useCallback(() => {
@@ -720,9 +733,9 @@ export function App() {
   }, []);
 
   const handleOpenShowcase = useCallback(() => {
+    setStatus({ type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading showcase..." });
     void loadDocument({
       fileName: SHOWCASE_FILE_NAME,
-      loadingStatus: "Loading showcase...",
       missingStatus: "Showcase document not found",
       url: SHOWCASE_URL,
     });
@@ -831,13 +844,13 @@ export function App() {
       globalThis.__folioParity = undefined;
       globalThis.__folioScrollParity = undefined;
     };
-  }, []);
+  }, [scrollParityHost]);
 
   return (
     <IntlProvider
       locale={locale}
       messages={getFolioMessages(locale)}
-      timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+      timeZone={new Intl.DateTimeFormat().resolvedOptions().timeZone}
     >
       <div className="pg-shell" dir={RTL_LOCALES.has(locale) ? "rtl" : "ltr"}>
         <main className="pg-editor-area">
@@ -899,7 +912,7 @@ export function App() {
             id="file-input"
             type="file"
             accept=".docx"
-            onChange={(e) => void handleFileSelect(e)}
+            onChange={handleFileSelect}
             className="pg-visually-hidden"
           />
           <button type="button" className="pg-button" onClick={handleNewDocument}>
@@ -908,7 +921,7 @@ export function App() {
           <button type="button" className="pg-button" onClick={handleOpenShowcase}>
             Showcase
           </button>
-          <button type="button" className="pg-button" onClick={() => void handleSave()}>
+          <button type="button" className="pg-button" onClick={handleSave}>
             Save
           </button>
 
@@ -950,4 +963,4 @@ export function App() {
       </div>
     </IntlProvider>
   );
-}
+};

@@ -162,7 +162,8 @@ export function FormattingBar(props: FormattingBarProps) {
   // Start optimistic (assume the secondary group fits): the layout effect
   // below measures and corrects this before the first paint, so a narrow
   // initial width never flashes overflowing content.
-  const [showSecondaryInline, setShowSecondaryInline] = useState(true);
+  const [secondaryFits, setShowSecondaryInline] = useState(true);
+  const showSecondaryInline = inline || secondaryFits;
 
   const handleFormat = useCallback(
     (action: FormattingAction) => {
@@ -496,10 +497,7 @@ export function FormattingBar(props: FormattingBarProps) {
   // any correction it makes to the optimistic initial state, happens
   // before the browser paints, avoiding a flash of overflowing content.
   useLayoutEffect(() => {
-    if (inline) {
-      setShowSecondaryInline(true);
-      return undefined;
-    }
+    if (inline) return undefined;
 
     const scrollEl = scrollRef.current;
     const primaryEl = primaryRef.current;
@@ -533,7 +531,7 @@ export function FormattingBar(props: FormattingBarProps) {
     return () => {
       observer.disconnect();
     };
-  }, [inline, showSecondaryInline]);
+  }, [inline]);
 
   const handleBarMouseDown = useCallback((e: React.MouseEvent) => {
     if (!(e.target instanceof HTMLElement)) {

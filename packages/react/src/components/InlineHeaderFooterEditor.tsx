@@ -192,7 +192,6 @@ export const InlineHeaderFooterEditor = forwardRef<
         cancelAnimationFrame(rafId);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- focus must fire only on mount; the view is read through a ref to avoid a stale closure
   }, []);
 
   const handleClose = useCallback(() => {
