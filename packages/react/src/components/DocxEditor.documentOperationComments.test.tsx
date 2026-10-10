@@ -97,7 +97,11 @@ test.each(["accepted", "rejected"] as const)(
       });
       if (decision === "accepted") {
         expect(view.state.doc.eq(before)).toBe(true);
-        expect(controls.notifications.at(-1)).toEqual([]);
+        const restored = controls.notifications.at(-1) ?? panic("Undo metadata was not notified");
+        expect(restored).toEqual([]);
+        expect(ref.getDocument()?.package.document.comments ?? []).toEqual(requested);
+        controls.comments = structuredClone(restored);
+        await act(async () => root.render(render()));
       } else {
         expect(view.state.doc.eq(before)).toBe(false);
       }
