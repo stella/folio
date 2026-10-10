@@ -1,5 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import JSZip from "jszip";
 
 import { paragraphNumberingReference, NO_PARAGRAPH_NUMBERING } from "@stll/docx-core/model";
 
@@ -86,12 +87,14 @@ const buildInheritedCollisionDocument = async ({
   styleId,
   includeAnchor = false,
   includeStyledParagraph = true,
+  omitParagraphIds = false,
 }: {
   statedNumbering: FolioContentStatedNumbering;
   numFmt: "decimal" | "lowerRoman" | "bullet";
   styleId: "BaseNumbered" | "StyleNumbered";
   includeAnchor?: boolean;
   includeStyledParagraph?: boolean;
+  omitParagraphIds?: boolean;
 }): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   document.package.document.content = [
@@ -99,8 +102,7 @@ const buildInheritedCollisionDocument = async ({
       ? [
           {
             type: "paragraph" as const,
-            paraId: "ABCD1234",
-            textId: "ABCD1234",
+            ...(!omitParagraphIds && { paraId: "ABCD1234", textId: "ABCD1234" }),
             formatting: { styleId: "Normal" },
             content: [
               {
@@ -115,8 +117,7 @@ const buildInheritedCollisionDocument = async ({
       ? [
           {
             type: "paragraph" as const,
-            paraId: "1234ABCD",
-            textId: "1234ABCD",
+            ...(!omitParagraphIds && { paraId: "1234ABCD", textId: "1234ABCD" }),
             formatting: {
               styleId,
               ...(statedNumbering.kind !== "inherit" && { numPr: statedNumbering }),
@@ -250,7 +251,7 @@ const INHERITED_COLLISION_CASES = [
   },
 ] as const;
 
-const INSERTED_COLLISION_CASES = [
+const INSERTED_NUMBERING_CASES = [
   {
     statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
     numFmt: "lowerRoman",
@@ -272,6 +273,15 @@ const INSERTED_COLLISION_CASES = [
     targetMarker: "•",
   },
 ] as const;
+
+const INSERTED_COLLISION_CASES = [false, true].flatMap((omitParagraphIds) =>
+  INSERTED_NUMBERING_CASES.map(({ statedNumbering, numFmt, targetMarker }) => ({
+    statedNumbering,
+    numFmt,
+    targetMarker,
+    omitParagraphIds,
+  })),
+);
 
 test("accept and reject preserve style-only numbering across colliding definitions", async () => {
   await assertProperty(
@@ -349,20 +359,39 @@ test("compare and redline preserve inserted style-only numbering across collisio
       const baseProjection = await paragraphProjection(baseBuffer, ANCHOR_TEXT);
       expect(baseProjection.text).toBe(ANCHOR_TEXT);
 
-      for (const { statedNumbering, numFmt, targetMarker } of cases) {
+      for (const { statedNumbering, numFmt, targetMarker, omitParagraphIds } of cases) {
         const targetBuffer = await buildInheritedCollisionDocument({
           statedNumbering,
           numFmt,
           styleId: "StyleNumbered",
           includeAnchor: true,
+          omitParagraphIds,
         });
+        const caseBaseBuffer = omitParagraphIds
+          ? await buildInheritedCollisionDocument({
+              statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+              numFmt: "decimal",
+              styleId: "BaseNumbered",
+              includeAnchor: true,
+              includeStyledParagraph: false,
+              omitParagraphIds: true,
+            })
+          : baseBuffer;
+        if (omitParagraphIds) {
+          for (const fixtureBuffer of [caseBaseBuffer, targetBuffer]) {
+            const zip = await JSZip.loadAsync(fixtureBuffer);
+            const documentXml = await zip.file("word/document.xml")?.async("text");
+            expect(documentXml).toBeDefined();
+            expect(documentXml).not.toMatch(/w14:(?:paraId|textId)="/u);
+          }
+        }
         const targetProjection = await paragraphProjection(targetBuffer);
         expect(targetProjection.statedNumbering).toEqual(statedNumbering);
         expect(targetProjection.displayLabel).toBe(targetMarker);
 
         const generated = await Promise.all([
-          compareDocx(baseBuffer, targetBuffer, COMPARE_OPTIONS),
-          generateRedlineDocx(baseBuffer, targetBuffer),
+          compareDocx(caseBaseBuffer, targetBuffer, COMPARE_OPTIONS),
+          generateRedlineDocx(caseBaseBuffer, targetBuffer),
         ]);
         const [compared, redline] = generated;
         if (compared.isErr()) throw compared.error;
@@ -374,9 +403,10 @@ test("compare and redline preserve inserted style-only numbering across collisio
           expect(accepting.acceptAll()).toBeGreaterThan(0);
           const acceptedBuffer = await accepting.toBuffer();
           const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
-          expect(await paragraphProjection(acceptedBuffer, ANCHOR_TEXT)).toMatchObject({
-            text: ANCHOR_TEXT,
-          });
+          expect(accepted.snapshot().blocks.map((block) => block.text)).toEqual([
+            ANCHOR_TEXT,
+            PARAGRAPH_TEXT,
+          ]);
           const acceptedProjection = await paragraphProjection(acceptedBuffer);
           expect(acceptedProjection.statedNumbering).toEqual(statedNumbering);
           expect(acceptedProjection.displayLabel).toBe(targetMarker);
