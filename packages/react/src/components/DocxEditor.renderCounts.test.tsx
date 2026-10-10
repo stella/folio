@@ -48,9 +48,9 @@ const createRenderProbe = () => {
   };
 };
 
-// Identical default-session sequence measured on main and this change in CI:
+// Identical default and canonical sequences measured on main and this change:
 // 2 commits per keystroke/selection, then 4 commits after projection settles.
-const DEFAULT_RENDER_BUDGET = { perOperation: 2, settled: 4, total: 30 };
+const RENDER_BUDGET = { perOperation: 2, settled: 4, total: 30 };
 
 // Run this identical sequence on main and the change to compare committed
 // render counts. Duration is diagnostic: machine load makes timing unsuitable
@@ -161,15 +161,11 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
       });
       expect(changes.length).toBeGreaterThan(startChanges);
       expect(typing.some((count) => count > 0)).toBe(true);
-      if (!experimentalSession) {
-        for (const count of [...typing, ...selection]) {
-          expect(count).toBeLessThanOrEqual(DEFAULT_RENDER_BUDGET.perOperation);
-        }
-        expect(commits.length - immediateCommits).toBeLessThanOrEqual(
-          DEFAULT_RENDER_BUDGET.settled,
-        );
-        expect(commits.length - startCommit).toBeLessThanOrEqual(DEFAULT_RENDER_BUDGET.total);
+      for (const count of [...typing, ...selection]) {
+        expect(count).toBeLessThanOrEqual(RENDER_BUDGET.perOperation);
       }
+      expect(commits.length - immediateCommits).toBeLessThanOrEqual(RENDER_BUDGET.settled);
+      expect(commits.length - startCommit).toBeLessThanOrEqual(RENDER_BUDGET.total);
       console.info(
         "FOLIO_RENDER_MEASUREMENT",
         JSON.stringify({
