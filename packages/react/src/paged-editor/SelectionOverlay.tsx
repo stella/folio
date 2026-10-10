@@ -9,11 +9,13 @@
  * renders selection rectangles in container-relative coordinates.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useMemo } from "react";
 
-import type {
-  SelectionRect,
-  CaretPosition,
+import {
+  selectionToRects,
+  getCaretPosition,
+  type SelectionRect,
+  type CaretPosition,
 } from "@stll/folio-core/layout-bridge/engine/selectionRects";
 import type { Layout, FlowBlock, Measure } from "@stll/folio-core/layout-engine/types";
 import "../styles/editor.css";
@@ -222,36 +224,20 @@ export function useSelectionOverlay(
   selectionRects: SelectionRect[];
   caretPosition: CaretPosition | null;
 } {
-  const [selectionRects, setSelectionRects] = useState<SelectionRect[]>([]);
-  const [caretPosition, setCaretPosition] = useState<CaretPosition | null>(null);
-
-  useEffect(() => {
+  return useMemo(() => {
     if (!layout || !pmSelection) {
-      setSelectionRects([]);
-      setCaretPosition(null);
-      return;
+      return { selectionRects: [], caretPosition: null };
     }
-
-    // Import dynamically to avoid circular dependencies
-    void import("@stll/folio-core/layout-bridge/engine/selectionRects").then(
-      ({ selectionToRects, getCaretPosition }) => {
-        const { from, to } = pmSelection;
-
-        if (from === to) {
-          // Collapsed selection - show caret
-          const caret = getCaretPosition(layout, blocks, measures, from);
-          setCaretPosition(caret);
-          setSelectionRects([]);
-        } else {
-          // Range selection - show highlight
-          const rects = selectionToRects(layout, blocks, measures, from, to);
-          setSelectionRects(rects);
-          setCaretPosition(null);
-        }
-        return;
-      },
-    );
+    const { from, to } = pmSelection;
+    if (from === to) {
+      return {
+        selectionRects: [],
+        caretPosition: getCaretPosition(layout, blocks, measures, from),
+      };
+    }
+    return {
+      selectionRects: selectionToRects(layout, blocks, measures, from, to),
+      caretPosition: null,
+    };
   }, [pmSelection, layout, blocks, measures]);
-
-  return { selectionRects, caretPosition };
 }
