@@ -99,21 +99,52 @@ const overrideMatches = (filename: string) =>
   nonReactPackageOverride.files.some((pattern) => new Bun.Glob(pattern).match(filename));
 
 describe("React lint package scope", () => {
-  test("React Compiler rules are errors without a temporary expiry policy", () => {
+  test("the shared config owns React Compiler policy without local severity overrides", () => {
     expect(config.options?.denyWarnings).toBe(true);
     const compilerRules = Object.keys(reactCompilerRules);
     expect(compilerRules.length).toBeGreaterThan(0);
-    for (const rule of compilerRules) expect(config.rules?.[rule], rule).toBe("error");
-    const ruleSets = [config.rules, ...(config.overrides ?? []).map((override) => override.rules)];
-    for (const ruleSet of ruleSets) {
-      for (const [rule, setting] of Object.entries(ruleSet ?? {})) {
-        const level = Array.isArray(setting) ? setting.at(0) : setting;
-        expect(level, rule).not.toBe("warn");
-        expect(level, rule).not.toBe(1);
-      }
+    for (const [rule, level] of Object.entries(reactCompilerRules)) {
+      expect(config.rules?.[rule], rule).toBe(level);
     }
     const source = readFileSync(path.join(REPO_ROOT, "oxlint.config.ts"), "utf8");
     expect(source).not.toMatch(/WarningsExpireAt|WarningPolicyAt|Date\.(?:now|parse)\(/u);
+    const file = ts.createSourceFile("oxlint.config.ts", source, ts.ScriptTarget.Latest, true);
+    const declaration = file.statements.find(ts.isExportAssignment);
+    if (!declaration || !ts.isCallExpression(declaration.expression)) {
+      panic("Lint config must export the shared library config call");
+    }
+    const options = declaration.expression.arguments.at(0);
+    if (!options || !ts.isObjectLiteralExpression(options)) {
+      panic("Lint config options must be inspectable");
+    }
+    const rulesProperty = options.properties.find(
+      (property) =>
+        ts.isPropertyAssignment(property) &&
+        (ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name)) &&
+        property.name.text === "rules",
+    );
+    if (
+      !rulesProperty ||
+      !ts.isPropertyAssignment(rulesProperty) ||
+      !ts.isObjectLiteralExpression(rulesProperty.initializer)
+    ) {
+      panic("Local lint rules must be an explicit object");
+    }
+    for (const property of rulesProperty.initializer.properties) {
+      if (
+        !ts.isPropertyAssignment(property) ||
+        !(ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name))
+      ) {
+        panic("Local rule spreads and computed keys can override shared Compiler policy");
+      }
+      expect(compilerRules, property.name.text).not.toContain(property.name.text);
+    }
+    for (const override of config.overrides ?? []) {
+      if (override === nonReactPackageOverride) continue;
+      for (const rule of Object.keys(override.rules ?? {})) {
+        expect(compilerRules, rule).not.toContain(rule);
+      }
+    }
   });
 
   test("lint invocations leave warning policy to the config", () => {
@@ -167,7 +198,7 @@ describe("React lint package scope", () => {
     // Generic JSX accessibility and architecture rules retain the shared policy.
     expect(Object.keys(nonReactPackageOverride.rules).every(isReactRule)).toBe(true);
     expect(config.overrides?.at(-1)).toBe(nonReactPackageOverride);
-    expect(config.rules?.["react/hooks"]).toBe("error");
+    expect(config.rules?.["react/hooks"]).toBe(reactCompilerRules["react/hooks"]);
   });
 
   test.each([

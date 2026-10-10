@@ -1,4 +1,4 @@
-import { library, libraryRules, reactCompilerRules } from "@stll/oxlint-config";
+import { library, libraryRules } from "@stll/oxlint-config";
 
 // Vue composables use hook-like names but follow Vue's lifecycle, not React's.
 // The package census in scripts/react-lint-scope.test.ts keeps this scope exact.
@@ -54,9 +54,6 @@ export default library({
     typeAware: false,
   },
   rules: {
-    ...Object.fromEntries(
-      Object.keys(reactCompilerRules).map((rule) => [rule, "error" as const]),
-    ),
     "folio-editor-commands/command-owner-boundary": "error",
     "folio-deletion-marks/preserve-pending-deletions": "error",
     // AST rules that oxlint delegates to the (dormant) type-aware pass in the
