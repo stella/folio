@@ -742,23 +742,13 @@ jobs:
           fi
           cargo install wasm-bindgen-cli --version "${versions[0]}" --locked
 
-      - name: Rust format
-        run: cargo fmt --all -- --check
+      - name: Rust lint
+        run: bun run kernel:check
 
       - name: Rust tests
         run: |
           cargo test -p stella-docx-kernel
           cargo test -p stella-text-shaper
-
-      - name: Rust lint
-        run: |
-          cargo clippy -p stella-docx-kernel --all-targets -- -D warnings
-          cargo clippy -p stella-docx-kernel --lib --features wasm --target wasm32-unknown-unknown -- -D warnings
-          cargo clippy -p stella-text-shaper --all-targets -- -D warnings
-          cargo clippy -p stella-text-shaper --lib --features wasm --target wasm32-unknown-unknown -- -D warnings
-
-      - name: Hawk visibility lint
-        run: bun run rust:hawk
 
       - name: Registry package
         run: cargo package -p stella-docx-kernel --locked
