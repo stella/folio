@@ -165,6 +165,7 @@ test(`canonical history replay ${CANONICAL_EVALUATION_HISTORY_REPLAY.seed} ${CAN
 
 declare global {
   var __folioCollectPendingCanonicalLoad: (() => Promise<void>) | undefined;
+  var __folioReportCollectedCanonicalLoad: (() => Promise<void>) | undefined;
 }
 
 test("canonical history load survives browser collection while its evaluation is pending", async ({
@@ -174,6 +175,10 @@ test("canonical history load survives browser collection while its evaluation is
   await waitForCanonicalPageReady(page);
   const cdp = await page.context().newCDPSession(page);
   const collections: Promise<void>[] = [];
+  const lostOwner = Promise.withResolvers<never>();
+  await page.exposeFunction("__folioReportCollectedCanonicalLoad", () => {
+    lostOwner.reject(new TypeError("Canonical load promise lost its transport owner"));
+  });
   await page.exposeFunction("__folioCollectPendingCanonicalLoad", () => {
     const collect = async () => {
       for (let collection = 0; collection < 20; collection++)
@@ -188,14 +193,37 @@ test("canonical history load survives browser collection while its evaluation is
     if (!bridge) throw new TypeError("Canonical bridge unavailable");
     const collect = globalThis.__folioCollectPendingCanonicalLoad;
     if (!collect) throw new TypeError("Canonical collection probe unavailable");
+    const report = globalThis.__folioReportCollectedCanonicalLoad;
+    if (!report) throw new TypeError("Canonical collection observer unavailable");
     const load = bridge.load;
+    const createOperation = () => {
+      const completion = Promise.withResolvers<boolean>();
+      return Object.assign(completion.promise, {
+        complete: completion.resolve,
+        fail: completion.reject,
+      });
+    };
     bridge.load = (bytes) => {
-      const pending = load(bytes);
-      void collect();
+      const pending = createOperation();
+      const weak = new WeakRef(pending);
+      // The transport must own its returned promise. A weak completion link
+      // lets collection exercise that boundary after the real load commits,
+      // independently of incidental roots inside the parser or adapter.
+      load(bytes)
+        .then(
+          (loaded) =>
+            collect().then(() => {
+              const owner = weak.deref();
+              if (!owner) return report();
+              return owner.complete(loaded);
+            }),
+          (error: unknown) => weak.deref()?.fail(error),
+        )
+        .catch((error: unknown) => weak.deref()?.fail(error));
       return pending;
     };
   });
-  try {
+  const runCases = async () => {
     const source = [
       ...new Uint8Array(await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }))),
     ];
@@ -233,6 +261,9 @@ test("canonical history load survives browser collection while its evaluation is
       collections.length,
       "collection must exercise the actual canonical load boundary",
     ).toBeGreaterThan(0);
+  };
+  try {
+    await Promise.race([runCases(), lostOwner.promise]);
   } finally {
     await cdp.detach();
   }
