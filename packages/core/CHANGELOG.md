@@ -1,5 +1,13 @@
 # @stll/folio-core
 
+## 0.58.1
+
+### Patch Changes
+
+- [#1633](https://github.com/stella/folio/pull/1633) [`8fcacb5`](https://github.com/stella/folio/commit/8fcacb58153ff158939613c27060283a5782ca08) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use captured parsed stylesheet definitions during editor saves while preserving newly added styles.
+- Updated dependencies [[`68038ab`](https://github.com/stella/folio/commit/68038abbcae49f963de34ebbbf6b1897ef69d6e5)]:
+  - @stll/docx-core@0.35.0
+
 ## 0.58.0
 
 ### Minor Changes

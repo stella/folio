@@ -1,5 +1,13 @@
 # @stll/docx-core
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1637](https://github.com/stella/folio/pull/1637) [`68038ab`](https://github.com/stella/folio/commit/68038abbcae49f963de34ebbbf6b1897ef69d6e5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Replace the global projection formatting status with per-family completeness in wire schema 6. Read the status for each formatting family; direct highlight remains known when styles are unavailable.
+
+  Expose the initialized Rust runtime's projection schema version through `docxProjectionSchemaVersion`.
+
 ## 0.34.0
 
 ### Minor Changes
