@@ -9,3 +9,5 @@ Breaking: preserve stated numbering references separately from style inheritance
 Numbering requests now use named inherit, none, levelOnly, reference, or newList variants. Replace null cancellation with { kind: "none" }, and listLevel patches with levelOnly numbering. Read statedNumbering for authored state and listReference for effective membership; listLevel readback is removed.
 
 Paragraph blocks require statedNumbering; diagnostic blocks expose no paragraph numbering or formatting. Narrow on block.kind before reading those fields.
+
+Redline insertions import their referenced style closure and numbering through collision-safe resource owners while preserving stated inheritance. Unimportable style closures produce visible typed skips.

@@ -11,7 +11,8 @@
  */
 
 import { panic, TaggedError } from "better-result";
-import { paragraphNumberingLevel, paragraphNumberingReference } from "@stll/docx-core/model";
+import { Fragment } from "prosemirror-model";
+import { createStyleResolver } from "./prosemirror/styles/styleResolver";
 
 import {
   FolioDocxReviewer,
@@ -20,7 +21,15 @@ import {
   type FolioDocumentStoryHandle,
   type FolioResolvedReviewedView,
 } from "./ai-edits/headless";
-import { createFolioAITextRangeHandle, trailingBodyBlockId } from "./ai-edits/snapshot";
+import {
+  createFolioAITextRangeHandle,
+  trailingBodyBlockId,
+  sourceDocumentOf,
+  styleResolverOf,
+  createFolioAIEditSnapshotWithStyleResolver,
+  remapFolioAIEditSnapshotStyleReferences,
+  remapFolioAIEditSnapshotNumberingReferences,
+} from "./ai-edits/snapshot";
 import type {
   FolioAIBlock,
   FolioAIBlockParagraphProperties,
@@ -250,8 +259,6 @@ const buildRedlineOperations = ({
   return operations;
 };
 
-type InsertedListReference = { numId: number; level: number; ilvl?: number };
-
 /**
  * The revised value, or `null` to clear one the anchor would pass on, or
  * `undefined` when neither has one: an explicit `null` costs a restyle pass.
@@ -308,20 +315,6 @@ const paragraphBlockOf = (block: FolioAIBlock): FolioAIParagraphBlock | undefine
   }
 };
 
-const insertedNumbering = (operation: FolioAIEditOperation): InsertedListReference | null => {
-  if (operation.type !== "insertBeforeBlock" && operation.type !== "insertAfterBlock") {
-    return null;
-  }
-  const numbering = operation.numbering;
-  return numbering?.kind === "reference"
-    ? {
-        numId: numbering.numId,
-        level: paragraphNumberingLevel(numbering) ?? 0,
-        ...(numbering.ilvl !== undefined && { ilvl: numbering.ilvl }),
-      }
-    : null;
-};
-
 /** The `w:numId`s whose `w:num` and abstract definition both exist. */
 const definedNumIds = (numbering: NumberingDefinitions | null | undefined): Set<number> => {
   const abstractIds = new Set(numbering?.abstractNums.map((entry) => entry.abstractNumId));
@@ -340,45 +333,47 @@ const definedNumIds = (numbering: NumberingDefinitions | null | undefined): Set<
  * A reference the revised package cannot resolve shows no number there
  * either, and is inserted without one.
  */
-const bindInsertedNumbering = (
+const stageInsertedNumbering = (
   baseReviewer: FolioDocxReviewer,
   revisedReviewer: FolioDocxReviewer,
-  operationsByStory: readonly (readonly FolioAIEditOperation[])[],
-): FolioAIEditOperation[][] => {
+  snapshots: readonly FolioAIEditSnapshot[],
+): ReadonlyMap<number, number> => {
   const baseAccess = getFolioDocxComparisonAccess(baseReviewer);
   const revisedNumbering = getFolioDocxComparisonAccess(revisedReviewer).numberingDefinitions();
   const resolvable = definedNumIds(revisedNumbering);
-  const references = operationsByStory.flatMap((operations) =>
-    operations.flatMap((operation) => {
-      const numbering = insertedNumbering(operation);
-      return numbering && resolvable.has(numbering.numId) ? [numbering] : [];
+  const references = snapshots.flatMap((snapshot) =>
+    snapshot.blocks.flatMap((block) => {
+      const paragraph = paragraphBlockOf(block);
+      const reference = paragraph?.listReference;
+      return reference && resolvable.has(reference.numId) ? [reference] : [];
     }),
   );
   const remapped =
     baseAccess.planTargetNumberingReferences(revisedNumbering, references) ??
     panic("Resolvable revised numbering references could not be planned");
-  baseAccess.stageTargetNumbering(revisedNumbering, references, remapped);
-  // Staging is all or nothing; whatever it could not define is dropped here
-  // rather than written as a dangling reference.
-  const defined = definedNumIds(baseAccess.numberingDefinitions());
-  return operationsByStory.map((operations) =>
-    operations.map((operation) => {
-      const numbering = insertedNumbering(operation);
-      if (numbering === null) {
-        return operation;
-      }
-      const numId = remapped.get(numbering.numId) ?? numbering.numId;
-      if (!resolvable.has(numbering.numId) || !defined.has(numId)) {
-        return { ...operation, numbering: { kind: "none" as const } };
-      }
-      return {
-        ...operation,
-        numbering: paragraphNumberingReference({
-          numId,
-          ...(numbering.ilvl !== undefined && { ilvl: numbering.ilvl }),
-        }),
-      };
-    }),
+  if (baseAccess.stageTargetNumbering(revisedNumbering, references, remapped) === "conflict") {
+    panic("Planned revised numbering could not be staged");
+  }
+  return remapped;
+};
+
+/** Only added paragraphs contribute style resources; retain their source nodes and context. */
+const insertedSnapshot = (
+  base: FolioAIEditSnapshot,
+  revised: FolioAIEditSnapshot,
+): FolioAIEditSnapshot => {
+  const document = sourceDocumentOf(revised);
+  const nodes = alignFolioBlocks(base.blocks, revised.blocks).flatMap((event) => {
+    if (event.type === "pair" || event.type === "baseOnly") return [];
+    const anchor =
+      revised.anchors[event.block.id] ?? panic("An inserted block lost its source anchor");
+    const node =
+      document.nodeAt(anchor.from) ?? panic("An inserted block lost its source paragraph");
+    return [node];
+  });
+  return createFolioAIEditSnapshotWithStyleResolver(
+    document.copy(Fragment.from(nodes)),
+    styleResolverOf(revised),
   );
 };
 
@@ -439,7 +434,8 @@ export const generateRedlineDocx = async (
   const plannedStories: {
     story: FolioDocumentStoryHandle;
     snapshot: FolioAIEditSnapshot;
-    operations: FolioAIEditOperation[];
+    revisedSnapshot: FolioAIEditSnapshot;
+    inserted: FolioAIEditSnapshot;
   }[] = [];
   for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
     if (!pair.baseStory) {
@@ -464,25 +460,60 @@ export const generateRedlineDocx = async (
     if (!baseSnapshot || !revisedSnapshot) {
       panic("A matched document story could not be read");
     }
-    const operations = buildRedlineOperations({
-      baseSnapshot,
-      revisedBlocks: revisedSnapshot.blocks,
-      nextOperationId,
+    plannedStories.push({
+      story: pair.baseStory,
+      snapshot: baseSnapshot,
+      revisedSnapshot,
+      inserted: insertedSnapshot(baseSnapshot, revisedSnapshot),
     });
-    if (operations.length === 0) {
-      continue;
-    }
-    plannedStories.push({ story: pair.baseStory, snapshot: baseSnapshot, operations });
   }
 
-  // Numbering is package-wide: bind every story's inserted list items at once.
-  const boundOperations = bindInsertedNumbering(
+  const insertedSnapshots = plannedStories.map(({ inserted }) => inserted);
+  const numberingReferenceMap = stageInsertedNumbering(
     baseReviewer,
     revisedReviewer,
-    plannedStories.map(({ operations }) => operations),
+    insertedSnapshots,
   );
-  for (const [index, { story, snapshot }] of plannedStories.entries()) {
-    const operations = boundOperations[index] ?? panic("A planned story lost its operations");
+  const styleImport = getFolioDocxComparisonAccess(baseReviewer).stageTargetStyles({
+    source: revisedReviewer,
+    snapshots: insertedSnapshots,
+    importedHeaderFooterSnapshots: insertedSnapshots,
+    numberingReferenceMap,
+  });
+  const defined = definedNumIds(getFolioDocxComparisonAccess(baseReviewer).numberingDefinitions());
+  for (const { story, snapshot, revisedSnapshot, inserted } of plannedStories) {
+    const imported =
+      styleImport.status === "unalignable"
+        ? inserted
+        : remapFolioAIEditSnapshotStyleReferences({
+            snapshot: inserted,
+            styleIdMap: styleImport.styleIdMap,
+            defaultParagraphStyleId: styleImport.defaultParagraphStyleId,
+            importedStyleResolver: createStyleResolver(styleImport.styles),
+            reconcileAuthoredFormatting: true,
+          });
+    const rebound = remapFolioAIEditSnapshotNumberingReferences(imported, numberingReferenceMap);
+    const insertedById = new Map(rebound.blocks.map((block) => [block.id, block]));
+    const operations = buildRedlineOperations({
+      baseSnapshot: snapshot,
+      revisedBlocks: revisedSnapshot.blocks.map((block) => insertedById.get(block.id) ?? block),
+      nextOperationId,
+    })
+      .filter((operation) => {
+        if (operation.type !== "insertBeforeBlock" && operation.type !== "insertAfterBlock")
+          return true;
+        if (styleImport.status !== "unalignable") return true;
+        skipped.push({ id: operation.id, reason: "missingStyle", message: styleImport.detail });
+        return false;
+      })
+      .map((operation) => {
+        if (operation.type !== "insertBeforeBlock" && operation.type !== "insertAfterBlock")
+          return operation;
+        if (operation.numbering?.kind !== "reference" || defined.has(operation.numbering.numId))
+          return operation;
+        return Object.assign(operation, { numbering: { kind: "none" as const } });
+      });
+    if (operations.length === 0) continue;
     const result = baseReviewer.applyDocumentOperationsToStory({
       story,
       snapshot,
@@ -492,9 +523,9 @@ export const generateRedlineDocx = async (
         operations,
       },
       wordDiff,
-      // The revised document's references, carried as it holds them; its
-      // styles are not imported, so refusing one would drop the paragraph.
-      undefinedStyles: "keep",
+      // Added paragraphs use the style closure imported through the collision owner.
+      // Unimportable closures are reported as typed skips before applying the paragraph.
+      undefinedStyles: "refuse",
     });
     applied.push(...result.applied);
     skipped.push(...result.skipped);

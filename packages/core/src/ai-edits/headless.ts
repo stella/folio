@@ -9,6 +9,7 @@ import {
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import {
   importReferencedStyleDefinitions,
+  styleClosureNumberingReferences,
   type ImportReferencedStyleDefinitionsResult,
 } from "../compare/style-resources";
 import { expectCharacterStyleMarkAttrs, expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
@@ -759,13 +760,16 @@ const sameReferencedNumberingLevels = ({
   return true;
 };
 
+type StageTargetStylesOptions = {
+  source: FolioDocxReviewer;
+  snapshots: readonly FolioAIEditSnapshot[];
+  importedHeaderFooterSnapshots: readonly FolioAIEditSnapshot[];
+  numberingReferenceMap?: ReadonlyMap<number, number>;
+};
+
 type FolioDocxComparisonAccess = {
   stageTerminalTableReviewCarrier: (target: PMNode) => boolean;
-  stageTargetStyles: (
-    source: FolioDocxReviewer,
-    snapshots: readonly FolioAIEditSnapshot[],
-    importedHeaderFooterSnapshots: readonly FolioAIEditSnapshot[],
-  ) => ImportReferencedStyleDefinitionsResult;
+  stageTargetStyles: (options: StageTargetStylesOptions) => ImportReferencedStyleDefinitionsResult;
   createComparisonHeaderFooter: (
     source: FolioDocxReviewer,
     story: FolioHeaderFooterStoryHandle,
@@ -1135,8 +1139,7 @@ export class FolioDocxReviewer {
       this,
       Object.freeze({
         stageTerminalTableReviewCarrier: (target) => this.stageTerminalTableReviewCarrier(target),
-        stageTargetStyles: (source, snapshots, importedHeaderFooterSnapshots) =>
-          this.stageTargetStyles(source, snapshots, importedHeaderFooterSnapshots),
+        stageTargetStyles: (options) => this.stageTargetStyles(options),
         createComparisonHeaderFooter: (source, story) =>
           this.createComparisonHeaderFooter(source, story),
         finalSectionProperties: () => this.currentFinalSectionProperties(),
@@ -1204,11 +1207,12 @@ export class FolioDocxReviewer {
     );
   }
 
-  private stageTargetStyles(
-    source: FolioDocxReviewer,
-    snapshots: readonly FolioAIEditSnapshot[],
-    importedHeaderFooterSnapshots: readonly FolioAIEditSnapshot[],
-  ): ImportReferencedStyleDefinitionsResult {
+  private stageTargetStyles({
+    source,
+    snapshots,
+    importedHeaderFooterSnapshots,
+    numberingReferenceMap,
+  }: StageTargetStylesOptions): ImportReferencedStyleDefinitionsResult {
     const destination = this.baseDocument.package;
     const sourcePackage = source.baseDocument.package;
     const destinationStyles = this.importedStyles ?? destination.styles;
@@ -1261,7 +1265,25 @@ export class FolioDocxReviewer {
         }
       }
     }
+    let styleNumberingReferenceMap = numberingReferenceMap;
+    if (numberingReferenceMap !== undefined) {
+      const references = styleClosureNumberingReferences(sourcePackage.styles, [
+        ...referencedStyleIds,
+      ]);
+      const remaining = references.filter(({ numId }) => !numberingReferenceMap.has(numId));
+      const planned = this.planTargetNumberingReferences(sourcePackage.numbering, remaining);
+      if (planned === null)
+        return { status: "unalignable", detail: "a referenced style has undefined numbering" };
+      styleNumberingReferenceMap = new Map([...planned, ...numberingReferenceMap]);
+      if (this.stageTargetNumbering(sourcePackage.numbering, remaining, planned) === "conflict") {
+        return {
+          status: "unalignable",
+          detail: "a referenced style's numbering could not be imported",
+        };
+      }
+    }
     const result = importReferencedStyleDefinitions({
+      numberingReferenceMap: styleNumberingReferenceMap,
       sourceStyles: sourcePackage.styles,
       destinationStyles,
       sourceTheme: sourcePackage.theme,

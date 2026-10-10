@@ -616,11 +616,11 @@ export const parseComparison = async (
     });
   }
 
-  const styleImport = getFolioDocxComparisonAccess(reviewer).stageTargetStyles(
-    targetReviewer,
-    pairs.map(({ targetSnapshot }) => targetSnapshot),
-    [...importedHeaderFooterTargetSnapshots],
-  );
+  const styleImport = getFolioDocxComparisonAccess(reviewer).stageTargetStyles({
+    source: targetReviewer,
+    snapshots: pairs.map(({ targetSnapshot }) => targetSnapshot),
+    importedHeaderFooterSnapshots: [...importedHeaderFooterTargetSnapshots],
+  });
   const styleAlignedPairs =
     styleImport.status === "unalignable"
       ? pairs
