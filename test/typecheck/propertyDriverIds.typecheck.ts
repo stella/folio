@@ -1,11 +1,7 @@
 import fc from "fast-check";
-import {
-  assertKnownProperty,
-  assertPinnedProperty,
-  assertProperty,
-} from "../../../test/property-testing";
+import { assertKnownProperty, assertPinnedProperty, assertProperty } from "../property-testing";
 
-// Compiled with the package type proofs; this function is never executed.
+// Compiled by typecheck:tooling, outside production package budgets; never executed.
 export const propertyDriverIdsProof = () => {
   const sync = fc.property(fc.integer(), () => true);
   const async = fc.asyncProperty(fc.integer(), () => Promise.resolve(true));
