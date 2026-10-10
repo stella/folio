@@ -1,20 +1,20 @@
 use crate::{
     AttributedComment, AttributedRevision, BookmarkFact, DocumentPackageProjection,
     DocumentProjection, DocumentReviewFacts, DocumentStructureFacts, DocxLimits,
-    FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
+    FormattingProjectionStatus, FormattingSource, FormattingUnknownReason, InternalParagraphId,
     InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact, ParagraphAlignmentFact,
     ParagraphAlignmentSource, ParagraphAlignmentValue, ParagraphIdentityFacts,
     ParagraphIndentationFact, ParagraphOutlineLevelFact, ParagraphStructure, ProjectedParagraph,
     ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet,
     ReviewFactUnknownReason, ReviewSpan, RevisionFactKind, RevisionPayload,
     RevisionProjectionStatus, RevisionUnsupportedReason, SpanCoverage, StructuralFactSet,
-    StructuralFactUnknownReason, StructuralSpan, TextMaterialization, TextStyle, project_docx,
-    project_docx_with_review_facts, project_main_document_xml, project_paragraph_fragment,
+    StructuralFactUnknownReason, StructuralSpan, TextMaterialization, TextStyle, project_docx_with_options,
+    project_docx_with_review_facts, project_main_document_xml_with_options, project_paragraph_fragment_with_options,
 };
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
 
-const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 5;
+const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 6;
 const DOCX_PACKAGE_PROJECTION_SCHEMA_VERSION: u32 = 2;
 const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 2;
 
@@ -133,12 +133,14 @@ export type DocxProjectionRevisionStatus =
       status: "incomplete",
       reasons: readonly DocxProjectionRevisionUnsupportedReason[],
     ];
+export type DocxProjectionFormattingSource = "effective" | "direct-run";
 export type DocxProjectionWire = readonly [
-  schemaVersion: 5,
+  schemaVersion: 6,
   paragraphs: readonly DocxProjectionParagraph[],
   structuralFacts: DocxProjectionStructuralFacts,
   revisionStatus: DocxProjectionRevisionStatus,
   formattingStatus: DocxProjectionFormattingStatus,
+  formattingSource: DocxProjectionFormattingSource,
 ];
 type DocxParagraphFragmentFacts<T extends readonly unknown[]> = {
   readonly [Key in keyof T]: readonly [status: "unknown", reason: "paragraph-fragment"];
@@ -149,6 +151,7 @@ export type DocxParagraphFragmentWire = readonly [
   structuralFacts: DocxParagraphFragmentFacts<DocxProjectionStructuralFacts>,
   revisionStatus: DocxProjectionWire[3],
   formattingStatus: DocxProjectionWire[4],
+  formattingSource: DocxProjectionWire[5],
 ];
 export type DocxReviewUnknownReason =
   | "invalid-document"
@@ -280,8 +283,8 @@ extern "C" {
 /// Returns a JavaScript `Error` when the package cannot be projected or a
 /// numeric wire value cannot be represented by the schema.
 #[wasm_bindgen(js_name = projectCompressedDocx)]
-pub fn project_compressed_docx(bytes: &[u8]) -> Result<DocxProjectionWire, JsValue> {
-    project_docx_projection(bytes)
+pub fn project_compressed_docx(bytes: &[u8], formatting_source: Option<FormattingSource>) -> Result<DocxProjectionWire, JsValue> {
+    project_docx_projection(bytes, formatting_source.unwrap_or_default())
         .and_then(|projection| output_projection_with_structure(&projection))
         // SAFETY: the output builder constructs the exact tuple declared as
         // `DocxProjectionWire` in the wasm-bindgen TypeScript custom section.
@@ -294,10 +297,11 @@ pub fn project_compressed_docx(bytes: &[u8]) -> Result<DocxProjectionWire, JsVal
 /// # Errors
 /// Returns a JavaScript `Error` for malformed input or a resource-limit violation.
 #[wasm_bindgen(js_name = projectMainDocumentXml)]
-pub fn project_main_document_xml_in_wasm(bytes: &[u8]) -> Result<DocxProjectionWire, JsValue> {
-    project_main_document_xml(
+pub fn project_main_document_xml_in_wasm(bytes: &[u8], formatting_source: Option<FormattingSource>) -> Result<DocxProjectionWire, JsValue> {
+    project_main_document_xml_with_options(
         bytes,
         DocxLimits::default(),
+        ProjectionOptions { formatting_source: formatting_source.unwrap_or_default(), ..ProjectionOptions::default() },
         allocate_projected_paragraph_id,
     )
     .map_err(|error| error.to_string())
@@ -314,10 +318,12 @@ pub fn project_main_document_xml_in_wasm(bytes: &[u8]) -> Result<DocxProjectionW
 #[wasm_bindgen(js_name = projectParagraphFragment)]
 pub fn project_paragraph_fragment_in_wasm(
     bytes: &[u8],
+    formatting_source: Option<FormattingSource>,
 ) -> Result<DocxParagraphFragmentWire, JsValue> {
-    project_paragraph_fragment(
+    project_paragraph_fragment_with_options(
         bytes,
         DocxLimits::default(),
+        ProjectionOptions { formatting_source: formatting_source.unwrap_or_default(), ..ProjectionOptions::default() },
         allocate_projected_paragraph_id,
     )
     .map_err(|error| error.to_string())
@@ -338,8 +344,9 @@ pub fn project_paragraph_fragment_in_wasm(
 #[wasm_bindgen(js_name = projectCompressedDocxWithReviewFacts)]
 pub fn project_compressed_docx_with_review_facts(
     bytes: &[u8],
+    formatting_source: Option<FormattingSource>,
 ) -> Result<DocxPackageProjectionWire, JsValue> {
-    project_docx_package_projection(bytes, TextMaterialization::WordHost)
+    project_docx_package_projection(bytes, TextMaterialization::WordHost, formatting_source.unwrap_or_default())
         .and_then(|projection| output_package_projection(&projection))
         // SAFETY: the output builder constructs the exact tuple declared as
         // `DocxPackageProjectionWire` in the TypeScript custom section.
@@ -356,8 +363,9 @@ pub fn project_compressed_docx_with_review_facts(
 #[wasm_bindgen(js_name = projectCompressedDocxWithReadableReviewFacts)]
 pub fn project_compressed_docx_with_readable_review_facts(
     bytes: &[u8],
+    formatting_source: Option<FormattingSource>,
 ) -> Result<DocxPackageProjectionWire, JsValue> {
-    project_docx_package_projection(bytes, TextMaterialization::ReadablePlainText)
+    project_docx_package_projection(bytes, TextMaterialization::ReadablePlainText, formatting_source.unwrap_or_default())
         .and_then(|projection| output_package_projection(&projection))
         // SAFETY: the output builder constructs the exact tuple declared as
         // `DocxPackageProjectionWire` in the TypeScript custom section.
@@ -365,14 +373,15 @@ pub fn project_compressed_docx_with_readable_review_facts(
         .map_err(|error| js_error(&error))
 }
 
-fn project_docx_projection(bytes: &[u8]) -> Result<DocumentProjection, String> {
+fn project_docx_projection(bytes: &[u8], formatting_source: FormattingSource) -> Result<DocumentProjection, String> {
     let limits = DocxLimits::default();
-    project_docx(bytes, limits, allocate_projected_paragraph_id).map_err(|error| error.to_string())
+    project_docx_with_options(bytes, limits, ProjectionOptions { formatting_source, ..ProjectionOptions::default() }, allocate_projected_paragraph_id).map_err(|error| error.to_string())
 }
 
 fn project_docx_package_projection(
     bytes: &[u8],
     text_materialization: TextMaterialization,
+    formatting_source: FormattingSource,
 ) -> Result<DocumentPackageProjection, String> {
     project_docx_with_review_facts(
         bytes,
@@ -380,6 +389,7 @@ fn project_docx_package_projection(
         ReviewFactLimits::default(),
         ProjectionOptions {
             text_materialization,
+            formatting_source,
             ..ProjectionOptions::default()
         },
         allocate_projected_paragraph_id,
@@ -476,7 +486,7 @@ const fn text_style_wire_name(style: TextStyle) -> &'static str {
 }
 
 fn output_projection_with_structure(projection: &DocumentProjection) -> Result<JsValue, String> {
-    let output = Array::new_with_length(5);
+    let output = Array::new_with_length(6);
     output.set(
         0,
         JsValue::from_f64(f64::from(DOCX_PROJECTION_SCHEMA_VERSION)),
@@ -485,6 +495,7 @@ fn output_projection_with_structure(projection: &DocumentProjection) -> Result<J
     output.set(2, output_structural_facts(&projection.structural_facts)?);
     output.set(3, output_revision_status(&projection.revision_status));
     output.set(4, output_formatting_status(projection.formatting_status));
+    output.set(5, JsValue::from_str(match projection.formatting_source { FormattingSource::Effective => "effective", FormattingSource::DirectRun => "direct-run" }));
     Ok(output.into())
 }
 

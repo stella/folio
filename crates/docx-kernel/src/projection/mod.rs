@@ -99,10 +99,21 @@ impl Default for FormattingProjectionStatus {
     }
 }
 
+/// Which formatting hierarchy a projection proves complete.
+/// Direct-run evidence depends only on the selected run markup, not styles parts.
+#[cfg_attr(all(target_arch = "wasm32", feature = "wasm"), wasm_bindgen::prelude::wasm_bindgen)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum FormattingSource {
+    #[default]
+    Effective,
+    DirectRun,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocumentProjection {
     pub paragraphs: Vec<ProjectedParagraph>,
     pub formatting_status: FormattingProjectionStatus,
+    pub formatting_source: FormattingSource,
     pub revision_status: RevisionProjectionStatus,
     pub structural_facts: DocumentStructureFacts,
 }
@@ -117,6 +128,7 @@ pub struct DocumentPackageProjection {
 pub struct ProjectionOptions {
     pub revision_view: RevisionView,
     pub text_materialization: TextMaterialization,
+    pub formatting_source: FormattingSource,
 }
 
 impl Default for ProjectionOptions {
@@ -124,6 +136,7 @@ impl Default for ProjectionOptions {
         Self {
             revision_view: RevisionView::Current,
             text_materialization: TextMaterialization::WordHost,
+            formatting_source: FormattingSource::Effective,
         }
     }
 }
@@ -388,6 +401,22 @@ pub fn project_main_document_xml<F>(
 where
     F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
 {
+    project_main_document_xml_with_options(xml, limits, ProjectionOptions::default(), allocate_id)
+}
+
+/// Projects main-document XML with an explicit formatting hierarchy.
+///
+/// # Errors
+/// Returns [`ProjectionError`] for malformed input, limits or allocator failures.
+pub fn project_main_document_xml_with_options<F>(
+    xml: &[u8],
+    limits: DocxLimits,
+    options: ProjectionOptions,
+    allocate_id: F,
+) -> Result<DocumentProjection, ProjectionError>
+where
+    F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
+{
     if xml.len() > limits.maximum_archive_bytes {
         return Err(ProjectionError::ArchiveTooLarge);
     }
@@ -400,7 +429,7 @@ where
                 xml,
                 limits.maximum_paragraphs,
                 limits.maximum_structural_facts,
-                ProjectionOptions::default(),
+                options,
                 ProjectionDependencies {
                     styles: Err(StructuralFactUnknownReason::DocumentPartOnly),
                     numbering: Err(StructuralFactUnknownReason::DocumentPartOnly),
@@ -411,7 +440,7 @@ where
         flat_opc::XmlInputKind::Package => project_parts(
             &flat_opc::extract_parts(xml, limits)?,
             limits,
-            ProjectionOptions::default(),
+            options,
             allocate_id,
         ),
     }
@@ -430,7 +459,23 @@ where
 /// resource limits or allocator failures. Standalone XML is not a package fragment.
 pub fn project_paragraph_fragment<F>(
     xml: &[u8],
+    limits: DocxLimits,
+    allocate_id: F,
+) -> Result<DocumentProjection, ProjectionError>
+where
+    F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
+{
+    project_paragraph_fragment_with_options(xml, limits, ProjectionOptions::default(), allocate_id)
+}
+
+/// Projects one paragraph with explicit formatting and unknown document facts.
+///
+/// # Errors
+/// Returns [`ProjectionError`] for malformed input, limits or allocator failures.
+pub fn project_paragraph_fragment_with_options<F>(
+    xml: &[u8],
     mut limits: DocxLimits,
+    options: ProjectionOptions,
     allocate_id: F,
 ) -> Result<DocumentProjection, ProjectionError>
 where
@@ -440,7 +485,7 @@ where
     let mut projection = project_parts(
         &flat_opc::extract_parts(xml, limits)?,
         limits,
-        ProjectionOptions::default(),
+        options,
         allocate_id,
     )?;
     let [paragraph] = projection.paragraphs.as_mut_slice() else {
@@ -554,8 +599,7 @@ where
     let projected = ooxml::project_document_xml(
         xml,
         maximum_paragraphs,
-        options.revision_view,
-        options.text_materialization,
+        options,
         dependencies.styles.map_err(formatting_unknown_reason),
         review_limits,
     )?;
@@ -617,6 +661,7 @@ where
         document: DocumentProjection {
             paragraphs,
             formatting_status: projected.formatting_status,
+            formatting_source: options.formatting_source,
             revision_status: projected.revision_status,
             structural_facts,
         },

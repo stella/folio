@@ -20,7 +20,7 @@ use crate::projection::styles::{
     parse_alignment, parse_indentation, parse_level_attribute, parse_outline_level_attribute,
     parse_u32_attribute, semantic_highlight_value, word_style_id,
 };
-use crate::{FormattingProjectionStatus, FormattingUnknownReason, ProjectionError};
+use crate::{FormattingProjectionStatus, FormattingSource, FormattingUnknownReason, ProjectionError, ProjectionOptions};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PackageParagraphId(u32);
@@ -730,8 +730,7 @@ enum Frame {
 pub(super) fn project_document_xml(
     xml: &[u8],
     maximum_paragraphs: usize,
-    revision_view: RevisionView,
-    text_materialization: TextMaterialization,
+    options: ProjectionOptions,
     styles: Result<&StyleSheet, FormattingUnknownReason>,
     review_limits: Option<ReviewProjectionLimits>,
 ) -> Result<RawDocumentProjection, ProjectionError> {
@@ -739,13 +738,14 @@ pub(super) fn project_document_xml(
     reader.config_mut().check_end_names = true;
     let mut state = ProjectionState {
         maximum_paragraphs,
-        revision_view,
-        text_materialization,
+        revision_view: options.revision_view,
+        text_materialization: options.text_materialization,
+        formatting_source: options.formatting_source,
         bookmarks_complete: true,
         references_complete: true,
-        formatting_status: match styles {
-            Ok(_) => FormattingProjectionStatus::Complete,
-            Err(reason) => FormattingProjectionStatus::Incomplete(reason),
+        formatting_status: match (options.formatting_source, styles) {
+            (FormattingSource::DirectRun, _) | (FormattingSource::Effective, Ok(_)) => FormattingProjectionStatus::Complete,
+            (FormattingSource::Effective, Err(reason)) => FormattingProjectionStatus::Incomplete(reason),
         },
         review_revisions: review_limits.map_or(ReviewRevisionCollection::Disabled, |limits| {
             ReviewRevisionCollection::Complete {
@@ -932,6 +932,7 @@ struct ProjectionState {
     bookmarks_complete: bool,
     references_complete: bool,
     formatting_status: FormattingProjectionStatus,
+    formatting_source: FormattingSource,
     fields: Vec<FieldFrame>,
     paragraph_mark_revisions: HashMap<usize, ParagraphMarkRevision>,
     revision_view: RevisionView,
@@ -1053,9 +1054,11 @@ impl ProjectionState {
                 b"oMath" | b"oMathPara" if self.current_paragraph.is_some() => {
                     // Math text participates in paragraph offsets, but OMML run
                     // properties form a separate formatting hierarchy.
-                    self.formatting_status = FormattingProjectionStatus::Incomplete(
-                        FormattingUnknownReason::UnsupportedStyles,
-                    );
+                    if self.formatting_source == FormattingSource::Effective {
+                        self.formatting_status = FormattingProjectionStatus::Incomplete(
+                            FormattingUnknownReason::UnsupportedStyles,
+                        );
+                    }
                     Frame::Math
                 }
                 b"r" if self.frames.iter().any(|frame| matches!(frame, Frame::Math)) => {
@@ -1481,8 +1484,8 @@ impl ProjectionState {
                     && !self.pseudo_text_is_suppressed()
                     && let Some(paragraph) = self.current_paragraph.as_mut()
                 {
-                    let mut effective = match styles {
-                        Ok(styles) => {
+                    let mut effective = match (self.formatting_source, styles) {
+                        (FormattingSource::Effective, Ok(styles)) => {
                             let resolved = if run.character_style_id.is_none()
                                 && run.direct_styles == TextProperties::default()
                             {
@@ -1501,7 +1504,7 @@ impl ProjectionState {
                                 run.direct_styles
                             })
                         }
-                        Err(_) => run.direct_styles,
+                        (FormattingSource::DirectRun, _) | (FormattingSource::Effective, Err(_)) => run.direct_styles,
                     };
                     // Highlight spans describe direct run markup, never style inheritance.
                     effective.highlighted = run.direct_styles.highlighted;
@@ -1776,7 +1779,8 @@ impl ProjectionState {
             .current_paragraph
             .take()
             .ok_or(ProjectionError::InvalidDocumentXml)?;
-        if styles.is_ok_and(|styles| paragraph.resolve_text_base(styles).is_err()) {
+        if self.formatting_source == FormattingSource::Effective
+            && styles.is_ok_and(|styles| paragraph.resolve_text_base(styles).is_err()) {
             self.formatting_status =
                 FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles);
         }
