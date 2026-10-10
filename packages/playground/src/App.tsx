@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { createTranslator, IntlProvider } from "use-intl";
 
@@ -605,9 +605,38 @@ export function App() {
   return <DocumentPlayground />;
 }
 
+const createPlaygroundScrollHost = () => {
+  let editor: DocxEditorRef | null = null;
+  return {
+    bridge: buildScrollParityBridge(() => editor),
+    attach: (next: DocxEditorRef | null) => {
+      editor = next;
+    },
+  };
+};
+
+const fetchPlaygroundDocument = async ({ fileName, missingStatus, url }: LoadDocumentOptions) => {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return { type: "error", message: missingStatus } as const;
+    const buffer = await response.arrayBuffer();
+    return { type: "ready", buffer, fileName } as const;
+  } catch {
+    return { type: "error", message: `Error loading ${fileName}` } as const;
+  }
+};
+
 const DocumentPlayground = () => {
   const editorRef = useRef<DocxEditorRef>(null);
-  const [scrollParityHost] = useState(() => buildScrollParityBridge(() => editorRef.current));
+  const [scrollHost] = useState(createPlaygroundScrollHost);
+  const scrollParityHost = scrollHost.bridge;
+  const attachEditor = useCallback(
+    (editor: DocxEditorRef | null) => {
+      editorRef.current = editor;
+      scrollHost.attach(editor);
+    },
+    [scrollHost],
+  );
   const clipboardCallbackCountsRef = useRef({ copy: 0, cut: 0, paste: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(() => {
@@ -651,34 +680,35 @@ const DocumentPlayground = () => {
     : undefined;
 
   const loadDocument = useCallback(
-    async ({ fileName: nextFileName, missingStatus, url }: LoadDocumentOptions) => {
-      try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: missingStatus });
-          return;
+    (options: LoadDocumentOptions) =>
+      fetchPlaygroundDocument(options).then((result) => {
+        switch (result.type) {
+          case "error":
+            setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: result.message });
+            return;
+          case "ready":
+            setCurrentDocument(null);
+            setDocumentBuffer(result.buffer);
+            setFileName(result.fileName);
+            setStatus(IDLE_PLAYGROUND_STATUS);
+            return;
+          default: {
+            const exhaustive: never = result;
+            return exhaustive;
+          }
         }
-        const buffer = await response.arrayBuffer();
-        setCurrentDocument(null);
-        setDocumentBuffer(buffer);
-        setFileName(nextFileName);
-        setStatus(IDLE_PLAYGROUND_STATUS);
-      } catch {
-        setStatus({
-          type: PLAYGROUND_STATUS_TYPE.ERROR,
-          message: `Error loading ${nextFileName}`,
-        });
-      }
-    },
+      }),
     [],
   );
+
+  const loadInitialDocument = useEffectEvent(loadDocument);
 
   // Fetch fixture/showcase bytes after mount; local documents initialize in state.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const fixtureFile = params.get("file");
     if (fixtureFile) {
-      void loadDocument({
+      void loadInitialDocument({
         fileName: fixtureFile,
         missingStatus: `Fixture not found: ${fixtureFile}`,
         url: `/fixtures/${fixtureFile}`,
@@ -686,14 +716,14 @@ const DocumentPlayground = () => {
       return;
     }
     if (params.has("showcase")) {
-      void loadDocument({
+      void loadInitialDocument({
         fileName: SHOWCASE_FILE_NAME,
         missingStatus: "Showcase document not found",
         url: SHOWCASE_URL,
       });
       return;
     }
-  }, [loadDocument]);
+  }, []);
 
   const handleNewDocument = useCallback(() => {
     setCurrentDocument(createStellaStyleDocument());
@@ -855,7 +885,7 @@ const DocumentPlayground = () => {
       <div className="pg-shell" dir={RTL_LOCALES.has(locale) ? "rtl" : "ltr"}>
         <main className="pg-editor-area">
           <DocxEditor
-            ref={editorRef}
+            ref={attachEditor}
             document={documentBuffer ? null : currentDocument}
             documentBuffer={documentBuffer}
             author="Folio User"

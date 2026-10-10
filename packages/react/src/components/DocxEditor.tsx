@@ -17,6 +17,7 @@ import {
 
 import {
   Suspense,
+  useEffectEvent,
   lazy,
   useRef,
   useCallback,
@@ -27,7 +28,7 @@ import {
   useImperativeHandle,
   forwardRef,
 } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, RefObject } from "react";
 
 import {
   CheckIcon,
@@ -488,6 +489,52 @@ function areActiveTrackedChangesEqual(
   );
 }
 
+// Mutable handles belong to their attachment/event owner. Render receives only
+// the stable binding, never a callback that reads a React ref during construction.
+const assignRef = <Value,>(ref: RefObject<Value>, value: Value) => {
+  ref.current = value;
+};
+
+const createCallbackSlot = <Args extends unknown[], Value>(
+  initial: ((...args: Args) => Value) | undefined,
+) => {
+  let callback = initial;
+  return {
+    commit: (next: typeof initial) => {
+      callback = next;
+    },
+    invoke: (...args: Args) => callback?.(...args),
+  };
+};
+
+const createRequiredCallbackSlot = <Args extends unknown[], Value>(
+  initial: (...args: Args) => Value,
+) => {
+  let callback = initial;
+  return {
+    commit: (next: typeof initial) => {
+      callback = next;
+    },
+    invoke: (...args: Args) => callback(...args),
+  };
+};
+
+const createPagedEditorBinding = () => {
+  let editor: PagedEditorRef | null = null;
+  return {
+    attach: (next: PagedEditorRef | null) => {
+      editor = next;
+    },
+    getCanonicalApi: () => editor?.getEditor() ?? null,
+    getHfView: (rId: string) => editor?.getHfView(rId) ?? null,
+  };
+};
+
+type InitialScrollState =
+  | { status: "waiting" }
+  | { status: "scheduled"; frame: number }
+  | { status: "applied" };
+
 /**
  * DocxEditor - Complete DOCX editor component
  */
@@ -567,6 +614,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   }: DocxEditorProps,
   ref,
 ) {
+  const pagedEditorRef = useRef<PagedEditorRef>(null);
+  const [pagedEditorBinding] = useState(createPagedEditorBinding);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const initialScrollRef = useRef<InitialScrollState>({ status: "waiting" });
   const t = useTranslations("folio");
   const [outlineDepthState, setOutlineDepthState] = useState<OutlineDepth>(DEFAULT_OUTLINE_DEPTH);
   const outlineDepth = outlineDepthProp ?? outlineDepthState;
@@ -809,22 +860,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Workspace anonymization-term highlights. Always installed;
   // renders nothing until the host pushes a term list via
   // `setAnonymizationTermsMeta`.
-  // Hold the callback in a ref so the plugin instance is stable
-  // across re-renders even when the parent passes a fresh
-  // closure each time. The ref always points at the latest
-  // function, so the plugin's view spec calls into the most
-  // recent host implementation without forcing PM to swap
-  // plugins (which would reset its state).
-  const onAnonymizationMatchesChangeRef = useRef(onAnonymizationMatchesChange);
+  // Keep plugin identity stable while publishing host callbacks after commit.
+  const [anonymizationCallback] = useState(() => createCallbackSlot(onAnonymizationMatchesChange));
   useLayoutEffect(() => {
-    onAnonymizationMatchesChangeRef.current = onAnonymizationMatchesChange;
+    anonymizationCallback.commit(onAnonymizationMatchesChange);
   });
   const [anonymizationDecorationsPlugin] = useState(() =>
-    createAnonymizationDecorationsPlugin({
-      onMatchesChange: (matches) => {
-        onAnonymizationMatchesChangeRef.current?.(matches);
-      },
-    }),
+    createAnonymizationDecorationsPlugin({ onMatchesChange: anonymizationCallback.invoke }),
   );
   // Inline autocomplete. Always installed and idle by default;
   // becomes active only when the host pushes a `start` meta via
@@ -840,19 +882,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Slash-command trigger for the template editor. Owns only the
   // `/`-trigger state and the open-menu keyboard contract; the host
   // (template-studio) renders the menu and performs the insertion.
-  // Callbacks read through refs so the plugin identity stays stable.
-  const onSlashMenuChangeRef = useRef(onSlashMenuChange);
+  const [slashChangeCallback] = useState(() => createCallbackSlot(onSlashMenuChange));
+  const [slashKeyCallback] = useState(() => createCallbackSlot(onSlashMenuKeyAction));
   useLayoutEffect(() => {
-    onSlashMenuChangeRef.current = onSlashMenuChange;
-  });
-  const onSlashMenuKeyActionRef = useRef(onSlashMenuKeyAction);
-  useLayoutEffect(() => {
-    onSlashMenuKeyActionRef.current = onSlashMenuKeyAction;
+    slashChangeCallback.commit(onSlashMenuChange);
+    slashKeyCallback.commit(onSlashMenuKeyAction);
   });
   const [templateSlashMenu] = useState(() =>
     templateSlashMenuPlugin({
-      onChange: (slashState) => onSlashMenuChangeRef.current?.(slashState),
-      onKeyAction: (action) => onSlashMenuKeyActionRef.current?.(action) ?? false,
+      onChange: slashChangeCallback.invoke,
+      onKeyAction: (action) => slashKeyCallback.invoke(action) ?? false,
     }),
   );
   // Inert until a host pushes preview values (template fill preview).
@@ -889,6 +928,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // PagedEditor reports the exact create/destroy lifecycle; the
   // history-state pass catches document replacements that swap the
   // view under the same host component.
+
   const lastReportedViewRef = useRef<EditorView | null>(null);
   const reportEditorViewReady = useCallback(
     (view: EditorView | null) => {
@@ -908,14 +948,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
               top: initialScrollTop,
               behavior: "instant",
             });
-            initialScrollRef.current = { status: "applied" };
+            assignRef(initialScrollRef, { status: "applied" });
             break;
           case "waiting":
             scrollEditorTo(scrollContainerRef.current, {
               top: initialScrollTop,
               behavior: "instant",
             });
-            initialScrollRef.current = { status: "applied" };
+            assignRef(initialScrollRef, { status: "applied" });
             break;
           case "applied":
             break;
@@ -1005,23 +1045,27 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   }, [showOutline, history.state, bodyViewEpoch]);
 
   // Refs
-  const pagedEditorRef = useRef<PagedEditorRef>(null);
+
   const [editorController, setEditorController] = useState<ReturnType<
     PagedEditorRef["getEditor"]
   > | null>(null);
-  const attachPagedEditor = useCallback((editor: PagedEditorRef | null) => {
-    pagedEditorRef.current = editor;
-    // The handle is rebuilt as layout/selection change; publish only its stable controller.
-    if (editor) {
-      setEditorController(editor.getEditor());
-      return;
-    }
-    // Handle replacement detaches and reattaches in one commit. Clear only a
-    // real detach so selection updates never publish a transient null controller.
-    queueMicrotask(() => {
-      if (pagedEditorRef.current === null) setEditorController(null);
-    });
-  }, []);
+  const attachPagedEditor = useCallback(
+    (editor: PagedEditorRef | null) => {
+      assignRef(pagedEditorRef, editor);
+      pagedEditorBinding.attach(editor);
+      // The handle is rebuilt as layout/selection change; publish only its stable controller.
+      if (editor) {
+        setEditorController(editor.getEditor());
+        return;
+      }
+      // Handle replacement detaches and reattaches in one commit. Clear only a
+      // real detach so selection updates never publish a transient null controller.
+      queueMicrotask(() => {
+        if (pagedEditorRef.current === null) setEditorController(null);
+      });
+    },
+    [pagedEditorBinding],
+  );
   const hfEditorRef = useRef<InlineHeaderFooterEditorRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // Roots that scope page-level shortcuts to this editor. Everything the editor
@@ -1031,17 +1075,17 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const lastSelectionRef = useRef<{ from: number; to: number } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const editorContentRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [editorContentElement, setEditorContentElement] = useState<HTMLDivElement | null>(null);
+  const attachEditorContent = useCallback((element: HTMLDivElement | null) => {
+    assignRef(editorContentRef, element);
+    setEditorContentElement(element);
+  }, []);
+
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const attachScrollContainer = useCallback((element: HTMLDivElement | null) => {
-    scrollContainerRef.current = element;
+    assignRef(scrollContainerRef, element);
     setScrollContainer(element);
   }, []);
-  type InitialScrollState =
-    | { status: "waiting" }
-    | { status: "scheduled"; frame: number }
-    | { status: "applied" };
-  const initialScrollRef = useRef<InitialScrollState>({ status: "waiting" });
   const [widestLaidOutPageWidth, setWidestLaidOutPageWidth] = useState<number | null>(null);
   const hasDocument = history.state !== null;
   useEffect(() => {
@@ -1205,7 +1249,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   });
   const [activeNoteStory, setActiveNoteStory] = useState<NoteStoryKey | null>(null);
   const canEditHeaderFooter = showHeaderFooterEditing;
-  const getCanonicalApi = useCallback(() => pagedEditorRef.current?.getEditor() ?? null, []);
+  const getCanonicalApi = pagedEditorBinding.getCanonicalApi;
 
   const pushDocument = useCallback(
     (document: Document) => {
@@ -1253,7 +1297,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     // close path now flushes via this callback). PagedEditor's ref
     // exposes per-rId view lookup; the hook supplies the rId it
     // already resolved internally for save / remove.
-    getHfView: (rId) => pagedEditorRef.current?.getHfView(rId) ?? null,
+    getHfView: pagedEditorBinding.getHfView,
   });
   let activeHfRId = hfEditIsFirstPage ? activeFirstFooterRId : activeFooterRId;
   if (hfEditPosition === "header") {
@@ -1267,21 +1311,26 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   // Side panels: the page is centred between the outline track and the
   // comments; the width the row has decides how each is shown.
-  const panels = usePanelLayout({
+  const {
+    rowRef: attachPanelsRow,
+    layout: panelLayout,
+    overlay: panelOverlay,
+    setOverlay: setPanelOverlay,
+    layoutWithCommentsOpen,
+  } = usePanelLayout({
     pageWidth: (widestLaidOutPageWidth ?? getPageSize(effectiveSectionProperties).w) * zoom,
     outline: showOutline && outlineHeadings.length > 1 ? "available" : "absent",
     comments: showCommentsSidebar ? "open" : "closed",
-    scrollContainerRef,
+    scrollContainer,
   });
-  const { overlay: panelOverlay, setOverlay: setPanelOverlay, layoutWithCommentsOpen } = panels;
   const commentsSurface = ((): "column" | "drawer" | null => {
-    if (panels.layout.comments === "column") return "column";
-    if (panels.layout.comments === "drawer" && panelOverlay === "comments") return "drawer";
+    if (panelLayout.comments === "column") return "column";
+    if (panelLayout.comments === "drawer" && panelOverlay === "comments") return "drawer";
     return null;
   })();
   const { activeId: activeHeadingId, markJumped: markHeadingJumped } = useActiveHeading(
-    scrollContainerRef,
-    panels.layout.outline === "none" ? NO_HEADINGS : visibleOutlineHeadings,
+    scrollContainer,
+    panelLayout.outline === "none" ? NO_HEADINGS : visibleOutlineHeadings,
   );
   const closePanelOverlay = useCallback(() => setPanelOverlay("none"), [setPanelOverlay]);
   const toggleOutlineOverlay = useCallback(
@@ -1289,7 +1338,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [panelOverlay, setPanelOverlay],
   );
 
-  const getActiveEditorStory = useCallback(() => {
+  const readActiveEditorStory = useCallback(() => {
     const bodyView = pagedEditorRef.current?.getView() ?? null;
     return resolveActiveEditorStory({
       bodyView,
@@ -1299,19 +1348,35 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     });
   }, [activeNoteStory, hfEditPosition]);
 
+  const [activeStoryCallback] = useState(() =>
+    createRequiredCallbackSlot(() =>
+      resolveActiveEditorStory({ bodyView: null, headerFooterView: null, noteView: null }),
+    ),
+  );
+  useLayoutEffect(() => {
+    activeStoryCallback.commit(readActiveEditorStory);
+  });
+  const getActiveEditorStory = activeStoryCallback.invoke;
+
   const getActiveEditorView = useCallback(
     () => getActiveEditorStory().view,
     [getActiveEditorStory],
   );
 
   // Helper to focus the active editor
-  const focusActiveEditor = useCallback(() => {
+  const focusCurrentEditor = useCallback(() => {
     if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
       hfEditorRef.current.focus();
     } else {
       pagedEditorRef.current?.focus();
     }
   }, [getActiveEditorStory]);
+
+  const [focusCallback] = useState(() => createRequiredCallbackSlot(() => {}));
+  useLayoutEffect(() => {
+    focusCallback.commit(focusCurrentEditor);
+  });
+  const focusActiveEditor = focusCallback.invoke;
 
   // Helper to undo in the active editor
   const undoActiveEditor = useCallback(() => {
@@ -1411,7 +1476,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onReset: useCallback(() => {
       const initialScroll = initialScrollRef.current;
       if (initialScroll.status === "scheduled") cancelAnimationFrame(initialScroll.frame);
-      initialScrollRef.current = { status: "waiting" };
+      assignRef(initialScrollRef, { status: "waiting" });
       if (scrollContainerRef.current) {
         scrollEditorTo(scrollContainerRef.current, { top: 0, left: 0, behavior: "instant" });
       }
@@ -1481,16 +1546,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     }
 
     const frame = requestAnimationFrame(() => {
-      initialScrollRef.current = { status: "applied" };
+      assignRef(initialScrollRef, { status: "applied" });
       scrollEditorTo(scrollContainerRef.current, { top: initialScrollTop, behavior: "instant" });
     });
-    initialScrollRef.current = { status: "scheduled", frame };
+    assignRef(initialScrollRef, { status: "scheduled", frame });
 
     return () => {
       const initialScroll = initialScrollRef.current;
       if (initialScroll.status === "scheduled" && initialScroll.frame === frame) {
         cancelAnimationFrame(frame);
-        initialScrollRef.current = { status: "waiting" };
+        assignRef(initialScrollRef, { status: "waiting" });
       }
     };
   }, [initialScrollTop, loadedDocumentIdentity, state.documentLoad.status]);
@@ -1684,39 +1749,62 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   );
 
   const [controlledCommentsRetry, setControlledCommentsRetry] = useState(0);
-  useEffect(() => {
-    if (commentsProp === undefined || canonicalComments === null) {
-      lastControlledCommentsRef.current = undefined;
-      return;
-    }
-    const requested = JSON.stringify(legacyComments);
-    // Internal journal changes cannot reapply an unchanged host value.
-    if (lastControlledCommentsRef.current === requested) return;
-    if (canonicalCommentsSerialized === requested) {
-      lastControlledCommentsRef.current = requested;
-      return;
-    }
-    const result = applyCanonicalComment({ type: "replace", comments: legacyComments });
-    // Only an applied value is handled; a value deferred by composition retries.
-    if (result?.status === "applied") {
-      lastControlledCommentsRef.current = requested;
-      return;
-    }
-    if (result?.status !== "refused" || result.retry !== "afterComposition") return;
-    const view = getCanonicalApi()?.getView();
-    if (!view) return;
-    return afterCanonicalCompositionSettles(view, () =>
-      setControlledCommentsRetry((attempt) => attempt + 1),
-    );
-  }, [
-    applyCanonicalComment,
-    commentsProp,
-    controlledCommentsRetry,
-    getCanonicalApi,
-    legacyComments,
-    canonicalCommentsSerialized,
-    canonicalComments,
-  ]);
+  const synchronizeControlledComments = useEffectEvent(
+    (inputs: {
+      commentsProp: typeof commentsProp;
+      canonicalComments: typeof canonicalComments;
+      legacyComments: typeof legacyComments;
+      canonicalCommentsSerialized: typeof canonicalCommentsSerialized;
+      retry: number;
+    }) => {
+      const {
+        commentsProp: controlledComments,
+        canonicalComments: currentCanonicalComments,
+        legacyComments: requestedComments,
+        canonicalCommentsSerialized: currentCanonicalSerialized,
+      } = inputs;
+      if (controlledComments === undefined || currentCanonicalComments === null) {
+        lastControlledCommentsRef.current = undefined;
+        return;
+      }
+      const requested = JSON.stringify(requestedComments);
+      // Internal journal changes cannot reapply an unchanged host value.
+      if (lastControlledCommentsRef.current === requested) return;
+      if (currentCanonicalSerialized === requested) {
+        lastControlledCommentsRef.current = requested;
+        return;
+      }
+      const result = applyCanonicalComment({ type: "replace", comments: requestedComments });
+      // Only an applied value is handled; a value deferred by composition retries.
+      if (result?.status === "applied") {
+        lastControlledCommentsRef.current = requested;
+        return;
+      }
+      if (result?.status !== "refused" || result.retry !== "afterComposition") return;
+      const view = getCanonicalApi()?.getView();
+      if (!view) return;
+      return afterCanonicalCompositionSettles(view, () =>
+        setControlledCommentsRetry((attempt) => attempt + 1),
+      );
+    },
+  );
+  useEffect(
+    () =>
+      synchronizeControlledComments({
+        commentsProp,
+        canonicalComments,
+        legacyComments,
+        canonicalCommentsSerialized,
+        retry: controlledCommentsRetry,
+      }),
+    [
+      commentsProp,
+      controlledCommentsRetry,
+      legacyComments,
+      canonicalCommentsSerialized,
+      canonicalComments,
+    ],
+  );
 
   useEffect(() => {
     if (canonicalComments === null) return;
@@ -3043,6 +3131,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       readOnly,
       contextSelectionFrom,
       contextSelectionTo,
+      commentDraftMode,
       setAddCommentYPosition,
       setCommentSelectionRange,
       setFloatingCommentBtn,
@@ -4020,16 +4109,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     ],
   );
 
-  // Get the DOM element for the header/footer area on the first page
-  const getHfTargetElement = useCallback((pos: "header" | "footer"): HTMLElement | null => {
-    const pagesContainer = containerRef.current?.querySelector(".paged-editor__pages");
-    if (!pagesContainer) {
-      return null;
-    }
-    const selector = pos === "header" ? ".layout-page-header" : ".layout-page-footer";
-    return pagesContainer.querySelector(selector);
-  }, []);
-
   // The display-mode Select derives its trigger label from `items` (Base UI),
   // so feed it the same translated labels the popup renders. Memoized per
   // locale (`t` is stable until the locale changes): the toolbar re-renders on
@@ -4622,10 +4701,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   ]);
   // Starting a comment where the comments are a drawer opens the drawer.
   useEffect(() => {
-    if (isAddingComment && panels.layout.comments === "drawer") {
+    if (isAddingComment && panelLayout.comments === "drawer") {
       setPanelOverlay("comments");
     }
-  }, [isAddingComment, panels.layout.comments, setPanelOverlay]);
+  }, [isAddingComment, panelLayout.comments, setPanelOverlay]);
   const toggleComments = useCallback(() => {
     if (commentsSurface === "drawer") {
       dismissCommentsDrawer();
@@ -4655,7 +4734,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   ]);
   const openCommentThreadCount = useMemo(() => countOpenCommentThreads(comments), [comments]);
   const outlineToggle = ((): OutlineToggleState => {
-    if (panels.layout.outline !== "drawer" && panels.layout.outline !== "expanded") {
+    if (panelLayout.outline !== "drawer" && panelLayout.outline !== "expanded") {
       return "absent";
     }
     return panelOverlay === "outline" ? "open" : "closed";
@@ -4725,6 +4804,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     () => (activeHfRId ? (pagedEditorRef.current?.getHfView(activeHfRId) ?? null) : null),
     [activeHfRId],
   );
+  const handleCanvasMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    containedHandler((e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return;
+      e.preventDefault();
+      pagedEditorRef.current?.focus();
+    })(event);
+  }, []);
   const handleOutlineHeadingClick = useCallback((pmPos: number) => {
     pagedEditorRef.current?.scrollToPosition(pmPos);
     let attempts = 0;
@@ -5058,14 +5144,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                 {/* Panels row: the outline track, then the scroll container
                     (page + comments gutter). Drawers open over it. */}
                 <div
-                  ref={panels.rowRef}
+                  ref={attachPanelsRow}
                   className="folio-panels-row"
                   style={panelsRowStyle}
-                  data-folio-panel-tier={panels.layout.tier}
-                  data-folio-outline={panels.layout.outline}
-                  data-folio-comments={panels.layout.comments}
+                  data-folio-panel-tier={panelLayout.tier}
+                  data-folio-outline={panelLayout.outline}
+                  data-folio-comments={panelLayout.comments}
                 >
-                  {panels.layout.outline !== "none" && panels.layout.outline !== "drawer" && (
+                  {panelLayout.outline !== "none" && panelLayout.outline !== "drawer" && (
                     <DocumentOutline
                       headings={visibleOutlineHeadings}
                       available={outlineHeadings.length > 1}
@@ -5075,11 +5161,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                       docSize={editorController?.getView()?.state.doc.content.size ?? 0}
                       activeId={activeHeadingId}
                       onJump={handleOutlineJump}
-                      surface={panels.layout.outline}
-                      width={panels.layout.outlineTrackWidth}
+                      surface={panelLayout.outline}
+                      width={panelLayout.outlineTrackWidth}
                       expanded={panelOverlay === "outline"}
                       onExpand={toggleOutlineOverlay}
-                      {...(panels.layout.outline === "expanded"
+                      {...(panelLayout.outline === "expanded"
                         ? { onClose: closePanelOverlay }
                         : {})}
                     />
@@ -5107,11 +5193,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           flexShrink: 0,
                           paddingBlock: 4,
                           paddingLeft: 20,
-                          paddingRight: 20 + panels.layout.commentsGutter,
+                          paddingRight: 20 + panelLayout.commentsGutter,
                           minWidth:
                             twipsToPixels(effectiveSectionProperties?.pageWidth ?? 12240) * zoom +
                             40 +
-                            panels.layout.commentsGutter,
+                            panelLayout.commentsGutter,
                           background: "var(--doc-canvas-surface)",
                           transition: "padding 0.2s ease",
                         }}
@@ -5147,16 +5233,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                       {/* Editor content area */}
                       {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- editor canvas; mouse handlers delegate focus to the child contenteditable, not an interactive control */}
                       <div
-                        ref={editorContentRef}
+                        ref={attachEditorContent}
                         style={{ position: "relative", flex: 1, minWidth: 0 }}
-                        onMouseDown={containedHandler((e: React.MouseEvent) => {
-                          // Focus editor when clicking on the background area (not the editor itself)
-                          // Using mouseDown for immediate response before focus can be lost
-                          if (e.target === e.currentTarget) {
-                            e.preventDefault();
-                            pagedEditorRef.current?.focus();
-                          }
-                        })}
+                        onMouseDown={handleCanvasMouseDown}
                         onContextMenu={handleEditorContextMenu}
                       >
                         {/* Vertical ruler — sits at the editor content's left edge
@@ -5241,7 +5320,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           {...(collaboration !== undefined ? { collaboration } : {})}
                           onHyperlinkClick={handleHyperlinkClick}
                           onContextMenu={handleContextMenu}
-                          pageEndGutter={panels.layout.commentsGutter}
+                          pageEndGutter={panelLayout.commentsGutter}
                           anchorPositionMode="comments"
                           onAnonymizationTermClick={onAnonymizationTermClick}
                           selectedAnonymizationCanonical={selectedAnonymizationCanonical}
@@ -5377,8 +5456,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                             if (!activeHf) {
                               return null;
                             }
-                            const targetEl = getHfTargetElement(hfEditPosition);
-                            const parentEl = editorContentRef.current;
+                            const targetEl = editorContentElement?.querySelector<HTMLElement>(
+                              hfEditPosition === "header"
+                                ? ".layout-page-header"
+                                : ".layout-page-footer",
+                            );
+                            const parentEl = editorContentElement;
                             if (!targetEl || !parentEl) {
                               return null;
                             }

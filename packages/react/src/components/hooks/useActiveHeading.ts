@@ -5,7 +5,7 @@
  * opens on the same heading the rail marks.
  */
 
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
@@ -23,7 +23,7 @@ type ActiveHeading = {
 };
 
 export const useActiveHeading = (
-  scrollContainerRef: RefObject<HTMLElement | null>,
+  container: HTMLElement | null,
   headings: readonly HeadingInfo[],
 ): ActiveHeading => {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -32,7 +32,6 @@ export const useActiveHeading = (
   const manualLockUntil = useRef(0);
 
   useEffect(() => {
-    const container = scrollContainerRef.current;
     if (!container || headings.length === 0) {
       return undefined;
     }
@@ -80,7 +79,7 @@ export const useActiveHeading = (
       cancelAnimationFrame(raf);
       container.removeEventListener("scroll", onScroll);
     };
-  }, [scrollContainerRef, headings]);
+  }, [container, headings]);
 
   const markJumped = useCallback((id: string) => {
     setActiveId(id);

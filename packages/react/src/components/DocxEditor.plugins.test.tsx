@@ -4,13 +4,21 @@ GlobalRegistrator.register();
 
 import { afterAll, expect, test } from "bun:test";
 import { panic } from "better-result";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
 import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+import {
+  anonymizationDecorationsKey,
+  setAnonymizationTermsMeta,
+} from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
+import {
+  clearTemplateSlashMenu,
+  templateSlashMenuKey,
+} from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
 import { PagedEditor } from "../paged-editor/PagedEditor";
@@ -221,3 +229,97 @@ for (const existingMarker of [undefined, "host-owned"]) {
     }
   });
 }
+
+test("stable editor plugins publish only the latest committed host callbacks", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<DocxEditorRef>();
+  const initialDocument = createEmptyDocument({ initialText: "Alice" });
+  const callbacks = Array.from({ length: 3 }, () => {
+    const calls = { matches: 0, slash: 0, keys: 0 };
+    return {
+      calls,
+      onAnonymizationMatchesChange: () => {
+        calls.matches += 1;
+      },
+      onSlashMenuChange: () => {
+        calls.slash += 1;
+      },
+      onSlashMenuKeyAction: () => {
+        calls.keys += 1;
+        return true;
+      },
+    };
+  });
+  let initialPlugins: readonly Plugin[] | undefined;
+  try {
+    for (const callback of callbacks) {
+      await act(async () => {
+        root.render(
+          <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+            <DocxEditor
+              ref={editor}
+              document={initialDocument}
+              showToolbar={false}
+              showTemplateDirectives
+              onAnonymizationMatchesChange={callback.onAnonymizationMatchesChange}
+              onSlashMenuChange={callback.onSlashMenuChange}
+              onSlashMenuKeyAction={callback.onSlashMenuKeyAction}
+            />
+          </IntlProvider>,
+        );
+      });
+      await act(async () => {
+        editor.current?.ensureEditorView({ focus: false });
+      });
+      const view =
+        editor.current?.getEditor()?.getView() ?? panic("The editor did not expose its body view");
+      const plugins = view.state.plugins;
+      const anonymization =
+        anonymizationDecorationsKey.get(view.state) ?? panic("Missing anonymization plugin");
+      const slash = templateSlashMenuKey.get(view.state) ?? panic("Missing slash plugin");
+      if (initialPlugins) {
+        expect(plugins).toEqual(initialPlugins);
+      } else {
+        initialPlugins = plugins;
+      }
+      const before = new Map(
+        callbacks.map((hostCallback) => [hostCallback, { ...hostCallback.calls }]),
+      );
+      await act(async () => {
+        const { key, payload } = setAnonymizationTermsMeta([
+          { canonical: "Alice", label: "person" },
+        ]);
+        view.dispatch(
+          view.state.tr.setMeta(key, payload).setSelection(TextSelection.create(view.state.doc, 1)),
+        );
+        slash.props.handleKeyDown?.call(slash, view, new KeyboardEvent("keydown", { key: "/" }));
+        slash.props.handleKeyDown?.call(
+          slash,
+          view,
+          new KeyboardEvent("keydown", { key: "ArrowDown" }),
+        );
+      });
+      expect(view.state.plugins).toContain(anonymization);
+      const baseline = before.get(callback) ?? panic("Missing callback baseline");
+      expect(callback.calls.matches).toBeGreaterThan(baseline.matches);
+      expect(callback.calls.slash).toBeGreaterThan(baseline.slash);
+      expect(callback.calls.keys).toBeGreaterThan(baseline.keys);
+      for (const previous of callbacks) {
+        if (previous === callback) continue;
+        expect(previous.calls).toEqual(before.get(previous));
+      }
+      // Close the slash trigger before the next callback replacement.
+      await act(async () => {
+        view.dispatch(clearTemplateSlashMenu(view.state.tr));
+        view.dispatch(
+          view.state.tr.delete(1, view.state.doc.content.size - 1).insertText("Alice", 1),
+        );
+      });
+    }
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
