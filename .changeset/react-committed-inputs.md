@@ -1,5 +1,5 @@
 ---
-"@stll/folio-react": patch
+"@stll/folio-react": minor
 ---
 
-Align editor callback synchronization and dialog state lifecycles with React Compiler rules.
+Require React 19.2 and align editor callbacks and dialog lifecycles with React Compiler rules.
