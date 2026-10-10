@@ -23,6 +23,7 @@ import {
   duplicatePropertyDriverIds,
   propertyDriverIds,
   propertyDriverAnalysis,
+  propertyDriverFiles,
   propertyDriverReferenceProblems,
 } from "../test/property-driver-ids";
 import { parseFailureRecord } from "./fuzz-failure-issues";
@@ -774,38 +775,67 @@ describe("pinned regression seeds", () => {
     expect(registryDriverProblems(readPinnedSeeds())).toEqual([]);
   });
 
-  test("every imported property driver declares a literal ID in its options", () => {
-    const result = Bun.spawnSync(
-      [
-        "rg",
-        "-l",
-        "property-testing",
-        "--glob",
-        "*.ts",
-        "--glob",
-        "*.tsx",
-        "--glob",
-        "!*.typecheck.ts",
-        "packages",
-        "scripts",
-        "test",
-        "tests",
-      ],
-      { cwd: REPO_ROOT },
-    );
-    expect(result.exitCode).toBe(0);
-    const files = new TextDecoder().decode(result.stdout).trim().split("\n");
-    const calls = files.flatMap((file) => {
-      const analysis = propertyDriverAnalysis(
-        readFileSync(path.join(REPO_ROOT, file), "utf8"),
-        file,
+  test("property-driver discovery includes source roots and excludes generated or compile-only files", () => {
+    const files = {
+      "packages/example/src/nested/property.test.ts": "included",
+      "scripts/check.test.ts": "included",
+      "test/driver.fuzz.ts": "included",
+      "tests/adapter/property.test.tsx": "included",
+      "packages/example/src/no-import.test.ts": "unrelated",
+      "scripts/check.test.js": "excluded",
+      "packages/example/typecheck/property.typecheck.ts": "excluded",
+      "packages/example/node_modules/dependency/property.test.ts": "excluded",
+      "packages/example/dist/property.test.ts": "excluded",
+      "test/.generated/property.test.ts": "excluded",
+      "tests/coverage/property.test.ts": "excluded",
+      "tests/visual/fixtures/parity-tmp-example/property.test.ts": "excluded",
+    } as const;
+    const root = mkdtempSync(path.join(tmpdir(), "folio-property-source-"));
+    try {
+      for (const [file, selection] of Object.entries(files)) {
+        const absolute = path.join(root, file);
+        mkdirSync(path.dirname(absolute), { recursive: true });
+        writeFileSync(
+          absolute,
+          selection === "unrelated"
+            ? "export const unrelated = true;"
+            : 'import { assertProperty } from "../property-testing";',
+        );
+      }
+      expect(propertyDriverFiles(root)).toEqual(
+        Object.entries(files)
+          .filter(([, selection]) => selection === "included")
+          .map(([file]) => file)
+          .toSorted(),
       );
-      expect(analysis.problems).toEqual([]);
-      expect(duplicatePropertyDriverIds(analysis.calls)).toEqual([]);
-      return analysis.calls.map(({ id, argumentCount }) => ({ file, id, argumentCount }));
-    });
-    expect(calls.length).toBeGreaterThan(0);
-    expect(calls.filter(({ id, argumentCount }) => !id?.trim() || argumentCount !== 2)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("every imported property driver declares a literal ID in its options", () => {
+    // Exercise the runner environment that caught the undeclared rg dependency.
+    const previousPath = process.env["PATH"];
+    process.env["PATH"] = "";
+    try {
+      const files = propertyDriverFiles(REPO_ROOT);
+      const calls = files.flatMap((file) => {
+        const analysis = propertyDriverAnalysis(
+          readFileSync(path.join(REPO_ROOT, file), "utf8"),
+          file,
+        );
+        expect(analysis.problems).toEqual([]);
+        expect(duplicatePropertyDriverIds(analysis.calls)).toEqual([]);
+        return analysis.calls.map(({ id, argumentCount }) => ({ file, id, argumentCount }));
+      });
+      expect(calls.length).toBeGreaterThan(0);
+      expect(calls.filter(({ id, argumentCount }) => !id?.trim() || argumentCount !== 2)).toEqual(
+        [],
+      );
+    } finally {
+      if (previousPath === undefined) Reflect.deleteProperty(process.env, "PATH");
+      else process.env["PATH"] = previousPath;
+    }
   });
 });
 

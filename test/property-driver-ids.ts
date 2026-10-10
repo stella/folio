@@ -1,6 +1,43 @@
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 import ts from "typescript";
 
 const DRIVERS = ["assertProperty", "assertKnownProperty", "assertPinnedProperty"] as const;
+
+const SOURCE_ROOTS = ["packages", "scripts", "test", "tests"];
+const GENERATED_DIRECTORIES = new Set([
+  "node_modules",
+  "dist",
+  "target",
+  "coverage",
+  "test-results",
+  "playwright-report",
+  "blob-report",
+  "engine-parity-out",
+  "engine-parity-ref",
+]);
+
+/** Discover import candidates without requiring executables on the runner. */
+export const propertyDriverFiles = (root: string): string[] => {
+  const files: string[] = [];
+  const visit = (directory: string): void => {
+    for (const entry of readdirSync(path.join(root, directory), { withFileTypes: true })) {
+      if (entry.name.startsWith(".") || GENERATED_DIRECTORIES.has(entry.name)) continue;
+      const file = path.posix.join(directory, entry.name);
+      if (directory === "tests/visual/fixtures" && entry.name.startsWith("parity-tmp-")) continue;
+      if (entry.isDirectory()) {
+        visit(file);
+        continue;
+      }
+      if (!entry.isFile() || !/\.tsx?$/.test(entry.name) || entry.name.endsWith(".typecheck.ts"))
+        continue;
+      if (readFileSync(path.join(root, file), "utf8").includes("property-testing"))
+        files.push(file);
+    }
+  };
+  for (const directory of SOURCE_ROOTS) visit(directory);
+  return files.toSorted();
+};
 
 const propertyDriverImports = (source: ts.SourceFile) => {
   const imports = new Map<string, string>();
@@ -26,8 +63,7 @@ const propertyDriverImports = (source: ts.SourceFile) => {
   return { imports, namespaces };
 };
 
-const propertyDriverSource = (text: string, file: string) => {
-  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+const propertyDriverSource = (source: ts.SourceFile) => {
   const { imports, namespaces } = propertyDriverImports(source);
   const options: ts.CompilerOptions = {
     noResolve: true,
@@ -35,10 +71,10 @@ const propertyDriverSource = (text: string, file: string) => {
     target: ts.ScriptTarget.Latest,
   };
   const host = ts.createCompilerHost(options);
-  const absoluteFile = ts.sys.resolvePath(file);
+  const absoluteFile = ts.sys.resolvePath(source.fileName);
   host.getSourceFile = (name) => (ts.sys.resolvePath(name) === absoluteFile ? source : undefined);
   host.fileExists = (name) => ts.sys.resolvePath(name) === absoluteFile;
-  host.readFile = (name) => (ts.sys.resolvePath(name) === absoluteFile ? text : undefined);
+  host.readFile = (name) => (ts.sys.resolvePath(name) === absoluteFile ? source.text : undefined);
   const program = ts.createProgram([absoluteFile], options, host);
   const checker = program.getTypeChecker();
   const importedSymbols = new Map<ts.Symbol, string>();
@@ -202,7 +238,11 @@ export const duplicatePropertyDriverIds = (calls: ReturnType<typeof propertyDriv
 
 /** Bind each file once for both identity and escaped-reference checks. */
 export const propertyDriverAnalysis = (text: string, file: string) => {
-  const source = propertyDriverSource(text, file);
+  const parsed = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const { imports, namespaces } = propertyDriverImports(parsed);
+  // Utility-only imports cannot contain assertion sites or escaped driver values.
+  if (imports.size === 0 && namespaces.size === 0) return { calls: [], problems: [] };
+  const source = propertyDriverSource(parsed);
   return { calls: callsFromSource(source), problems: referenceProblemsFromSource(source) };
 };
 
