@@ -6,7 +6,7 @@
  * - Border/outline style, color, and width
  */
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -34,7 +34,14 @@ export type ImagePropertiesDialogProps = {
 // COMPONENT
 // ============================================================================
 
-export function ImagePropertiesDialog({
+export function ImagePropertiesDialog(props: ImagePropertiesDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return <ImagePropertiesDialogForm key={JSON.stringify(props.currentData)} {...props} />;
+}
+
+function ImagePropertiesDialogForm({
   isOpen,
   onClose,
   onApply,
@@ -51,20 +58,10 @@ export function ImagePropertiesDialog({
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const t = useTranslations("folio");
   const id = useId();
-  const [alt, setAlt] = useState("");
-  const [borderWidth, setBorderWidth] = useState(0);
-  const [borderColor, setBorderColor] = useState("#000000");
-  const [borderStyle, setBorderStyle] = useState("solid");
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    setAlt(currentData?.alt ?? "");
-    setBorderWidth(currentData?.borderWidth ?? 0);
-    setBorderColor(currentData?.borderColor ?? "#000000");
-    setBorderStyle(currentData?.borderStyle ?? "solid");
-  }, [isOpen, currentData]);
+  const [alt, setAlt] = useState(currentData?.alt ?? "");
+  const [borderWidth, setBorderWidth] = useState(currentData?.borderWidth ?? 0);
+  const [borderColor, setBorderColor] = useState(currentData?.borderColor ?? "#000000");
+  const [borderStyle, setBorderStyle] = useState(currentData?.borderStyle ?? "solid");
 
   const handleApply = () => {
     onApply({

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import * as Y from "yjs";
 import { WebrtcProvider } from "y-webrtc";
 import { yCursorPlugin, ySyncPlugin, yUndoPlugin } from "y-prosemirror";
@@ -70,105 +70,103 @@ const syncYComments = (yComments: Y.Array<Comment>, next: Comment[]): void => {
   }
 };
 
+type CollaborationSnapshot = Pick<
+  CollaborationState,
+  "collaboration" | "users" | "status" | "comments"
+>;
+
+/** Connection resources exist only while React is subscribed, including StrictMode remounts. */
+export const createCollaborationStore = (createResources: () => CollaborationResources) => {
+  const disconnected: CollaborationSnapshot = {
+    collaboration: null,
+    users: [],
+    status: "connecting",
+    comments: [],
+  };
+  let snapshot = disconnected;
+  let resources: CollaborationResources | null = null;
+  const listeners = new Set<() => void>();
+  let disconnect: (() => void) | null = null;
+  const publish = (next: CollaborationSnapshot) => {
+    snapshot = next;
+    for (const listener of listeners) listener();
+  };
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      if (resources === null) {
+        const connection = createResources();
+        resources = connection;
+        const { provider, yComments } = connection;
+        const refreshUsers = () => {
+          const users: CollaborativeUser[] = [];
+          provider.awareness.getStates().forEach((state, clientId) => {
+            const user = (state as { user?: { name: string; color: string } }).user;
+            if (user)
+              users.push({ clientId, ...user, isLocal: clientId === provider.awareness.clientID });
+          });
+          publish({ ...snapshot, users });
+        };
+        const handleStatus = (event: { connected: boolean }) => {
+          publish({ ...snapshot, status: event.connected ? "connected" : "disconnected" });
+        };
+        const refreshComments = () => publish({ ...snapshot, comments: yComments.toArray() });
+        provider.awareness.on("change", refreshUsers);
+        provider.on("status", handleStatus);
+        yComments.observeDeep(refreshComments);
+        publish({
+          collaboration: {
+            yXmlFragment: connection.yXmlFragment,
+            plugins: connection.plugins,
+            awareness: provider.awareness,
+            shouldSeed: true,
+          },
+          users: [],
+          status: "connecting",
+          comments: yComments.toArray(),
+        });
+        refreshUsers();
+        disconnect = () => {
+          provider.awareness.off("change", refreshUsers);
+          provider.off("status", handleStatus);
+          yComments.unobserveDeep(refreshComments);
+          provider.destroy();
+          connection.ydoc.destroy();
+        };
+      }
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size > 0) return;
+        disconnect?.();
+        disconnect = null;
+        resources = null;
+        snapshot = disconnected;
+      };
+    },
+    setUser: (user: { name: string; color: string }) => {
+      resources?.provider.awareness.setLocalStateField("user", user);
+    },
+    setComments: (next: Comment[]) => {
+      const connection = resources;
+      if (connection === null) return;
+      connection.ydoc.transact(() => syncYComments(connection.yComments, next));
+    },
+  };
+};
+
 export const useCollaboration = (
   roomName: string,
   localUser: { name: string; color: string },
 ): CollaborationState => {
-  const [resources, setResources] = useState<CollaborationResources | null>(null);
-  const [users, setUsers] = useState<CollaborativeUser[]>([]);
-  const [status, setStatus] = useState<CollaborationState["status"]>("connecting");
-  const [comments, setCommentsState] = useState<Comment[]>([]);
-
-  const collaboration = useMemo((): DocxEditorCollaboration | null => {
-    if (!resources) {
-      return null;
-    }
-    return {
-      yXmlFragment: resources.yXmlFragment,
-      plugins: resources.plugins,
-      awareness: resources.provider.awareness,
-      shouldSeed: true,
-    };
-  }, [resources]);
-
-  useEffect(() => {
-    const nextResources = createCollaborationResources(roomName);
-    setResources(nextResources);
-    setStatus("connecting");
-    setUsers([]);
-    setCommentsState(nextResources.yComments.toArray());
-
-    return () => {
-      nextResources.provider.destroy();
-      nextResources.ydoc.destroy();
-    };
-  }, [roomName]);
-
-  useEffect(() => {
-    resources?.provider.awareness.setLocalStateField("user", {
-      name: localUser.name,
-      color: localUser.color,
-    });
-  }, [localUser.color, localUser.name, resources]);
-
-  useEffect(() => {
-    if (!resources) {
-      return;
-    }
-    const { provider } = resources;
-    const refreshUsers = () => {
-      const localId = provider.awareness.clientID;
-      const all: CollaborativeUser[] = [];
-      provider.awareness.getStates().forEach((state, clientId) => {
-        const user = (state as { user?: { name: string; color: string } }).user;
-        if (!user) {
-          return;
-        }
-        all.push({
-          clientId,
-          name: user.name,
-          color: user.color,
-          isLocal: clientId === localId,
-        });
-      });
-      setUsers(all);
-    };
-    const handleStatus = (event: { connected: boolean }) => {
-      setStatus(event.connected ? "connected" : "disconnected");
-    };
-
-    refreshUsers();
-    provider.awareness.on("change", refreshUsers);
-    provider.on("status", handleStatus);
-
-    return () => {
-      provider.awareness.off("change", refreshUsers);
-      provider.off("status", handleStatus);
-    };
-  }, [resources]);
-
-  useEffect(() => {
-    if (!resources) {
-      return;
-    }
-    const { yComments } = resources;
-    const sync = () => setCommentsState(yComments.toArray());
-    sync();
-    yComments.observeDeep(sync);
-    return () => yComments.unobserveDeep(sync);
-  }, [resources]);
-
-  const setComments = useCallback(
-    (next: Comment[]) => {
-      if (!resources) {
-        return;
-      }
-      resources.ydoc.transact(() => {
-        syncYComments(resources.yComments, next);
-      });
-    },
-    [resources],
+  const store = useMemo(
+    () => createCollaborationStore(() => createCollaborationResources(roomName)),
+    [roomName],
   );
-
-  return { collaboration, users, roomName, status, comments, setComments };
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  useEffect(() => {
+    store.setUser({ name: localUser.name, color: localUser.color });
+  }, [localUser.color, localUser.name, store]);
+  const setComments = useCallback((next: Comment[]) => store.setComments(next), [store]);
+  return { ...snapshot, roomName, setComments };
 };

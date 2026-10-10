@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "bun test src",
     "typecheck": "bun ../../scripts/tsc-native.ts --noEmit",
     "format": "oxfmt ."
   },

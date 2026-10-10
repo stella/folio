@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import { isAllowedExternalWatermarkImageUrl, type Watermark } from "@stll/folio-core/watermark";
@@ -27,12 +27,14 @@ type WatermarkMode = "none" | "text" | "picture";
 
 const DEFAULT_TEXT_COLOR = "#C0C0C0";
 
-export function WatermarkDialog({
-  isOpen,
-  onClose,
-  onApply,
-  currentWatermark,
-}: WatermarkDialogProps) {
+export function WatermarkDialog(props: WatermarkDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return <WatermarkDialogForm key={JSON.stringify(props.currentWatermark)} {...props} />;
+}
+
+function WatermarkDialogForm({ isOpen, onClose, onApply, currentWatermark }: WatermarkDialogProps) {
   const {
     Root: Dialog,
     Portal: DialogPortal,
@@ -44,51 +46,39 @@ export function WatermarkDialog({
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const t = useTranslations("folio");
   const id = useId();
-  const [mode, setMode] = useState<WatermarkMode>("text");
-  const [text, setText] = useState("CONFIDENTIAL");
-  const [font, setFont] = useState("Calibri");
-  const [color, setColor] = useState(DEFAULT_TEXT_COLOR);
-  const [diagonal, setDiagonal] = useState(true);
-  const [opacityPercent, setOpacityPercent] = useState(50);
-  const [imageRId, setImageRId] = useState("");
-  const [imageTarget, setImageTarget] = useState("");
-  const [imageTargetExternal, setImageTargetExternal] = useState(false);
-  const [scalePercent, setScalePercent] = useState(100);
-  const [washout, setWashout] = useState(true);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    if (!currentWatermark) {
-      setMode("text");
-      setText("CONFIDENTIAL");
-      setFont("Calibri");
-      setColor(DEFAULT_TEXT_COLOR);
-      setDiagonal(true);
-      setOpacityPercent(50);
-      setImageRId("");
-      setImageTarget("");
-      setImageTargetExternal(false);
-      setScalePercent(100);
-      setWashout(true);
-      return;
-    }
-    setMode(currentWatermark.kind);
-    if (currentWatermark.kind === "text") {
-      setText(currentWatermark.text);
-      setFont(currentWatermark.font ?? "Calibri");
-      setColor(toColorInputValue(currentWatermark.color));
-      setDiagonal(currentWatermark.diagonal ?? true);
-      setOpacityPercent(Math.round((currentWatermark.opacity ?? 0.5) * 100));
-      return;
-    }
-    setImageRId(currentWatermark.imageRId);
-    setImageTarget(currentWatermark.imageTarget ?? "");
-    setImageTargetExternal(currentWatermark.imageTargetExternal ?? false);
-    setScalePercent(Math.round((currentWatermark.scale ?? 1) * 100));
-    setWashout(currentWatermark.washout ?? true);
-  }, [isOpen, currentWatermark]);
+  const [mode, setMode] = useState<WatermarkMode>(currentWatermark?.kind ?? "text");
+  const [text, setText] = useState(
+    currentWatermark?.kind === "text" ? currentWatermark.text : "CONFIDENTIAL",
+  );
+  const [font, setFont] = useState(
+    currentWatermark?.kind === "text" ? (currentWatermark.font ?? "Calibri") : "Calibri",
+  );
+  const [color, setColor] = useState(
+    currentWatermark?.kind === "text"
+      ? toColorInputValue(currentWatermark.color)
+      : DEFAULT_TEXT_COLOR,
+  );
+  const [diagonal, setDiagonal] = useState(
+    currentWatermark?.kind === "text" ? (currentWatermark.diagonal ?? true) : true,
+  );
+  const [opacityPercent, setOpacityPercent] = useState(
+    currentWatermark?.kind === "text" ? Math.round((currentWatermark.opacity ?? 0.5) * 100) : 50,
+  );
+  const [imageRId, setImageRId] = useState(
+    currentWatermark?.kind === "picture" ? (currentWatermark.imageRId ?? "") : "",
+  );
+  const [imageTarget, setImageTarget] = useState(
+    currentWatermark?.kind === "picture" ? (currentWatermark.imageTarget ?? "") : "",
+  );
+  const [imageTargetExternal, setImageTargetExternal] = useState(
+    currentWatermark?.kind === "picture" ? (currentWatermark.imageTargetExternal ?? false) : false,
+  );
+  const [scalePercent, setScalePercent] = useState(
+    currentWatermark?.kind === "picture" ? Math.round((currentWatermark.scale ?? 1) * 100) : 100,
+  );
+  const [washout, setWashout] = useState(
+    currentWatermark?.kind === "picture" ? (currentWatermark.washout ?? true) : true,
+  );
 
   const fieldIds = {
     mode: `${id}-watermark-mode`,

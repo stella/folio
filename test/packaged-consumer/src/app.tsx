@@ -155,7 +155,7 @@ function App() {
     <IntlProvider
       locale={LOCALE}
       messages={getFolioMessages(LOCALE)}
-      timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+      timeZone={new Intl.DateTimeFormat().resolvedOptions().timeZone}
     >
       <DocxEditor
         ref={editorRef}

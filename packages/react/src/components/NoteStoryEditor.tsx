@@ -109,8 +109,6 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
     const [active, setActive] = useState<NoteStoryKey | null>(null);
     const managerRef = useRef<NoteEditorManager | null>(null);
 
-    const footnotes = document?.package.footnotes;
-    const endnotes = document?.package.endnotes;
     useEffect(() => {
       documentRef.current = document;
       canonicalApiRef.current = getCanonicalApi;
@@ -154,9 +152,7 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
     }, [
       active,
       document,
-      endnotes,
       experimentalSession,
-      footnotes,
       getCanonicalApi,
       onActiveChange,
       onDocumentChange,

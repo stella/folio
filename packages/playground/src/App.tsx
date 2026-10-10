@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { createTranslator, IntlProvider } from "use-intl";
 
@@ -71,7 +71,6 @@ const isCollaborationDemo = (): boolean =>
 
 type LoadDocumentOptions = {
   fileName: string;
-  loadingStatus: string;
   missingStatus: string;
   url: string;
 };
@@ -599,14 +598,74 @@ function createLargeDocument(paragraphCount: number): FolioDocument {
 }
 
 export function App() {
+  if (isCollaborationDemo()) {
+    return <CollaborationApp />;
+  }
+
+  return <DocumentPlayground />;
+}
+
+const createPlaygroundScrollHost = () => {
+  let editor: DocxEditorRef | null = null;
+  return {
+    bridge: buildScrollParityBridge(() => editor),
+    attach: (next: DocxEditorRef | null) => {
+      editor = next;
+    },
+  };
+};
+
+const fetchPlaygroundDocument = async ({ fileName, missingStatus, url }: LoadDocumentOptions) => {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return { type: "error", message: missingStatus } as const;
+    const buffer = await response.arrayBuffer();
+    return { type: "ready", buffer, fileName } as const;
+  } catch {
+    return { type: "error", message: `Error loading ${fileName}` } as const;
+  }
+};
+
+const DocumentPlayground = () => {
   const editorRef = useRef<DocxEditorRef>(null);
-  const scrollParityHost = useRef(buildScrollParityBridge(() => editorRef.current)).current;
+  const [scrollHost] = useState(createPlaygroundScrollHost);
+  const scrollParityHost = scrollHost.bridge;
+  const attachEditor = useCallback(
+    (editor: DocxEditorRef | null) => {
+      editorRef.current = editor;
+      scrollHost.attach(editor);
+    },
+    [scrollHost],
+  );
   const clipboardCallbackCountsRef = useRef({ copy: 0, cut: 0, paste: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(null);
+  const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("file") || params.has("showcase")) return null;
+    const paragraphCount = Number(params.get("paragraphs"));
+    return Number.isInteger(paragraphCount) && paragraphCount > 0
+      ? createLargeDocument(paragraphCount)
+      : createStellaStyleDocument();
+  });
   const [documentBuffer, setDocumentBuffer] = useState<ArrayBuffer | null>(null);
-  const [fileName, setFileName] = useState("Untitled.docx");
-  const [status, setStatus] = useState<PlaygroundStatus>(IDLE_PLAYGROUND_STATUS);
+  const [fileName, setFileName] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paragraphCount = Number(params.get("paragraphs"));
+    return !params.get("file") &&
+      !params.has("showcase") &&
+      Number.isInteger(paragraphCount) &&
+      paragraphCount > 0
+      ? `Generated ${paragraphCount} paragraphs.docx`
+      : "Untitled.docx";
+  });
+  const [status, setStatus] = useState<PlaygroundStatus>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("file"))
+      return { type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading fixture..." };
+    if (params.has("showcase"))
+      return { type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading showcase..." };
+    return IDLE_PLAYGROUND_STATUS;
+  });
   const [editorMode, setEditorMode] = useState<EditorMode>("editing");
   const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
   const query = new URLSearchParams(window.location.search);
@@ -621,62 +680,50 @@ export function App() {
     : undefined;
 
   const loadDocument = useCallback(
-    async ({ fileName: nextFileName, loadingStatus, missingStatus, url }: LoadDocumentOptions) => {
-      try {
-        setStatus({ type: PLAYGROUND_STATUS_TYPE.LOADING, message: loadingStatus });
-        const response = await fetch(url);
-        if (!response.ok) {
-          setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: missingStatus });
-          return;
+    (options: LoadDocumentOptions) =>
+      fetchPlaygroundDocument(options).then((result) => {
+        switch (result.type) {
+          case "error":
+            setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: result.message });
+            return;
+          case "ready":
+            setCurrentDocument(null);
+            setDocumentBuffer(result.buffer);
+            setFileName(result.fileName);
+            setStatus(IDLE_PLAYGROUND_STATUS);
+            return;
+          default: {
+            const exhaustive: never = result;
+            return exhaustive;
+          }
         }
-        const buffer = await response.arrayBuffer();
-        setCurrentDocument(null);
-        setDocumentBuffer(buffer);
-        setFileName(nextFileName);
-        setStatus(IDLE_PLAYGROUND_STATUS);
-      } catch {
-        setStatus({
-          type: PLAYGROUND_STATUS_TYPE.ERROR,
-          message: `Error loading ${nextFileName}`,
-        });
-      }
-    },
+      }),
     [],
   );
 
-  // Load fixture from ?file= query param (visual + interaction tests) or
-  // the showcase from ?showcase (README recording), or generate a body from
-  // ?paragraphs= (performance tests).
+  const loadInitialDocument = useEffectEvent(loadDocument);
+
+  // Fetch fixture/showcase bytes after mount; local documents initialize in state.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const fixtureFile = params.get("file");
-    const paragraphCount = Number(params.get("paragraphs"));
     if (fixtureFile) {
-      void loadDocument({
+      void loadInitialDocument({
         fileName: fixtureFile,
-        loadingStatus: "Loading fixture...",
         missingStatus: `Fixture not found: ${fixtureFile}`,
         url: `/fixtures/${fixtureFile}`,
       });
       return;
     }
     if (params.has("showcase")) {
-      void loadDocument({
+      void loadInitialDocument({
         fileName: SHOWCASE_FILE_NAME,
-        loadingStatus: "Loading showcase...",
         missingStatus: "Showcase document not found",
         url: SHOWCASE_URL,
       });
       return;
     }
-    if (Number.isInteger(paragraphCount) && paragraphCount > 0) {
-      setCurrentDocument(createLargeDocument(paragraphCount));
-      setFileName(`Generated ${paragraphCount} paragraphs.docx`);
-      return;
-    }
-    setCurrentDocument(createStellaStyleDocument());
-    setFileName("Untitled.docx");
-  }, [loadDocument]);
+  }, []);
 
   const handleNewDocument = useCallback(() => {
     setCurrentDocument(createStellaStyleDocument());
@@ -716,9 +763,9 @@ export function App() {
   }, []);
 
   const handleOpenShowcase = useCallback(() => {
+    setStatus({ type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading showcase..." });
     void loadDocument({
       fileName: SHOWCASE_FILE_NAME,
-      loadingStatus: "Loading showcase...",
       missingStatus: "Showcase document not found",
       url: SHOWCASE_URL,
     });
@@ -827,22 +874,18 @@ export function App() {
       globalThis.__folioParity = undefined;
       globalThis.__folioScrollParity = undefined;
     };
-  }, []);
-
-  if (isCollaborationDemo()) {
-    return <CollaborationApp />;
-  }
+  }, [scrollParityHost]);
 
   return (
     <IntlProvider
       locale={locale}
       messages={getFolioMessages(locale)}
-      timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+      timeZone={new Intl.DateTimeFormat().resolvedOptions().timeZone}
     >
       <div className="pg-shell" dir={RTL_LOCALES.has(locale) ? "rtl" : "ltr"}>
         <main className="pg-editor-area">
           <DocxEditor
-            ref={editorRef}
+            ref={attachEditor}
             document={documentBuffer ? null : currentDocument}
             documentBuffer={documentBuffer}
             author="Folio User"
@@ -950,4 +993,4 @@ export function App() {
       </div>
     </IntlProvider>
   );
-}
+};

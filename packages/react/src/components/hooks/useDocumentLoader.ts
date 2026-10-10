@@ -7,7 +7,7 @@
  * callbacks each render.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { DocumentLoaderManager } from "@stll/folio-core/managers/DocumentLoaderManager";
@@ -109,30 +109,54 @@ export const useDocumentLoader = ({
   });
 
   // Re-bind host callbacks so the manager always sees the latest closures.
-  manager.setCallbacks({
-    history,
-    getExperimentalSession: () => experimentalSession,
-    onError,
-    onCompatibilityChange,
-    onReset,
-    setDocumentLoadState,
-    setLoadedDocumentIdentity,
+  useLayoutEffect(() => {
+    manager.setCallbacks({
+      history,
+      getExperimentalSession: () => experimentalSession,
+      onError,
+      onCompatibilityChange,
+      onReset,
+      setDocumentLoadState,
+      setLoadedDocumentIdentity,
+    });
   });
 
-  // React to document/documentBuffer prop changes.
+  // Session-mode changes reload the same source under the newly committed mode.
+  type CommittedSourceOptions = {
+    session: typeof experimentalSession;
+    source: ReturnType<typeof getDocumentLoadSource>;
+    loadPassword: typeof password;
+  };
+  const loadCommittedSource = useEffectEvent(
+    ({ session, source, loadPassword }: CommittedSourceOptions) => {
+      manager.setCallbacks({
+        history,
+        getExperimentalSession: () => session,
+        onError,
+        onCompatibilityChange,
+        onReset,
+        setDocumentLoadState,
+        setLoadedDocumentIdentity,
+      });
+      if (source.type === "none") {
+        return;
+      }
+
+      if (source.type === "parsed-document") {
+        api.loadParsedDocument(source.document);
+        return;
+      }
+
+      void api.loadBuffer(source.buffer, { password: loadPassword });
+    },
+  );
   useEffect(() => {
-    const source = getDocumentLoadSource({ documentBuffer, initialDocument });
-    if (source.type === "none") {
-      return;
-    }
-
-    if (source.type === "parsed-document") {
-      api.loadParsedDocument(source.document);
-      return;
-    }
-
-    void api.loadBuffer(source.buffer, { password });
-  }, [documentBuffer, initialDocument, password, experimentalSession, api]);
+    loadCommittedSource({
+      session: experimentalSession,
+      source: getDocumentLoadSource({ documentBuffer, initialDocument }),
+      loadPassword: password,
+    });
+  }, [documentBuffer, initialDocument, password, experimentalSession]);
 
   // A saved baseline belongs to this load; internal edits must not replace it.
   useEffect(() => {

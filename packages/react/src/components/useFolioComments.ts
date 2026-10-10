@@ -10,6 +10,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -117,8 +118,9 @@ export function useFolioComments({
     () => (commentsProp !== undefined ? sanitizeControlledComments(commentsProp) : undefined),
     [commentsProp],
   );
-  const isControlledComments = sanitizedCommentsProp !== undefined;
-  const comments = isControlledComments ? sanitizedCommentsProp : internalComments;
+  const commentsMode = sanitizedCommentsProp === undefined ? "uncontrolled" : "controlled";
+  const isControlledComments = commentsMode === "controlled";
+  const comments = sanitizedCommentsProp ?? internalComments;
 
   // Reserve before browser events can mint comments, including controlled replies.
   useLayoutEffect(() => {
@@ -131,16 +133,22 @@ export function useFolioComments({
   }, [comments, doc]);
 
   const commentsDirtyRef = useRef(false);
-  // Render-level mirror of `comments`: reassigned from state on every render,
-  // so an imperative write anywhere else is overwritten by the next render and
-  // also defeats the identity check in `setComments` below. The hook keeps the
-  // writable handle private and exports a read-only view; mutate only through
-  // `setComments`.
+  const getCommentsDirty = useCallback(() => commentsDirtyRef.current, []);
+  const setCommentsDirty = useCallback((dirty: boolean) => {
+    commentsDirtyRef.current = dirty;
+  }, []);
+  // Controlled mirrors follow committed props only. Uncontrolled setters also
+  // publish synchronously so multiple event-time updates compose before commit.
+  // Export a read-only view; mutate only through `setComments`.
   const commentsRef = useRef(comments);
-  commentsRef.current = comments;
+  useLayoutEffect(() => {
+    commentsRef.current = comments;
+  }, [comments]);
   const readonlyCommentsRef: Readonly<RefObject<Comment[]>> = commentsRef;
   const onCommentsChangeRef = useRef(onCommentsChange);
-  onCommentsChangeRef.current = onCommentsChange;
+  useLayoutEffect(() => {
+    onCommentsChangeRef.current = onCommentsChange;
+  }, [onCommentsChange]);
 
   const createComment = useCallback(
     (text: string, author: string, parentId?: number) => {
@@ -164,20 +172,24 @@ export function useFolioComments({
       if (resolved === commentsRef.current) {
         return;
       }
-      for (const { id } of resolved) {
-        seedCommentIdAbove(id);
-      }
-      // The owning setter: the ref write is paired with the state update below
-      // (or, when controlled, with the host applying `onCommentsChange`), so
-      // same-tick readers and the next render agree.
-      // eslint-disable-next-line folio-ref-mirrors/no-write-to-render-mirrored-ref
-      commentsRef.current = resolved;
-      if (!isControlledComments) {
-        setInternalComments(resolved);
+      switch (commentsMode) {
+        case "controlled":
+          break;
+        case "uncontrolled":
+          for (const { id } of resolved) {
+            seedCommentIdAbove(id);
+          }
+          commentsRef.current = resolved;
+          setInternalComments(resolved);
+          break;
+        default: {
+          const unreachable: never = commentsMode;
+          return unreachable;
+        }
       }
       onCommentsChangeRef.current?.(resolved);
     },
-    [isControlledComments],
+    [commentsMode],
   );
 
   const [isAddingComment, setIsAddingComment] = useState(false);
@@ -195,26 +207,44 @@ export function useFolioComments({
     to: number;
   } | null>(null);
 
-  // Initialize sidebar state from the authoritative comments on first load.
-  const commentsLoadedRef = useRef(false);
+  // Initialize once when authoritative comments become available. The loader
+  // explicitly resets this lifecycle when it replaces the document.
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [loadedCommentsNotification, setLoadedCommentsNotification] = useState<{
+    comments: Comment[];
+  } | null>(null);
+  const resetLoadedComments = useCallback(() => setCommentsLoaded(false), []);
+  const bodyComments = committedComments ?? doc?.package.document.comments;
+  if (
+    !commentsLoaded &&
+    !(committedComments == null && isControlledComments) &&
+    bodyComments &&
+    bodyComments.length > 0
+  ) {
+    setCommentsLoaded(true);
+    if (committedComments == null && !isControlledComments && doc?.package.document.comments) {
+      const loadedComments = doc.package.document.comments;
+      setInternalComments(loadedComments);
+      setLoadedCommentsNotification({ comments: loadedComments });
+    }
+    setVisibleCommentAuthors(null);
+    setActiveCommentId(null);
+    if (autoOpenReviewSidebar && countOpenCommentThreads(bodyComments) > 0) {
+      setShowCommentsSidebar(true);
+    }
+  }
+
+  const notifyLoadedComments = useEffectEvent((loaded: Comment[]) => onCommentsChange?.(loaded));
+  const lastLoadedNotificationRef = useRef<typeof loadedCommentsNotification>(null);
   useEffect(() => {
-    if (commentsLoadedRef.current || (committedComments == null && isControlledComments)) {
+    if (
+      loadedCommentsNotification === null ||
+      lastLoadedNotificationRef.current === loadedCommentsNotification
+    )
       return;
-    }
-    const bodyComments = committedComments ?? doc?.package.document.comments;
-    if (bodyComments && bodyComments.length > 0) {
-      if (committedComments == null && doc?.package.document.comments) {
-        setComments(doc.package.document.comments);
-      }
-      setVisibleCommentAuthors(null);
-      setActiveCommentId(null);
-      // Open only when the sidebar has a card to show, never on an empty panel.
-      if (autoOpenReviewSidebar && countOpenCommentThreads(bodyComments) > 0) {
-        setShowCommentsSidebar(true);
-      }
-      commentsLoadedRef.current = true;
-    }
-  }, [autoOpenReviewSidebar, committedComments, doc, isControlledComments, setComments]);
+    lastLoadedNotificationRef.current = loadedCommentsNotification;
+    notifyLoadedComments(loadedCommentsNotification.comments);
+  }, [loadedCommentsNotification]);
 
   const listedComments = committedComments ?? comments;
 
@@ -266,11 +296,9 @@ export function useFolioComments({
 
   const activeCommentVisible = activeCommentId !== null && visibleCommentIds.has(activeCommentId);
 
-  useEffect(() => {
-    if (!activeCommentVisible) {
-      setActiveCommentId(null);
-    }
-  }, [activeCommentVisible]);
+  if (activeCommentId !== null && !activeCommentVisible) {
+    setActiveCommentId(null);
+  }
 
   const syncCommentHighlightStyles = useCallback(() => {
     const root = editorContentRef.current;
@@ -311,18 +339,22 @@ export function useFolioComments({
     }
   }, [visibleCommentIds, activeCommentId, editorContentRef]);
 
+  // A layout-map commit can replace painted marks without changing thread metadata.
+  const highlightLayoutCommit = useEffectEvent(
+    (_positions: Map<string, number>, sync: () => void) => sync(),
+  );
   useLayoutEffect(() => {
-    syncCommentHighlightStyles();
+    highlightLayoutCommit(anchorPositions, syncCommentHighlightStyles);
   }, [syncCommentHighlightStyles, anchorPositions]);
 
-  useEffect(() => {
-    syncCommentHighlightStyles();
+  const scheduleHighlightCommit = useEffectEvent((_comments: Comment[], sync: () => void) => {
+    sync();
     let secondFrame: number | null = null;
     const firstFrame = requestAnimationFrame(() => {
-      syncCommentHighlightStyles();
-      secondFrame = requestAnimationFrame(syncCommentHighlightStyles);
+      sync();
+      secondFrame = requestAnimationFrame(sync);
     });
-    const timeout = setTimeout(syncCommentHighlightStyles, 120);
+    const timeout = setTimeout(sync, 120);
     return () => {
       cancelAnimationFrame(firstFrame);
       if (secondFrame !== null) {
@@ -330,7 +362,11 @@ export function useFolioComments({
       }
       clearTimeout(timeout);
     };
-  }, [comments, syncCommentHighlightStyles]);
+  });
+  useEffect(
+    () => scheduleHighlightCommit(comments, syncCommentHighlightStyles),
+    [comments, syncCommentHighlightStyles],
+  );
 
   return {
     comments,
@@ -338,8 +374,9 @@ export function useFolioComments({
     createComment,
     isControlledComments,
     commentsRef: readonlyCommentsRef,
-    commentsDirtyRef,
-    commentsLoadedRef,
+    getCommentsDirty,
+    setCommentsDirty,
+    resetLoadedComments,
     showCommentsSidebar,
     setShowCommentsSidebar,
     setVisibleCommentAuthors,
