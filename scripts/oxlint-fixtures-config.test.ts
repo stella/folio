@@ -15,14 +15,12 @@ test("fixture lint clears only its fixture ignore and preserves the production r
 
 test("every oxlint fixture self-test selects the fixture config", () => {
   const root = new URL("../", import.meta.url).pathname;
-  const tests = [
-    ...new Bun.Glob("scripts/*lint.test.ts").scanSync({ cwd: root }),
-    "scripts/oxlint-config-loaders.test.ts",
-  ];
+  const tests = [...new Bun.Glob("scripts/*.test.ts").scanSync({ cwd: root })];
   let invocations = 0;
   for (const filename of tests) {
     const source = readFileSync(`${root}/${filename}`, "utf8");
     if (
+      !/Bun\.spawnSync\s*\(/u.test(source) ||
       !source.includes('"oxlint"') ||
       (!source.includes('"__fixtures__"') && !source.includes('"test/__fixtures__/'))
     )
