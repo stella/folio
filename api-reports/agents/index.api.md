@@ -6,10 +6,12 @@
 
 import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from '@stll/folio-core/server';
+import { FolioAIDiagnosticBlock } from '@stll/folio-core/server';
 import { FolioAIEditApplyMode } from '@stll/folio-core/server';
 import { FolioAIEditApplyResult } from '@stll/folio-core/server';
 import { FolioAIEditOperation } from '@stll/folio-core/server';
 import { FolioAIEditSnapshot } from '@stll/folio-core/server';
+import { FolioAIParagraphBlock } from '@stll/folio-core/server';
 import { FolioAITextRangeHandle } from '@stll/folio-core/server';
 import { FolioBlockDiff } from '@stll/folio-core/server';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
@@ -131,16 +133,14 @@ export type FolioAgentApplyOperationsSummary = {
     normalizations: FolioAgentInputNormalization[];
 };
 
-// @public
-export type FolioAgentBlock = {
-    blockId: string;
-    kind: string;
-    text: string;
-    displayLabel?: string;
-    headingLevel?: number;
-    listLevel?: number;
-    blockTextHash: string;
-};
+// @public (undocumented)
+export type FolioAgentBlock = (FolioAgentBlockFields & {
+    kind: FolioAIParagraphBlock["kind"];
+    statedNumbering: FolioAIParagraphBlock["statedNumbering"];
+    listReference?: NonNullable<FolioAIParagraphBlock["listReference"]>;
+}) | (FolioAgentBlockFields & {
+    kind: FolioAIDiagnosticBlock["kind"];
+});
 
 // @public
 export type FolioAgentBlockDiff = FolioBlockDiff;
