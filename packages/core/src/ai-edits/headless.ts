@@ -1509,6 +1509,7 @@ export class FolioDocxReviewer {
       },
       apply: (record, snapshot) => {
         const result = this.applyDocumentOperationsInternal({
+          undefinedReferences: "refuse",
           story: record.story,
           batch: {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,

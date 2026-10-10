@@ -16,7 +16,7 @@ import { alignFolioBlocks } from "./version-comparison";
 const PROPERTY_BUDGET = 30_000;
 const UNKNOWN_STYLE = "UndefinedInsertionStyle";
 const UNKNOWN_NUM_ID = 5;
-const INSERTED_ID = "92000004";
+const INSERTED_ID = "12000004";
 const MAIN_STORY = { type: "main" } as const;
 
 setDefaultTimeout(propertyTestTimeout(PROPERTY_BUDGET));
@@ -80,9 +80,9 @@ const undefinedReferenceFixture = ({
     };
   }
   document.package.document.content = [
-    paragraph("91000001", `Leading anchor ${suffix}`),
-    ...(side === "base" ? [paragraph("91000002", `Removed original ${suffix}`)] : []),
-    paragraph("91000003", `Middle anchor ${suffix}`),
+    paragraph("11000001", `Leading anchor ${suffix}`),
+    ...(side === "base" ? [paragraph("11000002", `Removed original ${suffix}`)] : []),
+    paragraph("11000003", `Middle anchor ${suffix}`),
     ...(side === "revised"
       ? [
           {
@@ -94,11 +94,11 @@ const undefinedReferenceFixture = ({
           },
         ]
       : []),
-    paragraph("91000005", `Trailing anchor ${suffix}`),
+    paragraph("11000005", `Trailing anchor ${suffix}`),
     ...(side === "revised" && independent
       ? [
           {
-            ...paragraph("92000006", `Independent insertion ${suffix}`),
+            ...paragraph("12000006", `Independent insertion ${suffix}`),
             formatting: { styleId: "IndependentCollision" },
           },
         ]
@@ -122,7 +122,7 @@ test("undefined inserted references stay dangling or are cleared before binding 
             const target = await FolioDocxReviewer.fromBuffer(revised);
             const targetSnapshot = target.snapshot();
             const insertedSource = expectParagraphBlock(
-              targetSnapshot.blocks.find(({ id }) => id === INSERTED_ID),
+              targetSnapshot.blocks.find(({ text }) => text === `Replacement ${suffix}`),
             );
             const insertionAnchor = targetSnapshot.anchors[insertedSource.id];
             if (!insertionAnchor) panic("Replacement fixture lost its source anchor");

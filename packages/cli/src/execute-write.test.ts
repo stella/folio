@@ -311,12 +311,12 @@ const toFile = (target: string, extra: { overwrite?: boolean; expectedVersion?: 
 });
 
 test("compare_documents forwards cleared-reference warnings in its file receipt", async () => {
-  const leading = { paraId: "91000001", text: "Leading anchor" };
-  const middle = { paraId: "91000003", text: "Middle anchor" };
-  const trailing = { paraId: "91000005", text: "Trailing anchor" };
+  const leading = { paraId: "11000001", text: "Leading anchor" };
+  const middle = { paraId: "11000003", text: "Middle anchor" };
+  const trailing = { paraId: "11000005", text: "Trailing anchor" };
   const source = await writeDocx(dir, "warning-base.docx", [
     leading,
-    { paraId: "91000002", text: "Removed original" },
+    { paraId: "11000002", text: "Removed original" },
     middle,
     trailing,
   ]);
@@ -335,12 +335,16 @@ test("compare_documents forwards cleared-reference warnings in its file receipt"
   const revisedPath = await writeDocx(dir, "warning-revised.docx", [
     leading,
     middle,
-    { paraId: "92000004", text: "Replacement", style: styleId },
+    { paraId: "12000004", text: "Replacement", style: styleId },
     trailing,
   ]);
   const revised = await reopen(revisedPath);
+  const revisedSnapshot = revised.snapshot();
+  const insertion =
+    revisedSnapshot.blocks.find(({ text }) => text === "Replacement") ??
+    panic("Fixture lost its insertion block");
   const anchor =
-    revised.snapshot().anchors["92000004"] ?? panic("Fixture lost its insertion anchor");
+    revisedSnapshot.anchors[insertion.id] ?? panic("Fixture lost its insertion anchor");
   const receipt = (
     await write(
       "compare_documents",
