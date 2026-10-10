@@ -172,7 +172,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     wordDiff?: FolioWordDiffOptions;
     tableTemplates?: FolioTableTemplates;
     replacementBackground?: FolioReplacementBackground;
-    undefinedStyles?: FolioUndefinedStylePolicy;
+    undefinedReferences: FolioUndefinedReferencePolicy;
 };
 
 // @public (undocumented)
@@ -1682,6 +1682,9 @@ export type FolioRevisionStamp = {
     date: string;
     idSeed: number;
 };
+
+// @public
+export type FolioUndefinedReferencePolicy = "refuse" | "keep";
 
 // @public
 export type FolioWordDiffOptions = {

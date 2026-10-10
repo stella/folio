@@ -108,6 +108,7 @@ import { FolioPendingSuggestionRecord } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
+import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
 import { FootnoteProperties } from '@stll/folio-core/types/document';
 import { ForwardRefExoticComponent } from 'react';
 import { fromMarkdown } from '@stll/folio-core/markdown';
@@ -341,6 +342,7 @@ export const DocxEditor: ForwardRefExoticComponent<DocxEditorProps & RefAttribut
 
 // @public (undocumented)
 export type DocxEditorApplyDocumentOperationsOptions = {
+    undefinedReferences: FolioUndefinedReferencePolicy;
     snapshot: FolioAIEditSnapshot;
     batch: FolioDocumentOperationBatch;
     author?: string;
@@ -483,6 +485,7 @@ export type DocxEditorRef = {
     applyDocumentOperations: (options: DocxEditorApplyDocumentOperationsOptions) => FolioDocumentOperationResult;
     undoDocumentOperations: (undoHandle: FolioDocumentOperationUndoHandle) => FolioDocumentOperationUndoResult;
     applyAIEditOperations: (options: {
+        undefinedReferences: FolioUndefinedReferencePolicy;
         snapshot: FolioAIEditSnapshot;
         operations: FolioAIEditOperation[];
         mode?: FolioAIEditApplyMode;

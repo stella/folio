@@ -34,6 +34,7 @@ import { FolioDocxReviewer } from '@stll/folio-core/server';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange as FolioReviewChange_2 } from '@stll/folio-core/server';
 import { FolioRevisionStamp } from '@stll/folio-core/server';
+import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
 import { FolioVersionDiff } from '@stll/folio-core/server';
 import { FolioVersionDiffSegment } from '@stll/folio-core/server';
 import { GenerateRedlineDocxOptions } from '@stll/folio-core/server';
@@ -208,6 +209,7 @@ export type FolioAgentDocumentOutline = {
 
 // @public (undocumented)
 export type FolioAgentEditorApplyDocumentOperationsOptions = {
+    undefinedReferences: FolioUndefinedReferencePolicy;
     snapshot: FolioAIEditSnapshot;
     batch: FolioDocumentOperationBatch;
     mode?: FolioAIEditApplyMode;
@@ -218,6 +220,7 @@ export type FolioAgentEditorApplyDocumentOperationsOptions = {
 export type FolioAgentEditorRefLike = {
     createAIEditSnapshot(): FolioAIEditSnapshot | null;
     applyAIEditOperations(options: {
+        undefinedReferences: FolioUndefinedReferencePolicy;
         snapshot: FolioAIEditSnapshot;
         operations: FolioAIEditOperation[];
         mode?: FolioAIEditApplyMode;

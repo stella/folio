@@ -837,11 +837,11 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
     batch: FolioDocumentOperationBatch;
     tableTemplates?: FolioTableTemplates;
     replacementBackground?: FolioReplacementBackground;
-    undefinedStyles?: FolioUndefinedStylePolicy;
 };
 
 // @public
 export type FolioApplyOperationsOptions = {
+    undefinedReferences: FolioUndefinedReferencePolicy;
     mode?: FolioAIEditApplyMode;
     snapshot?: FolioAIEditSnapshot;
     revisionStamp?: FolioRevisionStamp;
@@ -1291,9 +1291,9 @@ export class FolioDocxReviewer {
     acceptSuggestion(suggestionId: string, options?: {
         author?: string;
     }): boolean;
-    applyDocumentOperations(batch: FolioDocumentOperationBatch, options?: FolioApplyDocumentOperationsOptions): FolioDocumentOperationResult;
+    applyDocumentOperations(batch: FolioDocumentOperationBatch, options: FolioApplyDocumentOperationsOptions): FolioDocumentOperationResult;
     applyDocumentOperationsToStory(input: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult;
-    applyOperations(operations: FolioAIEditOperation[], options?: FolioApplyOperationsOptions): FolioAIEditApplyResult;
+    applyOperations(operations: FolioAIEditOperation[], options: FolioApplyOperationsOptions): FolioAIEditApplyResult;
     readonly author: string;
     exportPendingSuggestions(): FolioPendingSuggestionRecord[];
     static fromBuffer(buffer: ArrayBuffer, options?: FolioDocxReviewerOptions): Promise<FolioDocxReviewer>;
@@ -1676,9 +1676,22 @@ export type GenerateRedlineDocxResult = {
     buffer: ArrayBuffer;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
+    referenceWarnings: GenerateRedlineReferenceWarning[];
     unprocessedStories: GenerateRedlineUnprocessedStory[];
     privacyReport: FolioDocumentPrivacyReport;
 };
+
+// @public
+export type GenerateRedlineReferenceWarning = {
+    paragraphPosition: number;
+    story: FolioDocumentStoryHandle;
+} & ({
+    kind: "style";
+    id: string;
+} | {
+    kind: "numbering";
+    id: number;
+});
 
 // @public
 export type GenerateRedlineUnprocessedStory = {

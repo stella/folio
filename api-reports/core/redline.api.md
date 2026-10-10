@@ -28,9 +28,22 @@ export type GenerateRedlineDocxResult = {
     buffer: ArrayBuffer;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
+    referenceWarnings: GenerateRedlineReferenceWarning[];
     unprocessedStories: GenerateRedlineUnprocessedStory[];
     privacyReport: FolioDocumentPrivacyReport;
 };
+
+// @public
+export type GenerateRedlineReferenceWarning = {
+    paragraphPosition: number;
+    story: FolioDocumentStoryHandle;
+} & ({
+    kind: "style";
+    id: string;
+} | {
+    kind: "numbering";
+    id: number;
+});
 
 // @public
 export type GenerateRedlineUnprocessedStory = {
