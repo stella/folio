@@ -364,7 +364,6 @@ describe("note-reference occurrence schema cutover", () => {
       });
       expect(() => applyAttrSchemaMigrations(ydoc, fragment, version)).toThrow(
         FolioYjsNoteReferenceSchemaError,
-        FolioYjsNumberingSourceSchemaError,
       );
       expect(() => applyAttrSchemaMigrations(ydoc, fragment, version)).toThrow(
         `Yjs schema ${version}`,
