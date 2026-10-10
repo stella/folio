@@ -81,6 +81,9 @@ export type DocxProjectionRevisionStatus = readonly [status: "complete"] | reado
 // @public (undocumented)
 export type DocxProjectionRevisionUnsupportedReason = "incompatible-paragraph-merge" | "structural-table-revision" | "unsupported-revision-markup";
 
+// @public
+export const docxProjectionSchemaVersion: () => Promise<number>;
+
 // @public (undocumented)
 export type DocxProjectionStructuralFacts = readonly [indentation: DocxProjectionFactSet<DocxProjectionIndentationFact>, numberingHierarchy: DocxProjectionFactSet<DocxProjectionNumberingFact>, bookmarks: DocxProjectionFactSet<DocxProjectionBookmarkFact>, internalReferences: DocxProjectionFactSet<DocxProjectionReferenceFact>, outlineLevels: DocxProjectionFactSet<DocxProjectionOutlineLevelFact>];
 
