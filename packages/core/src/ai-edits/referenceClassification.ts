@@ -14,6 +14,15 @@ type ResourceReferenceClassificationOptions =
       destinationDefines: (id: number) => boolean;
     };
 
+const REFERENCE_DISPOSITIONS = {
+  sourceDefined: "sourceDefined",
+  destinationCollision: "destinationCollision",
+  unknown: "unknown",
+} as const;
+
+// A named result keeps declaration emission stable across parallel builds.
+type ReferenceDisposition = (typeof REFERENCE_DISPOSITIONS)[keyof typeof REFERENCE_DISPOSITIONS];
+
 type ReferenceSpaceOptions<Id> = {
   id: Id;
   sourceDefines: (id: Id) => boolean;
@@ -24,13 +33,17 @@ const classifyReferenceSpace = <Id>({
   id,
   sourceDefines,
   destinationDefines,
-}: ReferenceSpaceOptions<Id>) => {
-  if (sourceDefines(id)) return "sourceDefined";
-  return destinationDefines(id) ? "destinationCollision" : "unknown";
+}: ReferenceSpaceOptions<Id>): ReferenceDisposition => {
+  if (sourceDefines(id)) return REFERENCE_DISPOSITIONS.sourceDefined;
+  return destinationDefines(id)
+    ? REFERENCE_DISPOSITIONS.destinationCollision
+    : REFERENCE_DISPOSITIONS.unknown;
 };
 
 /** A missing source reference may stay dangling, but cannot acquire destination meaning. */
-export const classifyResourceReference = (reference: ResourceReferenceClassificationOptions) => {
+export const classifyResourceReference = (
+  reference: ResourceReferenceClassificationOptions,
+): ReferenceDisposition => {
   switch (reference.kind) {
     case "style":
       return classifyReferenceSpace(reference);
