@@ -101,7 +101,7 @@ pub struct FormattingCompleteness {
 }
 
 impl FormattingCompleteness {
-    pub(super) fn from_styles(styles: Result<(), FormattingUnknownReason>) -> Self {
+    fn from_styles(styles: Result<(), FormattingUnknownReason>) -> Self {
         let status = |family| match family {
             // Highlight facts report direct markup, independently of the cascade.
             TextStyle::Highlight => FormattingFactStatus::Known,
@@ -117,13 +117,13 @@ impl FormattingCompleteness {
         }
     }
 
-    pub(super) fn mark_styles_unread(&mut self) {
+    fn mark_styles_unread(&mut self) {
         let unread = Self::from_styles(Err(FormattingUnknownReason::UnsupportedStyles));
         self.bold = unread.bold;
         self.superscript = unread.superscript;
     }
 
-    pub(super) const fn mark_formatting_unread(&mut self) {
+    const fn mark_formatting_unread(&mut self) {
         let unknown = FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles);
         self.bold = unknown;
         self.highlight = unknown;
