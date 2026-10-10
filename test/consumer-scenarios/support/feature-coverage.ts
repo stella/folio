@@ -1,7 +1,7 @@
 /** Operation × touched document feature × selection coverage shared by the
  * consumer flows and the editor-command conformance suite. */
 
-import type { FolioAIBlock } from "@stll/folio-core/ai-edits";
+import type { FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
 export const DOCUMENT_FEATURES = [
   "plain-table",
@@ -212,17 +212,18 @@ export const generatedSelection = (type: string): SelectionType => {
   return "none";
 };
 
-type TargetSignature = {
+/** Coverage accepts observed facts from reader blocks and independent oracle rows. */
+type TargetSignature = Pick<
+  FolioAIParagraphBlock,
+  "headingLevel" | "listReference" | "displayLabel"
+> & {
   kind?: string;
-  headingLevel?: number;
-  listReference?: { numId: number; level: number };
-  displayLabel?: string;
   table?: unknown;
 };
 
 /** Classify only features observable at the touched target. */
 export const targetFeatureSignature = (
-  target: TargetSignature | FolioAIBlock | undefined,
+  target: TargetSignature | undefined,
   known: ReadonlySet<string>,
   story: string,
 ): DocumentFeature[] => {

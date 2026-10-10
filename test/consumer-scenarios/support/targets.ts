@@ -189,7 +189,7 @@ const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
 export const blocksOfStory = (
   reviewer: Reviewer,
   story: FolioDocumentStoryHandle = { type: "main" },
-): TargetBlock[] =>
+): readonly FolioAIBlock[] =>
   story.type === "main" ? reviewer.getContent() : (reviewer.snapshotStory(story)?.blocks ?? []);
 
 const tableEdge = (block: TargetBlock, blocks: readonly TargetBlock[]): boolean => {
@@ -296,7 +296,7 @@ export const boundariesOf = (block: TargetBlock): number[] => {
       points.add(offset);
     }
   }
-  for (const boundary of block.structuralBoundaries ?? []) {
+  for (const boundary of block.kind === "diagnostic" ? [] : (block.structuralBoundaries ?? [])) {
     points.add(boundary.offset);
     points.add(boundary.offset + (boundary.length ?? 0));
   }
@@ -335,7 +335,7 @@ const edgeSpans = (block: TargetBlock): Span[] => {
       });
     }
   }
-  for (const boundary of block.structuralBoundaries ?? []) {
+  for (const boundary of block.kind === "diagnostic" ? [] : (block.structuralBoundaries ?? [])) {
     if (boundary.type === "noteReference" && boundary.length) {
       spans.push({
         word: block.text.slice(boundary.offset, boundary.offset + boundary.length),

@@ -19,7 +19,6 @@
  */
 
 import assert from "node:assert/strict";
-import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import type { FolioContentStatedNumbering } from "@stll/folio-core/compare/content-types";
 
 import {
@@ -55,7 +54,14 @@ type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 type ParsedDocument = Awaited<ReturnType<typeof parseDocx>>;
 type ParsedBlock = ParsedDocument["package"]["document"]["content"][number];
 type ParsedInline = Extract<ParsedBlock, { type: "paragraph" }>["content"][number];
-type Numbering = NonNullable<Extract<ParsedBlock, { type: "paragraph" }>["formatting"]>["numPr"];
+type ParsedNumbering = NonNullable<
+  NonNullable<Extract<ParsedBlock, { type: "paragraph" }>["formatting"]>["numPr"]
+>;
+/** Expected numbering uses input numeric facts, without invoking the production allocator. */
+type Numbering =
+  | Exclude<ParsedNumbering, { kind: "reference" }>
+  | (Omit<Extract<ParsedNumbering, { kind: "reference" }>, "numId"> & { numId: number })
+  | undefined;
 type NumberingFacts = {
   styles: Map<string, Numbering>;
   direct: Map<string, Numbering>;
@@ -657,10 +663,11 @@ const requestedStyleNumbering = (
     }
     direct = facts.direct.get(row.id);
   } else if (row.listReference) {
-    direct = paragraphNumberingFromSlots({
+    direct = {
+      kind: "reference",
       numId: row.listReference.numId,
       ilvl: row.listReference.level,
-    });
+    };
   }
   return numberingOver(style, direct);
 };
@@ -797,11 +804,14 @@ const paragraphRequest = (
   if ("numbering" in request) {
     const numbering = request["numbering"] as Record<string, unknown>;
     const preKind = pre?.kind ?? inherited?.kind;
-    const styleId =
-      ("styleId" in request ? request["styleId"] : undefined) ??
-      pre?.styleId ??
-      inherited?.styleId ??
-      null;
+    const requestedStyleId = request["styleId"];
+    assert.ok(
+      requestedStyleId === undefined ||
+        requestedStyleId === null ||
+        typeof requestedStyleId === "string",
+      "A requested style id must be a string or null",
+    );
+    const styleId = requestedStyleId ?? pre?.styleId ?? inherited?.styleId ?? null;
     const styleNumbering = requestedStyleNumbering(model, styleId);
     if (styleNumbering === UNKNOWN_NUMBERING) {
       fields.listLevel = ANY;
@@ -846,9 +856,11 @@ const paragraphRequest = (
         return null;
       });
     } else if (numbering["kind"] === "reference") {
+      const numId = numbering["numId"];
+      assert.ok(typeof numId === "number", "A reference request must name a numeric list id");
       const effective = numberingOver(styleNumbering, {
         kind: "reference",
-        numId: numbering["numId"] as number,
+        numId,
         ...(typeof numbering["ilvl"] === "number" ? { ilvl: numbering["ilvl"] } : {}),
       });
       const reference =
