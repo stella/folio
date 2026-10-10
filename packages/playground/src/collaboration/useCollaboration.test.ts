@@ -6,7 +6,6 @@ import type { Comment } from "@stll/folio-core/types/content";
 import { createCollaborationStore } from "./useCollaboration";
 
 test("collaboration subscriptions own connections and publish external updates", () => {
-  const connections: ReturnType<typeof createResources>[] = [];
   const createResources = () => {
     const ydoc = new Y.Doc();
     // No remote signaling: this exercises the real provider's events locally.
@@ -19,10 +18,14 @@ test("collaboration subscriptions own connections and publish external updates",
       yComments: ydoc.getArray<Comment>("comments"),
       yXmlFragment: ydoc.getXmlFragment("prosemirror"),
     };
-    connections.push(connection);
     return connection;
   };
-  const store = createCollaborationStore(createResources);
+  const connections: ReturnType<typeof createResources>[] = [];
+  const store = createCollaborationStore(() => {
+    const connection = createResources();
+    connections.push(connection);
+    return connection;
+  });
   expect(connections).toHaveLength(0);
   expect(store.getSnapshot().collaboration).toBeNull();
   let notifications = 0;

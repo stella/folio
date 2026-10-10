@@ -14,6 +14,12 @@ import { PagedEditor, type PagedEditorRef } from "./PagedEditor";
 import { IntlProvider } from "use-intl";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 
+import {
+  getMeasureProvider,
+  setMeasureProvider,
+  type MeasureProvider,
+} from "@stll/folio-core/layout-engine/measure/measureProvider";
+
 const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
@@ -36,6 +42,25 @@ const createDocumentIO = (buffer: ArrayBuffer) => ({
   loadDocx: async () => undefined,
 });
 
+const createSelectionMeasureProvider = (installed: MeasureProvider) =>
+  ({
+    ...installed,
+    measureRun: (text) => ({
+      width: text.length * 7,
+      charWidths: Array.from(text, () => 7),
+      metrics: {
+        fontSize: 11,
+        ascent: 12,
+        descent: 4,
+        fontBoxAscent: 12,
+        fontBoxDescent: 4,
+        lineHeight: 16,
+        fontFamily: "Calibri",
+        singleLineRatio: 1,
+      },
+    }),
+  }) satisfies MeasureProvider;
+
 const createSelectionFixture = () => {
   const blocks = [
     {
@@ -51,7 +76,7 @@ const createSelectionFixture = () => {
   const measures = [
     {
       kind: "paragraph",
-      width: 35,
+      width: 21,
       height: 16,
       lines: [
         {
@@ -59,7 +84,7 @@ const createSelectionFixture = () => {
           toRun: 0,
           fromChar: 0,
           toChar: 3,
-          width: 35,
+          width: 21,
           lineHeight: 16,
           ascent: 12,
           descent: 4,
@@ -150,6 +175,8 @@ test("persistent hidden view reads committed callbacks and read-only inputs", as
 test("selection geometry follows collapsed, range, and cleared inputs without stale effects", async () => {
   const container = document.createElement("div");
   const root = createRoot(container);
+  const installedProvider = getMeasureProvider();
+  setMeasureProvider(createSelectionMeasureProvider(installedProvider));
   const { blocks, measures, fixture, collapsedSelection, rangeSelection } =
     createSelectionFixture();
   const Probe = ({
@@ -164,6 +191,7 @@ test("selection geometry follows collapsed, range, and cleared inputs without st
       <output
         data-caret={geometry.caretPosition === null ? "absent" : "present"}
         data-rects={geometry.selectionRects.length}
+        data-selection={JSON.stringify(geometry.selectionRects)}
       />
     );
   };
@@ -174,6 +202,9 @@ test("selection geometry follows collapsed, range, and cleared inputs without st
     await act(async () => root.render(<Probe selection={rangeSelection} layout={fixture} />));
     expect(container.querySelector("output")?.getAttribute("data-caret")).toBe("absent");
     expect(container.querySelector("output")?.getAttribute("data-rects")).toBe("1");
+    expect(
+      JSON.parse(container.querySelector("output")?.getAttribute("data-selection") ?? "null"),
+    ).toEqual([{ x: 10, y: 20, width: 21, height: 16, pageIndex: 0 }]);
     for (const input of [
       { selection: null, layout: fixture },
       { selection: { from: 1, to: 1 }, layout: null },
@@ -184,6 +215,7 @@ test("selection geometry follows collapsed, range, and cleared inputs without st
     }
   } finally {
     await act(async () => root.unmount());
+    setMeasureProvider(installedProvider);
   }
 });
 
