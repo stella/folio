@@ -1,3 +1,4 @@
+import { mergeParagraphNumbering } from "../../docx/numberingReference";
 import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 /**
  * ProseMirror to Document Conversion
@@ -2056,7 +2057,10 @@ function convertPMParagraph(
   if (pFormatting) {
     paragraph.formatting = pFormatting;
   }
-  if (attrs.numPr?.kind === "reference") {
+  if (
+    mergeParagraphNumbering(attrs.numPrFromStyle ?? undefined, attrs.numPr ?? undefined)?.kind ===
+    "reference"
+  ) {
     const inheritedIndentation = paragraphIndentationFromFormatting(attrs._resolvedFormatting);
     if (inheritedIndentation) {
       assignParagraphIndentationProjection({

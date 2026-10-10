@@ -16,6 +16,7 @@ import {
   expectTextColorMarkAttrs,
   expectUnderlineMarkAttrs,
 } from "./attrs";
+import { mergeParagraphNumbering } from "../docx/numberingReference";
 import { type ListState, resolveListState } from "./listState";
 import { directionIsRtl } from "./paragraphDirection";
 import { getDocumentNumbering } from "./plugins/documentNumbering";
@@ -136,7 +137,13 @@ export function extractSelectionSnapshot(state: EditorState): SelectionSnapshot 
     styleId,
     startParagraphIndex,
     endParagraphIndex,
-    listState: resolveListState(getDocumentNumbering(state), paragraphFormatting.numPr),
+    listState: resolveListState(
+      getDocumentNumbering(state),
+      mergeParagraphNumbering(
+        paragraphAttrs?.numPrFromStyle ?? undefined,
+        paragraphFormatting.numPr,
+      ),
+    ),
   };
 }
 

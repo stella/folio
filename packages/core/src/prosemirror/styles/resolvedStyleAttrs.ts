@@ -9,6 +9,7 @@
  * identical paragraph attrs.
  */
 
+import { mergeParagraphNumbering } from "../../docx/numberingReference";
 import {
   computeListRendering,
   numberingLevelHasMarkerSlot,
@@ -268,7 +269,10 @@ export function listLevelIndentRemovalPatch(
   attrs: Readonly<ParagraphAttrs>,
   numbering: NumberingMap | null | undefined,
 ): ParagraphAttrsPatch {
-  if (attrs.numPr?.kind !== "reference") {
+  if (
+    mergeParagraphNumbering(attrs.numPrFromStyle ?? undefined, attrs.numPr ?? undefined)?.kind !==
+    "reference"
+  ) {
     return {};
   }
   const direct = directParagraphIndentation(attrs);

@@ -8,6 +8,7 @@ import type { ParagraphFormatting } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 import {
   modelParagraphFormattingEmission,
+  isStyleSourcedParagraphNumbering,
   type ModeledParagraphFormattingEmission,
 } from "./paragraphFormattingSerialization";
 
@@ -229,6 +230,24 @@ describe("paragraph formatting emission model", () => {
       expect(modelParagraphFormattingEmission({ numPr, numPrFromStyle })).toEqual(expected);
     },
   );
+
+  test("numbering ownership never depends on equal resolved values", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 100 }),
+        fc.integer({ min: 0, max: 8 }),
+        (numId, ilvl) => {
+          const inherited = { kind: "reference", numId, ilvl } as const;
+          expect(isStyleSourcedParagraphNumbering(inherited, inherited)).toBe(false);
+          expect(isStyleSourcedParagraphNumbering({ kind: "levelOnly", ilvl }, inherited)).toBe(
+            false,
+          );
+          expect(isStyleSourcedParagraphNumbering(undefined, inherited)).toBe(true);
+        },
+      ),
+      propertyConfig({ numRuns: 128 }),
+    );
+  });
 
   test("generated models reconstruct the exact fallback XML", () => {
     fc.assert(
