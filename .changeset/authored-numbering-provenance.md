@@ -14,6 +14,6 @@ Paragraph blocks require statedNumbering; diagnostic blocks expose no paragraph 
 
 Redline insertions import their referenced style closure and numbering through collision-safe resource owners while preserving stated inheritance. An unimportable resource closure raises GenerateRedlineDocxResourceImportError before any body operation, preserving the base document.
 
-Source-undefined style and numbering references stay verbatim when also undefined in the base. References that would bind to an unrelated base definition are cleared and reported in referenceWarnings with their revised story position.
+Source-undefined style references stay verbatim when also undefined in the base. Styles that would bind to an unrelated base definition are cleared and reported in referenceWarnings with their revised story position. Dangling numbering remains normalized to none by the existing parser, so inserted paragraphs stay unnumbered through save/reopen.
 
 Breaking: undefinedStyles is replaced by the required undefinedReferences option, with no default or alias. Every execution caller must pass { undefinedReferences: "refuse" } for editing or { undefinedReferences: "keep" } for comparison/redline. Both reviewer methods and React/Vue operation refs require an explicit policy, applying it to style and numbering references alike.

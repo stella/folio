@@ -71,7 +71,7 @@ const undefinedReferenceFixture = ({
         : []),
     ],
   };
-  if (defineCollision && resource === "numbering") {
+  if (resource === "numbering" && (defineCollision || side === "revised")) {
     document.package.numbering = {
       abstractNums: [
         { abstractNumId: UNKNOWN_NUM_ID, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
@@ -104,7 +104,18 @@ const undefinedReferenceFixture = ({
         ]
       : []),
   ];
-  return createDocx(document);
+  return createDocx(document).then(async (buffer) => {
+    if (resource !== "numbering" || side !== "revised") return buffer;
+    // The model writer requires defined resources. External packages can carry
+    // dangling references, so remove the definition after valid serialization.
+    const zip = await JSZip.loadAsync(buffer);
+    const part = zip.file("word/numbering.xml") ?? panic("Fixture lost its numbering part");
+    const xml = await part.async("text");
+    const start =
+      xml.match(/<w:numbering\b[^>]*>/u)?.at(0) ?? panic("Fixture lost its numbering root");
+    zip.file("word/numbering.xml", `${start}</w:numbering>`);
+    return zip.generateAsync({ type: "arraybuffer" });
+  });
 };
 
 test("undefined inserted references stay dangling or are cleared before binding base resources", async () => {
@@ -124,6 +135,11 @@ test("undefined inserted references stay dangling or are cleared before binding 
             const insertedSource = expectParagraphBlock(
               targetSnapshot.blocks.find(({ text }) => text === `Replacement ${suffix}`),
             );
+            if (resource === "numbering") {
+              // The parse-boundary owner repairs dangling numbering before redline.
+              expect(insertedSource.statedNumbering).toEqual(NO_PARAGRAPH_NUMBERING);
+              expect(insertedSource.listReference).toBeUndefined();
+            }
             const insertionAnchor = targetSnapshot.anchors[insertedSource.id];
             if (!insertionAnchor) panic("Replacement fixture lost its source anchor");
             const events = alignFolioBlocks(before.snapshot().blocks, targetSnapshot.blocks);
@@ -137,13 +153,13 @@ test("undefined inserted references stay dangling or are cleared before binding 
             // Derive warnings from authored source references and original
             // full-story coordinates, independently of the importer result.
             const warningLocation = { paragraphPosition: insertionAnchor.from, story: MAIN_STORY };
-            const expectedWarning = (
-              resource === "style"
-                ? { ...warningLocation, kind: "style" as const, id: UNKNOWN_STYLE }
-                : { ...warningLocation, kind: "numbering" as const, id: UNKNOWN_NUM_ID }
-            ) satisfies (typeof result.referenceWarnings)[number];
+            const expectedWarning = {
+              ...warningLocation,
+              kind: "style",
+              id: UNKNOWN_STYLE,
+            } as const satisfies (typeof result.referenceWarnings)[number];
             expect(result.referenceWarnings).toEqual(
-              definition === "baseDefined" ? [expectedWarning] : [],
+              resource === "style" && definition === "baseDefined" ? [expectedWarning] : [],
             );
             expect(new Uint8Array(base)).toEqual(baseBytes);
             expect(new Uint8Array(revised)).toEqual(revisedBytes);
@@ -157,12 +173,12 @@ test("undefined inserted references stay dangling or are cleared before binding 
             const inserted = expectParagraphBlock(
               accepted.snapshot().blocks.find(({ text }) => text === insertedSource.text),
             );
+            if (resource === "numbering") {
+              expect(inserted.statedNumbering).toEqual(NO_PARAGRAPH_NUMBERING);
+              expect(inserted.kind).toBe("paragraph");
+            }
             expect(inserted.displayLabel).toBeUndefined();
-            expect(inserted.listReference).toEqual(
-              resource === "numbering" && definition === "globallyUndefined"
-                ? { numId: UNKNOWN_NUM_ID, level: 0 }
-                : undefined,
-            );
+            expect(inserted.listReference).toBeUndefined();
             expect(inserted.previewRuns?.some(({ bold }) => bold === true) ?? false).toBe(false);
             if (resource === "style") {
               const zip = await JSZip.loadAsync(acceptedBuffer);
@@ -176,12 +192,6 @@ test("undefined inserted references stay dangling or are cleared before binding 
                 expect(xml).not.toMatch(authoredStyle);
                 expect(inserted.styleId).not.toBe(UNKNOWN_STYLE);
               }
-            } else {
-              expect(inserted.statedNumbering).toEqual(
-                definition === "globallyUndefined"
-                  ? paragraphNumberingReference({ numId: UNKNOWN_NUM_ID, ilvl: 0 })
-                  : NO_PARAGRAPH_NUMBERING,
-              );
             }
             const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
             expect(rejecting.rejectAll()).toBeGreaterThan(0);

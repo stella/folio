@@ -92,12 +92,14 @@ export type GenerateRedlineUnprocessedStory = {
   reason: "missing-base-story" | "missing-revised-story";
 };
 
-/** A source-undefined reference cleared so it cannot acquire unrelated base meaning. */
+/** A source-undefined style cleared so it cannot acquire unrelated base meaning. */
 export type GenerateRedlineReferenceWarning = {
   /** Position in the revised story's ProseMirror projection. */
   paragraphPosition: number;
   story: FolioDocumentStoryHandle;
-} & ({ kind: "style"; id: string } | { kind: "numbering"; id: number });
+  kind: "style";
+  id: string;
+};
 
 /** Result of {@link generateRedlineDocx}. */
 export type GenerateRedlineDocxResult = {
@@ -359,8 +361,6 @@ type PrepareInsertedReferencesOptions = {
   rebound: FolioAIBlock;
   sourceStyles: ReadonlySet<string>;
   destinationStyles: ReadonlySet<string>;
-  sourceNumbering: ReadonlySet<number>;
-  destinationNumbering: ReadonlySet<number>;
   paragraphPosition: number;
   story: FolioDocumentStoryHandle;
 };
@@ -370,8 +370,6 @@ const prepareInsertedReferences = ({
   rebound,
   sourceStyles,
   destinationStyles,
-  sourceNumbering,
-  destinationNumbering,
   paragraphPosition,
   story,
 }: PrepareInsertedReferencesOptions) => {
@@ -400,31 +398,13 @@ const prepareInsertedReferences = ({
     }
   }
   if (source.statedNumbering.kind === "reference") {
-    const disposition = classifyResourceReference({
-      kind: "numbering",
-      id: source.statedNumbering.numId,
-      sourceDefines: (id) => sourceNumbering.has(id),
-      destinationDefines: (id) => destinationNumbering.has(id),
-    });
-    if (disposition === "sourceDefined") {
-      block.statedNumbering = imported.statedNumbering;
-      if (imported.listReference === undefined) delete block.listReference;
-      else block.listReference = imported.listReference;
-      if (imported.displayLabel === undefined) delete block.displayLabel;
-      else block.displayLabel = imported.displayLabel;
-    } else {
-      block.statedNumbering = disposition === "unknown" ? source.statedNumbering : { kind: "none" };
-      delete block.listReference;
-      delete block.displayLabel;
-      if (disposition === "destinationCollision") {
-        warnings.push({
-          kind: "numbering",
-          id: source.statedNumbering.numId,
-          paragraphPosition,
-          story,
-        });
-      }
-    }
+    // The parser already normalizes undefined numbering to none. Preserve the
+    // imported reference when restoring an unknown style's source projection.
+    block.statedNumbering = imported.statedNumbering;
+    if (imported.listReference === undefined) delete block.listReference;
+    else block.listReference = imported.listReference;
+    if (imported.displayLabel === undefined) delete block.displayLabel;
+    else block.displayLabel = imported.displayLabel;
   }
   return { block, warnings };
 };
@@ -477,7 +457,6 @@ export const generateRedlineDocx = async (
   const sourceStyles = new Set(
     sourceAccess.styleDefinitions()?.styles.map(({ styleId }) => styleId),
   );
-  const sourceNumbering = definedNumIds(sourceAccess.numberingDefinitions());
   const unprocessedStories: GenerateRedlineUnprocessedStory[] = [];
   const wordDiff = createScopedWordDiffOptions({});
   let operationSequence = 0;
@@ -551,7 +530,6 @@ export const generateRedlineDocx = async (
   const destinationStyles = new Set(
     baseAccess.styleDefinitions()?.styles.map(({ styleId }) => styleId),
   );
-  const destinationNumbering = definedNumIds(baseAccess.numberingDefinitions());
   for (const [index, { story, snapshot, revisedSnapshot, inserted }] of plannedStories.entries()) {
     const rebound =
       resources.snapshots.at(index) ?? panic("A redline resource import lost its snapshot");
@@ -567,8 +545,6 @@ export const generateRedlineDocx = async (
         rebound: imported,
         sourceStyles,
         destinationStyles,
-        sourceNumbering,
-        destinationNumbering,
         paragraphPosition: anchor.from,
         story,
       });
@@ -592,7 +568,7 @@ export const generateRedlineDocx = async (
       wordDiff,
       // Added paragraphs use the style closure imported through the collision owner.
       // Defined resource closure refusal aborts before any body operation.
-      // Unknown direct references retain the source spelling and carry no definition.
+      // Unknown styles retain their spelling; dangling numbering is normalized by the parser.
       undefinedReferences: "keep",
     });
     applied.push(...result.applied);
