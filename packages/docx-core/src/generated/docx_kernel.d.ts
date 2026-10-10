@@ -29,16 +29,21 @@ structure: DocxProjectionStructure,
 styleId: string | null,
 alignment: DocxProjectionAlignment,
 ];
+export type DocxProjectionFormattingFamily = DocxProjectionFormattingSpan[2];
 export type DocxProjectionFormattingUnknownReason =
 | "document-part-only"
 | "styles-part-unavailable"
 | "unsupported-styles";
-export type DocxProjectionFormattingStatus =
-| readonly [status: "complete"]
+export type DocxProjectionFormattingFamilyStatus =
+| readonly [status: "known"]
 | readonly [
-status: "incomplete",
-reason: DocxProjectionFormattingUnknownReason,
-];
+status: "unknown-missing-styles",
+reason: "document-part-only" | "styles-part-unavailable",
+]
+| readonly [status: "unknown-unread", reason: "unsupported-styles"];
+export type DocxProjectionFormattingCompleteness = Readonly<
+Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>
+>;
 export type DocxProjectionFactSet<T> =
 | readonly [status: "known", items: readonly T[]]
 | readonly [status: "unknown", reason: DocxProjectionUnknownReason];
@@ -115,11 +120,11 @@ status: "incomplete",
 reasons: readonly DocxProjectionRevisionUnsupportedReason[],
 ];
 export type DocxProjectionWire = readonly [
-schemaVersion: 5,
+schemaVersion: 6,
 paragraphs: readonly DocxProjectionParagraph[],
 structuralFacts: DocxProjectionStructuralFacts,
 revisionStatus: DocxProjectionRevisionStatus,
-formattingStatus: DocxProjectionFormattingStatus,
+formattingCompleteness: DocxProjectionFormattingCompleteness,
 ];
 type DocxParagraphFragmentFacts<T extends readonly unknown[]> = {
     readonly [Key in keyof T]: readonly [status: "unknown", reason: "paragraph-fragment"];
@@ -129,7 +134,7 @@ schemaVersion: DocxProjectionWire[0],
 paragraphs: readonly [DocxProjectionParagraph],
 structuralFacts: DocxParagraphFragmentFacts<DocxProjectionStructuralFacts>,
 revisionStatus: DocxProjectionWire[3],
-formattingStatus: DocxProjectionWire[4],
+formattingCompleteness: DocxProjectionWire[4],
 ];
 export type DocxReviewUnknownReason =
 | "invalid-document"
@@ -301,8 +306,9 @@ export interface InitOutput {
     readonly projectCompressedDocxWithReviewFacts: (a: number, b: number, c: number) => void;
     readonly projectMainDocumentXml: (a: number, b: number, c: number) => void;
     readonly projectParagraphFragment: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_export: (a: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
-    readonly __wbindgen_export: (a: number, b: number) => number;
+    readonly __wbindgen_export2: (a: number, b: number) => number;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;
