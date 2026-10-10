@@ -3,11 +3,13 @@ import { readFileSync } from "node:fs";
 import config from "../oxlint.config.ts";
 import fixtureConfig from "../oxlint.fixtures.config.ts";
 
-test("fixture lint clears only file ignores and preserves the production rule and warning policy", () => {
+test("fixture lint clears only its fixture ignore and preserves the production rule and warning policy", () => {
   const { ignorePatterns: productionIgnores, ...productionPolicy } = config;
   const { ignorePatterns: fixtureIgnores, ...fixturePolicy } = fixtureConfig;
   expect(productionIgnores).toContain("test/__fixtures__/**");
-  expect(fixtureIgnores).toEqual([]);
+  expect(fixtureIgnores).toEqual(
+    productionIgnores?.filter((pattern) => pattern !== "test/__fixtures__/**"),
+  );
   expect(fixturePolicy).toEqual(productionPolicy);
 });
 
