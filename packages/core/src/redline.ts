@@ -11,7 +11,6 @@
  */
 
 import { panic, TaggedError } from "better-result";
-import { Fragment } from "prosemirror-model";
 
 import {
   FolioDocxReviewer,
@@ -20,13 +19,7 @@ import {
   type FolioDocumentStoryHandle,
   type FolioResolvedReviewedView,
 } from "./ai-edits/headless";
-import {
-  createFolioAITextRangeHandle,
-  trailingBodyBlockId,
-  sourceDocumentOf,
-  styleResolverOf,
-  createFolioAIEditSnapshotWithStyleResolver,
-} from "./ai-edits/snapshot";
+import { createFolioAITextRangeHandle, trailingBodyBlockId } from "./ai-edits/snapshot";
 import type {
   FolioAIBlock,
   FolioAIBlockParagraphProperties,
@@ -47,6 +40,10 @@ import {
 } from "./docx/metadataPrivacy";
 import { FolioContentInlinePresentationProjectionError } from "./compare/content";
 import { importStyleClosureWithNumbering } from "./compare/import-style-closure";
+import {
+  createInsertedResourceProjection,
+  rebindInsertedResourceBlocks,
+} from "./compare/inserted-resource-snapshot";
 import { inlineFormattingSegments } from "./compare/formatting";
 import {
   GenerateRedlineDocxOperationLimitError,
@@ -339,26 +336,6 @@ const insertedNumberingReferences = (
   );
 };
 
-/** Only added paragraphs contribute style resources; retain their source nodes and context. */
-const insertedSnapshot = (
-  base: FolioAIEditSnapshot,
-  revised: FolioAIEditSnapshot,
-): FolioAIEditSnapshot => {
-  const document = sourceDocumentOf(revised);
-  const nodes = alignFolioBlocks(base.blocks, revised.blocks).flatMap((event) => {
-    if (event.type === "pair" || event.type === "baseOnly") return [];
-    const anchor =
-      revised.anchors[event.block.id] ?? panic("An inserted block lost its source anchor");
-    const node =
-      document.nodeAt(anchor.from) ?? panic("An inserted block lost its source paragraph");
-    return [node];
-  });
-  return createFolioAIEditSnapshotWithStyleResolver(
-    document.copy(Fragment.from(nodes)),
-    styleResolverOf(revised),
-  );
-};
-
 const resolveInputView = (
   value: unknown,
   option: "baseView" | "revisedView",
@@ -417,7 +394,7 @@ export const generateRedlineDocx = async (
     story: FolioDocumentStoryHandle;
     snapshot: FolioAIEditSnapshot;
     revisedSnapshot: FolioAIEditSnapshot;
-    inserted: FolioAIEditSnapshot;
+    inserted: ReturnType<typeof createInsertedResourceProjection>;
   }[] = [];
   for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
     if (!pair.baseStory) {
@@ -446,11 +423,11 @@ export const generateRedlineDocx = async (
       story: pair.baseStory,
       snapshot: baseSnapshot,
       revisedSnapshot,
-      inserted: insertedSnapshot(baseSnapshot, revisedSnapshot),
+      inserted: createInsertedResourceProjection({ base: baseSnapshot, revised: revisedSnapshot }),
     });
   }
 
-  const insertedSnapshots = plannedStories.map(({ inserted }) => inserted);
+  const insertedSnapshots = plannedStories.map(({ inserted }) => inserted.snapshot);
   const resources = importStyleClosureWithNumbering({
     destination: baseReviewer,
     source: revisedReviewer,
@@ -460,10 +437,10 @@ export const generateRedlineDocx = async (
   });
   const { styleImport } = resources;
   const defined = definedNumIds(getFolioDocxComparisonAccess(baseReviewer).numberingDefinitions());
-  for (const [index, { story, snapshot, revisedSnapshot }] of plannedStories.entries()) {
+  for (const [index, { story, snapshot, revisedSnapshot, inserted }] of plannedStories.entries()) {
     const rebound =
       resources.snapshots.at(index) ?? panic("A redline resource import lost its snapshot");
-    const insertedById = new Map(rebound.blocks.map((block) => [block.id, block]));
+    const insertedById = rebindInsertedResourceBlocks(inserted, rebound);
     const operations = buildRedlineOperations({
       baseSnapshot: snapshot,
       revisedBlocks: revisedSnapshot.blocks.map((block) => insertedById.get(block.id) ?? block),
