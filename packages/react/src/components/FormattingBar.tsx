@@ -159,6 +159,17 @@ export function FormattingBar(props: FormattingBarProps) {
   const primaryRef = useRef<HTMLDivElement>(null);
   const secondaryRef = useRef<HTMLDivElement>(null);
   const secondaryWidthRef = useRef(0);
+  const overflowObserverRef = useRef<ResizeObserver | null>(null);
+  const measureOverflowRef = useRef<(() => void) | null>(null);
+  const attachSecondary = useCallback((node: HTMLDivElement | null) => {
+    const previous = secondaryRef.current;
+    if (previous) overflowObserverRef.current?.unobserve(previous);
+    secondaryRef.current = node;
+    if (node) {
+      overflowObserverRef.current?.observe(node);
+      measureOverflowRef.current?.();
+    }
+  }, []);
   // Start optimistic (assume the secondary group fits): the layout effect
   // below measures and corrects this before the first paint, so a narrow
   // initial width never flashes overflowing content.
@@ -520,8 +531,10 @@ export function FormattingBar(props: FormattingBarProps) {
       setShowSecondaryInline((current) => (current === fits ? current : fits));
     };
 
-    update();
     const observer = new ResizeObserver(update);
+    overflowObserverRef.current = observer;
+    measureOverflowRef.current = update;
+    update();
     observer.observe(scrollEl);
     observer.observe(primaryEl);
     if (secondaryRef.current) {
@@ -530,6 +543,8 @@ export function FormattingBar(props: FormattingBarProps) {
 
     return () => {
       observer.disconnect();
+      overflowObserverRef.current = null;
+      measureOverflowRef.current = null;
     };
   }, [inline]);
 
@@ -840,7 +855,7 @@ export function FormattingBar(props: FormattingBarProps) {
         </div>
 
         {showSecondaryInline && (
-          <div ref={secondaryRef} className="flex shrink-0 items-center gap-0.5">
+          <div ref={attachSecondary} className="flex shrink-0 items-center gap-0.5">
             <ToolbarSeparator />
             <div className="flex shrink-0 items-center gap-0.5">{secondaryControls}</div>
           </div>

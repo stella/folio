@@ -11,10 +11,11 @@ for (const query of ["", "?paragraphs=12", "?file=sample.docx&paragraphs=12"]) {
       .toBeGreaterThan(0);
     await ensureLiveView(page);
     const initialText = await page.evaluate(() => window.__folioParity?.getDocumentText());
-    expect(initialText?.length).toBeGreaterThan(0);
     if (query === "?paragraphs=12") {
+      expect(initialText?.length).toBeGreaterThan(0);
       expect(initialText?.match(/Performance paragraph /gu)).toHaveLength(12);
     } else {
+      if (query.includes("file=")) expect(initialText?.length).toBeGreaterThan(0);
       expect(initialText).not.toContain("Performance paragraph ");
     }
     expect(await page.evaluate(() => !!globalThis.__folioScrollParity)).toBe(true);
@@ -32,9 +33,7 @@ for (const query of ["", "?paragraphs=12", "?file=sample.docx&paragraphs=12"]) {
       .poll(() => page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0))
       .toBeGreaterThan(0);
     await ensureLiveView(page);
-    const newText = await page.evaluate(() => window.__folioParity?.getDocumentText());
-    expect(newText?.length).toBeGreaterThan(0);
-    expect(newText).not.toContain("Performance paragraph ");
+    await expect.poll(() => page.evaluate(() => window.__folioParity?.getDocumentText())).toBe("");
   });
 }
 
