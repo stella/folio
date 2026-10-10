@@ -32,15 +32,18 @@ const semanticProjection = async (bytes: Uint8Array) => {
   expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
   const reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(bytes).buffer);
   return {
-    blocks: reviewer
-      .snapshot()
-      .blocks.map(({ kind, text, displayLabel, listReference, table }) => ({
-        kind,
-        text,
-        displayLabel,
-        effectiveLevel: listReference?.level,
-        table,
-      })),
+    blocks: reviewer.snapshot().blocks.map((block) => {
+      if (block.kind === "diagnostic") {
+        return { kind: block.kind, text: block.text, diagnostic: block.diagnostic };
+      }
+      return {
+        kind: block.kind,
+        text: block.text,
+        displayLabel: block.displayLabel,
+        effectiveLevel: block.listReference?.level,
+        table: block.table,
+      };
+    }),
     changes: reviewer.getChanges().map(({ type, text, author }) => ({ type, text, author })),
     comments: reviewer.getComments().map(({ text, author }) => ({ text, author })),
   };

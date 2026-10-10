@@ -70,7 +70,9 @@ test("save carries editor-created numbering definitions into the document packag
     if (paragraph?.type !== "paragraph") {
       panic("Expected first paragraph");
     }
-    const numId = paragraph.formatting?.numPr?.numId;
+    const numbering = paragraph.formatting?.numPr;
+    if (numbering?.kind !== "reference") panic("Expected authored bullet numbering");
+    const numId = numbering.numId;
     expect(typeof numId).toBe("number");
     expect(current.package.numbering?.nums.some((instance) => instance.numId === numId)).toBe(true);
     let saved: ArrayBuffer | null | undefined;
@@ -84,9 +86,10 @@ test("save carries editor-created numbering definitions into the document packag
     }
     const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
     const savedParagraph = reopened.package.document.content.at(0);
-    expect(
-      savedParagraph?.type === "paragraph" ? savedParagraph.formatting?.numPr?.numId : null,
-    ).toBe(numId);
+    if (savedParagraph?.type !== "paragraph") panic("Expected saved bullet paragraph");
+    const savedNumbering = savedParagraph.formatting?.numPr;
+    if (savedNumbering?.kind !== "reference") panic("Expected saved authored bullet numbering");
+    expect(savedNumbering.numId).toBe(numId);
   } finally {
     await act(async () => root.unmount());
     container.remove();

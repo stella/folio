@@ -117,7 +117,7 @@ const processFeatureWeights = (): FeatureCoverage | undefined => {
     : undefined;
 };
 
-const blocksOf = (flow: Flow): Block[] => flow.reviewer.getContent() as Block[];
+const blocksOf = (flow: Flow): Block[] => flow.reviewer.getContent();
 
 /** The picker a targeted flow aims with, over `story`'s blocks as they are now. */
 const pickerFor = (
@@ -392,7 +392,7 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<StepEffect> => {
         return { type: "batch", applied };
       }
       const story = random.pick(stories);
-      const blocks = blocksOfStory(flow.reviewer, story) as Block[];
+      const blocks = blocksOfStory(flow.reviewer, story);
       const operations = randomOperations(flow, blocks, pickerFor(flow, story));
       const applied = await coreBatchStep(
         flow,
@@ -681,7 +681,7 @@ const structureOf = (reviewer: Reviewer): string => {
   for (const found of featureIndex(reviewer).features.values()) {
     for (const feature of found) features.add(feature);
   }
-  const kinds = new Set((reviewer.getContent() as Block[]).map((block) => String(block.kind)));
+  const kinds = new Set(reviewer.getContent().map((block) => String(block.kind)));
   const changes = reviewer.getChanges();
   const changeTypes = new Set(changes.map((change) => String(change.type)));
   return [

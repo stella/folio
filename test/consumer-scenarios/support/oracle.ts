@@ -48,7 +48,6 @@ import {
   type FeatureIndex,
   featureIndex,
   storyKindOf,
-  type TargetBlock,
   touchesSurrogate,
 } from "./targets.ts";
 
@@ -272,9 +271,47 @@ const MAIN: Story = { type: "main" };
 export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] => {
   const rows: Row[] = [];
   for (const block of blocksOfStory(reviewer, story)) {
-    const row = Object.assign({}, block as Row);
-    row.listLevel = row.listReference?.level;
-    rows.push(row);
+    switch (block.kind) {
+      case "paragraph":
+      case "heading":
+      case "listItem": {
+        const row: Row = { id: block.id, kind: block.kind, text: block.text };
+        if (block.styleId !== undefined) row.styleId = block.styleId;
+        if (block.headingLevel !== undefined) row.headingLevel = block.headingLevel;
+        if (block.directOutlineLevel !== undefined)
+          row.directOutlineLevel = block.directOutlineLevel;
+        row.statedNumbering = block.statedNumbering;
+        if (block.directAlignment !== undefined) row.directAlignment = block.directAlignment;
+        if (block.directSpacing !== undefined) row.directSpacing = { ...block.directSpacing };
+        if (block.listReference !== undefined) {
+          row.listReference = block.listReference;
+          row.listLevel = block.listReference.level;
+        }
+        if (block.displayLabel !== undefined) row.displayLabel = block.displayLabel;
+        if (block.table !== undefined) row.table = block.table;
+        if (block.previewRuns !== undefined) {
+          row.previewRuns = block.previewRuns.map((run) => {
+            const preview = {
+              text: run.text,
+              bold: run.bold,
+              italic: run.italic,
+              underline: run.underline,
+            };
+            if (run.directFormatting === undefined) return preview;
+            return { ...preview, directFormatting: { ...run.directFormatting } };
+          });
+        }
+        rows.push(row);
+        break;
+      }
+      case "diagnostic":
+        rows.push({ id: block.id, kind: block.kind, text: block.text });
+        break;
+      default: {
+        const unreachable: never = block;
+        throw new Error(`Unhandled content block: ${unreachable}`);
+      }
+    }
   }
   return rows;
 };
@@ -1704,7 +1741,7 @@ const recordOutcome = (pre: Pre, outcome: Outcome): void => {
     if (typeof operation !== "object" || operation === null) continue;
     const range = operation["range"] as { blockId?: unknown } | undefined;
     const blockId = operation["blockId"] ?? range?.blockId;
-    const block = pre.liveRows.find((row) => row.id === blockId) as TargetBlock | undefined;
+    const block = pre.liveRows.find((row) => row.id === blockId);
     const features = new Set<Feature | "none">(pre.targets.features.get(String(blockId)) ?? []);
     // A block with an astral character counts as a surrogate boundary only
     // where the operation's own offsets meet one.

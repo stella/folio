@@ -25,6 +25,7 @@ import {
   unusedNumberingDocument,
 } from "../support/documents.ts";
 import { assertHealthy, saveAndReopen, visibleState } from "../support/invariants.ts";
+import { paragraphBlocks } from "../support/readers.ts";
 import { reportScenarioFailure, shellQuote } from "../support/failure-fingerprints.ts";
 import { assertRequestedOutcome, capture } from "../support/oracle.ts";
 import { type Block, coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
@@ -38,7 +39,7 @@ import { resolvedText, settledText } from "../support/review.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
-const blocksOf = (reviewer: Reviewer): Block[] => reviewer.getContent() as Block[];
+const blocksOf = (reviewer: Reviewer): Block[] => reviewer.getContent();
 
 const matrixSeed = (fallback: number): number => {
   const raw = process.env["FOLIO_OPERATION_MATRIX_SEED"];
@@ -262,7 +263,9 @@ describe("resolving tracked edits that build on pending ones", () => {
 describe("list labels after an operation", () => {
   test("an item inserted into a list reads its own number, and the items after it renumber, before a save", async () => {
     const reviewer = await openReviewer(await listDocument());
-    const anchor = reviewer.getContent().find((block) => block.text === "Deposit on signature");
+    const anchor = paragraphBlocks(reviewer.getContent()).find(
+      (block) => block.text === "Deposit on signature",
+    );
     assert.ok(anchor);
     reviewer.applyDocumentOperations({
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -271,8 +274,7 @@ describe("list labels after an operation", () => {
         { id: "1", type: "insertAfterBlock", blockId: anchor.id, text: "Interim payment" },
       ],
     });
-    const live = reviewer
-      .getContent()
+    const live = paragraphBlocks(reviewer.getContent())
       .filter((block) => block.listReference?.numId === anchor.listReference?.numId)
       .map((block) => `${block.displayLabel} ${block.text}`);
     assert.deepEqual(
@@ -306,7 +308,9 @@ describe("list labels after an operation", () => {
       ],
     });
     // No marker is painted for it: prose that keeps its level.
-    const unmarked = reviewer.getContent().find(({ text }) => text === "Level eight.");
+    const unmarked = paragraphBlocks(reviewer.getContent()).find(
+      ({ text }) => text === "Level eight.",
+    );
     assert.equal(unmarked?.kind, "paragraph");
     assert.equal(unmarked?.displayLabel, undefined);
     assert.deepEqual(unmarked?.statedNumbering, { kind: "reference", numId: 7, ilvl: 8 });

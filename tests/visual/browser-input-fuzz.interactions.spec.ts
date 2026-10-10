@@ -72,13 +72,14 @@ type Block = {
 };
 type LiveBlock = Pick<Block, "kind" | "text" | "table">;
 const project = (reviewer: FolioDocxReviewer): Block[] =>
-  reviewer.snapshot().blocks.map(({ kind, text, displayLabel, listReference, table }) => ({
-    kind,
-    text,
-    displayLabel,
-    effectiveLevel: listReference?.level,
-    table,
-  }));
+  reviewer.snapshot().blocks.map((block) => {
+    const projection: Block = { kind: block.kind, text: block.text };
+    if (block.table !== undefined) projection.table = block.table;
+    if (block.kind === "diagnostic") return projection;
+    if (block.displayLabel !== undefined) projection.displayLabel = block.displayLabel;
+    if (block.listReference !== undefined) projection.effectiveLevel = block.listReference.level;
+    return projection;
+  });
 const projectLive = (blocks: readonly Block[]): LiveBlock[] =>
   blocks.map(({ kind, text, table }) => ({ kind, text, table }));
 

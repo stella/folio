@@ -1,4 +1,5 @@
 import { assertExactModel } from "../../test/exactModel";
+import { expectParagraphBlock } from "../../test/paragraphBlock";
 import { expect, test, type Page } from "@playwright/test";
 
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
@@ -55,12 +56,15 @@ const cases = [
 type PasteCase = (typeof cases)[number];
 
 const project = (reviewer: FolioDocxReviewer) =>
-  reviewer.snapshot().blocks.map(({ text, displayLabel, listReference, table }) => ({
-    text,
-    displayLabel,
-    listReference,
-    table,
-  }));
+  reviewer.snapshot().blocks.map((block) => {
+    const paragraph = expectParagraphBlock(block);
+    return {
+      text: paragraph.text,
+      displayLabel: paragraph.displayLabel,
+      listReference: paragraph.listReference,
+      table: paragraph.table,
+    };
+  });
 
 const paste = async (page: Page, input: PasteCase, suggesting: boolean) => {
   await page.goto("/?file=sample.docx");

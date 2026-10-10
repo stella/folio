@@ -1,6 +1,8 @@
 /** Operation × touched document feature × selection coverage shared by the
  * consumer flows and the editor-command conformance suite. */
 
+import type { FolioAIBlock } from "@stll/folio-core/ai-edits";
+
 export const DOCUMENT_FEATURES = [
   "plain-table",
   "merged-cells",
@@ -213,15 +215,14 @@ export const generatedSelection = (type: string): SelectionType => {
 type TargetSignature = {
   kind?: string;
   headingLevel?: number;
-  listLevel?: number;
-  listReference?: unknown;
+  listReference?: { numId: number; level: number };
   displayLabel?: string;
   table?: unknown;
 };
 
 /** Classify only features observable at the touched target. */
 export const targetFeatureSignature = (
-  target: TargetSignature | undefined,
+  target: TargetSignature | FolioAIBlock | undefined,
   known: ReadonlySet<string>,
   story: string,
 ): DocumentFeature[] => {
@@ -243,11 +244,13 @@ export const targetFeatureSignature = (
     )
       found.add("nested-table");
   }
-  if (target?.kind === "listItem" || target?.listReference !== undefined) {
-    found.add(target.displayLabel?.match(/^\d/u) ? "numbered-list" : "bullet-list");
-    if ((target.listLevel ?? 0) > 0) found.add("multi-level-list");
+  if (target !== undefined && target.kind !== "diagnostic") {
+    if (target.kind === "listItem" || target.listReference !== undefined) {
+      found.add(target.displayLabel?.match(/^\d/u) ? "numbered-list" : "bullet-list");
+      if ((target.listReference?.level ?? 0) > 0) found.add("multi-level-list");
+    }
+    if (target.kind === "heading" || target.headingLevel !== undefined) found.add("heading");
   }
-  if (target?.kind === "heading" || target?.headingLevel !== undefined) found.add("heading");
   if (known.has("field")) found.add("field");
   if (known.has("contentControl")) found.add("content-control");
   if (story === "footnote") found.add("footnote");

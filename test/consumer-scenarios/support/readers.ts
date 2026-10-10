@@ -40,8 +40,23 @@ type ContentBlock = Pick<
   | "listReference"
 >;
 
-const paragraphBlocks = (blocks: readonly FolioAIBlock[]): FolioAIParagraphBlock[] =>
-  blocks.filter((block): block is FolioAIParagraphBlock => block.kind !== "diagnostic");
+const isParagraphBlock = (block: FolioAIBlock): block is FolioAIParagraphBlock => {
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return true;
+    case "diagnostic":
+      return false;
+    default: {
+      const unreachable: never = block;
+      throw new Error(`Unhandled content block: ${unreachable}`);
+    }
+  }
+};
+
+export const paragraphBlocks = (blocks: readonly FolioAIBlock[]): FolioAIParagraphBlock[] =>
+  blocks.filter(isParagraphBlock);
 
 /** A bullet reads as `-` in Markdown and as its glyph elsewhere. */
 export const BULLET = "(bullet)";
