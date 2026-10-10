@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import config from "../oxlint.config.ts";
 import fixtureConfig from "../oxlint.fixtures.config.ts";
 
@@ -14,7 +15,7 @@ test("fixture lint clears only its fixture ignore and preserves the production r
 });
 
 test("every oxlint fixture self-test selects the fixture config", () => {
-  const root = new URL("../", import.meta.url).pathname;
+  const root = fileURLToPath(new URL("../", import.meta.url));
   const tests = [...new Bun.Glob("scripts/*.test.ts").scanSync({ cwd: root })];
   let invocations = 0;
   for (const filename of tests) {
