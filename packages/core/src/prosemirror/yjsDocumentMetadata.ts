@@ -708,6 +708,7 @@ const requireStatedNumberingSources = (
       if (value instanceof Y.XmlElement) pending.push(value.getAttributes());
       continue;
     }
+    if (value instanceof Y.XmlText || value instanceof Y.XmlHook) continue;
     if (Array.isArray(value)) {
       for (const entry of value) pending.push(entry);
       continue;
