@@ -139,8 +139,17 @@ function FindReplaceDialogForm({
   const { Button, Input, Checkbox } = useFolioUI();
   // State
   const [searchText, setSearchText] = useState(initialSearchText);
-  const [localResult, setResult] = useState<FindResult | null>(null);
-  const result = currentResult === undefined ? localResult : currentResult;
+  const [localResult, setResult] = useState<FindResult | null>(currentResult ?? null);
+  const [previousCurrentResult, setPreviousCurrentResult] = useState(currentResult);
+  if (currentResult !== previousCurrentResult) {
+    setPreviousCurrentResult(currentResult);
+    if (currentResult !== undefined) {
+      setResult(currentResult);
+    }
+  }
+  // Host results update the local cursor only when a new result arrives. Local
+  // query/options edits can invalidate it while the host still holds the old one.
+  const result = searchText.trim() ? localResult : null;
 
   // Refs
   const searchInputRef = useRef<HTMLInputElement>(null);

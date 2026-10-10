@@ -3,11 +3,12 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 GlobalRegistrator.register();
 
 import { afterAll, expect, mock, test } from "bun:test";
+import { panic } from "better-result";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { IntlProvider } from "use-intl";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
-import { FolioUIProvider, type FolioDialog } from "../../ui/folio-ui";
+import { FolioUIProvider, type FolioDialog, type FolioInputProps } from "../../ui/folio-ui";
 import { ImagePositionDialog } from "./ImagePositionDialog";
 import { ImagePropertiesDialog } from "./ImagePropertiesDialog";
 import { TablePropertiesDialog } from "./TablePropertiesDialog";
@@ -38,8 +39,16 @@ const dialog = {
   Title: ({ children }) => <h2>{children}</h2>,
   Close: ({ children }) => <button type="button">{children}</button>,
 } satisfies FolioDialog;
+// The injected input forwards the native input event through the public
+// onChange contract, so Happy DOM drives the real dialog event handler.
+const NativeEventInput = ({
+  onChange,
+  size: _size,
+  nativeInput: _nativeInput,
+  ...props
+}: FolioInputProps) => <input {...props} onInput={onChange} />;
 const messages = getFolioMessages("en");
-const components = { Dialog: dialog };
+const components = { Dialog: dialog, Input: NativeEventInput };
 const imagePosition = { horizontal: { posOffset: 10 }, distTop: 20 };
 const imageProperties = { alt: "Diagram", borderWidth: 2 };
 const tableProperties = { width: 2500, widthType: "dxa", justification: "center" } as const;
@@ -215,6 +224,71 @@ test("find initializes selected text, searches, clears on close and refreshes ex
   );
   expect(container.querySelector("input")?.value).toBe("reopened");
   await act(async () => root.unmount());
+});
+
+test("query edits invalidate unchanged host results and reopening an empty query has no matches", async () => {
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  const onFindNext = mock(() => externalResult.matches.at(0) ?? null);
+  const onFindPrevious = mock(() => externalResult.matches.at(0) ?? null);
+  const onFind = mock(() => externalResult);
+  const props = {
+    onClose: noop,
+    onFind,
+    onFindNext,
+    onFindPrevious,
+    onReplace: () => false,
+    onReplaceAll: () => 0,
+    currentResult: externalResult,
+  };
+  const render = (isOpen: boolean, initialSearchText: string) =>
+    wrap(<FindReplaceDialog {...props} isOpen={isOpen} initialSearchText={initialSearchText} />);
+  const navigation = () => [
+    ...container.querySelectorAll<HTMLButtonElement>(
+      'button[aria-label="Previous match"], button[aria-label="Next match"]',
+    ),
+  ];
+  const assertReset = () => {
+    expect(container.textContent).not.toContain("2 / 3");
+    expect(navigation()).toHaveLength(2);
+    expect(navigation().every((button) => button.disabled)).toBe(true);
+  };
+  try {
+    await act(async () => root.render(render(true, "selected")));
+    expect(container.textContent).toContain("2 / 3");
+    const input = container.querySelector("input");
+    if (!input) panic("Find input missing");
+    // A new nonempty query must not navigate matches from the previous query
+    // during the debounce interval, even when currentResult is unchanged.
+    await act(async () => {
+      input.value = "different";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(input.value).toBe("different");
+    assertReset();
+    await act(async () => {
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(input.value).toBe("");
+    assertReset();
+    await act(async () => {
+      for (const button of navigation()) button.click();
+    });
+    expect(onFindNext).not.toHaveBeenCalled();
+    expect(onFindPrevious).not.toHaveBeenCalled();
+    await act(async () => root.render(render(false, "")));
+    await act(async () => root.render(render(true, "")));
+    expect(container.querySelector("input")?.value).toBe("");
+    assertReset();
+    await act(async () => {
+      for (const button of navigation()) button.click();
+    });
+    expect(onFindNext).not.toHaveBeenCalled();
+    expect(onFindPrevious).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => root.unmount());
+  }
 });
 
 test("popup resets edit mode when the link changes and after closing", async () => {
