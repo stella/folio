@@ -38,6 +38,19 @@ for (const query of ["", "?paragraphs=12", "?file=sample.docx&paragraphs=12"]) {
   });
 }
 
+test("collaboration startup mounts its editor branch", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/?collaboration=1");
+  await expect(page.locator(".pg-collab-header")).toContainText("folio collaboration demo");
+  await expect(page.getByTestId("folio-editor")).toBeVisible();
+  await expect.poll(() => page.locator(".layout-page").count()).toBeGreaterThan(0);
+  await expect(page.locator(".pg-collab-loading")).toHaveCount(0);
+  await expect(page.getByTestId("playground-controls")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Share link", exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 declare global {
   var __startupScrollBridge: typeof globalThis.__folioScrollParity;
 }
