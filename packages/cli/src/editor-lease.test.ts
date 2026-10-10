@@ -361,3 +361,22 @@ describe("editor lease", () => {
     expect(await readdir(dir)).toEqual(["contract.docx"]);
   });
 });
+
+test("a rejected background renewal surfaces its error", () => {
+  const modulePath = path.join(import.meta.dir, "editor-lease.ts");
+  const source = `
+    import { keepEditorLeaseAlive } from ${JSON.stringify(modulePath)};
+    keepEditorLeaseAlive({ renew: () => Promise.reject(new Error("renewal failed")) }, {
+      intervalMs: 1,
+      onLost: () => {},
+    });
+    setTimeout(() => process.exit(0), 1000);
+  `;
+  const result = Bun.spawnSync([process.execPath, "--eval", source], {
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 3000,
+  });
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain("renewal failed");
+});

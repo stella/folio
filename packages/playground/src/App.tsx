@@ -599,10 +599,6 @@ function createLargeDocument(paragraphCount: number): FolioDocument {
 }
 
 export function App() {
-  if (isCollaborationDemo()) {
-    return <CollaborationApp />;
-  }
-
   const editorRef = useRef<DocxEditorRef>(null);
   const scrollParityHost = useRef(buildScrollParityBridge(() => editorRef.current)).current;
   const clipboardCallbackCountsRef = useRef({ copy: 0, cut: 0, paste: 0 });
@@ -833,6 +829,10 @@ export function App() {
     };
   }, []);
 
+  if (isCollaborationDemo()) {
+    return <CollaborationApp />;
+  }
+
   return (
     <IntlProvider
       locale={locale}
@@ -899,7 +899,7 @@ export function App() {
             id="file-input"
             type="file"
             accept=".docx"
-            onChange={(e) => void handleFileSelect(e)}
+            onChange={handleFileSelect}
             className="pg-visually-hidden"
           />
           <button type="button" className="pg-button" onClick={handleNewDocument}>
@@ -908,7 +908,7 @@ export function App() {
           <button type="button" className="pg-button" onClick={handleOpenShowcase}>
             Showcase
           </button>
-          <button type="button" className="pg-button" onClick={() => void handleSave()}>
+          <button type="button" className="pg-button" onClick={handleSave}>
             Save
           </button>
 
