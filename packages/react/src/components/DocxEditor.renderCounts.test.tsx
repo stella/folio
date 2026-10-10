@@ -10,6 +10,7 @@ import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { IntlProvider } from "use-intl";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+import { createDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
@@ -47,6 +48,10 @@ const createRenderProbe = () => {
   };
 };
 
+// Identical default-session sequence measured on main and this change in CI:
+// 2 commits per keystroke/selection, then 4 commits after projection settles.
+const DEFAULT_RENDER_BUDGET = { perOperation: 2, settled: 4, total: 30 };
+
 // Run this identical sequence on main and the change to compare committed
 // render counts. Duration is diagnostic: machine load makes timing unsuitable
 // as a correctness assertion. Initial mount and view initialization are excluded.
@@ -56,10 +61,16 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
     document.body.append(container);
     const root = createRoot(container);
     const editor = createRef<DocxEditorRef>();
-    const { views, onReady } = createViewProbe();
+    const { onReady } = createViewProbe();
     const { commits, onRender } = createRenderProbe();
     const { changes, onChange } = createChangeProbe();
     const initialDocument = createEmptyDocument({ initialText: "Hello" });
+    // Load package bytes explicitly, as in the canonical-save harness, so
+    // the canonical source and body projection are ready before measuring.
+    const documentBuffer = experimentalSession ? await createDocx(initialDocument) : undefined;
+    const documentProps = documentBuffer
+      ? { documentBuffer, experimentalSession }
+      : { document: initialDocument };
     const typing: number[] = [];
     const selection: number[] = [];
     try {
@@ -69,8 +80,7 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
             <Profiler id="DocxEditor" onRender={onRender}>
               <DocxEditor
                 ref={editor}
-                document={initialDocument}
-                {...(experimentalSession ? { experimentalSession } : {})}
+                {...documentProps}
                 onEditorViewReady={onReady}
                 onChange={onChange}
                 showToolbar={false}
@@ -79,6 +89,9 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
           </IntlProvider>,
         );
       });
+      if (documentBuffer) {
+        await act(async () => editor.current?.loadDocumentBuffer(documentBuffer));
+      }
       await act(async () => {
         editor.current?.ensureEditorView({ focus: false });
       });
@@ -86,7 +99,8 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 450));
       });
-      const view = views.at(-1) ?? panic("The editor did not publish its body view");
+      const api = editor.current?.getEditor() ?? panic("The editor API did not mount");
+      const view = api.getView() ?? panic("The editor did not create its body view");
       const startCommit = commits.length;
       const startChanges = changes.length;
       for (const character of " abcdef") {
@@ -119,6 +133,15 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
       });
       expect(changes.length).toBeGreaterThan(startChanges);
       expect(typing.some((count) => count > 0)).toBe(true);
+      if (!experimentalSession) {
+        for (const count of [...typing, ...selection]) {
+          expect(count).toBeLessThanOrEqual(DEFAULT_RENDER_BUDGET.perOperation);
+        }
+        expect(commits.length - immediateCommits).toBeLessThanOrEqual(
+          DEFAULT_RENDER_BUDGET.settled,
+        );
+        expect(commits.length - startCommit).toBeLessThanOrEqual(DEFAULT_RENDER_BUDGET.total);
+      }
       console.info(
         "FOLIO_RENDER_MEASUREMENT",
         JSON.stringify({
