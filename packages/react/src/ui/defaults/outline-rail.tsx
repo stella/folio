@@ -35,7 +35,22 @@ export function DefaultOutlineRail({
 }: FolioOutlineRailProps) {
   const listRef = useRef<HTMLOListElement>(null);
   const activeIndex = items.findIndex((item) => item.id === activeId);
-  const [focusIndex, setFocusIndex] = useState(Math.max(0, activeIndex));
+  const [focus, setFocus] = useState<OutlineFocus>({
+    type: "outside",
+    fallbackIndex: Math.max(0, activeIndex),
+  });
+  const focusIndex = (() => {
+    switch (focus.type) {
+      case "outside":
+        return activeIndex >= 0 ? activeIndex : focus.fallbackIndex;
+      case "inside":
+        return focus.index;
+      default: {
+        const exhaustive: never = focus;
+        return exhaustive;
+      }
+    }
+  })();
   const lastIndex = items.length - 1;
   const clampedFocusIndex = Math.max(0, Math.min(lastIndex, focusIndex));
   let minLevel = Infinity;
@@ -43,13 +58,8 @@ export function DefaultOutlineRail({
     minLevel = Math.min(minLevel, item.level);
   }
 
-  // The tab stop follows the active heading until the user moves it.
-  const focusWithin = useRef(false);
-  useEffect(() => {
-    if (!focusWithin.current && activeIndex >= 0) {
-      setFocusIndex(activeIndex);
-    }
-  }, [activeIndex]);
+  // Outside the list, the tab stop follows the active heading without a state update.
+  // Inside, focus events own the roving index so scrolling cannot move the tab stop.
 
   // Keep the active heading in view without scrolling any ancestor (a plain
   // `scrollIntoView` would also scroll the editor behind the panel).
@@ -101,7 +111,7 @@ export function DefaultOutlineRail({
         return;
       }
       event.preventDefault();
-      setFocusIndex(next);
+      setFocus({ type: "inside", index: next });
       const buttons = listRef.current?.querySelectorAll<HTMLButtonElement>("button");
       if (buttons) {
         [...buttons].at(next)?.focus();
@@ -129,13 +139,10 @@ export function DefaultOutlineRail({
       aria-label={ariaLabel}
       className={rail ? "folio-outline-ticks" : "folio-outline-list"}
       onKeyDown={handleKeyDown}
-      onFocus={() => {
-        focusWithin.current = true;
-      }}
       onBlur={(event) => {
         const next = event.relatedTarget;
         if (!(next instanceof Node && event.currentTarget.contains(next))) {
-          focusWithin.current = false;
+          setFocus({ type: "outside", fallbackIndex: clampedFocusIndex });
         }
       }}
     >
@@ -157,7 +164,13 @@ export function DefaultOutlineRail({
               )}
               data-depth={depth}
               onClick={() => jump(item)}
-              onFocus={() => setFocusIndex(index)}
+              onFocus={() => {
+                setFocus((previous) =>
+                  previous.type === "inside" && previous.index === index
+                    ? previous
+                    : { type: "inside", index },
+                );
+              }}
               tabIndex={index === clampedFocusIndex ? 0 : -1}
               title={rail ? undefined : item.label}
               type="button"
@@ -179,6 +192,8 @@ export function DefaultOutlineRail({
     </ol>
   );
 }
+
+type OutlineFocus = { type: "outside"; fallbackIndex: number } | { type: "inside"; index: number };
 
 /** Height of one tick's hit area; ticks never overlap by less than this. */
 const TICK_PITCH_PX = 12;
