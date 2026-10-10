@@ -7,7 +7,17 @@ import {
   projectMainDocumentXml,
   projectParagraphFragment,
 } from "./projection";
-import type { DocxProjectionStructure } from "./projection";
+import type {
+  DocxProjectionFormattingFamily,
+  DocxProjectionFormattingFamilyStatus,
+  DocxProjectionStructure,
+} from "./projection";
+
+const unavailableStylesFormatting = {
+  bold: ["unknown-missing-styles", "styles-part-unavailable"],
+  highlight: ["known"],
+  superscript: ["unknown-missing-styles", "styles-part-unavailable"],
+} as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
 
 const packageNamespace = "http://schemas.microsoft.com/office/2006/xmlPackage";
 const documentNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -44,7 +54,7 @@ test("fragment preserves text and direct formatting with explicit partial eviden
   ]);
   expect(partial[2]).toEqual(full[2].map(() => ["unknown", "paragraph-fragment"]));
   expect(partial[3]).toEqual(full[3]);
-  expect(partial[4]).toEqual(["incomplete", "styles-part-unavailable"]);
+  expect(partial[4]).toEqual(unavailableStylesFormatting);
 });
 
 test.each(["", "<doc:p/><doc:p/>"])(

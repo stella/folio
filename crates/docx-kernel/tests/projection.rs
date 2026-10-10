@@ -14,16 +14,17 @@ use std::io::{Cursor, Write};
 
 use stella_docx_kernel::ParagraphAlignmentValue as Align;
 use stella_docx_kernel::{
-    CommentContent, DocxLimits, FormattingProjectionStatus, FormattingUnknownReason,
-    InternalParagraphId, InternalReferenceRole, PackageParagraphId, ParagraphAlignmentFact,
-    ParagraphAlignmentSource, ParagraphIdentityFacts, ParagraphOutlineLevelFact,
-    ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits,
-    ReviewFactSet, ReviewFactUnknownReason, ReviewPoint, ReviewSpan, RevisionContent,
-    RevisionFactKind, RevisionPayload, RevisionProjectionStatus, RevisionUnsupportedReason,
-    RevisionView, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason, TextFormattingSpan,
-    TextMaterialization, TextStyle, extract_document_parts, extract_document_xml,
-    project_document_xml, project_document_xml_with_options, project_docx,
-    project_docx_with_options, project_docx_with_review_facts,
+    CommentContent, DocxLimits, FormattingCompleteness, FormattingFactStatus,
+    FormattingUnknownReason, InternalParagraphId, InternalReferenceRole, PackageParagraphId,
+    ParagraphAlignmentFact, ParagraphAlignmentSource, ParagraphIdentityFacts,
+    ParagraphOutlineLevelFact, ParagraphStructure, ProjectionError, ProjectionOptions,
+    ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason, ReviewPoint,
+    ReviewSpan, RevisionContent, RevisionFactKind, RevisionPayload, RevisionProjectionStatus,
+    RevisionUnsupportedReason, RevisionView, SpanCoverage, StructuralFactSet,
+    StructuralFactUnknownReason, TextFormattingSpan, TextMaterialization, TextStyle,
+    extract_document_parts, extract_document_xml, project_document_xml,
+    project_document_xml_with_options, project_docx, project_docx_with_options,
+    project_docx_with_review_facts,
 };
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -936,8 +937,12 @@ fn ignores_missing_and_cross_kind_based_on_targets_without_dropping_the_current_
         );
     }
     assert_eq!(
-        projection.formatting_status,
-        FormattingProjectionStatus::Complete
+        projection.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Known,
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Known
+        }
     );
 }
 
@@ -974,8 +979,12 @@ fn resolves_markup_compatibility_inside_the_styles_part() {
         }]
     );
     assert_eq!(
-        projection.formatting_status,
-        FormattingProjectionStatus::Complete
+        projection.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Known,
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Known
+        }
     );
 }
 
@@ -998,8 +1007,12 @@ fn keeps_numbering_label_formatting_separate_and_math_formatting_incomplete() {
     .expect("numbering-label formatting should preserve body spans");
     assert!(numbered.paragraphs[0].formatting.is_empty());
     assert_eq!(
-        numbered.formatting_status,
-        FormattingProjectionStatus::Complete
+        numbered.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Known,
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Known
+        }
     );
 
     let math_document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body><w:p><m:oMath><m:r><w:rPr><w:b/></w:rPr><m:t>A</m:t></m:r></m:oMath></w:p></w:body></w:document>"#;
@@ -1012,8 +1025,12 @@ fn keeps_numbering_label_formatting_separate_and_math_formatting_incomplete() {
     assert_eq!(math.paragraphs[0].text, "A");
     assert!(math.paragraphs[0].formatting.is_empty());
     assert_eq!(
-        math.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+        math.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            highlight: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+        }
     );
 }
 
@@ -1092,8 +1109,12 @@ fn resolves_toggle_levels_and_ignores_historical_style_snapshots() {
         }]
     );
     assert_eq!(
-        projection.formatting_status,
-        FormattingProjectionStatus::Complete
+        projection.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Known,
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Known
+        }
     );
 }
 
@@ -1130,8 +1151,12 @@ fn ignores_style_identifiers_beyond_the_word_limit() {
     assert_eq!(projection.paragraphs[0].style_id, None);
     assert!(projection.paragraphs[0].formatting.is_empty());
     assert_eq!(
-        projection.formatting_status,
-        FormattingProjectionStatus::Complete
+        projection.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Known,
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Known
+        }
     );
 }
 
@@ -1459,8 +1484,14 @@ fn ignores_unrelated_optional_parts_and_rejects_missing_relationship_targets() {
     assert_eq!(parts.numbering_xml, None);
     let projection = project_docx(&unreferenced, DocxLimits::default(), allocate).unwrap();
     assert_eq!(
-        projection.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::StylesPartUnavailable)
+        projection.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::StylesPartUnavailable),
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Unknown(
+                FormattingUnknownReason::StylesPartUnavailable
+            )
+        }
     );
     assert_eq!(
         projection.structural_facts.indentation,
@@ -1672,8 +1703,12 @@ fn rejects_outline_levels_outside_the_ooxml_range() {
         Some("Heading")
     );
     assert_eq!(
-        projection.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+        projection.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+        }
     );
     assert_eq!(
         projection.structural_facts.outline_levels,
@@ -1976,8 +2011,12 @@ fn document_part_only_does_not_claim_style_dependent_facts() {
         Some("Heading")
     );
     assert_eq!(
-        projection.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::DocumentPartOnly)
+        projection.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly),
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly)
+        }
     );
     assert_eq!(
         projection.structural_facts.indentation,
@@ -2020,8 +2059,14 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
         Some("Heading")
     );
     assert_eq!(
-        unavailable.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::StylesPartUnavailable)
+        unavailable.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::StylesPartUnavailable),
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Unknown(
+                FormattingUnknownReason::StylesPartUnavailable
+            )
+        }
     );
     assert_eq!(
         unavailable.structural_facts.outline_levels,
@@ -2042,8 +2087,12 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
     .expect("an invalid optional styles part should preserve the document");
     assert_eq!(malformed.paragraphs[0].style_id.as_deref(), Some("Heading"));
     assert_eq!(
-        malformed.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+        malformed.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+        }
     );
     assert_eq!(
         malformed.structural_facts.outline_levels,
@@ -2061,8 +2110,12 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
         Some("Heading")
     );
     assert_eq!(
-        unknown_style.formatting_status,
-        FormattingProjectionStatus::Complete
+        unknown_style.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Known,
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Known
+        }
     );
     assert_eq!(
         unknown_style.structural_facts.outline_levels,
@@ -2290,8 +2343,12 @@ fn degraded_style_sheets_project_direct_paragraph_alignment_only() {
         expected
     );
     assert_eq!(
-        document_part_only.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::DocumentPartOnly)
+        document_part_only.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly),
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly)
+        }
     );
 
     for (styles, reason) in [
@@ -2321,8 +2378,12 @@ fn degraded_style_sheets_project_direct_paragraph_alignment_only() {
             "{reason:?}"
         );
         assert_eq!(
-            projection.formatting_status,
-            FormattingProjectionStatus::Incomplete(reason)
+            projection.formatting_completeness,
+            FormattingCompleteness {
+                bold: FormattingFactStatus::Unknown(reason),
+                highlight: FormattingFactStatus::Known,
+                superscript: FormattingFactStatus::Unknown(reason)
+            }
         );
     }
 }
@@ -2518,8 +2579,12 @@ fn downgrades_whole_fact_families_for_unsupported_or_incomplete_constructs() {
     )
     .expect("unsupported style graphs should preserve paragraph projection");
     assert_eq!(
-        cyclic_style_projection.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+        cyclic_style_projection.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+        }
     );
     assert_eq!(
         cyclic_style_projection.structural_facts.indentation,
@@ -2707,8 +2772,12 @@ fn package_projection_is_deterministic_and_styles_extraction_is_bounded() {
     let second = project_docx(&package_bytes, DocxLimits::default(), allocate).unwrap();
     assert_eq!(first, second);
     assert_eq!(
-        first.formatting_status,
-        FormattingProjectionStatus::Complete
+        first.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Known,
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Known
+        }
     );
     assert!(
         extract_document_parts(&package_bytes, DocxLimits::default())
@@ -2765,8 +2834,12 @@ fn package_projection_is_deterministic_and_styles_extraction_is_bounded() {
     )
     .expect("the exact style-count boundary should be accepted");
     assert_eq!(
-        accepted.formatting_status,
-        FormattingProjectionStatus::Complete
+        accepted.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Known,
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Known
+        }
     );
     let rejected = project_docx(
         &style_count_package,
@@ -2778,8 +2851,12 @@ fn package_projection_is_deterministic_and_styles_extraction_is_bounded() {
     )
     .expect("an oversized optional styles part should preserve direct document facts");
     assert_eq!(
-        rejected.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+        rejected.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+        }
     );
 }
 

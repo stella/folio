@@ -4,6 +4,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   type DocxProjectionFactSet,
+  type DocxProjectionFormattingFamily,
+  type DocxProjectionFormattingFamilyStatus,
   type DocxProjectionOutlineLevelFact,
   type DocxProjectionParagraph,
   type DocxProjectionWire,
@@ -24,6 +26,12 @@ import {
 
 const UNKNOWN_FACTS = ["known", []] as const satisfies DocxProjectionFactSet<never>;
 
+const KNOWN_FORMATTING = {
+  bold: ["known"],
+  highlight: ["known"],
+  superscript: ["known"],
+} as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
+
 type ProjectionOptions = {
   paragraphs: readonly DocxProjectionParagraph[];
   outlineLevels?: DocxProjectionFactSet<DocxProjectionOutlineLevelFact>;
@@ -33,11 +41,11 @@ const projection = ({
   paragraphs,
   outlineLevels = ["known", []],
 }: ProjectionOptions): DocxProjectionWire => [
-  5,
+  6,
   paragraphs,
   [UNKNOWN_FACTS, UNKNOWN_FACTS, UNKNOWN_FACTS, UNKNOWN_FACTS, outlineLevels],
   ["complete"],
-  ["complete"],
+  KNOWN_FORMATTING,
 ];
 
 type KernelParagraphOptions = {
