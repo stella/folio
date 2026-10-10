@@ -13,7 +13,7 @@ import {
   type FolioAIEditApplyOutcome,
   type FolioAIEditView,
   type FolioReplacementBackground,
-  type FolioUndefinedStylePolicy,
+  type FolioUndefinedReferencePolicy,
   type FolioWordDiffOptions,
   type FolioRevisionStamp,
   previewFolioAIEditOperationsWithResult,
@@ -2006,7 +2006,7 @@ export type ApplyFolioDocumentOperationsOptions = {
    * style references of another document — a comparison reproducing the
    * revised one — keeps them instead.
    */
-  undefinedStyles?: FolioUndefinedStylePolicy;
+  undefinedReferences?: FolioUndefinedReferencePolicy;
 };
 
 /** One run of the applier whose result has not reached the caller's view yet. */
@@ -2051,7 +2051,7 @@ export const applyFolioDocumentOperations = ({
   wordDiff,
   tableTemplates,
   replacementBackground,
-  undefinedStyles,
+  undefinedReferences,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
   const isAtomic = parsedBatch.atomic === true;
@@ -2075,7 +2075,7 @@ export const applyFolioDocumentOperations = ({
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
-      ...(undefinedStyles !== undefined && { undefinedStyles }),
+      ...(undefinedReferences !== undefined && { undefinedReferences }),
     } as const;
     if (preview) {
       const previewed = previewFolioAIEditOperationsWithResult({

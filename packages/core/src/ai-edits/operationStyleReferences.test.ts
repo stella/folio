@@ -280,7 +280,7 @@ describe("a defined paragraph style still applies", () => {
 });
 
 describe("a caller copying another document's references keeps them", () => {
-  test("undefinedStyles: keep writes the reference as given", async () => {
+  test("undefinedReferences: keep writes the reference as given", async () => {
     const { reviewer, ids } = await openReviewer();
     const result = reviewer.applyDocumentOperationsToStory({
       story: { type: "main" },
@@ -289,7 +289,7 @@ describe("a caller copying another document's references keeps them", () => {
         mode: "tracked-changes",
         operations: [STYLE_OPERATIONS["insertAfterBlock"]!(ids, "NoSuchStyle")],
       },
-      undefinedStyles: "keep",
+      undefinedReferences: "keep",
     });
     expect(result.applied.map(({ id }) => id)).toEqual(["op"]);
     expect(await documentXml(await reviewer.toBuffer())).toContain(

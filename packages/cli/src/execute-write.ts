@@ -359,11 +359,11 @@ const writeRedline = async ({
       }),
   });
   if (redline.isErr()) return Result.err(redline.error);
-  const { buffer, applied, skipped, unprocessedStories } = redline.value;
+  const { buffer, applied, skipped, unprocessedStories, referenceWarnings } = redline.value;
   return Result.ok({
     bytes: new Uint8Array(buffer),
     saveStrategy: "redline",
-    result: { applied: applied.length, skipped, unprocessedStories },
+    result: { applied: applied.length, skipped, unprocessedStories, referenceWarnings },
     receipts: [],
     inputs: { revised: { path: revised.value.path, fileVersion: revised.value.fileVersion } },
   });

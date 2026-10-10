@@ -1,7 +1,7 @@
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../prosemirror/schema/nodes";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
 import { effectiveParagraphNumbering } from "../prosemirror/numberingAttr";
-import { classifyStyleReference } from "./styleReference";
+import { classifyResourceReference } from "./referenceClassification";
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
   Fragment,
@@ -296,8 +296,8 @@ type ApplyFolioAIEditOperationsOptions = {
   tableTemplates?: FolioTableTemplates;
   /** What a replacement does with a background the text it replaces carries. */
   replacementBackground?: FolioReplacementBackground;
-  /** What an operation naming a paragraph style the document does not define does. */
-  undefinedStyles?: FolioUndefinedStylePolicy;
+  /** Policy for undefined style and numbering references; see FolioUndefinedReferencePolicy. */
+  undefinedReferences?: FolioUndefinedReferencePolicy;
 };
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
@@ -401,17 +401,16 @@ export type FolioWordDiffOptions = { granularity?: WordDiffGranularity };
 export type FolioReplacementBackground = "clear" | "keep";
 
 /**
- * What an operation naming a paragraph style the document does not define —
- * no `w:style` with that id, or one of another type — does.
+ * How operations handle style and numbering references the document does not define.
  *
- * `refuse` is the default: such a `w:pStyle` confers no formatting, so the
- * paragraph would keep its body look while the operation reported a restyle;
- * the operation is skipped with `missingStyle`. `keep` is for a caller that
- * copies references another document already holds — a comparison or redline
- * reproducing the revised document, which may itself reference a style it
- * never defines — and writes them as given.
+ * Editing defaults to `refuse`: an undefined reference would report a formatting
+ * edit without changing its appearance. Missing references are skipped with
+ * `missingStyle` or `missingNumbering`.
+ * Comparison and redline use `keep` to reproduce source references verbatim;
+ * their resource import boundary clears destination collisions with warnings
+ * before application, so dangling references cannot acquire unrelated meaning.
  */
-export type FolioUndefinedStylePolicy = "refuse" | "keep";
+export type FolioUndefinedReferencePolicy = "refuse" | "keep";
 
 /**
  * An apply result plus where the batch left the revision-id counter.
@@ -3772,7 +3771,7 @@ const applyFolioAIEditOperationsInternal = ({
   wordDiffMode = "bounded",
   tableTemplates,
   replacementBackground = "clear",
-  undefinedStyles = "refuse",
+  undefinedReferences = "refuse",
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   seedRevisionIdsFromDoc(view.state.doc);
   const applied: FolioAIEditAppliedOperation[] = [];
@@ -3913,7 +3912,7 @@ const applyFolioAIEditOperationsInternal = ({
     const undefinedStyle = findUndefinedParagraphStyleReference({
       operation,
       definitions: styleDefinitions,
-      undefinedStyles,
+      undefinedReferences,
     });
     if (undefinedStyle !== undefined) {
       skipped.push({
@@ -3923,7 +3922,11 @@ const applyFolioAIEditOperationsInternal = ({
       });
       continue;
     }
-    const undefinedNumbering = findUndefinedNumberingReference(operation, numberingInstanceIds);
+    const undefinedNumbering = findUndefinedNumberingReference({
+      operation,
+      instanceIds: numberingInstanceIds,
+      undefinedReferences,
+    });
     if (undefinedNumbering !== undefined) {
       skipped.push({
         id: operation.id,
@@ -8064,7 +8067,7 @@ const operationParagraphStyleReferences = (
 type FindUndefinedParagraphStyleReferenceOptions = {
   operation: FolioAIEditOperation;
   definitions: StyleDefinitionLookup;
-  undefinedStyles: FolioUndefinedStylePolicy;
+  undefinedReferences: FolioUndefinedReferencePolicy;
 };
 
 /**
@@ -8076,7 +8079,7 @@ type FindUndefinedParagraphStyleReferenceOptions = {
 const findUndefinedParagraphStyleReference = ({
   operation,
   definitions,
-  undefinedStyles,
+  undefinedReferences,
 }: FindUndefinedParagraphStyleReferenceOptions): UndefinedParagraphStyleReference | undefined => {
   if (definitions === null) {
     return undefined;
@@ -8085,13 +8088,19 @@ const findUndefinedParagraphStyleReference = ({
     if (styleId === null || styleId === undefined) {
       continue;
     }
-    const reference = classifyStyleReference(styleId, definitions);
-    if (undefinedStyles === "keep") continue;
-    if (reference.kind === "unknown") {
+    const reference = classifyResourceReference({
+      kind: "style",
+      id: styleId,
+      sourceDefines: (id) => definitions.get(id) !== undefined,
+      destinationDefines: (id) => definitions.get(id) !== undefined,
+    });
+    if (undefinedReferences === "keep") continue;
+    if (reference !== "sourceDefined") {
       return { path, styleId, definedAs: undefined };
     }
-    if (reference.definition.type !== "paragraph") {
-      return { path, styleId, definedAs: reference.definition.type };
+    const definition = definitions.get(styleId) ?? panic("A classified style lost its definition");
+    if (definition.type !== "paragraph") {
+      return { path, styleId, definedAs: definition.type };
     }
   }
   return undefined;
@@ -8161,21 +8170,34 @@ const operationNumberingReferences = (
 
 /**
  * The first numbering instance the operation names that the document does not
- * define. A paragraph referencing a missing `w:num` is a model no save can
- * write, so it is refused here, before anything is applied, the way a block id
- * naming no block is. `null` instance ids (a state without the numbering
- * plugin) cannot say what is defined, and check nothing.
+ * define, subject to the operation's undefined-reference policy. `null` instance
+ * ids (a state without the numbering plugin) cannot say what is defined, and
+ * check nothing.
  */
-const findUndefinedNumberingReference = (
-  operation: FolioAIEditOperation,
-  instanceIds: ReadonlySet<number> | null,
-): UndefinedNumberingReference | undefined => {
+type FindUndefinedNumberingReferenceOptions = {
+  operation: FolioAIEditOperation;
+  instanceIds: ReadonlySet<number> | null;
+  undefinedReferences: FolioUndefinedReferencePolicy;
+};
+
+const findUndefinedNumberingReference = ({
+  operation,
+  instanceIds,
+  undefinedReferences,
+}: FindUndefinedNumberingReferenceOptions): UndefinedNumberingReference | undefined => {
   if (instanceIds === null) {
     return undefined;
   }
   for (const { path, numbering } of operationNumberingReferences(operation)) {
     const numId = statedNumberingInstance(numbering);
-    if (numId !== undefined && !instanceIds.has(numId)) {
+    if (numId === undefined) continue;
+    const reference = classifyResourceReference({
+      kind: "numbering",
+      id: numId,
+      sourceDefines: (id) => instanceIds.has(id),
+      destinationDefines: (id) => instanceIds.has(id),
+    });
+    if (undefinedReferences !== "keep" && reference !== "sourceDefined") {
       return { path, numId };
     }
   }

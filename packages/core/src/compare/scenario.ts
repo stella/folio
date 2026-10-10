@@ -331,7 +331,7 @@ export const applyEditScript = async (
     // gave it, and a base may name one it never defines (a dangling
     // `w:pStyle`). Refusing it would drop the insertion while the paired
     // deletion lands, leaving a target the script no longer describes.
-    undefinedStyles: "keep",
+    undefinedReferences: "keep",
   });
   const skippedIds = new Set(skipped.map(({ id }) => id));
   const applied: EditScriptStep[] = [];

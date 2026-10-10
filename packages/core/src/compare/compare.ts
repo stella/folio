@@ -1011,7 +1011,7 @@ export const applyComparison = (
           // The revised document's own references, carried as it holds them:
           // one it never defines (a dangling `w:pStyle` is common in generated
           // packages) is reproduced, not refused, or the paragraph would be lost.
-          undefinedStyles: "keep",
+          undefinedReferences: "keep",
         }),
       );
       if (nextRevisionId === undefined) {

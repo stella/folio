@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { link, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import JSZip from "jszip";
+import { panic } from "better-result";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
@@ -306,6 +308,52 @@ const toFile = (target: string, extra: { overwrite?: boolean; expectedVersion?: 
       expectedVersion: extra.expectedVersion,
     },
   },
+});
+
+test("compare_documents forwards cleared-reference warnings in its file receipt", async () => {
+  const leading = { paraId: "91000001", text: "Leading anchor" };
+  const middle = { paraId: "91000003", text: "Middle anchor" };
+  const trailing = { paraId: "91000005", text: "Trailing anchor" };
+  const source = await writeDocx(dir, "warning-base.docx", [
+    leading,
+    { paraId: "91000002", text: "Removed original" },
+    middle,
+    trailing,
+  ]);
+  const styleId = "UndefinedInsertionStyle";
+  const baseZip = await JSZip.loadAsync(await readFile(source));
+  const stylesPart = baseZip.file("word/styles.xml") ?? panic("Fixture lost its styles part");
+  const stylesXml = await stylesPart.async("text");
+  baseZip.file(
+    "word/styles.xml",
+    stylesXml.replace(
+      "</w:styles>",
+      `<w:style w:type="paragraph" w:styleId="${styleId}"><w:name w:val="Collision style"/><w:rPr><w:b/></w:rPr></w:style></w:styles>`,
+    ),
+  );
+  await writeFile(source, await baseZip.generateAsync({ type: "uint8array" }));
+  const revisedPath = await writeDocx(dir, "warning-revised.docx", [
+    leading,
+    middle,
+    { paraId: "92000004", text: "Replacement", style: styleId },
+    trailing,
+  ]);
+  const revised = await reopen(revisedPath);
+  const anchor =
+    revised.snapshot().anchors["92000004"] ?? panic("Fixture lost its insertion anchor");
+  const receipt = (
+    await write(
+      "compare_documents",
+      { revisedPath, revisedFileVersion: await versionOf(revisedPath) },
+      { source, ...toFile(path.join(dir, "warning-redline.docx")) },
+    )
+  ).unwrap();
+  expect(receipt["result"]).toMatchObject({
+    skipped: [],
+    referenceWarnings: [
+      { kind: "style", id: styleId, paragraphPosition: anchor.from, story: { type: "main" } },
+    ],
+  });
 });
 
 describe("destinations", () => {

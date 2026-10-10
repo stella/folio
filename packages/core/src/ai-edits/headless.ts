@@ -1,6 +1,6 @@
 import { getHeaderFooterText, getEndnoteText, getFootnoteText } from "../docx/storyPlainText";
 import JSZip from "jszip";
-import { classifyStyleReference } from "./styleReference";
+import { classifyResourceReference } from "./referenceClassification";
 import { rebindDrawingImageRelationship } from "../docx/drawingRelationships";
 import {
   captureSectionReferenceInventory,
@@ -146,7 +146,7 @@ import {
 import type {
   FolioReplacementBackground,
   FolioRevisionStamp,
-  FolioUndefinedStylePolicy,
+  FolioUndefinedReferencePolicy,
   FolioWordDiffOptions,
 } from "./apply";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
@@ -487,13 +487,8 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
    * the target document — keeps them instead.
    */
   replacementBackground?: FolioReplacementBackground;
-  /**
-   * What an operation naming a paragraph style the document does not define
-   * does. Refusing it is the default; a caller copying another document's
-   * style references — `compareDocx` and `generateRedlineDocx` reproducing the
-   * revised document — keeps them instead.
-   */
-  undefinedStyles?: FolioUndefinedStylePolicy;
+  /** Policy for undefined style and numbering references; see FolioUndefinedReferencePolicy. */
+  undefinedReferences?: FolioUndefinedReferencePolicy;
 };
 
 export type { FolioRevisionStamp };
@@ -619,7 +614,7 @@ type ApplyDocumentOperationsInternalOptions = {
   wordDiff?: FolioWordDiffOptions;
   tableTemplates?: FolioTableTemplates;
   replacementBackground?: FolioReplacementBackground;
-  undefinedStyles?: FolioUndefinedStylePolicy;
+  undefinedReferences?: FolioUndefinedReferencePolicy;
   createUndoEntry: boolean;
 };
 
@@ -782,6 +777,7 @@ type FolioDocxComparisonAccess = {
   projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
   snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
   numberingDefinitions: () => NumberingDefinitions | null | undefined;
+  styleDefinitions: () => Document["package"]["styles"];
   planTargetNumberingReferences: (
     target: NumberingDefinitions | null | undefined,
     references: readonly { numId: number; level: number }[],
@@ -1200,6 +1196,7 @@ export class FolioDocxReviewer {
         projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
         snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
         numberingDefinitions: () => this.baseDocument.package.numbering,
+        styleDefinitions: () => this.importedStyles ?? this.baseDocument.package.styles,
         planTargetNumberingReferences: (target, references) =>
           this.planTargetNumberingReferences(target, references),
         stageTargetNumbering: (target, references, remappedNumIds) =>
@@ -1220,6 +1217,7 @@ export class FolioDocxReviewer {
     const sourceStylesById = new Map(
       sourcePackage.styles?.styles.map((style) => [style.styleId, style]),
     );
+    const destinationStyleIds = new Set(destinationStyles?.styles.map(({ styleId }) => styleId));
     const collect = (document: PMNode): Set<string> => {
       const references = new Set<string>();
       document.descendants((node) => {
@@ -1255,7 +1253,14 @@ export class FolioDocxReviewer {
         materializeDefaultParagraphStyle = true;
       }
       for (const styleId of collect(sourceDocumentOf(snapshot))) {
-        if (classifyStyleReference(styleId, sourceStylesById).kind === "defined") {
+        if (
+          classifyResourceReference({
+            kind: "style",
+            id: styleId,
+            sourceDefines: (id) => sourceStylesById.has(id),
+            destinationDefines: (id) => destinationStyleIds.has(id),
+          }) === "sourceDefined"
+        ) {
           referencedStyleIds.add(styleId);
         }
       }
@@ -1781,7 +1786,7 @@ export class FolioDocxReviewer {
     wordDiff,
     tableTemplates,
     replacementBackground,
-    undefinedStyles,
+    undefinedReferences,
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story,
@@ -1791,7 +1796,7 @@ export class FolioDocxReviewer {
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
-      ...(undefinedStyles !== undefined && { undefinedStyles }),
+      ...(undefinedReferences !== undefined && { undefinedReferences }),
       createUndoEntry: true,
     });
   }
@@ -1816,7 +1821,7 @@ export class FolioDocxReviewer {
     wordDiff,
     tableTemplates,
     replacementBackground,
-    undefinedStyles,
+    undefinedReferences,
     createUndoEntry,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
@@ -1840,7 +1845,7 @@ export class FolioDocxReviewer {
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
-      ...(undefinedStyles !== undefined && { undefinedStyles }),
+      ...(undefinedReferences !== undefined && { undefinedReferences }),
       createCommentId: (text) => {
         const comment = createReviewerComment({
           id: this.nextCommentId(),

@@ -161,6 +161,7 @@ export {
   GenerateRedlineDocxResourceImportError,
   type GenerateRedlineDocxOptions,
   type GenerateRedlineDocxResult,
+  type GenerateRedlineReferenceWarning,
   type GenerateRedlineUnprocessedStory,
 } from "./redline";
 export type {
