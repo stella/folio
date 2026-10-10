@@ -362,10 +362,15 @@ describe("editor lease", () => {
   });
 });
 
-test("a rejected background renewal surfaces its error", () => {
+test("a rejected background renewal surfaces its error", async () => {
   const modulePath = path.join(import.meta.dir, "editor-lease.ts");
   const source = `
     import { keepEditorLeaseAlive } from ${JSON.stringify(modulePath)};
+    process.on("uncaughtException", (error) => {
+      console.error("surfaced:" + error.message);
+      process.exit(23);
+    });
+    process.on("unhandledRejection", () => process.exit(0));
     keepEditorLeaseAlive({ renew: () => Promise.reject(new Error("renewal failed")) }, {
       intervalMs: 1,
       onLost: () => {},
@@ -377,8 +382,29 @@ test("a rejected background renewal surfaces its error", () => {
     stderr: "pipe",
     timeout: 3000,
   });
-  expect(result.exitCode).not.toBe(0);
-  expect(result.stderr.toString()).toContain("renewal failed");
+  expect(result.exitCode).toBe(23);
+  expect(result.stderr.toString()).toContain("surfaced:renewal failed");
+
+  // Prove a bare renewal rejection cannot satisfy the explicit reporting assertion.
+  const handler = "renew().catch(surfaceBackgroundError);";
+  const moduleSource = await readFile(modulePath, "utf8");
+  expect(moduleSource).toContain(handler);
+  const mutantPath = path.join(import.meta.dir, `.renewal-mutant-${process.pid}.ts`);
+  try {
+    await writeFile(mutantPath, moduleSource.replace(handler, "void renew();"));
+    const mutant = Bun.spawnSync(
+      [
+        process.execPath,
+        "--eval",
+        source.replace(JSON.stringify(modulePath), JSON.stringify(mutantPath)),
+      ],
+      { stdout: "pipe", stderr: "pipe", timeout: 3000 },
+    );
+    expect(mutant.exitCode).toBe(0);
+    expect(mutant.stderr.toString()).not.toContain("surfaced:renewal failed");
+  } finally {
+    await rm(mutantPath, { force: true });
+  }
 });
 
 test.each(["initial", "poll", "watcher"] as const)(
