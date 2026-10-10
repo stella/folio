@@ -14,5 +14,6 @@
   "scripts/ci-plan.test.ts",
   "scripts/ci-result.test.mjs",
   "packages/docx-core/src/ops/__tests__/contract.test.ts",
-  "packages/docx-core/src/projection.test.ts"
+  "packages/docx-core/src/projection.test.ts",
+  "packages/react/src/components/DocxEditor.renderCounts.test.tsx"
 ]
