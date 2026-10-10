@@ -4,6 +4,7 @@ import fc from "fast-check";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import {
   effectiveParagraphNumberingReference,
   readParagraphNumberingAttr,
@@ -242,9 +243,11 @@ test("style rebinding then numbering remapping applies source ids once", async (
               ilvl: expectedEffective.level,
             }),
           );
-          const block = remapped.blocks.find(({ text }) => text === paragraph.paraId);
-          expect(block?.statedNumbering).toEqual(expectedStated);
-          expect(block?.listReference).toEqual(expectedEffective);
+          const block = expectParagraphBlock(
+            remapped.blocks.find(({ text }) => text === paragraph.paraId),
+          );
+          expect(block.statedNumbering).toEqual(expectedStated);
+          expect(block.listReference).toEqual(expectedEffective);
         }
       }
     }),
