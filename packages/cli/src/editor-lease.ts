@@ -374,7 +374,9 @@ export const keepEditorLeaseAlive = (
       onLost(renewed.error);
     }
   };
-  const timer = setInterval(() => void renew(), intervalMs);
+  const timer = setInterval(() => {
+    renew();
+  }, intervalMs);
   timer.unref();
   return {
     stop: () => {
@@ -430,7 +432,9 @@ export const watchFlushRequests = ({
       }),
   );
   if (watcher.isOk()) watcher.value.on("error", () => undefined);
-  const timer = setInterval(() => void check(), pollMs);
+  const timer = setInterval(() => {
+    check();
+  }, pollMs);
   timer.unref();
   void check();
   return {
