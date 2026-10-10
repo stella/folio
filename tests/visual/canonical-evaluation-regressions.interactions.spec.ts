@@ -199,6 +199,18 @@ test("canonical history load survives browser collection while its evaluation is
     const source = [
       ...new Uint8Array(await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" }))),
     ];
+    const loadedFixture = await canonicalLoadFixture(
+      await createDocx(createEmptyDocument({ initialText: "alpha😀café東京" })),
+    );
+    // Exercise the structural helper too, including reloads after real history
+    // edits. The original collection probe covered only the history oracle.
+    for (let reload = 0; reload < 3; reload++) {
+      await loadReady(page, loadedFixture);
+      await select(page, 2);
+      await page.keyboard.press("Shift+Enter");
+      await page.keyboard.press(`${MODIFIER}+z`);
+      await page.keyboard.press(`${MODIFIER}+Shift+z`);
+    }
     await initializeCanonicalBrowserHistory(page, source);
     const actions = canonicalHistoryReplayActions(CANONICAL_EVALUATION_HISTORY_REPLAY);
     expect(
