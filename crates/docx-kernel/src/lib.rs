@@ -10,7 +10,7 @@ pub use projection::{
     DocumentParts, DocumentProjection, DocumentReviewFacts, DocumentStructureFacts, DocxLimits,
     FormattingCompleteness, FormattingFactStatus, FormattingUnknownReason, InternalParagraphId,
     InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact, PackageParagraphId,
-    ParagraphAlignmentFact, ParagraphAlignmentSource, ParagraphAlignmentValue,
+    ParagraphAlignmentFact, ParagraphAlignmentSource, ParagraphAlignmentValue, ParagraphContainer,
     ParagraphIdentityFacts, ParagraphIndentation, ParagraphIndentationFact,
     ParagraphOutlineLevelFact, ParagraphStructure, ProjectedParagraph, ProjectionError,
     ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,

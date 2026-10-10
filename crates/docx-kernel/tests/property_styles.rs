@@ -116,7 +116,7 @@ proptest! {
             DocxLimits::default(),
             |facts| InternalParagraphId::new(format!("paragraph-{}", facts.ordinal)),
         ).unwrap();
-        prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known });
+        prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known, alignment: FormattingFactStatus::Known });
         let paragraph_bold = match paragraph_selection {
             ParagraphSelection::Explicit => paragraph_toggles.iter().filter(|value| **value).count() % 2 == 1,
             _ => default_paragraph_bold.unwrap_or(false),
@@ -172,8 +172,8 @@ proptest! {
             |facts| InternalParagraphId::new(format!("paragraph-{}", facts.ordinal)),
         ).unwrap();
         prop_assert_eq!(projection.formatting_completeness, if selected {
-            FormattingCompleteness { bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles), highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles) }
-        } else { FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known } });
+            FormattingCompleteness { bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles), highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles), alignment: if character_cycle { FormattingFactStatus::Known } else { FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles) } }
+        } else { FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known, alignment: FormattingFactStatus::Known } });
         if selected && !character_cycle {
             prop_assert_eq!(projection.structural_facts.indentation, StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
             prop_assert_eq!(projection.structural_facts.outline_levels, StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));

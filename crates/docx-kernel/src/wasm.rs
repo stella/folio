@@ -14,7 +14,7 @@ use crate::{
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
 
-const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 6;
+const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 7;
 const DOCX_PACKAGE_PROJECTION_SCHEMA_VERSION: u32 = 2;
 const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 2;
 
@@ -45,7 +45,7 @@ export type DocxProjectionStructure =
       column: number,
     ];
 export type DocxProjectionAlignmentValue = "center" | "justify" | "left" | "right";
-export type DocxProjectionAlignmentSource = "direct" | "style";
+export type DocxProjectionAlignmentSource = "direct" | "style" | "docDefaults";
 export type DocxProjectionAlignment = readonly [
   value: DocxProjectionAlignmentValue,
   source: DocxProjectionAlignmentSource,
@@ -58,19 +58,21 @@ export type DocxProjectionParagraph = readonly [
   structure: DocxProjectionStructure,
   styleId: string | null,
   alignment: DocxProjectionAlignment,
+  container: DocxProjectionContainer,
 ];
-export type DocxProjectionFormattingFamily = DocxProjectionFormattingSpan[2];
+export type DocxProjectionFormattingFamily = DocxProjectionFormattingSpan[2] | "alignment";
 export type DocxProjectionFormattingUnknownReason =
   | "document-part-only"
   | "styles-part-unavailable"
-  | "unsupported-styles";
+  | "unsupported-styles"
+  | "unsupported-alignment";
 export type DocxProjectionFormattingFamilyStatus =
   | readonly [status: "known"]
   | readonly [
       status: "unknown-missing-styles",
       reason: "document-part-only" | "styles-part-unavailable",
     ]
-  | readonly [status: "unknown-unread", reason: "unsupported-styles"];
+  | readonly [status: "unknown-unread", reason: "unsupported-styles" | "unsupported-alignment"];
 export type DocxProjectionFormattingCompleteness = Readonly<
   Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>
 >;
@@ -150,7 +152,7 @@ export type DocxProjectionRevisionStatus =
       reasons: readonly DocxProjectionRevisionUnsupportedReason[],
     ];
 export type DocxProjectionWire = readonly [
-  schemaVersion: 6,
+  schemaVersion: 7,
   paragraphs: readonly DocxProjectionParagraph[],
   structuralFacts: DocxProjectionStructuralFacts,
   revisionStatus: DocxProjectionRevisionStatus,
@@ -421,7 +423,7 @@ fn output_projected_paragraph(
     ordinal: usize,
     paragraph: &ProjectedParagraph,
 ) -> Result<JsValue, String> {
-    let output = Array::new_with_length(7);
+    let output = Array::new_with_length(8);
     output.set(0, usize_number(ordinal)?);
     output.set(1, JsValue::from_str(&paragraph.text));
     output.set(
@@ -449,6 +451,7 @@ fn output_projected_paragraph(
             .map_or(JsValue::NULL, |style_id| JsValue::from_str(style_id)),
     );
     output.set(6, output_paragraph_alignment(paragraph.alignment));
+    output.set(7, JsValue::from_str(paragraph.container.wire_name()));
     Ok(output.into())
 }
 
@@ -480,6 +483,7 @@ const fn alignment_source_wire_name(source: ParagraphAlignmentSource) -> &'stati
     match source {
         ParagraphAlignmentSource::Direct => "direct",
         ParagraphAlignmentSource::Style => "style",
+        ParagraphAlignmentSource::DocDefaults => "docDefaults",
     }
 }
 
@@ -510,14 +514,16 @@ fn output_projection_with_structure(projection: &DocumentProjection) -> Result<J
 fn output_formatting_completeness(completeness: FormattingCompleteness) -> Result<JsValue, String> {
     let output = js_sys::Object::new();
     let FormattingCompleteness {
+        alignment,
         bold,
         highlight,
         superscript,
     } = completeness;
     for (family, family_status) in [
-        (TextStyle::Bold, bold),
-        (TextStyle::Highlight, highlight),
-        (TextStyle::Superscript, superscript),
+        ("alignment", alignment),
+        (text_style_wire_name(TextStyle::Bold), bold),
+        (text_style_wire_name(TextStyle::Highlight), highlight),
+        (text_style_wire_name(TextStyle::Superscript), superscript),
     ] {
         let status = Array::new();
         match family_status {
@@ -535,17 +541,16 @@ fn output_formatting_completeness(completeness: FormattingCompleteness) -> Resul
                     FormattingUnknownReason::UnsupportedStyles => {
                         ("unknown-unread", "unsupported-styles")
                     }
+                    FormattingUnknownReason::UnsupportedAlignment => {
+                        ("unknown-unread", "unsupported-alignment")
+                    }
                 };
                 status.push(&JsValue::from_str(kind));
                 status.push(&JsValue::from_str(reason));
             }
         }
-        js_sys::Reflect::set(
-            &output,
-            &JsValue::from_str(text_style_wire_name(family)),
-            &status,
-        )
-        .map_err(|_| "Could not construct formatting completeness".to_owned())?;
+        js_sys::Reflect::set(&output, &JsValue::from_str(family), &status)
+            .map_err(|_| "Could not construct formatting completeness".to_owned())?;
     }
     Ok(output.into())
 }

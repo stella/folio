@@ -168,7 +168,8 @@ fn text_and_formatting_match_the_same_paragraph_in_a_complete_package() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Known,
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Known
+            superscript: FormattingFactStatus::Known,
+            alignment: FormattingFactStatus::Known
         }
     );
     assert_eq!(
@@ -198,6 +199,9 @@ fn missing_styles_leave_formatting_incomplete_but_preserve_direct_facts() {
             bold: FormattingFactStatus::Unknown(FormattingUnknownReason::StylesPartUnavailable),
             highlight: FormattingFactStatus::Known,
             superscript: FormattingFactStatus::Unknown(
+                FormattingUnknownReason::StylesPartUnavailable
+            ),
+            alignment: FormattingFactStatus::Unknown(
                 FormattingUnknownReason::StylesPartUnavailable
             )
         }
@@ -413,7 +417,8 @@ fn shared_input_dependency_and_paragraph_bounds_are_enforced() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            alignment: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
         }
     );
     assert_partial(&limited_styles);
