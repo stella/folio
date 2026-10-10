@@ -16,7 +16,7 @@ export type DocxAttributedRevision = readonly [type: DocxRevisionKind, author: s
 export type DocxPackageProjectionWire = readonly [schemaVersion: 2, document: DocxProjectionWire, reviewFacts: DocxReviewFactsWire];
 
 // @public (undocumented)
-export type DocxParagraphFragmentWire = readonly [schemaVersion: DocxProjectionWire[0], paragraphs: readonly [DocxProjectionParagraph], structuralFacts: DocxParagraphFragmentFacts<DocxProjectionStructuralFacts>, revisionStatus: DocxProjectionWire[3], formattingStatus: DocxProjectionWire[4]];
+export type DocxParagraphFragmentWire = readonly [schemaVersion: DocxProjectionWire[0], paragraphs: readonly [DocxProjectionParagraph], structuralFacts: DocxParagraphFragmentFacts<DocxProjectionStructuralFacts>, revisionStatus: DocxProjectionWire[3], formattingCompleteness: DocxProjectionWire[4]];
 
 // @public (undocumented)
 export type DocxProjectionAlignment = readonly [value: DocxProjectionAlignmentValue, source: DocxProjectionAlignmentSource] | null;
@@ -40,10 +40,16 @@ export class DocxProjectionError extends DocxProjectionError_base<{
 export type DocxProjectionFactSet<T> = readonly [status: "known", items: readonly T[]] | readonly [status: "unknown", reason: DocxProjectionUnknownReason];
 
 // @public (undocumented)
-export type DocxProjectionFormattingSpan = readonly [startUtf16: number, endUtf16: number, style: "bold" | "highlight" | "superscript"];
+export type DocxProjectionFormattingCompleteness = Readonly<Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>>;
 
 // @public (undocumented)
-export type DocxProjectionFormattingStatus = readonly [status: "complete"] | readonly [status: "incomplete", reason: DocxProjectionFormattingUnknownReason];
+export type DocxProjectionFormattingFamily = DocxProjectionFormattingSpan[2];
+
+// @public (undocumented)
+export type DocxProjectionFormattingFamilyStatus = readonly [status: "known"] | readonly [status: "unknown-missing-styles", reason: "document-part-only" | "styles-part-unavailable"] | readonly [status: "unknown-unread", reason: "unsupported-styles"];
+
+// @public (undocumented)
+export type DocxProjectionFormattingSpan = readonly [startUtf16: number, endUtf16: number, style: "bold" | "highlight" | "superscript"];
 
 // @public (undocumented)
 export type DocxProjectionFormattingUnknownReason = "document-part-only" | "styles-part-unavailable" | "unsupported-styles";
@@ -91,7 +97,7 @@ export type DocxProjectionUnknownReason = "paragraph-fragment" | "document-part-
 export type DocxProjectionWasmSource = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 // @public (undocumented)
-export type DocxProjectionWire = readonly [schemaVersion: 5, paragraphs: readonly DocxProjectionParagraph[], structuralFacts: DocxProjectionStructuralFacts, revisionStatus: DocxProjectionRevisionStatus, formattingStatus: DocxProjectionFormattingStatus];
+export type DocxProjectionWire = readonly [schemaVersion: 6, paragraphs: readonly DocxProjectionParagraph[], structuralFacts: DocxProjectionStructuralFacts, revisionStatus: DocxProjectionRevisionStatus, formattingCompleteness: DocxProjectionFormattingCompleteness];
 
 // @public (undocumented)
 export type DocxReviewFactSet<T> = readonly [status: "known", items: readonly T[]] | readonly [status: "unknown", reason: DocxReviewUnknownReason];
