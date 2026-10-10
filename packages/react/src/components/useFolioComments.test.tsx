@@ -130,10 +130,13 @@ describe("useFolioComments.setComments", () => {
     const mark = document.createElement("span");
     mark.className = "layout-run-text";
     writeCommentAnchorIds(mark, [42]);
+    mark.style.boxShadow = "1px 1px black";
     editorContent.append(mark);
     harness.rerender();
     expect(mark.dataset["activeComment"]).toBe("true");
-    expect(mark.style.borderBottom).not.toBe("");
+    // Happy DOM does not parse the CSS-variable border shorthand. Check the
+    // active marker and a supported style write instead.
+    expect(mark.style.boxShadow).toBe("none");
   });
 
   test.each(["loaded", "controlled"] as const)(

@@ -218,9 +218,10 @@ export function useFolioComments({
     bodyComments.length > 0
   ) {
     setCommentsLoaded(true);
-    if (committedComments == null && !isControlledComments) {
-      setInternalComments(bodyComments);
-      setLoadedCommentsNotification({ comments: bodyComments });
+    if (committedComments == null && !isControlledComments && doc?.package.document.comments) {
+      const loadedComments = doc.package.document.comments;
+      setInternalComments(loadedComments);
+      setLoadedCommentsNotification({ comments: loadedComments });
     }
     setVisibleCommentAuthors(null);
     setActiveCommentId(null);
