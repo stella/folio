@@ -1,4 +1,44 @@
-import { library } from "@stll/oxlint-config";
+import { library, libraryRules, reactCompilerRules } from "@stll/oxlint-config";
+
+// Vue composables use hook-like names but follow Vue's lifecycle, not React's.
+// The package census in scripts/react-lint-scope.test.ts keeps this scope exact.
+export const nonReactPackageOverride = {
+  files: [
+    "packages/agents/**",
+    "packages/cli/**",
+    "packages/core/**",
+    "packages/docx-core/**",
+    "packages/nuxt/**",
+    "packages/playground-vue/**",
+    "packages/vue/**",
+  ],
+  rules: {
+    ...Object.fromEntries(
+      Object.keys(libraryRules)
+        .filter((rule) => /^(?:react|react-hooks|react-compiler)\//u.test(rule))
+        .map((rule) => [rule, "off" as const]),
+    ),
+    // This additional React rule is configured in the adapter override below.
+    "react/jsx-no-constructed-context-values": "off" as const,
+  },
+};
+
+// Temporary until #1646 merges or 2026-10-31, whichever comes first.
+// Restore error severity when the React Compiler fixes land or on the expiry date.
+export const reactCompilerWarningsExpireAt = "2026-10-31T00:00:00.000Z";
+export const reactCompilerWarningPolicyAt = (now: number) => {
+  const expired = now >= Date.parse(reactCompilerWarningsExpireAt);
+  return {
+    denyWarnings: expired,
+    rules: Object.fromEntries(
+      Object.keys(reactCompilerRules).map((rule) => [
+        rule,
+        expired ? ("error" as const) : ("warn" as const),
+      ]),
+    ),
+  };
+};
+const reactCompilerPolicy = reactCompilerWarningPolicyAt(Date.now());
 
 // Standalone oxlint config for @stll/folio.
 //
@@ -11,6 +51,8 @@ import { library } from "@stll/oxlint-config";
 
 export default library({
   options: {
+    // Allow the temporary React Compiler warnings until the guarded expiry.
+    denyWarnings: reactCompilerPolicy.denyWarnings,
     // Folio's source carries `eslint-disable` / `oxlint-disable` directives
     // calibrated for the full monorepo ruleset (ultracite's core + react
     // presets plus ~40 custom stella plugins). This standalone config uses the
@@ -31,6 +73,7 @@ export default library({
     typeAware: false,
   },
   rules: {
+    ...reactCompilerPolicy.rules,
     "folio-editor-commands/command-owner-boundary": "error",
     "folio-deletion-marks/preserve-pending-deletions": "error",
     // AST rules that oxlint delegates to the (dormant) type-aware pass in the
@@ -58,11 +101,6 @@ export default library({
     "unicorn/no-hex-escape": "off",
     "unicorn/number-literal-case": "off",
     "unicorn/prefer-response-static-json": "off",
-    // The shared config enables compiler analysis globally, including for Vue.
-    // The React package runs the real compiler and ratchets its intentional
-    // bailouts in scripts/react-compiler-bailouts.json; this rule cannot model
-    // that gradual baseline and would turn every known bailout into an error.
-    "react/react-compiler": "off",
   },
   jsPlugins: [
     "./.oxlint-plugins/folio-layer-boundaries.ts",
@@ -520,5 +558,6 @@ export default library({
         "folio-harness-workspaces/no-undeclared-workspace-runtime-import": "error",
       },
     },
+    nonReactPackageOverride,
   ],
 });
