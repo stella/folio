@@ -654,7 +654,7 @@ export const importReferencedStyleDefinitions = ({
     ) {
       return {
         status: "unalignable",
-        detail: `referenced style ${styleId} differs after materializing its formatting`,
+        detail: `referenced style ${style.styleId} differs after materializing its formatting`,
       };
     }
   }

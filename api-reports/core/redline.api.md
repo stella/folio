@@ -18,6 +18,12 @@ export type GenerateRedlineDocxOptions = {
 };
 
 // @public
+export class GenerateRedlineDocxResourceImportError extends GenerateRedlineDocxResourceImportError_base<{
+    message: string;
+    detail: string;
+}> {}
+
+// @public
 export type GenerateRedlineDocxResult = {
     buffer: ArrayBuffer;
     applied: FolioAIEditAppliedOperation[];
