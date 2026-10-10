@@ -442,7 +442,10 @@ describe("resolving random tracked work", () => {
     });
     // The seeds this property once failed on replay first, from
     // test/property-seeds/.
-    await assertProperty(resolutionProperty, { numRuns: 100 });
+    await assertProperty(resolutionProperty, {
+      numRuns: 100,
+      id: "reject restores, accept equals direct, and both survive a save",
+    });
     // The direct comparison must not pass vacuously.
     expect(comparedWithDirect).toBeGreaterThan(0);
   });

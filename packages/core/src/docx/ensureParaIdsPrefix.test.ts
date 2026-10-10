@@ -349,7 +349,10 @@ test(
           );
         },
       ),
-      { numRuns: 60 },
+      {
+        numRuns: 60,
+        id: "namespace binding dimensions preserve paragraph coverage, uniqueness and byte idempotence",
+      },
     );
   },
   propertyTestTimeout(30_000),

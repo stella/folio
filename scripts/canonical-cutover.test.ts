@@ -72,6 +72,7 @@ describe("canonical cutover guard", () => {
             ).toBe(true);
         },
       ),
+      { id: "rejects raw selectors across syntax and Vue templates" },
     );
   });
 
@@ -106,6 +107,7 @@ describe("canonical cutover guard", () => {
           ).toContain(`${fixture.file}: session branches increased from 0 to 1`);
         },
       ),
+      { id: "namespace-qualified guards count branches and resolve their ledger ids" },
     );
     for (const call of [
       "caps.usesCanonicalSession(experimentalSession)",
@@ -154,6 +156,7 @@ describe("canonical cutover guard", () => {
             );
         },
       ),
+      { id: "gap-aware error relays cannot discard or replace an error's capability" },
     );
   });
 
@@ -273,6 +276,7 @@ describe("canonical cutover guard", () => {
         if (after > before) expect(failures.at(0)).toContain("increased");
         if (after < before) expect(failures.at(0)).toContain("decrease");
       }),
+      { id: "per-file counts require every decrease and reject every increase" },
     );
     expect(checkCanonicalBaseline({ "new.ts": 1 }, {})).toHaveLength(1);
     expect(checkCanonicalBaseline({}, { "removed.ts": 1 })).toHaveLength(1);

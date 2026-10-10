@@ -1015,7 +1015,7 @@ describe("a random batch with overlapping, nested and duplicate targets", () => 
             expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
           },
         ),
-        { numRuns: 150 },
+        { numRuns: 150, id: "refuses each conflict and applies the rest as one at a time would" },
       );
     },
     propertyTestTimeout(300_000),
@@ -1083,7 +1083,10 @@ describe("a random batch with distinct paragraph-property patches", () => {
             );
           },
         ),
-        { numRuns: 150 },
+        {
+          numRuns: 150,
+          id: "applies accepted patches in planner order against an independent replay",
+        },
       );
     },
     propertyTestTimeout(300_000),

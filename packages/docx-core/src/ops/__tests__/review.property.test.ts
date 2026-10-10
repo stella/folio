@@ -536,7 +536,10 @@ describe("tracked operations and their resolution", () => {
           expect(accepted).toStrictEqual(expected);
         }
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "L1: accepting a tracked operation's revisions gives the direct operation's result",
+      },
     );
     expectEveryKindChecked(tally, NUM_RUNS);
   });
@@ -563,7 +566,10 @@ describe("tracked operations and their resolution", () => {
         );
         expectEquivalent(rejected, document, rejectProjection(document, op));
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "L2: rejecting a tracked operation's revisions gives the document back",
+      },
     );
     expectEveryKindChecked(tally, NUM_RUNS);
   });
@@ -622,7 +628,10 @@ describe("tracked operations and their resolution", () => {
           }
         },
       ),
-      { numRuns: NUM_RUNS / 5 },
+      {
+        numRuns: NUM_RUNS / 5,
+        id: "L3: resolving a run's revisions at once equals resolving each operation's in turn",
+      },
     );
     expectEveryKindChecked(tally, NUM_RUNS / 5);
   });
@@ -655,7 +664,10 @@ describe("tracked operations and their resolution", () => {
           }
         },
       ),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "L4: tracked operations and resolutions are undone exactly by their inverses",
+      },
     );
     expectEveryKindChecked(tally, NUM_RUNS);
     expect(tally.get("resolved") ?? 0).toBeGreaterThan(NUM_RUNS / 4);
@@ -688,7 +700,10 @@ describe("tracked operations and their resolution", () => {
           expectRestores(batch.value, original);
         },
       ),
-      { numRuns: NUM_RUNS / 5 },
+      {
+        numRuns: NUM_RUNS / 5,
+        id: "L4: a run of tracked operations is undone exactly, in reverse and as a batch",
+      },
     );
     expectEveryKindChecked(tally, NUM_RUNS / 5);
   });
@@ -715,7 +730,7 @@ describe("tracked operations and their resolution", () => {
           }
         },
       ),
-      { numRuns: NUM_RUNS },
+      { numRuns: NUM_RUNS, id: "L5: equal inputs give equal results" },
     );
   });
 
@@ -764,7 +779,10 @@ describe("tracked operations and their resolution", () => {
           }
         },
       ),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "L6: an operation touches only the paragraphs it names or resolves",
+      },
     );
   });
 
@@ -782,7 +800,10 @@ describe("tracked operations and their resolution", () => {
         const existing = revisionIdsIn(document.package.document.content);
         expect(applied.value.revisions.filter((id) => existing.has(id))).toEqual([]);
       }),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "L7: no tracked operation marks a paragraph that ends its container",
+      },
     );
     expectEveryKindChecked(tally, NUM_RUNS);
   });
@@ -810,7 +831,7 @@ describe("tracked operations and their resolution", () => {
           expect(twice.value.inverse).toEqual([]);
         },
       ),
-      { numRuns: NUM_RUNS },
+      { numRuns: NUM_RUNS, id: "resolving the same revisions again changes nothing" },
     );
     expect(tally.get("resolved") ?? 0).toBeGreaterThan(NUM_RUNS / 4);
   });
@@ -837,7 +858,10 @@ describe("tracked operations and their resolution", () => {
           );
         }
       }),
-      { numRuns: NUM_RUNS / 5 },
+      {
+        numRuns: NUM_RUNS / 5,
+        id: "a tracked operation takes exactly the new ids revisionIdDemand counts",
+      },
     );
   });
 
@@ -1001,7 +1025,10 @@ describe("tracked operations and their resolution", () => {
           );
         },
       ),
-      { numRuns: NUM_RUNS / 5 },
+      {
+        numRuns: NUM_RUNS / 5,
+        id: "a planned tracked deletion removes only the author's own insertions",
+      },
     );
     expect(tally.get("one") ?? 0).toBeGreaterThan(0);
     expect(tally.get("fresh-split") ?? 0).toBeGreaterThan(0);

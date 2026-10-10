@@ -122,7 +122,10 @@ test("generated source order preserves deterministic style identities and transi
       assertExactModel(imported.styles?.docDefaults, destination.package.styles.docDefaults);
       assertExactModel(imported.styles?.styles.at(0), destination.package.styles.styles.at(0));
     }),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "generated source order preserves deterministic style identities and transitive numbering aliases",
+    },
   );
 });
 
@@ -516,6 +519,9 @@ test("every theme modifier byte imports independent grayscale tint and shade val
         assertExactModel({ source, destination, paragraphs }, before);
       }
     }),
-    { numRuns: 10 },
+    {
+      numRuns: 10,
+      id: "every theme modifier byte imports independent grayscale tint and shade values",
+    },
   );
 });

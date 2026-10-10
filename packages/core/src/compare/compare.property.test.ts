@@ -766,7 +766,10 @@ describe("compareDocx", () => {
               );
             }
           }),
-          { numRuns: 12 },
+          {
+            numRuns: 12,
+            id: "the change count never exceeds the blocks the script touched (${name})",
+          },
         );
       },
       propertyTestTimeout(120_000),

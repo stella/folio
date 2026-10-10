@@ -943,7 +943,10 @@ describe("canonical session", () => {
           expect(session.canRedo).toBe(false);
         },
       ),
-      { numRuns: 40 },
+      {
+        numRuns: 40,
+        id: "canonical input sequences keep the projection, inverse history and refusal atomic",
+      },
     );
   });
 
@@ -1277,7 +1280,10 @@ describe("canonical session", () => {
           }
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "stored mark changes preserve authored properties and explicitly clear removed marks",
+      },
     );
   });
 
@@ -1605,7 +1611,12 @@ describe("canonical tracked input", () => {
           expect(state.doc.eq(session.projection.doc)).toBe(true);
         },
       ),
-      { seed: 197, numRuns: 60, examples },
+      {
+        seed: 197,
+        numRuns: 60,
+        examples,
+        id: "direction reversal deletes the adjacent visible character across retained deletion runs and bookmarks",
+      },
     );
   });
 
@@ -1728,7 +1739,10 @@ describe("canonical tracked input", () => {
           }
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "generated replacements lower tracked batches and resolution shares exact inverse history",
+      },
     );
   });
 

@@ -94,7 +94,11 @@ describe("canonical public operation batches", () => {
           }
         },
       ),
-      { numRuns: 30, seed: 20261004 },
+      {
+        numRuns: 30,
+        seed: 20261004,
+        id: "generated mixed human and public histories undo through one journal",
+      },
     );
   });
 
@@ -347,7 +351,11 @@ test("generated attached comments publish and undo atomically in direct and trac
         expect(editor.session.document).toEqual(initial);
       },
     ),
-    { numRuns: 30, seed: 20261008 },
+    {
+      numRuns: 30,
+      seed: 20261008,
+      id: "generated attached comments publish and undo atomically in direct and tracked modes",
+    },
   );
 });
 

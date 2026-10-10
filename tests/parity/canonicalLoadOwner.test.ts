@@ -36,7 +36,10 @@ test(
           }
         }
       }),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "canonical loading waits for adoption even when repeated loads have identical content",
+      },
     );
     expect(cases).toBeGreaterThan(0);
     expect([...exercised].sort()).toEqual([...initialStates].sort());

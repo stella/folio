@@ -95,7 +95,7 @@ describe("editor intent identity allocation", () => {
           expect(filtered.newIds?.control).toEqual(control?.filter((id) => id % 2 === 0));
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 100, id: "filtering pools preserves supplied spaces and ordered identities" },
     );
   });
 
@@ -240,7 +240,10 @@ describe("editor intent identity allocation", () => {
           }
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "incremental censuses equal fresh censuses through generated immutable versions",
+      },
     );
   });
 
@@ -334,7 +337,7 @@ describe("editor intent identity allocation", () => {
           exercised.add(intent.type);
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 100, id: "generated intent allocations avoid every package identity space" },
     );
     expect([...exercised].sort()).toEqual([...kinds].sort());
   });

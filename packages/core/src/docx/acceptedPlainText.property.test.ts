@@ -260,7 +260,10 @@ test(
           }
         },
       ),
-      { numRuns: 24 },
+      {
+        numRuns: 24,
+        id: "all plain readers resolve generated paragraph and table deletions before projecting text",
+      },
     );
   },
   propertyTestTimeout(30_000),

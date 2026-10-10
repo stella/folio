@@ -384,7 +384,7 @@ describe("resolving inserted paragraphs after an inserted table", () => {
           expect(content(await open(await accepting.toBuffer()))).toEqual(content(direct));
         },
       ),
-      { numRuns: 10 },
+      { numRuns: 10, id: "generated table rows and following paragraphs preserve resolution laws" },
     );
   });
 });

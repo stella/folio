@@ -277,7 +277,7 @@ test("generated same-author insertion bursts preserve exact authored seams", () 
         expect(tracked).toStrictEqual(original);
       },
     ),
-    { numRuns: 50 },
+    { numRuns: 50, id: "generated same-author insertion bursts preserve exact authored seams" },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -375,7 +375,10 @@ test("generated replacement preserves authored hyperlink cuts after emptying an 
         }
       }
     }),
-    { numRuns: 20 },
+    {
+      numRuns: 20,
+      id: "generated replacement preserves authored hyperlink cuts after emptying an unselected wrapper",
+    },
   );
 });
 
@@ -411,7 +414,7 @@ test("generated deletion cuts accept and reject at the recorded wrapper depth", 
         }),
       ).toStrictEqual(original);
     }),
-    { numRuns: 50 },
+    { numRuns: 50, id: "generated deletion cuts accept and reject at the recorded wrapper depth" },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -480,7 +483,7 @@ test("generated later property rejection retains earlier cut provenance", () => 
         }),
       ).toStrictEqual(original);
     }),
-    { numRuns: 50 },
+    { numRuns: 50, id: "generated later property rejection retains earlier cut provenance" },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -568,7 +571,10 @@ test("generated retained source identities survive a later pending formatting ac
         }),
       ).toStrictEqual(original);
     }),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "generated retained source identities survive a later pending formatting action",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -608,7 +614,7 @@ test("generated source-review acceptance retires its pending deletion transfer",
         }),
       ).toStrictEqual(expected);
     }),
-    { numRuns: 25 },
+    { numRuns: 25, id: "generated source-review acceptance retires its pending deletion transfer" },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -705,7 +711,10 @@ test("generated pending deletion splits preserve resolution order and exact hist
         if (decision === REVISION_DECISIONS.REJECT) assertExactModel(together, original);
       }
     }),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "generated pending deletion splits preserve resolution order and exact histories",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -850,7 +859,10 @@ test("generated nested replacements preserve reviewed source seams in every reso
         }
       },
     ),
-    { numRuns: 100 },
+    {
+      numRuns: 100,
+      id: "generated nested replacements preserve reviewed source seams in every resolution order",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -922,7 +934,7 @@ test("generated comment-bearing replacements share the planned anchor policy", (
         content.filter((node) => node.type.startsWith("comment")),
       );
     }),
-    { numRuns: 25 },
+    { numRuns: 25, id: "generated comment-bearing replacements share the planned anchor policy" },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -1042,7 +1054,7 @@ test("generated replacements preserve input affinity around zero-width leaves", 
           ]);
       },
     ),
-    { numRuns: 50 },
+    { numRuns: 50, id: "generated replacements preserve input affinity around zero-width leaves" },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -1132,7 +1144,7 @@ test("generated provenance-bearing cuts capture exact inverse source state", () 
         expectInverse(changed.value, pending.document);
       },
     ),
-    { numRuns: 50 },
+    { numRuns: 50, id: "generated provenance-bearing cuts capture exact inverse source state" },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -1222,7 +1234,10 @@ test("generated replacement retains prior removed revisions and visible inserted
         );
       },
     ),
-    { numRuns: 50 },
+    {
+      numRuns: 50,
+      id: "generated replacement retains prior removed revisions and visible inserted ownership",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -1259,7 +1274,10 @@ test("generated provenance-bearing joins restore independent empty transfer meta
       if (joined.isErr()) throw joined.error;
       expectInverse(joined.value, original);
     }),
-    { numRuns: 50 },
+    {
+      numRuns: 50,
+      id: "generated provenance-bearing joins restore independent empty transfer metadata",
+    },
   );
 });
 
@@ -1420,7 +1438,10 @@ test("generated paragraph cut depths preserve authored wrappers and deferred spl
         }
       },
     ),
-    { numRuns: 50 },
+    {
+      numRuns: 50,
+      id: "generated paragraph cut depths preserve authored wrappers and deferred split seams",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -1536,7 +1557,10 @@ test("generated compound intents reserve source IDs before additional action sta
         assertExactModel(original, before);
       },
     ),
-    { numRuns: 50 },
+    {
+      numRuns: 50,
+      id: "generated compound intents reserve source IDs before additional action stamps",
+    },
   );
   expect([...refusals]).toStrictEqual([]);
 });
@@ -1649,7 +1673,10 @@ test("generated retained wrapper transfers rebase deferred references and select
       );
       resolve({ document: first, revisionIds: [sourceId], decision: "reject" });
     }),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "generated retained wrapper transfers rebase deferred references and selected lineage",
+    },
   );
 });
 
@@ -1705,6 +1732,9 @@ test("generated replacement breaks restore deletion cut depths across paragraphs
         assertExactModel(rejected, original);
       },
     ),
-    { numRuns: 50 },
+    {
+      numRuns: 50,
+      id: "generated replacement breaks restore deletion cut depths across paragraphs",
+    },
   );
 });

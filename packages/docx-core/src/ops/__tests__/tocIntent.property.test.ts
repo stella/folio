@@ -104,6 +104,6 @@ test("TOC identities are package-wide, deterministic and exact under inverse", (
         expect(suggested.isErr()).toBe(true);
       },
     ),
-    { numRuns: 24 },
+    { numRuns: 24, id: "TOC identities are package-wide, deterministic and exact under inverse" },
   );
 });

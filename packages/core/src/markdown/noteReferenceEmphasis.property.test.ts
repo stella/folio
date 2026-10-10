@@ -80,7 +80,10 @@ test(
           }
         }
       }),
-      { numRuns: 50 },
+      {
+        numRuns: 50,
+        id: "every emitted note reference survives all emphasis combinations and neighboring text",
+      },
     );
     expect(cases).toBeGreaterThan(0);
   },

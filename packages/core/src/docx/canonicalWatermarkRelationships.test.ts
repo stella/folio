@@ -122,7 +122,11 @@ test("generated canonical watermark relationships preserve free and matching ids
         }
       },
     ),
-    { seed: 20261019, numRuns: 12 },
+    {
+      seed: 20261019,
+      numRuns: 12,
+      id: "generated canonical watermark relationships preserve free and matching ids and refuse conflicting or unresolved targets",
+    },
   );
 });
 

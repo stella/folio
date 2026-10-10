@@ -147,7 +147,11 @@ test("generated collapsed and paired markers retain exact source gap ordinals", 
       fc.array(fc.constantFrom(...Object.values(PAIRS)), { minLength: 1, maxLength: 6 }),
       check,
     ),
-    { seed: -2053065844, numRuns: 40 },
+    {
+      seed: -2053065844,
+      numRuns: 40,
+      id: "generated collapsed and paired markers retain exact source gap ordinals",
+    },
   );
 });
 
@@ -187,7 +191,11 @@ test("generated nonempty bookmark and move ranges preserve native gap geometry",
         }
       }
     }),
-    { seed: 197, numRuns: 30 },
+    {
+      seed: 197,
+      numRuns: 30,
+      id: "generated nonempty bookmark and move ranges preserve native gap geometry",
+    },
   );
 });
 
@@ -354,7 +362,11 @@ test("generated erased containers keep unique source seams beside text and colla
       fc.integer({ min: 1, max: 5 }),
       check,
     ),
-    { seed: -1348404097, numRuns: 30 },
+    {
+      seed: -1348404097,
+      numRuns: 30,
+      id: "generated erased containers keep unique source seams beside text and collapsed markers",
+    },
   );
 });
 
@@ -445,7 +457,11 @@ test("adjacent note-reference carriers preserve every distinct source occurrence
       fc.constantFrom([1], [11], [111], [1, 11, 111]),
       check,
     ),
-    { seed: 197, numRuns: 40 },
+    {
+      seed: 197,
+      numRuns: 40,
+      id: "adjacent note-reference carriers preserve every distinct source occurrence",
+    },
   );
 });
 
@@ -566,5 +582,6 @@ test("story-owned eligibility preserves unpaired and cross-paragraph bookmark so
   assertProperty(fc.property(fc.constantFrom("start", "end"), fc.constantFrom(...cases), check), {
     seed: -1133252633,
     numRuns: 40,
+    id: "story-owned eligibility preserves unpaired and cross-paragraph bookmark source gaps",
   });
 });

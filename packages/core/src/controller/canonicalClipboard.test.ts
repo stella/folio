@@ -428,7 +428,10 @@ describe("canonical clipboard", () => {
           }
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "generated owned story-reference moves preserve arbitrary-target sequences and count atomic refusals",
+      },
     );
   });
 
@@ -588,7 +591,10 @@ describe("canonical clipboard", () => {
           }
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "generated multi-digit note moves preserve owned stories and exact arbitrary-target histories",
+      },
     );
   });
 
@@ -700,7 +706,10 @@ describe("canonical clipboard", () => {
         }).unwrap().state;
         assertClipboardModel(session.document, after);
       }),
-      { numRuns: 25 },
+      {
+        numRuns: 25,
+        id: "generated Strict and Transitional image link caches rebind ids while preserving authored metadata",
+      },
     );
   });
 
@@ -930,7 +939,10 @@ describe("canonical clipboard", () => {
           );
         },
       ),
-      { numRuns: 8 },
+      {
+        numRuns: 8,
+        id: "foreign text and image hyperlink relationships never bind colliding destination ids",
+      },
     );
   });
 
@@ -1401,7 +1413,10 @@ describe("canonical clipboard", () => {
           }
         },
       ),
-      { numRuns: 50 },
+      {
+        numRuns: 50,
+        id: "generated clipboard sequences preserve every intermediate journal state at arbitrary targets",
+      },
     );
     expect([...appliedKinds].sort()).toEqual(["move", "paste"]);
     expect(
@@ -1509,7 +1524,10 @@ describe("canonical clipboard", () => {
           expect(exercised.size).toBe(16);
         },
       ),
-      { numRuns: 25 },
+      {
+        numRuns: 25,
+        id: "generated marked slices obey all open edges, replacement directions and exact history",
+      },
     );
   });
 

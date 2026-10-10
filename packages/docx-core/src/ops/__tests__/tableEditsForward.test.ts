@@ -227,7 +227,10 @@ describe("independent table forward oracles", () => {
             ...Array.from({ length: width - column }, () => 900),
           ]);
         }),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "column edits preserve every surviving slot, including vertical owners, spans, omissions and nested contents",
+        },
       );
     },
     propertyTestTimeout(30_000),
@@ -337,7 +340,10 @@ describe("independent table forward oracles", () => {
             expect(undone.value.document).toStrictEqual(original);
           },
         ),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "multi-step changes match an independent slot oracle after every forward step",
+        },
       );
     },
     propertyTestTimeout(30_000),
@@ -433,7 +439,10 @@ describe("independent table forward oracles", () => {
           });
           expect(restored.document).toStrictEqual(document);
         }),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "mixed-chain merges preserve nested content; horizontal splits preserve owners and refuse vertical groups",
+        },
       );
     },
     propertyTestTimeout(30_000),
@@ -501,7 +510,10 @@ describe("independent table forward oracles", () => {
             DOCUMENT_OP_REFUSAL_REASONS.TABLE_ROW_EMPTY,
           );
         }),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "nonrectangular merge selections and row-emptying deletion refuse their exact reasons",
+        },
       );
     },
     propertyTestTimeout(30_000),

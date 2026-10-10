@@ -103,6 +103,10 @@ test("grapheme deletion retains source range anchors in both directions through 
         }
       },
     ),
-    { seed: 197, numRuns: 30 },
+    {
+      seed: 197,
+      numRuns: 30,
+      id: "grapheme deletion retains source range anchors in both directions through review and history",
+    },
   );
 });

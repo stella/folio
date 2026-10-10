@@ -142,7 +142,7 @@ for (const [kind, operation] of Object.entries(operations)) {
             expect(content(saved)).toEqual(content(before));
           },
         ),
-        { numRuns: 20 },
+        { numRuns: 20, id: "${kind} preserves pending deletion ownership across saves" },
       );
     },
     propertyTestTimeout(30_000),

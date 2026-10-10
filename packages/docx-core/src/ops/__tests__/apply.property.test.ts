@@ -467,7 +467,10 @@ describe("document operations", () => {
           assertExactModel(rejectLater.document, original);
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "rejecting generated run formatting restores authored boundaries inside wrappers and pending review",
+      },
     );
   });
 
@@ -570,7 +573,10 @@ describe("document operations", () => {
           expect(document).toStrictEqual(final);
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "each formatting author gets a separately rejectable record over pending run review",
+      },
     );
   });
   test("run formatting intent patches preserve authored fields in direct and tracked insertion", () => {
@@ -665,7 +671,10 @@ describe("document operations", () => {
         });
         expect(outcomes.at(1)).toStrictEqual(outcomes.at(0));
       }),
-      { numRuns: 20 },
+      {
+        numRuns: 20,
+        id: "run formatting intent patches preserve authored fields in direct and tracked insertion",
+      },
     );
   });
   test("editor intent sequences preserve accepted editing, rejected baseline and exact journal undo", () => {
@@ -918,7 +927,10 @@ describe("document operations", () => {
           expect(tracked).toStrictEqual(original);
         },
       ),
-      { numRuns: 300 },
+      {
+        numRuns: 300,
+        id: "editor intent sequences preserve accepted editing, rejected baseline and exact journal undo",
+      },
     );
     expect([...tally].sort()).toEqual([...kinds].sort());
   });
@@ -1403,7 +1415,10 @@ describe("document operations", () => {
           );
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "generated clipboard fragments preserve history and accepted tracked content",
+      },
     );
   });
   test("id-only copied controls and retained identity provenance remint one consistent imported graph", () => {
@@ -1806,7 +1821,10 @@ describe("document operations", () => {
           }
         },
       ),
-      { numRuns: 50 },
+      {
+        numRuns: 50,
+        id: "generated clipboard sequences preserve arbitrary ranges, marked content and every inverse",
+      },
     );
     expect(applied.get("replaceFragment") ?? 0).toBeGreaterThan(0);
     expect([...refusals.keys()]).toEqual([DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND]);
@@ -1905,7 +1923,10 @@ describe("document operations", () => {
         });
         expect(failed.isErr()).toBe(true);
       }),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "generated move intents rebase the original target and refuse atomically",
+      },
     );
   });
   test("generated comment-anchor move sequences retain source anchors when suggesting and move them when editing", () => {
@@ -2053,7 +2074,10 @@ describe("document operations", () => {
           }
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "generated comment-anchor move sequences retain source anchors when suggesting and move them when editing",
+      },
     );
   });
   test("plain-text input sequences preserve exact inverse, redo and rejection atomicity", () => {
@@ -2230,7 +2254,7 @@ describe("document operations", () => {
         }
         expectRestores(applied.value, original);
       }),
-      { numRuns: NUM_RUNS },
+      { numRuns: NUM_RUNS, id: "an operation's inverse restores the document exactly" },
     );
     expectEveryKindApplied(tally, NUM_RUNS);
   });
@@ -2278,7 +2302,10 @@ describe("document operations", () => {
           expect(wireUndo.value.document).toStrictEqual(original);
         },
       ),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "a sequence's inverses in reverse, and a batch's, restore the document exactly",
+      },
     );
     expectEveryKindApplied(tally, NUM_RUNS);
   });
@@ -2367,7 +2394,10 @@ describe("document operations", () => {
           }
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "editor joins select properties from visible content and preserve trailing mark formatting",
+      },
     );
   });
 
@@ -2581,7 +2611,10 @@ describe("document operations", () => {
           }
         }
       }),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "generated editor intents agree in direct and accepted tracked mode across structural shapes",
+      },
     );
     for (const kind of [
       "formatParagraph",
@@ -2623,7 +2656,7 @@ describe("document operations", () => {
         // Rebuilt record by record, sharing nothing: the result must not depend on sharing.
         expect(outcome(applyDocumentOp(independentCopy(document), replayed))).toStrictEqual(first);
       }),
-      { numRuns: NUM_RUNS },
+      { numRuns: NUM_RUNS, id: "the same operation on equal documents gives equal results" },
     );
   });
 
@@ -2729,7 +2762,7 @@ describe("document operations", () => {
         expect(body.comments).toBe(document.package.document.comments!);
         expect(next.warnings).toBe(document.warnings!);
       }),
-      { numRuns: NUM_RUNS },
+      { numRuns: NUM_RUNS, id: "blocks an operation does not touch are the same objects" },
     );
     expectEveryKindApplied(tally, NUM_RUNS);
   });

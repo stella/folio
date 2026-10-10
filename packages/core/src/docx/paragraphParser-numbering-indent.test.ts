@@ -437,7 +437,10 @@ test(
           expect(paragraph.formatting?.indentFirstLine).toBe(expectedFirstLine);
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "numbering defaults omit neutral zeros and preserve indentation overrides",
+      },
     );
   },
   propertyTestTimeout(10_000),

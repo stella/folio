@@ -220,6 +220,9 @@ test("shared contiguous batches avoid every occupied hole and high tail across p
         }
       },
     ),
-    { numRuns: 40 },
+    {
+      numRuns: 40,
+      id: "shared contiguous batches avoid every occupied hole and high tail across producer schedules",
+    },
   );
 });

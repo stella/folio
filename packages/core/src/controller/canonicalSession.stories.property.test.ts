@@ -297,6 +297,9 @@ test("generated tracked secondary replacements preserve shared history and saved
         }
       },
     ),
-    { numRuns: 12 },
+    {
+      numRuns: 12,
+      id: "generated tracked secondary replacements preserve shared history and saved review outcomes",
+    },
   );
 });

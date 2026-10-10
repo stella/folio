@@ -80,7 +80,10 @@ test("registry additions and descriptor removals can only enlarge the derived re
         );
       },
     ),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "registry additions and descriptor removals can only enlarge the derived remaining set",
+    },
   );
 });
 

@@ -221,7 +221,11 @@ test(
         }),
         check,
       ),
-      { seed: 197, numRuns: 100 },
+      {
+        seed: 197,
+        numRuns: 100,
+        id: "caret direction reversal deletes the adjacent visible unit across retained revisions and markers",
+      },
     );
   },
   propertyTestTimeout(10_000),

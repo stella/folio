@@ -148,7 +148,10 @@ test("imported note projections are deterministic and distinct across paragraphs
         assertNoteReferenceOccurrences(detached);
       },
     ),
-    { numRuns: 30 },
+    {
+      numRuns: 30,
+      id: "imported note projections are deterministic and distinct across paragraphs and inline carriers",
+    },
   );
 });
 
@@ -223,7 +226,10 @@ test("retracted adjacent note occurrences preserve multiplicity and ownership th
       fc.tuple(fc.constantFrom(...OWNERS), fc.constantFrom(...OWNERS), fc.constantFrom(...OWNERS)),
       check,
     ),
-    { numRuns: 20 },
+    {
+      numRuns: 20,
+      id: "retracted adjacent note occurrences preserve multiplicity and ownership through save and reopen",
+    },
   );
 });
 
@@ -274,7 +280,10 @@ test("arbitrary digit splits preserve adjacent occurrences and whole-unit revisi
         );
       },
     ),
-    { numRuns: 30 },
+    {
+      numRuns: 30,
+      id: "arbitrary digit splits preserve adjacent occurrences and whole-unit revision owners",
+    },
   );
 });
 
@@ -361,7 +370,10 @@ test("random public edits keep occurrences saveable or visibly refuse before com
         }
       },
     ),
-    { numRuns: 15 },
+    {
+      numRuns: 15,
+      id: "random public edits keep occurrences saveable or visibly refuse before commit",
+    },
   );
 });
 
@@ -433,7 +445,10 @@ test("pasted note formatting survives empty splits without paragraph-mark defaul
         }
       },
     ),
-    { numRuns: 30 },
+    {
+      numRuns: 30,
+      id: "pasted note formatting survives empty splits without paragraph-mark defaults",
+    },
   );
 });
 

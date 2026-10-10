@@ -245,7 +245,10 @@ test(
             await exercise({ cells, decision, origin, continuations, date, rowTexts });
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "resolved vertical merges match the reader across content and row shapes",
+      },
     );
   },
   propertyTestTimeout(30_000),

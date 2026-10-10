@@ -159,6 +159,9 @@ test("list-level commands preserve plain paragraphs and refuse all-plain selecti
         }
       },
     ),
+    {
+      id: "list-level commands preserve plain paragraphs and refuse all-plain selections without history",
+    },
   );
   expect(cases).toBeGreaterThan(0);
 });
@@ -380,7 +383,10 @@ describe("canonical structural commands", () => {
           expect(session.canRedo).toBe(false);
         },
       ),
-      { numRuns: 24 },
+      {
+        numRuns: 24,
+        id: "generated structural sequences preserve text, identities, projection and exact history selections",
+      },
     );
   });
 
@@ -458,7 +464,10 @@ describe("canonical structural commands", () => {
           expect(texts(session)).toEqual([""]);
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "marker rules atomically remove their marker, apply paragraph meaning and restore it on undo",
+      },
     );
   });
 
@@ -543,7 +552,10 @@ describe("canonical structural commands", () => {
           }
         },
       ),
-      { numRuns: 16 },
+      {
+        numRuns: 16,
+        id: "numbered autoformat keeps its start at level zero through every nested level",
+      },
     );
   });
 
@@ -603,7 +615,7 @@ describe("canonical structural commands", () => {
           }
         }
       }),
-      { numRuns: 4 },
+      { numRuns: 4, id: "note-reference digits and inline atoms do not become autoformat markers" },
     );
   });
 
@@ -726,7 +738,10 @@ describe("canonical structural commands", () => {
           expect(session.canRedo).toBe(false);
         },
       ),
-      { numRuns: 12 },
+      {
+        numRuns: 12,
+        id: "generated restart, continue and nesting commands preserve zero starts and exact history",
+      },
     );
   });
 
@@ -802,7 +817,10 @@ describe("canonical structural commands", () => {
           expect(state.selection.toJSON()).toEqual(postSelection);
         },
       ),
-      { numRuns: 24 },
+      {
+        numRuns: 24,
+        id: "generated cross-paragraph selections format and replace across run boundaries with exact undo",
+      },
     );
   });
 
@@ -853,7 +871,10 @@ describe("canonical structural commands", () => {
           expect(texts(session)).toEqual(["ab😀cd", "EF"]);
         },
       ),
-      { numRuns: 24 },
+      {
+        numRuns: 24,
+        id: "split identities never reuse retired identities and undo restores each source lineage",
+      },
     );
   });
 
@@ -1057,6 +1078,9 @@ test("generated direction and tab command histories preserve authored values and
         }
       },
     ),
-    { numRuns: 12 },
+    {
+      numRuns: 12,
+      id: "generated direction and tab command histories preserve authored values and exact inverse",
+    },
   );
 });

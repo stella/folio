@@ -162,6 +162,9 @@ test("converted lexical drawing ids avoid every authored numeric id and reach a 
         expect(drawings.map(({ image }) => image.id)).toEqual(first);
       },
     ),
-    { numRuns: 40 },
+    {
+      numRuns: 40,
+      id: "converted lexical drawing ids avoid every authored numeric id and reach a fixed point",
+    },
   );
 });

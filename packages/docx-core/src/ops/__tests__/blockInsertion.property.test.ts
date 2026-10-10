@@ -203,6 +203,6 @@ test("block insertion satisfies L1–L7 and idempotent review", () => {
       expect(undo(batch.value)).toStrictEqual(document);
       expect(document).toStrictEqual(original);
     }),
-    { numRuns: 10_000 },
+    { numRuns: 10_000, id: "block insertion satisfies L1–L7 and idempotent review" },
   );
 });

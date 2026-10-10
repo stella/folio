@@ -146,7 +146,10 @@ test(
           }
         }
       }),
-      { numRuns: 10 },
+      {
+        numRuns: 10,
+        id: "orphan list levels never inherit absent or interrupted Markdown ancestors",
+      },
     );
     expect(cases).toBeGreaterThan(0);
   },
@@ -181,7 +184,7 @@ test(
           }
         }
       }),
-      { numRuns: 10 },
+      { numRuns: 10, id: "skipped logical levels nest only under emitted native list ancestors" },
     );
     expect(cases).toBeGreaterThan(0);
   },

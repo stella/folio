@@ -281,7 +281,10 @@ test("generated canonical story lifecycle follows the owner while host props sta
           }
         },
       ),
-      { numRuns: 12 },
+      {
+        numRuns: 12,
+        id: "generated canonical story lifecycle follows the owner while host props stay stale",
+      },
     );
   } finally {
     GlobalRegistrator.unregister();
