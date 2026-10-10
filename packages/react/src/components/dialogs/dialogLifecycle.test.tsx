@@ -67,6 +67,7 @@ const externalResult = {
   totalCount: 3,
   currentIndex: 1,
 };
+const lateExternalResult = { ...externalResult, currentIndex: 2 };
 const popupData = (anchorEl: HTMLAnchorElement, name: string) => ({
   href: `https://${name}.example`,
   displayText: name,
@@ -249,12 +250,16 @@ test("query edits invalidate unchanged host results and reopening an empty query
     ),
   ];
   const assertReset = () => {
-    expect(container.textContent).not.toContain("2 / 3");
+    expect(container.textContent).not.toMatch(/\d+ \/ \d+/u);
     expect(navigation()).toHaveLength(2);
     expect(navigation().every((button) => button.disabled)).toBe(true);
   };
   try {
     await act(async () => root.render(render(true, "selected")));
+    assertReset();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 140));
+    });
     expect(container.textContent).toContain("2 / 3");
     const input = container.querySelector("input");
     if (!input) panic("Find input missing");
@@ -266,11 +271,26 @@ test("query edits invalidate unchanged host results and reopening an empty query
     });
     expect(input.value).toBe("different");
     assertReset();
+    await act(async () =>
+      root.render(
+        wrap(
+          <FindReplaceDialog
+            {...props}
+            isOpen
+            initialSearchText="selected"
+            currentResult={lateExternalResult}
+          />,
+        ),
+      ),
+    );
+    // A new host identity for the old query cannot revive a cleared result.
+    assertReset();
     await act(async () => {
       input.value = "";
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(input.value).toBe("");
+    expect(onFind).toHaveBeenCalledWith("", { matchCase: false, matchWholeWord: false });
     assertReset();
     await act(async () => {
       for (const button of navigation()) button.click();

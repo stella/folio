@@ -1008,7 +1008,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const attachPagedEditor = useCallback((editor: PagedEditorRef | null) => {
     pagedEditorRef.current = editor;
     // The handle is rebuilt as layout/selection change; publish only its stable controller.
-    if (editor) setEditorController(editor.getEditor());
+    if (editor) {
+      setEditorController(editor.getEditor());
+      return;
+    }
+    // Handle replacement detaches and reattaches in one commit. Clear only a
+    // real detach so selection updates never publish a transient null controller.
+    queueMicrotask(() => {
+      if (pagedEditorRef.current === null) setEditorController(null);
+    });
   }, []);
   const hfEditorRef = useRef<InlineHeaderFooterEditorRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1081,6 +1089,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     closeMenu: closeContextMenu,
   } = useContextMenu({ pagedEditorRef });
   // Keep history.state accessible in stable callbacks without stale closures
+  const resetFindResultRef = useRef<(() => void) | null>(null);
   const historyStateRef = useRef(history.state);
   useLayoutEffect(() => {
     historyStateRef.current = history.state;
@@ -1416,7 +1425,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       setFloatingCommentBtn(null);
       setHfEditPosition(null);
       setAnchorPositions(EMPTY_ANCHOR_POSITIONS);
-      findReplace.setMatches([], 0);
+      resetFindResultRef.current?.();
       if (extractTrackedChangesTimerRef.current) {
         clearTimeout(extractTrackedChangesTimerRef.current);
         extractTrackedChangesTimerRef.current = null;
@@ -1428,7 +1437,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     }, [
       setCommentsDirty,
       resetLoadedComments,
-      findReplace,
       setActiveCommentId,
       setAddCommentYPosition,
       setCommentSelectionRange,
@@ -1740,6 +1748,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Find/Replace handlers (depends on handleDocumentChange)
   const {
     currentResult: currentFindResult,
+    resetFindResult,
     handleFind,
     handleFindNext,
     handleFindPrevious,
@@ -1752,6 +1761,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     findReplace,
     selectMatch: selectFindMatch,
   });
+
+  useLayoutEffect(() => {
+    resetFindResultRef.current = resetFindResult;
+  }, [resetFindResult]);
 
   // Handle selection changes from ProseMirror
   const handleSelectionChange = useCallback(

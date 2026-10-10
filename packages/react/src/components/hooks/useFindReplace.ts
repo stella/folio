@@ -42,6 +42,8 @@ type UseFindReplaceParams = {
 export type UseFindReplaceReturn = {
   /** Reactive current find result for FindReplaceDialog. */
   currentResult: FindResult | null;
+  /** Clear results and navigation when the document or query is reset. */
+  resetFindResult: () => void;
   /** Execute a find operation */
   handleFind: (searchText: string, options: FindOptions) => FindResult | null;
   /** Navigate to the next match */
@@ -70,6 +72,12 @@ export function useFindReplace({
   const [currentResult, setCurrentResult] = useState<FindResult | null>(null);
   const { setMatches, goToMatch } = findReplace;
 
+  const resetFindResult = useCallback(() => {
+    manager.clear();
+    setCurrentResult(null);
+    setMatches([], 0);
+  }, [manager, setMatches]);
+
   const readDocumentState = useCallback(
     () => getDocumentState?.() ?? documentState ?? null,
     [getDocumentState, documentState],
@@ -88,8 +96,7 @@ export function useFindReplace({
     (searchText: string, options: FindOptions): FindResult | null => {
       const currentDocument = readDocumentState();
       if (!currentDocument || !searchText.trim()) {
-        manager.clear();
-        setCurrentResult(null);
+        resetFindResult();
         return null;
       }
 
@@ -105,7 +112,7 @@ export function useFindReplace({
 
       return result;
     },
-    [readDocumentState, manager, setMatches, revealMatch],
+    [readDocumentState, manager, setMatches, revealMatch, resetFindResult],
   );
 
   const handleFindNext = useCallback((): FindMatch | null => {
@@ -162,16 +169,15 @@ export function useFindReplace({
       }
 
       handleDocumentChange(outcome.document);
-      setCurrentResult(null);
-      setMatches([], 0);
-
+      resetFindResult();
       return outcome.replacedCount;
     },
-    [readDocumentState, manager, handleDocumentChange, setMatches],
+    [readDocumentState, manager, handleDocumentChange, resetFindResult],
   );
 
   return {
     currentResult,
+    resetFindResult,
     handleFind,
     handleFindNext,
     handleFindPrevious,

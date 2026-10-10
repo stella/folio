@@ -117,6 +117,26 @@ type FindReplaceDialogFormProps = FindReplaceDialogProps & {
   onMatchWholeWordChange: (value: boolean) => void;
 };
 
+type FindDialogResultState =
+  | { status: "cleared" }
+  | { status: "ready"; queryKey: string; result: FindResult };
+
+const getFindQueryKey = (text: string, { matchCase, matchWholeWord }: FindOptions) =>
+  JSON.stringify([text, matchCase, matchWholeWord]);
+
+const getQueryResult = (state: FindDialogResultState, queryKey: string): FindResult | null => {
+  switch (state.status) {
+    case "cleared":
+      return null;
+    case "ready":
+      return state.queryKey === queryKey ? state.result : null;
+    default: {
+      const exhaustive: never = state;
+      return exhaustive;
+    }
+  }
+};
+
 function FindReplaceDialogForm({
   isOpen,
   onClose,
@@ -139,17 +159,26 @@ function FindReplaceDialogForm({
   const { Button, Input, Checkbox } = useFolioUI();
   // State
   const [searchText, setSearchText] = useState(initialSearchText);
-  const [localResult, setResult] = useState<FindResult | null>(currentResult ?? null);
+  const queryKey = getFindQueryKey(searchText, { matchCase, matchWholeWord });
+  const [findResult, setFindResult] = useState<FindDialogResultState>({ status: "cleared" });
   const [previousCurrentResult, setPreviousCurrentResult] = useState(currentResult);
   if (currentResult !== previousCurrentResult) {
     setPreviousCurrentResult(currentResult);
-    if (currentResult !== undefined) {
-      setResult(currentResult);
+    // Host cursor updates belong to the last completed query. They cannot
+    // revive a result invalidated by a pending query/options edit.
+    if (
+      findResult.status === "ready" &&
+      findResult.queryKey === queryKey &&
+      currentResult !== undefined
+    ) {
+      setFindResult(
+        currentResult
+          ? { status: "ready", queryKey, result: currentResult }
+          : { status: "cleared" },
+      );
     }
   }
-  // Host results update the local cursor only when a new result arrives. Local
-  // query/options edits can invalidate it while the host still holds the old one.
-  const result = searchText.trim() ? localResult : null;
+  const result = getQueryResult(findResult, queryKey);
 
   // Refs
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -164,12 +193,20 @@ function FindReplaceDialogForm({
   const performSearch = useCallback(
     (text = searchText, options = { matchCase, matchWholeWord }) => {
       if (!text.trim()) {
-        setResult(null);
+        setFindResult({ status: "cleared" });
         onClearHighlights?.();
         return;
       }
       const searchResult = onFind(text, options);
-      setResult(searchResult);
+      setFindResult(
+        searchResult
+          ? {
+              status: "ready",
+              queryKey: getFindQueryKey(text, options),
+              result: searchResult,
+            }
+          : { status: "cleared" },
+      );
       if (searchResult?.matches && onHighlightMatches) {
         onHighlightMatches(searchResult.matches);
       } else {
@@ -202,23 +239,31 @@ function FindReplaceDialogForm({
 
   const handleMatchCaseChange = useCallback(
     (value: boolean) => {
-      setResult(null);
+      setFindResult({ status: "cleared" });
       onMatchCaseChange(value);
     },
     [onMatchCaseChange],
   );
   const handleMatchWholeWordChange = useCallback(
     (value: boolean) => {
-      setResult(null);
+      setFindResult({ status: "cleared" });
       onMatchWholeWordChange(value);
     },
     [onMatchWholeWordChange],
   );
 
-  const handleSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setSearchText(e.target.value);
-    setResult(null);
-  }, []);
+  const handleSearchChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const text = e.target.value;
+      setSearchText(text);
+      setFindResult({ status: "cleared" });
+      if (!text.trim()) {
+        onFind(text, { matchCase, matchWholeWord });
+        onClearHighlights?.();
+      }
+    },
+    [onFind, matchCase, matchWholeWord, onClearHighlights],
+  );
 
   const handleFindNext = useCallback(() => {
     if (!searchText.trim()) {
@@ -234,12 +279,16 @@ function FindReplaceDialogForm({
     const match = onFindNext();
     if (match) {
       const newIndex = (result.currentIndex + 1) % result.totalCount;
-      setResult({
-        ...result,
-        currentIndex: newIndex,
+      setFindResult({
+        status: "ready",
+        queryKey,
+        result: {
+          ...result,
+          currentIndex: newIndex,
+        },
       });
     }
-  }, [searchText, result, performSearch, onFindNext]);
+  }, [searchText, result, queryKey, performSearch, onFindNext]);
 
   const handleFindPrevious = useCallback(() => {
     if (!searchText.trim()) {
@@ -255,12 +304,16 @@ function FindReplaceDialogForm({
     const match = onFindPrevious();
     if (match) {
       const newIndex = result.currentIndex === 0 ? result.totalCount - 1 : result.currentIndex - 1;
-      setResult({
-        ...result,
-        currentIndex: newIndex,
+      setFindResult({
+        status: "ready",
+        queryKey,
+        result: {
+          ...result,
+          currentIndex: newIndex,
+        },
       });
     }
-  }, [searchText, result, performSearch, onFindPrevious]);
+  }, [searchText, result, queryKey, performSearch, onFindPrevious]);
 
   const handleSearchKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
