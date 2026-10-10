@@ -16,6 +16,10 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import {
+  insertedTextBoxDocument,
+  INSERTED_TEXT_BOX_STYLE,
+} from "./__tests__/insertedTextBoxDocument";
 import { buildTextBoxTableDocument, findTextBoxShape } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
 import { compareDocx } from "./compare/compare";
@@ -1187,4 +1191,52 @@ describe("generateRedlineDocx inserted list items", () => {
       });
     }
   });
+});
+
+test("the current text-redline contract flattens new carriers and imports their paragraph styles once", async () => {
+  for (const innerContent of ["paragraph", "tableCell"] as const) {
+    const base = await createDocx(
+      insertedTextBoxDocument({ side: "base", innerContent, suffix: "inserted" }),
+    );
+    const revised = await createDocx(
+      insertedTextBoxDocument({ side: "revised", innerContent, suffix: "inserted" }),
+    );
+    const result = await generateRedlineDocx(base, revised);
+    expect(result.skipped).toEqual([]);
+    expect(result.unprocessedStories).toEqual([]);
+    const accepting = await FolioDocxReviewer.fromBuffer(result.buffer);
+    expect(accepting.acceptAll()).toBeGreaterThan(0);
+    const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+    expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([
+      "Unchanged anchor",
+      "Parent text inserted",
+      "Inner text inserted",
+    ]);
+    const inserted = accepted
+      .snapshot()
+      .blocks.filter(({ text }) => text !== "Unchanged anchor")
+      .map((block) => expectParagraphBlock(block));
+    expect(inserted).toHaveLength(2);
+    const importedStyleIds = new Set(inserted.map(({ styleId }) => styleId));
+    expect(importedStyleIds.size).toBe(1);
+    expect(importedStyleIds.has(INSERTED_TEXT_BOX_STYLE)).toBe(false);
+    for (const block of inserted) {
+      expect(block.previewRuns).toContainEqual(expect.objectContaining({ bold: true }));
+    }
+    const styles = accepted.toDocument().package.styles?.styles ?? [];
+    expect(styles.filter(({ styleId }) => importedStyleIds.has(styleId))).toHaveLength(1);
+    expect(styles.find(({ styleId }) => styleId === INSERTED_TEXT_BOX_STYLE)?.rPr?.bold).toBe(
+      false,
+    );
+    // Insertions currently carry text and paragraph properties, not container structure.
+    expect(accepted.toDocument().package.document.content.map(({ type }) => type)).toEqual([
+      "paragraph",
+      "paragraph",
+      "paragraph",
+    ]);
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
+    expect(rejecting.rejectAll()).toBeGreaterThan(0);
+    const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+    expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual(["Unchanged anchor"]);
+  }
 });

@@ -1,4 +1,13 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
+import { panic } from "better-result";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
+import {
+  insertedTextBoxDocument,
+  INSERTED_TEXT_BOX_STYLE,
+} from "../__tests__/insertedTextBoxDocument";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 
 import {
   createFolioAIEditSnapshotWithStyleResolver,
@@ -79,7 +88,7 @@ test("inserted resource rebinding preserves full-source identities across duplic
     });
     const mapped = rebindInsertedResourceBlocks(projection, rebound);
     expect([...mapped.keys()]).toEqual([insertedBlock?.id]);
-    if (!insertedBlock) throw new Error("Missing insertion fixture block");
+    if (!insertedBlock) panic("Missing insertion fixture block");
     expect(mapped.get(insertedBlock.id)).toMatchObject({
       id: insertedBlock.id,
       text: insertedBlock.text,
@@ -95,4 +104,87 @@ test("inserted resource rebinding preserves full-source identities across duplic
     expect(trailing.attrs["styleId"]).toBe(ANCHOR_STYLE);
     expect(insertion.attrs["styleId"]).toBe(SOURCE_STYLE);
   }
+});
+
+setDefaultTimeout(propertyTestTimeout(30_000));
+
+test("inserted nested carriers project and rebind every paragraph exactly once", async () => {
+  await assertProperty(
+    fc.asyncProperty(
+      fc.stringMatching(/^[a-z]{1,20}$/u),
+      fc.integer({ min: 1, max: 4 }),
+      async (suffix, innerCount) => {
+        for (const innerContent of ["paragraph", "tableCell"] as const) {
+          for (const carrierCount of [1, 2]) {
+            const baseDocument = insertedTextBoxDocument({
+              side: "base",
+              innerContent,
+              suffix,
+              innerCount,
+              carrierCount,
+            });
+            const revisedDocument = insertedTextBoxDocument({
+              side: "revised",
+              innerContent,
+              suffix,
+              innerCount,
+              carrierCount,
+            });
+            const base = createFolioAIEditSnapshotWithStyleResolver(
+              toProseDoc(baseDocument),
+              createStyleResolver(baseDocument.package.styles),
+            );
+            const revised = createFolioAIEditSnapshotWithStyleResolver(
+              toProseDoc(revisedDocument),
+              createStyleResolver(revisedDocument.package.styles),
+            );
+            const insertedBlocks = revised.blocks.filter(({ text }) => text !== "Unchanged anchor");
+            const expectedTexts = Array.from({ length: carrierCount }, (_, carrierIndex) => {
+              const carrierSuffix =
+                carrierCount === 1 ? suffix : `${suffix} carrier ${carrierIndex + 1}`;
+              return [
+                `Parent text ${carrierSuffix}`,
+                ...Array.from(
+                  { length: innerCount },
+                  (_innerValue, innerIndex) =>
+                    `Inner text ${carrierSuffix}${innerCount === 1 ? "" : ` ${innerIndex + 1}`}`,
+                ),
+              ];
+            }).flat();
+            const expectedCount = carrierCount * (1 + innerCount);
+            expect(insertedBlocks.map(({ text }) => text)).toEqual(expectedTexts);
+            const projection = createInsertedResourceProjection({ base, revised });
+            expect(projection.snapshot.blocks).toHaveLength(expectedCount);
+            expect(projection.revisedBlockIds).toEqual(insertedBlocks.map(({ id }) => id));
+            expect(new Set(projection.revisedBlockIds).size).toBe(expectedCount);
+            const rebound = remapFolioAIEditSnapshotStyleReferences({
+              snapshot: projection.snapshot,
+              styleIdMap: new Map([[INSERTED_TEXT_BOX_STYLE, IMPORTED_STYLE]]),
+              defaultParagraphStyleId: undefined,
+              importedStyleResolver: importedResolver,
+            });
+            const mapped = rebindInsertedResourceBlocks(projection, rebound);
+            expect(mapped.size).toBe(expectedCount);
+            for (const original of insertedBlocks) {
+              expect(mapped.get(original.id)).toMatchObject({
+                id: original.id,
+                text: original.text,
+                styleId: IMPORTED_STYLE,
+              });
+            }
+            expect(revised.blocks.filter(({ text }) => text === "Unchanged anchor")).toEqual(
+              base.blocks,
+            );
+            for (const block of insertedBlocks) {
+              expect(expectParagraphBlock(block).styleId).toBe(INSERTED_TEXT_BOX_STYLE);
+            }
+          }
+        }
+      },
+    ),
+    {
+      // Vary nested paragraph count; every run covers both shapes and sibling counts.
+      numRuns: 4,
+    },
+  );
 });

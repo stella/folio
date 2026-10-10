@@ -20,22 +20,57 @@ export const createInsertedResourceProjection = ({
   revised,
 }: CreateInsertedResourceProjectionOptions) => {
   const document = sourceDocumentOf(revised);
-  const insertions = alignFolioBlocks(base.blocks, revised.blocks).flatMap((event) => {
-    if (event.type === "pair" || event.type === "baseOnly") return [];
-    const anchor =
-      revised.anchors[event.block.id] ?? panic("An inserted block lost its source anchor");
-    const node =
-      document.nodeAt(anchor.from) ?? panic("An inserted block lost its source paragraph");
-    return [{ revisedBlockId: event.block.id, node }];
-  });
+  const insertions = alignFolioBlocks(base.blocks, revised.blocks)
+    .flatMap((event) => {
+      if (event.type === "pair" || event.type === "baseOnly") return [];
+      const anchor =
+        revised.anchors[event.block.id] ?? panic("An inserted block lost its source anchor");
+      const node =
+        document.nodeAt(anchor.from) ?? panic("An inserted block lost its source paragraph");
+      return [{ from: anchor.from, to: anchor.to, node }];
+    })
+    .toSorted((left, right) => left.from - right.from);
+  const carriers: ((typeof insertions)[number] & { projectionFrom: number })[] = [];
+  let projectionFrom = 0;
+  for (const insertion of insertions) {
+    // Copy each source subtree once, even when several inserted blocks belong to it.
+    if (insertion.from < (carriers.at(-1)?.to ?? -1)) continue;
+    carriers.push({ ...insertion, projectionFrom });
+    projectionFrom += insertion.node.nodeSize;
+  }
+  // Carry every projected descendant by its position inside its maximal source
+  // carrier. Subset-generated IDs cannot identify duplicate or positional IDs.
+  const revisedIdsByProjectionPosition = new Map<number, FolioAIBlock["id"]>();
+  let carrierIndex = 0;
+  for (const block of revised.blocks) {
+    const anchor = revised.anchors[block.id];
+    if (anchor === undefined) continue;
+    while (anchor.from >= (carriers.at(carrierIndex)?.to ?? Number.POSITIVE_INFINITY)) {
+      carrierIndex++;
+    }
+    const carrier = carriers.at(carrierIndex);
+    if (carrier === undefined || anchor.from < carrier.from || anchor.to > carrier.to) continue;
+    revisedIdsByProjectionPosition.set(
+      carrier.projectionFrom + anchor.from - carrier.from,
+      block.id,
+    );
+  }
   const snapshot = createFolioAIEditSnapshotWithStyleResolver(
-    document.copy(Fragment.from(insertions.map(({ node }) => node))),
+    document.copy(Fragment.from(carriers.map(({ node }) => node))),
     styleResolverOf(revised),
   );
-  if (snapshot.blocks.length !== insertions.length) {
-    return panic("A redline resource projection must preserve one block per carried insertion");
+  if (snapshot.blocks.length !== revisedIdsByProjectionPosition.size) {
+    return panic("A redline resource projection must preserve its maximal carriers' blocks");
   }
-  return { snapshot, revisedBlockIds: insertions.map(({ revisedBlockId }) => revisedBlockId) };
+  const revisedBlockIds = snapshot.blocks.map((block) => {
+    const anchor =
+      snapshot.anchors[block.id] ?? panic("A projected resource block lost its anchor");
+    return (
+      revisedIdsByProjectionPosition.get(anchor.from) ??
+      panic("A projected resource block lost its carried source identity")
+    );
+  });
+  return { snapshot, revisedBlockIds };
 };
 
 /** Subset projection IDs never participate in rebinding the full revised snapshot. */
