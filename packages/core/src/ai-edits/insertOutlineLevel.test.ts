@@ -75,7 +75,7 @@ const insertedAfterReopen = async (
     mode,
     operations: [{ id: "op", type, blockId, text: INSERTED, styleId: null, outlineLevel }],
   });
-  const result = reviewer.applyDocumentOperations(batch);
+  const result = reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" });
   expect(result.skipped).toEqual([]);
   if (mode !== "direct") reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());

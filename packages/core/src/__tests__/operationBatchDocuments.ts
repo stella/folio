@@ -210,6 +210,7 @@ export class OperationSession {
       },
     };
     const result = applyFolioDocumentOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: this.snapshot(),
       batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, mode, operations },

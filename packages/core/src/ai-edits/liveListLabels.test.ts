@@ -40,7 +40,10 @@ const apply = (
   mode: "direct" | "tracked-changes",
   operations: FolioDocumentOperation[],
 ): void => {
-  const result = reviewer.applyDocumentOperations({ version: 1, mode, operations });
+  const result = reviewer.applyDocumentOperations(
+    { version: 1, mode, operations },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.issues).toEqual([]);
   expect(result.status).toBe("committed");
 };

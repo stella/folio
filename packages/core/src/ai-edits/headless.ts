@@ -318,6 +318,8 @@ export type FolioDocxReviewerOptions = {
 
 /** Options for {@link FolioDocxReviewer.applyOperations}. */
 export type FolioApplyOperationsOptions = {
+  /** Required policy for undefined style and numbering references. */
+  undefinedReferences: FolioUndefinedReferencePolicy;
   /** `"tracked-changes"` (default) produces ins/del redlines; `"direct"` edits in place. */
   mode?: FolioAIEditApplyMode;
   /**
@@ -487,8 +489,6 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
    * the target document — keeps them instead.
    */
   replacementBackground?: FolioReplacementBackground;
-  /** Policy for undefined style and numbering references; see FolioUndefinedReferencePolicy. */
-  undefinedReferences?: FolioUndefinedReferencePolicy;
 };
 
 export type { FolioRevisionStamp };
@@ -614,7 +614,7 @@ type ApplyDocumentOperationsInternalOptions = {
   wordDiff?: FolioWordDiffOptions;
   tableTemplates?: FolioTableTemplates;
   replacementBackground?: FolioReplacementBackground;
-  undefinedReferences?: FolioUndefinedReferencePolicy;
+  undefinedReferences: FolioUndefinedReferencePolicy;
   createUndoEntry: boolean;
 };
 
@@ -1082,7 +1082,7 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
  * const { blocks } = reviewer.snapshot();
  * reviewer.applyOperations([
  *   { id: "1", type: "replaceInBlock", blockId: blocks[0].id, find: "$50k", replace: "$500k" },
- * ]);
+ * ], { undefinedReferences: "refuse" });
  * const reviewed = await reviewer.toBuffer();
  * ```
  */
@@ -1740,7 +1740,7 @@ export class FolioDocxReviewer {
    */
   applyOperations(
     operations: FolioAIEditOperation[],
-    options: FolioApplyOperationsOptions = {},
+    options: FolioApplyOperationsOptions,
   ): FolioAIEditApplyResult {
     const { applied, skipped } = this.applyDocumentOperationsInternal({
       story: MAIN_STORY,
@@ -1752,6 +1752,7 @@ export class FolioDocxReviewer {
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && { revisionStamp: options.revisionStamp }),
       ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
+      undefinedReferences: options.undefinedReferences,
       createUndoEntry: false,
     });
     return { applied, skipped };
@@ -1765,7 +1766,7 @@ export class FolioDocxReviewer {
    */
   applyDocumentOperations(
     batch: FolioDocumentOperationBatch,
-    options: FolioApplyDocumentOperationsOptions = {},
+    options: FolioApplyDocumentOperationsOptions,
   ): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story: MAIN_STORY,
@@ -1773,6 +1774,7 @@ export class FolioDocxReviewer {
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && { revisionStamp: options.revisionStamp }),
       ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
+      undefinedReferences: options.undefinedReferences,
       createUndoEntry: true,
     });
   }
@@ -1796,7 +1798,7 @@ export class FolioDocxReviewer {
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
-      ...(undefinedReferences !== undefined && { undefinedReferences }),
+      undefinedReferences,
       createUndoEntry: true,
     });
   }
@@ -1845,7 +1847,7 @@ export class FolioDocxReviewer {
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
-      ...(undefinedReferences !== undefined && { undefinedReferences }),
+      undefinedReferences,
       createCommentId: (text) => {
         const comment = createReviewerComment({
           id: this.nextCommentId(),
@@ -2765,6 +2767,7 @@ export class FolioDocxReviewer {
         },
       };
       const result = applyFolioDocumentOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         batch: {
@@ -3620,6 +3623,7 @@ export const applyFolioAIEditsToBuffer = async (
     ...(options.author !== undefined && { author: options.author }),
   });
   const { applied, skipped } = reviewer.applyOperations(operations, {
+    undefinedReferences: "refuse",
     ...(options.mode !== undefined && { mode: options.mode }),
     ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
   });

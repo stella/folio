@@ -276,11 +276,14 @@ const apply = (reviewer: FolioDocxReviewer, testCase: Case, mode: FolioAIEditApp
     return block.id;
   };
   const operations = testCase.steps.map((step) => ({ step, operation: step.operation(blockId) }));
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: operations.map(({ operation }) => operation),
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: operations.map(({ operation }) => operation),
+    },
+    { undefinedReferences: "refuse" },
+  );
   const appliedIds = new Set(result.applied.map(({ id }) => id));
   const applied = operations.filter(({ operation }) => appliedIds.has(operation.id));
   let expected = original.blocks;
@@ -342,11 +345,16 @@ describe("an applied operation saves as requested", () => {
         acceptApplied(reviewer, mode);
         const [first] = reviewer.getContent();
         if (!first) throw new Error("no first block");
-        const later = reviewer.applyDocumentOperations({
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "direct",
-          operations: [{ id: "lead", type: "insertBeforeBlock", blockId: first.id, text: "Lead." }],
-        });
+        const later = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "direct",
+            operations: [
+              { id: "lead", type: "insertBeforeBlock", blockId: first.id, text: "Lead." },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
         expect(later.applied).toHaveLength(1);
         expect(project(await saveAndReopen(reviewer))).toEqual({
           blocks: [{ kind: "paragraph", text: "Lead.", ends: null }, ...expected],

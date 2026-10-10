@@ -281,11 +281,14 @@ test("removing the prose between custom-numbered blocks keeps every saved reader
     const reviewer = await openReviewer(await directNumberedDocument());
     const separator = reviewer.getContent().find(({ text }) => text === "Unnumbered body text.");
     assert.ok(separator);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations: [{ id: "delete-separator", type: "deleteBlock", blockId: separator.id }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [{ id: "delete-separator", type: "deleteBlock", blockId: separator.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.equal(result.applied.length, 1);
     reviewer.acceptAll();
     await assertReadersAgree(
@@ -360,20 +363,23 @@ test("partial numbered deletions retain empty structure across saved review reso
     let reviewer = await openReviewer(await directNumberedDocument());
     const target = reviewer.getContent().find((block) => block.text === text);
     assert.ok(target);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        { id: "s-1", type: "deleteBlock", blockId: target.id },
-        {
-          id: "s-2",
-          type: "replaceInBlock",
-          blockId: target.id,
-          find: "Numbered",
-          replace: "revised",
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          { id: "s-1", type: "deleteBlock", blockId: target.id },
+          {
+            id: "s-2",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Numbered",
+            replace: "revised",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.equal(result.applied.length, 1);
     reviewer = await openReviewer(new Uint8Array(await reviewer.toBuffer()), "Second Reviewer");
     const deletion = reviewer.getChanges().find((change) => change.type === "deletion");

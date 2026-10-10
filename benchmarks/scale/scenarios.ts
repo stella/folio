@@ -71,7 +71,7 @@ const prepareEdit = async (build: (size: number) => Document, size: number): Pro
           replace: "measured",
         },
       ],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     if (result.applied.length !== 1)
       throw new Error(`Scale edit was skipped: ${JSON.stringify(result.skipped)}`);
@@ -93,7 +93,7 @@ const prepareTableEdit = async (size: number): Promise<Operation> => {
           replace: "Edited row",
         },
       ],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     if (result.applied.length !== 1)
       throw new Error(`Scale table edit was skipped: ${JSON.stringify(result.skipped)}`);

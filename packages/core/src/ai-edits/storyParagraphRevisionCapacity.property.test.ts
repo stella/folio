@@ -109,6 +109,7 @@ type ApplyOptions = {
 
 const apply = ({ reviewer, story, operation }: ApplyOptions) =>
   reviewer.applyDocumentOperationsToStory({
+    undefinedReferences: "refuse",
     story,
     batch: {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -317,6 +318,7 @@ test.each(Object.values(STORIES))(
     const survivor = block({ reviewer, story, index: 1 });
     expect(
       reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
         story,
         batch: {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -472,6 +474,7 @@ test.each(Object.values(STORIES))(
       const carrier = block({ reviewer, story, index: sourceIndex + 1 });
       expect(
         reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
           story,
           batch: {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -520,6 +523,7 @@ test.each(Object.values(STORIES))(
     ).toEqual([{ id: "explicit-merge", reason: "pendingParagraphPropertyChange" }]);
     expect(sequential.reviewer.snapshotStory(story)).toEqual(before);
     const result = batch.reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,

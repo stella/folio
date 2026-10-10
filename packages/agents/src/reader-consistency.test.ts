@@ -676,11 +676,14 @@ const runListEdits = async (seed: number, mode: Mode, steps: number): Promise<vo
     const blocks = reviewer.getContent().filter(isFolioAIContentBlock);
     const operations = LIST_EDITS[name]?.(blocks, random, step);
     if (!operations) continue;
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations,
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations,
+      },
+      { undefinedReferences: "refuse" },
+    );
     log.push(`${name}:${result.status}`);
     await check(() => expectLiveAndSavedAgree(reviewer));
   }
@@ -825,7 +828,7 @@ const buildNotedDocument = async (): Promise<Uint8Array> => {
         comment: { text: "Check." },
       },
     ],
-    { mode: "direct" },
+    { undefinedReferences: "refuse", mode: "direct" },
   );
   if (commented.skipped.length > 0) {
     throw new Error(`fixture comment was refused: ${JSON.stringify(commented.skipped)}`);

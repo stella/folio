@@ -619,36 +619,42 @@ describe("paragraph spacing comparison", () => {
       panic("expected a paragraph block id");
     }
 
-    const first = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "first-spacing",
-          type: "setBlockParagraphProperties",
-          blockId,
-          properties: { spacing: firstTarget },
-        },
-      ],
-    });
+    const first = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "first-spacing",
+            type: "setBlockParagraphProperties",
+            blockId,
+            properties: { spacing: firstTarget },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(first.skipped).toEqual([]);
     expectDirectSpacing(reviewer, firstTarget);
 
     const pending = await reviewer.toBuffer();
     const reopened = await FolioDocxReviewer.fromBuffer(pending);
-    const second = reopened.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      atomic: true,
-      operations: [
-        {
-          id: "second-alignment",
-          type: "setBlockParagraphProperties",
-          blockId,
-          properties: { alignment: "center" },
-        },
-      ],
-    });
+    const second = reopened.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        atomic: true,
+        operations: [
+          {
+            id: "second-alignment",
+            type: "setBlockParagraphProperties",
+            blockId,
+            properties: { alignment: "center" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(second.status).toBe("rejected");
     expect(second.applied).toEqual([]);
     expect(second.skipped).toEqual([
@@ -664,19 +670,22 @@ describe("paragraph spacing comparison", () => {
     expect(expectParagraphBlock(reopened.snapshot().blocks.at(0)).directAlignment).toBeUndefined();
     expectDirectSpacing(reopened, firstTarget);
 
-    const replacement = reopened.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "second-replacement-style",
-          type: "replaceBlock",
-          blockId,
-          text: TEXT,
-          styleId: null,
-        },
-      ],
-    });
+    const replacement = reopened.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "second-replacement-style",
+            type: "replaceBlock",
+            blockId,
+            text: TEXT,
+            styleId: null,
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(replacement.applied).toEqual([]);
     expect(replacement.skipped).toEqual([
       { id: "second-replacement-style", reason: "pendingParagraphPropertyChange" },
@@ -716,45 +725,51 @@ describe("paragraph spacing comparison", () => {
       panic("expected a paragraph block id");
     }
     expect(
-      reviewer.applyDocumentOperations({
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "first-spacing",
+              type: "setBlockParagraphProperties",
+              blockId,
+              properties: { spacing: firstTarget },
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).skipped,
+    ).toEqual([]);
+
+    const mappedBatch = reviewer.applyDocumentOperations(
+      {
         version: 1,
         mode: "tracked-changes",
         operations: [
           {
-            id: "first-spacing",
+            id: "mapped-second-spacing",
             type: "setBlockParagraphProperties",
             blockId,
-            properties: { spacing: firstTarget },
+            properties: { spacing: FULL_SPACING },
+          },
+          {
+            id: "mapped-second-replacement-style",
+            type: "replaceBlock",
+            blockId,
+            text: TEXT,
+            styleId: NEXT_STYLE_ID,
+          },
+          {
+            id: "insert-before-pending",
+            type: "insertBeforeBlock",
+            blockId,
+            text: INSERTED_TEXT,
           },
         ],
-      }).skipped,
-    ).toEqual([]);
-
-    const mappedBatch = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "mapped-second-spacing",
-          type: "setBlockParagraphProperties",
-          blockId,
-          properties: { spacing: FULL_SPACING },
-        },
-        {
-          id: "mapped-second-replacement-style",
-          type: "replaceBlock",
-          blockId,
-          text: TEXT,
-          styleId: NEXT_STYLE_ID,
-        },
-        {
-          id: "insert-before-pending",
-          type: "insertBeforeBlock",
-          blockId,
-          text: INSERTED_TEXT,
-        },
-      ],
-    });
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(mappedBatch.applied.map(({ id }) => id)).toEqual(["insert-before-pending"]);
     expect(
       mappedBatch.skipped.toSorted(({ id: left }, { id: right }) => left.localeCompare(right)),
@@ -808,33 +823,39 @@ describe("paragraph spacing comparison", () => {
     }
 
     expect(
-      reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "spacing-first",
-            type: "setBlockParagraphProperties",
-            blockId,
-            properties: { spacing: firstTarget },
-          },
-        ],
-      }).skipped,
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "spacing-first",
+              type: "setBlockParagraphProperties",
+              blockId,
+              properties: { spacing: firstTarget },
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).skipped,
     ).toEqual([]);
     expect(
-      reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "insert-spaced",
-            type: "insertAfterBlock",
-            blockId,
-            text: INSERTED_TEXT,
-            spacing: FULL_SPACING,
-          },
-        ],
-      }).skipped,
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "insert-spaced",
+              type: "insertAfterBlock",
+              blockId,
+              text: INSERTED_TEXT,
+              spacing: FULL_SPACING,
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).skipped,
     ).toEqual([]);
 
     const pending = await reviewer.toBuffer();

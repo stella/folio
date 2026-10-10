@@ -148,11 +148,14 @@ const applyOne = (
   operation: FolioDocumentOperation,
   mode: FolioDocumentOperationMode,
 ) =>
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: [operation],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [operation],
+    },
+    { undefinedReferences: "refuse" },
+  );
 
 describe("an undefined numbering instance is skipped before anything is applied", () => {
   test.each(cases)(
@@ -222,22 +225,25 @@ describe("an undefined numbering instance is skipped before anything is applied"
   test("an atomic batch holding one undefined instance commits nothing", async () => {
     const { reviewer, ids } = await openReviewer(UNUSED_901);
     const before = outline(reviewer);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      atomic: true,
-      operations: [
-        { id: "good", type: "insertAfterBlock", blockId: ids.tail, text: "Fine." },
-        {
-          ...NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, {
-            kind: "reference",
-            numId: 7,
-            ilvl: 0,
-          }),
-          id: "bad",
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        atomic: true,
+        operations: [
+          { id: "good", type: "insertAfterBlock", blockId: ids.tail, text: "Fine." },
+          {
+            ...NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, {
+              kind: "reference",
+              numId: 7,
+              ilvl: 0,
+            }),
+            id: "bad",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.status).toBe("rejected");
     expect(result.skipped.map(({ id, reason }) => [id, reason])).toEqual([
       ["good", "atomicBatchRejected"],
@@ -281,11 +287,14 @@ describe("a batch result the save validator refuses is not committed", () => {
   test("the operation is skipped with invalidResult and the validator's reason", async () => {
     const { reviewer, tail } = await openWithBlankAuthor();
     const before = outline(reviewer);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [{ id: "insert", type: "insertAfterBlock", blockId: tail, text: "Added." }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [{ id: "insert", type: "insertAfterBlock", blockId: tail, text: "Added." }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.status).toBe("committed");
     expect(result.applied).toEqual([]);
     expect(result.undoHandle).toBeNull();
@@ -306,14 +315,17 @@ describe("a batch result the save validator refuses is not committed", () => {
 
   test("in a best-effort batch only the offending operation is refused", async () => {
     const { reviewer, tail } = await openWithBlankAuthor();
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        { id: "direct", type: "insertAfterBlock", blockId: tail, text: "Direct." },
-        { id: "noted", type: "commentOnBlock", blockId: tail, comment: { text: "Why?" } },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          { id: "direct", type: "insertAfterBlock", blockId: tail, text: "Direct." },
+          { id: "noted", type: "commentOnBlock", blockId: tail, comment: { text: "Why?" } },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     // Direct insertion writes no revision, so no author; the comment's author
     // is the blank one, which no save accepts.
     expect(result.applied.map(({ id }) => id)).toEqual(["direct"]);
@@ -331,15 +343,18 @@ describe("a batch result the save validator refuses is not committed", () => {
   test("an atomic batch is rejected whole", async () => {
     const { reviewer, tail } = await openWithBlankAuthor();
     const before = outline(reviewer);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      atomic: true,
-      operations: [
-        { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
-        { id: "b", type: "insertBeforeBlock", blockId: tail, text: "Two." },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        atomic: true,
+        operations: [
+          { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
+          { id: "b", type: "insertBeforeBlock", blockId: tail, text: "Two." },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.status).toBe("rejected");
     expect(result.skipped.map(({ reason }) => reason)).toEqual(["invalidResult", "invalidResult"]);
     expect(outline(reviewer)).toEqual(before);
@@ -347,12 +362,15 @@ describe("a batch result the save validator refuses is not committed", () => {
 
   test("a dry run reports the refusal without applying anything", async () => {
     const { reviewer, tail } = await openWithBlankAuthor();
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      dryRun: true,
-      operations: [{ id: "a", type: "insertAfterBlock", blockId: tail, text: "One." }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        dryRun: true,
+        operations: [{ id: "a", type: "insertAfterBlock", blockId: tail, text: "One." }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.status).toBe("previewed");
     expect(result.skipped.map(({ reason }) => reason)).toEqual(["invalidResult"]);
   });
@@ -378,6 +396,7 @@ describe("a batch result the save validator refuses is not committed", () => {
     const snapshot = createFolioAIEditSnapshot(state.doc);
     const tail = snapshot.blocks.find((block) => block.text === TAIL)?.id ?? "";
     const refused = applyFolioDocumentOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       author: " ",
@@ -391,6 +410,7 @@ describe("a batch result the save validator refuses is not committed", () => {
     expect(dispatched).toEqual([]);
 
     const accepted = applyFolioDocumentOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       author: "Reviewer",

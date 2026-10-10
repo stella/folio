@@ -4,6 +4,7 @@ export {
   type FolioAIEditView,
   type FolioWordDiffOptions,
   type FolioRevisionStamp,
+  type FolioUndefinedReferencePolicy,
 } from "./apply";
 export type { FolioContentParagraphKind } from "../compare/content-types";
 export {

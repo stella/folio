@@ -36,11 +36,14 @@ const savedLabels = async (
   reviewer: FolioDocxReviewer,
   operations: FolioDocumentOperation[],
 ): Promise<string[]> => {
-  const result = reviewer.applyDocumentOperations({
-    version: 1,
-    mode: "tracked-changes",
-    operations,
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: 1,
+      mode: "tracked-changes",
+      operations,
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.status).toBe("committed");
   expect(result.issues).toEqual([]);
 

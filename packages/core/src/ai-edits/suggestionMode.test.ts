@@ -99,6 +99,7 @@ const applySuggestedReplace = (
     throw new Error("expected a block");
   }
   return applyFolioAIEditOperations({
+    undefinedReferences: "refuse",
     view,
     snapshot,
     operations: [{ id: "op-1", type: "replaceInBlock", blockId: block.id, find, replace }],
@@ -132,6 +133,7 @@ describe("suggested apply mode", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
     const block = snapshot.blocks.at(0)!;
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -178,6 +180,7 @@ describe("suggested apply mode", () => {
       throw new Error("expected the first-cell paragraph in the snapshot");
     }
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [{ id: "merge", type: "mergeTableCells", blockId: anchor.id, rowCount: 2 }],
@@ -214,6 +217,7 @@ describe("suggested apply mode", () => {
       throw new Error("expected the merged-cell paragraph in the snapshot");
     }
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [{ id: "split", type: "splitTableCell", blockId: anchor.id }],
@@ -229,6 +233,7 @@ describe("suggested apply mode", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
     const block = snapshot.blocks.at(0)!;
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -259,6 +264,7 @@ describe("suggested apply mode", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
     const block = snapshot.blocks.at(0)!;
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [{ id: "del", type: "deleteBlock", blockId: block.id }],
@@ -290,6 +296,7 @@ describe("suggested apply mode", () => {
       throw new Error("expected a range");
     }
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [{ id: "fmt", type: "formatRange", range, formatting: { bold: true } }],
@@ -332,6 +339,7 @@ describe("suggested apply mode", () => {
         throw new Error("expected the highlighted range");
       }
       const formattingResult = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot: initialSnapshot,
         operations: [
@@ -367,6 +375,7 @@ describe("suggested apply mode", () => {
       const applyReplacement = () => {
         if (operationType === "replaceInBlock") {
           return applyFolioAIEditOperations({
+            undefinedReferences: "refuse",
             view,
             snapshot: replacementSnapshot,
             operations: [
@@ -385,6 +394,7 @@ describe("suggested apply mode", () => {
         }
         if (operationType === "replaceRange") {
           return applyFolioAIEditOperations({
+            undefinedReferences: "refuse",
             view,
             snapshot: replacementSnapshot,
             operations: [
@@ -401,6 +411,7 @@ describe("suggested apply mode", () => {
           });
         }
         return applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view,
           snapshot: replacementSnapshot,
           operations: [

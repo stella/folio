@@ -62,7 +62,7 @@ const buildSyntheticBase = async (): Promise<ArrayBuffer> => {
       blockId: anchorId,
       text: `Synthetic clause ${String(index)} sets out the agreed position.`,
     })),
-    { mode: "direct" },
+    { undefinedReferences: "refuse", mode: "direct" },
   );
   return await reviewer.toBuffer();
 };
@@ -85,6 +85,7 @@ const withPriorRevisions = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => 
       text: `${block.text} As previously amended.`,
     })),
     {
+      undefinedReferences: "refuse",
       mode: "tracked-changes",
       snapshot,
       revisionStamp: { date: "2023-01-01T00:00:00.000Z", idSeed: 900 },

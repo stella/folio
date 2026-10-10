@@ -2,6 +2,8 @@
 "@stll/folio-core": minor
 "@stll/folio-agents": minor
 "@stll/folio-cli": minor
+"@stll/folio-react": minor
+"@stll/folio-vue": minor
 ---
 
 Breaking: preserve stated numbering references separately from style inheritance. Collaboration attr schema 13 refuses older snapshots with ambiguous numbering ownership; rebuild those snapshots from the saved DOCX.
@@ -12,4 +14,6 @@ Paragraph blocks require statedNumbering; diagnostic blocks expose no paragraph 
 
 Redline insertions import their referenced style closure and numbering through collision-safe resource owners while preserving stated inheritance. An unimportable resource closure raises GenerateRedlineDocxResourceImportError before any body operation, preserving the base document.
 
-Source-undefined style and numbering references stay verbatim when also undefined in the base. References that would bind to an unrelated base definition are cleared and reported in referenceWarnings with their revised story position. The execution option undefinedStyles is replaced by undefinedReferences, applying the same keep/refuse policy to both resource kinds.
+Source-undefined style and numbering references stay verbatim when also undefined in the base. References that would bind to an unrelated base definition are cleared and reported in referenceWarnings with their revised story position.
+
+Breaking: undefinedStyles is replaced by the required undefinedReferences option, with no default or alias. Every execution caller must pass { undefinedReferences: "refuse" } for editing or { undefinedReferences: "keep" } for comparison/redline. Both reviewer methods and React/Vue operation refs require an explicit policy, applying it to style and numbering references alike.

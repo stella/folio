@@ -297,7 +297,7 @@ type ApplyFolioAIEditOperationsOptions = {
   /** What a replacement does with a background the text it replaces carries. */
   replacementBackground?: FolioReplacementBackground;
   /** Policy for undefined style and numbering references; see FolioUndefinedReferencePolicy. */
-  undefinedReferences?: FolioUndefinedReferencePolicy;
+  undefinedReferences: FolioUndefinedReferencePolicy;
 };
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
@@ -403,8 +403,8 @@ export type FolioReplacementBackground = "clear" | "keep";
 /**
  * How operations handle style and numbering references the document does not define.
  *
- * Editing defaults to `refuse`: an undefined reference would report a formatting
- * edit without changing its appearance. Missing references are skipped with
+ * Editing callers explicitly select `refuse`: an undefined reference would
+ * report a formatting edit without changing its appearance. Missing references are skipped with
  * `missingStyle` or `missingNumbering`.
  * Comparison and redline use `keep` to reproduce source references verbatim;
  * their resource import boundary clears destination collisions with warnings
@@ -3771,7 +3771,7 @@ const applyFolioAIEditOperationsInternal = ({
   wordDiffMode = "bounded",
   tableTemplates,
   replacementBackground = "clear",
-  undefinedReferences = "refuse",
+  undefinedReferences,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   seedRevisionIdsFromDoc(view.state.doc);
   const applied: FolioAIEditAppliedOperation[] = [];

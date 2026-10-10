@@ -638,6 +638,7 @@ const applyParagraphProperties = ({
     panic("expected a paragraph property target");
   }
   return applyFolioAIEditOperations({
+    undefinedReferences: "refuse",
     view,
     snapshot,
     operations: [{ id, type: "setBlockParagraphProperties", blockId: block.id, properties }],
@@ -1184,6 +1185,7 @@ describe("paragraph alignment comparison", () => {
           panic("expected a table-cell insertion anchor");
         }
         const outcome = applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view,
           snapshot,
           operations: [operationFor(anchor.id)],
@@ -1256,6 +1258,7 @@ describe("paragraph alignment comparison", () => {
         panic("expected a table-cell insertion anchor");
       }
       const outcome = pendingReviewer.applyOperations([operationFor(anchor.id)], {
+        undefinedReferences: "refuse",
         revisionStamp: REVISION_STAMP,
       });
       expect(outcome.skipped).toEqual([]);
@@ -1329,6 +1332,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected an insertion anchor");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -1428,6 +1432,7 @@ describe("paragraph alignment provenance in editor state", () => {
       expect(expectParagraphBlock(anchor).directAlignment).toBe("center");
 
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -1498,6 +1503,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected an editable paragraph");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -1598,7 +1604,7 @@ describe("paragraph alignment provenance in editor state", () => {
           properties: styleTransitionProperties(transition),
         },
       ],
-      { revisionStamp: REVISION_STAMP },
+      { undefinedReferences: "refuse", revisionStamp: REVISION_STAMP },
     );
     expect(outcome.skipped).toEqual([]);
     expect(outcome.applied).toHaveLength(1);
@@ -1654,6 +1660,7 @@ describe("paragraph alignment provenance in editor state", () => {
       }
 
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -1745,6 +1752,7 @@ describe("paragraph alignment provenance in editor state", () => {
       panic("expected a replacement block");
     }
     const outcome = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1801,6 +1809,7 @@ describe("paragraph alignment provenance in editor state", () => {
       panic("expected a replacement block");
     }
     const outcome = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1872,6 +1881,7 @@ describe("paragraph alignment provenance in editor state", () => {
           panic("expected a replacement block");
         }
         const outcome = applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view,
           snapshot: createFolioAIEditSnapshot(view.state.doc),
           operations: [
@@ -1996,6 +2006,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected a replacement block");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -2165,6 +2176,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected a paragraph property block");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -2276,6 +2288,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected an interleaved property-change block");
       }
       return applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [{ id, type: "setBlockParagraphProperties", blockId: block.id, properties }],
@@ -2426,6 +2439,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected a preceding-suggestion block");
       }
       return applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [{ id, type: "setBlockParagraphProperties", blockId: block.id, properties }],
@@ -2769,6 +2783,7 @@ describe("paragraph alignment provenance in editor state", () => {
       panic("expected a paragraph without a styles plugin");
     }
     const outcome = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2854,6 +2869,7 @@ describe("paragraph alignment provenance in editor state", () => {
           panic("expected a paragraph for style-aware alignment clearing");
         }
         const outcome = applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view,
           snapshot,
           operations: [
@@ -2974,6 +2990,7 @@ describe("paragraph alignment provenance in editor state", () => {
         panic("expected an editable paragraph");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [

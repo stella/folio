@@ -55,11 +55,14 @@ const insertAfter = async ({
   if (!anchor) {
     throw new Error(`fixture must expose the ${anchorText} anchor`);
   }
-  const result = reviewer.applyDocumentOperations({
-    version: 1,
-    mode: "tracked-changes",
-    operations: [{ id: "insert", type: "insertAfterBlock", blockId: anchor.id, text, ...extras }],
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: 1,
+      mode: "tracked-changes",
+      operations: [{ id: "insert", type: "insertAfterBlock", blockId: anchor.id, text, ...extras }],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.status).toBe("committed");
   expect(result.issues).toEqual([]);
 

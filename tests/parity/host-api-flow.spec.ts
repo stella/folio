@@ -240,7 +240,9 @@ test("host APIs interleaved with edits save equally across React, Vue, headless 
               ],
             } as const satisfies FolioDocumentOperationBatch;
             expectedFirstText = expectedFirstText.replace("page", `page ${text}`);
-            expect(headless.applyDocumentOperations(batch)).toMatchObject({
+            expect(
+              headless.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
+            ).toMatchObject({
               skipped: [],
               applied: [{ id }],
             });

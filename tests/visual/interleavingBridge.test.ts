@@ -44,7 +44,13 @@ test("live interleaving edits retain tracked mode, guarded targets and distinct 
       expect(operation.precondition?.blockTextHash).toBe(
         snapshot.anchors[operation.blockId]?.textHash,
       );
-      return applyFolioDocumentOperations({ view, snapshot, batch, author });
+      return applyFolioDocumentOperations({
+        undefinedReferences: "refuse",
+        view,
+        snapshot,
+        batch,
+        author,
+      });
     },
     getTrackedChanges: () => getTrackedChangesFromDoc(view.state.doc),
   });

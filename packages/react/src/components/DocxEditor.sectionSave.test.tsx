@@ -142,6 +142,7 @@ test("the editor saves after a direct deleteBlock of the paragraph that ends a s
     const first = snapshot.blocks.at(0) ?? panic("The snapshot has no blocks");
     expect(first.text).toBe(FIRST);
     const result = editor.applyDocumentOperations({
+      undefinedReferences: "refuse",
       snapshot,
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -163,11 +164,14 @@ test("the editor saves after accepting a tracked deletion of that paragraph", as
   const reviewer = await FolioDocxReviewer.fromBuffer(await twoSections(), { author: "Reviewer" });
   const [first] = reviewer.getContent();
   if (!first) panic("The fixture has no blocks");
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "tracked-changes",
-    operations: [{ id: "delete", type: "deleteBlock", blockId: first.id }],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: first.id }],
+    },
+    { undefinedReferences: "refuse" },
+  );
   const pending = await reviewer.toBuffer();
   expect(await sectionCarriers(pending)).toBe(1);
 

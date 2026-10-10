@@ -337,8 +337,12 @@ const coreBatchStep = async (
   const pre = await capture(flow.reviewer, flow.mode, { story, step: flow.session });
   const result =
     story.type === "main"
-      ? flow.reviewer.applyDocumentOperations(batch as never)
-      : flow.reviewer.applyDocumentOperationsToStory({ story, batch: batch as never });
+      ? flow.reviewer.applyDocumentOperations(batch as never, { undefinedReferences: "refuse" })
+      : flow.reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
+          story,
+          batch: batch as never,
+        });
   done(`applied ${result.applied.length}, skipped ${result.skipped.length}`);
   touch(flow, operations);
   const outcome = appliedOf(batch.operations, result);

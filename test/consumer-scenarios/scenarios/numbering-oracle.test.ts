@@ -252,6 +252,7 @@ test(
           const anchor = rowsOf(reviewer, story).find((row) => row.text.length > 0);
           assert.ok(anchor);
           const initial = reviewer.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
             story,
             batch: {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -268,6 +269,7 @@ test(
           });
           assert.equal(initial.applied.length, 1);
           const pending = reviewer.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
             story,
             batch: {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -308,6 +310,7 @@ test(
           } as const;
           expectOperation(model, operation);
           const result = reviewer.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
             story,
             batch: {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -355,6 +358,7 @@ test(
           } as const;
           expectOperation(styleModel, styleOperation);
           const restyled = reviewer.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
             story,
             batch: {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,

@@ -3351,7 +3351,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const view = pagedEditorRef.current?.getView();
         return view ? createFolioAIEditSnapshot(view.state.doc) : null;
       },
-      applyDocumentOperations: ({ snapshot, batch, author: operationAuthor = author }) => {
+      applyDocumentOperations: ({
+        undefinedReferences,
+        snapshot,
+        batch,
+        author: operationAuthor = author,
+      }) => {
         assertSupportedFolioDocumentOperationVersion(batch.version);
         const view = pagedEditorRef.current?.getView();
         if (!view) {
@@ -3377,6 +3382,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
 
         const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations({
+          undefinedReferences,
           snapshot,
           batch,
           author: operationAuthor,
@@ -3401,6 +3407,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         };
         const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
         const result = applyFolioDocumentOperations({
+          undefinedReferences,
           view: operationView,
           snapshot,
           batch,
@@ -3485,6 +3492,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         return { status: "undone", undoHandle };
       },
       applyAIEditOperations: ({
+        undefinedReferences,
         snapshot,
         operations,
         mode = "tracked-changes",
@@ -3502,6 +3510,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
 
         const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations({
+          undefinedReferences,
           snapshot,
           batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
           author: operationAuthor,
@@ -3511,6 +3520,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const createdComments: Comment[] = [];
         const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
         const { applied, skipped } = applyFolioDocumentOperations({
+          undefinedReferences,
           view,
           snapshot,
           batch: {
@@ -3765,6 +3775,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             const view = pagedEditorRef.current?.getView();
             if (!view) return { applied: [], skipped: [] };
             const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations({
+              undefinedReferences: "refuse",
               snapshot,
               batch: {
                 version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -3776,6 +3787,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             if (canonical) return canonical;
             const createdComments: Comment[] = [];
             const result = applyFolioDocumentOperations({
+              undefinedReferences: "refuse",
               view,
               snapshot,
               batch: {

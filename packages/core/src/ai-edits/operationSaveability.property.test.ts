@@ -87,13 +87,21 @@ const SHAPE_BUILDERS: Record<string, () => Promise<Uint8Array>> = {
       { author: "Reader" },
     );
     const target = reviewer.getContent()[0];
-    reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        { id: "c", type: "commentOnBlock", blockId: target?.id ?? "", comment: { text: "Note." } },
-      ],
-    });
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "c",
+            type: "commentOnBlock",
+            blockId: target?.id ?? "",
+            comment: { text: "Note." },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     return new Uint8Array(await reviewer.toBuffer());
   },
   notes: async () => new Uint8Array(readFileSync(FOOTNOTES_FIXTURE)),
@@ -421,7 +429,7 @@ describe("operation batches never commit an unsaveable document", () => {
           const before = reviewer.getContentAsText({ annotated: true });
           let result;
           try {
-            result = reviewer.applyDocumentOperations(batch);
+            result = reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" });
           } catch (error) {
             // A malformed reference is refused by the parser. Any other throw
             // (operations in one batch that contradict each other) is not this

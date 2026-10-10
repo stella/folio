@@ -63,7 +63,9 @@ test(
               ],
             } as const;
             expectedFirstText = expectedFirstText.replace("page", `page ${text}`);
-            expect(reviewer.applyDocumentOperations(batch)).toMatchObject({
+            expect(
+              reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
+            ).toMatchObject({
               skipped: [],
               applied: [{ id: `host-edit-${index}` }],
             });

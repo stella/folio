@@ -59,11 +59,14 @@ export const runEditOperationScript = async (
     }
   }
 
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: script.mode,
-    operations: [operation],
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: script.mode,
+      operations: [operation],
+    },
+    { undefinedReferences: "refuse" },
+  );
   if (result.status !== "committed" || result.issues.length > 0) {
     throw new Error(`${script.id}: ${JSON.stringify(result)}`);
   }

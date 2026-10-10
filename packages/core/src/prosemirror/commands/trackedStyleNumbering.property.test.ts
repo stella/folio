@@ -237,21 +237,24 @@ const assertStyleNumberingRequest = async (request: StyleNumberingRequest) => {
   let saved: ArrayBuffer;
   if (request === "new list" || request === "cancel") {
     const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "Reviewer" });
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "numbering-request",
-          type: "setBlockParagraphProperties",
-          blockId: targetProjection(reviewer).id,
-          properties: {
-            numbering:
-              request === "new list" ? { kind: "newList", format: "numbered" } : { kind: "none" },
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "numbering-request",
+            type: "setBlockParagraphProperties",
+            blockId: targetProjection(reviewer).id,
+            properties: {
+              numbering:
+                request === "new list" ? { kind: "newList", format: "numbered" } : { kind: "none" },
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.status).toBe("committed");
     expect(result.issues).toEqual([]);
     saved = await reviewer.toBuffer();

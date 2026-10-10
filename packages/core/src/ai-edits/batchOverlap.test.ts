@@ -65,11 +65,14 @@ const apply = (
   mode: Mode,
   operations: FolioDocumentOperation[],
 ): FolioDocumentOperationResult =>
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations,
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations,
+    },
+    { undefinedReferences: "refuse" },
+  );
 
 test.each(MODES)(
   "equal-coordinate insertions retain their requested document order (%s)",

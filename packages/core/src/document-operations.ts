@@ -2000,13 +2000,8 @@ export type ApplyFolioDocumentOperationsOptions = {
    * revised document — keeps them instead.
    */
   replacementBackground?: FolioReplacementBackground;
-  /**
-   * What an operation naming a paragraph style the document does not define
-   * does. Refusing it (`missingStyle`) is the default; a caller copying the
-   * style references of another document — a comparison reproducing the
-   * revised one — keeps them instead.
-   */
-  undefinedReferences?: FolioUndefinedReferencePolicy;
+  /** Required policy for undefined style and numbering references. */
+  undefinedReferences: FolioUndefinedReferencePolicy;
 };
 
 /** One run of the applier whose result has not reached the caller's view yet. */
@@ -2075,7 +2070,7 @@ export const applyFolioDocumentOperations = ({
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
-      ...(undefinedReferences !== undefined && { undefinedReferences }),
+      undefinedReferences,
     } as const;
     if (preview) {
       const previewed = previewFolioAIEditOperationsWithResult({

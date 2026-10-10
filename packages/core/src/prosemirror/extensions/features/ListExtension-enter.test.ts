@@ -469,6 +469,7 @@ describe("ListExtension Enter numbering", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -513,6 +514,7 @@ describe("ListExtension Enter numbering", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -555,6 +557,7 @@ describe("ListExtension Enter numbering", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -588,6 +591,7 @@ describe("ListExtension Enter numbering", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [

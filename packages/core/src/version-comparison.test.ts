@@ -1166,15 +1166,18 @@ describe("compareDocxVersions: as-accepted semantics", () => {
     if (!target) {
       throw new Error("expected a block in the base document");
     }
-    revisedReviewer.applyOperations([
-      {
-        id: "t1",
-        type: "replaceInBlock",
-        blockId: target.id,
-        find: "due.",
-        replace: "due promptly.",
-      },
-    ]);
+    revisedReviewer.applyOperations(
+      [
+        {
+          id: "t1",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "due.",
+          replace: "due promptly.",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     const revised = await revisedReviewer.toBuffer();
 
     // Sanity: the revised snapshot's clean text is already the accepted view.

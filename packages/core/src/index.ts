@@ -154,6 +154,7 @@ export {
   normalizeFolioAIBlockText,
   WORD_DIFF_GRANULARITIES,
   type FolioWordDiffOptions,
+  type FolioUndefinedReferencePolicy,
   type WordDiffGranularity,
   type WordDiffNormalization,
   type WordDiffOptions,

@@ -656,6 +656,7 @@ describe("body revision enumeration", () => {
 
     const before = reviewer.getChanges();
     const result = reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story: { type: "main" },
       snapshot,
       batch: {
@@ -818,6 +819,7 @@ describe("resolved story serialization structural matrix", () => {
       }
       const mutationText = `${story.type} mutation`;
       const result = reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
         story,
         snapshot: resolved,
         batch: {
@@ -897,6 +899,7 @@ describe("resolved story serialization structural matrix", () => {
             }
             const previousIds = new Set(reviewer.getComments().map(({ id }) => id));
             const result = reviewer.applyDocumentOperationsToStory({
+              undefinedReferences: "refuse",
               story,
               snapshot,
               batch: {

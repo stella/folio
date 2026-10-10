@@ -196,6 +196,7 @@ const apply = (
   operation: FolioDocumentOperation,
 ) =>
   reviewer.applyDocumentOperationsToStory({
+    undefinedReferences: "refuse",
     story,
     batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, mode, operations: [operation] },
   });

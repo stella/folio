@@ -1894,7 +1894,9 @@ export const applyChecked = async (
 ): Promise<{ applied: string[]; issues: string[] }> => {
   const pre = await capture(reviewer, mode);
   const batch = coreBatch(operations, mode);
-  const result = reviewer.applyDocumentOperations(batch as never);
+  const result = reviewer.applyDocumentOperations(batch as never, {
+    undefinedReferences: "refuse",
+  });
   const applied = new Set(result.applied.map(({ id }) => id));
   const issues = result.issues.map((issue) => `${issue.operationId}: ${issue.code}`);
   await assertRequestedOutcome(

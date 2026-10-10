@@ -256,7 +256,7 @@ const withPendingMainChange = async (source: ArrayBuffer, text: string): Promise
   }
   reviewer.applyOperations(
     [{ id: "source-change", type: "replaceBlock", blockId: target.id, text }],
-    { mode: "tracked-changes" },
+    { undefinedReferences: "refuse", mode: "tracked-changes" },
   );
   return reviewer.toBuffer();
 };

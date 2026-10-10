@@ -51,8 +51,9 @@ type ConformanceSurface = {
 const createEditorRef = (reviewer: FolioDocxReviewer): FolioAgentEditorRefLike => ({
   createAIEditSnapshot: () => reviewer.snapshot(),
   applyAIEditOperations: ({ operations, mode, author }) =>
-    reviewer.applyOperations(operations, { mode, author }),
-  applyDocumentOperations: ({ batch }) => reviewer.applyDocumentOperations(batch),
+    reviewer.applyOperations(operations, { undefinedReferences: "refuse", mode, author }),
+  applyDocumentOperations: ({ batch }) =>
+    reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
   scrollToBlock: () => false,
   getTotalPages: () => 1,
   getTrackedChanges: () => reviewer.getChanges(),
@@ -75,7 +76,8 @@ const createSurfaces = async (): Promise<ConformanceSurface[]> => {
     {
       name: "headless",
       reviewer: headlessReviewer,
-      apply: (batch) => headlessReviewer.applyDocumentOperations(batch),
+      apply: (batch) =>
+        headlessReviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
     },
     {
       name: "reviewer bridge",

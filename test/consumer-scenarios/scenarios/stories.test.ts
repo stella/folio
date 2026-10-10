@@ -54,8 +54,12 @@ const applyChecked = async (
   const batch = coreBatch([operation], mode);
   const result =
     story.type === "main"
-      ? reviewer.applyDocumentOperations(batch as never)
-      : reviewer.applyDocumentOperationsToStory({ story, batch: batch as never });
+      ? reviewer.applyDocumentOperations(batch as never, { undefinedReferences: "refuse" })
+      : reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
+          story,
+          batch: batch as never,
+        });
   const applied = result.applied.length > 0;
   await assertRequestedOutcome(
     reviewer,

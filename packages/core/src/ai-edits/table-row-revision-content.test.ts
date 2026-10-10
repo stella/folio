@@ -192,9 +192,10 @@ describe("folio writes both halves of a row revision", () => {
       await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"] }]),
       { author: "Reviewer" },
     );
-    reviewer.applyOperations([
-      { id: "delete-row", type: "deleteTableRow", blockId: await findRowBlock(reviewer, "Beta") },
-    ]);
+    reviewer.applyOperations(
+      [{ id: "delete-row", type: "deleteTableRow", blockId: await findRowBlock(reviewer, "Beta") }],
+      { undefinedReferences: "refuse" },
+    );
 
     const xml = await documentXml(await reviewer.toBuffer());
     expect(xml).toContain("<w:trPr>");
@@ -207,14 +208,17 @@ describe("folio writes both halves of a row revision", () => {
       await buildTableDocx([{ texts: ["Alpha"] }]),
       { author: "Reviewer" },
     );
-    reviewer.applyOperations([
-      {
-        id: "insert-row",
-        type: "insertTableRow",
-        blockId: await findRowBlock(reviewer, "Alpha"),
-        cellTexts: ["Gamma"],
-      },
-    ]);
+    reviewer.applyOperations(
+      [
+        {
+          id: "insert-row",
+          type: "insertTableRow",
+          blockId: await findRowBlock(reviewer, "Alpha"),
+          cellTexts: ["Gamma"],
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
 
     const xml = await documentXml(await reviewer.toBuffer());
     expect(xml).toContain("<w:ins ");
@@ -227,9 +231,10 @@ describe("folio writes both halves of a row revision", () => {
       await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"], revision: "insertion" }]),
       { author: "Reviewer" },
     );
-    const result = reviewer.applyOperations([
-      { id: "delete-table", type: "deleteTable", blockId: await findRowBlock(reviewer, "Alpha") },
-    ]);
+    const result = reviewer.applyOperations(
+      [{ id: "delete-table", type: "deleteTable", blockId: await findRowBlock(reviewer, "Alpha") }],
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.applied).toEqual([]);
     expect(result.skipped).toEqual([{ id: "delete-table", reason: "unsupportedBlock" }]);
@@ -246,7 +251,9 @@ describe("folio writes both halves of a row revision", () => {
           { id: "word", type: "replaceInBlock", blockId, find: "Beta", replace: "Gamma" },
           { id: "row", type: "deleteTableRow", blockId },
         ] as const) {
-          expect(reviewer.applyOperations([operation], { mode }).applied).toHaveLength(1);
+          expect(
+            reviewer.applyOperations([operation], { undefinedReferences: "refuse", mode }).applied,
+          ).toHaveLength(1);
         }
         return reviewer;
       };
@@ -272,9 +279,10 @@ describe("folio writes both halves of a row revision", () => {
       await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"] }]),
       { author: "Reviewer" },
     );
-    reviewer.applyOperations([
-      { id: "delete-row", type: "deleteTableRow", blockId: await findRowBlock(reviewer, "Beta") },
-    ]);
+    reviewer.applyOperations(
+      [{ id: "delete-row", type: "deleteTableRow", blockId: await findRowBlock(reviewer, "Beta") }],
+      { undefinedReferences: "refuse" },
+    );
     const change = reviewer.getChanges().at(0);
     if (!change) {
       throw new Error("expected a pending row deletion");
@@ -337,12 +345,18 @@ describe("row insert/delete round trips through the reviewed views", () => {
                 : { id: "row", type, blockId };
 
             const direct = await FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" });
-            if (direct.applyOperations([operation], { mode: "direct" }).applied.length === 0) {
+            if (
+              direct.applyOperations([operation], { undefinedReferences: "refuse", mode: "direct" })
+                .applied.length === 0
+            ) {
               return;
             }
 
             const tracked = await FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" });
-            if (tracked.applyOperations([operation]).applied.length === 0) {
+            if (
+              tracked.applyOperations([operation], { undefinedReferences: "refuse" }).applied
+                .length === 0
+            ) {
               return;
             }
 

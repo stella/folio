@@ -85,26 +85,29 @@ test.each(CASES)(
         : { kind: "reference" as const, numId: numPr.numId, ilvl: 1 },
       ...(explicitIndentation !== undefined && { indentation: explicitIndentation }),
     };
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode,
-      operations: [
-        !inserts
-          ? {
-              id: "change",
-              type: "setBlockParagraphProperties",
-              blockId: anchor.id,
-              properties,
-            }
-          : {
-              id: "change",
-              type: "insertAfterBlock",
-              blockId: anchor.id,
-              text: "Inserted",
-              ...properties,
-            },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode,
+        operations: [
+          !inserts
+            ? {
+                id: "change",
+                type: "setBlockParagraphProperties",
+                blockId: anchor.id,
+                properties,
+              }
+            : {
+                id: "change",
+                type: "insertAfterBlock",
+                blockId: anchor.id,
+                text: "Inserted",
+                ...properties,
+              },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.status).toBe("committed");
     expect(result.issues).toEqual([]);
     const text = inserts ? "Inserted" : "Anchor";

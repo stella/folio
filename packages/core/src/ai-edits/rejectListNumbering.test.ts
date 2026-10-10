@@ -84,11 +84,14 @@ describe("rejecting a tracked numbering change", () => {
         "Intro.\n\n1. Deposit on signature\n2. Balance on delivery\n\nClosing remarks.",
       );
       const before = kinds(reviewer);
-      const result = reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "tracked-changes",
-        operations: [change(reviewer)],
-      });
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [change(reviewer)],
+        },
+        { undefinedReferences: "refuse" },
+      );
       expect(result.issues).toEqual([]);
       expect(kinds(reviewer)).not.toEqual(before);
 

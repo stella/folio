@@ -226,19 +226,22 @@ describe("save comparison block identity", () => {
     const [first] = reviewer.getContent();
     assert.ok(first);
     assert.equal(first.idStability, "positional");
-    const receipt = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "resolve-positional-text",
-          type: "replaceInBlock",
-          blockId: first.id,
-          find: "source",
-          replace: "resolved",
-        },
-      ],
-    });
+    const receipt = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "resolve-positional-text",
+            type: "replaceInBlock",
+            blockId: first.id,
+            find: "source",
+            replace: "resolved",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.equal(receipt.applied.length, 1);
     reviewer.acceptAll();
     const resolved = reviewer.getContent().find(({ text }) => text === "First resolved text.");
@@ -271,19 +274,22 @@ describe("save comparison block identity", () => {
         mode: "tracked-changes",
         seed: 71,
       });
-      const receipt = reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "reader-stability-resolution",
-            type: "replaceInBlock",
-            blockId: first.id,
-            find: "source",
-            replace: "resolved",
-          },
-        ],
-      });
+      const receipt = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "reader-stability-resolution",
+              type: "replaceInBlock",
+              blockId: first.id,
+              find: "source",
+              replace: "resolved",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
       assert.equal(receipt.applied.length, 1);
       reviewer.acceptAll();
       const saved = await saveAndReopen(reviewer, "reader stability positional ids", {

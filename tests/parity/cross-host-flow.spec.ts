@@ -115,7 +115,10 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
         const headless = await FolioDocxReviewer.fromBuffer(new Uint8Array(source).buffer);
         for (const batch of batches) {
           const operation = batch.operations[0];
-          assertGeneratedFlowReceipt(headless.applyDocumentOperations(batch), operation);
+          assertGeneratedFlowReceipt(
+            headless.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
+            operation,
+          );
         }
         const outputs = [{ name: "headless", bytes: new Uint8Array(await headless.toBuffer()) }];
         for (const [name, page] of [

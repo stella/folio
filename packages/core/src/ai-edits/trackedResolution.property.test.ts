@@ -208,11 +208,14 @@ const operationFor = (
 type Operation = NonNullable<ReturnType<typeof operationFor>>;
 
 const apply = (reviewer: FolioDocxReviewer, mode: Mode, operation: Operation): boolean =>
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: [{ id: "1", ...operation }],
-  } as never).applied.length === 1;
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [{ id: "1", ...operation }],
+    } as never,
+    { undefinedReferences: "refuse" },
+  ).applied.length === 1;
 
 const idsOf = (reviewer: FolioDocxReviewer): string[] =>
   reviewer.getContent().map((block) => block.id);

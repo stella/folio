@@ -263,9 +263,10 @@ const applyStep = (reviewer: FolioDocxReviewer, step: Step): void => {
       }
       const mode = step.type === "edit" ? step.mode : "direct";
       if (step.story === "body") {
-        reviewer.applyOperations([operation], { mode });
+        reviewer.applyOperations([operation], { undefinedReferences: "refuse", mode });
       } else {
         reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
           story: NOTE,
           batch: {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,

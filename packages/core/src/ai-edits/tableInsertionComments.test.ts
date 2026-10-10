@@ -59,14 +59,17 @@ const anchoredAfterAccept = async (
     if (id === undefined) throw new Error(`fixture must expose "${text}"`);
     return id;
   };
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: [
-      { id: "delete", type: "deleteBlock", blockId: idOf("Prices exclude taxes.") },
-      { id: "insert", ...insert, blockId: idOf("20"), position: "after" },
-    ],
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [
+        { id: "delete", type: "deleteBlock", blockId: idOf("Prices exclude taxes.") },
+        { id: "insert", ...insert, blockId: idOf("20"), position: "after" },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.skipped).toEqual([]);
   if (mode !== "direct") reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());

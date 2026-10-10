@@ -104,19 +104,22 @@ test(
             const first = reviewer.getContent().at(0);
             if (!first) throw new Error("Missing heading");
             const original = reviewer.getContent();
-            reviewer.applyDocumentOperations({
-              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode: "tracked-changes",
-              operations: [
-                structure === "merge"
-                  ? { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " }
-                  : {
-                      id: "delete",
-                      type: "deleteBlock",
-                      blockId: reviewer.getContent().at(1)?.id ?? "",
-                    },
-              ],
-            });
+            reviewer.applyDocumentOperations(
+              {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode: "tracked-changes",
+                operations: [
+                  structure === "merge"
+                    ? { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " }
+                    : {
+                        id: "delete",
+                        type: "deleteBlock",
+                        blockId: reviewer.getContent().at(1)?.id ?? "",
+                      },
+                ],
+              },
+              { undefinedReferences: "refuse" },
+            );
             if (saved) reviewer = await reopen(reviewer);
             const current = reviewer.getContent().find(({ id }) => id === first.id);
             if (!current) throw new Error("Missing pending paragraph");
@@ -127,12 +130,15 @@ test(
             })) {
               const before = reviewer.state.doc.toJSON();
               const changes = reviewer.getChanges();
-              const result = reviewer.applyDocumentOperations({
-                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-                mode,
-                atomic,
-                operations: [edit],
-              });
+              const result = reviewer.applyDocumentOperations(
+                {
+                  version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                  mode,
+                  atomic,
+                  operations: [edit],
+                },
+                { undefinedReferences: "refuse" },
+              );
               expect(result.applied).toEqual([]);
               expect(result.skipped.at(0)).toMatchObject({ id: "properties", ...refusedProperty });
               expect(result.issues.at(0)).toMatchObject({
@@ -158,15 +164,18 @@ test(
         })) {
           const reviewer = await open("# Heading\n\nBody clause.");
           const original = reviewer.getContent();
-          const result = reviewer.applyDocumentOperations({
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode: "tracked-changes",
-            atomic,
-            operations: [
-              { id: "merge", type: "mergeBlockWithNext", blockId: heading.id, separator: " " },
-              edit,
-            ],
-          });
+          const result = reviewer.applyDocumentOperations(
+            {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode: "tracked-changes",
+              atomic,
+              operations: [
+                { id: "merge", type: "mergeBlockWithNext", blockId: heading.id, separator: " " },
+                edit,
+              ],
+            },
+            { undefinedReferences: "refuse" },
+          );
           expect(result.skipped.find(({ id }) => id === "properties")).toMatchObject(
             refusedProperty,
           );
@@ -206,18 +215,21 @@ test(
             const reviewer = await open(markdown);
             const heading = reviewer.getContent().at(0);
             if (!heading) throw new Error("Missing heading");
-            const initialSpacing = reviewer.applyDocumentOperations({
-              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode: "direct",
-              operations: [
-                {
-                  id: "initial-spacing",
-                  type: "setBlockParagraphProperties",
-                  blockId: heading.id,
-                  properties: { spacing: { spaceBefore: 240, spaceAfter: 240 } },
-                },
-              ],
-            });
+            const initialSpacing = reviewer.applyDocumentOperations(
+              {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode: "direct",
+                operations: [
+                  {
+                    id: "initial-spacing",
+                    type: "setBlockParagraphProperties",
+                    blockId: heading.id,
+                    properties: { spacing: { spaceBefore: 240, spaceAfter: 240 } },
+                  },
+                ],
+              },
+              { undefinedReferences: "refuse" },
+            );
             expect(initialSpacing.skipped).toEqual([]);
             const original = reviewer.getContent();
             const originalParagraphs = paragraphProjection(reviewer.state.doc);
@@ -237,11 +249,14 @@ test(
                     separator: " ",
                   },
             );
-            const result = reviewer.applyDocumentOperations({
-              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode: "tracked-changes",
-              operations,
-            });
+            const result = reviewer.applyDocumentOperations(
+              {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode: "tracked-changes",
+                operations,
+              },
+              { undefinedReferences: "refuse" },
+            );
             expect(result.skipped).toEqual([]);
             expect(result.applied).toHaveLength(operations.length);
             const pending = await reopen(reviewer);
