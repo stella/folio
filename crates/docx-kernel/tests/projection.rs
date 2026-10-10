@@ -941,7 +941,8 @@ fn ignores_missing_and_cross_kind_based_on_targets_without_dropping_the_current_
         FormattingCompleteness {
             bold: FormattingFactStatus::Known,
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Known
+            superscript: FormattingFactStatus::Known,
+            alignment: FormattingFactStatus::Known
         }
     );
 }
@@ -983,7 +984,8 @@ fn resolves_markup_compatibility_inside_the_styles_part() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Known,
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Known
+            superscript: FormattingFactStatus::Known,
+            alignment: FormattingFactStatus::Known
         }
     );
 }
@@ -1011,7 +1013,8 @@ fn keeps_numbering_label_formatting_separate_and_math_formatting_incomplete() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Known,
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Known
+            superscript: FormattingFactStatus::Known,
+            alignment: FormattingFactStatus::Known
         }
     );
 
@@ -1029,7 +1032,8 @@ fn keeps_numbering_label_formatting_separate_and_math_formatting_incomplete() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
             highlight: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
-            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            alignment: FormattingFactStatus::Known
         }
     );
 }
@@ -1113,7 +1117,8 @@ fn resolves_toggle_levels_and_ignores_historical_style_snapshots() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Known,
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Known
+            superscript: FormattingFactStatus::Known,
+            alignment: FormattingFactStatus::Known
         }
     );
 }
@@ -1155,7 +1160,8 @@ fn ignores_style_identifiers_beyond_the_word_limit() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Known,
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Known
+            superscript: FormattingFactStatus::Known,
+            alignment: FormattingFactStatus::Known
         }
     );
 }
@@ -1490,6 +1496,9 @@ fn ignores_unrelated_optional_parts_and_rejects_missing_relationship_targets() {
             highlight: FormattingFactStatus::Known,
             superscript: FormattingFactStatus::Unknown(
                 FormattingUnknownReason::StylesPartUnavailable
+            ),
+            alignment: FormattingFactStatus::Unknown(
+                FormattingUnknownReason::StylesPartUnavailable
             )
         }
     );
@@ -1707,7 +1716,8 @@ fn rejects_outline_levels_outside_the_ooxml_range() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            alignment: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
         }
     );
     assert_eq!(
@@ -2015,7 +2025,8 @@ fn document_part_only_does_not_claim_style_dependent_facts() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly),
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly)
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly),
+            alignment: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly)
         }
     );
     assert_eq!(
@@ -2065,6 +2076,9 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
             highlight: FormattingFactStatus::Known,
             superscript: FormattingFactStatus::Unknown(
                 FormattingUnknownReason::StylesPartUnavailable
+            ),
+            alignment: FormattingFactStatus::Unknown(
+                FormattingUnknownReason::StylesPartUnavailable
             )
         }
     );
@@ -2091,7 +2105,8 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            alignment: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
         }
     );
     assert_eq!(
@@ -2114,7 +2129,8 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Known,
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Known
+            superscript: FormattingFactStatus::Known,
+            alignment: FormattingFactStatus::Known
         }
     );
     assert_eq!(
@@ -2162,6 +2178,13 @@ const fn style_alignment(value: Align) -> ParagraphAlignmentFact {
     }
 }
 
+const fn doc_defaults_alignment(value: Align) -> ParagraphAlignmentFact {
+    ParagraphAlignmentFact {
+        value,
+        source: ParagraphAlignmentSource::DocDefaults,
+    }
+}
+
 #[test]
 fn paragraph_alignment_prefers_direct_over_style_over_document_defaults() {
     let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
@@ -2180,7 +2203,7 @@ fn paragraph_alignment_prefers_direct_over_style_over_document_defaults() {
         [
             Some(direct_alignment(Align::Right)),
             Some(style_alignment(Align::Center)),
-            Some(style_alignment(Align::Justify)),
+            Some(doc_defaults_alignment(Align::Justify)),
         ]
     );
 
@@ -2226,7 +2249,7 @@ fn paragraph_alignment_resolves_based_on_chains_through_cycles_and_missing_style
             Some(style_alignment(Align::Center)),
             Some(style_alignment(Align::Right)),
             None,
-            Some(style_alignment(Align::Justify)),
+            Some(doc_defaults_alignment(Align::Justify)),
         ]
     );
 }
@@ -2347,7 +2370,8 @@ fn degraded_style_sheets_project_direct_paragraph_alignment_only() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly),
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly)
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly),
+            alignment: FormattingFactStatus::Unknown(FormattingUnknownReason::DocumentPartOnly)
         }
     );
 
@@ -2382,7 +2406,8 @@ fn degraded_style_sheets_project_direct_paragraph_alignment_only() {
             FormattingCompleteness {
                 bold: FormattingFactStatus::Unknown(reason),
                 highlight: FormattingFactStatus::Known,
-                superscript: FormattingFactStatus::Unknown(reason)
+                superscript: FormattingFactStatus::Unknown(reason),
+                alignment: FormattingFactStatus::Unknown(reason)
             }
         );
     }
@@ -2583,7 +2608,8 @@ fn downgrades_whole_fact_families_for_unsupported_or_incomplete_constructs() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            alignment: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
         }
     );
     assert_eq!(
@@ -2776,7 +2802,8 @@ fn package_projection_is_deterministic_and_styles_extraction_is_bounded() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Known,
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Known
+            superscript: FormattingFactStatus::Known,
+            alignment: FormattingFactStatus::Known
         }
     );
     assert!(
@@ -2838,7 +2865,8 @@ fn package_projection_is_deterministic_and_styles_extraction_is_bounded() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Known,
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Known
+            superscript: FormattingFactStatus::Known,
+            alignment: FormattingFactStatus::Known
         }
     );
     let rejected = project_docx(
@@ -2855,7 +2883,8 @@ fn package_projection_is_deterministic_and_styles_extraction_is_bounded() {
         FormattingCompleteness {
             bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
             highlight: FormattingFactStatus::Known,
-            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            alignment: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
         }
     );
 }

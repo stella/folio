@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::ProjectionError;
 use crate::projection::numbering::NumberingCatalog;
 use crate::projection::review::ReviewPoint;
+use crate::{FormattingUnknownReason, ProjectionError};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StructuralFactUnknownReason {
@@ -175,8 +175,10 @@ pub enum ParagraphAlignmentValue {
 pub enum ParagraphAlignmentSource {
     /// `w:pPr/w:jc` on the paragraph itself.
     Direct,
-    /// The `w:pStyle` chain, or `w:docDefaults/w:pPrDefault/w:pPr/w:jc`.
+    /// The paragraph or table style chain.
     Style,
+    /// `w:docDefaults/w:pPrDefault/w:pPr/w:jc`.
+    DocDefaults,
 }
 
 /// Effective paragraph alignment resolved for one paragraph.
@@ -680,13 +682,22 @@ impl StyleSheet {
 
     /// Missing, wrong-kind, and omitted paragraph references select the default.
     /// Cyclic inheritance cannot supply an effective alignment.
-    fn style_alignment(&self, direct: &ParagraphProperties) -> Option<ParagraphAlignmentSetting> {
-        let table = self.table_style(&direct.table_style).ok()?;
-        self.paragraph_style(direct.style_id.as_deref())
-            .ok()?
+    fn style_alignment(
+        &self,
+        direct: &ParagraphProperties,
+    ) -> Result<Option<(ParagraphAlignmentSetting, ParagraphAlignmentSource)>, ()> {
+        let table = self.table_style(&direct.table_style)?;
+        let paragraph = self.paragraph_style(direct.style_id.as_deref())?;
+        if let Some(setting) = paragraph
             .and_then(|style| style.properties.alignment)
             .or_else(|| table.and_then(|style| style.properties.alignment))
-            .or(self.document_defaults.alignment)
+        {
+            return Ok(Some((setting, ParagraphAlignmentSource::Style)));
+        }
+        Ok(self
+            .document_defaults
+            .alignment
+            .map(|setting| (setting, ParagraphAlignmentSource::DocDefaults)))
     }
 
     fn resolve(
@@ -769,32 +780,30 @@ impl StyleSheet {
 /// `w:docDefaults` apply. Without a style sheet only direct alignment is
 /// projected, which never claims a style-dependent value.
 ///
-/// Two cascade tiers are out of scope: a table style's `w:tblStyle` ->
-/// `w:pPr/w:jc` and a numbering level's `w:lvl/w:pPr/w:jc`. Neither is
-/// consulted, so a paragraph whose effective alignment comes from either tier
-/// projects the lower-tier `w:docDefaults` or style value instead.
+/// A present unsupported token shadows lower tiers and remains unknown; it
+/// cannot establish known absence. Table style and paragraph style resolution
+/// share the existing stylesheet owner. Numbering-level justification remains
+/// outside the projected alignment tiers.
 pub(super) fn resolve_paragraph_alignment(
     styles: Result<&StyleSheet, StructuralFactUnknownReason>,
     direct: &ParagraphProperties,
-) -> Option<ParagraphAlignmentFact> {
-    if let Some(setting) = direct.alignment {
-        return alignment_fact(setting, ParagraphAlignmentSource::Direct);
-    }
-    styles
-        .ok()?
-        .style_alignment(direct)
-        .and_then(|setting| alignment_fact(setting, ParagraphAlignmentSource::Style))
-}
-
-const fn alignment_fact(
-    setting: ParagraphAlignmentSetting,
-    source: ParagraphAlignmentSource,
-) -> Option<ParagraphAlignmentFact> {
-    match setting {
-        ParagraphAlignmentSetting::Supported(value) => {
-            Some(ParagraphAlignmentFact { value, source })
+) -> Result<Option<ParagraphAlignmentFact>, FormattingUnknownReason> {
+    let resolved = if let Some(setting) = direct.alignment {
+        Some((setting, ParagraphAlignmentSource::Direct))
+    } else {
+        styles
+            .map_err(super::formatting_unknown_reason)?
+            .style_alignment(direct)
+            .map_err(|()| FormattingUnknownReason::UnsupportedStyles)?
+    };
+    match resolved {
+        None => Ok(None),
+        Some((ParagraphAlignmentSetting::Supported(value), source)) => {
+            Ok(Some(ParagraphAlignmentFact { value, source }))
         }
-        ParagraphAlignmentSetting::Unsupported => None,
+        Some((ParagraphAlignmentSetting::Unsupported, _)) => {
+            Err(FormattingUnknownReason::UnsupportedAlignment)
+        }
     }
 }
 

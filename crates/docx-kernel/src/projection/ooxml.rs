@@ -20,7 +20,7 @@ use crate::projection::styles::{
     parse_alignment, parse_indentation, parse_level_attribute, parse_outline_level_attribute,
     parse_u32_attribute, semantic_highlight_value, word_style_id,
 };
-use crate::{FormattingCompleteness, FormattingUnknownReason, ProjectionError};
+use crate::{FormattingCompleteness, FormattingUnknownReason, ParagraphContainer, ProjectionError};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PackageParagraphId(u32);
@@ -166,6 +166,7 @@ pub(super) struct RawProjectedParagraph {
     utf16_len: u32,
     pub formatting: Vec<TextFormattingSpan>,
     pub structure: Option<ParagraphStructure>,
+    pub container: ParagraphContainer,
     pub properties: ParagraphProperties,
 }
 
@@ -185,6 +186,7 @@ struct ParagraphBuilder {
     utf16_len: u32,
     formatting: Vec<TextFormattingSpan>,
     structure: Option<ParagraphStructure>,
+    container: ParagraphContainer,
     properties: ParagraphProperties,
     resolved_text_base: Option<Result<TextProperties, ()>>,
     paragraph_mark_revision: Option<ParagraphMarkRevision>,
@@ -726,6 +728,47 @@ enum Frame {
     PseudoText(PseudoTextFrame),
 }
 
+impl Frame {
+    const fn paragraph_context(&self) -> Option<(ParagraphContainer, Option<ParagraphStructure>)> {
+        match self {
+            Self::Body => Some((ParagraphContainer::Body, None)),
+            Self::Cell(cell) => Some((
+                ParagraphContainer::TableCell,
+                Some(ParagraphStructure {
+                    table_ordinal: cell.table_ordinal,
+                    row: cell.row,
+                    column: cell.column,
+                }),
+            )),
+            Self::Other
+            | Self::BlockContent
+            | Self::Table(_)
+            | Self::Row(_)
+            | Self::Paragraph
+            | Self::Run(_)
+            | Self::RunProperties(_)
+            | Self::ParagraphProperties
+            | Self::ParagraphMarkProperties
+            | Self::TableProperties
+            | Self::TableGrid
+            | Self::TableRowProperties
+            | Self::TableCellProperties
+            | Self::TablePropertyExceptions
+            | Self::SectionProperties
+            | Self::NumberingProperties
+            | Self::Hyperlink(_)
+            | Self::Revision(_)
+            | Self::ChangeSnapshot(_)
+            | Self::SnapshotIgnored
+            | Self::Math
+            | Self::MathRun
+            | Self::Textbox
+            | Self::Sdt(_)
+            | Self::PseudoText(_) => None,
+        }
+    }
+}
+
 #[allow(clippy::too_many_lines)] // A single streaming event loop keeps XML parsing one-pass.
 pub(super) fn project_document_xml(
     xml: &[u8],
@@ -1139,20 +1182,19 @@ impl ProjectionState {
                 let package_paragraph_id = attribute_2010(reader, element, b"paraId")?
                     .as_deref()
                     .and_then(PackageParagraphId::parse);
-                let structure = self.frames.iter().rev().find_map(|frame| match frame {
-                    Frame::Cell(cell) => Some(ParagraphStructure {
-                        table_ordinal: cell.table_ordinal,
-                        row: cell.row,
-                        column: cell.column,
-                    }),
-                    _ => None,
-                });
+                let (container, structure) = self
+                    .frames
+                    .iter()
+                    .rev()
+                    .find_map(Frame::paragraph_context)
+                    .ok_or(ProjectionError::InvalidDocumentXml)?;
                 self.current_paragraph = Some(ParagraphBuilder {
                     package_paragraph_id,
                     text: String::new(),
                     utf16_len: 0,
                     formatting: Vec::new(),
                     structure,
+                    container,
                     properties: ParagraphProperties {
                         table_style: self
                             .frames
@@ -1796,6 +1838,7 @@ impl ProjectionState {
             utf16_len: paragraph.utf16_len,
             formatting: paragraph.formatting,
             structure: paragraph.structure,
+            container: paragraph.container,
             properties: paragraph.properties,
         });
         Ok(())

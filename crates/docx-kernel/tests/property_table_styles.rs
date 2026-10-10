@@ -153,7 +153,7 @@ proptest! {
         };
         let missing_table = selection == TableSelection::Missing;
         let projection = project(&table(&selected, &paragraph), &definitions);
-        prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known });
+        prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known, alignment: FormattingFactStatus::Known });
         let table_toggle = !missing_table && toggles.iter().filter(|value| **value).count() % 2 == 1;
         let expected_bold = direct_bold.unwrap_or_else(|| default_bold ^ table_toggle ^ paragraph_toggle.unwrap_or(false) ^ character_toggle.unwrap_or(false));
         prop_assert_eq!(&projection.paragraphs[0].formatting, &bold_spans(text, expected_bold));
@@ -163,7 +163,7 @@ proptest! {
         } else if paragraph_toggle.is_some() {
             (700, 2, ParagraphAlignmentValue::Justify, ParagraphAlignmentSource::Style)
         } else if missing_table {
-            (100, 4, ParagraphAlignmentValue::Left, ParagraphAlignmentSource::Style)
+            (100, 4, ParagraphAlignmentValue::Left, ParagraphAlignmentSource::DocDefaults)
         } else {
             (i32::try_from(499 + toggles.len()).unwrap(), 1, ParagraphAlignmentValue::Center, ParagraphAlignmentSource::Style)
         };
@@ -203,7 +203,7 @@ proptest! {
             let plain = project(&table("", paragraph), &default_properties(false));
             prop_assert_eq!(projection, plain);
         } else {
-            prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles), highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles) });
+            prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles), highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles), alignment: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles) });
             prop_assert_eq!(&projection.structural_facts.indentation, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
             prop_assert_eq!(&projection.structural_facts.outline_levels, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
             prop_assert_eq!(&projection.structural_facts.numbering_hierarchy, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
@@ -228,7 +228,7 @@ proptest! {
         let inner = table(inner_style, paragraph);
         let body = format!("{}{}", table("Outer", &format!("{paragraph}{inner}{paragraph}")), paragraph);
         let projection = project(&body, &definitions);
-        prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known });
+        prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known, alignment: FormattingFactStatus::Known });
         prop_assert_eq!(projection.paragraphs.len(), 4);
         for index in [0, 2] {
             prop_assert_eq!(&projection.paragraphs[index].formatting, &bold_spans("é😀", outer_bold));
@@ -263,6 +263,9 @@ fn conditional_projected_properties_are_explicitly_unsupported() {
                 bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
                 highlight: FormattingFactStatus::Known,
                 superscript: FormattingFactStatus::Unknown(
+                    FormattingUnknownReason::UnsupportedStyles
+                ),
+                alignment: FormattingFactStatus::Unknown(
                     FormattingUnknownReason::UnsupportedStyles
                 )
             }

@@ -110,7 +110,7 @@ proptest! {
         let styled_numbering = numbering(&properties);
         let baseline = project(PackageOptions { namespace, body: &body, numbering: &baseline_numbering });
         let styled = project(PackageOptions { namespace, body: &body, numbering: &styled_numbering });
-        prop_assert_eq!(baseline.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known });
+        prop_assert_eq!(baseline.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known, alignment: FormattingFactStatus::Known });
         prop_assert_eq!(baseline, styled);
     }
 }
