@@ -37,13 +37,9 @@ export type GenerateRedlineDocxResult = {
 export type GenerateRedlineReferenceWarning = {
     paragraphPosition: number;
     story: FolioDocumentStoryHandle;
-} & ({
     kind: "style";
     id: string;
-} | {
-    kind: "numbering";
-    id: number;
-});
+};
 
 // @public
 export type GenerateRedlineUnprocessedStory = {
