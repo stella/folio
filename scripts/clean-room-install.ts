@@ -1,0 +1,42 @@
+import { panic } from "better-result";
+import { $ } from "bun";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Copy only the registry release policy; workspace linker settings stay in the repo. */
+export const writeCleanRoomInstallConfig = async (consumerDir: string): Promise<void> => {
+  const config: unknown = Bun.TOML.parse(
+    await readFile(new URL("../bunfig.toml", import.meta.url), "utf8"),
+  );
+  if (!isRecord(config) || !isRecord(config["install"])) {
+    return panic("bunfig.toml must declare an install policy");
+  }
+  const { minimumReleaseAge, minimumReleaseAgeExcludes } = config["install"];
+  if (
+    typeof minimumReleaseAge !== "number" ||
+    !Number.isSafeInteger(minimumReleaseAge) ||
+    minimumReleaseAge <= 0 ||
+    !Array.isArray(minimumReleaseAgeExcludes) ||
+    !minimumReleaseAgeExcludes.every((name: unknown) => typeof name === "string")
+  ) {
+    return panic("bunfig.toml must declare a positive release age and package exclusions");
+  }
+  await writeFile(
+    path.join(consumerDir, "bunfig.toml"),
+    `[install]\nminimumReleaseAge = ${minimumReleaseAge}\nminimumReleaseAgeExcludes = ${JSON.stringify(minimumReleaseAgeExcludes)}\n`,
+  );
+};
+
+type CleanRoomInstallOptions = { consumerDir: string; dependencies: readonly string[] };
+
+/** Own the install so every invocation writes the current repository policy first. */
+export const installCleanRoomDependencies = async ({
+  consumerDir,
+  dependencies,
+}: CleanRoomInstallOptions): Promise<void> => {
+  await writeCleanRoomInstallConfig(consumerDir);
+  await $`bun add ${dependencies}`.cwd(consumerDir).quiet();
+};

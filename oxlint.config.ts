@@ -103,6 +103,7 @@ export default library({
     "unicorn/prefer-response-static-json": "off",
   },
   jsPlugins: [
+    "./.oxlint-plugins/folio-clean-room-install.ts",
     "./.oxlint-plugins/folio-layer-boundaries.ts",
     "./.oxlint-plugins/folio-asset-urls.ts",
     "./.oxlint-plugins/folio-base64.ts",
@@ -142,6 +143,10 @@ export default library({
     "test/__fixtures__/**",
   ],
   overrides: [
+    {
+      files: ["scripts/**/*.{ts,js,mts,mjs,cts,cjs}", "test/__fixtures__/clean-room-install.*.ts"],
+      rules: { "folio-clean-room-install/install-owner": "error" },
+    },
     {
       // Custom oxlint plugin sources traverse AST nodes the runtime delivers
       // as untyped (effectively `any`); strict any-flow rules add noise here.
