@@ -62,14 +62,15 @@ export const FEATURES: readonly Feature[] = [
 ];
 
 /** The fields of a reader's block the targeting reads. */
-type TargetBlockFields = Pick<FolioAIBlock, "id" | "text" | "table" | "previewRuns">;
 export type TargetBlock =
-  | (TargetBlockFields & {
-      kind: FolioAIParagraphBlock["kind"];
-      listReference?: NonNullable<FolioAIParagraphBlock["listReference"]>;
-      structuralBoundaries?: FolioAIParagraphBlock["structuralBoundaries"];
-    })
-  | (TargetBlockFields & { kind: "diagnostic" });
+  | Pick<
+      FolioAIParagraphBlock,
+      "id" | "text" | "table" | "previewRuns" | "kind" | "listReference" | "structuralBoundaries"
+    >
+  | Pick<
+      Extract<FolioAIBlock, { kind: "diagnostic" }>,
+      "id" | "text" | "table" | "previewRuns" | "kind"
+    >;
 
 type TableLocation = { tableIndex: number; rowIndex: number; cellIndex: number };
 
