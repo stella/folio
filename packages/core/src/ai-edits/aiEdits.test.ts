@@ -644,12 +644,14 @@ describe("Folio AI edit operations", () => {
       {
         id: "seq-0001",
         kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
         text: "Opening paragraph.",
       },
       {
         id: "seq-0002",
         kind: "listItem",
         displayLabel: "7.5.1",
+        statedNumbering: { kind: "inherit" },
         text: "Payment one.",
       },
     ]);
@@ -729,7 +731,14 @@ describe("Folio AI edit operations", () => {
     // block like any other: an operation can address it and replace it. The
     // blank sequence numbers it, so `seq-NNNN` keeps counting only the
     // paragraphs that carry text.
-    expect(snapshot.blocks).toEqual([{ id: "blank-0001", kind: "paragraph", text: "" }]);
+    expect(snapshot.blocks).toEqual([
+      {
+        id: "blank-0001",
+        kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
+        text: "",
+      },
+    ]);
     expect(snapshot.anchors["blank-0001"]).toMatchObject({
       id: "blank-0001",
       text: "",
@@ -755,6 +764,7 @@ describe("Folio AI edit operations", () => {
       {
         id: "blank-0001",
         kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
         text: "",
         table: {
           outerTableIndex: 0,

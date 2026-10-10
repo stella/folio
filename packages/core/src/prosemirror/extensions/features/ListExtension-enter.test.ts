@@ -527,7 +527,7 @@ describe("ListExtension Enter numbering", () => {
     });
 
     expect(result.skipped).toEqual([]);
-    expect(view.state.doc.firstChild?.attrs["numPr"]).toBeNull();
+    expect(view.state.doc.firstChild?.attrs["numPr"]).toEqual({ kind: "none" });
     for (const key of LIST_RENDERING_ATTR_KEYS) {
       expect(view.state.doc.firstChild?.attrs[key]).toBeNull();
     }

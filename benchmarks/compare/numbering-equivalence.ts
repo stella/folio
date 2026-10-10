@@ -34,6 +34,7 @@ export const equivalentNumberingAliases = async (
     for (const [index, block] of before.entries()) {
       const other = after[index];
       if (!other || block.kind !== other.kind || block.text !== other.text) return false;
+      if (block.kind === "diagnostic" || other.kind === "diagnostic") return false;
       const source = block.listReference;
       const target = other.listReference;
       if (!source && !target) continue;
