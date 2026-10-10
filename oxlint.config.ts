@@ -24,7 +24,7 @@ export const nonReactPackageOverride = {
 };
 
 // Temporary until #1646 merges or 2026-10-31, whichever comes first.
-// The folio lead restores error levels on merge; the dated guard enforces expiry.
+// Restore error severity when the React Compiler fixes land or on the expiry date.
 export const reactCompilerWarningsExpireAt = "2026-10-31T00:00:00.000Z";
 export const reactCompilerWarningPolicyAt = (now: number) => {
   const expired = now >= Date.parse(reactCompilerWarningsExpireAt);

@@ -104,7 +104,7 @@ const overrideMatches = (filename: string) =>
 
 describe("React lint package scope", () => {
   test("React Compiler warnings expire on 2026-10-31 or #1646 merge", () => {
-    // The folio lead restores errors when #1646 merges; CI caps the interim date.
+    // Restore error severity when the React Compiler fixes land or on the expiry date.
     expect(reactCompilerWarningsExpireAt).toBe("2026-10-31T00:00:00.000Z");
     expect(Date.now()).toBeLessThan(Date.parse(reactCompilerWarningsExpireAt));
     expect(config.options?.denyWarnings).toBe(false);
