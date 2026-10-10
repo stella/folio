@@ -26,9 +26,19 @@ export const nonReactPackageOverride = {
 // Temporary until #1646 merges or 2026-10-31, whichever comes first.
 // The folio lead restores error levels on merge; the dated guard enforces expiry.
 export const reactCompilerWarningsExpireAt = "2026-10-31T00:00:00.000Z";
-const reactCompilerWarnings = Object.fromEntries(
-  Object.keys(reactCompilerRules).map((rule) => [rule, "warn" as const]),
-);
+export const reactCompilerWarningPolicyAt = (now: number) => {
+  const expired = now >= Date.parse(reactCompilerWarningsExpireAt);
+  return {
+    denyWarnings: expired,
+    rules: Object.fromEntries(
+      Object.keys(reactCompilerRules).map((rule) => [
+        rule,
+        expired ? ("error" as const) : ("warn" as const),
+      ]),
+    ),
+  };
+};
+const reactCompilerPolicy = reactCompilerWarningPolicyAt(Date.now());
 
 // Standalone oxlint config for @stll/folio.
 //
@@ -42,7 +52,7 @@ const reactCompilerWarnings = Object.fromEntries(
 export default library({
   options: {
     // Allow the temporary React Compiler warnings until the guarded expiry.
-    denyWarnings: false,
+    denyWarnings: reactCompilerPolicy.denyWarnings,
     // Folio's source carries `eslint-disable` / `oxlint-disable` directives
     // calibrated for the full monorepo ruleset (ultracite's core + react
     // presets plus ~40 custom stella plugins). This standalone config uses the
@@ -63,7 +73,7 @@ export default library({
     typeAware: false,
   },
   rules: {
-    ...reactCompilerWarnings,
+    ...reactCompilerPolicy.rules,
     "folio-editor-commands/command-owner-boundary": "error",
     "folio-deletion-marks/preserve-pending-deletions": "error",
     // AST rules that oxlint delegates to the (dormant) type-aware pass in the

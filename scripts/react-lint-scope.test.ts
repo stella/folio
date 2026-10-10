@@ -8,6 +8,7 @@ import ts from "typescript";
 import config, {
   nonReactPackageOverride,
   reactCompilerWarningsExpireAt,
+  reactCompilerWarningPolicyAt,
 } from "../oxlint.config.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
@@ -109,10 +110,45 @@ describe("React lint package scope", () => {
     expect(config.options?.denyWarnings).toBe(false);
     const compilerRules = Object.keys(reactCompilerRules);
     for (const rule of compilerRules) expect(config.rules?.[rule], rule).toBe("warn");
-    for (const [rule, level] of Object.entries(config.rules ?? {})) {
-      if (level === "warn") expect(compilerRules, rule).toContain(rule);
+    const ruleSets = [config.rules, ...(config.overrides ?? []).map((override) => override.rules)];
+    for (const ruleSet of ruleSets) {
+      for (const [rule, setting] of Object.entries(ruleSet ?? {})) {
+        const level = Array.isArray(setting) ? setting.at(0) : setting;
+        if (level === "warn" || level === 1) expect(compilerRules, rule).toContain(rule);
+      }
     }
   });
+  test("expiry restores errors and denial of warnings at the deadline", () => {
+    const deadline = Date.parse(reactCompilerWarningsExpireAt);
+    const before = reactCompilerWarningPolicyAt(deadline - 1);
+    expect(before.denyWarnings).toBe(false);
+    expect(Object.values(before.rules).every((level) => level === "warn")).toBe(true);
+    for (const now of [deadline, deadline + 1]) {
+      const expired = reactCompilerWarningPolicyAt(now);
+      expect(expired.denyWarnings).toBe(true);
+      expect(Object.values(expired.rules).every((level) => level === "error")).toBe(true);
+    }
+  });
+
+  test("lint invocations leave warning policy to the config", () => {
+    const paths = new Set([
+      "package.json",
+      "lefthook.yml",
+      ...new Bun.Glob("packages/**/package.json").scanSync({ cwd: REPO_ROOT }),
+      ...new Bun.Glob(".github/**/*.{yml,yaml,sh,js,ts,mjs,cjs}").scanSync({ cwd: REPO_ROOT }),
+      ...new Bun.Glob("scripts/**/*.{sh,js,ts,mjs,cjs}").scanSync({ cwd: REPO_ROOT }),
+      ...new Bun.Glob(".husky/**").scanSync({ cwd: REPO_ROOT, onlyFiles: true }),
+    ]);
+    for (const file of paths) {
+      // This guard contains flag fixtures, not lint invocations.
+      if (file === "scripts/react-lint-scope.test.ts") continue;
+      const source = readFileSync(path.join(REPO_ROOT, file), "utf8");
+      if (/\b(?:oxlint|lint(?::[\w-]+)?)\b/u.test(source)) {
+        expect(source, file).not.toMatch(/--(?:deny-warnings|max-warnings)\b/u);
+      }
+    }
+  });
+
   test("the override covers every and only non-React package", () => {
     expect(packages.length).toBeGreaterThan(0);
     for (const { directory, usesReact } of packages) {
