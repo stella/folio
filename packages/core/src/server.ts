@@ -158,6 +158,7 @@ export {
 export {
   generateRedlineDocx,
   InvalidGenerateRedlineDocxOptionsError,
+  GenerateRedlineDocxResourceImportError,
   type GenerateRedlineDocxOptions,
   type GenerateRedlineDocxResult,
   type GenerateRedlineUnprocessedStory,

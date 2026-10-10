@@ -73,6 +73,14 @@ export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
   receivedValue: unknown;
 }> {}
 
+/** Raised before body operations when revised resources cannot be imported atomically. */
+export class GenerateRedlineDocxResourceImportError extends TaggedError(
+  "GenerateRedlineDocxResourceImportError",
+)<{
+  message: string;
+  detail: string;
+}> {}
+
 /** A document story that could not be paired across the two input packages. */
 export type GenerateRedlineUnprocessedStory = {
   /** Story in the base package, or `null` when it exists only in the revision. */
@@ -428,14 +436,25 @@ export const generateRedlineDocx = async (
   }
 
   const insertedSnapshots = plannedStories.map(({ inserted }) => inserted.snapshot);
+  const numberingReferences = insertedNumberingReferences(revisedReviewer, insertedSnapshots);
   const resources = importStyleClosureWithNumbering({
     destination: baseReviewer,
     source: revisedReviewer,
     snapshots: insertedSnapshots,
     importedHeaderFooterSnapshots: insertedSnapshots,
-    numberingReferences: insertedNumberingReferences(revisedReviewer, insertedSnapshots),
+    numberingReferences,
   });
   const { styleImport } = resources;
+  if (styleImport.status === "unalignable" || resources.numberingStage === "conflict") {
+    const detail =
+      styleImport.status === "unalignable"
+        ? styleImport.detail
+        : `target numbering references ${numberingReferences.map(({ numId, level }) => `${numId}:${level}`).join(", ")} cannot be imported without changing existing references`;
+    throw new GenerateRedlineDocxResourceImportError({
+      message: `The revised style/numbering closure cannot be imported: ${detail}`,
+      detail,
+    });
+  }
   const defined = definedNumIds(getFolioDocxComparisonAccess(baseReviewer).numberingDefinitions());
   for (const [index, { story, snapshot, revisedSnapshot, inserted }] of plannedStories.entries()) {
     const rebound =
@@ -445,21 +464,13 @@ export const generateRedlineDocx = async (
       baseSnapshot: snapshot,
       revisedBlocks: revisedSnapshot.blocks.map((block) => insertedById.get(block.id) ?? block),
       nextOperationId,
-    })
-      .filter((operation) => {
-        if (operation.type !== "insertBeforeBlock" && operation.type !== "insertAfterBlock")
-          return true;
-        if (styleImport.status !== "unalignable") return true;
-        skipped.push({ id: operation.id, reason: "missingStyle", message: styleImport.detail });
-        return false;
-      })
-      .map((operation) => {
-        if (operation.type !== "insertBeforeBlock" && operation.type !== "insertAfterBlock")
-          return operation;
-        if (operation.numbering?.kind !== "reference" || defined.has(operation.numbering.numId))
-          return operation;
-        return Object.assign(operation, { numbering: { kind: "none" as const } });
-      });
+    }).map((operation) => {
+      if (operation.type !== "insertBeforeBlock" && operation.type !== "insertAfterBlock")
+        return operation;
+      if (operation.numbering?.kind !== "reference" || defined.has(operation.numbering.numId))
+        return operation;
+      return Object.assign(operation, { numbering: { kind: "none" as const } });
+    });
     if (operations.length === 0) continue;
     const result = baseReviewer.applyDocumentOperationsToStory({
       story,
@@ -471,7 +482,7 @@ export const generateRedlineDocx = async (
       },
       wordDiff,
       // Added paragraphs use the style closure imported through the collision owner.
-      // Unimportable closures are reported as typed skips before applying the paragraph.
+      // Resource closure refusal aborts the whole redline before any body operation.
       undefinedStyles: "refuse",
     });
     applied.push(...result.applied);

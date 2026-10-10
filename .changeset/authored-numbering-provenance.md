@@ -10,4 +10,4 @@ Numbering requests now use named inherit, none, levelOnly, reference, or newList
 
 Paragraph blocks require statedNumbering; diagnostic blocks expose no paragraph numbering or formatting. Narrow on block.kind before reading those fields.
 
-Redline insertions import their referenced style closure and numbering through collision-safe resource owners while preserving stated inheritance. Unimportable style closures produce visible typed skips.
+Redline insertions import their referenced style closure and numbering through collision-safe resource owners while preserving stated inheritance. An unimportable resource closure raises GenerateRedlineDocxResourceImportError before any body operation, preserving the base document.

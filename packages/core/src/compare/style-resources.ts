@@ -498,7 +498,7 @@ export const importReferencedStyleDefinitions = ({
     }
     const source = sourceById.get(styleId);
     if (!source) {
-      return { status: "unalignable", detail: "a referenced target style is missing" };
+      return { status: "unalignable", detail: `referenced target style ${styleId} is missing` };
     }
     required.add(styleId);
     pending.push(...styleDependencies(source));
@@ -513,7 +513,7 @@ export const importReferencedStyleDefinitions = ({
     const source = sourceById.get(styleId);
     const destination = destinationById.get(styleId);
     if (!source) {
-      return { status: "unalignable", detail: "a referenced target style is missing" };
+      return { status: "unalignable", detail: `referenced target style ${styleId} is missing` };
     }
     const conflictsWithBase =
       destination !== undefined && canonicalJson(source) !== canonicalJson(destination);
@@ -567,7 +567,7 @@ export const importReferencedStyleDefinitions = ({
     if (result.status === "unalignable") {
       return {
         status: "unalignable",
-        detail: "a referenced style has formatting that cannot be materialized",
+        detail: `referenced style ${style.styleId} has formatting that cannot be materialized`,
       };
     }
     materializedStyles.push(
@@ -654,7 +654,7 @@ export const importReferencedStyleDefinitions = ({
     ) {
       return {
         status: "unalignable",
-        detail: "a referenced style differs after materializing its formatting",
+        detail: `referenced style ${styleId} differs after materializing its formatting`,
       };
     }
   }

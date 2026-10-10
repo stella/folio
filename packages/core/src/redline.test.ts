@@ -22,7 +22,11 @@ import { compareDocx } from "./compare/compare";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
-import { generateRedlineDocx, InvalidGenerateRedlineDocxOptionsError } from "./redline";
+import {
+  generateRedlineDocx,
+  GenerateRedlineDocxResourceImportError,
+  InvalidGenerateRedlineDocxOptionsError,
+} from "./redline";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 import {
   GenerateRedlineDocxOperationLimitError,
@@ -1172,13 +1176,15 @@ describe("generateRedlineDocx inserted list items", () => {
         revised: true,
         styleClosure: "missingLink",
       });
-      const refused = await generateRedlineDocx(base, unsupportedRevision);
-      expect(refused.applied).toEqual([]);
-      expect(refused.skipped).toHaveLength(1);
-      expect(refused.skipped.at(0)?.reason).toBe("missingStyle");
-      expect(refused.skipped.at(0)?.message).toBe("a referenced target style is missing");
-      const refusedReviewer = await FolioDocxReviewer.fromBuffer(refused.buffer);
-      expect(refusedReviewer.snapshot().blocks.map((block) => block.text)).toEqual(["Anchor."]);
+      const refusal = await generateRedlineDocx(base, unsupportedRevision).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(refusal).toBeInstanceOf(GenerateRedlineDocxResourceImportError);
+      expect(refusal).toMatchObject({
+        _tag: "GenerateRedlineDocxResourceImportError",
+        detail: "referenced target style MissingStyle is missing",
+      });
     }
   });
 });

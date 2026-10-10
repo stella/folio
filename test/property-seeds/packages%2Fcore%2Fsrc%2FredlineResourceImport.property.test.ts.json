@@ -1,0 +1,10 @@
+{
+  "a failing insertion style closure refuses the whole redline without changing input packages": [
+    {
+      "seed": 1636,
+      "path": "0:0:0",
+      "note": "The insertion-skip ablation returned a partial redline instead of refusing the whole operation.",
+      "date": "2026-10-10"
+    }
+  ]
+}
