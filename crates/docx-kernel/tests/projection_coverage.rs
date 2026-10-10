@@ -36,11 +36,11 @@ use proptest::{collection, prop_assert, prop_assert_eq, proptest, sample};
 use quick_xml::events::{BytesStart, Event};
 use stella_docx_kernel::{
     AttributedRevision, CommentContent, DocumentPackageProjection, DocumentStructureFacts,
-    DocxLimits, FormattingProjectionStatus, InternalParagraphId, ParagraphIdentityFacts,
-    ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits,
-    ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionPayload,
-    RevisionProjectionStatus, RevisionView, StructuralFactSet, TextFormattingSpan, TextStyle,
-    project_docx_with_review_facts,
+    DocxLimits, FormattingCompleteness, FormattingFactStatus, InternalParagraphId,
+    ParagraphIdentityFacts, ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail,
+    ReviewFactLimits, ReviewFactSet, ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind,
+    RevisionPayload, RevisionProjectionStatus, RevisionView, StructuralFactSet, TextFormattingSpan,
+    TextStyle, project_docx_with_review_facts,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -2649,7 +2649,12 @@ fn apply_inlines(inlines: &[Inline], view: RevisionView, removed: bool) -> Vec<I
 fn require_known_families(projection: &DocumentPackageProjection) -> Result<(), String> {
     let document = &projection.document;
     let facts = &document.structural_facts;
-    if document.formatting_status != FormattingProjectionStatus::Complete
+    if document.formatting_completeness
+        != (FormattingCompleteness {
+            bold: FormattingFactStatus::Known,
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Known,
+        })
         || document.revision_status != RevisionProjectionStatus::Complete
         || !matches!(facts.indentation, StructuralFactSet::Known(_))
         || !matches!(facts.numbering_hierarchy, StructuralFactSet::Known(_))
@@ -3338,7 +3343,12 @@ impl TablePropertyDocument {
             return Err("table annotations and paragraph properties are empty".to_owned());
         }
         if projection.document.revision_status != RevisionProjectionStatus::Complete
-            || projection.document.formatting_status != FormattingProjectionStatus::Complete
+            || projection.document.formatting_completeness
+                != (FormattingCompleteness {
+                    bold: FormattingFactStatus::Known,
+                    highlight: FormattingFactStatus::Known,
+                    superscript: FormattingFactStatus::Known,
+                })
         {
             return Err(
                 "table projection statuses differ from their declared semantics".to_owned(),

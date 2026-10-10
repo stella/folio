@@ -11,9 +11,10 @@ use std::io::{Cursor, Write};
 
 use proptest::prelude::*;
 use stella_docx_kernel::{
-    DocumentProjection, DocxLimits, FormattingProjectionStatus, FormattingUnknownReason,
-    InternalParagraphId, ParagraphAlignmentFact, ParagraphAlignmentSource, ParagraphAlignmentValue,
-    StructuralFactSet, StructuralFactUnknownReason, TextFormattingSpan, TextStyle, project_docx,
+    DocumentProjection, DocxLimits, FormattingCompleteness, FormattingFactStatus,
+    FormattingUnknownReason, InternalParagraphId, ParagraphAlignmentFact, ParagraphAlignmentSource,
+    ParagraphAlignmentValue, StructuralFactSet, StructuralFactUnknownReason, TextFormattingSpan,
+    TextStyle, project_docx,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -152,7 +153,7 @@ proptest! {
         };
         let missing_table = selection == TableSelection::Missing;
         let projection = project(&table(&selected, &paragraph), &definitions);
-        prop_assert_eq!(projection.formatting_status, FormattingProjectionStatus::Complete);
+        prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known });
         let table_toggle = !missing_table && toggles.iter().filter(|value| **value).count() % 2 == 1;
         let expected_bold = direct_bold.unwrap_or_else(|| default_bold ^ table_toggle ^ paragraph_toggle.unwrap_or(false) ^ character_toggle.unwrap_or(false));
         prop_assert_eq!(&projection.paragraphs[0].formatting, &bold_spans(text, expected_bold));
@@ -202,7 +203,7 @@ proptest! {
             let plain = project(&table("", paragraph), &default_properties(false));
             prop_assert_eq!(projection, plain);
         } else {
-            prop_assert_eq!(projection.formatting_status, FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles));
+            prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles), highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles) });
             prop_assert_eq!(&projection.structural_facts.indentation, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
             prop_assert_eq!(&projection.structural_facts.outline_levels, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
             prop_assert_eq!(&projection.structural_facts.numbering_hierarchy, &StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles));
@@ -227,7 +228,7 @@ proptest! {
         let inner = table(inner_style, paragraph);
         let body = format!("{}{}", table("Outer", &format!("{paragraph}{inner}{paragraph}")), paragraph);
         let projection = project(&body, &definitions);
-        prop_assert_eq!(projection.formatting_status, FormattingProjectionStatus::Complete);
+        prop_assert_eq!(projection.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known });
         prop_assert_eq!(projection.paragraphs.len(), 4);
         for index in [0, 2] {
             prop_assert_eq!(&projection.paragraphs[index].formatting, &bold_spans("é😀", outer_bold));
@@ -257,8 +258,14 @@ fn conditional_projected_properties_are_explicitly_unsupported() {
         );
         let projection = project(&table("Conditional", paragraph), &definitions);
         assert_eq!(
-            projection.formatting_status,
-            FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+            projection.formatting_completeness,
+            FormattingCompleteness {
+                bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+                highlight: FormattingFactStatus::Known,
+                superscript: FormattingFactStatus::Unknown(
+                    FormattingUnknownReason::UnsupportedStyles
+                )
+            }
         );
         assert_eq!(
             projection.structural_facts.indentation,

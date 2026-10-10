@@ -20,7 +20,7 @@ use crate::projection::styles::{
     parse_alignment, parse_indentation, parse_level_attribute, parse_outline_level_attribute,
     parse_u32_attribute, semantic_highlight_value, word_style_id,
 };
-use crate::{FormattingProjectionStatus, FormattingUnknownReason, ProjectionError};
+use crate::{FormattingCompleteness, FormattingUnknownReason, ProjectionError};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PackageParagraphId(u32);
@@ -173,7 +173,7 @@ pub(super) struct RawDocumentProjection {
     pub paragraphs: Vec<RawProjectedParagraph>,
     pub bookmarks: Result<Vec<RawBookmarkRange>, StructuralFactUnknownReason>,
     pub references: Result<Vec<RawInternalReference>, StructuralFactUnknownReason>,
-    pub formatting_status: FormattingProjectionStatus,
+    pub formatting_completeness: FormattingCompleteness,
     pub revision_status: RevisionProjectionStatus,
     pub review_revisions: Option<ReviewFactSet<AttributedRevision>>,
     pub review_comment_anchors: HashMap<String, ReviewSpan>,
@@ -743,10 +743,7 @@ pub(super) fn project_document_xml(
         text_materialization,
         bookmarks_complete: true,
         references_complete: true,
-        formatting_status: match styles {
-            Ok(_) => FormattingProjectionStatus::Complete,
-            Err(reason) => FormattingProjectionStatus::Incomplete(reason),
-        },
+        formatting_completeness: FormattingCompleteness::from_styles(styles.map(|_| ())),
         review_revisions: review_limits.map_or(ReviewRevisionCollection::Disabled, |limits| {
             ReviewRevisionCollection::Complete {
                 maximum_facts: limits.maximum_facts,
@@ -898,7 +895,7 @@ pub(super) fn project_document_xml(
         paragraphs: state.paragraphs,
         bookmarks,
         references,
-        formatting_status: state.formatting_status,
+        formatting_completeness: state.formatting_completeness,
         revision_status: if state.revision_unsupported.is_empty() {
             RevisionProjectionStatus::Complete
         } else {
@@ -931,7 +928,7 @@ struct ProjectionState {
     references: Vec<RawInternalReference>,
     bookmarks_complete: bool,
     references_complete: bool,
-    formatting_status: FormattingProjectionStatus,
+    formatting_completeness: FormattingCompleteness,
     fields: Vec<FieldFrame>,
     paragraph_mark_revisions: HashMap<usize, ParagraphMarkRevision>,
     revision_view: RevisionView,
@@ -1053,9 +1050,7 @@ impl ProjectionState {
                 b"oMath" | b"oMathPara" if self.current_paragraph.is_some() => {
                     // Math text participates in paragraph offsets, but OMML run
                     // properties form a separate formatting hierarchy.
-                    self.formatting_status = FormattingProjectionStatus::Incomplete(
-                        FormattingUnknownReason::UnsupportedStyles,
-                    );
+                    self.formatting_completeness.mark_formatting_unread();
                     Frame::Math
                 }
                 b"r" if self.frames.iter().any(|frame| matches!(frame, Frame::Math)) => {
@@ -1495,9 +1490,7 @@ impl ProjectionState {
                                 })
                             };
                             resolved.unwrap_or_else(|()| {
-                                self.formatting_status = FormattingProjectionStatus::Incomplete(
-                                    FormattingUnknownReason::UnsupportedStyles,
-                                );
+                                self.formatting_completeness.mark_styles_unread();
                                 run.direct_styles
                             })
                         }
@@ -1777,8 +1770,7 @@ impl ProjectionState {
             .take()
             .ok_or(ProjectionError::InvalidDocumentXml)?;
         if styles.is_ok_and(|styles| paragraph.resolve_text_base(styles).is_err()) {
-            self.formatting_status =
-                FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles);
+            self.formatting_completeness.mark_styles_unread();
         }
         let ordinal = self.paragraphs.len();
         if let Some(revision) = paragraph.paragraph_mark_revision {

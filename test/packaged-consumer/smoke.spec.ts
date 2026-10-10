@@ -34,6 +34,7 @@ declare global {
         getEditorRef: () => DocxEditorRef | null;
         measureRoundTrip: () => Promise<{ width: number; alive: boolean }>;
         projectFixture: () => Promise<DocxProjectionWire>;
+        projectionSchemaVersion: () => Promise<number>;
       }
     | undefined;
 }
@@ -42,7 +43,6 @@ type CapturedMessage = { level: string; text: string };
 
 const MISSING_MESSAGE_PATTERN = /MISSING_MESSAGE|IntlError/u;
 const WORKER_PATTERN = /worker/iu;
-const PACKED_DOCX_PROJECTION_SCHEMA_VERSION = 5 satisfies DocxProjectionWire[0];
 
 test("packaged consumer mounts, lays out via the worker, and logs no errors", async ({ page }) => {
   const messages: CapturedMessage[] = [];
@@ -69,8 +69,12 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
   await page.evaluate(() => document.fonts.ready);
 
   const projection = await page.evaluate(() => globalThis.__folioSmoke?.projectFixture());
+  const schemaVersion = await page.evaluate(() =>
+    globalThis.__folioSmoke?.projectionSchemaVersion(),
+  );
+  expect(schemaVersion, "packed package must expose its projection schema").toBeDefined();
   expect(projection?.[0], "packed DOCX projection schema must load through WASM").toBe(
-    PACKED_DOCX_PROJECTION_SCHEMA_VERSION,
+    schemaVersion,
   );
   expect(projection?.[1].length ?? 0, "fixture must contain projected paragraphs").toBeGreaterThan(
     0,

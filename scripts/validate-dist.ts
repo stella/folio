@@ -296,6 +296,7 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "DocxProjectionInitializationError",
       "initializeDocxProjection",
       "projectCompressedDocx",
+      "docxProjectionSchemaVersion",
       "projectCompressedDocxWithReviewFacts",
     ],
   },
@@ -479,6 +480,9 @@ import {
   projectCompressedDocx,
   projectCompressedDocxWithReviewFacts,
   type DocxPackageProjectionWire,
+  type DocxProjectionFormattingCompleteness,
+  type DocxProjectionFormattingFamily,
+  type DocxProjectionFormattingFamilyStatus,
   type DocxProjectionWire,
 } from "@stll/docx-core/projection";
 
@@ -497,6 +501,9 @@ export type Surface = [
   Run,
   DocumentOp,
   DocxProjectionWire,
+  DocxProjectionFormattingCompleteness,
+  DocxProjectionFormattingFamily,
+  DocxProjectionFormattingFamilyStatus,
   DocxPackageProjectionWire,
 ];
 `,

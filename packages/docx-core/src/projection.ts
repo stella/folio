@@ -1,6 +1,7 @@
 import { TaggedError } from "better-result";
 
 import initializeRuntime, {
+  docxProjectionSchemaVersion as docxProjectionSchemaVersionInWasm,
   projectCompressedDocx as projectCompressedDocxInWasm,
   projectMainDocumentXml as projectMainDocumentXmlInWasm,
   projectParagraphFragment as projectParagraphFragmentInWasm,
@@ -16,7 +17,9 @@ import initializeRuntime, {
   type DocxProjectionBookmarkFact,
   type DocxProjectionFactSet,
   type DocxProjectionFormattingSpan,
-  type DocxProjectionFormattingStatus,
+  type DocxProjectionFormattingCompleteness,
+  type DocxProjectionFormattingFamily,
+  type DocxProjectionFormattingFamilyStatus,
   type DocxProjectionFormattingUnknownReason,
   type DocxProjectionIndentationFact,
   type DocxProjectionNumberingFact,
@@ -47,7 +50,9 @@ export type {
   DocxProjectionBookmarkFact,
   DocxProjectionFactSet,
   DocxProjectionFormattingSpan,
-  DocxProjectionFormattingStatus,
+  DocxProjectionFormattingCompleteness,
+  DocxProjectionFormattingFamily,
+  DocxProjectionFormattingFamilyStatus,
   DocxProjectionFormattingUnknownReason,
   DocxProjectionIndentationFact,
   DocxProjectionNumberingFact,
@@ -140,6 +145,12 @@ const projectWith = async <T>({
   } catch (cause) {
     throw new DocxProjectionError({ message, cause });
   }
+};
+
+/** Returns the wire schema version owned by the initialized Rust runtime. */
+export const docxProjectionSchemaVersion = async (): Promise<number> => {
+  await initializeDocxProjection();
+  return docxProjectionSchemaVersionInWasm();
 };
 
 export const projectCompressedDocx = (bytes: Uint8Array): Promise<DocxProjectionWire> =>

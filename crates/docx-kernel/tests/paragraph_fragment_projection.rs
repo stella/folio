@@ -4,9 +4,9 @@ use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
 use stella_docx_kernel::{
-    DocumentProjection, DocxLimits, FormattingProjectionStatus, FormattingUnknownReason,
-    InternalParagraphId, ParagraphIdentityFacts, ProjectionError, StructuralFactSet,
-    StructuralFactUnknownReason, project_docx, project_paragraph_fragment,
+    DocumentProjection, DocxLimits, FormattingCompleteness, FormattingFactStatus,
+    FormattingUnknownReason, InternalParagraphId, ParagraphIdentityFacts, ProjectionError,
+    StructuralFactSet, StructuralFactUnknownReason, project_docx, project_paragraph_fragment,
 };
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -164,10 +164,17 @@ fn text_and_formatting_match_the_same_paragraph_in_a_complete_package() {
     assert_eq!(fragment_paragraph.style_id, full_paragraph.style_id);
     assert!(!fragment_paragraph.formatting.is_empty());
     assert_eq!(
-        actual.formatting_status,
-        FormattingProjectionStatus::Complete
+        actual.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Known,
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Known
+        }
     );
-    assert_eq!(actual.formatting_status, expected.formatting_status);
+    assert_eq!(
+        actual.formatting_completeness,
+        expected.formatting_completeness
+    );
     assert_partial(&actual);
 }
 
@@ -186,8 +193,14 @@ fn missing_styles_leave_formatting_incomplete_but_preserve_direct_facts() {
     )
     .expect("fragment without styles should project");
     assert_eq!(
-        actual.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::StylesPartUnavailable)
+        actual.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::StylesPartUnavailable),
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Unknown(
+                FormattingUnknownReason::StylesPartUnavailable
+            )
+        }
     );
     assert_eq!(
         actual
@@ -396,8 +409,12 @@ fn shared_input_dependency_and_paragraph_bounds_are_enforced() {
     )
     .expect("unsupported styles preserve direct projection");
     assert_eq!(
-        limited_styles.formatting_status,
-        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+        limited_styles.formatting_completeness,
+        FormattingCompleteness {
+            bold: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles),
+            highlight: FormattingFactStatus::Known,
+            superscript: FormattingFactStatus::Unknown(FormattingUnknownReason::UnsupportedStyles)
+        }
     );
     assert_partial(&limited_styles);
 }

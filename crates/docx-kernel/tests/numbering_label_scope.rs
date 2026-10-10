@@ -9,8 +9,8 @@ use std::io::{Cursor, Write};
 
 use proptest::prelude::*;
 use stella_docx_kernel::{
-    DocumentProjection, DocxLimits, FormattingProjectionStatus, InternalParagraphId,
-    ParagraphIdentityFacts, ProjectionError, project_docx,
+    DocumentProjection, DocxLimits, FormattingCompleteness, FormattingFactStatus,
+    InternalParagraphId, ParagraphIdentityFacts, ProjectionError, project_docx,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -110,7 +110,7 @@ proptest! {
         let styled_numbering = numbering(&properties);
         let baseline = project(PackageOptions { namespace, body: &body, numbering: &baseline_numbering });
         let styled = project(PackageOptions { namespace, body: &body, numbering: &styled_numbering });
-        prop_assert_eq!(baseline.formatting_status, FormattingProjectionStatus::Complete);
+        prop_assert_eq!(baseline.formatting_completeness, FormattingCompleteness { bold: FormattingFactStatus::Known, highlight: FormattingFactStatus::Known, superscript: FormattingFactStatus::Known });
         prop_assert_eq!(baseline, styled);
     }
 }

@@ -13,16 +13,16 @@
 // fails, and a fall fails until the baseline is lowered with
 // `UPDATE_UNKNOWN_FACT_BASELINE=1 cargo test -p stella-docx-kernel --test unknown_fact_ratchet`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use stella_docx_kernel::{
     DocumentPackageProjection, DocumentProjection, DocumentReviewFacts, DocumentStructureFacts,
-    DocxLimits, FormattingProjectionStatus, InternalParagraphId, ParagraphIdentityFacts,
-    ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet,
-    ReviewFactUnknownReason, RevisionProjectionStatus, RevisionView, StructuralFactSet,
-    project_docx_with_review_facts,
+    DocxLimits, FormattingCompleteness, FormattingFactStatus, InternalParagraphId,
+    ParagraphIdentityFacts, ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits,
+    ReviewFactSet, ReviewFactUnknownReason, RevisionProjectionStatus, RevisionView,
+    StructuralFactSet, project_docx_with_review_facts,
 };
 
 const BASELINE: &str = "tests/unknown-fact-baseline.tsv";
@@ -98,7 +98,7 @@ fn count_unknowns(
         document:
             DocumentProjection {
                 paragraphs: _paragraphs,
-                formatting_status,
+                formatting_completeness,
                 revision_status,
                 structural_facts:
                     DocumentStructureFacts {
@@ -115,11 +115,24 @@ fn count_unknowns(
                 comments: comment_facts,
             },
     } = projection;
-    match formatting_status {
-        FormattingProjectionStatus::Complete => {}
-        FormattingProjectionStatus::Incomplete(reason) => {
-            tally(counts, view, "formatting", format!("{reason:?}"));
+    // Keep the existing package/reason census unit: a reason shared by several
+    // formatting families is counted once. Every family participates explicitly.
+    let FormattingCompleteness {
+        bold,
+        highlight,
+        superscript,
+    } = formatting_completeness;
+    let mut formatting_reasons = BTreeSet::new();
+    for status in [bold, highlight, superscript] {
+        match status {
+            FormattingFactStatus::Known => {}
+            FormattingFactStatus::Unknown(reason) => {
+                formatting_reasons.insert(reason);
+            }
         }
+    }
+    for reason in formatting_reasons {
+        tally(counts, view, "formatting", format!("{reason:?}"));
     }
     match revision_status {
         RevisionProjectionStatus::Complete => {}
