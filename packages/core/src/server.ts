@@ -12,6 +12,8 @@
 export type { FolioContentParagraphKind } from "./compare/content-types";
 export type {
   FolioAIBlock,
+  FolioAIParagraphBlock,
+  FolioAIDiagnosticBlock,
   FolioAIBlockAnchor,
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,

@@ -514,6 +514,7 @@ const expectDirectAlignmentModel = (
     id: "12345678",
     kind: "paragraph",
     text: TEXT,
+    statedNumbering: { kind: "inherit" },
     ...(styleId === null ? {} : { styleId }),
     ...(expected === undefined ? {} : { directAlignment: expected }),
   });
@@ -750,19 +751,29 @@ describe("paragraph alignment comparison", () => {
         alignment,
       ]);
       expect(
-        accepting.snapshot().blocks.map(({ kind, text, styleId, directAlignment }) => ({
-          kind,
-          text,
-          styleId,
-          directAlignment,
-        })),
+        accepting
+          .snapshot()
+          .blocks.map(({ kind, text, styleId, directAlignment, statedNumbering }) => ({
+            kind,
+            text,
+            styleId,
+            directAlignment,
+            statedNumbering,
+          })),
       ).toEqual([
-        { kind: "paragraph", text: TEXT, styleId: STYLE_ID, directAlignment: undefined },
+        {
+          kind: "paragraph",
+          text: TEXT,
+          styleId: STYLE_ID,
+          directAlignment: undefined,
+          statedNumbering: { kind: "inherit" },
+        },
         {
           kind: "paragraph",
           text: "The added paragraph keeps its authored alignment.",
           styleId: STYLE_ID,
           directAlignment: alignment,
+          statedNumbering: { kind: "inherit" },
         },
       ]);
       const accepted = await accepting.toBuffer();
@@ -783,13 +794,24 @@ describe("paragraph alignment comparison", () => {
         undefined,
       ]);
       expect(
-        rejecting.snapshot().blocks.map(({ kind, text, styleId, directAlignment }) => ({
-          kind,
-          text,
-          styleId,
-          directAlignment,
-        })),
-      ).toEqual([{ kind: "paragraph", text: TEXT, styleId: STYLE_ID, directAlignment: undefined }]);
+        rejecting
+          .snapshot()
+          .blocks.map(({ kind, text, styleId, directAlignment, statedNumbering }) => ({
+            kind,
+            text,
+            styleId,
+            directAlignment,
+            statedNumbering,
+          })),
+      ).toEqual([
+        {
+          kind: "paragraph",
+          text: TEXT,
+          styleId: STYLE_ID,
+          directAlignment: undefined,
+          statedNumbering: { kind: "inherit" },
+        },
+      ]);
       const rejected = await rejecting.toBuffer();
       const rejectedXml = await mainDocumentXml(rejected);
       expect(rejectedXml).not.toContain("<w:pPrChange");
@@ -1034,17 +1056,24 @@ describe("paragraph alignment comparison", () => {
       const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
       expect(accepting.acceptAll()).toBeGreaterThan(0);
       expect(
-        accepting.snapshot().blocks.map(({ text, styleId, directAlignment }) => ({
+        accepting.snapshot().blocks.map(({ text, styleId, directAlignment, statedNumbering }) => ({
           text,
           styleId,
           directAlignment,
+          statedNumbering,
         })),
       ).toEqual([
-        { text: TEXT, styleId: STYLE_ID, directAlignment: "center" },
+        {
+          text: TEXT,
+          styleId: STYLE_ID,
+          directAlignment: "center",
+          statedNumbering: { kind: "inherit" },
+        },
         {
           text: "The added paragraph keeps its authored alignment.",
           styleId: insertedStyleId ?? undefined,
           directAlignment: insertedDirectAlignment,
+          statedNumbering: { kind: "inherit" },
         },
       ]);
       const accepted = await accepting.toBuffer();
@@ -1071,11 +1100,14 @@ describe("paragraph alignment comparison", () => {
       const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
       expect(rejecting.rejectAll()).toBeGreaterThan(0);
       expect(
-        rejecting.snapshot().blocks.map(({ styleId, directAlignment }) => ({
+        rejecting.snapshot().blocks.map(({ styleId, directAlignment, statedNumbering }) => ({
           styleId,
           directAlignment,
+          statedNumbering,
         })),
-      ).toEqual([{ styleId: STYLE_ID, directAlignment: "center" }]);
+      ).toEqual([
+        { styleId: STYLE_ID, directAlignment: "center", statedNumbering: { kind: "inherit" } },
+      ]);
       const rejected = await rejecting.toBuffer();
       const rejectedParagraph = firstParagraphXml(await mainDocumentXml(rejected));
       expect(rejectedParagraph).not.toContain("<w:pPrChange");
@@ -1654,6 +1686,7 @@ describe("paragraph alignment provenance in editor state", () => {
       expect(createFolioAIEditSnapshot(view.state.doc).blocks.at(0)).toEqual({
         id: "12345678",
         kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
         text: REPLACEMENT_TEXT,
         ...(styleId === null ? {} : { styleId }),
         ...(directAlignment === undefined ? {} : { directAlignment }),
@@ -1675,6 +1708,7 @@ describe("paragraph alignment provenance in editor state", () => {
       expect(reopened.snapshot().blocks.at(0)).toEqual({
         id: "12345678",
         kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
         text: REPLACEMENT_TEXT,
         ...(styleId === null ? {} : { styleId }),
         ...(directAlignment === undefined ? {} : { directAlignment }),
@@ -1744,6 +1778,7 @@ describe("paragraph alignment provenance in editor state", () => {
     expect(reopened.snapshot().blocks.at(0)).toEqual(
       expect.objectContaining({
         kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
         text: REPLACEMENT_TEXT,
         styleId: NEXT_STYLE_ID,
       }),
@@ -1907,6 +1942,7 @@ describe("paragraph alignment provenance in editor state", () => {
         id: "12345678",
         kind: "paragraph",
         text: afterText,
+        statedNumbering: { kind: "inherit" },
         ...(afterStyleId === null ? {} : { styleId: afterStyleId }),
         ...(beforeDirect === undefined ? {} : { directAlignment: beforeDirect }),
       });
@@ -1927,6 +1963,7 @@ describe("paragraph alignment provenance in editor state", () => {
         id: "12345678",
         kind: "paragraph",
         text: beforeText,
+        statedNumbering: { kind: "inherit" },
         styleId: STYLE_ID,
         ...(beforeDirect === undefined ? {} : { directAlignment: beforeDirect }),
       });
@@ -2069,6 +2106,7 @@ describe("paragraph alignment provenance in editor state", () => {
       id: "12345678",
       kind: "paragraph",
       text: REPLACEMENT_TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: NEXT_STYLE_ID,
       directAlignment: "center",
     });
@@ -2104,6 +2142,7 @@ describe("paragraph alignment provenance in editor state", () => {
       id: "12345678",
       kind: "paragraph",
       text: TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: STYLE_ID,
       directAlignment: "center",
     });
@@ -2188,6 +2227,7 @@ describe("paragraph alignment provenance in editor state", () => {
       id: "12345678",
       kind: "paragraph",
       text: TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: NEXT_STYLE_ID,
     });
 
@@ -2203,6 +2243,7 @@ describe("paragraph alignment provenance in editor state", () => {
       id: "12345678",
       kind: "paragraph",
       text: TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: STYLE_ID,
       directAlignment: "center",
     });
@@ -2352,6 +2393,7 @@ describe("paragraph alignment provenance in editor state", () => {
       id: "12345678",
       kind: "paragraph",
       text: TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: STYLE_ID,
       directAlignment: "center",
     });
@@ -2431,6 +2473,7 @@ describe("paragraph alignment provenance in editor state", () => {
       id: "12345678",
       kind: "paragraph",
       text: TEXT,
+      statedNumbering: { kind: "inherit" },
       styleId: STYLE_ID,
       directAlignment: "center",
     });

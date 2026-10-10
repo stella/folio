@@ -7,7 +7,8 @@ import type {
   FolioReviewChange,
   FolioDocumentSectionHandle,
   FolioDocumentStoryHandle,
-  FolioAIBlock,
+  FolioAIParagraphBlock,
+  FolioAIDiagnosticBlock,
 } from "@stll/folio-core/server";
 
 /**
@@ -88,16 +89,15 @@ export type FolioToolCallResult<TResult = unknown> =
   | { ok: false; error: string };
 
 /**
- * One document block as exposed to a model: id, kind, its plain text, authored
- * numbering state, and effective list membership when present.
+ * One document block as exposed to a model. Paragraph blocks carry authored
+ * numbering state; diagnostics have no paragraph numbering fields.
  */
-export type FolioAgentBlock = {
+type FolioAgentBlockFields = {
   blockId: string;
   /**
    * `heading`, `listItem` or `paragraph`. A numbered heading (`1. Scope`) is a
    * `heading` with its number in `displayLabel`.
    */
-  kind: string;
   text: string;
   /**
    * What the document shows beside the text: the list or heading number
@@ -106,10 +106,6 @@ export type FolioAgentBlock = {
   displayLabel?: string;
   /** One-based heading level, on headings. */
   headingLevel?: number;
-  /** Exact authored numbering state; `inherit` means no direct override. */
-  statedNumbering: FolioAIBlock["statedNumbering"];
-  /** Effective numbering instance and zero-based level, when the paragraph belongs to a list. */
-  listReference?: NonNullable<FolioAIBlock["listReference"]>;
   /**
    * Normalized-text hash of this block at read time. Echo it back as
    * `precondition.blockTextHash` on a `suggest_changes` / `add_comment`
@@ -120,6 +116,16 @@ export type FolioAgentBlock = {
    */
   blockTextHash: string;
 };
+
+export type FolioAgentBlock =
+  | (FolioAgentBlockFields & {
+      kind: FolioAIParagraphBlock["kind"];
+      /** Exact authored numbering state; `inherit` means no direct override. */
+      statedNumbering: FolioAIParagraphBlock["statedNumbering"];
+      /** Effective numbering instance and zero-based level, when in a list. */
+      listReference?: NonNullable<FolioAIParagraphBlock["listReference"]>;
+    })
+  | (FolioAgentBlockFields & { kind: FolioAIDiagnosticBlock["kind"] });
 
 /** One main-story `find_text` match. Existing consumers can keep using its block and range directly. */
 export type FolioAgentTextMatch = {

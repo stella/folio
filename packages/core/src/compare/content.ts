@@ -28,6 +28,7 @@ import {
 } from "./content-alignment";
 import type {
   FolioContentBlock,
+  FolioContentBlockIdentity,
   FolioContentFormatRange,
   FolioContentIdStability,
   FolioContentParagraphIndentation,
@@ -149,17 +150,17 @@ export type FolioContentFormattingChange = {
 /** Non-presentation block fields that changed on a paired block. */
 export type FolioContentBlockProperty = "kind" | "headingLevel" | "displayLabel";
 
-type PairedEvent<Block extends FolioContentBlock> = {
+type PairedEvent<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly [Block];
   revisedBlocks: readonly [Block];
 };
 
-type BaseOnlyEvent<Block extends FolioContentBlock> = {
+type BaseOnlyEvent<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly [Block];
   revisedBlocks: readonly [];
 };
 
-type RevisedOnlyEvent<Block extends FolioContentBlock> = {
+type RevisedOnlyEvent<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly [];
   revisedBlocks: readonly [Block];
 };
@@ -168,7 +169,9 @@ type RevisedOnlyEvent<Block extends FolioContentBlock> = {
  * One item in the complete comparison stream. Tuple cardinality is fixed by
  * the discriminator, making both document projections mechanically exact.
  */
-export type FolioContentComparisonEvent<Block extends FolioContentBlock = FolioContentBlock> =
+export type FolioContentComparisonEvent<
+  Block extends FolioContentBlockIdentity = FolioContentBlock,
+> =
   | ({ type: "unchanged" } & PairedEvent<Block>)
   | ({
       type: "modified";
@@ -230,13 +233,13 @@ export type FolioContentStructuralChange =
     } & RevisedStructuralChange);
 
 /** Result of one representation-neutral story comparison. */
-export type FolioContentComparison<Block extends FolioContentBlock = FolioContentBlock> = {
+export type FolioContentComparison<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
   events: readonly FolioContentComparisonEvent<Block>[];
   structuralChanges: readonly FolioContentStructuralChange[];
 };
 
 /** Inputs to {@link compareContent}. */
-export type CompareContentOptions<Block extends FolioContentBlock = FolioContentBlock> = {
+export type CompareContentOptions<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
   base: FolioContentSnapshot<Block>;
   revised: FolioContentSnapshot<Block>;
   /** Token size for modified-block segments; defaults to `"word"`. */
@@ -307,18 +310,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const validStatedNumbering = (value: unknown): value is FolioContentStatedNumbering => {
-  if (!isRecord(value) || typeof value.kind !== "string") return false;
-  switch (value.kind) {
+  if (!isRecord(value) || typeof value["kind"] !== "string") return false;
+  switch (value["kind"]) {
     case "inherit":
     case "none":
       return true;
     case "levelOnly":
-      return isFiniteInteger(value.ilvl) && value.ilvl >= 0;
+      return isFiniteInteger(value["ilvl"]) && value["ilvl"] >= 0;
     case "reference":
       return (
-        isFiniteInteger(value.numId) &&
-        value.numId > 0 &&
-        (value.ilvl === undefined || (isFiniteInteger(value.ilvl) && value.ilvl >= 0))
+        isFiniteInteger(value["numId"]) &&
+        value["numId"] > 0 &&
+        (value["ilvl"] === undefined || (isFiniteInteger(value["ilvl"]) && value["ilvl"] >= 0))
       );
     default:
       return false;
@@ -333,8 +336,20 @@ const hasRecordShape = (value: unknown): boolean => isRecord(value);
 // refuse a member the model carries.
 const PARAGRAPH_ALIGNMENTS: ReadonlySet<string> = new Set(PARAGRAPH_ALIGNMENT_VALUES);
 
+const isParagraphContentBlock = (block: FolioContentBlockIdentity): block is FolioContentBlock => {
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return "statedNumbering" in block;
+    case "diagnostic":
+    default:
+      return false;
+  }
+};
+
 const validateRunFormatting = (
-  block: FolioContentBlock,
+  block: FolioContentBlockIdentity,
   side: "base" | "revised",
   blockIndex: number,
 ): InvalidFolioContentComparisonError | null => {
@@ -412,7 +427,7 @@ const validateRunFormatting = (
 };
 
 const validateParagraphFormatting = (
-  block: FolioContentBlock,
+  block: FolioContentBlockIdentity,
   side: "base" | "revised",
   blockIndex: number,
 ): InvalidFolioContentComparisonError | null => {
@@ -437,7 +452,19 @@ const validateParagraphFormatting = (
       blockIndex,
     );
   }
-  if (!validStatedNumbering(block.statedNumbering)) {
+  if (block.kind === "diagnostic") {
+    for (const field of ["statedNumbering", "listReference"] as const) {
+      if (Object.hasOwn(block, field))
+        return invalidInput(
+          side,
+          `blocks[${String(blockIndex)}].${field}`,
+          "Diagnostics cannot state paragraph numbering.",
+          blockIndex,
+        );
+    }
+    return null;
+  }
+  if (!isParagraphContentBlock(block) || !validStatedNumbering(block.statedNumbering)) {
     return invalidInput(
       side,
       `blocks[${String(blockIndex)}].statedNumbering`,
@@ -692,7 +719,7 @@ const chargeAttributeString = ({
   return null;
 };
 
-const validateSnapshot = <Block extends FolioContentBlock>(
+const validateSnapshot = <Block extends FolioContentBlockIdentity>(
   snapshot: FolioContentSnapshot<Block>,
   side: "base" | "revised",
 ): InvalidFolioContentComparisonError | FolioContentComparisonLimitError | null => {
@@ -1100,9 +1127,12 @@ const paragraphSpacingEqual = (
   base?.afterAutospacing === revised?.afterAutospacing;
 
 export const changedFolioContentParagraphFormatting = (
-  base: FolioContentBlock,
-  revised: FolioContentBlock,
+  base: FolioContentBlockIdentity,
+  revised: FolioContentBlockIdentity,
 ): FolioContentParagraphFormattingPatch | null => {
+  if (!isParagraphContentBlock(base) || !isParagraphContentBlock(revised)) {
+    return null;
+  }
   const patch: FolioContentParagraphFormattingPatch = {};
   if ((base.styleId ?? null) !== (revised.styleId ?? null)) {
     patch.styleId = revised.styleId ?? null;
@@ -1126,8 +1156,8 @@ export const changedFolioContentParagraphFormatting = (
 };
 
 const changedBlockProperties = (
-  base: FolioContentBlock,
-  revised: FolioContentBlock,
+  base: FolioContentBlockIdentity,
+  revised: FolioContentBlockIdentity,
 ): FolioContentBlockProperty[] => {
   const changed: FolioContentBlockProperty[] = [];
   if (base.kind !== revised.kind) changed.push("kind");
@@ -1136,7 +1166,7 @@ const changedBlockProperties = (
   return changed;
 };
 
-type ParagraphMarkPlan<Block extends FolioContentBlock> =
+type ParagraphMarkPlan<Block extends FolioContentBlockIdentity> =
   | {
       type: "split";
       baseBlock: Block;
@@ -1162,13 +1192,13 @@ const separatorBetween = (whole: string, head: string, tail: string): string | n
   return separator.length === 0 || /^\s+$/u.test(separator) ? separator : null;
 };
 
-type SplitPlanOptions<Block extends FolioContentBlock> = {
+type SplitPlanOptions<Block extends FolioContentBlockIdentity> = {
   baseBlock: Block;
   head: Block;
   tail: Block;
 };
 
-const splitPlan = <Block extends FolioContentBlock>({
+const splitPlan = <Block extends FolioContentBlockIdentity>({
   baseBlock,
   head,
   tail,
@@ -1179,13 +1209,13 @@ const splitPlan = <Block extends FolioContentBlock>({
     : null;
 };
 
-type MergePlanOptions<Block extends FolioContentBlock> = {
+type MergePlanOptions<Block extends FolioContentBlockIdentity> = {
   revisedBlock: Block;
   head: Block;
   tail: Block;
 };
 
-const mergePlan = <Block extends FolioContentBlock>({
+const mergePlan = <Block extends FolioContentBlockIdentity>({
   revisedBlock,
   head,
   tail,
@@ -1201,7 +1231,7 @@ const mergePlan = <Block extends FolioContentBlock>({
  * other side. Alignment pairs a split paragraph with whichever half reads more
  * like it, so the unpaired half may stand before the pair or after it.
  */
-const paragraphMarkPlan = <Block extends FolioContentBlock>(
+const paragraphMarkPlan = <Block extends FolioContentBlockIdentity>(
   step: FolioContentAlignmentStep<Block>,
   next: FolioContentAlignmentStep<Block>,
 ): ParagraphMarkPlan<Block> | null => {
@@ -1221,7 +1251,7 @@ const paragraphMarkPlan = <Block extends FolioContentBlock>(
 };
 
 /** Plans keyed by their first step; each consumes the step after it. */
-export const detectFolioContentParagraphMarkPlans = <Block extends FolioContentBlock>(
+export const detectFolioContentParagraphMarkPlans = <Block extends FolioContentBlockIdentity>(
   steps: readonly FolioContentAlignmentStep<Block>[],
 ): ReadonlyMap<number, ParagraphMarkPlan<Block>> => {
   const plans = new Map<number, ParagraphMarkPlan<Block>>();
@@ -1273,19 +1303,19 @@ const tokenSimilarity = (
   };
 };
 
-type MovePair<Block extends FolioContentBlock> = {
+type MovePair<Block extends FolioContentBlockIdentity> = {
   baseBlock: Block;
   revisedBlock: Block;
 };
 
-type MoveCandidate<Block extends FolioContentBlock> = {
+type MoveCandidate<Block extends FolioContentBlockIdentity> = {
   block: Block;
   moveScope: Extract<FolioContentAlignmentStep<Block>, { type: "baseOnly" }>["moveScope"];
   profile: TokenProfile;
   order: number;
 };
 
-export const detectFolioContentMoves = <Block extends FolioContentBlock>({
+export const detectFolioContentMoves = <Block extends FolioContentBlockIdentity>({
   steps,
   consumedStepIndexes,
   workSession,
@@ -1446,14 +1476,14 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
   return moves;
 };
 
-type Relation<Block extends FolioContentBlock> = {
+type Relation<Block extends FolioContentBlockIdentity> = {
   id: number;
   baseBlocks: readonly Block[];
   revisedBlocks: readonly Block[];
   event: FolioContentComparisonEvent<Block>;
 };
 
-const structuralChangeForStep = <Block extends FolioContentBlock>(
+const structuralChangeForStep = <Block extends FolioContentBlockIdentity>(
   step: FolioContentAlignmentStep<Block>,
   id: number,
 ): FolioContentStructuralChange | null => {
@@ -1515,8 +1545,8 @@ type FormattingChangeResult =
   | { status: "unalignable"; error: FolioContentInlinePresentationProjectionError };
 
 const formattingChange = (
-  base: FolioContentBlock,
-  revised: FolioContentBlock,
+  base: FolioContentBlockIdentity,
+  revised: FolioContentBlockIdentity,
   maxRanges: number,
 ): FormattingChangeResult => {
   const paragraph = changedFolioContentParagraphFormatting(base, revised);
@@ -1556,7 +1586,7 @@ const formattingChange = (
   }
 };
 
-type CompareAlignedContentOptions<Block extends FolioContentBlock> = {
+type CompareAlignedContentOptions<Block extends FolioContentBlockIdentity> = {
   baseBlocks: readonly Block[];
   revisedBlocks: readonly Block[];
   steps: readonly FolioContentAlignmentStep<Block>[];
@@ -1565,7 +1595,7 @@ type CompareAlignedContentOptions<Block extends FolioContentBlock> = {
   idStability?: (block: Block) => FolioContentIdStability;
 };
 
-export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
+export const compareAlignedFolioContent = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
   steps,
@@ -1850,7 +1880,7 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
 };
 
 /** Compare two representation-neutral ordered content snapshots. */
-export const compareContent = <Block extends FolioContentBlock = FolioContentBlock>(
+export const compareContent = <Block extends FolioContentBlockIdentity = FolioContentBlock>(
   options: CompareContentOptions<Block>,
 ): Result<FolioContentComparison<Block>, FolioContentComparisonError> => {
   if (!isRecord(options)) {

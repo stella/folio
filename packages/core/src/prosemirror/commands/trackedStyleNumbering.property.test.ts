@@ -15,7 +15,10 @@ import { carryParagraphProperties } from "../paragraphPropertyCarry";
 import { createDocumentNumberingPlugin, getDocumentNumbering } from "../plugins/documentNumbering";
 import { createDocumentStylesPlugin, getDocumentStyleResolver } from "../plugins/documentStyles";
 import { createSuggestionModePlugin } from "../plugins/suggestionMode";
-import { toggleBulletList } from "../extensions/features/ListExtension";
+import { ListExtension, toggleBulletList } from "../extensions/features/ListExtension";
+import { schema } from "../schema";
+import { ensureParaIds } from "../../docx/ensureParaIds";
+import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { acceptAllChanges, rejectAllChanges } from "./comments";
 
 type NumberingSource = "style" | "paragraph" | "style-level";
@@ -145,6 +148,12 @@ const exercise = async ({
     expect(attrs.numPr ?? undefined).toEqual(numberingState.direct);
     expect(attrs.numPrFromStyle ?? undefined).toEqual(numberingState.inherited);
     expect(attrs.listNumFmt).toBe("decimal");
+  } else if (operation !== "carry") {
+    expect(attrs.numPr?.kind).toBe("reference");
+    if (attrs.numPr?.kind !== "reference") throw new Error("The list command lost its reference.");
+    expect(attrs.numPr.numId).not.toBe(numId);
+    expect(attrs.listIsBullet).toBe(true);
+    expect(attrs.listNumFmt).toBe("bullet");
   }
   const saved = fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } });
   const bytes = await repackDocx(saved);
@@ -191,8 +200,140 @@ const exercise = async ({
     expect(paragraph.formatting?.styleId).toBe(decision === "reject" ? "Numbered" : "Plain");
   } else {
     expect(paragraph.formatting?.numPr?.kind).toBe("reference");
+    expect(paragraph.listRendering?.isBullet).toBe(true);
+    expect(paragraph.listRendering?.numFmt).toBe("bullet");
   }
   expect(expectParagraphAttrs(toProseDoc(reopened).child(1)).numPr).toEqual(attrs.numPr);
+};
+
+type StyleNumberingRequest =
+  | "toggle bullet"
+  | "toggle number"
+  | "change level"
+  | "new list"
+  | "cancel";
+
+const styleNumberingDocument = (): Document => {
+  const document = sourceDocument({ numId: 4, level: 0, numberingSource: "style" });
+  const numbering = document.package.numbering;
+  if (!numbering) throw new Error("Expected numbering definitions");
+  const abstractNum = numbering.abstractNums[0];
+  if (!abstractNum) throw new Error("Expected an abstract numbering definition");
+  abstractNum.levels = [
+    { ilvl: 0, numFmt: "decimal", lvlText: "%1.", start: 1 },
+    { ilvl: 1, numFmt: "lowerLetter", lvlText: "%1.%2.", start: 1 },
+  ];
+  return document;
+};
+
+const targetProjection = (reviewer: FolioDocxReviewer) => {
+  const block = reviewer.getContent().find(({ text }) => text === "Target");
+  if (!block || block.kind === "diagnostic") throw new Error("Expected the target paragraph");
+  return block;
+};
+
+const assertStyleNumberingRequest = async (request: StyleNumberingRequest) => {
+  const { docx } = await ensureParaIds(await createDocx(styleNumberingDocument()));
+  let saved: ArrayBuffer;
+  if (request === "new list" || request === "cancel") {
+    const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "Reviewer" });
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "numbering-request",
+          type: "setBlockParagraphProperties",
+          blockId: targetProjection(reviewer).id,
+          properties: {
+            numbering:
+              request === "new list" ? { kind: "newList", format: "numbered" } : { kind: "none" },
+          },
+        },
+      ],
+    });
+    expect(result.status).toBe("committed");
+    expect(result.issues).toEqual([]);
+    saved = await reviewer.toBuffer();
+  } else {
+    const document = await parseDocx(docx);
+    let state = EditorState.create({
+      doc: toProseDoc(document),
+      plugins: [
+        createDocumentStylesPlugin(document.package.styles),
+        createDocumentNumberingPlugin(document.package.numbering),
+      ],
+    });
+    const targetPosition = state.doc.child(0).nodeSize;
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, targetPosition + 1)));
+    const runtime = ListExtension().onSchemaReady({ schema });
+    const command = (() => {
+      switch (request) {
+        case "toggle bullet":
+          return runtime.commands?.toggleBulletList?.();
+        case "toggle number":
+          return runtime.commands?.toggleNumberedList?.();
+        case "change level":
+          return runtime.commands?.increaseListLevel?.();
+        default: {
+          const unreachable: never = request;
+          throw new Error(`Unknown list command: ${unreachable}`);
+        }
+      }
+    })();
+    if (!command) throw new Error(`List extension has no command for ${request}`);
+    expect(
+      command(state, (transaction) => {
+        state = state.apply(transaction);
+      }),
+    ).toBe(true);
+    saved = await repackDocx(
+      fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } }),
+    );
+  }
+
+  const reopenedBytes = await parseDocx(saved);
+  const reopenedProse = toProseDoc(reopenedBytes);
+  const renderedAttrs = expectParagraphAttrs(reopenedProse.child(1));
+  const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved);
+  const projection = targetProjection(reopenedReviewer);
+  const hasEffectiveReference = projection.listReference !== undefined;
+  const hasRenderedMarker = renderedAttrs.listNumFmt !== undefined;
+  expect(hasEffectiveReference).toBe(hasRenderedMarker);
+
+  switch (request) {
+    case "toggle bullet":
+      expect(projection.listReference).toBeDefined();
+      expect(projection.displayLabel).toBe("•");
+      expect(renderedAttrs.listIsBullet).toBe(true);
+      expect(projection.statedNumbering.kind).toBe("reference");
+      break;
+    case "toggle number":
+    case "cancel":
+      expect(projection.listReference).toBeUndefined();
+      expect(projection.displayLabel).toBeUndefined();
+      expect(renderedAttrs.listNumFmt).toBeUndefined();
+      expect(projection.statedNumbering.kind).toBe("none");
+      break;
+    case "change level":
+      expect(projection.listReference).toEqual({ numId: 4, level: 1 });
+      expect(projection.displayLabel).toBe("1.a.");
+      expect(renderedAttrs.listNumFmt).toBe("lowerLetter");
+      expect(projection.statedNumbering).toEqual({ kind: "levelOnly", ilvl: 1 });
+      break;
+    case "new list":
+      expect(projection.listReference).toBeDefined();
+      expect(projection.listReference?.numId).not.toBe(4);
+      expect(projection.listReference?.level).toBe(0);
+      expect(projection.displayLabel).toBe("1.");
+      expect(renderedAttrs.listNumFmt).toBe("decimal");
+      expect(projection.statedNumbering.kind).toBe("reference");
+      break;
+    default: {
+      const unreachable: never = request;
+      throw new Error(`Unknown numbering request: ${unreachable}`);
+    }
+  }
 };
 
 test("rejecting a suggested property change keeps style numbering inherited", async () => {
@@ -203,6 +344,18 @@ test("rejecting a suggested property change keeps style numbering inherited", as
     decision: "reject",
     numberingSource: "style",
   });
+});
+
+test("style-numbered requests keep effective membership aligned with saved rendering", async () => {
+  for (const request of [
+    "toggle bullet",
+    "toggle number",
+    "change level",
+    "new list",
+    "cancel",
+  ] as const) {
+    await assertStyleNumberingRequest(request);
+  }
 });
 
 test(

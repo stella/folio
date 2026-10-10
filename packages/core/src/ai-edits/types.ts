@@ -1,6 +1,7 @@
 import type { CanonicalGap } from "../types/canonicalCapabilities";
 import type {
   FolioContentBlock,
+  FolioContentBlockIdentity,
   FolioContentStatedNumbering,
   FolioContentInlineBooleanProperty,
   FolioContentInlineFormatting,
@@ -68,11 +69,16 @@ export type FolioAIBlockStructuralBoundary =
  */
 export type FolioAIBlockTableLocation = FolioContentTableLocation;
 
-export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
+export type FolioAIParagraphBlock = FolioContentBlock<FolioContentParagraphKind> & {
   structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
-  /** Present on a read-only block that reports preserved content Folio cannot interpret. */
-  diagnostic?: { type: "opaqueCarrier"; carrier: string };
 };
+
+export type FolioAIDiagnosticBlock = FolioContentBlockIdentity<"diagnostic"> & {
+  /** Present on a read-only block that reports preserved content Folio cannot interpret. */
+  diagnostic: { type: "opaqueCarrier"; carrier: string };
+};
+
+export type FolioAIBlock = FolioAIParagraphBlock | FolioAIDiagnosticBlock;
 
 /**
  * The complete modeled attribute set of one direct `w:pPr/w:spacing` child.

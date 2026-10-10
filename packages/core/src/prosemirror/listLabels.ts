@@ -67,7 +67,7 @@ const staticMarker = (attrs: Readonly<ParagraphAttrs>): string | undefined => {
 
 /** Most paragraphs: nothing to count and no marker to show. */
 const isPlainParagraph = (attrs: Readonly<ParagraphAttrs>): boolean =>
-  effectiveParagraphNumbering(attrs) == null &&
+  effectiveParagraphNumbering(attrs).kind === "none" &&
   attrs.listMarker == null &&
   attrs.listMarkerTemplate == null &&
   (attrs._propertyChanges == null || attrs._propertyChanges.length === 0);
@@ -139,7 +139,7 @@ export const createListLabelCounter = (): ListLabelCounter => {
       return advanceVisibleListMarker(counted, streams).marker;
     }
     const marker = advanceListMarker(counted, final);
-    if (effectiveParagraphNumbering(counted) != null) {
+    if (effectiveParagraphNumbering(counted).kind === "reference") {
       originalPreviousList = final.previousList ?? NO_PREVIOUS_LIST;
     }
     return marker;

@@ -639,7 +639,20 @@ export const parseComparison = async (
         }));
   const targetNumbering = getFolioDocxComparisonAccess(targetReviewer).numberingDefinitions();
   const targetNumberingReferences = styleAlignedPairs.flatMap(({ targetSnapshot }) =>
-    targetSnapshot.blocks.flatMap((block) => (block.listReference ? [block.listReference] : [])),
+    targetSnapshot.blocks.flatMap((block) => {
+      switch (block.kind) {
+        case "diagnostic":
+          return [];
+        case "paragraph":
+        case "heading":
+        case "listItem":
+          return block.listReference ? [block.listReference] : [];
+        default: {
+          const unreachable: never = block;
+          return panic("Unhandled comparison block kind", { block: unreachable });
+        }
+      }
+    }),
   );
   const targetNumberingReferenceMap = getFolioDocxComparisonAccess(
     reviewer,

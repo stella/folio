@@ -1,15 +1,9 @@
-import { effectiveParagraphNumbering } from "../numberingAttr";
-/**
- * Shared helper for projecting a resolved paragraph style onto ProseMirror
- * paragraph node attrs.
- *
- * Both `applyStyle` (toolbar style picker) and the Enter handler's
- * next-style switch need to write the same set of style-controlled attrs.
- * Keeping the projection in one place ensures the two paths stay in sync —
- * a style applied via the picker and a style applied on Enter produce
- * identical paragraph attrs.
- */
+import { panic } from "better-result";
 
+import {
+  effectiveParagraphNumbering,
+  effectiveParagraphNumberingReference,
+} from "../numberingAttr";
 import {
   computeListRendering,
   numberingLevelHasMarkerSlot,
@@ -33,6 +27,16 @@ import type { ParagraphFormatting } from "../../types/document";
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
+/**
+ * Shared helper for projecting a resolved paragraph style onto ProseMirror
+ * paragraph node attrs.
+ *
+ * Both `applyStyle` (toolbar style picker) and the Enter handler's
+ * next-style switch need to write the same set of style-controlled attrs.
+ * Keeping the projection in one place ensures the two paths stay in sync —
+ * a style applied via the picker and a style applied on Enter produce
+ * identical paragraph attrs.
+ */
 type ResolvedStyleIdentity = {
   styleId: string;
   styleName?: string;
@@ -300,9 +304,14 @@ export function listLevelAttrPatch(
     | "indentFirstLine"
     | "hangingIndent"
   >,
-  numPr: { numId: number; ilvl: number },
+  ilvl: number,
   numbering: NumberingMap | null | undefined,
 ): ParagraphAttrsPatch {
+  const reference = effectiveParagraphNumberingReference(attrs);
+  if (reference === undefined) {
+    panic("Cannot change list level without an effective numbering reference");
+  }
+  const numPr = { numId: reference.numId, ilvl };
   const direct = directParagraphIndentation(attrs);
   return {
     ...listAttrsFromNumbering(numPr, numbering),

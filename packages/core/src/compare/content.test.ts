@@ -1783,3 +1783,27 @@ describe("comparison projection invariants", () => {
     );
   });
 });
+
+test("diagnostic input cannot invent authored or effective paragraph numbering", () => {
+  const diagnostic = { id: "opaque", kind: "diagnostic", text: "Preserved carrier" } as const;
+  expect(
+    compareContent({ base: { blocks: [diagnostic] }, revised: { blocks: [diagnostic] } }).isOk(),
+  ).toBe(true);
+  for (const [field, value] of [
+    ["statedNumbering", { kind: "inherit" }],
+    ["listReference", { numId: 4, level: 0 }],
+  ] as const) {
+    const result = compareContent({
+      base: { blocks: [{ ...diagnostic, [field]: value }] },
+      revised: { blocks: [diagnostic] },
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error("Diagnostic numbering must be refused");
+    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(result.error).toMatchObject({
+      input: "base",
+      blockIndex: 0,
+      field: `blocks[0].${field}`,
+    });
+  }
+});

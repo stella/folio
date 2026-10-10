@@ -207,7 +207,7 @@ export function advanceVisibleListMarker(
     return advanced;
   };
   const previous = previousListAttrs(attrs);
-  if (effectiveParagraphNumbering(attrs) == null) {
+  if (effectiveParagraphNumbering(attrs).kind === "none") {
     const counterAttrs = previous ?? attrs;
     const visible = advance(counterAttrs, previous ? "original" : "final");
     return { ...visible, advances };

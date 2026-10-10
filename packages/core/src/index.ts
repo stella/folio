@@ -159,6 +159,8 @@ export {
   type WordDiffOptions,
   type WordDiffSegment,
   type FolioAIBlock,
+  type FolioAIParagraphBlock,
+  type FolioAIDiagnosticBlock,
   type FolioAIBlockAnchor,
   type FolioAIBlockTableLocation,
   type FolioRevisionStamp,

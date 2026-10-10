@@ -202,11 +202,7 @@ const attrsForListLevel = (
   if (numbering === undefined) panic("Cannot change the level of a list without a numbering id");
   return {
     ...attrs,
-    ...listLevelAttrPatch(
-      attrs,
-      { numId: numbering.numId, ilvl: level },
-      getDocumentNumbering(state),
-    ),
+    ...listLevelAttrPatch(attrs, level, getDocumentNumbering(state)),
   };
 };
 

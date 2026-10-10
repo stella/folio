@@ -86,32 +86,37 @@ const LIST_HEAD = [listItem("Alpha", "1."), listItem("Beta", "2.")];
 const TAIL = [bodyParagraph("Tail.")];
 
 describe("insertAfterBlock formattingScope", () => {
-  const allParagraphVariants: { name: string; extras: (numId: number) => InsertExtras }[] = [
-    { name: "inherited numbering", extras: () => ({}) },
+  const allParagraphVariants: {
+    name: string;
+    extras: (numId: number) => InsertExtras;
+    expected: InsertedOutline;
+  }[] = [
+    {
+      name: "copied numbering",
+      extras: () => ({}),
+      expected: [listItem("Gamma", "3."), listItem("Delta", "4."), listItem("Epsilon", "5.")],
+    },
     {
       name: "explicit level-only numbering",
       extras: () => ({ numbering: { kind: "levelOnly", ilvl: 0 } }),
+      // This fixture has direct numbering and no style numbering to inherit.
+      expected: [bodyParagraph("Gamma"), bodyParagraph("Delta"), bodyParagraph("Epsilon")],
     },
     {
       name: "explicit numbering reference",
       extras: (numId) => ({ numbering: { kind: "reference", numId, ilvl: 0 } }),
+      expected: [listItem("Gamma", "3."), listItem("Delta", "4."), listItem("Epsilon", "5.")],
     },
   ];
 
-  for (const { name, extras } of allParagraphVariants) {
-    test(`"allParagraphs" numbers every split paragraph after save and reopen: ${name}`, async () => {
+  for (const { name, extras, expected } of allParagraphVariants) {
+    test(`"allParagraphs" applies the stated numbering to every split paragraph after save and reopen: ${name}`, async () => {
       const { numId } = await numberedListDocx();
       const outline = await insertAfterBeta(THREE_ITEMS, {
         formattingScope: "allParagraphs",
         ...extras(numId),
       });
-      expect(outline).toEqual([
-        ...LIST_HEAD,
-        listItem("Gamma", "3."),
-        listItem("Delta", "4."),
-        listItem("Epsilon", "5."),
-        ...TAIL,
-      ]);
+      expect(outline).toEqual([...LIST_HEAD, ...expected, ...TAIL]);
     });
   }
 

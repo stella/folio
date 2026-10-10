@@ -761,13 +761,7 @@ function convertParagraph(
   if (directFormatting === undefined) Reflect.deleteProperty(attrs, "_originalFormatting");
   else attrs._originalFormatting = directFormatting;
   const numPr = effectiveParagraphNumbering(attrs);
-  if (
-    numPr?.kind === "none" ||
-    (paragraph.listRendering !== undefined &&
-      context.numbering !== undefined &&
-      numPr === undefined)
-  )
-    Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+  if (numPr.kind === "none") Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   else if (context.numbering !== undefined && numPr?.kind === "reference") {
     Object.assign(
       attrs,

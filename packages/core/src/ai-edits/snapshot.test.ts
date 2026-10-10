@@ -638,3 +638,19 @@ describe("createFolioAIEditSnapshot", () => {
     ]);
   });
 });
+
+test("opaque diagnostic blocks expose no paragraph numbering", () => {
+  const doc = folioSchema.node("doc", null, [
+    folioSchema.node("paragraph", { paraId: "12345678" }, folioSchema.text("Plain")),
+    folioSchema.node("preservedBlock", {
+      xml: '<w:altChunk xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>',
+    }),
+  ]);
+  const blocks = createFolioAIEditSnapshot(doc).blocks;
+  const diagnostic = blocks.find((block) => block.kind === "diagnostic");
+  expect(diagnostic).toBeDefined();
+  expect(diagnostic).not.toHaveProperty("statedNumbering");
+  expect(diagnostic).not.toHaveProperty("listReference");
+  const plainBlock = blocks.find((block) => block.kind === "paragraph");
+  expect(plainBlock?.statedNumbering).toEqual({ kind: "inherit" });
+});

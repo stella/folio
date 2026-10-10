@@ -1,11 +1,15 @@
 import { panic } from "better-result";
 
-import type { FolioContentBlock, FolioContentTableLocation } from "./content-types";
+import type {
+  FolioContentBlock,
+  FolioContentBlockIdentity,
+  FolioContentTableLocation,
+} from "./content-types";
 
 const MAX_TABLE_GRID_COLUMNS = 63;
 const MAX_TABLE_GRID_AREA = 1_000_000;
 
-type GridCell<Block extends FolioContentBlock> = {
+type GridCell<Block extends FolioContentBlockIdentity> = {
   blocks: Block[];
   rowIndex: number;
   gridColumnIndex: number;
@@ -13,19 +17,19 @@ type GridCell<Block extends FolioContentBlock> = {
   rowSpan: number;
 };
 
-type GridColumn<Block extends FolioContentBlock> = {
+type GridColumn<Block extends FolioContentBlockIdentity> = {
   index: number;
   signature: string;
   ownedCells: readonly GridCell<Block>[];
 };
 
-type TableGrid<Block extends FolioContentBlock> = {
+type TableGrid<Block extends FolioContentBlockIdentity> = {
   cells: readonly GridCell<Block>[];
   width: number;
   height: number;
 };
 
-export type TableColumnAlignmentStep<Block extends FolioContentBlock = FolioContentBlock> =
+export type TableColumnAlignmentStep<Block extends FolioContentBlockIdentity = FolioContentBlock> =
   | {
       type: "baseColumn";
       blocks: readonly Block[];
@@ -40,7 +44,7 @@ export type TableColumnAlignmentStep<Block extends FolioContentBlock = FolioCont
       anchor: { blockId: string; position: "after" | "before" };
     };
 
-export type TableColumnAlignment<Block extends FolioContentBlock = FolioContentBlock> = {
+export type TableColumnAlignment<Block extends FolioContentBlockIdentity = FolioContentBlock> = {
   steps: TableColumnAlignmentStep<Block>[];
   baseBlocks: Block[];
   revisedBlocks: Block[];
@@ -48,7 +52,7 @@ export type TableColumnAlignment<Block extends FolioContentBlock = FolioContentB
   revisedColumnKeys: ReadonlyMap<number, number>;
 };
 
-const extractTableGrid = <Block extends FolioContentBlock>(
+const extractTableGrid = <Block extends FolioContentBlockIdentity>(
   blocks: readonly Block[],
 ): TableGrid<Block> | null => {
   const cellsByPhysicalLocation = new Map<string, GridCell<Block>>();
@@ -128,7 +132,7 @@ const extractTableGrid = <Block extends FolioContentBlock>(
   return { cells: [...cellsByPhysicalLocation.values()], width, height };
 };
 
-const tableGridColumns = <Block extends FolioContentBlock>(
+const tableGridColumns = <Block extends FolioContentBlockIdentity>(
   grid: TableGrid<Block>,
   internText: (text: string) => number,
 ): GridColumn<Block>[] => {
@@ -169,7 +173,7 @@ const tableGridColumns = <Block extends FolioContentBlock>(
 };
 
 /** The sole exact ordered embedding of `shorter` in `wider`, or null when ambiguous. */
-const uniqueColumnEmbedding = <Block extends FolioContentBlock>(
+const uniqueColumnEmbedding = <Block extends FolioContentBlockIdentity>(
   shorter: readonly GridColumn<Block>[],
   wider: readonly GridColumn<Block>[],
 ): number[] | null => {
@@ -218,7 +222,7 @@ const uniqueColumnEmbedding = <Block extends FolioContentBlock>(
   return mapping;
 };
 
-const columnOwnedBlocks = <Block extends FolioContentBlock>({
+const columnOwnedBlocks = <Block extends FolioContentBlockIdentity>({
   ownedCells,
 }: GridColumn<Block>): Block[] | null => {
   if (ownedCells.length === 0 || ownedCells.some(({ columnSpan }) => columnSpan !== 1)) {
@@ -227,7 +231,7 @@ const columnOwnedBlocks = <Block extends FolioContentBlock>({
   return ownedCells.flatMap(({ blocks }) => blocks);
 };
 
-export const alignTableColumns = <Block extends FolioContentBlock>(
+export const alignTableColumns = <Block extends FolioContentBlockIdentity>(
   baseBlocks: readonly Block[],
   revisedBlocks: readonly Block[],
 ): TableColumnAlignment<Block> | null => {

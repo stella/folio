@@ -629,20 +629,20 @@ const statedNumberingAttrPatch = ({
   fromStyle,
   numbering,
 }: StatedNumberingPatchOptions): ParagraphAttrsPatch => {
-  const numPr = stated.kind === "inherit" ? null : paragraphNumberingAttr(stated);
+  const numPr = stated.kind === "inherit" ? undefined : paragraphNumberingAttr(stated);
   const numPrFromStyle =
-    numPr?.kind === "reference" || numPr?.kind === "none" ? null : (fromStyle ?? null);
-  const projected = { ...attrs, numPr, numPrFromStyle };
+    numPr?.kind === "reference" || numPr?.kind === "none" ? undefined : fromStyle;
+  const projected = { ...attrs };
+  if (numPr === undefined) Reflect.deleteProperty(projected, "numPr");
+  else projected.numPr = numPr;
+  if (numPrFromStyle === undefined) Reflect.deleteProperty(projected, "numPrFromStyle");
+  else projected.numPrFromStyle = numPrFromStyle;
   const effective = effectiveParagraphNumbering(projected);
   const rendering =
     effective?.kind === "reference"
-      ? listLevelAttrPatch(
-          projected,
-          { numId: effective.numId, ilvl: effective.ilvl ?? 0 },
-          numbering,
-        )
+      ? listLevelAttrPatch(projected, effective.ilvl ?? 0, numbering)
       : { ...listLevelIndentRemovalPatch(attrs, numbering), ...CLEARED_LIST_RENDERING_ATTRS };
-  return { ...rendering, numPr, numPrFromStyle };
+  return { ...rendering, numPr: numPr ?? null, numPrFromStyle: numPrFromStyle ?? null };
 };
 
 /**
@@ -747,7 +747,7 @@ const paragraphPropertiesPatch = ({
   if (resolvedFormattingFromStyle?.numPr !== undefined) {
     numPrFromStyle = paragraphNumberingAttr(resolvedFormattingFromStyle.numPr);
   } else if (styleChanged) {
-    numPrFromStyle = readParagraphNumberingAttr(patch["numPrFromStyle"]);
+    numPrFromStyle = readParagraphNumberingAttr(patch["numPrFromStyle"]) ?? undefined;
   }
   if (properties.numbering !== undefined) {
     Object.assign(
@@ -832,7 +832,7 @@ const paragraphPropertiesPatch = ({
         patch,
         listLevelAttrPatch(
           mergeParagraphAttrs(node, {
-            numPr: nextNumbering,
+            numPr: nextNumbering ?? undefined,
             _styleResolvedFormatting: styleResolvedParagraphFormatting(resolvedFormattingFromStyle),
             numPrFromStyle: nextSources.numPrFromStyle ?? undefined,
             listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances,
@@ -851,7 +851,7 @@ const paragraphPropertiesPatch = ({
             hangingIndent:
               direct?.hangingIndent ?? resolvedFormattingFromStyle?.hangingIndent ?? false,
           }),
-          { numId: effectiveNumbering.numId, ilvl: effectiveNumbering.ilvl ?? 0 },
+          effectiveNumbering.ilvl ?? 0,
           numbering,
         ),
       );
@@ -3505,7 +3505,7 @@ const buildInsertedParagraphs = ({
           stated: operation.numbering,
           fromStyle:
             formattingFromStyle?.numPr === undefined
-              ? null
+              ? undefined
               : paragraphNumberingAttr(formattingFromStyle.numPr),
           numbering,
         }),
@@ -3631,7 +3631,7 @@ const buildInsertedParagraphs = ({
       const finalNumbering = readParagraphNumberingAttr(attrs["numPr"]);
       const finalFromStyle = readParagraphNumberingAttr(attrs["numPrFromStyle"]);
       const effectiveNumbering = effectiveParagraphNumbering({
-        numPr: finalNumbering,
+        numPr: finalNumbering ?? undefined,
         numPrFromStyle: finalFromStyle,
       });
       if (effectiveNumbering?.kind === "reference") {
@@ -3639,7 +3639,7 @@ const buildInsertedParagraphs = ({
           attrs,
           listLevelAttrPatch(
             mergeParagraphAttrs(schema.node("paragraph"), {
-              numPr: finalNumbering,
+              numPr: finalNumbering ?? undefined,
               _styleResolvedFormatting: styleResolvedParagraphFormatting(formattingFromStyle),
               numPrFromStyle: readParagraphNumberingAttr(attrs["numPrFromStyle"]) ?? undefined,
               listImplicitChildLevelAdvances:
@@ -3659,7 +3659,7 @@ const buildInsertedParagraphs = ({
               hangingIndent:
                 directIndentation?.hangingIndent ?? formattingFromStyle?.hangingIndent ?? false,
             }),
-            { numId: effectiveNumbering.numId, ilvl: effectiveNumbering.ilvl ?? 0 },
+            effectiveNumbering.ilvl ?? 0,
             numbering,
           ),
         );

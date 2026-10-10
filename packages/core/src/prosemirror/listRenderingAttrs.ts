@@ -9,7 +9,10 @@
  */
 
 import type { ListRendering } from "../types/document";
-import { effectiveParagraphNumberingReference } from "./numberingAttr";
+import {
+  effectiveParagraphNumberingReference,
+  type ParagraphNumberingSources,
+} from "./numberingAttr";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /** `ListRendering` fields that have their own editor attr. */
@@ -104,10 +107,8 @@ export const hasListRendering = (
 ): boolean => attrs.listMarker != null || attrs.listIsBullet === true || attrs.listNumFmt != null;
 
 /** The attrs a rendering is read back from: a paragraph's, or a recorded previous state's. */
-export type ListRenderingSourceAttrs = Pick<
-  ParagraphAttrs,
-  ListRenderingAttrKey | "numPr" | "numPrFromStyle"
->;
+export type ListRenderingSourceAttrs = Pick<ParagraphAttrs, ListRenderingAttrKey> &
+  ParagraphNumberingSources;
 
 type ListRenderingFromAttrsOptions = {
   attrs: ListRenderingSourceAttrs;

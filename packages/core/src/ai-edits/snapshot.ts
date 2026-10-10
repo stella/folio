@@ -1,5 +1,4 @@
 import { INHERITED_PARAGRAPH_NUMBERING } from "../compare/content-types";
-import { paragraphNumberingLevel } from "../docx/numberingReference";
 import { panic } from "better-result";
 import { Fragment } from "prosemirror-model";
 import type { Mark, Node as PMNode } from "prosemirror-model";
@@ -60,6 +59,7 @@ import {
 } from "./note-references";
 import type {
   FolioAIBlock,
+  FolioAIParagraphBlock,
   FolioAIBlockAnchor,
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,
@@ -587,9 +587,20 @@ export const relabelFolioAIEditSnapshotNoteReferences = (
 ): FolioAIEditSnapshot => {
   const metadata = metadataOf(snapshot);
   if (
-    !snapshot.blocks.some((block) =>
-      block.structuralBoundaries?.some(({ type }) => type === "noteReference"),
-    )
+    !snapshot.blocks.some((block) => {
+      switch (block.kind) {
+        case "diagnostic":
+          return false;
+        case "paragraph":
+        case "heading":
+        case "listItem":
+          return block.structuralBoundaries?.some(({ type }) => type === "noteReference") ?? false;
+        default: {
+          const unreachable: never = block;
+          return panic("Unhandled snapshot block kind", { block: unreachable });
+        }
+      }
+    })
   ) {
     return snapshot;
   }
@@ -1022,14 +1033,12 @@ const getDisplayLabel = (
   return undefined;
 };
 
-const getListReference = (node: PMNode): FolioAIBlock["listReference"] | undefined => {
+const getListReference = (node: PMNode): FolioAIParagraphBlock["listReference"] | undefined => {
   const numbering = effectiveParagraphNumberingReference({
     numPr: readParagraphNumberingAttr(node.attrs["numPr"]),
     numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
   });
-  return numbering
-    ? { numId: numbering.numId, level: paragraphNumberingLevel(numbering) }
-    : undefined;
+  return numbering ? { numId: numbering.numId, level: numbering.ilvl } : undefined;
 };
 
 const getNumberingReferenceKey = (node: PMNode): string | null => {
@@ -1037,9 +1046,7 @@ const getNumberingReferenceKey = (node: PMNode): string | null => {
     numPr: readParagraphNumberingAttr(node.attrs["numPr"]),
     numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
   });
-  return numbering
-    ? `${String(numbering.numId)}:${String(paragraphNumberingLevel(numbering))}`
-    : null;
+  return numbering ? `${String(numbering.numId)}:${String(numbering.ilvl)}` : null;
 };
 
 const getStyleId = (node: PMNode): string | undefined => {

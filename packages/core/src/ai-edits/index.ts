@@ -65,6 +65,8 @@ export type {
 } from "./word-diff";
 export type {
   FolioAIBlock,
+  FolioAIParagraphBlock,
+  FolioAIDiagnosticBlock,
   FolioAIBlockAnchor,
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,

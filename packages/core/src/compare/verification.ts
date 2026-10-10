@@ -19,9 +19,10 @@
  */
 
 import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
+import { panic } from "better-result";
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
-import type { FolioAIBlock } from "../ai-edits/types";
+import type { FolioAIDiagnosticBlock, FolioAIParagraphBlock } from "../ai-edits/types";
 import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
 import { paragraphIndentationEqual } from "../prosemirror/paragraphIndentation";
 import { sameFolioContentOutlineLevel } from "./content";
@@ -96,21 +97,25 @@ export type CompareVerification =
   | { status: "verified" }
   | { status: "unverified"; failures: readonly CompareVerificationFailure[] };
 
-type ProjectedBlock = Pick<
-  FolioAIBlock,
-  | "kind"
-  | "headingLevel"
-  | "text"
-  | "table"
-  | "styleId"
-  | "directOutlineLevel"
-  | "listReference"
-  | "statedNumbering"
-  | "directAlignment"
-  | "directSpacing"
-  | "directIndentation"
-  | "structuralBoundaries"
+type ProjectedBlockFields = Omit<
+  Pick<FolioAIParagraphBlock, "kind" | "headingLevel" | "text" | "table" | "styleId">,
+  "kind"
 >;
+
+type ProjectedBlock = ProjectedBlockFields &
+  (
+    | { kind: FolioAIDiagnosticBlock["kind"] }
+    | {
+        kind: FolioAIParagraphBlock["kind"];
+        statedNumbering: FolioAIParagraphBlock["statedNumbering"];
+        listReference?: FolioAIParagraphBlock["listReference"];
+        structuralBoundaries?: FolioAIParagraphBlock["structuralBoundaries"];
+        directOutlineLevel?: FolioAIParagraphBlock["directOutlineLevel"];
+        directAlignment?: FolioAIParagraphBlock["directAlignment"];
+        directSpacing?: FolioAIParagraphBlock["directSpacing"];
+        directIndentation?: FolioAIParagraphBlock["directIndentation"];
+      }
+  );
 
 type ProjectedTableContainer = NonNullable<ProjectedBlock["table"]>;
 
@@ -134,8 +139,8 @@ const sameContainer = (
 };
 
 const sameStructuralBoundaries = (
-  left: FolioAIBlock["structuralBoundaries"],
-  right: FolioAIBlock["structuralBoundaries"],
+  left: FolioAIParagraphBlock["structuralBoundaries"],
+  right: FolioAIParagraphBlock["structuralBoundaries"],
 ): boolean => {
   const leftLength = left?.length ?? 0;
   if (leftLength !== (right?.length ?? 0)) {
@@ -172,18 +177,106 @@ const sameStructuralBoundaries = (
 const sameClassification = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
   left.kind === right.kind && left.headingLevel === right.headingLevel;
 
+const sameProjectedNumbering = (left: ProjectedBlock, right: ProjectedBlock): boolean => {
+  switch (left.kind) {
+    case "diagnostic":
+      return right.kind === "diagnostic";
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return (
+        right.kind !== "diagnostic" &&
+        sameFolioContentStatedNumbering(left.statedNumbering, right.statedNumbering)
+      );
+    default: {
+      const unreachable: never = left;
+      return panic("Unhandled projected block kind", { block: unreachable });
+    }
+  }
+};
+
+const sameProjectedListReference = (left: ProjectedBlock, right: ProjectedBlock): boolean => {
+  switch (left.kind) {
+    case "diagnostic":
+      return right.kind === "diagnostic";
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return (
+        right.kind !== "diagnostic" &&
+        left.listReference?.numId === right.listReference?.numId &&
+        left.listReference?.level === right.listReference?.level
+      );
+    default: {
+      const unreachable: never = left;
+      return panic("Unhandled projected block kind", { block: unreachable });
+    }
+  }
+};
+
+const sameProjectedStructuralBoundaries = (
+  left: ProjectedBlock,
+  right: ProjectedBlock,
+): boolean => {
+  switch (left.kind) {
+    case "diagnostic":
+      return right.kind === "diagnostic";
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return (
+        right.kind !== "diagnostic" &&
+        sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries)
+      );
+    default: {
+      const unreachable: never = left;
+      return panic("Unhandled projected block kind", { block: unreachable });
+    }
+  }
+};
+
+type ProjectedParagraphBlock = Extract<ProjectedBlock, { kind: FolioAIParagraphBlock["kind"] }>;
+
+const sameProjectedParagraphFormatting = (
+  left: ProjectedBlock,
+  right: ProjectedBlock,
+  compare: (left: ProjectedParagraphBlock, right: ProjectedParagraphBlock) => boolean,
+): boolean => {
+  switch (left.kind) {
+    case "diagnostic":
+      return right.kind === "diagnostic";
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return right.kind !== "diagnostic" && compare(left, right);
+    default: {
+      const unreachable: never = left;
+      return panic("Unhandled projected block kind", { block: unreachable });
+    }
+  }
+};
+
 const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
   sameContainer(left.table, right.table) &&
   sameClassification(left, right) &&
-  sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries) &&
+  sameProjectedStructuralBoundaries(left, right) &&
   left.styleId === right.styleId &&
-  sameFolioContentOutlineLevel(left.directOutlineLevel, right.directOutlineLevel) &&
-  left.listReference?.numId === right.listReference?.numId &&
-  left.listReference?.level === right.listReference?.level &&
-  sameFolioContentStatedNumbering(left.statedNumbering, right.statedNumbering) &&
-  left.directAlignment === right.directAlignment &&
-  paragraphSpacingEqual(left.directSpacing, right.directSpacing) &&
-  paragraphIndentationEqual(left.directIndentation, right.directIndentation) &&
+  sameProjectedParagraphFormatting(left, right, (a, b) =>
+    sameFolioContentOutlineLevel(a.directOutlineLevel, b.directOutlineLevel),
+  ) &&
+  sameProjectedListReference(left, right) &&
+  sameProjectedNumbering(left, right) &&
+  sameProjectedParagraphFormatting(
+    left,
+    right,
+    (a, b) => a.directAlignment === b.directAlignment,
+  ) &&
+  sameProjectedParagraphFormatting(left, right, (a, b) =>
+    paragraphSpacingEqual(a.directSpacing, b.directSpacing),
+  ) &&
+  sameProjectedParagraphFormatting(left, right, (a, b) =>
+    paragraphIndentationEqual(a.directIndentation, b.directIndentation),
+  ) &&
   left.text === right.text;
 
 const containerKind = (container: ProjectedTableContainer | undefined): "body" | "cell" =>
@@ -364,7 +457,7 @@ export const classifyProjectionMismatch = ({
       `a block sits in a ${containerKind(left.table)} where it is expected in a ${containerKind(right.table)}, ${at} (${counts})`,
     );
   }
-  if (!sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries)) {
+  if (left.kind === right.kind && !sameProjectedStructuralBoundaries(left, right)) {
     return failure(
       "inline-structure",
       `a block's zero-width inline structure does not match ${at} (${counts})`,
@@ -374,21 +467,25 @@ export const classifyProjectionMismatch = ({
     return failure("style", `the paragraph style did not move ${at} (${counts})`);
   }
   if (
+    left.kind === right.kind &&
     left.text === right.text &&
-    !sameFolioContentOutlineLevel(left.directOutlineLevel, right.directOutlineLevel)
+    !sameProjectedParagraphFormatting(left, right, (a, b) =>
+      sameFolioContentOutlineLevel(a.directOutlineLevel, b.directOutlineLevel),
+    )
   ) {
     return failure("style", `the direct outline level did not move ${at} (${counts})`);
   }
   if (
+    left.kind === right.kind &&
     left.text === right.text &&
-    (left.listReference?.numId !== right.listReference?.numId ||
-      left.listReference?.level !== right.listReference?.level)
+    !sameProjectedListReference(left, right)
   ) {
     return failure("list-level", `the numbering reference did not move ${at} (${counts})`);
   }
   if (
+    left.kind === right.kind &&
     left.text === right.text &&
-    !sameFolioContentStatedNumbering(left.statedNumbering, right.statedNumbering)
+    !sameProjectedNumbering(left, right)
   ) {
     return failure(
       "numbering-source",
@@ -400,15 +497,32 @@ export const classifyProjectionMismatch = ({
       ? failure("style", `the heading classification did not move ${at} (${counts})`)
       : failure("list-level", `the list membership did not move ${at} (${counts})`);
   }
-  if (left.text === right.text && left.directAlignment !== right.directAlignment) {
+  if (
+    left.kind === right.kind &&
+    left.text === right.text &&
+    !sameProjectedParagraphFormatting(
+      left,
+      right,
+      (a, b) => a.directAlignment === b.directAlignment,
+    )
+  ) {
     return failure("alignment", `the direct paragraph alignment did not move ${at} (${counts})`);
   }
-  if (left.text === right.text && !paragraphSpacingEqual(left.directSpacing, right.directSpacing)) {
+  if (
+    left.kind === right.kind &&
+    left.text === right.text &&
+    !sameProjectedParagraphFormatting(left, right, (a, b) =>
+      paragraphSpacingEqual(a.directSpacing, b.directSpacing),
+    )
+  ) {
     return failure("spacing", `the direct paragraph spacing did not move ${at} (${counts})`);
   }
   if (
+    left.kind === right.kind &&
     left.text === right.text &&
-    !paragraphIndentationEqual(left.directIndentation, right.directIndentation)
+    !sameProjectedParagraphFormatting(left, right, (a, b) =>
+      paragraphIndentationEqual(a.directIndentation, b.directIndentation),
+    )
   ) {
     return failure(
       "indentation",

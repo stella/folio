@@ -77,23 +77,35 @@ const blockTextHashOf = (text: string): string =>
  * label carries the number the reader sees. Absent references stay omitted.
  */
 const toAgentBlock = (block: FolioAIBlock): FolioAgentBlock => {
-  const row: FolioAgentBlock = {
+  const fields = {
     blockId: block.id,
-    kind: block.kind,
     text: block.text,
     blockTextHash: blockTextHashOf(block.text),
   };
-  if (block.displayLabel !== undefined) {
-    row.displayLabel = block.displayLabel;
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return {
+        ...fields,
+        kind: block.kind,
+        ...(block.displayLabel !== undefined && { displayLabel: block.displayLabel }),
+        ...(block.headingLevel !== undefined && { headingLevel: block.headingLevel }),
+        statedNumbering: block.statedNumbering,
+        ...(block.listReference !== undefined && { listReference: block.listReference }),
+      };
+    case "diagnostic":
+      return {
+        ...fields,
+        kind: block.kind,
+        ...(block.displayLabel !== undefined && { displayLabel: block.displayLabel }),
+        ...(block.headingLevel !== undefined && { headingLevel: block.headingLevel }),
+      };
+    default: {
+      const unreachable: never = block;
+      return panic("Unhandled agent snapshot block kind", { block: unreachable });
+    }
   }
-  if (block.headingLevel !== undefined) {
-    row.headingLevel = block.headingLevel;
-  }
-  row.statedNumbering = block.statedNumbering;
-  if (block.listReference !== undefined) {
-    row.listReference = block.listReference;
-  }
-  return row;
 };
 
 /** `find_text` requires a short `query` and caps how much of a large match set it returns in one call. */
@@ -270,14 +282,26 @@ const CONTEXT_RADIUS = 40;
 const WORD_CHARACTER_AT_END = /[\p{L}\p{M}\p{N}_]$/u;
 
 /** Whether `[start, end)` of a block's text starts or ends inside a note reference's marker. */
-const cutsIntoNoteReference = (block: FolioAIBlock, start: number, end: number): boolean =>
-  (block.structuralBoundaries ?? []).some(
-    (boundary) =>
-      boundary.type === "noteReference" &&
-      [start, end].some(
-        (offset) => offset > boundary.offset && offset < boundary.offset + boundary.length,
-      ),
-  );
+const cutsIntoNoteReference = (block: FolioAIBlock, start: number, end: number): boolean => {
+  switch (block.kind) {
+    case "diagnostic":
+      return false;
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return (block.structuralBoundaries ?? []).some(
+        (boundary) =>
+          boundary.type === "noteReference" &&
+          [start, end].some(
+            (offset) => offset > boundary.offset && offset < boundary.offset + boundary.length,
+          ),
+      );
+    default: {
+      const unreachable: never = block;
+      return panic("Unhandled agent snapshot block kind", { block: unreachable });
+    }
+  }
+};
 const WORD_CHARACTER_AT_START = /^[\p{L}\p{M}\p{N}_]/u;
 /**
  * Window (UTF-16 code units) sliced on each side of a match for the

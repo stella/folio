@@ -43,7 +43,8 @@ number or bullet the document shows beside it (`displayLabel`: `2.1.`, `a)`,
 `statedNumbering` (the authored paragraph state), and `listReference` (the
 resolved numbering instance and zero-based level, when present). A numbered
 heading is `kind: "heading"` with its number in `displayLabel`; absent fields
-are omitted.
+are omitted. Diagnostic blocks report preserved content Folio cannot interpret
+and omit paragraph numbering fields.
 
 For `suggest_changes`, `numbering` is a named state: `none`, `inherit`,
 `{ kind: "levelOnly", ilvl }`, `{ kind: "reference", numId, ilvl? }`, or

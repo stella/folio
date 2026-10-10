@@ -12,6 +12,7 @@ import type { FolioContentStatedNumbering } from "../compare/content-types";
  */
 
 import { mintListInstance, type ListKind } from "../docx/listNumberingInstances";
+import { paragraphNumberingReference } from "../docx/numberingReference";
 import { createNumberingMap, type NumberingMap } from "../docx/numberingParser";
 import type { NumberingDefinitions } from "../types/document";
 import type {
@@ -60,7 +61,7 @@ export const resolveNewListOperations = (
         instances.set(value.format, numId);
         minted = true;
       }
-      return { kind: "reference", numId, ilvl: value.level ?? 0 };
+      return paragraphNumberingReference({ numId, ilvl: value.level ?? 0 });
     };
     const resolveProperties = (
       properties: FolioAIBlockParagraphProperties,

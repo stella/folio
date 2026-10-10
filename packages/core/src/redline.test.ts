@@ -765,7 +765,7 @@ describe("generateRedlineDocx inserted list items", () => {
   const BULLET = { numId: 1, abstractNumId: 1, numFmt: "bullet", lvlText: "•" };
   const DECIMAL = { numId: 2, abstractNumId: 2, numFmt: "decimal", lvlText: "%1." };
 
-  /** Label and text of every block once every tracked change is accepted or rejected. */
+  /** Reader projection after every tracked change is accepted or rejected. */
   const resolved = async (buffer: ArrayBuffer, resolution: "accept" | "reject") => {
     const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
     if (resolution === "accept") reviewer.acceptAll();
@@ -797,15 +797,115 @@ describe("generateRedlineDocx inserted list items", () => {
     return { referenced, defined };
   };
 
+  const expectedRows = (
+    paragraphs: readonly ListParagraphSpec[],
+    numbering: readonly NumberingSpec[],
+  ) => {
+    const counters = new Map<string, number>();
+    return paragraphs.map(({ text, numId, ilvl }) => {
+      if (numId === undefined) {
+        return {
+          text,
+          label: null,
+          level: null,
+          statedNumbering: { kind: "inherit" as const },
+          numFmt: undefined,
+        };
+      }
+      const definition = numbering.find((candidate) => candidate.numId === numId);
+      expect(definition, `Fixture numbering ${numId} is defined`).toBeDefined();
+      if (!definition) throw new Error(`Fixture numbering ${numId} is not defined`);
+      const level = ilvl ?? 0;
+      const label =
+        definition.numFmt === "bullet"
+          ? definition.lvlText
+          : definition.lvlText.replace(/%(?<level>\d+)/gu, (match, value: string) => {
+              const counterLevel = Number(value) - 1;
+              const key = `${numId}:${counterLevel}`;
+              const count = counters.get(key) ?? 0;
+              if (counterLevel === level) counters.set(key, count + 1);
+              return String(counterLevel === level ? count + 1 : counters.get(key) || 1);
+            });
+      return {
+        text,
+        label,
+        level,
+        statedNumbering: { kind: "reference" as const, ilvl: level },
+        numFmt: definition.numFmt,
+      };
+    });
+  };
+
+  const numberingFormatsOf = async (buffer: ArrayBuffer): Promise<Map<number, string>> => {
+    const document = await parseDocx(buffer, { detectVariables: false, preloadFonts: false });
+    const abstracts = new Map(
+      (document.package.numbering?.abstractNums ?? []).map((entry) => [entry.abstractNumId, entry]),
+    );
+    return new Map(
+      (document.package.numbering?.nums ?? []).flatMap((entry) => {
+        const abstract = abstracts.get(entry.abstractNumId);
+        const level = abstract?.levels.find((candidate) => candidate.ilvl === 0);
+        return level?.numFmt === undefined ? [] : [[entry.numId, level.numFmt]];
+      }),
+    );
+  };
+
+  const expectRowsFromFixture = async (
+    actual: Awaited<ReturnType<typeof resolved>>,
+    paragraphs: readonly ListParagraphSpec[],
+    numbering: readonly NumberingSpec[],
+  ) => {
+    const expected = expectedRows(paragraphs, numbering);
+    const formats = await numberingFormatsOf(actual.saved);
+    expect(actual.blocks).toHaveLength(expected.length);
+    for (const [index, expectedRow] of expected.entries()) {
+      const row = actual.blocks[index];
+      expect(row).toBeDefined();
+      if (!row) throw new Error(`Resolved block ${index} is absent`);
+      expect(row.text).toBe(expectedRow.text);
+      expect(row.label).toBe(expectedRow.label);
+      expect(row.listReference?.level ?? null).toBe(expectedRow.level);
+      expect(
+        row.statedNumbering.kind === "reference"
+          ? { kind: row.statedNumbering.kind, ilvl: row.statedNumbering.ilvl }
+          : row.statedNumbering,
+      ).toEqual(expectedRow.statedNumbering);
+      if (expectedRow.numFmt === undefined) {
+        expect(row.listReference).toBeNull();
+      } else {
+        expect(row.listReference).not.toBeNull();
+        expect(row.statedNumbering.kind).toBe("reference");
+        if (row.statedNumbering.kind !== "reference" || row.listReference === null) {
+          throw new Error(`Resolved block ${index} lost its authored list reference`);
+        }
+        expect(row.statedNumbering.numId).toBe(row.listReference.numId);
+        expect(formats.get(row.listReference.numId)).toBe(expectedRow.numFmt);
+      }
+    }
+  };
+
   /** Accepting the redline gives the revision, rejecting it the base, and no numId dangles. */
-  const expectRoundTrip = async (base: ArrayBuffer, revised: ArrayBuffer) => {
+  const expectRoundTrip = async ({
+    base,
+    baseParagraphs,
+    baseNumbering,
+    revised,
+    revisedParagraphs,
+    revisedNumbering,
+  }: {
+    base: ArrayBuffer;
+    baseParagraphs: readonly ListParagraphSpec[];
+    baseNumbering: readonly NumberingSpec[];
+    revised: ArrayBuffer;
+    revisedParagraphs: readonly ListParagraphSpec[];
+    revisedNumbering: readonly NumberingSpec[];
+  }) => {
     const result = await generateRedlineDocx(base, revised);
     expect(result.skipped).toEqual([]);
     const accepted = await resolved(result.buffer, "accept");
-    expect(accepted.blocks).toEqual((await resolved(revised, "accept")).blocks);
-    expect((await resolved(result.buffer, "reject")).blocks).toEqual(
-      (await resolved(base, "accept")).blocks,
-    );
+    await expectRowsFromFixture(accepted, revisedParagraphs, revisedNumbering);
+    const rejected = await resolved(result.buffer, "reject");
+    await expectRowsFromFixture(rejected, baseParagraphs, baseNumbering);
     for (const buffer of [result.buffer, accepted.saved]) {
       const { referenced, defined } = await numIdsOf(buffer);
       for (const numId of referenced) expect(defined).toContain(numId);
@@ -814,91 +914,107 @@ describe("generateRedlineDocx inserted list items", () => {
   };
 
   test("an inserted bullet keeps its bullet and level, and rejecting removes it", async () => {
-    const base = await buildListDocx(
-      [
-        { text: "Intro.", paraId: "10000001" },
-        { text: "Existing bullet.", paraId: "10000002", numId: 1 },
-        { text: "Outro.", paraId: "10000003" },
-      ],
-      [BULLET],
-    );
-    const revised = await buildListDocx(
-      [
-        { text: "Intro.", paraId: "10000001" },
-        { text: "Existing bullet.", paraId: "10000002", numId: 1 },
-        { text: "New nested bullet.", paraId: "10000004", numId: 1, ilvl: 1 },
-        { text: "Outro.", paraId: "10000003" },
-        { text: "Trailing bullet.", paraId: "10000005", numId: 1 },
-      ],
-      [BULLET],
-    );
-    const { accepted } = await expectRoundTrip(base, revised);
-    expect(accepted.blocks).toEqual([
-      { text: "Intro.", label: null, level: null },
-      { text: "Existing bullet.", label: "•", level: 0 },
-      { text: "New nested bullet.", label: "•", level: 1 },
-      { text: "Outro.", label: null, level: null },
-      { text: "Trailing bullet.", label: "•", level: 0 },
-    ]);
+    const baseParagraphs = [
+      { text: "Intro.", paraId: "10000001" },
+      { text: "Existing bullet.", paraId: "10000002", numId: 1 },
+      { text: "Outro.", paraId: "10000003" },
+    ];
+    const revisedParagraphs = [
+      { text: "Intro.", paraId: "10000001" },
+      { text: "Existing bullet.", paraId: "10000002", numId: 1 },
+      { text: "New nested bullet.", paraId: "10000004", numId: 1, ilvl: 1 },
+      { text: "Outro.", paraId: "10000003" },
+      { text: "Trailing bullet.", paraId: "10000005", numId: 1 },
+    ];
+    const base = await buildListDocx(baseParagraphs, [BULLET]);
+    const revised = await buildListDocx(revisedParagraphs, [BULLET]);
+    await expectRoundTrip({
+      base,
+      baseParagraphs,
+      baseNumbering: [BULLET],
+      revised,
+      revisedParagraphs,
+      revisedNumbering: [BULLET],
+    });
   });
 
   test("an inserted numbered item takes its number, and a plain insertion stays plain", async () => {
-    const base = await buildListDocx(
-      [
-        { text: "First.", paraId: "20000001", numId: 2 },
-        { text: "Third.", paraId: "20000002", numId: 2 },
-      ],
-      [DECIMAL],
-    );
-    const revised = await buildListDocx(
-      [
-        { text: "Plain before the list.", paraId: "20000003" },
-        { text: "First.", paraId: "20000001", numId: 2 },
-        { text: "Second.", paraId: "20000004", numId: 2 },
-        { text: "Third.", paraId: "20000002", numId: 2 },
-      ],
-      [DECIMAL],
-    );
-    const { accepted } = await expectRoundTrip(base, revised);
-    expect(accepted.blocks.map(({ label, text }) => [label, text])).toEqual([
-      [null, "Plain before the list."],
-      ["1.", "First."],
-      ["2.", "Second."],
-      ["3.", "Third."],
-    ]);
+    const baseParagraphs = [
+      { text: "First.", paraId: "20000001", numId: 2 },
+      { text: "Third.", paraId: "20000002", numId: 2 },
+    ];
+    const revisedParagraphs = [
+      { text: "Plain before the list.", paraId: "20000003" },
+      { text: "First.", paraId: "20000001", numId: 2 },
+      { text: "Second.", paraId: "20000004", numId: 2 },
+      { text: "Third.", paraId: "20000002", numId: 2 },
+    ];
+    const base = await buildListDocx(baseParagraphs, [DECIMAL]);
+    const revised = await buildListDocx(revisedParagraphs, [DECIMAL]);
+    await expectRoundTrip({
+      base,
+      baseParagraphs,
+      baseNumbering: [DECIMAL],
+      revised,
+      revisedParagraphs,
+      revisedNumbering: [DECIMAL],
+    });
   });
 
   test("numbering defined only in the revised package is carried into the redline", async () => {
-    const base = await buildListDocx([{ text: "Intro.", paraId: "30000001" }], []);
-    const revised = await buildListDocx(
-      [
-        { text: "Intro.", paraId: "30000001" },
-        { text: "Only numbered in the revision.", paraId: "30000002", numId: 2 },
-      ],
-      [DECIMAL],
-    );
-    const { accepted, redline } = await expectRoundTrip(base, revised);
-    expect(accepted.blocks.at(-1)).toEqual({
-      text: "Only numbered in the revision.",
-      label: "1.",
-      level: 0,
+    const baseParagraphs = [{ text: "Intro.", paraId: "30000001" }];
+    const revisedParagraphs = [
+      { text: "Intro.", paraId: "30000001" },
+      { text: "Only numbered in the revision.", paraId: "30000002", numId: 2 },
+    ];
+    const base = await buildListDocx(baseParagraphs, []);
+    const revised = await buildListDocx(revisedParagraphs, [DECIMAL]);
+    const { accepted, redline } = await expectRoundTrip({
+      base,
+      baseParagraphs,
+      baseNumbering: [],
+      revised,
+      revisedParagraphs,
+      revisedNumbering: [DECIMAL],
     });
     expect((await numIdsOf(redline)).referenced.size).toBe(1);
+    expect(accepted.blocks.at(-1)?.statedNumbering).toEqual({
+      kind: "reference",
+      numId: accepted.blocks.at(-1)?.listReference?.numId,
+      ilvl: 0,
+    });
   });
 
   test("a numId the base uses for a different list is remapped, not reused", async () => {
-    const base = await buildListDocx(
-      [{ text: "Numbered in the base.", paraId: "40000001", numId: 1 }],
-      [{ ...DECIMAL, numId: 1, abstractNumId: 1 }],
-    );
-    const revised = await buildListDocx(
-      [
-        { text: "Numbered in the base.", paraId: "40000001", numId: 2 },
-        { text: "A bullet under the same id.", paraId: "40000002", numId: 1 },
-      ],
-      [BULLET, DECIMAL],
-    );
-    const { accepted } = await expectRoundTrip(base, revised);
+    const baseParagraphs = [{ text: "Numbered in the base.", paraId: "40000001", numId: 1 }];
+    const baseNumbering = [{ ...DECIMAL, numId: 1, abstractNumId: 1 }];
+    const revisedParagraphs = [
+      { text: "Numbered in the base.", paraId: "40000001", numId: 2 },
+      { text: "A bullet under the same id.", paraId: "40000002", numId: 1 },
+    ];
+    const revisedNumbering = [BULLET, DECIMAL];
+    const base = await buildListDocx(baseParagraphs, baseNumbering);
+    const revised = await buildListDocx(revisedParagraphs, revisedNumbering);
+    const { accepted } = await expectRoundTrip({
+      base,
+      baseParagraphs,
+      baseNumbering,
+      revised,
+      revisedParagraphs,
+      revisedNumbering,
+    });
     expect(accepted.blocks.map(({ label }) => label)).toEqual(["1.", "•"]);
+    const [numbered, bullet] = accepted.blocks;
+    expect(numbered?.statedNumbering).toEqual({
+      kind: "reference",
+      numId: numbered?.listReference?.numId,
+      ilvl: 0,
+    });
+    expect(bullet?.statedNumbering).toEqual({
+      kind: "reference",
+      numId: bullet?.listReference?.numId,
+      ilvl: 0,
+    });
+    expect(numbered?.listReference?.numId).not.toBe(bullet?.listReference?.numId);
   });
 });

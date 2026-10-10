@@ -444,7 +444,8 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
       "Read the full document body as a list of blocks (paragraphs, headings, list items). Call this first, " +
       "or whenever you need fresh block ids after a mutation — block ids from a stale read may no longer " +
       "resolve. A block shows its number or bullet (`2.1.`, `a)`, `•`) as `displayLabel`, a numbered heading " +
-      "included; a heading also has `headingLevel`. Each block includes `statedNumbering`; " +
+      "included; a heading also has `headingLevel`. Paragraph blocks include `statedNumbering`; " +
+      "diagnostic blocks omit paragraph numbering fields. " +
       "`listReference` is present when numbering resolves to an instance. Each block includes a " +
       "`blockTextHash`; echo it as `precondition.blockTextHash` on a suggest_changes / add_comment " +
       "operation to guard against the block changing before that call runs.",
@@ -479,8 +480,8 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
     description:
       "Read one logical heading section using a handle from get_document_outline. Content is block-bounded " +
       "and paginated with an afterBlockId cursor, avoiding a full-document read. Blocks have the same " +
-      "fields as read_document's, including `displayLabel`, `headingLevel`, `statedNumbering`, and " +
-      "`listReference` when present. Each block " +
+      "fields as read_document's, including `displayLabel`, `headingLevel`, and paragraph numbering " +
+      "fields on paragraph blocks. Diagnostic blocks omit paragraph numbering fields. Each block " +
       "includes a `blockTextHash`; echo it as `precondition.blockTextHash` on a suggest_changes / " +
       "add_comment operation.",
     inputSchema: {

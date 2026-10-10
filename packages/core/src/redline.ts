@@ -11,6 +11,7 @@
  */
 
 import { panic, TaggedError } from "better-result";
+import { paragraphNumberingLevel, paragraphNumberingReference } from "@stll/docx-core/model";
 
 import {
   FolioDocxReviewer,
@@ -23,6 +24,7 @@ import { createFolioAITextRangeHandle, trailingBodyBlockId } from "./ai-edits/sn
 import type {
   FolioAIBlock,
   FolioAIBlockParagraphProperties,
+  FolioAIParagraphBlock,
   FolioAIEditAppliedOperation,
   FolioAIEditOperation,
   FolioAIEditSkippedOperation,
@@ -248,7 +250,7 @@ const buildRedlineOperations = ({
   return operations;
 };
 
-type InsertedListReference = { numId: number; level: number };
+type InsertedListReference = { numId: number; level: number; ilvl?: number };
 
 /**
  * The revised value, or `null` to clear one the anchor would pass on, or
@@ -270,17 +272,40 @@ const insertedParagraphProperties = (
   block: FolioAIBlock,
   anchor: FolioAIBlock | undefined,
 ): FolioAIBlockParagraphProperties => {
+  const paragraph = paragraphBlockOf(block);
+  if (paragraph === undefined) {
+    return {};
+  }
+  const anchorParagraph = anchor === undefined ? undefined : paragraphBlockOf(anchor);
   const properties: FolioAIBlockParagraphProperties = {};
-  const styleId = statedOrCleared(block.styleId, anchor?.styleId);
+  const styleId = statedOrCleared(paragraph.styleId, anchorParagraph?.styleId);
   if (styleId !== undefined) properties.styleId = styleId;
-  const alignment = statedOrCleared(block.directAlignment, anchor?.directAlignment);
+  const alignment = statedOrCleared(paragraph.directAlignment, anchorParagraph?.directAlignment);
   if (alignment !== undefined) properties.alignment = alignment;
-  const spacing = statedOrCleared(block.directSpacing, anchor?.directSpacing);
+  const spacing = statedOrCleared(paragraph.directSpacing, anchorParagraph?.directSpacing);
   if (spacing !== undefined) properties.spacing = spacing;
-  const indentation = statedOrCleared(block.directIndentation, anchor?.directIndentation);
+  const indentation = statedOrCleared(
+    paragraph.directIndentation,
+    anchorParagraph?.directIndentation,
+  );
   if (indentation !== undefined) properties.indentation = indentation;
-  properties.numbering = block.statedNumbering;
+  properties.numbering = paragraph.statedNumbering;
   return properties;
+};
+
+const paragraphBlockOf = (block: FolioAIBlock): FolioAIParagraphBlock | undefined => {
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return block;
+    case "diagnostic":
+      return undefined;
+    default: {
+      const unreachable: never = block;
+      return panic("Unhandled redline block kind", { block: unreachable });
+    }
+  }
 };
 
 const insertedNumbering = (operation: FolioAIEditOperation): InsertedListReference | null => {
@@ -288,7 +313,13 @@ const insertedNumbering = (operation: FolioAIEditOperation): InsertedListReferen
     return null;
   }
   const numbering = operation.numbering;
-  return numbering?.kind === "reference" ? { numId: numbering.numId, level: numbering.ilvl } : null;
+  return numbering?.kind === "reference"
+    ? {
+        numId: numbering.numId,
+        level: paragraphNumberingLevel(numbering) ?? 0,
+        ...(numbering.ilvl !== undefined && { ilvl: numbering.ilvl }),
+      }
+    : null;
 };
 
 /** The `w:numId`s whose `w:num` and abstract definition both exist. */
@@ -342,11 +373,10 @@ const bindInsertedNumbering = (
       }
       return {
         ...operation,
-        numbering: {
-          kind: "reference" as const,
+        numbering: paragraphNumberingReference({
           numId,
-          ...(numbering.level !== undefined && { ilvl: numbering.level }),
-        },
+          ...(numbering.ilvl !== undefined && { ilvl: numbering.ilvl }),
+        }),
       };
     }),
   );
