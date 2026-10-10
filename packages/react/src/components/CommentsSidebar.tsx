@@ -231,11 +231,12 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     activeCommentId === null ? null : `comment-${activeCommentId}`,
   );
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
-  const [cardPositions, setCardPositions] = useState<Map<string, number>>(new Map());
+  const [{ positions: cardPositions, knownCards }, setCardGeometry] = useState(() => ({
+    positions: new Map<string, number>(),
+    knownCards: new Set<string>(),
+  }));
   const [measuredLeft, setMeasuredLeft] = useState<number | null>(null);
   const [initialPositionsDone, setInitialPositionsDone] = useState(false);
-  // Track which cards have had at least one positioned render (to avoid "fall from top" animation)
-  const knownCardsRef = useRef<Set<string>>(new Set());
   const lastKnownCardPositionsRef = useRef<Map<string, number>>(new Map());
   const sidebarRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -451,9 +452,13 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       lastBottom = y + pos.height;
     }
 
-    setCardPositions((prev) =>
-      arePositionMapsEqual(prev, resolvedPositions) ? prev : resolvedPositions,
-    );
+    setCardGeometry((previous) => {
+      if (arePositionMapsEqual(previous.positions, resolvedPositions)) return previous;
+      // First positions fade in; later snapshots animate already positioned cards.
+      const nextKnownCards = new Set(previous.knownCards);
+      for (const cardId of previous.positions.keys()) nextKnownCards.add(cardId);
+      return { positions: resolvedPositions, knownCards: nextKnownCards };
+    });
 
     const visiblePositionIds = new Set(resolvedPositions.keys());
     for (const key of lastKnownCardPositionsRef.current.keys()) {
@@ -698,11 +703,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     isExpanded: boolean,
     yPos: number | undefined,
   ): React.CSSProperties => {
-    const isKnown = knownCardsRef.current.has(cardId);
-    // Mark card as known once it has a valid position
-    if (yPos !== undefined) {
-      knownCardsRef.current.add(cardId);
-    }
+    const isKnown = knownCards.has(cardId);
     // New cards (first render with position): fade in, no top transition
     // Known cards: transition top smoothly
     // Cards without position yet: hidden completely (no transition)
@@ -946,7 +947,9 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
         }}
         data-comment-id={comment.id}
         className="docx-comment-card"
-        onClick={containedHandler(() => handleCardClick(cardId, comment.id))}
+        onClick={(event) => {
+          containedHandler(() => handleCardClick(cardId, comment.id))(event);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             handleCardClick(cardId, comment.id);

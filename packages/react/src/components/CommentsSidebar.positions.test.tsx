@@ -40,12 +40,14 @@ type RenderDrawerOptions = {
   scrollElement: HTMLDivElement;
   anchorPositions: Map<string, number>;
   activeCommentId?: number;
+  surface?: "column" | "drawer";
 };
 
 const renderDrawer = async ({
   scrollElement,
   anchorPositions,
   activeCommentId,
+  surface = "drawer",
 }: RenderDrawerOptions) => {
   scrollElement.setAttribute("data-folio-scroll", "");
   const host = document.createElement("div");
@@ -61,7 +63,7 @@ const renderDrawer = async ({
           editorContainerRef={editorContainerRef}
           anchorPositions={anchorPositions}
           activeCommentId={activeCommentId}
-          surface="drawer"
+          surface={surface}
         />
       </IntlProvider>,
     );
@@ -99,6 +101,34 @@ test("drawer expansion prefers the rendered comment anchor over layout positions
       host.querySelector<HTMLElement>(".docx-comment-card")?.click();
     });
     expect(scrollElement.scrollTop).toBe(800);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    scrollElement.remove();
+  }
+});
+
+test("first positioned cards fade in before subsequent geometry moves animate", async () => {
+  const scrollElement = document.createElement("div");
+  const pages = document.createElement("div");
+  pages.className = "paged-editor__pages";
+  scrollElement.append(pages);
+  const anchorPositions = new Map([["comment-1", 120]]);
+  const { host, root } = await renderDrawer({ scrollElement, anchorPositions, surface: "column" });
+  try {
+    await measurePositions();
+    const card = host.querySelector<HTMLElement>(".docx-comment-card");
+    expect(card?.style.top).toBe("120px");
+    expect(card?.style.transition).not.toContain("top");
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 410));
+    });
+    anchorPositions.set("comment-1", 240);
+    await act(async () => scrollElement.dispatchEvent(new Event("scroll")));
+    await measurePositions();
+    expect(card?.style.top).toBe("240px");
+    expect(card?.style.transition).toContain("top 0.15s ease");
   } finally {
     await act(async () => root.unmount());
     host.remove();

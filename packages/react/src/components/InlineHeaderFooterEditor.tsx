@@ -19,7 +19,15 @@
  * methods now delegate to the active HF PM via `getActiveView`.
  */
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties } from "react";
 import { useTranslations } from "use-intl";
 
@@ -159,7 +167,9 @@ export const InlineHeaderFooterEditor = forwardRef<
   // Latest getActiveView, read through a ref so the focus loop below is never
   // stuck on a stale mount-time closure if the active HF view resolves later.
   const getActiveViewRef = useRef(getActiveView);
-  getActiveViewRef.current = getActiveView;
+  useLayoutEffect(() => {
+    getActiveViewRef.current = getActiveView;
+  }, [getActiveView]);
 
   // Move focus into the persistent HF view when the chrome mounts so typing
   // starts immediately after double-click. A single focus() is unreliable: the

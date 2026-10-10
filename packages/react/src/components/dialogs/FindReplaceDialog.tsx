@@ -213,7 +213,15 @@ function FindReplaceDialogForm({
         onClearHighlights?.();
       }
     },
-    [searchText, matchCase, matchWholeWord, onFind, onHighlightMatches, onClearHighlights],
+    [
+      searchText,
+      matchCase,
+      matchWholeWord,
+      onFind,
+      onHighlightMatches,
+      onClearHighlights,
+      setFindResult,
+    ],
   );
 
   // Keep callback updates out of the query schedule. A search can update the
@@ -242,14 +250,14 @@ function FindReplaceDialogForm({
       setFindResult({ status: "cleared" });
       onMatchCaseChange(value);
     },
-    [onMatchCaseChange],
+    [onMatchCaseChange, setFindResult],
   );
   const handleMatchWholeWordChange = useCallback(
     (value: boolean) => {
       setFindResult({ status: "cleared" });
       onMatchWholeWordChange(value);
     },
-    [onMatchWholeWordChange],
+    [onMatchWholeWordChange, setFindResult],
   );
 
   const handleSearchChange = useCallback(
@@ -262,7 +270,7 @@ function FindReplaceDialogForm({
         onClearHighlights?.();
       }
     },
-    [onFind, matchCase, matchWholeWord, onClearHighlights],
+    [onFind, matchCase, matchWholeWord, onClearHighlights, setFindResult],
   );
 
   const handleFindNext = useCallback(() => {
@@ -288,7 +296,7 @@ function FindReplaceDialogForm({
         },
       });
     }
-  }, [searchText, result, queryKey, performSearch, onFindNext]);
+  }, [searchText, result, queryKey, performSearch, onFindNext, setFindResult]);
 
   const handleFindPrevious = useCallback(() => {
     if (!searchText.trim()) {
@@ -313,7 +321,7 @@ function FindReplaceDialogForm({
         },
       });
     }
-  }, [searchText, result, queryKey, performSearch, onFindPrevious]);
+  }, [searchText, result, queryKey, performSearch, onFindPrevious, setFindResult]);
 
   const handleSearchKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
