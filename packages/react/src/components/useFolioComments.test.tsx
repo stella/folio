@@ -227,23 +227,40 @@ describe("useFolioComments.setComments", () => {
     expect(changes).toEqual([next]);
   });
 
-  test("controlled: notifies the host and leaves the prop authoritative", () => {
+  test("controlled: rejecting an update restores the mirror on a same-array host rerender", () => {
     const initial = [makeComment(1)];
     const changes: Comment[][] = [];
     const harness = mount({
       commentsProp: initial,
       onCommentsChange: (next) => changes.push(next),
     });
+    const authoritative = harness.hook.comments;
     const next = [...initial, makeComment(2)];
 
-    act(() => harness.hook.setComments(next));
+    act(() => {
+      harness.hook.setComments(next);
+      expect(harness.hook.commentsRef.current).toBe(next);
+    });
 
     expect(changes).toEqual([next]);
     expect(harness.hook.isControlledComments).toBe(true);
+    expect(harness.hook.comments).toBe(authoritative);
 
-    // The host did not apply the change, so the next render reads the prop.
+    // The host ignores the notification and rerenders its unchanged prop array.
     harness.rerender();
-    expect(harness.hook.comments.map((comment) => comment.id)).toEqual([1]);
+    expect(harness.hook.comments).toBe(authoritative);
+    expect(harness.hook.commentsRef.current).toBe(authoritative);
+
+    act(() => {
+      harness.hook.setComments((previous) => {
+        expect(previous).toBe(authoritative);
+        return [...previous, makeComment(3)];
+      });
+    });
+    expect(changes.map((comments) => comments.map((comment) => comment.id))).toEqual([
+      [1, 2],
+      [1, 3],
+    ]);
   });
 });
 

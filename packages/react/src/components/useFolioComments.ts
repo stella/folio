@@ -136,15 +136,14 @@ export function useFolioComments({
   const setCommentsDirty = useCallback((dirty: boolean) => {
     commentsDirtyRef.current = dirty;
   }, []);
-  // Committed mirror of `comments`: synchronized after each committed update,
-  // so an imperative write anywhere else is overwritten by the next commit and
-  // also defeats the identity check in `setComments` below. The hook keeps the
-  // writable handle private and exports a read-only view; mutate only through
-  // `setComments`.
+  // Reconcile every commit, including when a controlled host rejects an update
+  // and rerenders the same array. Event-time writes remain available until that
+  // commit. The hook keeps the writable handle private and exports a read-only
+  // view; mutate only through `setComments`.
   const commentsRef = useRef(comments);
   useLayoutEffect(() => {
     commentsRef.current = comments;
-  }, [comments]);
+  });
   const readonlyCommentsRef: Readonly<RefObject<Comment[]>> = commentsRef;
   const onCommentsChangeRef = useRef(onCommentsChange);
   useLayoutEffect(() => {
