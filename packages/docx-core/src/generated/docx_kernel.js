@@ -2,6 +2,15 @@
 /* @ts-self-types="./docx_kernel.d.ts" */
 
 /**
+ * The version used by the document projection serializer.
+ * @returns {number}
+ */
+export function docxProjectionSchemaVersion() {
+    const ret = wasm.docxProjectionSchemaVersion();
+    return ret >>> 0;
+}
+
+/**
  * Projects compressed DOCX bytes into a versioned host-independent snapshot.
  *
  * The ordinal is the paragraph's position in this immutable package snapshot.

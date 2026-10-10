@@ -245,6 +245,11 @@ reviewFacts: DocxReviewFactsWire,
 
 
 /**
+ * The version used by the document projection serializer.
+ */
+export function docxProjectionSchemaVersion(): number;
+
+/**
  * Projects compressed DOCX bytes into a versioned host-independent snapshot.
  *
  * The ordinal is the paragraph's position in this immutable package snapshot.
@@ -301,6 +306,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly docxProjectionSchemaVersion: () => number;
     readonly projectCompressedDocx: (a: number, b: number, c: number) => void;
     readonly projectCompressedDocxWithReadableReviewFacts: (a: number, b: number, c: number) => void;
     readonly projectCompressedDocxWithReviewFacts: (a: number, b: number, c: number) => void;

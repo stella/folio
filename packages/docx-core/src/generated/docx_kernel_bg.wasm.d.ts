@@ -1,6 +1,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const docxProjectionSchemaVersion: () => number;
 export const projectCompressedDocx: (a: number, b: number, c: number) => void;
 export const projectCompressedDocxWithReadableReviewFacts: (a: number, b: number, c: number) => void;
 export const projectCompressedDocxWithReviewFacts: (a: number, b: number, c: number) => void;
