@@ -1,4 +1,27 @@
-import { library } from "@stll/oxlint-config";
+import { library, libraryRules } from "@stll/oxlint-config";
+
+// Vue composables use hook-like names but follow Vue's lifecycle, not React's.
+// The package census in scripts/react-lint-scope.test.ts keeps this scope exact.
+export const nonReactPackageOverride = {
+  files: [
+    "packages/agents/**",
+    "packages/cli/**",
+    "packages/core/**",
+    "packages/docx-core/**",
+    "packages/nuxt/**",
+    "packages/playground-vue/**",
+    "packages/vue/**",
+  ],
+  rules: {
+    ...Object.fromEntries(
+      Object.keys(libraryRules)
+        .filter((rule) => /^(?:react|react-hooks|react-compiler)\//u.test(rule))
+        .map((rule) => [rule, "off" as const]),
+    ),
+    // This additional React rule is configured in the adapter override below.
+    "react/jsx-no-constructed-context-values": "off" as const,
+  },
+};
 
 // Standalone oxlint config for @stll/folio.
 //
@@ -515,5 +538,6 @@ export default library({
         "folio-harness-workspaces/no-undeclared-workspace-runtime-import": "error",
       },
     },
+    nonReactPackageOverride,
   ],
 });
