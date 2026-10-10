@@ -227,7 +227,9 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyText, setReplyText] = useState("");
   const [newCommentText, setNewCommentText] = useState("");
-  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [expandedCard, setExpandedCard] = useState<string | null>(
+    activeCommentId === null ? null : `comment-${activeCommentId}`,
+  );
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
   const [cardPositions, setCardPositions] = useState<Map<string, number>>(new Map());
   const [measuredLeft, setMeasuredLeft] = useState<number | null>(null);

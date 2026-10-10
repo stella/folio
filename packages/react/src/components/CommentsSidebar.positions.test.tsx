@@ -36,10 +36,17 @@ const setRect = (element: HTMLElement, top: number) => {
   element.getBoundingClientRect = () => new DOMRect(0, top, 800, 100);
 };
 
-const renderDrawer = async (
-  scrollElement: HTMLDivElement,
-  anchorPositions: Map<string, number>,
-) => {
+type RenderDrawerOptions = {
+  scrollElement: HTMLDivElement;
+  anchorPositions: Map<string, number>;
+  activeCommentId?: number;
+};
+
+const renderDrawer = async ({
+  scrollElement,
+  anchorPositions,
+  activeCommentId,
+}: RenderDrawerOptions) => {
   scrollElement.setAttribute("data-folio-scroll", "");
   const host = document.createElement("div");
   document.body.append(host);
@@ -53,6 +60,7 @@ const renderDrawer = async (
           comments={comments}
           editorContainerRef={editorContainerRef}
           anchorPositions={anchorPositions}
+          activeCommentId={activeCommentId}
           surface="drawer"
         />
       </IntlProvider>,
@@ -81,7 +89,10 @@ test("drawer expansion prefers the rendered comment anchor over layout positions
   scrollElement.append(pages);
   expect(pages.querySelector(commentAnchorSelector(comment.id))).toBe(anchor);
 
-  const { host, root } = await renderDrawer(scrollElement, new Map([["comment-1", 120]]));
+  const { host, root } = await renderDrawer({
+    scrollElement,
+    anchorPositions: new Map([["comment-1", 120]]),
+  });
   try {
     await measurePositions();
     await act(async () => {
@@ -104,13 +115,41 @@ test("drawer expansion uses layout positions when the comment anchor is not rend
   scrollElement.append(pages);
   expect(pages.querySelector(commentAnchorSelector(comment.id))).toBeNull();
 
-  const { host, root } = await renderDrawer(scrollElement, new Map([["comment-1", 420]]));
+  const { host, root } = await renderDrawer({
+    scrollElement,
+    anchorPositions: new Map([["comment-1", 420]]),
+  });
   try {
     await measurePositions();
     await act(async () => {
       host.querySelector<HTMLElement>(".docx-comment-card")?.click();
     });
     expect(scrollElement.scrollTop).toBe(320);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    scrollElement.remove();
+  }
+});
+
+test("mounting with an active comment expands its reply input and permits collapsing it", async () => {
+  const scrollElement = document.createElement("div");
+  const { host, root } = await renderDrawer({
+    scrollElement,
+    anchorPositions: new Map(),
+    activeCommentId: comment.id,
+  });
+  try {
+    // Earlier fixtures only mounted inactive cards and then clicked to expand.
+    const card = host.querySelector<HTMLElement>(".docx-comment-card");
+    expect(card).not.toBeNull();
+    expect(card?.querySelector("input[readonly]")).not.toBeNull();
+
+    await act(async () => card?.click());
+    expect(card?.querySelector("input[readonly]")).toBeNull();
+
+    await act(async () => card?.click());
+    expect(card?.querySelector("input[readonly]")).not.toBeNull();
   } finally {
     await act(async () => root.unmount());
     host.remove();
