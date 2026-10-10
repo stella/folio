@@ -1111,8 +1111,8 @@ const FIXTURES: readonly Pinned[] = [
   {
     path: "tests/visual/fixtures/sample.docx",
     projection: {
-      digest: "fd0875e97bc22ea278d26fd465730fabb4c4cc57c01c87941691090ace8a65c9",
-      length: 91_140,
+      digest: "1d3ff50604fe13a5b52d62b221abbaeb7bab1098f410843af4527226cc7acd47",
+      length: 90_815,
     },
     saved: { file: "sample.document.xml" },
   },
