@@ -20,6 +20,11 @@ const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 2;
 
 /// The version used by the document projection serializer.
 #[wasm_bindgen(js_name = docxProjectionSchemaVersion)]
+#[must_use]
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "wasm-bindgen exports cannot be const functions"
+)]
 pub fn docx_projection_schema_version() -> u32 {
     DOCX_PROJECTION_SCHEMA_VERSION
 }
@@ -509,13 +514,13 @@ fn output_formatting_completeness(completeness: FormattingCompleteness) -> Resul
         highlight,
         superscript,
     } = completeness;
-    for (family, completeness) in [
+    for (family, family_status) in [
         (TextStyle::Bold, bold),
         (TextStyle::Highlight, highlight),
         (TextStyle::Superscript, superscript),
     ] {
         let status = Array::new();
-        match completeness {
+        match family_status {
             FormattingFactStatus::Known => {
                 status.push(&JsValue::from_str("known"));
             }
