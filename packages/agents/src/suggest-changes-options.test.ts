@@ -237,7 +237,7 @@ describe("suggest_changes schema + capability description follow operationTypes"
     expect(itemSchema["required"]).toEqual(["type", "severity", "area"]);
   });
 
-  test("style and numbering clears remain representable in every paragraph-property shape", () => {
+  test("style and resolved numbering states remain representable in every paragraph-property shape", () => {
     const itemSchema = operationItemSchemaOf(
       suggestChangesDefinitionFor({
         operationTypes: [
@@ -257,16 +257,13 @@ describe("suggest_changes schema + capability description follow operationTypes"
       propertyOf(itemSchema, "mergedParagraphProperties"),
     ];
     const clearableStyle = [{ type: "string" }, { type: "null" }];
-    const clearableListLevel = [
-      { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
-      { type: "null" },
-    ];
+    const numbering = propertyOf(itemSchema, "numbering");
+    expect(numbering["oneOf"]).toHaveLength(5);
 
     expect(propertyOf(itemSchema, "styleId")["oneOf"]).toEqual(clearableStyle);
-    expect(propertyOf(itemSchema, "listLevel")["oneOf"]).toEqual(clearableListLevel);
     for (const paragraphProperties of paragraphPropertyShapes) {
       expect(propertyOf(paragraphProperties, "styleId")["oneOf"]).toEqual(clearableStyle);
-      expect(propertyOf(paragraphProperties, "listLevel")["oneOf"]).toEqual(clearableListLevel);
+      expect(propertyOf(paragraphProperties, "numbering")).toEqual(numbering);
     }
   });
 

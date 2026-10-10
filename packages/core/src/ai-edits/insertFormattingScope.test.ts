@@ -19,7 +19,7 @@ import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 type InsertExtras = Partial<
   Pick<
     Extract<FolioDocumentOperation, { type: "insertAfterBlock" }>,
-    "formattingScope" | "listLevel" | "numbering" | "styleId"
+    "formattingScope" | "numbering" | "styleId"
   >
 >;
 
@@ -88,8 +88,14 @@ const TAIL = [bodyParagraph("Tail.")];
 describe("insertAfterBlock formattingScope", () => {
   const allParagraphVariants: { name: string; extras: (numId: number) => InsertExtras }[] = [
     { name: "inherited numbering", extras: () => ({}) },
-    { name: "explicit listLevel", extras: () => ({ listLevel: 0 }) },
-    { name: "explicit numbering", extras: (numId) => ({ numbering: { numId, level: 0 } }) },
+    {
+      name: "explicit level-only numbering",
+      extras: () => ({ numbering: { kind: "levelOnly", ilvl: 0 } }),
+    },
+    {
+      name: "explicit numbering reference",
+      extras: (numId) => ({ numbering: { kind: "reference", numId, ilvl: 0 } }),
+    },
   ];
 
   for (const { name, extras } of allParagraphVariants) {
@@ -119,7 +125,7 @@ describe("insertAfterBlock formattingScope", () => {
       const { numId } = await numberedListDocx();
       const outline = await insertAfterBeta(THREE_ITEMS, {
         ...(formattingScope !== undefined && { formattingScope }),
-        numbering: { numId, level: 0 },
+        numbering: { kind: "reference", numId, ilvl: 0 },
       });
       expect(outline).toEqual([
         ...LIST_HEAD,

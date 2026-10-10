@@ -72,10 +72,9 @@ const blockTextHashOf = (text: string): string =>
   hashFolioAIBlockText(normalizeFolioAIBlockText(text));
 
 /**
- * A snapshot block as a `read_document` / `read_section` row: the number or
- * label a reader sees beside it and its heading and list levels ride along,
- * so the model is given the numbers the document shows. Absent fields stay
- * absent to keep the rows compact.
+ * A snapshot block as a `read_document` / `read_section` row. The authored
+ * numbering state and effective list reference stay separate; the display
+ * label carries the number the reader sees. Absent references stay omitted.
  */
 const toAgentBlock = (block: FolioAIBlock): FolioAgentBlock => {
   const row: FolioAgentBlock = {
@@ -90,8 +89,9 @@ const toAgentBlock = (block: FolioAIBlock): FolioAgentBlock => {
   if (block.headingLevel !== undefined) {
     row.headingLevel = block.headingLevel;
   }
-  if (block.listLevel !== undefined) {
-    row.listLevel = block.listLevel;
+  row.statedNumbering = block.statedNumbering;
+  if (block.listReference !== undefined) {
+    row.listReference = block.listReference;
   }
   return row;
 };
@@ -598,7 +598,7 @@ const explainSkipReason = (reason: string): string => {
     return "this paragraph's mark is pending tracked deletion; resolve that change before editing its properties separately, or provide mergedParagraphProperties on the merge operation.";
   }
   if (reason === "missingNumbering") {
-    return "`numbering.numId` names a numbering instance this document does not define; nothing was applied. Re-read the document and use a `numId` it defines (the one a neighbouring list item carries), or omit `numbering`.";
+    return '`numbering` names a numbering instance this document does not define; nothing was applied. Re-read the document and use a `{ kind: "reference", numId, ilvl? }` the document defines (the one a neighbouring list item carries), or choose another numbering state.';
   }
   if (reason === "invalidResult") {
     return "applying this operation would have left a document that cannot be saved, so nothing from it was applied. Do not retry it as written; re-read the document and express the change differently.";

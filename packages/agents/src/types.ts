@@ -7,6 +7,7 @@ import type {
   FolioReviewChange,
   FolioDocumentSectionHandle,
   FolioDocumentStoryHandle,
+  FolioAIBlock,
 } from "@stll/folio-core/server";
 
 /**
@@ -87,8 +88,8 @@ export type FolioToolCallResult<TResult = unknown> =
   | { ok: false; error: string };
 
 /**
- * One document block as exposed to a model: id, kind, its plain text, and the
- * number or level a reader sees beside it. Absent fields are omitted.
+ * One document block as exposed to a model: id, kind, its plain text, authored
+ * numbering state, and effective list membership when present.
  */
 export type FolioAgentBlock = {
   blockId: string;
@@ -105,8 +106,10 @@ export type FolioAgentBlock = {
   displayLabel?: string;
   /** One-based heading level, on headings. */
   headingLevel?: number;
-  /** Zero-based numbering level, on numbered paragraphs and headings. */
-  listLevel?: number;
+  /** Exact authored numbering state; `inherit` means no direct override. */
+  statedNumbering: FolioAIBlock["statedNumbering"];
+  /** Effective numbering instance and zero-based level, when the paragraph belongs to a list. */
+  listReference?: NonNullable<FolioAIBlock["listReference"]>;
   /**
    * Normalized-text hash of this block at read time. Echo it back as
    * `precondition.blockTextHash` on a `suggest_changes` / `add_comment`

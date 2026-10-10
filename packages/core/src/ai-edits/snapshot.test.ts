@@ -583,23 +583,32 @@ describe("createFolioAIEditSnapshot", () => {
     ]);
 
     const blocks = createFolioAIEditSnapshot(doc).blocks.map(
-      ({ text, kind, headingLevel, displayLabel, listLevel }) => ({
+      ({ text, kind, headingLevel, displayLabel, listReference, statedNumbering }) => ({
         text,
         kind,
         headingLevel,
         displayLabel,
-        listLevel,
+        listReference: listReference ?? null,
+        statedNumbering,
       }),
     );
 
     expect(blocks).toEqual([
-      { text: "Numbered", kind: "heading", headingLevel: 2, displayLabel: "1.", listLevel: 0 },
+      {
+        text: "Numbered",
+        kind: "heading",
+        headingLevel: 2,
+        displayLabel: "1.",
+        listReference: { numId: 5, level: 0 },
+        statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
+      },
       {
         text: "Hidden marker heading",
         kind: "heading",
         headingLevel: 2,
         displayLabel: undefined,
-        listLevel: 0,
+        listReference: { numId: 5, level: 0 },
+        statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
       // Numbered in the package, no number on the page: prose that keeps its level.
       {
@@ -607,16 +616,25 @@ describe("createFolioAIEditSnapshot", () => {
         kind: "paragraph",
         headingLevel: undefined,
         displayLabel: undefined,
-        listLevel: 0,
+        listReference: { numId: 5, level: 0 },
+        statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
       {
         text: "Cancelled",
         kind: "paragraph",
         headingLevel: undefined,
         displayLabel: undefined,
-        listLevel: undefined,
+        listReference: null,
+        statedNumbering: { kind: "none" },
       },
-      { text: "Item", kind: "listItem", headingLevel: undefined, displayLabel: "4.", listLevel: 0 },
+      {
+        text: "Item",
+        kind: "listItem",
+        headingLevel: undefined,
+        displayLabel: "4.",
+        listReference: { numId: 5, level: 0 },
+        statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
+      },
     ]);
   });
 });

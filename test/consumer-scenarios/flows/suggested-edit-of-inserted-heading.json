@@ -26,8 +26,8 @@
           "blockId": "483CD5EB",
           "text": "Delivery period invoice payment period buyer schedule.",
           "numbering": {
-            "start": "new",
-            "kind": "bullet"
+            "kind": "newList",
+            "format": "bullet"
           }
         },
         {

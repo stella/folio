@@ -3,6 +3,7 @@ import fc from "fast-check";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { compareContent, type FolioContentComparisonEvent } from "./content";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock } from "./content-types";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -19,6 +20,7 @@ const toBlocks = (texts: readonly string[], side: string): FolioContentBlock[] =
     id: `${side}-${String(index)}`,
     idStability: "positional",
     kind: "paragraph",
+    statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
     text,
   }));
 
@@ -166,6 +168,7 @@ const sectionBlocks = (
       id: `${side}|${scope}|heading`,
       idStability: "positional",
       kind: "heading",
+      statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
       headingLevel: 2,
       text: heading,
     },
@@ -175,6 +178,7 @@ const sectionBlocks = (
         id: `${side}|${scope}|${origin}`,
         idStability: "positional",
         kind: "paragraph",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
       } as const;
       switch (mode) {
         case "text":

@@ -93,7 +93,9 @@ const operationsFor = ({
               (_, index) => `Inserted paragraph ${String(index)}.`,
             ).join("\n"),
             formattingScope: "allParagraphs" as const,
-            ...(numbered && { numbering: { start: "new" as const, kind: "numbered" as const } }),
+            ...(numbered && {
+              numbering: { kind: "newList" as const, format: "numbered" as const },
+            }),
           },
         ]),
   ] satisfies FolioDocumentOperation[];

@@ -1,5 +1,6 @@
+import type { FolioContentStatedNumbering } from "../compare/content-types";
 /**
- * Operations that start a new list (`numbering: { start: "new", kind }`)
+ * Operations that start a new list (`numbering: { kind: "newList", format }`)
  * resolved to the numbering instance each one defines.
  *
  * The instance is minted against the document's numbering (the package's
@@ -10,38 +11,24 @@
  * defines it in the saved package (see `docx/listNumberingInstances.ts`).
  */
 
-import { panic } from "better-result";
-
 import { mintListInstance, type ListKind } from "../docx/listNumberingInstances";
 import { createNumberingMap, type NumberingMap } from "../docx/numberingParser";
 import type { NumberingDefinitions } from "../types/document";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditOperation,
+  FolioAIResolvedEditOperation,
   FolioAIListNumbering,
-  FolioAIListReference,
   FolioAINewListReference,
 } from "./types";
 
 /** Whether `numbering` asks for a new list rather than naming an instance. */
 export const isFolioAINewListReference = (
   numbering: FolioAIListNumbering,
-): numbering is FolioAINewListReference => "start" in numbering;
-
-/**
- * The concrete instance an operation's numbering names once new lists are
- * resolved. A new-list request reaching this point skipped resolution, which
- * is a bug in the apply path rather than a malformed operation.
- */
-export const concreteListReference = (numbering: FolioAIListNumbering): FolioAIListReference => {
-  if (isFolioAINewListReference(numbering)) {
-    return panic("A new-list numbering request reached apply unresolved");
-  }
-  return numbering;
-};
+): numbering is FolioAINewListReference => numbering.kind === "newList";
 
 type ResolvedNewLists = {
-  operations: FolioAIEditOperation[];
+  operations: FolioAIResolvedEditOperation[];
   numbering: NumberingMap | null;
 };
 
@@ -57,59 +44,64 @@ export const resolveNewListOperations = (
   let definitions: NumberingDefinitions | undefined = numbering?.definitions;
   let minted = false;
 
-  const resolveOperation = (operation: FolioAIEditOperation): FolioAIEditOperation => {
+  const resolveOperation = (operation: FolioAIEditOperation): FolioAIResolvedEditOperation => {
     const instances = new Map<ListKind, number>();
-    const resolve = <T extends FolioAIListNumbering | null | undefined>(
-      value: T,
-    ): T | FolioAIListReference => {
-      if (value === null || value === undefined || !isFolioAINewListReference(value)) {
+    const resolve = (
+      value: FolioAIListNumbering | undefined,
+    ): FolioContentStatedNumbering | undefined => {
+      if (value === undefined || !isFolioAINewListReference(value)) {
         return value;
       }
-      let numId = instances.get(value.kind);
+      let numId = instances.get(value.format);
       if (numId === undefined) {
-        const instance = mintListInstance(definitions, { kind: value.kind });
+        const instance = mintListInstance(definitions, { kind: value.format });
         definitions = instance.definitions;
         numId = instance.numId;
-        instances.set(value.kind, numId);
+        instances.set(value.format, numId);
         minted = true;
       }
-      return { numId, level: value.level ?? 0 };
+      return { kind: "reference", numId, ilvl: value.level ?? 0 };
     };
     const resolveProperties = (
-      properties: FolioAIBlockParagraphProperties | undefined,
-    ): FolioAIBlockParagraphProperties | undefined =>
-      properties?.numbering
-        ? { ...properties, numbering: resolve(properties.numbering) }
-        : properties;
+      properties: FolioAIBlockParagraphProperties,
+    ): FolioAIBlockParagraphProperties<FolioContentStatedNumbering> => {
+      const { numbering: request, ...rest } = properties;
+      const resolved = resolve(request);
+      return { ...rest, ...(resolved !== undefined && { numbering: resolved }) };
+    };
 
     switch (operation.type) {
       case "insertAfterBlock":
-      case "insertBeforeBlock":
-        return operation.numbering
-          ? { ...operation, numbering: resolve(operation.numbering) }
-          : operation;
-      case "setBlockParagraphProperties":
-        return operation.properties.numbering
-          ? {
-              ...operation,
-              properties: {
-                ...operation.properties,
-                numbering: resolve(operation.properties.numbering),
-              },
-            }
-          : operation;
+      case "insertBeforeBlock": {
+        const { numbering: request, ...rest } = operation;
+        const resolved = resolve(request);
+        return { ...rest, ...(resolved !== undefined && { numbering: resolved }) };
+      }
+      case "setBlockParagraphProperties": {
+        return { ...operation, properties: resolveProperties(operation.properties) };
+      }
       case "splitBlock": {
-        const firstParagraphProperties = resolveProperties(operation.firstParagraphProperties);
-        const secondParagraphProperties = resolveProperties(operation.secondParagraphProperties);
+        const {
+          firstParagraphProperties: firstRequest,
+          secondParagraphProperties: secondRequest,
+          ...rest
+        } = operation;
         return {
-          ...operation,
-          ...(firstParagraphProperties && { firstParagraphProperties }),
-          ...(secondParagraphProperties && { secondParagraphProperties }),
+          ...rest,
+          ...(firstRequest !== undefined && {
+            firstParagraphProperties: resolveProperties(firstRequest),
+          }),
+          ...(secondRequest !== undefined && {
+            secondParagraphProperties: resolveProperties(secondRequest),
+          }),
         };
       }
       case "mergeBlockWithNext": {
-        const mergedParagraphProperties = resolveProperties(operation.mergedParagraphProperties);
-        return { ...operation, ...(mergedParagraphProperties && { mergedParagraphProperties }) };
+        const { mergedParagraphProperties: request, ...rest } = operation;
+        return {
+          ...rest,
+          ...(request !== undefined && { mergedParagraphProperties: resolveProperties(request) }),
+        };
       }
       default:
         return operation;

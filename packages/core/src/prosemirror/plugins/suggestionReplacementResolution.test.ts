@@ -74,13 +74,16 @@ test.each(["beforeEnd", "nativeEndFlush"] as const)(
 );
 
 const project = (reviewer: FolioDocxReviewer) =>
-  reviewer.snapshot().blocks.map(({ kind, text, displayLabel, listLevel, table }) => ({
-    kind,
-    text,
-    displayLabel,
-    listLevel,
-    table,
-  }));
+  reviewer
+    .snapshot()
+    .blocks.map(({ kind, text, displayLabel, listReference, statedNumbering, table }) => ({
+      kind,
+      text,
+      displayLabel,
+      listReference: listReference ?? null,
+      statedNumbering,
+      table,
+    }));
 
 test.each(["mixed-lists", "image", "notes"])(
   "replacement traces preserve reader accept/reject projections in %s",

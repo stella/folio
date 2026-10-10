@@ -25,6 +25,7 @@ import type { FolioAIBlock } from "../ai-edits/types";
 import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
 import { paragraphIndentationEqual } from "../prosemirror/paragraphIndentation";
 import { sameFolioContentOutlineLevel } from "./content";
+import { sameFolioContentStatedNumbering } from "./content-types";
 
 /** The two directions of the round trip, each an invariant of its own. */
 export const COMPARE_VERIFICATION_INVARIANTS = Object.freeze([
@@ -64,6 +65,7 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "section-properties",
   "style",
   "list-level",
+  "numbering-source",
   "alignment",
   "spacing",
   "indentation",
@@ -102,8 +104,8 @@ type ProjectedBlock = Pick<
   | "table"
   | "styleId"
   | "directOutlineLevel"
-  | "listLevel"
   | "listReference"
+  | "statedNumbering"
   | "directAlignment"
   | "directSpacing"
   | "directIndentation"
@@ -176,9 +178,9 @@ const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolea
   sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries) &&
   left.styleId === right.styleId &&
   sameFolioContentOutlineLevel(left.directOutlineLevel, right.directOutlineLevel) &&
-  left.listLevel === right.listLevel &&
   left.listReference?.numId === right.listReference?.numId &&
   left.listReference?.level === right.listReference?.level &&
+  sameFolioContentStatedNumbering(left.statedNumbering, right.statedNumbering) &&
   left.directAlignment === right.directAlignment &&
   paragraphSpacingEqual(left.directSpacing, right.directSpacing) &&
   paragraphIndentationEqual(left.directIndentation, right.directIndentation) &&
@@ -377,15 +379,21 @@ export const classifyProjectionMismatch = ({
   ) {
     return failure("style", `the direct outline level did not move ${at} (${counts})`);
   }
-  if (left.text === right.text && left.listLevel !== right.listLevel) {
-    return failure("list-level", `the list level did not move ${at} (${counts})`);
-  }
   if (
     left.text === right.text &&
     (left.listReference?.numId !== right.listReference?.numId ||
       left.listReference?.level !== right.listReference?.level)
   ) {
     return failure("list-level", `the numbering reference did not move ${at} (${counts})`);
+  }
+  if (
+    left.text === right.text &&
+    !sameFolioContentStatedNumbering(left.statedNumbering, right.statedNumbering)
+  ) {
+    return failure(
+      "numbering-source",
+      `the authored numbering state did not move ${at} (${counts})`,
+    );
   }
   if (left.text === right.text && !sameClassification(left, right)) {
     return left.kind === "heading" || right.kind === "heading"

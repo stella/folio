@@ -3,12 +3,12 @@
  * alignment, spacing, indentation, borders, tab stops, and list markers.
  */
 
-import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "@stll/docx-core/model";
 import { bulletMarkerFontName, convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { getFontAlternate, type FontAlternates } from "../../fonts/fontAlternates";
 import type { ParagraphAttrs, TabAlignment, TabStop } from "../../layout-engine/types";
 import { mergeParagraphTabStops } from "../../utils/paragraphFormattingMerge";
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
+import { effectiveParagraphNumberingReference } from "../../prosemirror/numberingAttr";
 import { directionIsRtl, directionToBidi } from "../../prosemirror/paragraphDirection";
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
 import { advanceVisibleListMarker, type ListCounterStreams } from "../../prosemirror/listMarker";
@@ -202,17 +202,14 @@ export function convertParagraphAttrs(
   let indentFirstLine =
     typeof pmAttrs.indentFirstLine === "number" ? pmAttrs.indentFirstLine : undefined;
   let hangingIndent = pmAttrs.hangingIndent;
-  if (
-    paragraphNumberingReferenceId(pmAttrs.numPr) !== undefined &&
-    indentLeft === undefined &&
-    indentFirstLine === undefined
-  ) {
+  const numbering = effectiveParagraphNumberingReference(pmAttrs);
+  if (numbering !== undefined && indentLeft === undefined && indentFirstLine === undefined) {
     // Fallback: calculate indentation based on level
     // An authored first-line or hanging position is already a complete list
     // marker anchor. Adding a synthetic left indent would shift that anchor a
     // second time, while tab stops still resolve from the paragraph margin.
     // Each level indents 0.5 inch (720 twips) more
-    const level = paragraphNumberingLevel(pmAttrs.numPr) ?? 0;
+    const level = numbering.ilvl ?? 0;
     // Base indentation: 0.5 inch (720 twips) per level
     // Level 0 = 720 twips, Level 1 = 1440 twips, etc.
     indentLeft = (level + 1) * 720;

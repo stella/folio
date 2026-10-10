@@ -55,10 +55,10 @@ const cases = [
 type PasteCase = (typeof cases)[number];
 
 const project = (reviewer: FolioDocxReviewer) =>
-  reviewer.snapshot().blocks.map(({ text, displayLabel, listLevel, table }) => ({
+  reviewer.snapshot().blocks.map(({ text, displayLabel, listReference, table }) => ({
     text,
     displayLabel,
-    listLevel,
+    listReference,
     table,
   }));
 
@@ -172,7 +172,7 @@ for (const input of cases) {
       const list = ["Alpha", "Nested", "Omega"].map((item) =>
         blocks.find(({ text }) => text.includes(item)),
       );
-      expect(list.map((block) => block?.listLevel)).toEqual([0, 1, 0]);
+      expect(list.map((block) => block?.listReference?.level)).toEqual([0, 1, 0]);
       expect(list.every((block) => !!block?.displayLabel)).toBe(true);
     }
   });

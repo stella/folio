@@ -130,7 +130,9 @@ describe("list labels after an operation", () => {
         id: "1",
         type: "setBlockParagraphProperties",
         blockId: blockId(reviewer, "Balance on delivery"),
-        properties: { numbering: { numId: numId ?? 0, level: 1 } },
+        properties: {
+          numbering: { kind: "reference", numId: numId ?? 0, ilvl: 1 },
+        },
       },
     ]);
 
@@ -151,7 +153,7 @@ describe("list labels after an operation", () => {
         id: "1",
         type: "setBlockParagraphProperties",
         blockId: blockId(reviewer, "Balance on delivery"),
-        properties: { numbering: { start: "new", kind: "numbered" } },
+        properties: { numbering: { kind: "newList", format: "numbered" } },
       },
     ]);
 
@@ -225,7 +227,7 @@ describe("a paragraph numbered at a level its list does not define", () => {
         type: "insertAfterBlock",
         blockId: blockId(reviewer, "Deposit on signature"),
         text: "Level eight.",
-        numbering: { numId: numId ?? 0, level: 8 },
+        numbering: { kind: "reference", numId: numId ?? 0, ilvl: 8 },
       },
     ]);
 
@@ -243,7 +245,7 @@ describe("a paragraph numbered at a level its list does not define", () => {
     ]) {
       expect(current.getContent().find(({ text }) => text === "Level eight.")).toMatchObject({
         kind: "paragraph",
-        listLevel: 8,
+        statedNumbering: { kind: "reference", numId, ilvl: 8 },
         listReference: { numId, level: 8 },
       });
     }

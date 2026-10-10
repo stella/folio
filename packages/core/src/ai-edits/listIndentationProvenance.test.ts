@@ -79,7 +79,9 @@ test.each(CASES)(
     const inserts = operation === "insert" || operation === "insert-removed";
     const properties = {
       ...(withStyle && { styleId: "IndentBaseline" }),
-      numbering: removesNumbering ? null : { numId: numPr.numId, level: 1 },
+      numbering: removesNumbering
+        ? { kind: "none" as const }
+        : { kind: "reference" as const, numId: numPr.numId, ilvl: 1 },
       ...(explicitIndentation !== undefined && { indentation: explicitIndentation }),
     };
     const result = reviewer.applyDocumentOperations({

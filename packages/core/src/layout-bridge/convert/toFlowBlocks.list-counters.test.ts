@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { createListLabelCounter } from "../../prosemirror/listLabels";
+import { paragraphNumberingAttr } from "../../prosemirror/numberingAttr";
+import type { ParagraphAttrs } from "../../prosemirror/schema/nodes";
 import {
   advanceListMarker,
+  advanceVisibleListMarker,
   cloneListCounterState,
   createListCounterState,
 } from "../../prosemirror/listMarker";
@@ -178,6 +182,36 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     ]);
 
     expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual(["(1)", "(1)"]);
+  });
+
+  test("style-only numbering supplies counter membership, level, and id", () => {
+    const attrs = {
+      numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 7, ilvl: 1 }),
+      listMarkerTemplate: "(%1.%2)",
+      listAbstractNumId: 4,
+      listLevelNumFmts: ["decimal", "decimal"],
+    } satisfies ParagraphAttrs;
+    const state = createListCounterState();
+
+    expect(advanceListMarker(attrs, state)).toBe("(1.1)");
+    expect(state.counters.has(7)).toBe(true);
+
+    const streams = { final: createListCounterState(), original: createListCounterState() };
+    const visible = advanceVisibleListMarker(attrs, streams);
+    expect(visible.marker).toBe("(1.1)");
+    expect(visible.advances.map(({ stream }) => stream)).toEqual(["final", "original"]);
+  });
+
+  test("reader labels count paragraphs whose numbering comes from their style", () => {
+    const nextLabel = createListLabelCounter();
+    const attrs = {
+      numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 7, ilvl: 0 }),
+      listMarkerTemplate: "(%1)",
+      listNumFmt: "decimal",
+    } satisfies ParagraphAttrs;
+
+    expect(nextLabel(attrs)).toBe("(1)");
+    expect(nextLabel(attrs)).toBe("(2)");
   });
 
   test("style-sourced instances continue the shared abstract level", () => {

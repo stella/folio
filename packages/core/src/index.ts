@@ -68,6 +68,7 @@ export type {
   FolioContentParagraphSpacing,
   FolioContentRun,
   FolioContentSnapshot,
+  FolioContentStatedNumbering,
   FolioContentTableLocation,
 } from "./compare/content-types";
 export {

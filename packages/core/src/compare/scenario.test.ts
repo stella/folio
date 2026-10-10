@@ -85,13 +85,16 @@ describe("move paragraph scenarios", () => {
 
       const blocks = await movedBlocks({ base, blockIndex: 0, beforeBlockIndex: 2 });
 
-      expect(blocks.map(({ text, listLevel }) => ({ text, listLevel: listLevel ?? null }))).toEqual(
-        [
-          { text: "Middle", listLevel: 0 },
-          { text: "Source", listLevel: sourceLevel },
-          { text: "Destination", listLevel: destinationLevel },
-        ],
-      );
+      expect(
+        blocks.map(({ text, listReference }) => ({
+          text,
+          effectiveLevel: listReference?.level ?? null,
+        })),
+      ).toEqual([
+        { text: "Middle", effectiveLevel: 0 },
+        { text: "Source", effectiveLevel: sourceLevel },
+        { text: "Destination", effectiveLevel: destinationLevel },
+      ]);
     },
   );
 });

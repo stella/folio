@@ -101,7 +101,7 @@ test(
                 id: "level",
                 type: "setBlockParagraphProperties",
                 blockId: block.id,
-                properties: { numbering: { numId: 7, level } },
+                properties: { numbering: { kind: "reference", numId: 7, ilvl: level } },
               },
             ],
           });

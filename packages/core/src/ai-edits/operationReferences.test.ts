@@ -74,7 +74,7 @@ const outline = (reviewer: FolioDocxReviewer): string[] =>
 
 type NumberingOperationFactory = (
   ids: { anchor: string; tail: string },
-  numbering: { numId: number; level: number },
+  numbering: { kind: "reference"; numId: number; ilvl: number },
 ) => FolioDocumentOperation;
 
 /** Every operation that carries a numbering reference, by where it carries it. */
@@ -125,7 +125,7 @@ const cases = Object.entries(PACKAGES).flatMap(([packageName, numbering]) =>
   Object.entries(NUMBERING_OPERATIONS).flatMap(([operationName, factory]) =>
     FOLIO_DOCUMENT_OPERATION_MODES.filter((mode) =>
       isFolioDocumentOperationModeSupported(
-        factory({ anchor: "", tail: "" }, { numId: 1, level: 0 }).type,
+        factory({ anchor: "", tail: "" }, { kind: "reference", numId: 1, ilvl: 0 }).type,
         mode,
       ),
     ).map((mode) => ({ packageName, numbering, operationName, factory, mode })),
@@ -161,7 +161,11 @@ describe("an undefined numbering instance is skipped before anything is applied"
       const { reviewer, ids } = await openReviewer(numbering);
       const before = outline(reviewer);
 
-      const result = applyOne(reviewer, factory(ids, { numId: 1, level: 0 }), mode);
+      const result = applyOne(
+        reviewer,
+        factory(ids, { kind: "reference", numId: 1, ilvl: 0 }),
+        mode,
+      );
 
       expect(result.status).toBe("committed");
       expect(result.applied).toEqual([]);
@@ -191,7 +195,7 @@ describe("an undefined numbering instance is skipped before anything is applied"
     const { reviewer, ids } = await openReviewer(UNUSED_901);
     const result = applyOne(
       reviewer,
-      NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, { numId: 1, level: 0 }),
+      NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, { kind: "reference", numId: 1, ilvl: 0 }),
       "tracked-changes",
     );
     expect(result.skipped[0]?.message).toBe(
@@ -205,7 +209,7 @@ describe("an undefined numbering instance is skipped before anything is applied"
       const { reviewer, ids } = await openReviewer(UNUSED_901);
       const result = applyOne(
         reviewer,
-        NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, { numId: 901, level: 0 }),
+        NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, { kind: "reference", numId: 901, ilvl: 0 }),
         mode,
       );
       expect(result.applied).toEqual([expect.objectContaining({ id: "op" })]);
@@ -224,7 +228,14 @@ describe("an undefined numbering instance is skipped before anything is applied"
       atomic: true,
       operations: [
         { id: "good", type: "insertAfterBlock", blockId: ids.tail, text: "Fine." },
-        { ...NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, { numId: 7, level: 0 }), id: "bad" },
+        {
+          ...NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, {
+            kind: "reference",
+            numId: 7,
+            ilvl: 0,
+          }),
+          id: "bad",
+        },
       ],
     });
     expect(result.status).toBe("rejected");
@@ -240,7 +251,11 @@ describe("an undefined numbering instance is skipped before anything is applied"
     const { reviewer, ids } = await openReviewer(UNUSED_901);
     const result = applyOne(
       reviewer,
-      NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, { numId: 901, level: 5 }),
+      NUMBERING_OPERATIONS["insertAfterBlock"]!(ids, {
+        kind: "reference",
+        numId: 901,
+        ilvl: 5,
+      }),
       "tracked-changes",
     );
     expect(result.applied).toHaveLength(1);

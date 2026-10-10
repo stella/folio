@@ -7,6 +7,7 @@ import {
 } from "../docx/numberingReference";
 import type { CounterFormat } from "../types/document";
 import { isListNumPr } from "../layout-engine/types";
+import { effectiveParagraphNumbering } from "./numberingAttr";
 import type { ParagraphAttrs } from "./schema/nodes";
 import type { ListRenderingAttrKey } from "./listRenderingAttrs";
 
@@ -206,7 +207,7 @@ export function advanceVisibleListMarker(
     return advanced;
   };
   const previous = previousListAttrs(attrs);
-  if (!attrs.numPr) {
+  if (effectiveParagraphNumbering(attrs) == null) {
     const counterAttrs = previous ?? attrs;
     const visible = advance(counterAttrs, previous ? "original" : "final");
     return { ...visible, advances };
@@ -306,11 +307,12 @@ function formatNumberedMarker(counters: number[], level: number): string {
 export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState): string | null {
   const markerTemplate = attrs.listMarkerTemplate ?? attrs.listMarker;
   const foldedMarkerSuffix = attrs.listFoldedMarkerSuffix ?? undefined;
-  const level = paragraphNumberingLevel(attrs.numPr) ?? 0;
+  const effectiveNumbering = effectiveParagraphNumbering(attrs);
+  const level = paragraphNumberingLevel(effectiveNumbering) ?? 0;
   if (!Number.isInteger(level) || level < 0 || level > MAX_LIST_LEVEL) {
     return null;
   }
-  const numId = paragraphNumberingReferenceId(attrs.numPr);
+  const numId = paragraphNumberingReferenceId(effectiveNumbering);
   if (numId === undefined) {
     let marker: string | null = null;
     if (markerTemplate?.includes("%") && !attrs.listIsBullet) {

@@ -1,4 +1,4 @@
-import { mergeParagraphNumbering } from "../../docx/numberingReference";
+import { effectiveParagraphNumbering } from "../numberingAttr";
 import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 /**
  * ProseMirror to Document Conversion
@@ -1958,7 +1958,7 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
  * list markers on the way out of the editor.
  */
 function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering"] {
-  const numId = paragraphNumberingReferenceId(attrs.numPr);
+  const numId = paragraphNumberingReferenceId(effectiveParagraphNumbering(attrs));
   if (numId === undefined) {
     return undefined;
   }
@@ -2057,10 +2057,7 @@ function convertPMParagraph(
   if (pFormatting) {
     paragraph.formatting = pFormatting;
   }
-  if (
-    mergeParagraphNumbering(attrs.numPrFromStyle ?? undefined, attrs.numPr ?? undefined)?.kind ===
-    "reference"
-  ) {
+  if (effectiveParagraphNumbering(attrs)?.kind === "reference") {
     const inheritedIndentation = paragraphIndentationFromFormatting(attrs._resolvedFormatting);
     if (inheritedIndentation) {
       assignParagraphIndentationProjection({
@@ -2441,7 +2438,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   const snapToGrid = authored("snapToGrid", attrs.snapToGrid);
   // A zero left or first-line indent is stated only where a numbering level
   // could supply another value; elsewhere it reads as the absent default.
-  const numbered = paragraphNumberingReferenceId(attrs.numPr ?? undefined) !== undefined;
+  const numbered = paragraphNumberingReferenceId(effectiveParagraphNumbering(attrs)) !== undefined;
   const statedIndent = (value: number | undefined): number | undefined =>
     value === 0 && !numbered ? undefined : value;
   const indentLeft = statedIndent(authored("indentLeft", attrs.indentLeft));

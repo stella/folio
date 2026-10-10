@@ -18,7 +18,7 @@ import {
   paragraphNumberingReferenceId,
 } from "../docx/numberingReference";
 import type { ListRendering } from "../types/document";
-import { paragraphNumberingAttr } from "./numberingAttr";
+import { effectiveParagraphNumbering, paragraphNumberingAttr } from "./numberingAttr";
 import {
   advanceListMarker,
   advanceVisibleListMarker,
@@ -48,6 +48,7 @@ const foldedFieldSuffix = (attrs: Readonly<ParagraphAttrs>): string => {
 const withoutNumbering = (attrs: Readonly<ParagraphAttrs>): ParagraphAttrs => {
   const unnumbered = { ...attrs };
   Reflect.deleteProperty(unnumbered, "numPr");
+  Reflect.deleteProperty(unnumbered, "numPrFromStyle");
   return unnumbered;
 };
 
@@ -66,7 +67,7 @@ const staticMarker = (attrs: Readonly<ParagraphAttrs>): string | undefined => {
 
 /** Most paragraphs: nothing to count and no marker to show. */
 const isPlainParagraph = (attrs: Readonly<ParagraphAttrs>): boolean =>
-  attrs.numPr == null &&
+  effectiveParagraphNumbering(attrs) == null &&
   attrs.listMarker == null &&
   attrs.listMarkerTemplate == null &&
   (attrs._propertyChanges == null || attrs._propertyChanges.length === 0);
@@ -138,7 +139,7 @@ export const createListLabelCounter = (): ListLabelCounter => {
       return advanceVisibleListMarker(counted, streams).marker;
     }
     const marker = advanceListMarker(counted, final);
-    if (counted.numPr) {
+    if (effectiveParagraphNumbering(counted) != null) {
       originalPreviousList = final.previousList ?? NO_PREVIOUS_LIST;
     }
     return marker;
@@ -161,7 +162,9 @@ export const createListLabelCounter = (): ListLabelCounter => {
     // An unnumbered paragraph's counted marker is a removed number (a tracked
     // change's previous state), which the page strikes through.
     const counted =
-      paragraphNumberingReferenceId(attrs.numPr) === undefined ? null : marker?.trim();
+      paragraphNumberingReferenceId(effectiveParagraphNumbering(attrs)) === undefined
+        ? null
+        : marker?.trim();
     if (counted) {
       return `${counted}${foldedFieldSuffix(attrs)}`;
     }

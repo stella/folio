@@ -1,3 +1,4 @@
+import { effectiveParagraphNumbering } from "../numberingAttr";
 /**
  * Document to ProseMirror Conversion
  *
@@ -17,7 +18,7 @@ import { fieldRequiresStructuredContent } from "../fieldRepresentation";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
-import { mergeParagraphNumbering, PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { ParseContext } from "../../docx/parseContext";
 import { createStyleEngine } from "../../style-engine";
@@ -759,10 +760,7 @@ function convertParagraph(
   );
   if (directFormatting === undefined) Reflect.deleteProperty(attrs, "_originalFormatting");
   else attrs._originalFormatting = directFormatting;
-  const numPr = mergeParagraphNumbering(
-    attrs.numPrFromStyle ?? undefined,
-    attrs.numPr ?? undefined,
-  );
+  const numPr = effectiveParagraphNumbering(attrs);
   if (
     numPr?.kind === "none" ||
     (paragraph.listRendering !== undefined &&

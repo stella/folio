@@ -1,3 +1,4 @@
+import { effectiveParagraphNumbering } from "../numberingAttr";
 /**
  * Shared helper for projecting a resolved paragraph style onto ProseMirror
  * paragraph node attrs.
@@ -9,7 +10,6 @@
  * identical paragraph attrs.
  */
 
-import { mergeParagraphNumbering } from "../../docx/numberingReference";
 import {
   computeListRendering,
   numberingLevelHasMarkerSlot,
@@ -269,10 +269,7 @@ export function listLevelIndentRemovalPatch(
   attrs: Readonly<ParagraphAttrs>,
   numbering: NumberingMap | null | undefined,
 ): ParagraphAttrsPatch {
-  if (
-    mergeParagraphNumbering(attrs.numPrFromStyle ?? undefined, attrs.numPr ?? undefined)?.kind !==
-    "reference"
-  ) {
+  if (effectiveParagraphNumbering(attrs)?.kind !== "reference") {
     return {};
   }
   const direct = directParagraphIndentation(attrs);
@@ -316,7 +313,8 @@ export function listLevelAttrPatch(
     ...listIndentationProvenancePatch({
       direct,
       styleFormatting: attrs._styleResolvedFormatting,
-      numberingSource: attrs.numPrFromStyle == null ? "paragraph" : "style",
+      numberingSource:
+        attrs.numPr?.kind === "reference" || attrs.numPrFromStyle == null ? "paragraph" : "style",
       numPr,
       numbering,
     }),

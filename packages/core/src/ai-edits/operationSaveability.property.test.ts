@@ -34,7 +34,7 @@ import {
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { NumberingDefinitions } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
-import type { FolioAIBlock } from "./types";
+import type { FolioAIBlock, FolioAIListNumbering } from "./types";
 
 const FOOTNOTES_FIXTURE = path.join(
   import.meta.dir,
@@ -121,10 +121,13 @@ type BlockRef =
   | { kind: "malformed" };
 
 type NumberingRef =
+  | { kind: "omitted" }
+  | { kind: "inherit" }
   | { kind: "none" }
-  | { kind: "clear" }
-  | { kind: "defined"; pick: number; level: number }
-  | { kind: "stale"; level: number }
+  | { kind: "defined"; pick: number; ilvl: number }
+  | { kind: "stale"; ilvl: number }
+  | { kind: "levelOnly"; ilvl: number }
+  | { kind: "newList"; format: "numbered" | "bullet"; level?: number }
   | { kind: "malformed" };
 
 type StyleRef = { kind: "none" } | { kind: "clear" } | { kind: "named"; styleId: string };
@@ -141,19 +144,29 @@ const blockRefArb: fc.Arbitrary<BlockRef> = fc.oneof(
 );
 
 const numberingRefArb: fc.Arbitrary<NumberingRef> = fc.oneof(
-  { weight: 3, arbitrary: fc.constant({ kind: "none" as const }) },
-  { weight: 1, arbitrary: fc.constant({ kind: "clear" as const }) },
+  { weight: 2, arbitrary: fc.constant({ kind: "omitted" as const }) },
+  { weight: 1, arbitrary: fc.constant({ kind: "inherit" as const }) },
+  { weight: 2, arbitrary: fc.constant({ kind: "none" as const }) },
   {
     weight: 3,
     arbitrary: fc.record({
       kind: fc.constant("defined" as const),
       pick: fc.nat(10),
-      level: fc.nat(9),
+      ilvl: fc.nat(9),
     }),
   },
   {
     weight: 3,
-    arbitrary: fc.record({ kind: fc.constant("stale" as const), level: fc.nat(3) }),
+    arbitrary: fc.record({ kind: fc.constant("stale" as const), ilvl: fc.nat(3) }),
+  },
+  { weight: 2, arbitrary: fc.record({ kind: fc.constant("levelOnly" as const), ilvl: fc.nat(3) }) },
+  {
+    weight: 1,
+    arbitrary: fc.record({
+      kind: fc.constant("newList" as const),
+      format: fc.constantFrom("numbered" as const, "bullet" as const),
+      level: fc.option(fc.nat(3), { nil: undefined }),
+    }),
   },
   { weight: 1, arbitrary: fc.constant({ kind: "malformed" as const }) },
 );
@@ -196,7 +209,6 @@ type OperationSpec = {
   block: BlockRef;
   numbering: NumberingRef;
   style: StyleRef;
-  listLevel: number | null | undefined;
   text: string;
 };
 
@@ -205,7 +217,6 @@ const operationSpecArb: fc.Arbitrary<OperationSpec> = fc.record({
   block: blockRefArb,
   numbering: numberingRefArb,
   style: styleRefArb,
-  listLevel: fc.option(fc.option(fc.nat(3), { nil: null }), { nil: undefined }),
   text: fc.stringMatching(/^[A-Za-z][A-Za-z ]{0,14}$/u),
 });
 
@@ -243,20 +254,34 @@ const resolveBlockId = (ref: BlockRef, materials: Materials): string => {
 const resolveNumbering = (
   ref: NumberingRef,
   materials: Materials,
-): { numId: number; level: number } | null | undefined => {
+): FolioAIListNumbering | undefined => {
   switch (ref.kind) {
-    case "none":
+    case "omitted":
       return undefined;
-    case "clear":
-      return null;
+    case "inherit":
+      return { kind: "inherit" };
+    case "none":
+      return { kind: "none" };
     case "defined": {
       const numId = materials.definedNumIds[ref.pick % Math.max(1, materials.definedNumIds.length)];
-      return { numId: numId ?? 4242, level: ref.level };
+      return { kind: "reference", numId: numId ?? 4242, ilvl: ref.ilvl };
     }
     case "stale":
-      return { numId: Math.max(0, ...materials.definedNumIds) + 1000, level: ref.level };
+      return {
+        kind: "reference",
+        numId: Math.max(0, ...materials.definedNumIds) + 1000,
+        ilvl: ref.ilvl,
+      };
+    case "levelOnly":
+      return { kind: "levelOnly", ilvl: ref.ilvl };
+    case "newList":
+      return {
+        kind: "newList",
+        format: ref.format,
+        ...(ref.level === undefined ? {} : { level: ref.level }),
+      };
     case "malformed":
-      return { numId: 0, level: 0 };
+      return { kind: "reference", numId: 0, ilvl: 0 };
   }
 };
 
@@ -280,7 +305,6 @@ const materialize = (
   const paragraph = {
     ...(styleId !== undefined && { styleId }),
     ...(numbering !== undefined && { numbering }),
-    ...(spec.listLevel !== undefined && { listLevel: spec.listLevel }),
   };
   switch (spec.type) {
     case "insertAfterBlock":

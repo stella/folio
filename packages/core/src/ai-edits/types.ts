@@ -1,6 +1,7 @@
 import type { CanonicalGap } from "../types/canonicalCapabilities";
 import type {
   FolioContentBlock,
+  FolioContentStatedNumbering,
   FolioContentInlineBooleanProperty,
   FolioContentInlineFormatting,
   FolioContentInlineFormattingPatch,
@@ -88,20 +89,20 @@ export type FolioAIListReference = FolioContentListReference;
 export type FolioAIListKind = ListKind;
 
 /**
- * Start a new list: a numbering instance of `kind`, defined for the
+ * Start a new list: a numbering instance of `format`, defined for the
  * operation, with its paragraphs at `level` (zero-based, default 0). Every
  * paragraph one operation numbers this way joins the same new list; separate
  * operations start separate lists. A package without a numbering part gets
  * one.
  */
 export type FolioAINewListReference = {
-  start: "new";
-  kind: FolioAIListKind;
+  kind: "newList";
+  format: FolioAIListKind;
   level?: number;
 };
 
 /** An existing numbering instance and level, or a new list. */
-export type FolioAIListNumbering = FolioAIListReference | FolioAINewListReference;
+export type FolioAIListNumbering = FolioContentStatedNumbering | FolioAINewListReference;
 
 /** Which paragraphs split from one insertion's `text` receive its paragraph formatting. */
 export type FolioAIInsertFormattingScope = "firstParagraph" | "allParagraphs";
@@ -111,18 +112,13 @@ export type FolioAIInsertFormattingScope = "firstParagraph" | "allParagraphs";
  * scope: properties a comparison can see in a block projection and an agent
  * has a reason to change.
  */
-export type FolioAIBlockParagraphProperties = {
+export type FolioAIBlockParagraphProperties<Numbering = FolioAIListNumbering> = {
   /** `w:pStyle`. `null` clears the style back to the default. */
   styleId?: string | null;
   /** Direct `w:outlineLvl`. `null` restores style inheritance. */
   outlineLevel?: OutlineLevel | null;
-  /**
-   * `w:numPr/w:ilvl`, zero-based. `null` removes numbering unless `numbering`
-   * supplies a concrete instance; together they retain that instance without
-   * an authored level.
-   */
-  listLevel?: number | null;
-  numbering?: FolioAIListNumbering | null;
+  /** Exact stated numbering: inherit, cancellation, level-only, or an authored reference. */
+  numbering?: Numbering;
   /** Direct `w:jc`. `null` clears the override and restores style inheritance. */
   alignment?: ParagraphAlignment | null;
   /** Direct `w:spacing` attributes. `null` removes the whole direct child. */
@@ -247,7 +243,7 @@ export type FolioAISignatureParty = {
   title?: string;
 };
 
-export type FolioAIEditOperation = FolioAIEditReviewMeta & {
+export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEditReviewMeta & {
   precondition?: FolioAIEditPrecondition;
   /**
    * Groups this operation's produced marks under one logical suggestion so the
@@ -311,7 +307,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /**
          * Which paragraphs split from `text` receive the operation's
          * paragraph formatting: the inherited anchor formatting plus
-         * `styleId`, `outlineLevel`, `listLevel`, `numbering`, `alignment`,
+         * `styleId`, `outlineLevel`, `numbering`, `alignment`,
          * `spacing` and `indentation`. `"firstParagraph"` (the default) formats the first
          * and leaves the rest as body paragraphs, for a heading followed by
          * its body. `"allParagraphs"` formats every paragraph alike, for
@@ -354,16 +350,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * becomes a heading. `null` clears it and lets the style decide.
          */
         outlineLevel?: OutlineLevel | null;
-        /**
-         * Override `w:numPr/w:ilvl` on the inserted block, keeping the
-         * anchor's `w:numId`. Without it the inserted paragraph takes the
-         * anchor's level, which is the wrong one whenever the new item sits
-         * beside a list item at a different depth. `null` gives it no
-         * numbering unless `numbering` supplies a concrete instance; together
-         * they retain that instance without an authored level.
-         */
-        listLevel?: number | null;
-        numbering?: FolioAIListNumbering | null;
+        /** Exact stated numbering for the inserted paragraph; omission copies the anchor. */
+        numbering?: Numbering;
         /**
          * Direct `w:jc` for the inserted block. `null` clears alignment copied
          * from the anchor and lets the inserted paragraph's style decide.
@@ -437,12 +425,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * Paragraph properties for the first result. Omitted properties keep
          * the source paragraph's value.
          */
-        firstParagraphProperties?: FolioAIBlockParagraphProperties;
+        firstParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
         /**
          * Paragraph properties for the second result. Omitted properties keep
          * the source paragraph's value.
          */
-        secondParagraphProperties?: FolioAIBlockParagraphProperties;
+        secondParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
       }
     /**
      * Add a whole table next to the anchor block, its rows marked inserted in
@@ -486,7 +474,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         id: string;
         type: "setBlockParagraphProperties";
         blockId: string;
-        properties: FolioAIBlockParagraphProperties;
+        properties: FolioAIBlockParagraphProperties<Numbering>;
       }
     /**
      * Join the block with the one after it, the mirror of `splitBlock`: in
@@ -512,7 +500,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * Paragraph properties for the joined result. Omitted properties keep
          * the first paragraph's value.
          */
-        mergedParagraphProperties?: FolioAIBlockParagraphProperties;
+        mergedParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
       }
     | {
         id: string;
@@ -605,6 +593,9 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         blockId: string;
       }
   );
+
+/** Operations after the numbering allocator has resolved every request. */
+export type FolioAIResolvedEditOperation = FolioAIEditOperation<FolioContentStatedNumbering>;
 
 /**
  * How AI-authored operations are applied:

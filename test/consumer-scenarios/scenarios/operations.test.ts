@@ -301,7 +301,7 @@ describe("list labels after an operation", () => {
           type: "insertAfterBlock",
           blockId: anchor.id,
           text: "Level eight.",
-          numbering: { numId: 7, level: 8 },
+          numbering: { kind: "reference", numId: 7, ilvl: 8 },
         },
       ],
     });
@@ -309,7 +309,8 @@ describe("list labels after an operation", () => {
     const unmarked = reviewer.getContent().find(({ text }) => text === "Level eight.");
     assert.equal(unmarked?.kind, "paragraph");
     assert.equal(unmarked?.displayLabel, undefined);
-    assert.equal(unmarked?.listLevel, 8);
+    assert.deepEqual(unmarked?.statedNumbering, { kind: "reference", numId: 7, ilvl: 8 });
+    assert.deepEqual(unmarked?.listReference, { numId: 7, level: 8 });
     await assertHealthy(reviewer, "undefined level");
   });
 });

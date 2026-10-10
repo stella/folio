@@ -1,3 +1,4 @@
+import type { ParagraphNumberingOverride } from "@stll/docx-core/model";
 import type { OutlineLevel, ParagraphAlignment, ParagraphFormatting } from "../types/document";
 
 /** How callers expect a block identifier to behave across document revisions. */
@@ -103,6 +104,33 @@ export type FolioContentParagraphIndentation = Pick<
 /** A concrete numbering instance and its zero-based level. */
 export type FolioContentListReference = { numId: number; level: number };
 
+/** Authored paragraph numbering state, separate from effective list membership. */
+export type FolioContentStatedNumbering = ParagraphNumberingOverride | { readonly kind: "inherit" };
+
+export const INHERITED_PARAGRAPH_NUMBERING = {
+  kind: "inherit",
+} as const satisfies FolioContentStatedNumbering;
+
+export const sameFolioContentStatedNumbering = (
+  left: FolioContentStatedNumbering,
+  right: FolioContentStatedNumbering,
+): boolean => {
+  if (left.kind !== right.kind) return false;
+  switch (left.kind) {
+    case "inherit":
+    case "none":
+      return true;
+    case "levelOnly":
+      return right.kind === "levelOnly" && left.ilvl === right.ilvl;
+    case "reference":
+      return right.kind === "reference" && left.numId === right.numId && left.ilvl === right.ilvl;
+    default: {
+      const unreachable: never = left;
+      return unreachable;
+    }
+  }
+};
+
 /**
  * The complete modeled attribute set of direct paragraph spacing. Optional
  * fields distinguish an absent attribute from an explicit zero or false value.
@@ -140,9 +168,10 @@ export type FolioContentBlock<Kind extends string = string> = {
   directSpacing?: FolioContentParagraphSpacing;
   /** Direct paragraph indentation; absent when every indentation value is inherited. */
   directIndentation?: FolioContentParagraphIndentation;
-  /** Zero-based list indent level when the block carries numbering. */
-  listLevel?: number;
+  /** Effective list membership resolved from authored and inherited numbering. */
   listReference?: FolioContentListReference;
+  /** Authored paragraph numbering override; `inherit` means no direct override. */
+  statedNumbering: FolioContentStatedNumbering;
   previewRuns?: readonly FolioContentRun[];
   table?: FolioContentTableLocation;
   /** Structural ancestry, ordered from the outermost to the innermost container. */

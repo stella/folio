@@ -345,7 +345,8 @@ const rowFields = (row: FolioAgentBlock) => ({
   kind: row.kind,
   displayLabel: row.displayLabel,
   headingLevel: row.headingLevel,
-  listLevel: row.listLevel,
+  statedNumbering: row.statedNumbering,
+  listReference: row.listReference,
 });
 
 const MARKDOWN_OPTIONS = {
@@ -467,7 +468,7 @@ const LIST_EDITS: Record<string, ListEdit> = {
             type: "insertBeforeBlock",
             blockId: anchor.id,
             text: `Joined ${step}`,
-            numbering: { numId: member.numId, level: member.level },
+            numbering: { kind: "reference", numId: member.numId, ilvl: member.level },
           },
         ]
       : null;
@@ -489,7 +490,7 @@ const LIST_EDITS: Record<string, ListEdit> = {
             type: "insertAfterBlock",
             blockId: to.id,
             text: item.text,
-            numbering: { numId: reference.numId, level: reference.level },
+            numbering: { kind: "reference", numId: reference.numId, ilvl: reference.level },
           },
           { id: "remove", type: "deleteBlock", blockId: item.id },
         ]
@@ -506,7 +507,9 @@ const LIST_EDITS: Record<string, ListEdit> = {
         id: "e",
         type: "setBlockParagraphProperties",
         blockId: item.id,
-        properties: { numbering: { numId: reference.numId, level: nextLevel } },
+        properties: {
+          numbering: { kind: "reference", numId: reference.numId, ilvl: nextLevel },
+        },
       },
     ];
   },
@@ -518,7 +521,7 @@ const LIST_EDITS: Record<string, ListEdit> = {
             id: "e",
             type: "setBlockParagraphProperties",
             blockId: target.id,
-            properties: { numbering: { start: "new", kind: "numbered" } },
+            properties: { numbering: { kind: "newList", format: "numbered" } },
           },
         ]
       : null;
@@ -531,7 +534,7 @@ const LIST_EDITS: Record<string, ListEdit> = {
             id: "e",
             type: "setBlockParagraphProperties",
             blockId: item.id,
-            properties: { numbering: null },
+            properties: { numbering: { kind: "none" } },
           },
         ]
       : null;
@@ -565,7 +568,8 @@ const expectLiveAndSavedAgree = async (reviewer: FolioDocxReviewer): Promise<voi
       kind: block.kind,
       displayLabel: block.displayLabel,
       headingLevel: block.headingLevel,
-      listLevel: block.listLevel,
+      statedNumbering: block.statedNumbering,
+      listReference: block.listReference,
     })),
   );
 
@@ -681,7 +685,7 @@ describe("readers agree on numbered headings and lists", () => {
     }
   });
 
-  test("read_document rows restate the snapshot's label and levels", async () => {
+  test("read_document rows restate the snapshot's labels and numbering state", async () => {
     const { content, rows } = await readAll(await buildNumberedDocument());
 
     expect(rows.map(rowFields)).toEqual(
@@ -690,17 +694,25 @@ describe("readers agree on numbered headings and lists", () => {
         kind: block.kind,
         displayLabel: block.displayLabel,
         headingLevel: block.headingLevel,
-        listLevel: block.listLevel,
+        statedNumbering: block.statedNumbering,
+        listReference: block.listReference,
       })),
     );
     // Rows stay compact: a field the block lacks is absent, not `undefined`.
     const body = rows.find(({ text }) => text === "The Supplier delivers the goods.");
-    expect(body && Object.keys(body).sort()).toEqual(["blockId", "blockTextHash", "kind", "text"]);
+    expect(body && Object.keys(body).sort()).toEqual([
+      "blockId",
+      "blockTextHash",
+      "kind",
+      "statedNumbering",
+      "text",
+    ]);
     expect(rows.find(({ text }) => text === "Definitions")).toMatchObject({
       kind: "heading",
       displayLabel: "1.1.",
       headingLevel: 3,
-      listLevel: 1,
+      statedNumbering: { kind: "inherit" },
+      listReference: { numId: expect.any(Number), level: 1 },
     });
   });
 });

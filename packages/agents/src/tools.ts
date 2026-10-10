@@ -13,8 +13,7 @@ import {
 } from "./codecs";
 import {
   FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
-  FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
-  FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+  FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA,
   FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
@@ -179,7 +178,7 @@ const OPERATION_PROPERTY_SCHEMAS = {
       "`firstParagraph` (default) formats only the first; `allParagraphs` formats every " +
       "paragraph alike, for several list items in one operation.",
   },
-  numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+  numbering: FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA,
   hardPageBreak: FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
   preserveFormatting: {
     type: "boolean",
@@ -251,7 +250,6 @@ const OPERATION_PROPERTY_SCHEMAS = {
     description:
       "For `mergeBlockWithNext`, properties for the joined result; omitted properties keep the first paragraph's value.",
   },
-  listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
   offset: {
     type: "integer",
     minimum: 0,
@@ -446,7 +444,8 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
       "Read the full document body as a list of blocks (paragraphs, headings, list items). Call this first, " +
       "or whenever you need fresh block ids after a mutation — block ids from a stale read may no longer " +
       "resolve. A block shows its number or bullet (`2.1.`, `a)`, `•`) as `displayLabel`, a numbered heading " +
-      "included; a heading also has `headingLevel` and a numbered block `listLevel`. Each block includes a " +
+      "included; a heading also has `headingLevel`. Each block includes `statedNumbering`; " +
+      "`listReference` is present when numbering resolves to an instance. Each block includes a " +
       "`blockTextHash`; echo it as `precondition.blockTextHash` on a suggest_changes / add_comment " +
       "operation to guard against the block changing before that call runs.",
     inputSchema: {
@@ -480,7 +479,8 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
     description:
       "Read one logical heading section using a handle from get_document_outline. Content is block-bounded " +
       "and paginated with an afterBlockId cursor, avoiding a full-document read. Blocks have the same " +
-      "fields as read_document's, `displayLabel`, `headingLevel` and `listLevel` included. Each block " +
+      "fields as read_document's, including `displayLabel`, `headingLevel`, `statedNumbering`, and " +
+      "`listReference` when present. Each block " +
       "includes a `blockTextHash`; echo it as `precondition.blockTextHash` on a suggest_changes / " +
       "add_comment operation.",
     inputSchema: {

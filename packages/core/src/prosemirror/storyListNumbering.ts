@@ -13,11 +13,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { Transform } from "prosemirror-transform";
 
-import {
-  paragraphNumberingLevel,
-  paragraphNumberingReference,
-  paragraphNumberingReferenceId,
-} from "../docx/numberingReference";
+import { paragraphNumberingReference } from "../docx/numberingReference";
 import { getCachedNumberingMap, isBulletLevel } from "../docx/numberingParser";
 import { createNumberingIdAllocator } from "../docx/numberingIds";
 import type { NumberingDefinitions } from "../types/document";
@@ -39,14 +35,15 @@ const remappedNumPr = (
   numPr: ParagraphAttrs["numPr"] | null | undefined,
   numIds: ReadonlyMap<number, number>,
 ): ParagraphAttrs["numPr"] | null | undefined => {
-  const numId = paragraphNumberingReferenceId(numPr ?? undefined);
-  const next = numId === undefined ? undefined : numIds.get(numId);
+  if (numPr?.kind !== "reference") return numPr;
+  const next = numIds.get(numPr.numId);
   if (next === undefined) {
     return numPr;
   }
-  const ilvl = paragraphNumberingLevel(numPr ?? undefined);
   return paragraphNumberingAttr(
-    paragraphNumberingReference(ilvl === undefined ? { numId: next } : { numId: next, ilvl }),
+    paragraphNumberingReference(
+      numPr.ilvl === undefined ? { numId: next } : { numId: next, ilvl: numPr.ilvl },
+    ),
   );
 };
 
@@ -110,16 +107,22 @@ export const storyListNumbering = (
       const abstractId = change.previousFormatting?.listAbstractNumId;
       if (typeof abstractId === "number") existingAbstractNumIds.add(abstractId);
     }
-    const numId = paragraphNumberingReferenceId(attrs.numPr);
-    if (numId !== undefined && !storyBase.has(numId) && definedMap?.hasNumbering(numId)) {
-      const level = definedMap.getLevel(numId, paragraphNumberingLevel(attrs.numPr) ?? 0);
+    // Collision remapping owns paragraph-stated refs; style refs remain with
+    // their package-level style and numbering definitions.
+    const statedNumbering = attrs.numPr;
+    if (
+      statedNumbering?.kind === "reference" &&
+      !storyBase.has(statedNumbering.numId) &&
+      definedMap?.hasNumbering(statedNumbering.numId)
+    ) {
+      const level = definedMap.getLevel(statedNumbering.numId, statedNumbering.ilvl ?? 0);
       const sameList =
         level !== null &&
         isBulletLevel(level) === (attrs.listIsBullet === true) &&
         (attrs.listAbstractNumId ?? undefined) ===
-          (definedMap.getAbstractNumId(numId) ?? undefined);
+          (definedMap.getAbstractNumId(statedNumbering.numId) ?? undefined);
       if (!sameList) {
-        colliding.add(numId);
+        colliding.add(statedNumbering.numId);
       }
     }
     return false;
@@ -144,11 +147,12 @@ export const storyListNumbering = (
       return true;
     }
     const attrs = expectParagraphAttrs(node);
-    const numId = paragraphNumberingReferenceId(attrs.numPr);
+    const numId = attrs.numPr?.kind === "reference" ? attrs.numPr.numId : undefined;
     const moves = numId !== undefined && remap.numIds.has(numId);
     const changes = attrs._propertyChanges?.map((change) => {
       const previous = change.previousFormatting;
-      const previousNumId = paragraphNumberingReferenceId(previous?.numPr ?? undefined);
+      const previousNumId =
+        previous?.numPr?.kind === "reference" ? previous.numPr.numId : undefined;
       if (!previous || previousNumId === undefined || !remap.numIds.has(previousNumId)) {
         return change;
       }

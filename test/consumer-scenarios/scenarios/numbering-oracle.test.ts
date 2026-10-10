@@ -222,22 +222,23 @@ test(
     );
     const cases = [
       {
-        properties: { numbering: { numId: 901, level: 0 } },
+        properties: { numbering: { kind: "reference", numId: 901, ilvl: 0 } },
         direct: paragraphNumberingFromSlots({ numId: 901, ilvl: 0 }),
       },
       {
-        properties: { numbering: { numId: 900, level: 1 } },
+        properties: { numbering: { kind: "reference", numId: 900, ilvl: 1 } },
         direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
       },
       {
-        properties: { numbering: { numId: 900, level: 0 } },
-        direct: undefined,
+        properties: { numbering: { kind: "reference", numId: 900, ilvl: 0 } },
+        direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 0 }),
       },
       {
-        properties: { listLevel: 1 },
+        properties: { numbering: { kind: "levelOnly", ilvl: 1 } },
         direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
       },
-      { properties: { numbering: null }, direct: { kind: "none" } },
+      { properties: { numbering: { kind: "none" } }, direct: { kind: "none" } },
+      { properties: { numbering: { kind: "inherit" } }, direct: undefined },
       { properties: { styleId: "Heading3" }, direct: undefined },
     ] as const satisfies readonly {
       properties: FolioAIBlockParagraphProperties;
@@ -415,7 +416,7 @@ test("direct heading insertion beside a newly authored bullet keeps its direct n
         type: "insertAfterBlock",
         blockId: anchor.id,
         text: "A new bullet.",
-        numbering: { start: "new", kind: "bullet" },
+        numbering: { kind: "newList", format: "bullet" },
       },
     ],
     "direct",
@@ -617,7 +618,7 @@ test("a pending inserted anchor has complete live numbering provenance", async (
         type: "insertAfterBlock",
         blockId: anchor.id,
         text: "Pending numbered anchor",
-        numbering: { numId: 7, level: 0 },
+        numbering: { kind: "reference", numId: 7, ilvl: 0 },
       },
     ],
     "suggested",

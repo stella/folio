@@ -43,6 +43,12 @@ const withText = (blocks: readonly Block[]) => blocks.filter((block) => wordsOf(
 const numberingRefs = (blocks: readonly Block[]) =>
   blocks.flatMap((block) => (block.listReference ? [block.listReference] : []));
 
+const referenceNumbering = ({ numId, level }: { numId: number; level: number }) => ({
+  kind: "reference" as const,
+  numId,
+  ilvl: level,
+});
+
 const range = (block: Block, pick: Picker) => {
   if (wordsOf(block.text).length === 0) return null;
   const { word, start } = pick.span(block);
@@ -62,8 +68,13 @@ const paragraphProperties = (blocks: readonly Block[], random: Random) => {
     { alignment: "center" },
     { alignment: null },
     { spacing: { spaceBefore: 120, spaceAfter: 120 } },
-    { numbering: { start: "new", kind: random.pick(["numbered", "bullet"]) } },
-    ...(refs.length > 0 ? [{ numbering: random.pick(refs) }, { numbering: null }] : []),
+    { numbering: { kind: "newList", format: random.pick(["numbered", "bullet"]) } },
+    ...(refs.length > 0
+      ? [
+          { numbering: referenceNumbering(random.pick(refs)) },
+          { numbering: { kind: "none" as const } },
+        ]
+      : []),
   ]);
 };
 
@@ -112,8 +123,8 @@ export const GENERATORS: Record<string, Generator> = {
       {},
       { styleId: "Heading2" },
       { alignment: "right" },
-      { numbering: { start: "new", kind: random.pick(["numbered", "bullet"]) } },
-      ...(refs.length > 0 ? [{ numbering: random.pick(refs) }] : []),
+      { numbering: { kind: "newList", format: random.pick(["numbered", "bullet"]) } },
+      ...(refs.length > 0 ? [{ numbering: referenceNumbering(random.pick(refs)) }] : []),
     ]);
     return {
       type: "insertAfterBlock",
@@ -632,7 +643,7 @@ export const COLLISIONS: Record<string, Collision> = {
             type: "insertAfterBlock",
             blockId: block.id,
             text: "A new bullet.",
-            numbering: { start: "new", kind: "bullet" },
+            numbering: { kind: "newList", format: "bullet" },
           },
         ]
       : null;

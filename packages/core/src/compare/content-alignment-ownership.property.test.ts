@@ -3,6 +3,7 @@ import fc from "fast-check";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { alignFolioContentBlocks, type FolioContentAlignedBlockEvent } from "./content-alignment";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock, FolioContentParagraphKind } from "./content-types";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -57,8 +58,18 @@ const candidateForPass = (
   switch (pass) {
     case "stable":
       return {
-        base: { id: "shared", kind: "paragraph", text: `${text} base` },
-        revised: { id: "shared", kind: "paragraph", text: `${text} revised` },
+        base: {
+          id: "shared",
+          kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+          text: `${text} base`,
+        },
+        revised: {
+          id: "shared",
+          kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+          text: `${text} revised`,
+        },
       };
     case "exact":
       return {
@@ -67,16 +78,34 @@ const candidateForPass = (
       };
     case "continuity":
       return {
-        base: { id: "shared", idStability: "positional", kind: "paragraph", text: `${text} base` },
-        revised: { id: "shared", kind: "paragraph", text: `${text} revised` },
+        base: {
+          id: "shared",
+          idStability: "positional",
+          kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+          text: `${text} base`,
+        },
+        revised: {
+          id: "shared",
+          kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+          text: `${text} revised`,
+        },
       };
     case "positional":
       return {
-        base: { id: "base", idStability: "positional", kind: "paragraph", text: `${text} base` },
+        base: {
+          id: "base",
+          idStability: "positional",
+          kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+          text: `${text} base`,
+        },
         revised: {
           id: "revised",
           idStability: "positional",
           kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
           text: `${text} revised`,
         },
       };
@@ -191,13 +220,38 @@ describe("block alignment ownership", () => {
 
   test("does not promote a stable ID duplicated on either side", () => {
     const base: FolioContentBlock[] = [
-      { id: "duplicate", kind: "paragraph", text: "Alpha" },
-      { id: "duplicate", kind: "paragraph", text: "Beta" },
+      {
+        id: "duplicate",
+        kind: "paragraph",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+        text: "Alpha",
+      },
+      {
+        id: "duplicate",
+        kind: "paragraph",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+        text: "Beta",
+      },
     ];
     const revised: FolioContentBlock[] = [
-      { id: "duplicate", kind: "paragraph", text: "Inserted" },
-      { id: "duplicate", kind: "paragraph", text: "Beta revised" },
-      { id: "duplicate", kind: "paragraph", text: "Alpha revised" },
+      {
+        id: "duplicate",
+        kind: "paragraph",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+        text: "Inserted",
+      },
+      {
+        id: "duplicate",
+        kind: "paragraph",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+        text: "Beta revised",
+      },
+      {
+        id: "duplicate",
+        kind: "paragraph",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+        text: "Alpha revised",
+      },
     ];
 
     const events = alignFolioContentBlocks(base, revised, { stableIdMismatch: "pair" });
@@ -213,24 +267,45 @@ describe("block alignment ownership", () => {
   });
 
   test("finds later unique stable anchors after ineligible candidates", () => {
-    const unique = { id: "unique", kind: "paragraph", text: "Unique revised" } as const;
+    const unique = {
+      id: "unique",
+      kind: "paragraph",
+      statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+      text: "Unique revised",
+    } as const;
     const cases = [
       [
         {
           id: "positional",
           idStability: "positional",
           kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
           text: "Positional",
         },
         { ...unique, text: "Unique base" },
       ],
       [
-        { id: "duplicate", kind: "paragraph", text: "First duplicate" },
-        { id: "duplicate", kind: "paragraph", text: "Second duplicate" },
+        {
+          id: "duplicate",
+          kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+          text: "First duplicate",
+        },
+        {
+          id: "duplicate",
+          kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+          text: "Second duplicate",
+        },
         { ...unique, text: "Unique base" },
       ],
       [
-        { id: "base-only", kind: "paragraph", text: "Base only" },
+        {
+          id: "base-only",
+          kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+          text: "Base only",
+        },
         { ...unique, text: "Unique base" },
       ],
     ] as const satisfies readonly (readonly FolioContentBlock[])[];
@@ -254,8 +329,18 @@ describe("block alignment ownership", () => {
         fc.uuid(),
         (text, baseId, revisedId) => {
           fc.pre(baseId !== revisedId);
-          const base: FolioContentBlock = { id: baseId, kind: "paragraph", text };
-          const revised: FolioContentBlock = { id: revisedId, kind: "paragraph", text };
+          const base: FolioContentBlock = {
+            id: baseId,
+            kind: "paragraph",
+            statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+            text,
+          };
+          const revised: FolioContentBlock = {
+            id: revisedId,
+            kind: "paragraph",
+            statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+            text,
+          };
 
           expect(alignFolioContentBlocks([base], [revised]).map(({ type }) => type)).toEqual([
             "baseOnly",
@@ -321,6 +406,7 @@ describe("block alignment ownership", () => {
         id,
         idStability: "positional",
         kind: "paragraph",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
         text: "The same repeated provision",
         get containerPath() {
           containerPathReads += 1;
@@ -373,6 +459,7 @@ describe("block alignment ownership", () => {
         id: "base",
         idStability: "positional",
         kind: "paragraph",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
         text: "Base text",
         ...(basePath === undefined ? {} : { containerPath: basePath }),
       } as const satisfies FolioContentBlock;
@@ -380,6 +467,7 @@ describe("block alignment ownership", () => {
         id: "revised",
         idStability: "positional",
         kind: "paragraph",
+        statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
         text: "Revised text",
         ...(revisedPath === undefined ? {} : { containerPath: revisedPath }),
       } as const satisfies FolioContentBlock;
@@ -415,6 +503,7 @@ describe("block alignment ownership", () => {
           id: "base",
           idStability: "positional",
           kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
           text: "Base text",
           containerPath: path,
         } as const satisfies FolioContentBlock;
@@ -424,6 +513,7 @@ describe("block alignment ownership", () => {
           id: "revised",
           idStability: "positional",
           kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
           text: "Revised text",
           containerPath: samePath,
         } as const satisfies FolioContentBlock;

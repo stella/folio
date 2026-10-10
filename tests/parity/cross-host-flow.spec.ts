@@ -43,13 +43,15 @@ const semanticProjection = async (bytes: Uint8Array) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(bytes).buffer);
   return {
     // Exclude regenerated identity and package metadata, retain semantic structure.
-    blocks: reviewer.snapshot().blocks.map(({ kind, text, displayLabel, listLevel, table }) => ({
-      kind,
-      text,
-      displayLabel,
-      listLevel,
-      table,
-    })),
+    blocks: reviewer
+      .snapshot()
+      .blocks.map(({ kind, text, displayLabel, listReference, table }) => ({
+        kind,
+        text,
+        displayLabel,
+        effectiveLevel: listReference?.level,
+        table,
+      })),
     changes: reviewer.getChanges().map(({ type, text, author }) => ({ type, text, author })),
     comments: reviewer.getComments().map(({ text, author }) => ({ text, author })),
   };

@@ -9,11 +9,13 @@ import {
   InvalidFolioContentComparisonError,
 } from "./content";
 import type { FolioContentAlignmentStep } from "./content-alignment";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock } from "./content-types";
 
 const block = (id: string, overrides: Partial<FolioContentBlock> = {}): FolioContentBlock => ({
   id,
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text: "",
   ...overrides,
 });

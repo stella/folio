@@ -1,10 +1,26 @@
 import { panic } from "better-result";
 import {
   NO_PARAGRAPH_NUMBERING,
+  mergeParagraphNumbering,
   type ParagraphNumberingOverride,
   paragraphNumberingFromSlots,
   paragraphNumberingReference,
 } from "@stll/docx-core/model";
+
+type ParagraphNumberingSources = {
+  numPr?: ParagraphNumberingOverride | null;
+  numPrFromStyle?: ParagraphNumberingOverride | null;
+};
+
+/** Effective membership is derived; neither source slot becomes an authored override. */
+export const effectiveParagraphNumbering = ({ numPr, numPrFromStyle }: ParagraphNumberingSources) =>
+  mergeParagraphNumbering(numPrFromStyle ?? undefined, numPr ?? undefined);
+
+/** A list reference for membership consumers; cancellation and absence are not lists. */
+export const effectiveParagraphNumberingReference = (sources: ParagraphNumberingSources) => {
+  const numbering = effectiveParagraphNumbering(sources);
+  return numbering?.kind === "reference" ? numbering : undefined;
+};
 
 declare const PARAGRAPH_NUMBERING_ATTR: unique symbol;
 

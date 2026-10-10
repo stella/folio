@@ -245,7 +245,10 @@ test("preserves an absent authored list level on a retained paragraph", async ()
     throw new Error("Expected the retained paragraph after acceptance");
   }
   expect(acceptedParagraph.formatting?.numPr).toEqual({ kind: "reference", numId: 5 });
-  expect(accepted.snapshot().blocks.at(0)?.listLevel).toBeUndefined();
+  expect(accepted.snapshot().blocks.at(0)?.statedNumbering).toEqual({
+    kind: "reference",
+    numId: 5,
+  });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
@@ -255,7 +258,11 @@ test("preserves an absent authored list level on a retained paragraph", async ()
     throw new Error("Expected the retained paragraph after rejection");
   }
   expect(rejectedParagraph.formatting?.numPr).toEqual({ kind: "reference", numId: 5, ilvl: 0 });
-  expect(rejected.snapshot().blocks.at(0)?.listLevel).toBe(0);
+  expect(rejected.snapshot().blocks.at(0)?.statedNumbering).toEqual({
+    kind: "reference",
+    numId: 5,
+    ilvl: 0,
+  });
 });
 
 test("preserves an absent list level when restyling a retained paragraph into a list", async () => {
@@ -279,7 +286,7 @@ test("preserves an absent list level when restyling a retained paragraph into a 
   }
   expect(acceptedParagraph.formatting?.styleId).toBe("RetainedNumbered");
   expect(acceptedParagraph.formatting?.numPr).toEqual({ kind: "reference", numId: 5 });
-  expect(accepted.snapshot().blocks.at(0)?.listLevel).toBeUndefined();
+  expect(accepted.snapshot().blocks.at(0)?.statedNumbering).toEqual({ kind: "inherit" });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);
@@ -313,10 +320,10 @@ test("preserves a style-sourced introduced list instance without materializing l
     throw new Error("Expected the introduced paragraph after acceptance");
   }
   expect(introduced.formatting?.styleId).toBe("TargetNumbered");
-  expect(introduced.formatting?.numPr).toEqual({ kind: "reference", numId: 5 });
-  expect(introduced.formatting?.numPrFromStyle).toBeUndefined();
+  expect(introduced.formatting?.numPr).toBeUndefined();
+  expect(introduced.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 5 });
   expect(accepted.snapshot().blocks.at(1)?.listReference).toEqual({ numId: 5, level: 0 });
-  expect(accepted.snapshot().blocks.at(1)?.listLevel).toBeUndefined();
+  expect(accepted.snapshot().blocks.at(1)?.statedNumbering).toEqual({ kind: "inherit" });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expect(rejecting.rejectAll()).toBeGreaterThan(0);

@@ -776,7 +776,8 @@ describe("generateRedlineDocx inserted list items", () => {
       blocks: reopened.snapshot().blocks.map((block) => ({
         text: block.text,
         label: block.displayLabel ?? null,
-        level: block.listLevel ?? null,
+        listReference: block.listReference ?? null,
+        statedNumbering: block.statedNumbering,
       })),
       saved,
     };

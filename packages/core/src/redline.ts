@@ -279,16 +279,7 @@ const insertedParagraphProperties = (
   if (spacing !== undefined) properties.spacing = spacing;
   const indentation = statedOrCleared(block.directIndentation, anchor?.directIndentation);
   if (indentation !== undefined) properties.indentation = indentation;
-  if (
-    block.listReference !== undefined ||
-    anchor?.listReference !== undefined ||
-    anchor?.listLevel !== undefined
-  ) {
-    properties.numbering = block.listReference ?? null;
-    properties.listLevel = block.listLevel ?? null;
-  } else if (block.listLevel !== undefined) {
-    properties.listLevel = block.listLevel;
-  }
+  properties.numbering = block.statedNumbering;
   return properties;
 };
 
@@ -297,7 +288,7 @@ const insertedNumbering = (operation: FolioAIEditOperation): InsertedListReferen
     return null;
   }
   const numbering = operation.numbering;
-  return numbering && !("start" in numbering) ? numbering : null;
+  return numbering?.kind === "reference" ? { numId: numbering.numId, level: numbering.ilvl } : null;
 };
 
 /** The `w:numId`s whose `w:num` and abstract definition both exist. */
@@ -347,9 +338,16 @@ const bindInsertedNumbering = (
       }
       const numId = remapped.get(numbering.numId) ?? numbering.numId;
       if (!resolvable.has(numbering.numId) || !defined.has(numId)) {
-        return { ...operation, numbering: null, listLevel: null };
+        return { ...operation, numbering: { kind: "none" as const } };
       }
-      return { ...operation, numbering: { numId, level: numbering.level } };
+      return {
+        ...operation,
+        numbering: {
+          kind: "reference" as const,
+          numId,
+          ...(numbering.level !== undefined && { ilvl: numbering.level }),
+        },
+      };
     }),
   );
 };

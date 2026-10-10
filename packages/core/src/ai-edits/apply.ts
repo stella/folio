@@ -1,3 +1,6 @@
+import type { ParagraphAttrs, ParagraphAttrsPatch } from "../prosemirror/schema/nodes";
+import type { FolioContentStatedNumbering } from "../compare/content-types";
+import { effectiveParagraphNumbering } from "../prosemirror/numberingAttr";
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
   Fragment,
@@ -35,11 +38,6 @@ import {
 import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import {
-  paragraphNumberingReference,
-  mergeParagraphNumbering,
-  paragraphNumberingReferenceId,
-} from "../docx/numberingReference";
-import {
   paragraphNumberingAttr,
   readParagraphNumberingAttr,
   removedNumberingAttr,
@@ -67,7 +65,7 @@ import {
   getDocumentNumbering,
   getDocumentNumberingInstanceIds,
 } from "../prosemirror/plugins/documentNumbering";
-import { concreteListReference, resolveNewListOperations } from "./newListNumbering";
+import { resolveNewListOperations } from "./newListNumbering";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
@@ -218,12 +216,13 @@ import {
   tableRectangleCutsMergedCell,
 } from "./table-targets";
 import type {
-  FolioAIBlockParagraphProperties,
+  FolioAIBlockParagraphProperties as RequestParagraphProperties,
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
   FolioAIEditNormalization,
-  FolioAIEditOperation,
+  FolioAIEditOperation as RequestedEditOperation,
+  FolioAIResolvedEditOperation as FolioAIEditOperation,
   FolioAIEditSnapshot,
   FolioAIInlineFormattingPatch,
   FolioAIEditSkipReason,
@@ -235,6 +234,8 @@ import {
   type WordDiffGranularity,
   wordDiffSessionFromOptions,
 } from "./word-diff";
+
+type FolioAIBlockParagraphProperties = RequestParagraphProperties<FolioContentStatedNumbering>;
 
 /**
  * The only editor surface the apply logic touches: a current `state`
@@ -268,7 +269,7 @@ export type FolioRevisionStamp = {
 type ApplyFolioAIEditOperationsOptions = {
   view: FolioAIEditView;
   snapshot: FolioAIEditSnapshot;
-  operations: readonly FolioAIEditOperation[];
+  operations: readonly RequestedEditOperation[];
   mode?: FolioAIEditApplyMode;
   author?: string;
   /** Optional author initials (w:initials) stamped alongside the author. */
@@ -614,13 +615,40 @@ const resolveReplaceBlockImpact = ({
   return panic("Cannot resolve a replaceBlock that changes neither text nor style");
 };
 
+type StatedNumberingPatchOptions = {
+  attrs: ParagraphAttrs;
+  stated: FolioContentStatedNumbering;
+  fromStyle: ParagraphAttrs["numPrFromStyle"];
+  numbering: NumberingMap | null;
+};
+
+/** Project exact authored numbering while deriving rendering from its inherited tier. */
+const statedNumberingAttrPatch = ({
+  attrs,
+  stated,
+  fromStyle,
+  numbering,
+}: StatedNumberingPatchOptions): ParagraphAttrsPatch => {
+  const numPr = stated.kind === "inherit" ? null : paragraphNumberingAttr(stated);
+  const numPrFromStyle =
+    numPr?.kind === "reference" || numPr?.kind === "none" ? null : (fromStyle ?? null);
+  const projected = { ...attrs, numPr, numPrFromStyle };
+  const effective = effectiveParagraphNumbering(projected);
+  const rendering =
+    effective?.kind === "reference"
+      ? listLevelAttrPatch(
+          projected,
+          { numId: effective.numId, ilvl: effective.ilvl ?? 0 },
+          numbering,
+        )
+      : { ...listLevelIndentRemovalPatch(attrs, numbering), ...CLEARED_LIST_RENDERING_ATTRS };
+  return { ...rendering, numPr, numPrFromStyle };
+};
+
 /**
  * The attrs one `setBlockParagraphProperties` writes, or `null` when the
  * block already holds them. `styleId: null` clears the style; `numbering`
- * selects a concrete numbering instance and level; `listLevel`
- * moves `w:numPr/w:ilvl` and leaves `w:numId` alone, because a demoted item
- * stays in the same list; `listLevel: null` drops `w:numPr` entirely, which
- * is a paragraph that stopped being a list item.
+ * sets the exact stated numbering union, including explicit inheritance or cancellation.
  */
 type ParagraphPropertiesPatchOptions = {
   node: PMNode;
@@ -714,84 +742,27 @@ const paragraphPropertiesPatch = ({
     patch["outlineLevel"] = directOutlineLevel ?? resolvedFormattingFromStyle?.outlineLevel ?? null;
     originalFormattingChanged = true;
   }
-  // The style numbering in force once any style change above applies.
-  const numPrFromStyle = styleChanged
-    ? readParagraphNumberingAttr(patch["numPrFromStyle"])
-    : attrs.numPrFromStyle;
+  // The style producer owns the inherited tier; the request owns only the stated tier.
+  let numPrFromStyle = attrs.numPrFromStyle;
+  if (resolvedFormattingFromStyle?.numPr !== undefined) {
+    numPrFromStyle = paragraphNumberingAttr(resolvedFormattingFromStyle.numPr);
+  } else if (styleChanged) {
+    numPrFromStyle = readParagraphNumberingAttr(patch["numPrFromStyle"]);
+  }
   if (properties.numbering !== undefined) {
-    if (properties.numbering === null) {
-      Object.assign(
-        patch,
-        listLevelIndentRemovalPatch(
-          mergeParagraphAttrs(node, {
-            ...attrs,
-            _styleResolvedFormatting: styleResolvedParagraphFormatting(resolvedFormattingFromStyle),
-          }),
-          numbering,
-        ),
-      );
-      patch["numPr"] = removedNumberingAttr(numPrFromStyle);
-      Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
-    } else {
-      const listReference = concreteListReference(properties.numbering);
-      Object.assign(
-        patch,
-        listLevelAttrPatch(
-          mergeParagraphAttrs(node, {
-            ...attrs,
-            _styleResolvedFormatting: styleResolvedParagraphFormatting(resolvedFormattingFromStyle),
-          }),
-          { numId: listReference.numId, ilvl: listReference.level },
-          numbering,
-        ),
-      );
-      if (properties.listLevel === null) {
-        // An explicit instance can omit `w:ilvl`. Keep that authored absence:
-        // Word renders level zero, but serializing it creates direct formatting.
-        patch["numPr"] = paragraphNumberingAttr(
-          paragraphNumberingReference({ numId: listReference.numId }),
-        );
-        patch["numPrFromStyle"] = null;
-      }
-    }
-  } else if (properties.listLevel !== undefined) {
-    if (properties.listLevel === null) {
-      Object.assign(
-        patch,
-        listLevelIndentRemovalPatch(
-          mergeParagraphAttrs(node, {
-            ...attrs,
-            _styleResolvedFormatting: styleResolvedParagraphFormatting(resolvedFormattingFromStyle),
-          }),
-          numbering,
-        ),
-      );
-      patch["numPr"] = removedNumberingAttr(numPrFromStyle);
-      Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
-    } else {
-      const numId = paragraphNumberingReferenceId(
-        readParagraphNumberingAttr(styleChanged ? patch["numPr"] : node.attrs["numPr"]) ??
-          undefined,
-      );
-      if (numId === undefined) {
-        patch["numPr"] = paragraphNumberingAttr({ kind: "levelOnly", ilvl: properties.listLevel });
-        Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
-      } else {
-        Object.assign(
-          patch,
-          listLevelAttrPatch(
-            mergeParagraphAttrs(node, {
-              ...attrs,
-              _styleResolvedFormatting: styleResolvedParagraphFormatting(
-                resolvedFormattingFromStyle,
-              ),
-            }),
-            { numId, ilvl: properties.listLevel },
-            numbering,
-          ),
-        );
-      }
-    }
+    Object.assign(
+      patch,
+      statedNumberingAttrPatch({
+        attrs: mergeParagraphAttrs(node, {
+          ...attrs,
+          ...patch,
+          _styleResolvedFormatting: styleResolvedParagraphFormatting(resolvedFormattingFromStyle),
+        }),
+        stated: properties.numbering,
+        fromStyle: numPrFromStyle,
+        numbering,
+      }),
+    );
   }
   if (
     properties.alignment !== undefined &&
@@ -841,15 +812,18 @@ const paragraphPropertiesPatch = ({
     patch["_originalFormatting"] =
       originalFormatting && Object.keys(originalFormatting).length > 0 ? originalFormatting : null;
   }
-  if (
-    styleChanged ||
-    properties.numbering !== undefined ||
-    properties.listLevel !== undefined ||
-    properties.indentation !== undefined
-  ) {
+  if (styleChanged || properties.numbering !== undefined || properties.indentation !== undefined) {
     const nextNumbering =
       patch["numPr"] === undefined ? attrs.numPr : readParagraphNumberingAttr(patch["numPr"]);
-    if (nextNumbering?.kind === "reference") {
+    const nextSources = {
+      numPr: nextNumbering,
+      numPrFromStyle:
+        patch["numPrFromStyle"] === undefined
+          ? numPrFromStyle
+          : readParagraphNumberingAttr(patch["numPrFromStyle"]),
+    };
+    const effectiveNumbering = effectiveParagraphNumbering(nextSources);
+    if (effectiveNumbering?.kind === "reference") {
       const direct =
         properties.indentation === undefined
           ? currentDirectIndentation
@@ -860,7 +834,7 @@ const paragraphPropertiesPatch = ({
           mergeParagraphAttrs(node, {
             numPr: nextNumbering,
             _styleResolvedFormatting: styleResolvedParagraphFormatting(resolvedFormattingFromStyle),
-            numPrFromStyle: numPrFromStyle ?? undefined,
+            numPrFromStyle: nextSources.numPrFromStyle ?? undefined,
             listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances,
             _originalFormatting: withDirectParagraphIndentation(originalFormatting, direct),
             _resolvedFormatting: withDirectParagraphIndentation(
@@ -877,12 +851,13 @@ const paragraphPropertiesPatch = ({
             hangingIndent:
               direct?.hangingIndent ?? resolvedFormattingFromStyle?.hangingIndent ?? false,
           }),
-          { numId: nextNumbering.numId, ilvl: nextNumbering.ilvl ?? 0 },
+          { numId: effectiveNumbering.numId, ilvl: effectiveNumbering.ilvl ?? 0 },
           numbering,
         ),
       );
       // Projection uses zero for an absent ilvl, while provenance preserves absence.
-      patch["numPr"] = nextNumbering;
+      patch["numPr"] = nextNumbering ?? null;
+      patch["numPrFromStyle"] = nextSources.numPrFromStyle ?? null;
     }
   }
   return Object.keys(patch).length > 0 ? patch : null;
@@ -3423,7 +3398,7 @@ const restyledListAttrs = ({
   const kept = statedByOldStyle ? null : stated;
   // Out of every list, the new style's included.
   const numPr = removesNumbering ? removedNumberingAttr(fromStyle) : kept;
-  const effective = mergeParagraphNumbering(fromStyle ?? undefined, numPr ?? undefined);
+  const effective = effectiveParagraphNumbering({ numPr, numPrFromStyle: fromStyle });
   return {
     ...CLEARED_LIST_RENDERING_ATTRS,
     ...(effective?.kind === "reference" &&
@@ -3518,88 +3493,23 @@ const buildInsertedParagraphs = ({
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
     }
-    const explicitNumbering =
-      operation.numbering === undefined || operation.numbering === null
-        ? operation.numbering
-        : concreteListReference(operation.numbering);
-    const listLevel = operation.listLevel;
-    if (formatsParagraph) {
-      if (explicitNumbering === null) {
-        Object.assign(
-          attrs,
-          listLevelIndentRemovalPatch(
-            mergeParagraphAttrs(schema.node("paragraph"), {
-              ...(operation.inheritFormatting === false
-                ? {}
-                : expectParagraphAttrs(item.blockNode)),
-              _styleResolvedFormatting: styleResolvedParagraphFormatting(formattingFromStyle),
-            }),
-            numbering,
-          ),
-        );
-        attrs["numPr"] = removedNumberingAttr(readParagraphNumberingAttr(attrs["numPrFromStyle"]));
-        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
-      } else if (explicitNumbering !== undefined) {
-        Object.assign(
-          attrs,
-          listLevelAttrPatch(
-            mergeParagraphAttrs(schema.node("paragraph"), {
-              ...(operation.inheritFormatting === false
-                ? {}
-                : expectParagraphAttrs(item.blockNode)),
-              _styleResolvedFormatting: styleResolvedParagraphFormatting(formattingFromStyle),
-            }),
-            { numId: explicitNumbering.numId, ilvl: explicitNumbering.level },
-            numbering,
-          ),
-        );
-        if (listLevel === null) {
-          // The target named a numbering instance but left `w:ilvl` absent.
-          // Keep that distinction: Word takes level zero for rendering, while
-          // writing an explicit zero changes the paragraph's direct provenance.
-          attrs["numPr"] = paragraphNumberingAttr(
-            paragraphNumberingReference({ numId: explicitNumbering.numId }),
-          );
-          attrs["numPrFromStyle"] = null;
-        }
-      } else if (listLevel === null) {
-        Object.assign(
-          attrs,
-          listLevelIndentRemovalPatch(
-            mergeParagraphAttrs(schema.node("paragraph"), {
-              ...(operation.inheritFormatting === false
-                ? {}
-                : expectParagraphAttrs(item.blockNode)),
-              _styleResolvedFormatting: styleResolvedParagraphFormatting(formattingFromStyle),
-            }),
-            numbering,
-          ),
-        );
-        attrs["numPr"] = removedNumberingAttr(readParagraphNumberingAttr(attrs["numPrFromStyle"]));
-        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
-      } else if (typeof listLevel === "number") {
-        const numId = paragraphNumberingReferenceId(
-          readParagraphNumberingAttr(Reflect.get(baseAttrs, "numPr")) ?? undefined,
-        );
-        if (numId === undefined) {
-          attrs["numPr"] = paragraphNumberingAttr({ kind: "levelOnly", ilvl: listLevel });
-          Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
-        } else {
-          Object.assign(
-            attrs,
-            listLevelAttrPatch(
-              mergeParagraphAttrs(schema.node("paragraph"), {
-                ...(operation.inheritFormatting === false
-                  ? {}
-                  : expectParagraphAttrs(item.blockNode)),
-                _styleResolvedFormatting: styleResolvedParagraphFormatting(formattingFromStyle),
-              }),
-              { numId, ilvl: listLevel },
-              numbering,
-            ),
-          );
-        }
-      }
+    if (formatsParagraph && operation.numbering !== undefined) {
+      Object.assign(
+        attrs,
+        statedNumberingAttrPatch({
+          attrs: mergeParagraphAttrs(schema.node("paragraph"), {
+            ...(operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode)),
+            ...attrs,
+            _styleResolvedFormatting: styleResolvedParagraphFormatting(formattingFromStyle),
+          }),
+          stated: operation.numbering,
+          fromStyle:
+            formattingFromStyle?.numPr === undefined
+              ? null
+              : paragraphNumberingAttr(formattingFromStyle.numPr),
+          numbering,
+        }),
+      );
     }
     if (formatsParagraph && operation.styleId !== undefined) {
       attrs["styleId"] = operation.styleId;
@@ -3616,10 +3526,7 @@ const buildInsertedParagraphs = ({
           restyledListAttrs({
             attrs,
             styleNumbering: formattingFromStyle?.numPr,
-            // `listLevel: null` beside a numbering reference states an absent
-            // `w:ilvl`, not a removal.
-            removesNumbering:
-              explicitNumbering === null || (explicitNumbering === undefined && listLevel === null),
+            removesNumbering: operation.numbering?.kind === "none",
             numbering,
           }),
         );
@@ -3722,7 +3629,12 @@ const buildInsertedParagraphs = ({
           ? originalFormatting
           : null;
       const finalNumbering = readParagraphNumberingAttr(attrs["numPr"]);
-      if (finalNumbering?.kind === "reference") {
+      const finalFromStyle = readParagraphNumberingAttr(attrs["numPrFromStyle"]);
+      const effectiveNumbering = effectiveParagraphNumbering({
+        numPr: finalNumbering,
+        numPrFromStyle: finalFromStyle,
+      });
+      if (effectiveNumbering?.kind === "reference") {
         Object.assign(
           attrs,
           listLevelAttrPatch(
@@ -3747,19 +3659,19 @@ const buildInsertedParagraphs = ({
               hangingIndent:
                 directIndentation?.hangingIndent ?? formattingFromStyle?.hangingIndent ?? false,
             }),
-            { numId: finalNumbering.numId, ilvl: finalNumbering.ilvl ?? 0 },
+            { numId: effectiveNumbering.numId, ilvl: effectiveNumbering.ilvl ?? 0 },
             numbering,
           ),
         );
         attrs["numPr"] = finalNumbering;
+        attrs["numPrFromStyle"] = finalFromStyle;
       }
     }
     if (
       formatsParagraph &&
       operation.styleId !== undefined &&
       formattingFromStyle?.numPr?.kind === "reference" &&
-      operation.numbering === undefined &&
-      operation.listLevel === undefined
+      operation.numbering === undefined
     ) {
       const { numId, ilvl = 0 } = formattingFromStyle.numPr;
       const levelIndentation = numbering?.getLevel(numId, ilvl)?.pPr;
@@ -3960,7 +3872,7 @@ const applyFolioAIEditOperationsInternal = ({
   // markers a later operation in the same batch matched against.
   const noteReferences = collectNoteReferenceLabels(view.state.doc);
   // Sourced from `numbering` (post new-list resolution), not `view.state`
-  // directly: a `"start": "new"` request mints an instance nothing in the
+  // directly: a `kind: "newList"` request mints an instance nothing in the
   // state carries yet, and its resolved reference must not read as undefined.
   // `null` only when the state carries no numbering plugin at all, the one
   // case that still cannot say what is defined.
@@ -8195,22 +8107,17 @@ const describeUndefinedParagraphStyle = (
 type UndefinedNumberingReference = { path: string; numId: number };
 
 /** The `w:num` id a stated numbering names, when it names one. */
-const statedNumberingInstance = (numbering: object | null | undefined): number | undefined => {
-  if (numbering === null || numbering === undefined) {
-    return undefined;
-  }
-  const numId: unknown = Reflect.get(numbering, "numId");
-  return typeof numId === "number" ? numId : undefined;
-};
+const statedNumberingInstance = (
+  numbering: FolioContentStatedNumbering | undefined,
+): number | undefined => (numbering?.kind === "reference" ? numbering.numId : undefined);
 
 /**
  * Every numbering instance an operation names, with the field that names it.
- * `listLevel` is not among them: it keeps the instance the paragraph or its
- * anchor already references, which the document holds by construction.
+ * Only reference variants name an instance; inheritance, cancellation and level-only do not.
  */
 const operationNumberingReferences = (
   operation: FolioAIEditOperation,
-): { path: string; numbering: object | null | undefined }[] => {
+): { path: string; numbering: FolioContentStatedNumbering | undefined }[] => {
   switch (operation.type) {
     case "insertAfterBlock":
     case "insertBeforeBlock":

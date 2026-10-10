@@ -7,13 +7,15 @@ import { DocxEncryptionError } from "../encryption/errors";
 import { DocxParseError, parseDocx } from "../parser";
 
 const publicRead = (reviewer: FolioDocxReviewer) => ({
-  blocks: reviewer.getContent().map(({ kind, text, headingLevel, displayLabel, listLevel }) => ({
-    kind,
-    text,
-    headingLevel,
-    displayLabel,
-    listLevel,
-  })),
+  blocks: reviewer
+    .getContent()
+    .map(({ kind, text, headingLevel, displayLabel, statedNumbering }) => ({
+      kind,
+      text,
+      headingLevel,
+      displayLabel,
+      statedNumbering,
+    })),
   stories: reviewer.listStories().map(({ handle, text }) => ({ handle, text })),
   notes: reviewer.getNotesAsText(),
   comments: reviewer.getComments().map(({ author, text, anchoredText, done, replies }) => ({

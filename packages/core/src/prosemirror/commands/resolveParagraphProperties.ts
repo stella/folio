@@ -1,7 +1,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { SectionProperties } from "../../types/document";
 import type { NumberingMap } from "../../docx/numberingParser";
-import { paragraphNumberingAttr } from "../numberingAttr";
+import { effectiveParagraphNumbering, paragraphNumberingAttr } from "../numberingAttr";
 import { resolveParagraphNumbering } from "../../docx/numberingReference";
 import { expectParagraphAttrs } from "../attrs";
 import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
@@ -93,7 +93,16 @@ export const resolveParagraphChangeAttrs = ({
             ? null
             : paragraphNumberingAttr(resolveParagraphNumbering(styleNumbering));
         const recordedNumbering = rejection.previousFormatting?.numPr;
-        const restoredNumbering = recordedNumbering ?? inheritedNumbering;
+        const restoredNumPrFromStyle =
+          recordedNumbering?.kind === "reference" || recordedNumbering?.kind === "none"
+            ? null
+            : inheritedNumbering;
+        const effectiveNumbering = effectiveParagraphNumbering({
+          numPr: recordedNumbering,
+          numPrFromStyle: restoredNumPrFromStyle,
+        });
+        const restoredNumbering =
+          effectiveNumbering === undefined ? null : paragraphNumberingAttr(effectiveNumbering);
         const restoredFormatting = paragraphRejectOriginalFormatting(
           rejection.previousFormatting,
           node.attrs["_originalFormatting"],
@@ -101,7 +110,7 @@ export const resolveParagraphChangeAttrs = ({
         const indentation = listIndentationProvenancePatch({
           direct: paragraphIndentationFromFormatting(restoredFormatting ?? undefined),
           styleFormatting: previousFormattingFromStyle,
-          numberingSource: recordedNumbering == null ? "style" : "paragraph",
+          numberingSource: recordedNumbering?.kind === "reference" ? "paragraph" : "style",
           numPr:
             restoredNumbering?.kind === "reference"
               ? { numId: restoredNumbering.numId, ilvl: restoredNumbering.ilvl ?? 0 }
@@ -122,9 +131,10 @@ export const resolveParagraphChangeAttrs = ({
             restoredNumbering,
           }),
           {
-            numPr: restoredNumbering,
-            // Recorded numbering is authored, even when its value matches the style.
-            numPrFromStyle: recordedNumbering == null ? inheritedNumbering : null,
+            // The stated and style tiers stay separate; effective membership
+            // above is for rendering and indentation provenance only.
+            numPr: recordedNumbering ?? null,
+            numPrFromStyle: restoredNumPrFromStyle,
           },
         );
         Object.assign(nextAttrs, indentation);

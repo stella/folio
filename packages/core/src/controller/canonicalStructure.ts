@@ -1,14 +1,11 @@
+import { effectiveParagraphNumbering } from "../prosemirror/numberingAttr";
 import { BUILT_IN_STYLE_NAME, createBuiltInStyleIndex } from "../docx/builtInStyles";
 import { collectHeadings } from "../utils/headingCollector";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { Result } from "better-result";
 import type { EditorState } from "prosemirror-state";
 import { OP_STORIES, type EditorIntent, type TextPosition } from "@stll/docx-core/ops";
-import {
-  headingOutlineLevel,
-  mergeParagraphNumbering,
-  paragraphNumberingReference,
-} from "@stll/docx-core/model";
+import { headingOutlineLevel, paragraphNumberingReference } from "@stll/docx-core/model";
 import type { Paragraph, ListLevel } from "../types/document";
 import { getCachedNumberingMap, numberingLevelUsesBulletMarker } from "../docx/numberingParser";
 import { listRequestsForMarker } from "../prosemirror/listAutoformatMarkers";
@@ -46,7 +43,7 @@ const selectedParagraphs = (session: CanonicalSession, state: EditorState) => {
 };
 
 const effectiveNumbering = (paragraph: Paragraph | undefined) =>
-  mergeParagraphNumbering(paragraph?.formatting?.numPrFromStyle, paragraph?.formatting?.numPr);
+  effectiveParagraphNumbering(paragraph?.formatting ?? {});
 
 const numberingIntent = (
   session: CanonicalSession,

@@ -1,3 +1,4 @@
+import { effectiveParagraphNumbering, effectiveParagraphNumberingReference } from "./numberingAttr";
 /**
  * Which numbering instance a list command puts a paragraph in, and the
  * *Restart Numbering*, *Continue Numbering* and *Set Numbering Value* commands.
@@ -27,7 +28,7 @@ import {
   type ListLevelFormat,
 } from "../docx/listNumberingInstances";
 import { createNumberingMap, isBulletLevel, type NumberingMap } from "../docx/numberingParser";
-import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "../docx/numberingReference";
+import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import type { ListLevel } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import { paragraphPropertiesSnapshot } from "./commands/propertyChangeScope";
@@ -112,7 +113,13 @@ const originalListFormatting = ({
   }
   const inherited = styleResolver?.resolveParagraphStyle(record.styleId ?? undefined)
     .paragraphFormatting?.numPr;
-  Object.assign(original, listRenderingFor(record.numPr ?? inherited, numbering));
+  Object.assign(
+    original,
+    listRenderingFor(
+      effectiveParagraphNumbering({ numPr: record.numPr, numPrFromStyle: inherited }),
+      numbering,
+    ),
+  );
   original["numPr"] = record.numPr ?? null;
   return original;
 };
@@ -223,11 +230,12 @@ const directListMembership = (
     return null;
   }
   const attrs = expectParagraphAttrs(node);
-  const numId = paragraphNumberingReferenceId(attrs.numPr);
-  if (numId === undefined) {
+  const effective = effectiveParagraphNumberingReference(attrs);
+  if (attrs.numPr?.kind !== "reference" || effective === undefined) {
     return null;
   }
-  const ilvl = paragraphNumberingLevel(attrs.numPr) ?? 0;
+  const numId = effective.numId;
+  const ilvl = effective.ilvl ?? 0;
   const level = numbering?.getLevel(numId, ilvl) ?? null;
   return level ? { numId, ilvl, level } : null;
 };

@@ -8,9 +8,8 @@
  * `level` and `numId` are not here: they travel in `numPr`.
  */
 
-import { paragraphNumberingLevel } from "@stll/docx-core/model";
-
 import type { ListRendering } from "../types/document";
+import { effectiveParagraphNumberingReference } from "./numberingAttr";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /** `ListRendering` fields that have their own editor attr. */
@@ -105,7 +104,10 @@ export const hasListRendering = (
 ): boolean => attrs.listMarker != null || attrs.listIsBullet === true || attrs.listNumFmt != null;
 
 /** The attrs a rendering is read back from: a paragraph's, or a recorded previous state's. */
-export type ListRenderingSourceAttrs = Pick<ParagraphAttrs, ListRenderingAttrKey | "numPr">;
+export type ListRenderingSourceAttrs = Pick<
+  ParagraphAttrs,
+  ListRenderingAttrKey | "numPr" | "numPrFromStyle"
+>;
 
 type ListRenderingFromAttrsOptions = {
   attrs: ListRenderingSourceAttrs;
@@ -138,9 +140,10 @@ export const listRenderingFromAttrs = ({
     implicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances ?? undefined,
     markerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips ?? undefined,
   };
+  const numbering = effectiveParagraphNumberingReference(attrs);
   return {
     marker: attrs.listMarker ?? "",
-    level: paragraphNumberingLevel(attrs.numPr) ?? 0,
+    level: numbering?.ilvl ?? 0,
     numId,
     isBullet: attrs.listIsBullet ?? false,
     ...definedFields(optional),

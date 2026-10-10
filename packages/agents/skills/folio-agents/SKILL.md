@@ -126,9 +126,14 @@ stay exported for validation-only paths.
   `read_comments`. Never invent or reuse one from outside the conversation;
   ids are opaque values a caller reads, never ones it constructs, and they
   change whenever the document's structure changes. The same holds for a
-  numbering instance (`numbering.numId`): use one a list block of this
-  document carries; an instance the document does not define skips the
-  operation (`missingNumbering`) before anything is applied.
+  numbering reference: use `{ kind: "reference", numId, ilvl? }` with an
+  instance a list block of this document carries; an instance the document
+  does not define skips the operation (`missingNumbering`) before anything is
+  applied. Use `{ kind: "none" }` to cancel numbering or
+  `{ kind: "inherit" }` to remove the direct numbering override.
+  Use `{ kind: "levelOnly", ilvl }` to set a level without an instance, or
+  `{ kind: "newList", format: "numbered" | "bullet", level? }` to start a
+  new list.
 - A clause number ("clause 2.1") is found through a block's `displayLabel`,
   the number the document shows beside it; a numbered heading is
   `kind: "heading"` with its `headingLevel` and its number in `displayLabel`.

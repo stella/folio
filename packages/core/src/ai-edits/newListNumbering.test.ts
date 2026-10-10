@@ -1,5 +1,5 @@
 /**
- * `numbering: { start: "new", kind }` (issue #1092): an operation can start a
+ * `numbering: { kind: "newList", format }` (issue #1092): an operation can start a
  * list in a package with no numbering part, or a second list beside an
  * existing one, and the saved package defines every instance it references.
  */
@@ -67,7 +67,7 @@ describe("an operation that starts a new list", () => {
         blockId: blockId(reviewer, "Intro."),
         text: "First\nSecond",
         formattingScope: "allParagraphs",
-        numbering: { start: "new", kind: "numbered" },
+        numbering: { kind: "newList", format: "numbered" },
       },
     ]);
 
@@ -83,7 +83,7 @@ describe("an operation that starts a new list", () => {
         blockId: blockId(reviewer, "Tail."),
         text: "Gamma\nDelta",
         formattingScope: "allParagraphs",
-        numbering: { start: "new", kind: "numbered" },
+        numbering: { kind: "newList", format: "numbered" },
       },
     ]);
 
@@ -99,7 +99,7 @@ describe("an operation that starts a new list", () => {
         blockId: blockId(reviewer, "Intro."),
         text: "First\nSecond",
         formattingScope: "allParagraphs",
-        numbering: { start: "new", kind: "bullet" },
+        numbering: { kind: "newList", format: "bullet" },
       },
     ]);
 
@@ -113,13 +113,13 @@ describe("an operation that starts a new list", () => {
         id: "first",
         type: "setBlockParagraphProperties",
         blockId: blockId(reviewer, "One"),
-        properties: { numbering: { start: "new", kind: "numbered" } },
+        properties: { numbering: { kind: "newList", format: "numbered" } },
       },
       {
         id: "second",
         type: "setBlockParagraphProperties",
         blockId: blockId(reviewer, "Two"),
-        properties: { numbering: { start: "new", kind: "numbered", level: 0 } },
+        properties: { numbering: { kind: "newList", format: "numbered", level: 0 } },
       },
     ]);
 
@@ -127,10 +127,16 @@ describe("an operation that starts a new list", () => {
   });
 
   test.each([
-    [{ start: "new", kind: "roman" }, "$.operations[0].properties.numbering.kind"],
-    [{ start: "new", kind: "numbered", level: 9 }, "$.operations[0].properties.numbering.level"],
-    [{ start: "new", kind: "bullet", numId: 3 }, "$.operations[0].properties.numbering.numId"],
-    [{ start: "old", kind: "bullet" }, "$.operations[0].properties.numbering.start"],
+    [{ kind: "newList", format: "roman" }, "$.operations[0].properties.numbering.format"],
+    [
+      { kind: "newList", format: "numbered", level: 9 },
+      "$.operations[0].properties.numbering.level",
+    ],
+    [{ kind: "newList", format: "bullet", numId: 3 }, "$.operations[0].properties.numbering.numId"],
+    [
+      { kind: "newList", format: "bullet", start: "old" },
+      "$.operations[0].properties.numbering.start",
+    ],
   ])("rejects %j", (numbering, path) => {
     expect(() =>
       parseFolioDocumentOperationBatch({

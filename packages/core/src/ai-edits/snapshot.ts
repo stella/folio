@@ -1,3 +1,5 @@
+import { INHERITED_PARAGRAPH_NUMBERING } from "../compare/content-types";
+import { paragraphNumberingLevel } from "../docx/numberingReference";
 import { panic } from "better-result";
 import { Fragment } from "prosemirror-model";
 import type { Mark, Node as PMNode } from "prosemirror-model";
@@ -15,12 +17,12 @@ import {
   expectRunFormattingOverrideMarkAttrs,
 } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
-import {
-  type ResolvedParagraphNumbering,
-  resolveParagraphNumbering,
-} from "../docx/numberingReference";
 import { createListLabelCounter } from "../prosemirror/listLabels";
-import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
+import {
+  effectiveParagraphNumberingReference,
+  paragraphNumberingAttr,
+  readParagraphNumberingAttr,
+} from "../prosemirror/numberingAttr";
 import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
@@ -111,18 +113,21 @@ export const remapFolioAIEditSnapshotNumberingReferences = (
   }
   const metadata = metadataOf(snapshot);
   const remapNode = (node: PMNode): PMNode => {
-    const numPr = readParagraphNumberingAttr(node.attrs["numPr"]);
-    if (numPr?.kind !== "reference") {
-      return node;
-    }
-    const remappedNumId = numIdMap.get(numPr.numId);
-    if (remappedNumId === undefined) {
+    const remapReference = (numPr: ReturnType<typeof readParagraphNumberingAttr>) => {
+      if (numPr?.kind !== "reference") return undefined;
+      const numId = numIdMap.get(numPr.numId);
+      return numId === undefined ? undefined : paragraphNumberingAttr({ ...numPr, numId });
+    };
+    const numPr = remapReference(readParagraphNumberingAttr(node.attrs["numPr"]));
+    const numPrFromStyle = remapReference(readParagraphNumberingAttr(node.attrs["numPrFromStyle"]));
+    if (numPr === undefined && numPrFromStyle === undefined) {
       return node;
     }
     return recreateProseNodeWithParagraphPropertySource(node, {
       attrs: {
         ...node.attrs,
-        numPr: paragraphNumberingAttr({ ...numPr, numId: remappedNumId }),
+        ...(numPr && { numPr }),
+        ...(numPrFromStyle && { numPrFromStyle }),
       },
     });
   };
@@ -860,7 +865,6 @@ const createFolioAIEditSnapshotInternal = (
       node.type.name === "paragraph"
         ? expectParagraphAttrs(node)._originalFormatting?.outlineLevel
         : undefined;
-    const listLevel = getListLevel(node);
     const listReference = getListReference(node);
     const numberingReferenceKey = getNumberingReferenceKey(node);
     if (numberingReferenceKey) {
@@ -882,7 +886,8 @@ const createFolioAIEditSnapshotInternal = (
         ...(displayLabel !== undefined && { displayLabel }),
         ...(styleId !== undefined && { styleId }),
         ...(directOutlineLevel !== undefined && { directOutlineLevel }),
-        ...(listLevel !== undefined && { listLevel }),
+        statedNumbering:
+          readParagraphNumberingAttr(node.attrs["numPr"]) ?? INHERITED_PARAGRAPH_NUMBERING,
         ...(listReference !== undefined && { listReference }),
         ...(directAlignment !== undefined && { directAlignment }),
         ...(directSpacing !== undefined && { directSpacing }),
@@ -964,12 +969,12 @@ export const createFolioAIEditSnapshotWithStyleResolver = (
 /**
  * What a reader sees the block as, heading first: a numbered heading (`1.
  * Scope`, numbered through its style or its own `w:numPr`) is a heading that
- * shows a number, with the number in `displayLabel` and its level in
- * `listLevel`. A paragraph is a list item when it shows a marker, which is
+ * shows a number, with the number in `displayLabel` and its effective level in
+ * `listReference`. A paragraph is a list item when it shows a marker, which is
  * when it has a label. One whose numbering shows none (a `w:vanish` level, a
  * level its list does not define, or `w:numId="0"` cancelling its style's
- * numbering) reads as prose and is a paragraph, keeping its `listLevel` and
- * `listReference`.
+ * numbering) reads as prose and is a paragraph, keeping its `statedNumbering` and
+ * effective `listReference`.
  */
 const getBlockKind = (
   headingLevel: number | undefined,
@@ -1017,39 +1022,23 @@ const getDisplayLabel = (
   return undefined;
 };
 
-/**
- * The level the paragraph's `<w:numPr>` states, and only that. An absent
- * `w:ilvl` renders as level zero but is not a stated zero, and a caller that
- * writes it back would turn an untouched paragraph into one stating a level
- * its source never did.
- */
-const getListLevel = (node: PMNode): number | undefined => {
-  const numPr = readParagraphNumberingAttr(node.attrs["numPr"]);
-  return numPr === null || numPr.kind === "none" ? undefined : numPr.ilvl;
-};
-
-/**
- * The numbering a paragraph attr states, read through the model's own reader.
- *
- * The two functions below used to test the reserved id relationally
- * (`numId > 0`, `numId <= 0`), which is the one spelling that disagreed with
- * the other four: a malformed package's negative id is a dangling reference
- * everywhere else and "not numbered" here.
- */
-const statedNumbering = (node: PMNode): ResolvedParagraphNumbering =>
-  resolveParagraphNumbering(readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined);
-
 const getListReference = (node: PMNode): FolioAIBlock["listReference"] | undefined => {
-  const numbering = statedNumbering(node);
-  return numbering.kind === "reference"
-    ? { numId: numbering.numId, level: numbering.ilvl }
+  const numbering = effectiveParagraphNumberingReference({
+    numPr: readParagraphNumberingAttr(node.attrs["numPr"]),
+    numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
+  });
+  return numbering
+    ? { numId: numbering.numId, level: paragraphNumberingLevel(numbering) }
     : undefined;
 };
 
 const getNumberingReferenceKey = (node: PMNode): string | null => {
-  const numbering = statedNumbering(node);
-  return numbering.kind === "reference"
-    ? `${String(numbering.numId)}:${String(numbering.ilvl)}`
+  const numbering = effectiveParagraphNumberingReference({
+    numPr: readParagraphNumberingAttr(node.attrs["numPr"]),
+    numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
+  });
+  return numbering
+    ? `${String(numbering.numId)}:${String(paragraphNumberingLevel(numbering))}`
     : null;
 };
 

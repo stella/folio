@@ -189,7 +189,7 @@ describe("fixed findings", () => {
           id: "numbering",
           type: "setBlockParagraphProperties",
           blockId: "31617F9A",
-          properties: { numbering: { numId: 7, level: 0 } },
+          properties: { numbering: { kind: "reference", numId: 7, ilvl: 0 } },
         },
       ],
     });

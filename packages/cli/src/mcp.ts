@@ -160,7 +160,7 @@ const MCP_ONLY_PROPERTIES: Readonly<Record<string, Readonly<Record<string, unkno
     formatting: {
       type: "boolean",
       description:
-        "Return each block's fields (kind, displayLabel, headingLevel, listLevel, blockTextHash, blockIdSource, tableCell) instead of `[id] text` lines.",
+        "Return each block's fields (kind, displayLabel, headingLevel, statedNumbering, listReference, blockTextHash, blockIdSource, tableCell) instead of `[id] text` lines.",
     },
   },
 };

@@ -33,7 +33,7 @@ type ContentBlock = {
   headingLevel?: number;
   displayLabel?: string;
   styleId?: string;
-  listLevel?: number;
+  statedNumbering: Record<string, unknown>;
   table?: unknown;
   listReference?: { numId: number; level: number };
 };
@@ -459,14 +459,36 @@ const markdownComparable = (block: BlockView, inTable: boolean): BlockView =>
       )
     : block;
 
-type LabelFields = { displayLabel?: string; headingLevel?: number; listLevel?: number };
+type LabelFields = {
+  displayLabel?: string;
+  headingLevel?: number;
+  statedNumbering: Record<string, unknown>;
+  listReference?: { numId: number; level: number };
+};
 
 /** The label fields a block or row carries, without the absent ones. */
 export const labelFields = (source: Record<string, unknown>): LabelFields => {
-  const fields: LabelFields = {};
+  const statedNumbering = source["statedNumbering"];
+  if (!isRecord(statedNumbering) || typeof statedNumbering["kind"] !== "string") {
+    throw new Error("Reader block is missing statedNumbering");
+  }
+  const fields: LabelFields = { statedNumbering };
   if (typeof source["displayLabel"] === "string") fields.displayLabel = source["displayLabel"];
   if (typeof source["headingLevel"] === "number") fields.headingLevel = source["headingLevel"];
-  if (typeof source["listLevel"] === "number") fields.listLevel = source["listLevel"];
+  const listReference = source["listReference"];
+  if (listReference !== undefined) {
+    if (
+      !isRecord(listReference) ||
+      typeof listReference["numId"] !== "number" ||
+      typeof listReference["level"] !== "number"
+    ) {
+      throw new Error("Reader block has an invalid listReference");
+    }
+    fields.listReference = {
+      numId: listReference["numId"],
+      level: listReference["level"],
+    };
+  }
   return fields;
 };
 

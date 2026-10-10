@@ -18,52 +18,70 @@ import { createSuggestionModePlugin } from "../plugins/suggestionMode";
 import { toggleBulletList } from "../extensions/features/ListExtension";
 import { acceptAllChanges, rejectAllChanges } from "./comments";
 
-type NumberingSource = "style" | "paragraph";
+type NumberingSource = "style" | "paragraph" | "style-level";
 
 type SourceDocumentOptions = { numId: number; level: number; numberingSource: NumberingSource };
 
-const sourceDocument = ({ numId, level, numberingSource }: SourceDocumentOptions): Document => ({
-  package: {
-    document: {
-      content: [
-        {
-          type: "paragraph",
-          formatting: { styleId: "Plain" },
-          content: [{ type: "run", content: [{ type: "text", text: "Source" }] }],
-        },
-        {
-          type: "paragraph",
-          formatting: {
-            styleId: "Numbered",
-            ...(numberingSource === "paragraph"
-              ? { numPr: { kind: "reference", numId, ilvl: level } as const }
-              : {}),
+const numberingStateForSource = ({ numId, level, numberingSource }: SourceDocumentOptions) => {
+  const reference = { kind: "reference", numId, ilvl: level } as const;
+  switch (numberingSource) {
+    case "style":
+      return { direct: undefined, inherited: reference };
+    case "paragraph":
+      return { direct: reference, inherited: undefined };
+    case "style-level":
+      return { direct: { kind: "levelOnly", ilvl: level } as const, inherited: reference };
+    default: {
+      const unreachable: never = numberingSource;
+      return unreachable;
+    }
+  }
+};
+
+const sourceDocument = (options: SourceDocumentOptions): Document => {
+  const { numId, level } = options;
+  const { direct } = numberingStateForSource(options);
+  return {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            formatting: { styleId: "Plain" },
+            content: [{ type: "run", content: [{ type: "text", text: "Source" }] }],
           },
-          content: [{ type: "run", content: [{ type: "text", text: "Target" }] }],
-        },
-      ],
+          {
+            type: "paragraph",
+            formatting: {
+              styleId: "Numbered",
+              ...(direct === undefined ? {} : { numPr: direct }),
+            },
+            content: [{ type: "run", content: [{ type: "text", text: "Target" }] }],
+          },
+        ],
+      },
+      styles: {
+        styles: [
+          { type: "paragraph", styleId: "Plain" },
+          {
+            type: "paragraph",
+            styleId: "Numbered",
+            pPr: { numPr: { kind: "reference", numId, ilvl: level } },
+          },
+        ],
+      },
+      numbering: {
+        nums: [{ numId, abstractNumId: 1 }],
+        abstractNums: [
+          {
+            abstractNumId: 1,
+            levels: [{ ilvl: level, numFmt: "decimal", lvlText: `%${level + 1}.`, start: 1 }],
+          },
+        ],
+      },
     },
-    styles: {
-      styles: [
-        { type: "paragraph", styleId: "Plain" },
-        {
-          type: "paragraph",
-          styleId: "Numbered",
-          pPr: { numPr: { kind: "reference", numId, ilvl: level } },
-        },
-      ],
-    },
-    numbering: {
-      nums: [{ numId, abstractNumId: 1 }],
-      abstractNums: [
-        {
-          abstractNumId: 1,
-          levels: [{ ilvl: level, numFmt: "decimal", lvlText: `%${level + 1}.`, start: 1 }],
-        },
-      ],
-    },
-  },
-});
+  };
+};
 
 type ExerciseOptions = {
   numId: number;
@@ -80,6 +98,7 @@ const exercise = async ({
   decision,
   numberingSource,
 }: ExerciseOptions) => {
+  const numberingState = numberingStateForSource({ numId, level, numberingSource });
   const document = await parseDocx(
     await createDocx(sourceDocument({ numId, level, numberingSource })),
   );
@@ -114,9 +133,7 @@ const exercise = async ({
   }
   const record = expectParagraphAttrs(state.doc.child(1))._propertyChanges?.at(0);
   expect(record).toBeDefined();
-  expect(record?.previousFormatting?.numPr ?? undefined).toEqual(
-    numberingSource === "paragraph" ? { kind: "reference", numId, ilvl: level } : undefined,
-  );
+  expect(record?.previousFormatting?.numPr ?? undefined).toEqual(numberingState.direct);
   const resolve = decision === "accept" ? acceptAllChanges : rejectAllChanges;
   expect(
     resolve()(state, (tr) => {
@@ -125,7 +142,8 @@ const exercise = async ({
   ).toBe(true);
   const attrs = expectParagraphAttrs(state.doc.child(1));
   if (decision === "reject") {
-    expect(attrs.numPr).toEqual({ kind: "reference", numId, ilvl: level });
+    expect(attrs.numPr ?? undefined).toEqual(numberingState.direct);
+    expect(attrs.numPrFromStyle ?? undefined).toEqual(numberingState.inherited);
     expect(attrs.listNumFmt).toBe("decimal");
   }
   const saved = fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } });
@@ -142,10 +160,31 @@ const exercise = async ({
     const body = findChild(findChild(root, "w", "document"), "w", "body");
     const target = findChildren(body, "w", "p").at(1);
     const directNumbering = findChild(findChild(target, "w", "pPr"), "w", "numPr");
-    if (decision === "reject" && numberingSource === "paragraph") {
-      expect(directNumbering).not.toBeNull();
-      expect(paragraph.formatting?.numPr).toEqual({ kind: "reference", numId, ilvl: level });
-      expect(paragraph.formatting?.numPrFromStyle).toBeUndefined();
+    if (decision === "reject") {
+      const directNumberingKind = numberingState.direct?.kind ?? "undefined";
+      switch (directNumberingKind) {
+        case "reference":
+          expect(directNumbering).not.toBeNull();
+          expect(paragraph.formatting?.numPr).toEqual({ kind: "reference", numId, ilvl: level });
+          expect(paragraph.formatting?.numPrFromStyle).toBeUndefined();
+          break;
+        case "levelOnly":
+          expect(directNumbering).not.toBeNull();
+          if (!directNumbering) throw new Error("Expected direct level-only numbering");
+          expect(findChild(directNumbering, "w", "numId")).toBeNull();
+          expect(paragraph.formatting?.numPr).toEqual({ kind: "levelOnly", ilvl: level });
+          expect(paragraph.formatting?.numPrFromStyle).toEqual(numberingState.inherited);
+          break;
+        case "undefined":
+          expect(directNumbering).toBeNull();
+          expect(paragraph.formatting?.numPr).toBeUndefined();
+          expect(paragraph.formatting?.numPrFromStyle).toEqual(numberingState.inherited);
+          break;
+        default: {
+          const unreachable: never = directNumberingKind;
+          return unreachable;
+        }
+      }
     } else {
       expect(directNumbering).toBeNull();
     }
@@ -176,7 +215,7 @@ test(
         async (numId, level) => {
           for (const operation of ["carry", "list", "carry then list"] as const) {
             for (const decision of ["accept", "reject"] as const) {
-              for (const numberingSource of ["style", "paragraph"] as const) {
+              for (const numberingSource of ["style", "paragraph", "style-level"] as const) {
                 await exercise({ numId, level, operation, decision, numberingSource });
               }
             }

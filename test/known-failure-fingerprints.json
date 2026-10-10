@@ -530,8 +530,8 @@
                   "blockId": "412DDC7F",
                   "text": "Party written payment party invoice term party.",
                   "numbering": {
-                    "start": "new",
-                    "kind": "numbered"
+                    "kind": "newList",
+                    "format": "numbered"
                   }
                 }
               ]
@@ -711,8 +711,8 @@
                   "blockId": "5E88C024",
                   "text": "Delivery period schedule warranty schedule buyer invoice.",
                   "numbering": {
-                    "start": "new",
-                    "kind": "numbered"
+                    "kind": "newList",
+                    "format": "numbered"
                   }
                 }
               ]
@@ -2392,8 +2392,8 @@
                   "blockId": "5E88C024",
                   "text": "Agreement party supplier invoice term.",
                   "numbering": {
-                    "start": "new",
-                    "kind": "bullet"
+                    "kind": "newList",
+                    "format": "bullet"
                   }
                 }
               ]

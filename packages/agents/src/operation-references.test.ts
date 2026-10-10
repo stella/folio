@@ -1,5 +1,5 @@
 /**
- * `suggest_changes` with a `numbering.numId` the document does not define
+ * `suggest_changes` with a numbering reference the document does not define
  * (issue #1103): the call succeeds, the operation is reported skipped with a
  * reason the model can act on, and the reviewer still saves.
  */
@@ -57,7 +57,7 @@ describe("suggest_changes with an undefined numbering instance", () => {
             type: "insertAfterBlock",
             blockId: anchor,
             text: "1.3. Inserted clause.",
-            numbering: { numId: 1, level: 0 },
+            numbering: { kind: "reference", numId: 1, ilvl: 0 },
           },
         ],
       },
@@ -93,7 +93,7 @@ describe("suggest_changes with an undefined numbering instance", () => {
             type: "insertAfterBlock",
             blockId: anchor,
             text: "1.3. Inserted clause.",
-            numbering: { numId: 901, level: 0 },
+            numbering: { kind: "reference", numId: 901, ilvl: 0 },
           },
         ],
       },

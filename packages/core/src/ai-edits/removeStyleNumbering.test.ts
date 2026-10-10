@@ -66,17 +66,11 @@ const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
 };
 
 const removals: Record<string, (reviewer: FolioDocxReviewer) => FolioDocumentOperation> = {
-  "numbering: null": (reviewer) => ({
+  "numbering: none": (reviewer) => ({
     id: "1",
     type: "setBlockParagraphProperties",
     blockId: blockId(reviewer, "Scope"),
-    properties: { numbering: null },
-  }),
-  "listLevel: null": (reviewer) => ({
-    id: "1",
-    type: "setBlockParagraphProperties",
-    blockId: blockId(reviewer, "Scope"),
-    properties: { listLevel: null },
+    properties: { numbering: { kind: "none" } },
   }),
 };
 
@@ -114,7 +108,7 @@ describe("removing numbering a paragraph style supplies", () => {
           type: "insertAfterBlock",
           blockId: blockId(reviewer, "Scope"),
           text: "Scope continued",
-          numbering: null,
+          numbering: { kind: "none" },
         },
       ],
     });
@@ -156,7 +150,7 @@ describe("a paragraph inserted with a style of its own", () => {
     expect(labels(reopened)).toEqual(expected);
   });
 
-  test("with numbering: null, stays out of the list its new style numbers", async () => {
+  test("with numbering: none, stays out of the list its new style numbers", async () => {
     const reviewer = await styleNumberedReviewer();
     const result = reviewer.applyDocumentOperations({
       version: 1,
@@ -168,7 +162,7 @@ describe("a paragraph inserted with a style of its own", () => {
           blockId: blockId(reviewer, "Body."),
           text: "Inserted",
           styleId: "Heading2",
-          numbering: null,
+          numbering: { kind: "none" },
         },
       ],
     });
@@ -244,7 +238,7 @@ describe("restyling a paragraph", () => {
           id: "1",
           type: "setBlockParagraphProperties",
           blockId: blockId(reviewer, "Body."),
-          properties: { styleId: "Heading2", listLevel: 0 },
+          properties: { styleId: "Heading2", numbering: { kind: "levelOnly", ilvl: 0 } },
         },
       ],
     });

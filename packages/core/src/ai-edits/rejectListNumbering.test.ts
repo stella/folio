@@ -41,7 +41,7 @@ const numberingChanges: Record<string, (reviewer: FolioDocxReviewer) => FolioDoc
     id: "1",
     type: "setBlockParagraphProperties",
     blockId: blockId(reviewer, "Closing remarks."),
-    properties: { numbering: { start: "new", kind: "numbered" } },
+    properties: { numbering: { kind: "newList", format: "numbered" } },
   }),
   "the existing list": (reviewer) => ({
     id: "1",
@@ -49,10 +49,11 @@ const numberingChanges: Record<string, (reviewer: FolioDocxReviewer) => FolioDoc
     blockId: blockId(reviewer, "Closing remarks."),
     properties: {
       numbering: {
+        kind: "reference",
         numId:
           reviewer.getContent().find(({ text }) => text === "Deposit on signature")?.listReference
             ?.numId ?? 0,
-        level: 0,
+        ilvl: 0,
       },
     },
   }),
@@ -60,7 +61,7 @@ const numberingChanges: Record<string, (reviewer: FolioDocxReviewer) => FolioDoc
     id: "1",
     type: "setBlockParagraphProperties",
     blockId: blockId(reviewer, "Balance on delivery"),
-    properties: { numbering: null },
+    properties: { numbering: { kind: "none" } },
   }),
 };
 

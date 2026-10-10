@@ -144,22 +144,28 @@ const save = async (reviewer: Reviewer): Promise<Uint8Array> => {
 };
 
 /** What a reader sees of a block, ids aside: a new block's id is the allocator's choice. */
-const blockView = (row: Row) => ({
-  kind: row.kind,
-  text: row.text,
-  styleId: row.styleId,
-  headingLevel: row.headingLevel,
-  listLevel: row.listLevel,
-  displayLabel: row.displayLabel,
-  table: row.table && {
-    tableIndex: row.table.tableIndex,
-    rowIndex: row.table.rowIndex,
-    cellIndex: row.table.cellIndex,
-    gridColumnIndex: row.table.gridColumnIndex,
-    columnSpan: row.table.columnSpan,
-    rowSpan: row.table.rowSpan,
-  },
-});
+const blockView = (row: Row & { statedNumbering?: Record<string, unknown> }) => {
+  if (row.statedNumbering === undefined) {
+    throw new Error(`Reader row ${row.id} is missing statedNumbering`);
+  }
+  return {
+    kind: row.kind,
+    text: row.text,
+    styleId: row.styleId,
+    headingLevel: row.headingLevel,
+    statedNumbering: row.statedNumbering,
+    ...(row.listReference !== undefined && { listReference: row.listReference }),
+    displayLabel: row.displayLabel,
+    table: row.table && {
+      tableIndex: row.table.tableIndex,
+      rowIndex: row.table.rowIndex,
+      cellIndex: row.table.cellIndex,
+      gridColumnIndex: row.table.gridColumnIndex,
+      columnSpan: row.table.columnSpan,
+      rowSpan: row.table.rowSpan,
+    },
+  };
+};
 
 type Comment = { text: string; anchor: string };
 /** Comments by text and anchor; the order two comments on one range come in is not compared. */

@@ -67,16 +67,16 @@ type Block = {
   kind: string;
   text: string;
   displayLabel?: string;
-  listLevel?: number | null;
+  effectiveLevel?: number;
   table?: unknown;
 };
 type LiveBlock = Pick<Block, "kind" | "text" | "table">;
 const project = (reviewer: FolioDocxReviewer): Block[] =>
-  reviewer.snapshot().blocks.map(({ kind, text, displayLabel, listLevel, table }) => ({
+  reviewer.snapshot().blocks.map(({ kind, text, displayLabel, listReference, table }) => ({
     kind,
     text,
     displayLabel,
-    listLevel,
+    effectiveLevel: listReference?.level,
     table,
   }));
 const projectLive = (blocks: readonly Block[]): LiveBlock[] =>

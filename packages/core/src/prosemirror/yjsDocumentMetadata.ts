@@ -697,18 +697,19 @@ const requireStatedNumberingSources = (
   schemaVersion: FolioYjsAttrSchemaVersion,
 ): void => {
   if (schemaVersion === FOLIO_YJS_ATTR_SCHEMA_VERSION) return;
-  const pending: unknown[] = [fragment];
+  const pending: unknown[] = [];
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("getAttributes" in node) pending.push(node.getAttributes());
+    for (const child of node.toArray()) {
+      if (typeof child !== "string" && !isXmlText(child) && "toArray" in child) visit(child);
+    }
+  };
+  visit(fragment);
   const seen = new WeakSet<object>();
   while (pending.length > 0) {
     const value = pending.pop();
     if (typeof value !== "object" || value === null || seen.has(value)) continue;
     seen.add(value);
-    if (value instanceof Y.XmlElement || value instanceof Y.XmlFragment) {
-      for (const child of value.toArray()) pending.push(child);
-      if (value instanceof Y.XmlElement) pending.push(value.getAttributes());
-      continue;
-    }
-    if (value instanceof Y.XmlText || value instanceof Y.XmlHook) continue;
     if (Array.isArray(value)) {
       for (const entry of value) pending.push(entry);
       continue;

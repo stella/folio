@@ -30,11 +30,12 @@ import type {
   FolioContentBlock,
   FolioContentFormatRange,
   FolioContentIdStability,
-  FolioContentListReference,
   FolioContentParagraphIndentation,
   FolioContentParagraphSpacing,
   FolioContentSnapshot,
+  FolioContentStatedNumbering,
 } from "./content-types";
+import { sameFolioContentStatedNumbering } from "./content-types";
 
 export type { FolioContentFormatRange } from "./content-types";
 
@@ -125,8 +126,7 @@ export type FolioContentTextSegment = {
 export type FolioContentParagraphFormattingPatch = {
   styleId?: string | null;
   outlineLevel?: FolioContentBlock["directOutlineLevel"] | null;
-  listLevel?: number | null;
-  listReference?: FolioContentListReference | null;
+  numbering?: FolioContentStatedNumbering;
   alignment?: FolioContentBlock["directAlignment"] | null;
   spacing?: FolioContentParagraphSpacing | null;
   indentation?: FolioContentParagraphIndentation | null;
@@ -306,6 +306,25 @@ const isFiniteNumber = (value: unknown): value is number =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const validStatedNumbering = (value: unknown): value is FolioContentStatedNumbering => {
+  if (!isRecord(value) || typeof value.kind !== "string") return false;
+  switch (value.kind) {
+    case "inherit":
+    case "none":
+      return true;
+    case "levelOnly":
+      return isFiniteInteger(value.ilvl) && value.ilvl >= 0;
+    case "reference":
+      return (
+        isFiniteInteger(value.numId) &&
+        value.numId > 0 &&
+        (value.ilvl === undefined || (isFiniteInteger(value.ilvl) && value.ilvl >= 0))
+      );
+    default:
+      return false;
+  }
+};
+
 // Runtime validation must not replace an already typed generic block with the
 // narrower Record<string, unknown> view produced by a type predicate.
 const hasRecordShape = (value: unknown): boolean => isRecord(value);
@@ -418,11 +437,11 @@ const validateParagraphFormatting = (
       blockIndex,
     );
   }
-  if (block.listLevel !== undefined && (!isFiniteInteger(block.listLevel) || block.listLevel < 0)) {
+  if (!validStatedNumbering(block.statedNumbering)) {
     return invalidInput(
       side,
-      `blocks[${String(blockIndex)}].listLevel`,
-      "List levels must be non-negative integers.",
+      `blocks[${String(blockIndex)}].statedNumbering`,
+      "Stated paragraph numbering must be a recognized authored override or inherit.",
       blockIndex,
     );
   }
@@ -1091,19 +1110,8 @@ export const changedFolioContentParagraphFormatting = (
   if (!sameFolioContentOutlineLevel(base.directOutlineLevel, revised.directOutlineLevel)) {
     patch.outlineLevel = revised.directOutlineLevel ?? null;
   }
-  const listReferenceChanged = base.listReference?.numId !== revised.listReference?.numId;
-  const targetOmitsLevelOnChangedReference =
-    listReferenceChanged && revised.listReference !== undefined && revised.listLevel === undefined;
-  if (base.listLevel !== revised.listLevel || targetOmitsLevelOnChangedReference) {
-    patch.listLevel = revised.listLevel ?? null;
-  }
-  if (
-    listReferenceChanged ||
-    (base.listLevel !== revised.listLevel &&
-      revised.listLevel === undefined &&
-      revised.listReference !== undefined)
-  ) {
-    patch.listReference = revised.listReference ?? null;
+  if (!sameFolioContentStatedNumbering(base.statedNumbering, revised.statedNumbering)) {
+    patch.numbering = revised.statedNumbering;
   }
   if (base.directAlignment !== revised.directAlignment) {
     patch.alignment = revised.directAlignment ?? null;

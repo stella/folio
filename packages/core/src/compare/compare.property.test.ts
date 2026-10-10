@@ -502,7 +502,8 @@ const paragraphFormattingSignature = (block: FolioAIBlock): string =>
   JSON.stringify([
     block.text,
     block.styleId,
-    block.listLevel,
+    block.listReference,
+    block.statedNumbering,
     block.directAlignment,
     block.directSpacing,
   ]);

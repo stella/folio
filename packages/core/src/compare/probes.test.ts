@@ -858,7 +858,9 @@ describe("single-mutation probes", () => {
     }
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
     const [change] = result.value.changes;
-    expect(change?.kind === "paragraph-format" && change.properties).toEqual({ listLevel: 1 });
+    expect(change?.kind === "paragraph-format" && change.properties).toEqual({
+      numbering: { kind: "levelOnly", ilvl: 1 },
+    });
 
     expect(await projectView(result.value.buffer, "final")).toEqual(
       await projectView(demoted, "final"),
@@ -882,8 +884,7 @@ describe("single-mutation probes", () => {
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
     const [change] = result.value.changes;
     expect(change?.kind === "paragraph-format" && change.properties).toEqual({
-      listLevel: null,
-      numbering: null,
+      numbering: { kind: "none" },
     });
 
     expect(await projectView(result.value.buffer, "final")).toEqual(
@@ -914,7 +915,7 @@ describe("single-mutation probes", () => {
 
     const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     reviewer.resolveReviewedStory({ view: "final" });
-    expect(reviewer.getContent().map(({ listLevel }) => listLevel ?? null)).toEqual(
+    expect(reviewer.getContent().map(({ listReference }) => listReference?.level ?? null)).toEqual(
       withParagraph.map(({ level }) => level),
     );
   });
