@@ -1,10 +1,14 @@
+import { reactCompilerRules } from "@stll/oxlint-config";
 import { parse } from "@vue/compiler-sfc";
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import config, { nonReactPackageOverride } from "../oxlint.config.ts";
+import config, {
+  nonReactPackageOverride,
+  reactCompilerWarningsExpireAt,
+} from "../oxlint.config.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const isReactModule = (specifier: string) => /^(?:react|react-dom)(?:\/|$)/u.test(specifier);
@@ -98,6 +102,17 @@ const overrideMatches = (filename: string) =>
   nonReactPackageOverride.files.some((pattern) => new Bun.Glob(pattern).match(filename));
 
 describe("React lint package scope", () => {
+  test("React Compiler warnings expire on 2026-10-31 or #1646 merge", () => {
+    // The folio lead restores errors when #1646 merges; CI caps the interim date.
+    expect(reactCompilerWarningsExpireAt).toBe("2026-10-31T00:00:00.000Z");
+    expect(Date.now()).toBeLessThan(Date.parse(reactCompilerWarningsExpireAt));
+    expect(config.options?.denyWarnings).toBe(false);
+    const compilerRules = Object.keys(reactCompilerRules);
+    for (const rule of compilerRules) expect(config.rules?.[rule], rule).toBe("warn");
+    for (const [rule, level] of Object.entries(config.rules ?? {})) {
+      if (level === "warn") expect(compilerRules, rule).toContain(rule);
+    }
+  });
   test("the override covers every and only non-React package", () => {
     expect(packages.length).toBeGreaterThan(0);
     for (const { directory, usesReact } of packages) {
@@ -130,7 +145,7 @@ describe("React lint package scope", () => {
     // Generic JSX accessibility and architecture rules retain the shared policy.
     expect(Object.keys(nonReactPackageOverride.rules).every(isReactRule)).toBe(true);
     expect(config.overrides?.at(-1)).toBe(nonReactPackageOverride);
-    expect(config.rules?.["react/hooks"]).toBe("error");
+    expect(config.rules?.["react/hooks"]).toBe("warn");
   });
 
   test.each([
