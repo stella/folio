@@ -104,6 +104,7 @@ describe("React lint package scope", () => {
     const compilerRules = Object.keys(reactCompilerRules);
     expect(compilerRules.length).toBeGreaterThan(0);
     for (const [rule, level] of Object.entries(reactCompilerRules)) {
+      if (level !== "off") expect(level, rule).toBe("error");
       expect(config.rules?.[rule], rule).toBe(level);
     }
     const source = readFileSync(path.join(REPO_ROOT, "oxlint.config.ts"), "utf8");
