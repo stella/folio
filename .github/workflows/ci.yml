@@ -761,7 +761,21 @@ jobs:
           mkdir -p "$install_dir"
           tar -xzf "$archive" -C "$install_dir" --strip-components=1
           echo "$install_dir" >> "$GITHUB_PATH"
-          rustup toolchain install "$HAWK_RUST_TOOLCHAIN" --profile minimal
+          rustup toolchain install 1.97.1 --profile minimal # cargo-hawk exception tracked in stll-toolchain.json
+
+      - name: Cache shared Rust source lint
+        id: source-lint-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-stella-lint
+          key: ${{ runner.os }}-${{ runner.arch }}-stella-source-lint-a1bd81740ecb4b66999f56d1716e1190c4e7272f
+
+      - name: Install shared Rust source lint
+        if: steps.source-lint-cache.outputs.cache-hit != 'true'
+        run: cargo install --git https://github.com/stella/tooling --rev a1bd81740ecb4b66999f56d1716e1190c4e7272f --locked stella_source_lint
+
+      - name: Run shared Rust source lint
+        run: cargo stella-lint .
 
       - name: Install matching wasm-bindgen CLI
         run: |

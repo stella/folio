@@ -16,7 +16,7 @@
         "@playwright/test": "^1.61.1",
         "@rolldown/plugin-babel": "^0.2.2",
         "@stll/folio-core": "workspace:*",
-        "@stll/oxlint-config": "0.14.1",
+        "@stll/oxlint-config": "1.0.0",
         "@types/babel__core": "^7.20.5",
         "@types/node": "^26.2.0",
         "@types/pngjs": "6.0.5",
@@ -929,7 +929,7 @@
 
     "@stll/folio-vue": ["@stll/folio-vue@workspace:packages/vue"],
 
-    "@stll/oxlint-config": ["@stll/oxlint-config@0.14.1", "", { "dependencies": { "acorn": "8.15.0", "esbuild": "0.28.2", "picomatch": "4.0.5", "semver": "7.8.5", "smol-toml": "1.9.0", "tsx": "4.23.13", "yaml": "2.9.0" }, "peerDependencies": { "oxlint": ">=1.87.0 <2", "oxlint-tsgolint": ">=7.0.2003 <8", "vite": "8.1.5" }, "optionalPeers": ["vite"], "bin": { "stll-cloud-setup": "dist/cloud-setup-cli.mjs", "stll-consumer-compat": "dist/consumer-compat-cli.mjs", "stll-toolchain-check": "dist/toolchain-check-cli.mjs", "stll-typecheck-probe": "dist/typecheck-probe-cli.mjs", "stll-publish-contract": "dist/publish-contract-cli.mjs", "stll-typecheck-parity": "dist/typecheck-parity-cli.mjs", "stll-toolchain-changed": "dist/toolchain-changed-cli.mjs" } }, "sha512-+I5Jfkv5IhJ2Jn8hQAiFLeaKJ8C7aSr7snvdhyg5ih9GDpAGvJ55VQktIgx0CwEcGReifSxuPcJev864tHfaOA=="],
+    "@stll/oxlint-config": ["@stll/oxlint-config@1.0.0", "", { "dependencies": { "acorn": "8.15.0", "esbuild": "0.28.2", "picomatch": "4.0.5", "semver": "7.8.5", "smol-toml": "1.9.0", "tsx": "4.23.13", "yaml": "2.9.0" }, "peerDependencies": { "oxlint": ">=1.87.0 <2", "oxlint-tsgolint": ">=7.0.2003 <8", "vite": "8.1.5" }, "optionalPeers": ["vite"], "bin": { "stll-cloud-setup": "dist/cloud-setup-cli.mjs", "stll-consumer-compat": "dist/consumer-compat-cli.mjs", "stll-toolchain-check": "dist/toolchain-check-cli.mjs", "stll-typecheck-probe": "dist/typecheck-probe-cli.mjs", "stll-publish-contract": "dist/publish-contract-cli.mjs", "stll-typecheck-parity": "dist/typecheck-parity-cli.mjs", "stll-toolchain-changed": "dist/toolchain-changed-cli.mjs" } }, "sha512-xAdvErhhrBUjr3QvxHX2+ca/kooc+G4WpwA2UAKhZJRjPV+DOpEXhVgcxMJGm/0fdWzVfkCM5EwQ5uO75JqYCw=="],
 
     "@stll/playground": ["@stll/playground@workspace:packages/playground"],
 
