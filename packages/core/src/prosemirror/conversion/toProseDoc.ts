@@ -815,7 +815,10 @@ function convertParagraph(
         numPrFromStyle: inherited ?? previous.numPrFromStyle,
       });
       const originalNumbering = effectiveParagraphNumbering(sources);
-      const originalRendering = listRenderingFor(originalNumbering, context.numbering ?? null);
+      const originalRendering =
+        originalNumbering.kind === "reference"
+          ? listRenderingFor(originalNumbering, context.numbering ?? null)
+          : {};
       return {
         ...change,
         previousFormatting: {

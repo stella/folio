@@ -6,11 +6,8 @@ import {
   type ParagraphNumberingOverride,
 } from "@stll/docx-core/model";
 import { createEmptyDocument } from "../../utils/createDocument";
-import {
-  CLEARED_LIST_RENDERING_ATTRS,
-  LIST_RENDERING_ATTR_KEYS,
-  type ListRenderingAttrKey,
-} from "../listRenderingAttrs";
+import { LIST_RENDERING_ATTR_KEYS, type ListRenderingAttrKey } from "../listRenderingAttrs";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { paragraphNumberingAttr } from "../numberingAttr";
 import type { ParagraphAttrs } from "../schema/nodes";
 
@@ -117,7 +114,6 @@ describe("paragraph propertyChanges PM round-trip", () => {
         ...samplePropertyChange,
         previousFormatting: {
           ...samplePropertyChange.previousFormatting,
-          ...CLEARED_LIST_RENDERING_ATTRS,
           numPrFromStyle: null,
         },
       },
