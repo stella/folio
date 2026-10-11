@@ -1,5 +1,15 @@
 # @stll/folio-core
 
+## 0.58.4
+
+### Patch Changes
+
+- [#1652](https://github.com/stella/folio/pull/1652) [`9252849`](https://github.com/stella/folio/commit/9252849a9eb274398313aa1f8b0f3f8891c7b549) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve Markdown block boundaries, empty nested list items, and literal block-marker text.
+
+- [#1605](https://github.com/stella/folio/pull/1605) [`8919807`](https://github.com/stella/folio/commit/891980702cec4acd0ea26f19534eb78da4741f43) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize canonical list rendering after every edit, record authored paragraph review snapshots, and preserve section views when replacing body content.
+- Updated dependencies [[`8919807`](https://github.com/stella/folio/commit/891980702cec4acd0ea26f19534eb78da4741f43)]:
+  - @stll/docx-core@0.36.1
+
 ## 0.58.3
 
 ### Patch Changes

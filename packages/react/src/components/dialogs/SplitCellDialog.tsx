@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -32,7 +32,19 @@ export type SplitCellDialogProps = {
 const MIN_PARTS = 1;
 const MAX_PARTS = 63;
 
-export function SplitCellDialog({
+export function SplitCellDialog(props: SplitCellDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return (
+    <SplitCellDialogForm
+      key={JSON.stringify([props.defaultRows, props.defaultColumns])}
+      {...props}
+    />
+  );
+}
+
+function SplitCellDialogForm({
   isOpen,
   onClose,
   onSplit,
@@ -53,15 +65,6 @@ export function SplitCellDialog({
   const [rows, setRows] = useState(defaultRows);
   const [columns, setColumns] = useState(defaultColumns);
   const [mergeBeforeSplit, setMergeBeforeSplit] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    setRows(defaultRows);
-    setColumns(defaultColumns);
-    setMergeBeforeSplit(false);
-  }, [isOpen, defaultRows, defaultColumns]);
 
   const normalizedRows = clampInteger(rows);
   const normalizedColumns = clampInteger(columns);

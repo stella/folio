@@ -491,12 +491,12 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, highlightedIndex, navigableItems, onAction, onClose]);
 
-  // Reset highlighted index when menu opens
-  useEffect(() => {
-    if (isOpen) {
-      setHighlightedIndex(0);
-    }
-  }, [isOpen]);
+  // Reset before the newly opened menu is committed.
+  const [previousOpen, setPreviousOpen] = useState(isOpen);
+  if (previousOpen !== isOpen) {
+    setPreviousOpen(isOpen);
+    if (isOpen) setHighlightedIndex(0);
+  }
 
   // Position menu to stay within viewport. For text selections, prefer
   // opening above the clicked selection so the selected text remains visible.

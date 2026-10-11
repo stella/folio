@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -29,7 +29,14 @@ export type InsertImageDialogProps = {
   accept?: string;
 };
 
-export function InsertImageDialog({
+export function InsertImageDialog(props: InsertImageDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return <InsertImageDialogForm {...props} />;
+}
+
+function InsertImageDialogForm({
   isOpen,
   onClose,
   onInsert,
@@ -50,16 +57,6 @@ export function InsertImageDialog({
   const [alt, setAlt] = useState("");
   const [width, setWidth] = useState("");
   const [height, setHeight] = useState("");
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    setFile(null);
-    setAlt("");
-    setWidth("");
-    setHeight("");
-  }, [isOpen]);
 
   const fieldIds = {
     file: `${id}-insert-image-file`,

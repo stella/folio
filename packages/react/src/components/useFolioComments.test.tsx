@@ -45,6 +45,7 @@ type MountOptions = {
   doc?: Document;
   autoOpenReviewSidebar?: boolean;
   commentsProp?: Comment[];
+  controlledComments?: { current: Comment[] };
   onCommentsChange?: (comments: Comment[]) => void;
   /** Painted content root the highlight sync reads its anchors from. */
   editorContent?: HTMLElement;
@@ -64,6 +65,7 @@ const mount = ({
   doc,
   autoOpenReviewSidebar = false,
   commentsProp,
+  controlledComments,
   onCommentsChange,
   editorContent,
   onChildLayout,
@@ -77,17 +79,20 @@ const mount = ({
   };
   const Host = () => {
     const [, setTick] = useState(0);
-    bump = () => setTick((tick) => tick + 1);
-    latest = useFolioComments({
+    const hook = useFolioComments({
       doc: doc ?? null,
       autoOpenReviewSidebar,
       anchorPositions: new Map(),
       editorContentRef: { current: editorContent ?? null },
-      commentsProp,
+      commentsProp: controlledComments?.current ?? commentsProp,
       onCommentsChange,
       committedComments: committed?.current,
     });
-    return <Child hook={latest} />;
+    useLayoutEffect(() => {
+      bump = () => setTick((tick) => tick + 1);
+      latest = hook;
+    });
+    return <Child hook={hook} />;
   };
   const root = createRoot(document.createElement("div"));
   roots.push(root);
@@ -106,6 +111,36 @@ const mount = ({
 };
 
 describe("useFolioComments.setComments", () => {
+  test("loaded comments notify after commit once per document initialization", () => {
+    const doc = createEmptyDocument();
+    const loaded = [makeComment(41)];
+    doc.package.document.comments = loaded;
+    const changes: Comment[][] = [];
+    const harness = mount({ doc, onCommentsChange: (next) => changes.push(next) });
+    expect(changes).toEqual([loaded]);
+    expect(harness.hook.comments).toBe(loaded);
+    harness.rerender();
+    expect(changes).toEqual([loaded]);
+    act(() => harness.hook.resetLoadedComments());
+    expect(changes).toEqual([loaded, loaded]);
+  });
+
+  test("a layout commit reapplies highlights to newly painted marks", () => {
+    const editorContent = document.createElement("div");
+    const harness = mount({ commentsProp: [makeComment(42)], editorContent });
+    act(() => harness.hook.setActiveCommentId(42));
+    const mark = document.createElement("span");
+    mark.className = "layout-run-text";
+    writeCommentAnchorIds(mark, [42]);
+    mark.style.boxShadow = "1px 1px black";
+    editorContent.append(mark);
+    harness.rerender();
+    expect(mark.dataset["activeComment"]).toBe("true");
+    // Happy DOM does not parse the CSS-variable border shorthand. Check the
+    // active marker and a supported style write instead.
+    expect(mark.style.boxShadow).toBe("none");
+  });
+
   test.each(["loaded", "controlled"] as const)(
     "reserves %s comment IDs before creating a comment",
     (source) => {
@@ -194,23 +229,63 @@ describe("useFolioComments.setComments", () => {
     expect(changes).toEqual([next]);
   });
 
-  test("controlled: notifies the host and leaves the prop authoritative", () => {
+  test("controlled: rejecting an update never changes the mirror, even before host rerender", () => {
     const initial = [makeComment(1)];
     const changes: Comment[][] = [];
     const harness = mount({
       commentsProp: initial,
       onCommentsChange: (next) => changes.push(next),
     });
+    const authoritative = harness.hook.comments;
     const next = [...initial, makeComment(2)];
 
-    act(() => harness.hook.setComments(next));
+    act(() => {
+      harness.hook.setComments(next);
+      expect(harness.hook.commentsRef.current).toBe(authoritative);
+      expect(harness.hook.commentsRef.current.map((comment) => comment.id)).toEqual([1]);
+    });
 
     expect(changes).toEqual([next]);
     expect(harness.hook.isControlledComments).toBe(true);
+    expect(harness.hook.comments).toBe(authoritative);
 
-    // The host did not apply the change, so the next render reads the prop.
+    // The host ignores the notification and rerenders its unchanged prop array.
     harness.rerender();
-    expect(harness.hook.comments.map((comment) => comment.id)).toEqual([1]);
+    expect(harness.hook.comments).toBe(authoritative);
+    expect(harness.hook.commentsRef.current).toBe(authoritative);
+
+    act(() => {
+      harness.hook.setComments((previous) => {
+        expect(previous).toBe(authoritative);
+        return [...previous, makeComment(3)];
+      });
+    });
+    expect(changes.map((comments) => comments.map((comment) => comment.id))).toEqual([
+      [1, 2],
+      [1, 3],
+    ]);
+  });
+
+  test("controlled: an accepted update enters the mirror only when the host commits it", () => {
+    const controlledComments = { current: [makeComment(1)] };
+    const harness = mount({
+      controlledComments,
+      onCommentsChange: (next) => {
+        controlledComments.current = next;
+      },
+    });
+    const authoritative = harness.hook.comments;
+    const next = [...authoritative, makeComment(2)];
+
+    act(() => {
+      harness.hook.setComments(next);
+      expect(controlledComments.current).toBe(next);
+      expect(harness.hook.commentsRef.current).toBe(authoritative);
+    });
+
+    harness.rerender();
+    expect(harness.hook.comments.map((comment) => comment.id)).toEqual([1, 2]);
+    expect(harness.hook.commentsRef.current).toBe(harness.hook.comments);
   });
 });
 

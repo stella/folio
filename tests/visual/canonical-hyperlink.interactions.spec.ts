@@ -1,3 +1,4 @@
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../parity/canonicalTest";
 import { parseDocx } from "../../packages/core/src/docx/parser";
@@ -78,12 +79,7 @@ for (const { adapter, port } of [
     await page.evaluate(() => {
       globalThis.__folioCanonicalFuzzErrors = [];
     });
-    expect(
-      await page.evaluate(
-        (bytes) => globalThis.__folioCanonical?.load(bytes),
-        [...new Uint8Array(source)],
-      ),
-    ).toBe(true);
+    expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(true);
     await page.waitForFunction(() => {
       const current = globalThis.__folioCanonical?.snapshot();
       return (

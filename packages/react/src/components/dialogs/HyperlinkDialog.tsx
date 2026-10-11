@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -38,7 +38,16 @@ export type HyperlinkDialogProps = {
 
 type HyperlinkTargetType = "url" | "bookmark";
 
-export function HyperlinkDialog({
+export function HyperlinkDialog(props: HyperlinkDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return (
+    <HyperlinkDialogForm key={JSON.stringify([props.currentData, props.selectedText])} {...props} />
+  );
+}
+
+function HyperlinkDialogForm({
   isOpen,
   onClose,
   onSubmit,
@@ -58,31 +67,18 @@ export function HyperlinkDialog({
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const t = useTranslations("folio");
   const id = useId();
-  const [targetType, setTargetType] = useState<HyperlinkTargetType>("url");
-  const [url, setUrl] = useState("");
-  const [bookmark, setBookmark] = useState("");
-  const [displayText, setDisplayText] = useState("");
-  const [tooltip, setTooltip] = useState("");
+  const [targetType, setTargetType] = useState<HyperlinkTargetType>(
+    currentData?.href?.startsWith("#") ? "bookmark" : "url",
+  );
+  const [url, setUrl] = useState(
+    currentData?.href?.startsWith("#") ? "" : (currentData?.href ?? ""),
+  );
+  const [bookmark, setBookmark] = useState(
+    currentData?.href?.startsWith("#") ? currentData.href.slice(1) : "",
+  );
+  const [displayText, setDisplayText] = useState(currentData?.displayText ?? selectedText ?? "");
+  const [tooltip, setTooltip] = useState(currentData?.tooltip ?? "");
   const [touched, setTouched] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setTouched(false);
-      return;
-    }
-    const href = currentData?.href ?? "";
-    if (href.startsWith("#")) {
-      setTargetType("bookmark");
-      setBookmark(href.slice(1));
-      setUrl("");
-    } else {
-      setTargetType("url");
-      setUrl(href);
-      setBookmark("");
-    }
-    setDisplayText(currentData?.displayText ?? selectedText ?? "");
-    setTooltip(currentData?.tooltip ?? "");
-  }, [isOpen, currentData, selectedText]);
 
   const urlError = targetType === "url" ? getUrlError(url) : "";
   const canSubmit =

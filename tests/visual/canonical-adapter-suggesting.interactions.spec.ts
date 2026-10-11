@@ -1,3 +1,4 @@
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { expect, test, type Page } from "@playwright/test";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { parseDocx } from "../../packages/core/src/docx/parser";
@@ -87,9 +88,7 @@ for (const adapter of adapters) {
 
     await page.goto(`http://localhost:${adapter.port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
-    expect(await page.evaluate((input) => globalThis.__folioCanonical?.load(input), bytes)).toBe(
-      true,
-    );
+    expect(await evaluateCanonicalLoad(page, bytes)).toBe(true);
     const initial = await canonicalSnapshot(page);
 
     const trackChanges = page.getByRole("button", {

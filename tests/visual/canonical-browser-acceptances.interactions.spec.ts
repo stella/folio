@@ -1,3 +1,4 @@
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../parity/canonicalTest";
 import { createCanonicalSession } from "../../packages/core/src/controller/canonicalSession";
@@ -55,12 +56,7 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
         return;
       }
       await page.waitForFunction(() => globalThis.__folioCanonical != null);
-      expect(
-        await page.evaluate(
-          async (bytes) => globalThis.__folioCanonical?.load(bytes),
-          [...new Uint8Array(source)],
-        ),
-      ).toBe(true);
+      expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(true);
       await page.waitForLoadState("networkidle");
       await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
       expect(

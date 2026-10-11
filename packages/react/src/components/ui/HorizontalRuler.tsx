@@ -10,7 +10,7 @@
  * Drag tooltip shows value during any drag.
  */
 
-import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import type { CSSProperties } from "react";
 import type { SectionProperties, TabStop } from "@stll/folio-core/types/document";
 import { twipsToPixels, pixelsToTwips, formatPx } from "@stll/folio-core/utils/units";
@@ -151,7 +151,9 @@ export function HorizontalRuler({
     onIndentRightChange,
   };
   const dragParamsRef = useRef(dragParams);
-  dragParamsRef.current = dragParams;
+  useLayoutEffect(() => {
+    dragParamsRef.current = dragParams;
+  });
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent, marker: MarkerType) => {

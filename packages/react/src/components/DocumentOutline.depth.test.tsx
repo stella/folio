@@ -53,13 +53,10 @@ test("defaults to two outline levels and reports depth selector changes", async 
   const OutlineHarness = () => {
     const [depth, setDepth] = useState<OutlineDepth>(DEFAULT_OUTLINE_DEPTH);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
-    const onDepthChange = useCallback(
-      (nextDepth: 2 | 3 | "all") => {
-        onOutlineDepthChange(nextDepth);
-        setDepth(nextDepth);
-      },
-      [onOutlineDepthChange],
-    );
+    const onDepthChange = useCallback((nextDepth: 2 | 3 | "all") => {
+      onOutlineDepthChange(nextDepth);
+      setDepth(nextDepth);
+    }, []);
     return (
       <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
         <DocumentOutline

@@ -48,7 +48,18 @@ export const mountFolioEditor = (root: HTMLElement, host: FolioEditorHost): Foli
   const reactRoot = createRoot(root);
   // Synchronous, so the editor's ref is attached before the first load starts.
   flushSync(() => {
-    reactRoot.render(<FolioEditorApp session={session} />);
+    reactRoot.render(
+      <FolioEditorApp
+        editorRef={session.editor}
+        modeStore={session.mode}
+        author={host.init.author}
+        locale={host.init.locale}
+        onHistoryChange={session.onHistoryChange}
+        onModeChange={session.onModeChange}
+        onEditorViewReady={session.onEditorViewReady}
+        onError={session.onError}
+      />,
+    );
   });
   void session.load(host.init.document);
 
@@ -67,30 +78,47 @@ export const mountFolioEditor = (root: HTMLElement, host: FolioEditorHost): Foli
   };
 };
 
-type FolioEditorAppProps = { session: Session };
+type FolioEditorAppProps = {
+  editorRef: Session["editor"];
+  modeStore: Session["mode"];
+  author: string;
+  locale: string;
+  onHistoryChange: Session["onHistoryChange"];
+  onModeChange: Session["onModeChange"];
+  onEditorViewReady: Session["onEditorViewReady"];
+  onError: Session["onError"];
+};
 
-const FolioEditorApp = ({ session }: FolioEditorAppProps) => {
-  const mode = useSyncExternalStore(session.mode.subscribe, session.mode.get);
+const FolioEditorApp = ({
+  editorRef,
+  modeStore,
+  author,
+  locale: hostLocale,
+  onHistoryChange,
+  onModeChange,
+  onEditorViewReady,
+  onError,
+}: FolioEditorAppProps) => {
+  const mode = useSyncExternalStore(modeStore.subscribe, modeStore.get);
   // One plugin instance for the editor's lifetime, as `plugins` requires.
-  const [plugins] = useState(() => [createHistoryBridgePlugin(session.onHistoryChange)]);
-  const { author } = session.host.init;
-  const [locale] = useState(() => canonicalLocale(session.host.init.locale));
+  const [plugins] = useState(() => [createHistoryBridgePlugin(onHistoryChange)]);
+  const [locale] = useState(() => canonicalLocale(hostLocale));
 
   return (
     <IntlProvider
       locale={locale}
       messages={getFolioMessages(locale)}
-      timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+      timeZone={new Intl.DateTimeFormat().resolvedOptions().timeZone}
     >
       <DocxEditor
-        ref={session.editor}
+        ref={editorRef}
         author={author}
         mode={mode}
-        onModeChange={session.onModeChange}
+        onModeChange={onModeChange}
         hostShortcuts={HOST_SHORTCUTS}
         plugins={plugins}
-        onEditorViewReady={session.onEditorViewReady}
-        onError={session.onError}
+        onEditorViewReady={onEditorViewReady}
+        onError={onError}
         preserveDocumentWhileLoading={true}
         // Headers and footers keep undo stacks of their own, which the host's
         // single stack cannot mirror yet.

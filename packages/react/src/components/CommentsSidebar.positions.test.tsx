@@ -36,10 +36,19 @@ const setRect = (element: HTMLElement, top: number) => {
   element.getBoundingClientRect = () => new DOMRect(0, top, 800, 100);
 };
 
-const renderDrawer = async (
-  scrollElement: HTMLDivElement,
-  anchorPositions: Map<string, number>,
-) => {
+type RenderDrawerOptions = {
+  scrollElement: HTMLDivElement;
+  anchorPositions: Map<string, number>;
+  activeCommentId?: number;
+  surface?: "column" | "drawer";
+};
+
+const renderDrawer = async ({
+  scrollElement,
+  anchorPositions,
+  activeCommentId,
+  surface = "drawer",
+}: RenderDrawerOptions) => {
   scrollElement.setAttribute("data-folio-scroll", "");
   const host = document.createElement("div");
   document.body.append(host);
@@ -53,7 +62,8 @@ const renderDrawer = async (
           comments={comments}
           editorContainerRef={editorContainerRef}
           anchorPositions={anchorPositions}
-          surface="drawer"
+          activeCommentId={activeCommentId}
+          surface={surface}
         />
       </IntlProvider>,
     );
@@ -81,13 +91,44 @@ test("drawer expansion prefers the rendered comment anchor over layout positions
   scrollElement.append(pages);
   expect(pages.querySelector(commentAnchorSelector(comment.id))).toBe(anchor);
 
-  const { host, root } = await renderDrawer(scrollElement, new Map([["comment-1", 120]]));
+  const { host, root } = await renderDrawer({
+    scrollElement,
+    anchorPositions: new Map([["comment-1", 120]]),
+  });
   try {
     await measurePositions();
     await act(async () => {
       host.querySelector<HTMLElement>(".docx-comment-card")?.click();
     });
     expect(scrollElement.scrollTop).toBe(800);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    scrollElement.remove();
+  }
+});
+
+test("first positioned cards fade in before subsequent geometry moves animate", async () => {
+  const scrollElement = document.createElement("div");
+  const pages = document.createElement("div");
+  pages.className = "paged-editor__pages";
+  scrollElement.append(pages);
+  const anchorPositions = new Map([["comment-1", 120]]);
+  const { host, root } = await renderDrawer({ scrollElement, anchorPositions, surface: "column" });
+  try {
+    await measurePositions();
+    const card = host.querySelector<HTMLElement>(".docx-comment-card");
+    expect(card?.style.top).toBe("120px");
+    expect(card?.style.transition).not.toContain("top");
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 410));
+    });
+    anchorPositions.set("comment-1", 240);
+    await act(async () => scrollElement.dispatchEvent(new Event("scroll")));
+    await measurePositions();
+    expect(card?.style.top).toBe("240px");
+    expect(card?.style.transition).toContain("top 0.15s ease");
   } finally {
     await act(async () => root.unmount());
     host.remove();
@@ -104,13 +145,41 @@ test("drawer expansion uses layout positions when the comment anchor is not rend
   scrollElement.append(pages);
   expect(pages.querySelector(commentAnchorSelector(comment.id))).toBeNull();
 
-  const { host, root } = await renderDrawer(scrollElement, new Map([["comment-1", 420]]));
+  const { host, root } = await renderDrawer({
+    scrollElement,
+    anchorPositions: new Map([["comment-1", 420]]),
+  });
   try {
     await measurePositions();
     await act(async () => {
       host.querySelector<HTMLElement>(".docx-comment-card")?.click();
     });
     expect(scrollElement.scrollTop).toBe(320);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    scrollElement.remove();
+  }
+});
+
+test("mounting with an active comment expands its reply input and permits collapsing it", async () => {
+  const scrollElement = document.createElement("div");
+  const { host, root } = await renderDrawer({
+    scrollElement,
+    anchorPositions: new Map(),
+    activeCommentId: comment.id,
+  });
+  try {
+    // Earlier fixtures only mounted inactive cards and then clicked to expand.
+    const card = host.querySelector<HTMLElement>(".docx-comment-card");
+    expect(card).not.toBeNull();
+    expect(card?.querySelector("input[readonly]")).not.toBeNull();
+
+    await act(async () => card?.click());
+    expect(card?.querySelector("input[readonly]")).toBeNull();
+
+    await act(async () => card?.click());
+    expect(card?.querySelector("input[readonly]")).not.toBeNull();
   } finally {
     await act(async () => root.unmount());
     host.remove();

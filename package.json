@@ -189,7 +189,8 @@
     "tsdown": "0.22.9",
     "tsx": "^4.23.13",
     "typescript": "6.0.3",
-    "use-intl": "^4.13.2"
+    "use-intl": "^4.13.2",
+    "zod": "4.4.3"
   },
   "overrides": {
     "archiver": "8.0.0",

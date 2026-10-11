@@ -10,7 +10,7 @@ import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/cano
  * `pushDocument` routing, and reading the live hidden HF PM doc at save time.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
@@ -169,11 +169,14 @@ export const useHeaderFooterEditor = ({
   // null, so typing lands in the body) and flickers the rendered chrome. Hold
   // the last resolved structure and reuse it until a real document state
   // arrives again.
-  const lastResolution = useRef(rawResolution);
-  if (history.state?.package) {
-    lastResolution.current = rawResolution;
+  const [lastResolution, setLastResolution] = useState(rawResolution);
+  if (
+    history.state?.package &&
+    Object.entries(rawResolution).some(([key, value]) => Reflect.get(lastResolution, key) !== value)
+  ) {
+    setLastResolution(rawResolution);
   }
-  const resolution = history.state?.package ? rawResolution : lastResolution.current;
+  const resolution = history.state?.package ? rawResolution : lastResolution;
   const {
     headerContent,
     footerContent,
