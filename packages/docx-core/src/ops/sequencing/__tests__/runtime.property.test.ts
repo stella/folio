@@ -404,7 +404,7 @@ describe("reference sequencing convergence", () => {
               expect(result.accepted).toBeGreaterThanOrEqual(2);
             },
           ),
-          { numRuns: NUM_RUNS },
+          { numRuns: NUM_RUNS, id: "reference sequencing convergence" },
         );
         expect(accepted).toBeGreaterThanOrEqual(NUM_RUNS * 2);
       },
@@ -432,7 +432,7 @@ describe("reference sequencing convergence", () => {
             expect(result.accepted).toBeGreaterThan(0);
           },
         ),
-        { numRuns: NUM_RUNS },
+        { numRuns: NUM_RUNS, id: "mixed operations with causal pending queues" },
       );
     },
     propertyTestTimeout(30_000),
@@ -493,7 +493,10 @@ describe("reference sequencing convergence", () => {
               expect(applyDocumentOps(before, transformed.value.ops).isOk()).toBe(true);
           }
         }),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "inverse submissions over foreign edits succeed or are dropped atomically",
+        },
       );
       expect(accepted).toBeGreaterThan(0);
       expect(dropped).toBeGreaterThan(0);
@@ -584,7 +587,10 @@ describe("reference sequencing convergence", () => {
             expect(client.pending).toHaveLength(2);
           },
         ),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "later pending insertions retain their point after a foreign join",
+        },
       );
     },
     propertyTestTimeout(30_000),

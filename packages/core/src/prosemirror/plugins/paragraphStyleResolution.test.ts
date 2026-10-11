@@ -275,7 +275,10 @@ test(
           expect(undone.doc.toJSON()).toEqual(state.doc.toJSON());
         },
       ),
-      { numRuns: 48 },
+      {
+        numRuns: 48,
+        id: "replacement joins preserve authored formatting across style cascades and undo",
+      },
     );
   },
   propertyTestTimeout(15_000),

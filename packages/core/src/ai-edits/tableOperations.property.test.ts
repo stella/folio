@@ -511,6 +511,7 @@ describe("table operations on merged tables", () => {
       // test/property-seeds/.
       await assertProperty(fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase), {
         numRuns: 150,
+        id: "keep every value, agree across modes and readers, and reject cleanly",
       });
     },
     propertyTestTimeout(120_000),

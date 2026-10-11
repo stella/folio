@@ -198,7 +198,10 @@ test("comment mark transitions preserve source geometry across ranges, atoms and
       fc.array(unit, { minLength: UNIT_COUNT, maxLength: UNIT_COUNT }),
       checkGeometry,
     ),
-    { numRuns: 40 },
+    {
+      numRuns: 40,
+      id: "comment mark transitions preserve source geometry across ranges, atoms and revisions",
+    },
   );
 });
 

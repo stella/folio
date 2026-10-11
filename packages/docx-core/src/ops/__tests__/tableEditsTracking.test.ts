@@ -546,5 +546,8 @@ test("imported grid and table property histories resolve with the selected basel
         exact(applyDocumentOps(result.document, result.inverse).unwrap().document, before);
       },
     ),
+    {
+      id: "imported grid and table property histories resolve with the selected baseline and exact inverse",
+    },
   );
 });

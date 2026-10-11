@@ -6,7 +6,7 @@
  * English verbatim to all 18 locales. This test runs the real repo config
  * against two committed fixtures in `test/__fixtures__` (covered by the same
  * config override as the packages/react/src TSX sources but excluded from the
- * repo-wide lint via `ignorePatterns`, hence `--no-ignore` here) and asserts
+ * repo-wide lint via `ignorePatterns`; the fixture config removes that ignore) and asserts
  * the rule fires on a raw literal and stays silent on `t(...)` usage. That
  * guards the whole chain: plugin registration in `jsPlugins`, the override
  * scoping, and the rule's own literal detection.
@@ -25,9 +25,9 @@ const lintFixture = (fixture: string) => {
       "--bun",
       "oxlint",
       "-c",
-      "oxlint.config.ts",
+      "oxlint.fixtures.config.ts",
       // The fixtures sit in `ignorePatterns` so `bun run lint` skips their
-      // deliberate violation; linting them explicitly needs the ignore off.
+      // deliberate violation; the fixture config removes only that ignore.
       "--no-ignore",
       path.join("test", "__fixtures__", fixture),
     ],

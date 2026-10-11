@@ -181,6 +181,9 @@ test("generated clipboard image metadata preserves picture and drawing names ind
           await copiedImageRoundtrip({ ...options, names, clipboard: "html" });
       },
     ),
-    { numRuns: 6 },
+    {
+      numRuns: 6,
+      id: "generated clipboard image metadata preserves picture and drawing names independently",
+    },
   );
 });

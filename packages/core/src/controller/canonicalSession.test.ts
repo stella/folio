@@ -943,7 +943,10 @@ describe("canonical session", () => {
           expect(session.canRedo).toBe(false);
         },
       ),
-      { numRuns: 40 },
+      {
+        numRuns: 40,
+        id: "canonical input sequences keep the projection, inverse history and refusal atomic",
+      },
     );
   });
 
@@ -1062,6 +1065,39 @@ describe("canonical session", () => {
     ];
     for (const document of unsupported) expect(createCanonicalSession(document).isErr()).toBe(true);
   });
+
+  test.each(["table", "blockSdt"] as const)(
+    "activation refuses list paragraphs inside %s before normalization",
+    (container) => {
+      const paragraph: Paragraph = {
+        type: "paragraph",
+        paraId: "34567890",
+        formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+        content: [{ type: "run", content: [{ type: "text", text: "Nested list" }] }],
+      };
+      const document = seed("Body");
+      document.package.document.content.push(
+        container === "table"
+          ? {
+              type: "table",
+              rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [paragraph] }] }],
+            }
+          : { type: "blockSdt", properties: { sdtType: "richText" }, content: [paragraph] },
+      );
+      const original = structuredClone(document);
+      const result = createCanonicalSession(document);
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error).toBeInstanceOf(CanonicalSessionError);
+        expect(result.error.message).toBe(
+          container === "table"
+            ? "Canonical sessions cannot activate documents containing tables."
+            : "Canonical sessions currently require plain paragraphs and supported inline atoms.",
+        );
+      }
+      expect(document).toStrictEqual(original);
+    },
+  );
 
   test("stored formatting authors the next insertion and undo restores the unformatted model", () => {
     const session = createCanonicalSession(seed("plain")).unwrap();
@@ -1277,7 +1313,10 @@ describe("canonical session", () => {
           }
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "stored mark changes preserve authored properties and explicitly clear removed marks",
+      },
     );
   });
 
@@ -1605,7 +1644,12 @@ describe("canonical tracked input", () => {
           expect(state.doc.eq(session.projection.doc)).toBe(true);
         },
       ),
-      { seed: 197, numRuns: 60, examples },
+      {
+        seed: 197,
+        numRuns: 60,
+        examples,
+        id: "direction reversal deletes the adjacent visible character across retained deletion runs and bookmarks",
+      },
     );
   });
 
@@ -1728,7 +1772,10 @@ describe("canonical tracked input", () => {
           }
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "generated replacements lower tracked batches and resolution shares exact inverse history",
+      },
     );
   });
 

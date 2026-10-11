@@ -1,5 +1,13 @@
 # @stll/folio-cli
 
+## 0.4.5
+
+### Patch Changes
+
+- [#1644](https://github.com/stella/folio/pull/1644) [`b4eecaa`](https://github.com/stella/folio/commit/b4eecaa982684c242000b9941561e9973bb0a752) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Background lease failures are now reported instead of ignored.
+- Updated dependencies [[`9557c48`](https://github.com/stella/folio/commit/9557c48e856999ea0273c24c73aa473f5809970a)]:
+  - @stll/folio-core@0.58.3
+
 ## 0.4.4
 
 ### Patch Changes

@@ -81,6 +81,9 @@ test("selective saves share imported numeric identities across original and cano
         }
       }
     }),
-    { numRuns: 8 },
+    {
+      numRuns: 8,
+      id: "selective saves share imported numeric identities across original and canonical baselines",
+    },
   );
 });

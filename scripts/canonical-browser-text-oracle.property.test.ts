@@ -58,7 +58,10 @@ test("document-position text slices agree with flat text replacement across para
         ).toBe(expected.join(""));
       },
     ),
-    { numRuns: 100 },
+    {
+      numRuns: 100,
+      id: "document-position text slices agree with flat text replacement across paragraphs",
+    },
   );
 });
 

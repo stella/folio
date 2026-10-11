@@ -675,7 +675,11 @@ describe("markup views lay out the text they show", () => {
         expect(verdict.unpaintable).toEqual([]);
         expect(verdict.misplacedBars).toEqual([]);
       }),
-      { numRuns: 40, examples: PINNED_SCENARIOS.map((scenario) => [scenario]) },
+      {
+        numRuns: 40,
+        examples: PINNED_SCENARIOS.map((scenario) => [scenario]),
+        id: "every view settles on the layout of the text it reads, through any event sequence",
+      },
     );
   });
 

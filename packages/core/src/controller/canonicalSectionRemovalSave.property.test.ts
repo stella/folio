@@ -97,7 +97,7 @@ test("canonical joins save the exact generated section removal count", async () 
       expect(readDocumentSectionFacts(await documentXmlOf(saved)).sectionCount).toBe(1);
       expect(reopened.package.document.content).toHaveLength(count + 1);
     }),
-    { numRuns: 8 },
+    { numRuns: 8, id: "canonical joins save the exact generated section removal count" },
   );
 });
 

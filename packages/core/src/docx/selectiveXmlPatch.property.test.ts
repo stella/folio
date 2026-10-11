@@ -177,6 +177,7 @@ describe("buildPatchedDocumentXml property invariants", () => {
           ["a", "paragraph"],
           ["a", "structural"],
         ],
+        id: "selective save preserves introduced review provenance through valid package reopen",
       },
     );
   });
@@ -200,7 +201,10 @@ describe("buildPatchedDocumentXml property invariants", () => {
         expect(structural).toMatch(/mc:Ignorable="[^"]*folio/u);
         expect(parseXmlDocument(structural ?? "")).not.toBeNull();
       }),
-      { numRuns: 20 },
+      {
+        numRuns: 20,
+        id: "introduced review namespace is refused by ordinary splices and locally bound by structural splices",
+      },
     );
   });
 
@@ -220,7 +224,10 @@ describe("buildPatchedDocumentXml property invariants", () => {
           }),
         ).not.toBeNull();
       }),
-      { numRuns: 20 },
+      {
+        numRuns: 20,
+        id: "ordinary and structural splices preserve supported review namespace bindings",
+      },
     );
   });
 
@@ -234,7 +241,10 @@ describe("buildPatchedDocumentXml property invariants", () => {
         expect(patched).not.toContain("mc:Ignorable=");
         expect(patched).toContain(REVIEW_JOIN_ATTRIBUTES);
       }),
-      { numRuns: 20 },
+      {
+        numRuns: 20,
+        id: "existing extension uses retain source roots that omit ignorable metadata",
+      },
     );
   });
 
@@ -245,7 +255,7 @@ describe("buildPatchedDocumentXml property invariants", () => {
         const serialized = renderReviewDoc(text, "candidate");
         expect(buildPatchedDocumentXml(original, serialized, new Set(["A0000001"]))).not.toBeNull();
       }),
-      { numRuns: 20 },
+      { numRuns: 20, id: "ignorable namespace support is compared by URI across aliases" },
     );
   });
 
@@ -267,7 +277,7 @@ describe("buildPatchedDocumentXml property invariants", () => {
           ).not.toBeNull();
         },
       ),
-      { numRuns: 20 },
+      { numRuns: 20, id: "conflicting or non-ignorable root bindings require the full serializer" },
     );
   });
 
@@ -280,7 +290,7 @@ describe("buildPatchedDocumentXml property invariants", () => {
           buildPatchedDocumentXml(original, serialized, new Set(["A0000001", "A0000002"])),
         ).toBeNull();
       }),
-      { numRuns: 20 },
+      { numRuns: 20, id: "local ignorable metadata on one replacement does not license a sibling" },
     );
   });
 
@@ -322,7 +332,7 @@ describe("buildPatchedDocumentXml property invariants", () => {
           buildPatchedDocumentXml(renderNested(before), renderNested(after), new Set(ids)),
         ).toBeNull();
       }),
-      { numRuns: 50 },
+      { numRuns: 50, id: "nested paragraph edits never apply overlapping source ranges" },
     );
   });
 

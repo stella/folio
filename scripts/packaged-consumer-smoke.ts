@@ -21,6 +21,7 @@ import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { installCleanRoomDependencies } from "./clean-room-install";
 import {
   REACT_PEER_MAJORS,
   buildAndPack,
@@ -119,9 +120,18 @@ try {
       await writeConsumerPackageJson({ consumerDir, coreTarball, docxCoreTarball });
 
       console.log(`→ installing tarballs + React ${reactMajor} peers`);
-      await $`bun add ${reactTarball} ${coreTarball} ${docxCoreTarball} ${reactPeerInstallArgs(reactMajor)} use-intl@^4 vite@^8 @vitejs/plugin-react@^6`
-        .cwd(consumerDir)
-        .quiet();
+      await installCleanRoomDependencies({
+        consumerDir,
+        dependencies: [
+          reactTarball,
+          coreTarball,
+          docxCoreTarball,
+          ...reactPeerInstallArgs(reactMajor),
+          "use-intl@^4",
+          "vite@^8",
+          "@vitejs/plugin-react@^6",
+        ],
+      });
 
       console.log(`→ production SPA build over the packed tarballs (React ${reactMajor})`);
       const build = await $`bun x vite build --config vite.runtime.config.ts`

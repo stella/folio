@@ -104,7 +104,10 @@ test(
             }
           }
         }),
-        { numRuns: 20 },
+        {
+          numRuns: 20,
+          id: "save-error records retain every diagnostic and phase beyond assertion truncation",
+        },
       );
     } finally {
       globalThis.__folioCanonicalFuzzErrors = previousErrors;
@@ -141,7 +144,10 @@ test(
             }
           }
         }),
-        { numRuns: 20 },
+        {
+          numRuns: 20,
+          id: "refusal records preserve every gap and phase without becoming save fallbacks",
+        },
       );
     } finally {
       globalThis.__folioCanonicalFuzzErrors = previousErrors;

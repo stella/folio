@@ -763,6 +763,9 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
     readonly APPEND: "append";
 }>;
 
+// @public
+export const registerParagraphPropertySnapshot: (input: RegisterParagraphPropertySnapshotOptions) => void;
+
 // @public (undocumented)
 export type RemoveHeaderFooterOp = {
     type: typeof DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER;
@@ -1111,6 +1114,9 @@ export const validateOpsDocument: (document: Document_2) => Result<Document_2, D
 
 // @public
 export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, BatchRejection>;
+
+// @public
+export const withBodyContent: (body: DocumentBody, content: BlockContent[]) => DocumentBody;
 
 // @public
 export const zeroWidthLeavesAt: (items: readonly InlineNode[], offset: number) => InlineNode[];

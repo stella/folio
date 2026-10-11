@@ -1,6 +1,7 @@
 name: CI
 
 env:
+  TOOLCHAIN_BASE: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || (github.event_name == 'push' && github.event.before) || 'unavailable-toolchain-base' }}
   HAWK_RUST_TOOLCHAIN: "1.97.1"
   HAWK_VERSION: "0.1.11"
   HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256: "8380db63360ae94f9890d7e426cce00e479d884f516614cea998c85d5f30ab6d"
@@ -89,31 +90,32 @@ jobs:
   # it and skips when its area is not selected. The planner is the shared
   # stella/.github ci-plan action; `.github/ci-plan.json` holds folio's areas.
   # Pull requests plan by changed path. Merge groups select every area.
-  # Suite depth depends only on the event; the shared planner supplies path
-  # scopes and trust. API preflight derives publication paths from manifests.
+  # Toolchain changes select every area at full depth; unchanged pull requests
+  # retain path scopes. API preflight derives publication paths from manifests.
   # Drafts plan nothing until marked ready for review.
   ci-plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     permissions:
       contents: read
       # The shared planner reads PR metadata and checks merge-group trust.
       pull-requests: read
       actions: read
     outputs:
-      suite_depth: ${{ github.event_name == 'merge_group' && 'full' || 'fast' }}
+      toolchain_changed: ${{ steps.toolchain.outputs.changed }}
+      suite_depth: ${{ (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true') && 'full' || 'fast' }}
       trusted: ${{ steps.plan.outputs.trusted }}
-      browser_discovery_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).browser_discovery }}
-      api_required: ${{ github.event_name == 'merge_group' || steps.api-plan.outputs.api_required == 'true' }}
-      code_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).code }}
-      typecheck_budget_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).typecheck_budget }}
-      container_contract_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).container_contract }}
-      docx_kernel_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).docx_kernel }}
-      interactions_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).interactions }}
-      differential_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).differential }}
-      consumer_scenarios_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
-      packaged_consumer_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).packaged_consumer }}
+      browser_discovery_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).browser_discovery }}
+      api_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true' }}
+      code_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).code }}
+      typecheck_budget_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).typecheck_budget }}
+      container_contract_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).container_contract }}
+      docx_kernel_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).docx_kernel }}
+      interactions_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions }}
+      differential_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).differential }}
+      consumer_scenarios_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
+      packaged_consumer_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -122,6 +124,20 @@ jobs:
       - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Detect shared toolchain changes
+        id: toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          changes=$(bunx --no-install stll-toolchain-changed --since "$TOOLCHAIN_BASE")
+          printf '%s\n' "$changes"
+          changed=$(jq -er '
+            if .status == "unreadable" then "true"
+            elif .status == "compared" and (.changed | type) == "boolean" then (.changed | tostring)
+            else error("Invalid toolchain change result") end
+          ' <<< "$changes")
+          printf 'changed=%s\n' "$changed" >> "$GITHUB_OUTPUT"
       - name: Select published API preflight
         id: api-plan
         if: github.event_name == 'pull_request'
@@ -401,6 +417,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
@@ -411,6 +428,19 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
+
+      - name: Verify seeded typecheck diagnostic
+        run: bunx --no-install stll-typecheck-probe --project packages/core/tsconfig.build.json --seed-dir packages/core/src -- bun check -p packages/core/tsconfig.build.json
+
+      # typecheck:compiler-parity lists the native TS7 projects explicitly.
+      # packages/vue and packages/playground-vue retain vue-tsc for SFC checks;
+      # packages/nuxt retains the TS6 compiler API required by its Vue integration.
+      - name: Install standalone native project dependencies
+        run: bun install --frozen-lockfile
+        working-directory: plugins/vscode
+
+      - name: Compare compiler diagnostics when Bun or TypeScript changed
+        run: bun run typecheck:compiler-parity --changed-since "$TOOLCHAIN_BASE"
 
   build-api:
     name: Build reproducibility and API reports
@@ -1136,9 +1166,18 @@ jobs:
           fi
           depth=$(jq -r .suite_depth <<< "$PLAN")
           trusted=$(jq -r .trusted <<< "$PLAN")
+          toolchain_changed=$(jq -r .toolchain_changed <<< "$PLAN")
+          if [[ "$toolchain_changed" != "true" && "$toolchain_changed" != "false" ]]; then
+            echo "::error::CI plan has no valid toolchain change result."
+            exit 1
+          fi
           expected_depth=fast
-          if [[ "$EVENT" == "merge_group" ]]; then
+          if [[ "$EVENT" == "merge_group" || "$toolchain_changed" == "true" ]]; then
             expected_depth=full
+            if ! jq -e --argjson plan "$PLAN" '[.[] | .area // empty] | unique | all(.[]; $plan[.] == "true")' <<< "$JOB_SCOPES" >/dev/null; then
+              echo "::error::Full-suite CI plan must select every area."
+              exit 1
+            fi
           fi
           if [[ "$trusted" != "true" || "$depth" != "$expected_depth" ]]; then
             echo "::error::CI plan is untrusted or selects the wrong suite depth for $EVENT."

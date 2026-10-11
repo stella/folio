@@ -304,7 +304,7 @@ describe("a slot that survives its representative value survives the rest of its
               const slot = valueKey(candidate).replaceAll(`{${WML_NAMESPACE}}`, "w:");
               expect({ slot, measured }).toEqual({ slot, measured: recorded });
             }),
-            { numRuns: Math.min(values.length, 8) },
+            { numRuns: Math.min(values.length, 8), id: "w:${container}" },
           );
         }
       },

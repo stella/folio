@@ -145,7 +145,10 @@ test("binary resource operations survive JSON and undo restores exact package fi
         assertExactModel(initial, original);
       },
     ),
-    { numRuns: 30 },
+    {
+      numRuns: 30,
+      id: "binary resource operations survive JSON and undo restores exact package field presence",
+    },
   );
 });
 

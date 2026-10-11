@@ -169,7 +169,10 @@ test(
           }
         }
       }),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "caret deletion owns the complete structured carrier across sizes and revisions",
+      },
     );
   },
   propertyTestTimeout(5_000),

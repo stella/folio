@@ -60,6 +60,9 @@ test("every rebuilt drawing uses bounded numeric ids without changing its lexica
         expect(shape.id).toBe(id);
       }
     }),
-    { numRuns: 150 },
+    {
+      numRuns: 150,
+      id: "every rebuilt drawing uses bounded numeric ids without changing its lexical model id",
+    },
   );
 });

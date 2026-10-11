@@ -8,11 +8,13 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
  * sequencer apply operations with one implementation.
  */
 
+export { withBodyContent } from "./blocks";
 export { captureDocumentOp } from "./wire";
 export { compareGaps, defaultInsertionGap, inlineLeafSpans, zeroWidthLeavesAt } from "./leaves";
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
+export { registerParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
 export {
   applyDocumentOpEnvelope,
   applyDocumentOp,

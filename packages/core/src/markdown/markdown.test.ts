@@ -214,7 +214,11 @@ test(
           }
         }
       }),
-      { seed: 1634001732, numRuns: 40 },
+      {
+        seed: 1634001732,
+        numRuns: 40,
+        id: "mark delimiters preserve parsed text and formatting with generated edge whitespace",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -246,7 +250,11 @@ test(
           expect(inlineBreaksToHtml(expected)).toBe(expected);
         },
       ),
-      { seed: 1634001732, numRuns: 60 },
+      {
+        seed: 1634001732,
+        numRuns: 60,
+        id: "inline break encoding preserves generated line boundaries and unfinished whitespace",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -281,7 +289,11 @@ describe("toMarkdown — block structure", () => {
             );
           },
         ),
-        { seed: 717860451, numRuns: 100 },
+        {
+          seed: 717860451,
+          numRuns: 100,
+          id: "generated whitespace-only headings do not emit extra Markdown blocks",
+        },
       );
     },
     propertyTestTimeout(30_000),
@@ -358,7 +370,11 @@ describe("toMarkdown — block structure", () => {
             }
           },
         ),
-        { seed: 1634001732, numRuns: 60 },
+        {
+          seed: 1634001732,
+          numRuns: 60,
+          id: "generated heading breaks preserve one Markdown block",
+        },
       );
     },
     propertyTestTimeout(30_000),

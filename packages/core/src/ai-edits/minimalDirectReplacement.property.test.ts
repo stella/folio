@@ -544,7 +544,10 @@ describe("a direct replacement changes only the characters it changes", () => {
           expect((xml.match(/<w:footnoteReference /gu) ?? []).length).toBe(beforeReferences.length);
         },
       );
-      await assertProperty(directReplacementProperty, { numRuns: 60 });
+      await assertProperty(directReplacementProperty, {
+        numRuns: 60,
+        id: "over generated paragraphs and edits",
+      });
     },
     propertyTestTimeout(240_000),
   );
@@ -930,7 +933,11 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             }
           },
         ),
-        { numRuns: 60, examples: PINNED_TRACKED_REPLACEMENTS },
+        {
+          numRuns: 60,
+          examples: PINNED_TRACKED_REPLACEMENTS,
+          id: "over generated paragraphs and edits, accepted and rejected",
+        },
       );
     },
     propertyTestTimeout(240_000),

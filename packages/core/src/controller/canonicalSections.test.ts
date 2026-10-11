@@ -150,7 +150,11 @@ test("generated final-section patches preserve earlier endpoints and exact note-
         expect(session.projection.doc.textContent).toBe(originalText);
       },
     ),
-    { seed: 20261012, numRuns: 40 },
+    {
+      seed: 20261012,
+      numRuns: 40,
+      id: "generated final-section patches preserve earlier endpoints and exact note-property undo/redo",
+    },
   );
   expect(observed).toEqual(new Set(PATCH_KINDS));
 });
@@ -259,7 +263,11 @@ test("manager section patches refuse read-only and composition without changing 
           }
         },
       ),
-      { seed: 20261013, numRuns: 12 },
+      {
+        seed: 20261013,
+        numRuns: 12,
+        id: "manager section patches refuse read-only and composition without changing model or journal",
+      },
     );
     const host = document.createElement("div");
     document.body.append(host);

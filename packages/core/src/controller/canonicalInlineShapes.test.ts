@@ -133,7 +133,11 @@ test("generated source union shapes activate with exact logical gaps or explain 
         .map((parts) => parts.join("")),
       exercise,
     ),
-    { seed: 197, numRuns: 15 },
+    {
+      seed: 197,
+      numRuns: 15,
+      id: "generated source union shapes activate with exact logical gaps or explain a typed refusal",
+    },
   );
 });
 
@@ -177,6 +181,10 @@ test("input inside retained deletion maps through preceding zero-width source ma
         expect(projection.positionAt(address).unwrap()).toBe(3 + length);
       }
     }),
-    { seed: 197, numRuns: 12 },
+    {
+      seed: 197,
+      numRuns: 12,
+      id: "input inside retained deletion maps through preceding zero-width source markers",
+    },
   );
 });

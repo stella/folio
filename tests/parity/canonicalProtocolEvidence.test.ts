@@ -48,7 +48,10 @@ test(
           ),
         ).toEqual({ type: "discard" });
       }),
-      { numRuns: 50 },
+      {
+        numRuns: 50,
+        id: "canonical protocol evidence retains original errors and correlates evaluations without payloads",
+      },
     );
   },
   propertyTestTimeout(5_000),

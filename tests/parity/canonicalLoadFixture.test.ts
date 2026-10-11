@@ -49,7 +49,10 @@ test("canonical load fixtures match the loader across paragraph identity input c
         }
       },
     ),
-    { numRuns: 20 },
+    {
+      numRuns: 20,
+      id: "canonical load fixtures match the loader across paragraph identity input classes",
+    },
   );
   expect(cases).toBeGreaterThan(0);
   expect([...exercised].sort()).toEqual([...identities].sort());
