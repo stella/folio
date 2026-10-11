@@ -54,7 +54,24 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
         snapshot: paragraphFormattingWithAuthoredIndentation(paragraph),
       });
       const formatting = paragraph.formatting;
-      const numPr = effectiveParagraphNumberingReference(formatting ?? {});
+      const next = cloneParagraphWithPropertySource(paragraph, {});
+      if (
+        formatting?.numPrFromStyle !== undefined &&
+        (formatting.numPr?.kind === "reference" || formatting.numPr?.kind === "none")
+      ) {
+        next.formatting = { ...formatting };
+        delete next.formatting.numPrFromStyle;
+        // Provenance participates in exact formatting history; rendering is recomputed.
+        inverse.push({
+          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+          story,
+          blockId:
+            paragraph.paraId ??
+            panic("Canonical numbering normalization requires paragraph identities."),
+          patch: { numPrFromStyle: formatting.numPrFromStyle },
+        });
+      }
+      const numPr = effectiveParagraphNumberingReference(next.formatting ?? {});
       if (
         paragraph.listRendering === undefined &&
         formatting?.numPrFromStyle === undefined &&
@@ -74,23 +91,6 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
         listRenderingDefinitionsMatch(cached, definition)
           ? { ...cached }
           : definition;
-      const next = cloneParagraphWithPropertySource(paragraph, {});
-      if (
-        formatting?.numPrFromStyle !== undefined &&
-        (formatting.numPr?.kind === "reference" || formatting.numPr?.kind === "none")
-      ) {
-        next.formatting = { ...formatting };
-        delete next.formatting.numPrFromStyle;
-        // Provenance participates in exact formatting history; rendering is recomputed.
-        inverse.push({
-          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-          story,
-          blockId:
-            paragraph.paraId ??
-            panic("Canonical numbering normalization requires paragraph identities."),
-          patch: { numPrFromStyle: formatting.numPrFromStyle },
-        });
-      }
       const authoredFormatting = paragraphFormattingWithAuthoredIndentation(next);
       const authored = paragraphIndentationFromFormatting(authoredFormatting);
       const inheritance = listIndentationProvenancePatch({

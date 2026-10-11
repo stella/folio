@@ -13,6 +13,8 @@ import {
 } from "@stll/folio-core/server";
 import type { FolioAIBlock, FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
+import type { FolioAIBlockParagraphProperties } from "@stll/folio-core/ai-edits/types";
+
 import { type Random, sentence } from "./random.ts";
 import { gapWeight, weightedChoice } from "./feature-coverage.ts";
 import { type Picker, uniformPicker, wordsOf } from "./targets.ts";
@@ -347,7 +349,7 @@ export const MISTAKES: Record<
         type: "insertAfterBlock",
         blockId: blocks.length > 0 ? random.pick(blocks).id : "00000000",
         text: "x",
-        numbering: { numId: "1", level: "0" },
+        numbering: { kind: "reference", numId: "1", ilvl: "0" },
       },
     ],
   }),
@@ -393,7 +395,15 @@ export const MISTAKES: Record<
           type: "insertAfterBlock",
           blockId: blocks.length > 0 ? random.pick(blocks).id : "00000000",
           text: "x",
-          ...(refs.length > 0 ? { numbering: { numId: random.pick(refs).numId, level: 8 } } : {}),
+          ...(refs.length > 0
+            ? {
+                numbering: {
+                  kind: "reference",
+                  numId: random.pick(refs).numId,
+                  ilvl: 8,
+                } as const satisfies NonNullable<FolioAIBlockParagraphProperties["numbering"]>,
+              }
+            : {}),
         },
       ],
     };
@@ -425,7 +435,9 @@ export const undefinedNumbering = (blocks: readonly Block[]) => {
   const used = new Set(numberingRefs(blocks).map((ref) => ref.numId));
   let numId = 1;
   while (used.has(numId)) numId += 1;
-  return { numId: numId + 40, level: 0 };
+  return { kind: "reference", numId: numId + 40, ilvl: 0 } as const satisfies NonNullable<
+    FolioAIBlockParagraphProperties["numbering"]
+  >;
 };
 
 /** Give each operation an id and wrap them as a core batch. */

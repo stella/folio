@@ -236,7 +236,7 @@ test(
       },
       {
         properties: { numbering: { kind: "levelOnly", ilvl: 1 } },
-        direct: paragraphNumberingFromSlots({ numId: 900, ilvl: 1 }),
+        direct: { kind: "levelOnly", ilvl: 1 },
       },
       { properties: { numbering: { kind: "none" } }, direct: { kind: "none" } },
       { properties: { numbering: { kind: "inherit" } }, direct: undefined },
