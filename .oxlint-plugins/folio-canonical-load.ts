@@ -1,5 +1,5 @@
-// The Playwright utility-script wrapper does not retain its serialization
-// promise during collection. Canonical loads must use the shared transport owner.
+// Unrooted evaluations can lose their pending promise during collection.
+// Canonical loads must use the shared transport owner.
 type AstNode = Record<string, unknown> & { type: string };
 type RuleContext = {
   report: (descriptor: { node: unknown; messageId: "canonicalLoadOwner" }) => void;

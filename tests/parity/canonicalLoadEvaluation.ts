@@ -49,8 +49,8 @@ export const evaluateCanonicalLoad = async (page: Page, bytes: number[]) => {
   const session = await page.context().newCDPSession(page);
   let promiseObjectId: string | undefined;
   try {
-    // Playwright's return-by-value evaluator creates a separate serialization
-    // promise. Rooting the source alone does not retain that awaited wrapper.
+    // Retain the pending promise independently of incidental parser or adapter
+    // roots, then release its remote handle after the awaited result arrives.
     const operation = await session.send("Runtime.evaluate", {
       expression: `globalThis.__folioCanonical?.load(${JSON.stringify(bytes)})`,
       awaitPromise: false,

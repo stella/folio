@@ -169,9 +169,10 @@ test(`canonical history replay ${CANONICAL_EVALUATION_HISTORY_REPLAY.seed} ${CAN
 declare global {
   var __folioCollectPendingCanonicalLoad: (() => Promise<void>) | undefined;
   var __folioReportCollectedCanonicalLoad: (() => Promise<void>) | undefined;
-  var __folioCompleteTransportLoad: (() => void) | undefined;
-  var __folioTransportEvaluationStarted:
-    | ((transport: "boxed" | "cdp") => Promise<void>)
+  var __folioCompleteTransportLoad: (() => boolean) | undefined;
+  var __folioTransportEvaluationStarted: (() => Promise<void>) | undefined;
+  var __folioTransportPending:
+    | WeakRef<Promise<boolean> & { complete: (loaded: boolean) => void }>
     | undefined;
 }
 
@@ -213,18 +214,21 @@ const assertCollectedTransportEvidence = ({ path, frameId }: CollectedTransportE
     const sessionId = event["sessionId"];
     return typeof sessionId === "string" && sessions.has(sessionId) && event["error"] !== undefined;
   });
-  expect(errors, "the old boxed call must produce one correlated raw CDP failure").toHaveLength(1);
-  const error = errors.at(0);
-  if (!error) throw new TypeError("Missing boxed transport protocol failure");
-  expect(error["error"]).toEqual({ code: -32000, message: "Promise was collected" });
-  const request = events.filter(
-    (event) =>
-      event["id"] === error["id"] &&
-      event["sessionId"] === error["sessionId"] &&
-      event["method"] !== undefined,
-  );
-  expect(request).toHaveLength(1);
-  expect(request.at(0)).toMatchObject({ method: "Runtime.callFunctionOn", awaitPromise: true });
+  expect(errors, "both unrooted calls must produce correlated raw CDP failures").toHaveLength(2);
+  const methods = [];
+  for (const error of errors) {
+    expect(error["error"]).toEqual({ code: -32000, message: "Promise was collected" });
+    const requests = events.filter(
+      (event) =>
+        event["id"] === error["id"] &&
+        event["sessionId"] === error["sessionId"] &&
+        event["method"] !== undefined,
+    );
+    expect(requests).toHaveLength(1);
+    expect(requests.at(0)).toMatchObject({ awaitPromise: true });
+    methods.push(requests.at(0)?.["method"]);
+  }
+  expect(methods.sort()).toEqual(["Runtime.callFunctionOn", "Runtime.evaluate"]);
 };
 
 test("canonical load roots the awaited transport promise across forced collection", async ({
@@ -238,74 +242,105 @@ test("canonical load roots the awaited transport promise across forced collectio
   await page.goto("/?session=canonical");
   await waitForCanonicalPageReady(page);
   const cdp = await page.context().newCDPSession(page);
-  const boxedEntered = Promise.withResolvers<void>();
-  const cdpEntered = Promise.withResolvers<void>();
-  await page.exposeFunction("__folioTransportEvaluationStarted", (transport: "boxed" | "cdp") => {
-    switch (transport) {
-      case "boxed":
-        return boxedEntered.resolve();
-      case "cdp":
-        return cdpEntered.resolve();
-      default: {
-        const exhaustive: never = transport;
-        return exhaustive;
-      }
-    }
-  });
-  await page.evaluate(() => {
-    const bridge = globalThis.__folioCanonical;
-    if (!bridge) throw new TypeError("Canonical bridge unavailable");
-    const completion = Promise.withResolvers<boolean>();
-    bridge.load = () => completion.promise;
-    globalThis.__folioCompleteTransportLoad = () => completion.resolve(true);
-  });
+  let entered = Promise.withResolvers<void>();
+  await page.exposeFunction("__folioTransportEvaluationStarted", () => entered.resolve());
   try {
+    await cdp.send("Runtime.enable");
     const { frameTree } = await cdp.send("Page.getFrameTree");
-    const operation = await page.evaluateHandle(
-      "({ pending: globalThis.__folioCanonical.load([]) })",
-    );
-    try {
-      const boxed = Result.tryPromise({
+    for (const transport of ["unrooted", "bridge", "handle", "handle-released", "cdp"] as const) {
+      entered = Promise.withResolvers<void>();
+      await page.evaluate((fixtureTransport) => {
+        const bridge = globalThis.__folioCanonical;
+        if (!bridge) throw new TypeError("Canonical bridge unavailable");
+        const createOperation = () => {
+          const { promise, resolve } = Promise.withResolvers<boolean>();
+          return Object.assign(promise, { complete: resolve });
+        };
+        globalThis.__folioCompleteTransportLoad = () => {
+          const pending = globalThis.__folioTransportPending?.deref();
+          if (!pending) return false;
+          pending.complete(true);
+          return true;
+        };
+        bridge.load = () => {
+          const pending = createOperation();
+          globalThis.__folioTransportPending = new WeakRef(pending);
+          // Only this case retains a source promise through the bridge closure.
+          if (fixtureTransport === "bridge") bridge.load = () => pending;
+          void globalThis.__folioTransportEvaluationStarted?.();
+          return pending;
+        };
+      }, transport);
+
+      if (transport === "handle" || transport === "handle-released") {
+        const operation = await page.evaluateHandle(
+          "({ pending: globalThis.__folioCanonical.load([]) })",
+        );
+        try {
+          // Both cases use the identical evaluator; releasing the handle is the ablation.
+          const loaded = Result.tryPromise({
+            try: () => operation.evaluate(({ pending }) => pending),
+            catch: (error: unknown) => error,
+          });
+          // A round trip on the evaluator's session establishes the call was sent
+          // before the remote root is released (no timing or retry barrier).
+          await operation.evaluate(() => true);
+          if (transport === "handle-released") await operation.dispose();
+          await cdp.send("HeapProfiler.collectGarbage");
+          const retained = await page.evaluate(() => globalThis.__folioCompleteTransportLoad?.());
+          const result = await loaded;
+          if (transport === "handle") {
+            expect(retained).toBe(true);
+            expect(result.isOk()).toBe(true);
+            if (result.isOk()) expect(result.value).toBe(true);
+          } else {
+            expect(retained).toBe(false);
+            expect(result.isErr()).toBe(true);
+            if (result.isErr())
+              expect(String(result.error)).toContain("Execution context was destroyed");
+          }
+        } finally {
+          await operation.dispose();
+        }
+        continue;
+      }
+
+      const loaded = Result.tryPromise({
         try: () =>
-          operation.evaluate(({ pending }) => {
-            void globalThis.__folioTransportEvaluationStarted?.("boxed");
-            return pending;
-          }),
+          transport === "cdp"
+            ? evaluateCanonicalLoad(page, [])
+            : cdp
+                .send("Runtime.evaluate", {
+                  expression: "globalThis.__folioCanonical.load([])",
+                  awaitPromise: true,
+                  returnByValue: true,
+                })
+                .then(({ result }) => result.value),
         catch: (error: unknown) => error,
       });
-      // The event establishes that the old evaluator is awaiting its wrapper;
-      // collection is adversarial input, with no timer or retry barrier.
-      await boxedEntered.promise;
-      for (let collection = 0; collection < 20; collection++)
-        await cdp.send("HeapProfiler.collectGarbage");
-      await page.evaluate(() => globalThis.__folioCompleteTransportLoad?.());
-      const result = await boxed;
-      expect(result.isErr(), "the boxed Playwright boundary must lose its awaited wrapper").toBe(
-        true,
-      );
-      if (result.isErr()) expect(String(result.error)).toContain("Execution context was destroyed");
-    } finally {
-      await operation.dispose();
-    }
-
-    await page.evaluate(() => {
-      const bridge = globalThis.__folioCanonical;
-      if (!bridge) throw new TypeError("Canonical bridge unavailable");
-      const completion = Promise.withResolvers<boolean>();
-      bridge.load = () => {
-        void globalThis.__folioTransportEvaluationStarted?.("cdp");
-        return completion.promise;
-      };
-      globalThis.__folioCompleteTransportLoad = () => completion.resolve(true);
-    });
-    const loaded = evaluateCanonicalLoad(page, []);
-    await cdpEntered.promise;
-    for (let collection = 0; collection < 20; collection++)
+      await entered.promise;
+      // One forced collection, after the load has returned across a protocol boundary.
       await cdp.send("HeapProfiler.collectGarbage");
-    await page.evaluate(() => globalThis.__folioCompleteTransportLoad?.());
-    expect(await loaded).toBe(true);
+      const retained = await page.evaluate(() => globalThis.__folioCompleteTransportLoad?.());
+      const result = await loaded;
+      if (transport === "unrooted") {
+        expect(retained).toBe(false);
+        expect(result.isErr()).toBe(true);
+        if (result.isErr()) expect(String(result.error)).toContain("Promise was collected");
+        continue;
+      }
+      expect(retained).toBe(true);
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) expect(result.value).toBe(true);
+    }
     assertCollectedTransportEvidence({ path: protocolPath, frameId: frameTree.frame.id });
   } finally {
+    const evidence = readFileSync(protocolPath, "utf8");
+    console.log(`Canonical transport protocol evidence:\n${evidence}`);
+    await test.info().attach("canonical-transport-protocol", {
+      body: evidence,
+      contentType: "application/x-ndjson",
+    });
     await cdp.detach();
   }
 });
