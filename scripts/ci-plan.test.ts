@@ -27,8 +27,8 @@ import {
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
 // The changeset gate runs beside the plan: it has its own pull-request-only
-// condition and nothing to scope.
-const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset", "ci-result"]);
+// condition and nothing to scope. Lint always checks repository toolchain policy.
+const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset", "lint", "ci-result"]);
 const AREA_OUTPUT =
   /^\$\{\{ github\.event_name == 'merge_group' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*) \}\}$/u;
 const GATE =
@@ -117,7 +117,8 @@ describe("CI plan", () => {
   test("each split job retains its complete command list and step depth guards", () => {
     const splitJobs = Object.entries(jobs)
       .filter(
-        ([, job]) =>
+        ([id, job]) =>
+          id === "lint" ||
           job.if === "needs.ci-plan.outputs.code_required == 'true'" ||
           job.if ===
             "needs.ci-plan.outputs.code_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'" ||
@@ -171,7 +172,7 @@ describe("CI plan", () => {
     expect(guardSteps).toEqual([
       { name: "Static source guards", run: "bun run test:source-guards" },
     ]);
-    expect(jobs["lint"]?.if).toBe("needs.ci-plan.outputs.code_required == 'true'");
+    expect(jobs["lint"]?.if).toBeUndefined();
   });
 
   test("discovery includes new nested test files under every command root", () => {

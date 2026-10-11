@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -183,5 +183,94 @@ describe("shared toolchain CI selection", () => {
       expect(runDetector({ result })).toEqual({ status: 0, output: "changed=true\n" });
     }
     expect(runDetector({ result: { status: "compared", changed: "false" } }).status).not.toBe(0);
+  });
+});
+
+describe("required shared toolchain policy", () => {
+  const lint = workflow.jobs.lint;
+  const evaluation = workflow.jobs["ci-result"].steps.find(
+    (step) => step.name === "Evaluate CI outcome",
+  );
+
+  test("the existing lint job always runs the policy without error tolerance", () => {
+    expect(lint.needs).toBe("ci-plan");
+    expect(lint.if).toBeUndefined();
+    expect(lint["continue-on-error"]).toBeUndefined();
+    const guards = lint.steps.filter((step) => step.run === "bun run check:toolchain");
+    expect(guards).toEqual([{ name: "Shared toolchain policy", run: "bun run check:toolchain" }]);
+    expect(JSON.parse(evaluation.env.JOB_SCOPES).lint).toEqual({});
+  });
+
+  test("the required outcome rejects unsuccessful lint even for scoped PRs", () => {
+    const scopes = JSON.parse(evaluation.env.JOB_SCOPES);
+    for (const codeRequired of ["true", "false"]) {
+      for (const lintResult of ["success", "failure", "skipped", "cancelled"]) {
+        const needs = Object.fromEntries(
+          Object.keys(scopes).map((name) => [name, { result: "success" }]),
+        );
+        needs.lint.result = lintResult;
+        const execution = Bun.spawnSync(["bash", "-c", evaluation.run], {
+          cwd: repo,
+          env: {
+            ...process.env,
+            EVENT: "pull_request",
+            PLAN_RESULT: "success",
+            NEEDS: JSON.stringify(needs),
+            PLAN: JSON.stringify({
+              trusted: "true",
+              suite_depth: "fast",
+              toolchain_changed: "false",
+              code_required: codeRequired,
+            }),
+            JOB_SCOPES: evaluation.env.JOB_SCOPES,
+          },
+        });
+        expect(execution.exitCode).toBe(lintResult === "success" ? 0 : 1);
+        if (lintResult !== "success") expect(execution.stdout.toString()).toContain("lint (");
+      }
+    }
+  });
+
+  test("the installed policy rejects an unpinned action in a tracked workflow", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "folio-toolchain-policy-"));
+    const policy = JSON.parse(
+      readFileSync(path.join(repo, "node_modules/@stll/oxlint-config/toolchain.json"), "utf8"),
+    );
+    const action = policy.actions["actions/checkout"];
+    const workflowFile = path.join(directory, ".github/workflows/example.yml");
+    const checker = path.join(repo, "node_modules/.bin/stll-toolchain-check");
+    const check = () => Bun.spawnSync(["bun", checker], { cwd: directory });
+    const writeWorkflow = (selector) =>
+      writeFileSync(
+        workflowFile,
+        `name: Example\non: push\njobs:\n  example:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${selector} # ${action.version}\n`,
+      );
+    try {
+      mkdirSync(path.dirname(workflowFile), { recursive: true });
+      writeFileSync(
+        path.join(directory, ".github/dependabot.yml"),
+        readFileSync(path.join(repo, ".github/dependabot.yml"), "utf8"),
+      );
+      writeWorkflow(action.sha);
+      for (const args of [
+        ["init", "--quiet"],
+        ["add", ".github"],
+      ]) {
+        expect(Bun.spawnSync(["git", ...args], { cwd: directory }).exitCode).toBe(0);
+      }
+      const approved = check();
+      expect({ status: approved.exitCode, diagnostics: approved.stderr.toString() }).toEqual({
+        status: 0,
+        diagnostics: "",
+      });
+      writeWorkflow(action.version);
+      const unpinned = check();
+      expect(unpinned.exitCode).toBe(1);
+      expect(unpinned.stderr.toString()).toContain(
+        "[action-pins] remote actions must use a full commit SHA",
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
