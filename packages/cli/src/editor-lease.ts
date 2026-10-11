@@ -351,6 +351,13 @@ export const acquireEditorLease = async ({
   });
 };
 
+// Background I/O failures must surface even though timers cannot await them.
+const surfaceBackgroundError = (error: unknown): void => {
+  queueMicrotask(() => {
+    throw error instanceof Error ? error : new Error(String(error));
+  });
+};
+
 export type LeaseKeeper = { stop: () => void };
 
 /**
@@ -374,7 +381,9 @@ export const keepEditorLeaseAlive = (
       onLost(renewed.error);
     }
   };
-  const timer = setInterval(() => void renew(), intervalMs);
+  const timer = setInterval(() => {
+    renew().catch(surfaceBackgroundError);
+  }, intervalMs);
   timer.unref();
   return {
     stop: () => {
@@ -426,13 +435,15 @@ export const watchFlushRequests = ({
   const watcher = Result.try(
     (): FSWatcher =>
       watch(path.dirname(documentPath), (_event, name) => {
-        if (name === null || name.startsWith(prefix)) void check();
+        if (name === null || name.startsWith(prefix)) check().catch(surfaceBackgroundError);
       }),
   );
   if (watcher.isOk()) watcher.value.on("error", () => undefined);
-  const timer = setInterval(() => void check(), pollMs);
+  const timer = setInterval(() => {
+    check().catch(surfaceBackgroundError);
+  }, pollMs);
   timer.unref();
-  void check();
+  check().catch(surfaceBackgroundError);
   return {
     close: () => {
       closed = true;

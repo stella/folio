@@ -23,7 +23,11 @@ import {
   prefetchMeasurement,
 } from "@stll/folio-core/layout-engine/measure/measureWorker";
 import { getCachedTextWidth } from "@stll/folio-core/layout-engine/measure/cache";
-import { projectCompressedDocx, type DocxProjectionWire } from "@stll/docx-core/projection";
+import {
+  docxProjectionSchemaVersion,
+  projectCompressedDocx,
+  type DocxProjectionWire,
+} from "@stll/docx-core/projection";
 
 import "@stll/folio-react/editor.css";
 
@@ -104,6 +108,7 @@ declare global {
         getEditorRef: () => DocxEditorRef | null;
         measureRoundTrip: () => Promise<{ width: number; alive: boolean }>;
         projectFixture: () => Promise<DocxProjectionWire>;
+        projectionSchemaVersion: typeof docxProjectionSchemaVersion;
       }
     | undefined;
 }
@@ -139,6 +144,7 @@ function App() {
         }
         return projectionPromise;
       },
+      projectionSchemaVersion: docxProjectionSchemaVersion,
     };
     return () => {
       globalThis.__folioSmoke = undefined;

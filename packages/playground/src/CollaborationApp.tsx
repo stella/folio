@@ -83,7 +83,7 @@ export function CollaborationApp() {
           </div>
           <div className="pg-collab-header__right">
             <AvatarStack users={users} />
-            <button type="button" className="pg-button" onClick={() => void handleCopyShareLink()}>
+            <button type="button" className="pg-button" onClick={handleCopyShareLink}>
               {shareCopied ? "Link copied!" : "Share link"}
             </button>
           </div>

@@ -92,6 +92,9 @@ test("canonical tracked terminal deletion preserves the preceding formatting req
         expect(state.doc.eq(session.projection.doc)).toBe(true);
       },
     ),
-    { numRuns: 24 },
+    {
+      numRuns: 24,
+      id: "canonical tracked terminal deletion preserves the preceding formatting request",
+    },
   );
 });

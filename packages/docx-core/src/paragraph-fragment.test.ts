@@ -3,11 +3,23 @@ import { readFile } from "node:fs/promises";
 
 import {
   DocxProjectionError,
+  docxProjectionSchemaVersion,
   initializeDocxProjection,
   projectMainDocumentXml,
   projectParagraphFragment,
 } from "./projection";
-import type { DocxProjectionStructure } from "./projection";
+import type {
+  DocxProjectionFormattingFamily,
+  DocxProjectionFormattingFamilyStatus,
+  DocxProjectionStructure,
+} from "./projection";
+
+const unavailableStylesFormatting = {
+  bold: ["unknown-missing-styles", "styles-part-unavailable"],
+  highlight: ["known"],
+  superscript: ["unknown-missing-styles", "styles-part-unavailable"],
+  alignment: ["unknown-missing-styles", "styles-part-unavailable"],
+} as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
 
 const packageNamespace = "http://schemas.microsoft.com/office/2006/xmlPackage";
 const documentNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -35,16 +47,18 @@ test("fragment preserves text and direct formatting with explicit partial eviden
   );
   const partial = await projectParagraphFragment(bytes);
   const full = await projectMainDocumentXml(bytes);
+  expect(partial[0]).toBe(await docxProjectionSchemaVersion());
   expect(partial[0]).toBe(full[0]);
   expect(partial[1]).toEqual(full[1]);
   expect(partial[1][0][1]).toBe("A & 😀");
+  expect(partial[1][0][7]).toBe("body");
   expect(partial[1][0][3]).toEqual([
     [0, 6, "bold"],
     [0, 6, "highlight"],
   ]);
   expect(partial[2]).toEqual(full[2].map(() => ["unknown", "paragraph-fragment"]));
   expect(partial[3]).toEqual(full[3]);
-  expect(partial[4]).toEqual(["incomplete", "styles-part-unavailable"]);
+  expect(partial[4]).toEqual(unavailableStylesFormatting);
 });
 
 test.each(["", "<doc:p/><doc:p/>"])(
@@ -64,5 +78,19 @@ test("fragment cannot publish document-relative table coordinates", async () => 
   expect(full[1][0]?.[4]).toEqual(["table", "table-0", 0, 0]);
   const partial = await projectParagraphFragment(bytes);
   expect(partial[1][0][4]).toEqual([] as const satisfies DocxProjectionStructure);
+  expect(partial[1][0][7]).toBe("tableCell");
+  expect(full[1][0]?.[7]).toBe("tableCell");
   expect(partial[2]).toEqual(full[2].map(() => ["unknown", "paragraph-fragment"]));
+});
+
+test("fragment keeps supported direct alignment known without styles", async () => {
+  const partial = await projectParagraphFragment(
+    new TextEncoder().encode(
+      fragment(
+        '<doc:p><doc:pPr><doc:jc doc:val="center"/></doc:pPr><doc:r><doc:t>Direct</doc:t></doc:r></doc:p>',
+      ),
+    ),
+  );
+  expect(partial[1][0]?.[6]).toEqual(["center", "direct"]);
+  expect(partial[4].alignment).toEqual(["known"]);
 });

@@ -194,6 +194,7 @@ describe("listRendering.levelStarts round-trip", () => {
           }
         },
       ),
+      { id: "definition matching excludes generated paragraph counter and folded-field metadata" },
     );
     expect(cases).toBeGreaterThan(0);
   });
@@ -377,7 +378,10 @@ describe("listRendering.levelStarts round-trip", () => {
           }
         },
       ),
-      { numRuns: 30 },
+      {
+        numRuns: 30,
+        id: "generated secondary-story projections follow changing package definitions rather than cached rendering",
+      },
     );
   });
 

@@ -6,6 +6,7 @@
     "types": ["bun-types"]
   },
   "include": [
+    "../test/typecheck/*.typecheck.ts",
     "api-surface-budget.ts",
     "check-canonical-cutover.ts",
     "canonical-cutover.test.ts",

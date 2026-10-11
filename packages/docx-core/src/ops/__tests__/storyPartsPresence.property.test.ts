@@ -62,6 +62,10 @@ test("generated lifecycle inverses preserve absent and own-undefined maps and fi
         expect(redone.document).toStrictEqual(applied.document);
       },
     ),
-    { seed: 20261015, numRuns: 40 },
+    {
+      seed: 20261015,
+      numRuns: 40,
+      id: "generated lifecycle inverses preserve absent and own-undefined maps and final properties",
+    },
   );
 });

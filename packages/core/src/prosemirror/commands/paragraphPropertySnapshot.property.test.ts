@@ -157,6 +157,7 @@ test(
           [{ indentLeft: 0, indentFirstLine: 0 }, {}, false],
           [{ indentLeft: 480, indentFirstLine: 120 }, {}, false],
         ],
+        id: "paragraph snapshots and resolution preserve authored indentation through provenance materialization",
       },
     );
   },

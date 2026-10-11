@@ -40,6 +40,9 @@ test("canonical drivers release owned DOM across overlapping mount and teardown 
       expect(globalThis.fetch).toBe(fetchBefore);
       expect(globalThis.URL).toBe(urlBefore);
     }),
-    { numRuns: 20 },
+    {
+      numRuns: 20,
+      id: "canonical drivers release owned DOM across overlapping mount and teardown sequences",
+    },
   );
 });

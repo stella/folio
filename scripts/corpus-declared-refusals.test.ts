@@ -170,7 +170,10 @@ describe("declared operation refusals", () => {
             ).toContain("declared refusal");
           },
         ),
-        { numRuns: 30 },
+        {
+          numRuns: 30,
+          id: "refusal accounting merges, deduplicates per file and never counts a pass",
+        },
       );
     },
     propertyTestTimeout(30_000),

@@ -26,7 +26,7 @@ test("alike merges consume surviving text within the maximum source depth", () =
       expect(mergeLists([branch("a")], [branch("b")], depth)).toStrictEqual([branch("ab")]);
       expect(mergeLists([branch("a")], [branch("b")], 0)).toStrictEqual([branch("a"), branch("b")]);
     }),
-    { numRuns: 50 },
+    { numRuns: 50, id: "alike merges consume surviving text within the maximum source depth" },
   );
 });
 
@@ -72,6 +72,6 @@ test("open continuations preserve the source wrapper's cut facts", () => {
         ).toBeUndefined();
       },
     ),
-    { numRuns: 50 },
+    { numRuns: 50, id: "open continuations preserve the source wrapper's cut facts" },
   );
 });

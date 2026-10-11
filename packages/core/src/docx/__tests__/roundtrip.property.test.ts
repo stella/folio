@@ -335,7 +335,7 @@ describe("DOCX round-trip property tests", () => {
           const resultNorm = normalizeDoc(result);
           expect(resultNorm).toEqual(originalNorm);
         }),
-        { numRuns: 200 },
+        { numRuns: 200, id: "round-trip preserves document structure" },
       );
     },
     propertyTestTimeout(10_000),
@@ -612,7 +612,7 @@ describe("DOCX round-trip property tests", () => {
           const resultNorm = normalizeDoc(result);
           expect(resultNorm).toEqual(originalNorm);
         }),
-        { numRuns: 200 },
+        { numRuns: 200, id: "multiple mark combinations survive round-trip" },
       );
     },
     propertyTestTimeout(10_000),

@@ -8,9 +8,9 @@ pub mod wasm;
 pub use projection::{
     AttributedComment, AttributedRevision, BookmarkFact, CommentContent, DocumentPackageProjection,
     DocumentParts, DocumentProjection, DocumentReviewFacts, DocumentStructureFacts, DocxLimits,
-    FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
+    FormattingCompleteness, FormattingFactStatus, FormattingUnknownReason, InternalParagraphId,
     InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact, PackageParagraphId,
-    ParagraphAlignmentFact, ParagraphAlignmentSource, ParagraphAlignmentValue,
+    ParagraphAlignmentFact, ParagraphAlignmentSource, ParagraphAlignmentValue, ParagraphContainer,
     ParagraphIdentityFacts, ParagraphIndentation, ParagraphIndentationFact,
     ParagraphOutlineLevelFact, ParagraphStructure, ProjectedParagraph, ProjectionError,
     ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,

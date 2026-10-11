@@ -69,7 +69,7 @@ test(
           }
         },
       ),
-      { numRuns: 30 },
+      { numRuns: 30, id: "whole-field deletion retains nested child insertion paths" },
     );
   },
   propertyTestTimeout(5_000),
@@ -158,7 +158,7 @@ test(
           expect(tr.doc.toJSON()).toEqual(first);
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 100, id: "range deletion preserves every existing deletion and is idempotent" },
     );
   },
   propertyTestTimeout(5_000),
@@ -255,7 +255,7 @@ test(
           }
         },
       ),
-      { numRuns: 30 },
+      { numRuns: 30, id: "deletion ownership matrix resolves alike live and after saving" },
     );
   },
   propertyTestTimeout(30_000),
@@ -328,7 +328,10 @@ test(
           }
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "nested insertion carriers preserve protected descendant revisions under both policies",
+      },
     );
   },
   propertyTestTimeout(5_000),

@@ -1,0 +1,10 @@
+{
+  "bilingual carries every non-stamped body block in source order": [
+    {
+      "seed": -1762076387,
+      "path": "0:0:0:0:0",
+      "note": "Old bilingual walk drops a body permission pair; verified by ablation.",
+      "date": "2026-10-11"
+    }
+  ]
+}

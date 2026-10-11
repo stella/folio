@@ -114,7 +114,10 @@ test(
             });
           }
         }),
-        { numRuns: 3 },
+        {
+          numRuns: 3,
+          id: "host flow fixtures remain schema valid through replacement and headless edits",
+        },
       );
     } finally {
       await cleanup();

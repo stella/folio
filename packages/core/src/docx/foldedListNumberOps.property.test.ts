@@ -227,7 +227,10 @@ describe("the fold's rule after document operations", () => {
           }
         },
       ),
-      { numRuns: 300 },
+      {
+        numRuns: 300,
+        id: "no split, join or typed text leaves a field hidden where its marker does not show it",
+      },
     );
   });
 

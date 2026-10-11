@@ -289,7 +289,7 @@ test("block deletion satisfies L1–L7, exact id demand and stale inverses", () 
         expect(document).toStrictEqual(original);
       },
     ),
-    { numRuns: NUM_RUNS },
+    { numRuns: NUM_RUNS, id: "block deletion satisfies L1–L7, exact id demand and stale inverses" },
   );
 });
 
@@ -371,7 +371,10 @@ test("terminal deletion folds existing property reviews with stable identity and
         expect(document).toStrictEqual(original);
       },
     ),
-    { numRuns: 100 },
+    {
+      numRuns: 100,
+      id: "terminal deletion folds existing property reviews with stable identity and exact inverses",
+    },
   );
 });
 
@@ -426,6 +429,9 @@ test("independent deletion sequences satisfy batch acceptance, rejection and inv
         expect(reversed).toStrictEqual(document);
       },
     ),
-    { numRuns: NUM_RUNS },
+    {
+      numRuns: NUM_RUNS,
+      id: "independent deletion sequences satisfy batch acceptance, rejection and inverse laws",
+    },
   );
 });

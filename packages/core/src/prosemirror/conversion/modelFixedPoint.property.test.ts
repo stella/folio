@@ -173,7 +173,7 @@ describe("list rendering fixed point under a no-op rebuild", () => {
         expectParagraphFixedPoint(document);
         expect(markers(rebuild(document))).toEqual(markers(document));
       }),
-      { numRuns: 25 },
+      { numRuns: 25, id: "generated numbering definitions keep their metadata and markers" },
     );
   });
 
@@ -215,7 +215,10 @@ describe("list rendering fixed point under a no-op rebuild", () => {
           expect(markers(rebuild(document))).toEqual(markers(document));
         },
       ),
-      { numRuns: 25 },
+      {
+        numRuns: 25,
+        id: "generated symbol-font bullets and folded LISTNUM fields preserve parsed rendering",
+      },
     );
   });
 });

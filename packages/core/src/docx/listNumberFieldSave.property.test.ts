@@ -897,6 +897,7 @@ test(
             ],
           ],
         ],
+        id: "saving generated paragraphs whose list markers hold LISTNUM fields > every field goes back where it stood and the markers stay as they were",
       },
     );
   },
@@ -1081,6 +1082,7 @@ describe("saving after splits, joins, typing and copies in the editor", () => {
               ],
             ],
           ],
+          id: "no field is written hidden unless its paragraph's marker shows it, and none is lost",
         },
       );
     },

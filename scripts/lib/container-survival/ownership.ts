@@ -128,7 +128,7 @@ export const claimedPairs = (claim: ChildOwnerClaim): string[] =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-/** Every file under `packages/*​/src` that constructs an owner claim. */
+/** Every file under `packages/<package>/src` that constructs an owner claim. */
 const claimingModules = async (): Promise<string[]> => {
   const files: string[] = [];
   for await (const file of new Glob("*/src/**/*.ts").scan({

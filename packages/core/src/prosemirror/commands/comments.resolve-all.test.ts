@@ -197,7 +197,12 @@ describe("resolve-all command equivalence", () => {
             expectEquivalent(state);
           },
         ),
-        { seed: 2_609_260, numRuns: 32, verbose: true },
+        {
+          seed: 2_609_260,
+          numRuns: 32,
+          verbose: true,
+          id: "matches the legacy whole-document range over mixed paragraph and table revisions",
+        },
       );
     },
     propertyTestTimeout(30_000),

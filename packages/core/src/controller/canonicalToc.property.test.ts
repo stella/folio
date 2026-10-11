@@ -231,7 +231,10 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
         }
       },
     ),
-    { numRuns: 18 },
+    {
+      numRuns: 18,
+      id: "generated TOC histories preserve anchors, canonical styles, fields, section widths and exact inverse",
+    },
   );
 });
 
@@ -255,7 +258,10 @@ test("TOC suggesting retains the named expected refusal without publishing headi
       expect(session.version).toBe(0);
       expect(session.canUndo).toBe(false);
     }),
-    { numRuns: 18 },
+    {
+      numRuns: 18,
+      id: "TOC suggesting retains the named expected refusal without publishing headings or allocating ids",
+    },
   );
 });
 
@@ -309,7 +315,7 @@ test("PAGEREF cache length never changes atom address width", () => {
         expect(session.projection.addressAt(position).unwrap().offset).toBe(offset);
       }
     }),
-    { numRuns: 12 },
+    { numRuns: 12, id: "PAGEREF cache length never changes atom address width" },
   );
 });
 
@@ -354,6 +360,6 @@ test("TOC after undo never reuses retired paragraph identities", () => {
       expect(fresh.some((id) => retired.has(id))).toBe(false);
       expect(session.canRedo).toBe(false);
     }),
-    { numRuns: 12 },
+    { numRuns: 12, id: "TOC after undo never reuses retired paragraph identities" },
   );
 });

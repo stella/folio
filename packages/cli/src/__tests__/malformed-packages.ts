@@ -92,7 +92,10 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
   {
     name: "a package without [Content_Types].xml",
     reason: "contentTypesMissing",
-    build: (valid) => rewritten(valid, (zip) => void zip.remove("[Content_Types].xml")),
+    build: (valid) =>
+      rewritten(valid, (zip) => {
+        zip.remove("[Content_Types].xml");
+      }),
   },
   {
     name: "content types in another namespace",
@@ -107,12 +110,18 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
   {
     name: "a package without _rels/.rels",
     reason: "relationshipsMissing",
-    build: (valid) => rewritten(valid, (zip) => void zip.remove("_rels/.rels")),
+    build: (valid) =>
+      rewritten(valid, (zip) => {
+        zip.remove("_rels/.rels");
+      }),
   },
   {
     name: "package relationships that are not XML",
     reason: "relationshipsInvalid",
-    build: (valid) => rewritten(valid, (zip) => void zip.file("_rels/.rels", "<Relationships")),
+    build: (valid) =>
+      rewritten(valid, (zip) => {
+        zip.file("_rels/.rels", "<Relationships");
+      }),
   },
   {
     name: "no main document relationship",
@@ -140,7 +149,10 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
   {
     name: "a package without word/document.xml",
     reason: "mainPartMissing",
-    build: (valid) => rewritten(valid, (zip) => void zip.remove("word/document.xml")),
+    build: (valid) =>
+      rewritten(valid, (zip) => {
+        zip.remove("word/document.xml");
+      }),
   },
   {
     name: "a main part of another content type",
@@ -159,20 +171,17 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     name: "a main part whose root is not a document",
     reason: "mainPartRoot",
     build: (valid) =>
-      rewritten(
-        valid,
-        (zip) => void zip.file("word/document.xml", `<w:styles xmlns:w="${W_NS}"/>`),
-      ),
+      rewritten(valid, (zip) => {
+        zip.file("word/document.xml", `<w:styles xmlns:w="${W_NS}"/>`);
+      }),
   },
   {
     name: "a document root in another namespace",
     reason: "mainPartRoot",
     build: (valid) =>
-      rewritten(
-        valid,
-        (zip) =>
-          void zip.file("word/document.xml", '<w:document xmlns:w="urn:x"><w:body/></w:document>'),
-      ),
+      rewritten(valid, (zip) => {
+        zip.file("word/document.xml", '<w:document xmlns:w="urn:x"><w:body/></w:document>');
+      }),
   },
   {
     name: "a main document folio does not read",
@@ -195,10 +204,9 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
     name: "two entries with one part name",
     reason: "duplicatePartName",
     build: (valid) =>
-      rewritten(
-        valid,
-        (zip) => void zip.file("WORD/DOCUMENT.XML", `<w:document xmlns:w="${W_NS}"/>`),
-      ),
+      rewritten(valid, (zip) => {
+        zip.file("WORD/DOCUMENT.XML", `<w:document xmlns:w="${W_NS}"/>`);
+      }),
   },
   {
     name: "two entries with exactly the same part name",

@@ -260,7 +260,10 @@ test(
             assertNotePasteRefusal({ occurrenceId: "" });
           },
         ),
-        { numRuns: 20 },
+        {
+          numRuns: 20,
+          id: "external note attribution reaches paste refusal in both session modes without mutation",
+        },
       );
     } finally {
       GlobalRegistrator.unregister();
@@ -279,7 +282,10 @@ test(
           fc.array(fc.constantFrom(" ", "\t", "\r", "\n", "\u00a0", "\u2028"), { maxLength: 16 }),
           (characters) => assertNotePasteRefusal({ occurrenceId: characters.join("") }),
         ),
-        { numRuns: 20 },
+        {
+          numRuns: 20,
+          id: "blank note occurrence identities reach paste refusal without mutation",
+        },
       );
     } finally {
       GlobalRegistrator.unregister();
@@ -1459,6 +1465,9 @@ test(
             }
           },
         ),
+        {
+          id: "canonical undescribed commands preserve non-document effects and refuse raw mutations",
+        },
       );
       for (const count of Object.values(counts)) expect(count).toBeGreaterThan(0);
     } finally {

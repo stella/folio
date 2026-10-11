@@ -70,6 +70,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { installCleanRoomDependencies } from "./clean-room-install";
 import { scanDistUrlTargets } from "./dist-url-targets";
 import {
   REACT_PEER_MAJORS,
@@ -277,7 +278,7 @@ if (target === "nuxt") {
     "prosemirror-view@^1",
   );
 }
-await $`bun add ${installArgs}`.cwd(consumerDir).quiet();
+await installCleanRoomDependencies({ consumerDir, dependencies: installArgs });
 
 const installedDir = path.join(consumerDir, "node_modules", ...pkgName.split("/"));
 const installedDist = path.join(installedDir, "dist");
@@ -296,6 +297,7 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "DocxProjectionInitializationError",
       "initializeDocxProjection",
       "projectCompressedDocx",
+      "docxProjectionSchemaVersion",
       "projectCompressedDocxWithReviewFacts",
     ],
   },
@@ -479,6 +481,9 @@ import {
   projectCompressedDocx,
   projectCompressedDocxWithReviewFacts,
   type DocxPackageProjectionWire,
+  type DocxProjectionFormattingCompleteness,
+  type DocxProjectionFormattingFamily,
+  type DocxProjectionFormattingFamilyStatus,
   type DocxProjectionWire,
 } from "@stll/docx-core/projection";
 
@@ -497,6 +502,9 @@ export type Surface = [
   Run,
   DocumentOp,
   DocxProjectionWire,
+  DocxProjectionFormattingCompleteness,
+  DocxProjectionFormattingFamily,
+  DocxProjectionFormattingFamilyStatus,
   DocxPackageProjectionWire,
 ];
 `,
@@ -589,7 +597,10 @@ const typeCheckReactMajors: (ReactPeerMajor | null)[] =
   target === "react" ? [...REACT_PEER_MAJORS] : [null];
 for (const reactMajor of typeCheckReactMajors) {
   if (reactMajor !== null) {
-    await $`bun add ${reactPeerInstallArgs(reactMajor)}`.cwd(consumerDir).quiet();
+    await installCleanRoomDependencies({
+      consumerDir,
+      dependencies: reactPeerInstallArgs(reactMajor),
+    });
   }
 
   const typeChecks = await Promise.all(

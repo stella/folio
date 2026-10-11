@@ -410,7 +410,10 @@ describe("tracked whole table properties", () => {
               expect(paragraphIdsIn(accepted.document)).toContain(id(4));
             }
           }),
-          { numRuns: NUM_RUNS },
+          {
+            numRuns: NUM_RUNS,
+            id: "${family}: L1 accept, L2 reject, L4 inverse, L5 determinism, L6 locality and S8 review shape",
+          },
         );
       },
       propertyTestTimeout(240_000),
@@ -490,7 +493,10 @@ describe("tracked whole table properties", () => {
           if (undone.isErr()) throw undone.error;
           expect(undone.value.document).toStrictEqual(original);
         }),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "L3 batches: table insertion, original-span deletion and other-table deletion resolve together or separately",
+        },
       );
     },
     propertyTestTimeout(240_000),
@@ -661,7 +667,10 @@ describe("tracked whole table properties", () => {
             }
           },
         ),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "unsupported nested tables, cell records, moves and conflicting revisions refuse atomically",
+        },
       );
     },
     propertyTestTimeout(240_000),
@@ -727,7 +736,10 @@ describe("tracked whole table properties", () => {
           exactInverse(marksKept.document, completed);
           expect(identityKeysIn(completed.document)).toEqual(identityKeysIn(original));
         }),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "partial resolution retains cell final marks after keeping rows and restores them exactly through inverses",
+        },
       );
     },
     propertyTestTimeout(240_000),

@@ -60,7 +60,7 @@ describe("numeric OOXML identifier writer guard", () => {
           );
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 100, id: "range preflight sees identity attributes inside identity-value tags" },
     );
   });
 
@@ -135,7 +135,10 @@ describe("numeric OOXML identifier writer guard", () => {
           }
         },
       ),
-      { numRuns: 100 },
+      {
+        numRuns: 100,
+        id: "preflight and the writer agree over both numeric domains, aliases and encoded values",
+      },
     );
   });
 

@@ -328,7 +328,10 @@ test("generated multi-step transported operations keep exact immediate undo and 
         }
       },
     ),
-    { numRuns: 100 },
+    {
+      numRuns: 100,
+      id: "generated multi-step transported operations keep exact immediate undo and the complete journal",
+    },
   );
 });
 
@@ -465,7 +468,10 @@ test("generated property patches preserve omitted, owned undefined and concrete 
         }
       },
     ),
-    { numRuns: 100 },
+    {
+      numRuns: 100,
+      id: "generated property patches preserve omitted, owned undefined and concrete values through every inverse",
+    },
   );
 });
 
@@ -563,7 +569,10 @@ test("generated paragraph mark cut-depth presence survives captured journals and
         deepStrictEqual(document, before);
       }
     }),
-    { numRuns: 100 },
+    {
+      numRuns: 100,
+      id: "generated paragraph mark cut-depth presence survives captured journals and exact histories",
+    },
   );
 });
 
@@ -647,6 +656,9 @@ test("generated split marks transport source cut depths without losing independe
       deepStrictEqual(redo.document, transported.document);
       deepStrictEqual(document, before);
     }),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "generated split marks transport source cut depths without losing independent authored bidi siblings",
+    },
   );
 });

@@ -383,6 +383,9 @@ test("cross-paragraph deletion and replacement plans satisfy generated review la
           .map(({ paraId }) => paraId),
       ).toEqual([finalId]);
     }),
-    { numRuns: 2_000 },
+    {
+      numRuns: 2_000,
+      id: "cross-paragraph deletion and replacement plans satisfy generated review laws",
+    },
   );
 });

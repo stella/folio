@@ -39,7 +39,10 @@ test("repeated list definitions keep independent counters and observe edits betw
         );
       }
     }),
-    { numRuns: 30 },
+    {
+      numRuns: 30,
+      id: "repeated list definitions keep independent counters and observe edits between renders",
+    },
   );
 });
 
@@ -65,6 +68,9 @@ test("numbering-only style resolution stays bound to the full paragraph cascade"
         );
       }
     }),
-    { numRuns: 50 },
+    {
+      numRuns: 50,
+      id: "numbering-only style resolution stays bound to the full paragraph cascade",
+    },
   );
 });

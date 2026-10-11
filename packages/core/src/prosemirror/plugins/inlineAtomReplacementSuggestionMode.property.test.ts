@@ -161,7 +161,10 @@ describe("suggesting mode replaces a node-selected inline atom as a tracked chan
             }
           },
         ),
-        { numRuns: 60 },
+        {
+          numRuns: 60,
+          id: "accept-all reads as the direct edit and reject-all restores the original",
+        },
       );
     },
     propertyTestTimeout(30_000),

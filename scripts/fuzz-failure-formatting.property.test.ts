@@ -36,6 +36,6 @@ test("failure identity and diff shape are invariant under ANSI decoration", () =
         expect(failureClass(plain.test, decorated).key).toBe(failureClass(plain.test, message).key);
       },
     ),
-    { numRuns: 50 },
+    { numRuns: 50, id: "failure identity and diff shape are invariant under ANSI decoration" },
   );
 });

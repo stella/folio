@@ -424,7 +424,10 @@ describe("table row operation properties", () => {
             expect(resolve(rejectedOnce, tracked.revisions, "reject")).toStrictEqual(document);
           }
         }),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "${kind}: L1 acceptance, L2 rejection, inverse, determinism and locality",
+        },
       );
     });
   }
@@ -488,7 +491,10 @@ describe("table row operation properties", () => {
           expect(resolve(acceptedOnce, revisionIds, "accept")).toStrictEqual(acceptedOnce);
         },
       ),
-      { numRuns: NUM_RUNS },
+      {
+        numRuns: NUM_RUNS,
+        id: "tracked insertion then deletion of another original row obeys the batch law",
+      },
     );
   });
 });

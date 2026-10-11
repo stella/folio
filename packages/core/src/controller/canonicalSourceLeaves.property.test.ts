@@ -57,7 +57,10 @@ test(
           }
         },
       ),
-      { numRuns: 12 },
+      {
+        numRuns: 12,
+        id: "generated omitted run leaves refuse activation without throwing or mutating their source",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -84,7 +87,10 @@ test(
           expect(document).toEqual(unchanged);
         },
       ),
-      { numRuns: 12 },
+      {
+        numRuns: 12,
+        id: "generated hyphen leaves retain their strict projection and address roundtrip",
+      },
     );
   },
   propertyTestTimeout(30_000),

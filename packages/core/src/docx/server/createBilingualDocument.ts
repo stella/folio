@@ -23,7 +23,7 @@
 import { createBookmarkIdAllocator } from "../bookmarkIds";
 import { createNumberingIdAllocator } from "../numberingIds";
 
-import { TaggedError } from "better-result";
+import { panic, TaggedError } from "better-result";
 
 import {
   mergeParagraphNumbering,
@@ -263,6 +263,11 @@ export function createBilingualDocument(
       sectionRows.push(buildRow(block, copy, styleById, textWidth));
       continue;
     }
+    if (block.type !== "table") {
+      flushSection();
+      content.push(block);
+      continue;
+    }
     const paragraphs = collectTableParagraphs(block)
       .filter((paragraph) => isTranslatableParagraph(paragraph, options.editableParagraphIds))
       .map((paragraph) => ({
@@ -324,7 +329,7 @@ export function createBilingualDocument(
 // Blocks
 // ----------------------------------------------------------------------------
 
-type BodyBlock = Paragraph | Table;
+type BodyBlock = Exclude<BlockContent, { type: "blockSdt" | "blockCustomXml" }>;
 
 /** Handle for a table row whose paragraphs carry no `paraId`: its position in
  *  the manifest, which creation and reading derive identically. */
@@ -334,15 +339,25 @@ const tableRowHandle = (index: number): string => `table-${index}`;
 const flattenBlocks = (content: BlockContent[]): BodyBlock[] => {
   const out: BodyBlock[] = [];
   const visit = (block: BlockContent): void => {
-    if (block.type === "paragraph" || block.type === "table") {
-      out.push(block);
-      return;
-    }
-    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
-      return;
-    }
-    for (const child of block.content) {
-      visit(child);
+    switch (block.type) {
+      // These blocks receive bilingual rows when their paragraphs are editable.
+      case "paragraph":
+      case "table":
+      // Opaque markup and range boundaries stay unchanged, once, in source order.
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+        out.push(block);
+        return;
+      case "blockSdt":
+      case "blockCustomXml":
+        for (const child of block.content) {
+          visit(child);
+        }
+        return;
+      default:
+        block satisfies never;
+        panic("Unsupported bilingual body block");
     }
   };
   for (const block of content) {

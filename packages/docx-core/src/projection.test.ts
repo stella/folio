@@ -4,12 +4,38 @@ import { beforeAll, describe, expect, test } from "bun:test";
 
 import {
   DocxProjectionError,
+  docxProjectionSchemaVersion,
   initializeDocxProjection,
   projectCompressedDocx,
   projectMainDocumentXml,
   projectCompressedDocxWithReviewFacts,
 } from "./projection";
 import type { DocxAttributedComment, DocxReviewFactsWire, DocxReviewFactSet } from "./projection";
+import type {
+  DocxProjectionFormattingFamily,
+  DocxProjectionFormattingFamilyStatus,
+} from "./projection";
+
+const unavailableStylesFormatting = {
+  bold: ["unknown-missing-styles", "styles-part-unavailable"],
+  highlight: ["known"],
+  superscript: ["unknown-missing-styles", "styles-part-unavailable"],
+  alignment: ["unknown-missing-styles", "styles-part-unavailable"],
+} as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
+
+const documentOnlyFormatting = {
+  bold: ["unknown-missing-styles", "document-part-only"],
+  highlight: ["known"],
+  superscript: ["unknown-missing-styles", "document-part-only"],
+  alignment: ["unknown-missing-styles", "document-part-only"],
+} as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
+
+const unreadFormatting = {
+  bold: ["unknown-unread", "unsupported-styles"],
+  highlight: ["unknown-unread", "unsupported-styles"],
+  superscript: ["unknown-unread", "unsupported-styles"],
+  alignment: ["known"],
+} as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
 
 const documentXml = `<?xml version="1.0" encoding="UTF-8"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -42,18 +68,22 @@ describe("DOCX projection TypeScript binding", () => {
   test("runs the versioned Rust projection through WebAssembly", async () => {
     const projection = await projectCompressedDocx(await createDocument());
 
-    expect(projection[0]).toBe(5);
+    expect(projection[0]).toBe(await docxProjectionSchemaVersion());
     expect(projection[1].map(([, text]) => text)).toEqual(["Before", "Inside"]);
+    expect(projection[1].map((paragraph) => paragraph[7])).toEqual(["body", "tableCell"]);
     expect(projection[1][1]?.[4]).toEqual(["table", "table-0", 0, 0]);
-    expect(projection[4]).toEqual(["incomplete", "styles-part-unavailable"]);
+    expect(projection[4]).toEqual(unavailableStylesFormatting);
   });
 
   test("projects raw main-document paragraphs exactly like compressed input", async () => {
     const projection = await projectMainDocumentXml(new TextEncoder().encode(documentXml));
     const compressed = await projectCompressedDocx(await createDocument());
+    const schemaVersion = await docxProjectionSchemaVersion();
+    expect(projection[0]).toBe(schemaVersion);
+    expect(compressed[0]).toBe(schemaVersion);
     expect(projection[0]).toBe(compressed[0]);
     expect(projection[1]).toEqual(compressed[1]);
-    expect(projection[4]).toEqual(["incomplete", "document-part-only"]);
+    expect(projection[4]).toEqual(documentOnlyFormatting);
   });
 
   test("selects the related main part from a multipart Flat OPC package", async () => {
@@ -90,6 +120,25 @@ describe("DOCX projection TypeScript binding", () => {
     expect(projection).toEqual(compressed);
     expect(projection[1].map(([, text]) => text)).toEqual(["Main"]);
     expect(projection[1][0]?.[3]).toEqual([[0, 4, "bold"]]);
+  });
+
+  test("direct table-cell highlight is known without a styles part", async () => {
+    const mainNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const packageNamespace = "http://schemas.microsoft.com/office/2006/xmlPackage";
+    const relationshipNamespace = "http://schemas.openxmlformats.org/package/2006/relationships";
+    const relationshipType =
+      "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+    const main = `<w:document xmlns:w="${mainNamespace}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body><w:tbl><w:tr><w:tc><w:p w14:paraId="00000001"><w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t>Highlighted clause</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`;
+    const flat = `<pkg:package xmlns:pkg="${packageNamespace}">
+      <pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/xml"><pkg:xmlData><Relationships xmlns="${relationshipNamespace}"><Relationship Type="${relationshipType}" Target="content/main.xml"/></Relationships></pkg:xmlData></pkg:part>
+      <pkg:part pkg:name="/content/main.xml" pkg:contentType="application/xml"><pkg:xmlData>${main}</pkg:xmlData></pkg:part>
+    </pkg:package>`;
+    const projection = await projectMainDocumentXml(new TextEncoder().encode(flat));
+    expect(projection[4]).toEqual(unavailableStylesFormatting);
+    expect(projection[1]).toHaveLength(1);
+    expect(projection[1][0]?.[2]).toBe("00000001");
+    expect(projection[1][0]?.[3]).toEqual([[0, 18, "highlight"]]);
+    expect(projection[1][0]?.[4]).toEqual(["table", "table-0", 0, 0]);
   });
 
   test.each([
@@ -182,7 +231,7 @@ describe("DOCX projection TypeScript binding", () => {
       [0, 1, "bold"],
       [5, 6, "bold"],
     ]);
-    expect(projection[4]).toEqual(["incomplete", "unsupported-styles"]);
+    expect(projection[4]).toEqual(unreadFormatting);
   });
 
   test("selects regular and complex-script bold at the WebAssembly boundary", async () => {
@@ -228,7 +277,7 @@ describe("DOCX projection TypeScript binding", () => {
     ]);
   });
 
-  test("resolves paragraph alignment from direct w:jc and from the style chain", async () => {
+  test("resolves paragraph alignment from direct w:jc, styles, and document defaults", async () => {
     const archive = new JSZip();
     archive.file(
       "word/document.xml",
@@ -236,19 +285,40 @@ describe("DOCX projection TypeScript binding", () => {
     );
     addStylesPart(
       archive,
-      `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Justified"><w:pPr><w:jc w:val="both"/></w:pPr></w:style></w:styles>`,
+      `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:pPrDefault><w:pPr><w:jc w:val="left"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:styleId="Justified"><w:pPr><w:jc w:val="both"/></w:pPr></w:style></w:styles>`,
     );
 
     const projection = await projectCompressedDocx(
       await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
     );
 
-    expect(projection[1].map((paragraph) => paragraph.length)).toEqual([7, 7, 7]);
+    expect(projection[1].map((paragraph) => paragraph.length)).toEqual([8, 8, 8]);
     expect(projection[1].map((paragraph) => paragraph[6])).toEqual([
       ["center", "direct"],
       ["justify", "style"],
-      null,
+      ["left", "docDefaults"],
     ]);
+    expect(projection[4].alignment).toEqual(["known"]);
+  });
+
+  test("direct alignment remains known without styles while absent alignment needs styles", async () => {
+    for (const [properties, alignment, status] of [
+      ['<w:jc w:val="right"/>', ["right", "direct"], ["known"]],
+      ["", null, ["unknown-missing-styles", "styles-part-unavailable"]],
+      ['<w:jc w:val="start"/>', null, ["unknown-unread", "unsupported-alignment"]],
+    ] as const) {
+      const archive = new JSZip();
+      archive.file(
+        "word/document.xml",
+        `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr>${properties}</w:pPr><w:r><w:t>Alignment</w:t></w:r></w:p></w:body></w:document>`,
+      );
+      const bytes = await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
+      const projection = await projectCompressedDocx(bytes);
+      const fused = await projectCompressedDocxWithReviewFacts(bytes);
+      expect(fused[1]).toEqual(projection);
+      expect(projection[1][0]?.[6]).toEqual(alignment);
+      expect(projection[4].alignment).toEqual(status);
+    }
   });
 
   test("wraps malformed packages in a typed boundary error", async () => {

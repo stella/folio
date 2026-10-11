@@ -249,6 +249,9 @@ test("persisted exact neighbours anchor generated edits around a recreated reloc
         ).toEqual(base.filter((_, index) => index !== moveIndex).map(({ id }) => id));
       },
     ),
-    { numRuns: 64 },
+    {
+      numRuns: 64,
+      id: "persisted exact neighbours anchor generated edits around a recreated relocation",
+    },
   );
 });

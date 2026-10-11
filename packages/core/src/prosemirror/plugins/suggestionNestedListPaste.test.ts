@@ -115,7 +115,11 @@ test(
           );
         },
       ),
-      { seed: 197, numRuns: 30 },
+      {
+        seed: 197,
+        numRuns: 30,
+        id: "retracting pasted list breaks preserves acceptance and rejection for paragraph properties",
+      },
     );
   },
   propertyTestTimeout(30_000),

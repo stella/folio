@@ -333,7 +333,7 @@ describe("an offset-taking operation at any offset", () => {
             }
           },
         ),
-        { numRuns: 120 },
+        { numRuns: 120, id: "changes no text beyond what it names, and cuts no character" },
       );
     },
     propertyTestTimeout(300_000),

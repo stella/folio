@@ -353,7 +353,10 @@ describe("whole table operation properties", () => {
               }
             },
           ),
-          { numRuns: NUM_RUNS },
+          {
+            numRuns: NUM_RUNS,
+            id: "${family}: L4 inverse, L5 determinism, L6 locality and L7 contract",
+          },
         );
       },
       propertyTestTimeout(240_000),
@@ -382,7 +385,10 @@ describe("whole table operation properties", () => {
             expect(document).toStrictEqual(snapshot);
           }
         }),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "unowned final cell marks refuse whole-table insertion and removal without mutation",
+        },
       );
     },
     propertyTestTimeout(240_000),
@@ -491,7 +497,10 @@ describe("whole table operation properties", () => {
             }
           },
         ),
-        { numRuns: NUM_RUNS },
+        {
+          numRuns: NUM_RUNS,
+          id: "unsupported table records refuse insertion and removal without mutation",
+        },
       );
     },
     propertyTestTimeout(240_000),
