@@ -1,3 +1,4 @@
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../parity/canonicalTest";
 
@@ -62,12 +63,7 @@ test("canonical input, history and saved document agree across both adapters", a
   for (const port of [reactPort, vuePort]) {
     await page.goto(`http://localhost:${port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
-    expect(
-      await page.evaluate(
-        async (bytes) => globalThis.__folioCanonical?.load(bytes),
-        [...new Uint8Array(source)],
-      ),
-    ).toBe(true);
+    expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(true);
     await page.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
@@ -238,9 +234,7 @@ test("canonical input, history and saved document agree across both adapters", a
     } else {
       firstSaved = reopened;
     }
-    expect(
-      await page.evaluate(async (bytes) => globalThis.__folioCanonical?.load(bytes), saved),
-    ).toBe(true);
+    expect(await evaluateCanonicalLoad(page, saved)).toBe(true);
     await page.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
@@ -336,9 +330,7 @@ test("canonical structural and formatting hooks survive save and reopen", async 
         last.formatting.numPr.ilvl,
     ).toBe(1);
     expect(reopened.package.numbering?.nums).toHaveLength(1);
-    expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), saved)).toBe(
-      true,
-    );
+    expect(await evaluateCanonicalLoad(page, saved)).toBe(true);
     expect((await snapshot(page))?.text).toBe("abitem");
     expect((await snapshot(page))?.projectionMatchesCanonical).toBe(true);
   }
@@ -356,12 +348,7 @@ test("canonical suggestions survive save and reopen before acceptance or rejecti
   for (const port of [reactPort, vuePort]) {
     await page.goto(`http://localhost:${port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
-    expect(
-      await page.evaluate(
-        async (bytes) => globalThis.__folioCanonical?.load(bytes),
-        [...new Uint8Array(source)],
-      ),
-    ).toBe(true);
+    expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(true);
     await page.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
@@ -412,9 +399,7 @@ test("canonical suggestions survive save and reopen before acceptance or rejecti
     expect(reopened.package.document.content).toEqual(suggested.document.package.document.content);
 
     for (const decision of ["accept", "reject"] as const) {
-      expect(
-        await page.evaluate(async (bytes) => globalThis.__folioCanonical?.load(bytes), saved),
-      ).toBe(true);
+      expect(await evaluateCanonicalLoad(page, saved)).toBe(true);
       await page.evaluate(
         () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
       );

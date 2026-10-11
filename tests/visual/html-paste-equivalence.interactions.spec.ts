@@ -1,3 +1,4 @@
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { assertExactModel } from "../../test/exactModel";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -329,9 +330,7 @@ test("canonical rich clipboard preserves generated marks, open ends and exact hi
       for (const port of ports) {
         await page.goto(`http://localhost:${port}/?session=canonical`);
         await page.waitForSelector(".layout-page");
-        expect(
-          await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source),
-        ).toBe(true);
+        expect(await evaluateCanonicalLoad(page, source)).toBe(true);
         expect(
           await page.evaluate(
             (head) => globalThis.__folioCanonical?.select(3, head),
@@ -408,9 +407,7 @@ test("canonical rich clipboard preserves generated marks, open ends and exact hi
         expect(reopenedContent).toEqual(authored);
         if (firstAdapterContent) expect(reopenedContent).toEqual(firstAdapterContent);
         else firstAdapterContent = reopenedContent;
-        expect(
-          await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), saved),
-        ).toBe(true);
+        expect(await evaluateCanonicalLoad(page, saved)).toBe(true);
         const reloaded = await canonicalSnapshot(page);
         expect(authoredClipboardContent(reloaded.document)).toEqual(authored);
         expect(reloaded.canUndo).toBe(false);

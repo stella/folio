@@ -1,10 +1,13 @@
 import { expect } from "@playwright/test";
+import { Result } from "better-result";
+import { readFileSync } from "node:fs";
 import { test } from "./canonicalTimerProbe";
 import { waitForCanonicalPageReady } from "./canonicalPageNavigation";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
 import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import {
   MODIFIER,
   reactPort,
@@ -166,7 +169,146 @@ test(`canonical history replay ${CANONICAL_EVALUATION_HISTORY_REPLAY.seed} ${CAN
 declare global {
   var __folioCollectPendingCanonicalLoad: (() => Promise<void>) | undefined;
   var __folioReportCollectedCanonicalLoad: (() => Promise<void>) | undefined;
+  var __folioCompleteTransportLoad: (() => void) | undefined;
+  var __folioTransportEvaluationStarted:
+    | ((transport: "boxed" | "cdp") => Promise<void>)
+    | undefined;
 }
+
+const isProtocolRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+type CollectedTransportEvidenceOptions = {
+  path: string;
+  frameId: string;
+};
+
+const assertCollectedTransportEvidence = ({ path, frameId }: CollectedTransportEvidenceOptions) => {
+  const events = readFileSync(path, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => {
+      const event: unknown = JSON.parse(line);
+      if (!isProtocolRecord(event)) throw new TypeError("Malformed canonical protocol evidence");
+      return event;
+    });
+  const sessions = new Set(
+    events.flatMap((event) => {
+      const params = event["params"];
+      if (event["method"] !== "Runtime.executionContextCreated" || !isProtocolRecord(params))
+        return [];
+      const context = params["context"];
+      if (!isProtocolRecord(context)) return [];
+      const auxiliary = context["auxData"];
+      const sessionId = event["sessionId"];
+      return isProtocolRecord(auxiliary) &&
+        auxiliary["frameId"] === frameId &&
+        typeof sessionId === "string"
+        ? [sessionId]
+        : [];
+    }),
+  );
+  expect(sessions.size, "protocol evidence must identify this test frame").toBeGreaterThan(0);
+  const errors = events.filter((event) => {
+    const sessionId = event["sessionId"];
+    return typeof sessionId === "string" && sessions.has(sessionId) && event["error"] !== undefined;
+  });
+  expect(errors, "the old boxed call must produce one correlated raw CDP failure").toHaveLength(1);
+  const error = errors.at(0);
+  if (!error) throw new TypeError("Missing boxed transport protocol failure");
+  expect(error["error"]).toEqual({ code: -32000, message: "Promise was collected" });
+  const request = events.filter(
+    (event) =>
+      event["id"] === error["id"] &&
+      event["sessionId"] === error["sessionId"] &&
+      event["method"] !== undefined,
+  );
+  expect(request).toHaveLength(1);
+  expect(request.at(0)).toMatchObject({ method: "Runtime.callFunctionOn", awaitPromise: true });
+};
+
+test("canonical load roots the awaited transport promise across forced collection", async ({
+  page,
+}) => {
+  const protocolPath = process.env["FOLIO_CANONICAL_PROTOCOL_LOG"];
+  if (!protocolPath)
+    throw new TypeError(
+      "Run this transport regression through canonical-interactions.ts to capture raw CDP evidence",
+    );
+  await page.goto("/?session=canonical");
+  await waitForCanonicalPageReady(page);
+  const cdp = await page.context().newCDPSession(page);
+  const boxedEntered = Promise.withResolvers<void>();
+  const cdpEntered = Promise.withResolvers<void>();
+  await page.exposeFunction("__folioTransportEvaluationStarted", (transport: "boxed" | "cdp") => {
+    switch (transport) {
+      case "boxed":
+        return boxedEntered.resolve();
+      case "cdp":
+        return cdpEntered.resolve();
+      default: {
+        const exhaustive: never = transport;
+        return exhaustive;
+      }
+    }
+  });
+  await page.evaluate(() => {
+    const bridge = globalThis.__folioCanonical;
+    if (!bridge) throw new TypeError("Canonical bridge unavailable");
+    const completion = Promise.withResolvers<boolean>();
+    bridge.load = () => completion.promise;
+    globalThis.__folioCompleteTransportLoad = () => completion.resolve(true);
+  });
+  try {
+    const { frameTree } = await cdp.send("Page.getFrameTree");
+    const operation = await page.evaluateHandle(
+      "({ pending: globalThis.__folioCanonical.load([]) })",
+    );
+    try {
+      const boxed = Result.tryPromise({
+        try: () =>
+          operation.evaluate(({ pending }) => {
+            void globalThis.__folioTransportEvaluationStarted?.("boxed");
+            return pending;
+          }),
+        catch: (error: unknown) => error,
+      });
+      // The event establishes that the old evaluator is awaiting its wrapper;
+      // collection is adversarial input, with no timer or retry barrier.
+      await boxedEntered.promise;
+      for (let collection = 0; collection < 20; collection++)
+        await cdp.send("HeapProfiler.collectGarbage");
+      await page.evaluate(() => globalThis.__folioCompleteTransportLoad?.());
+      const result = await boxed;
+      expect(result.isErr(), "the boxed Playwright boundary must lose its awaited wrapper").toBe(
+        true,
+      );
+      if (result.isErr()) expect(String(result.error)).toContain("Execution context was destroyed");
+    } finally {
+      await operation.dispose();
+    }
+
+    await page.evaluate(() => {
+      const bridge = globalThis.__folioCanonical;
+      if (!bridge) throw new TypeError("Canonical bridge unavailable");
+      const completion = Promise.withResolvers<boolean>();
+      bridge.load = () => {
+        void globalThis.__folioTransportEvaluationStarted?.("cdp");
+        return completion.promise;
+      };
+      globalThis.__folioCompleteTransportLoad = () => completion.resolve(true);
+    });
+    const loaded = evaluateCanonicalLoad(page, []);
+    await cdpEntered.promise;
+    for (let collection = 0; collection < 20; collection++)
+      await cdp.send("HeapProfiler.collectGarbage");
+    await page.evaluate(() => globalThis.__folioCompleteTransportLoad?.());
+    expect(await loaded).toBe(true);
+    assertCollectedTransportEvidence({ path: protocolPath, frameId: frameTree.frame.id });
+  } finally {
+    await cdp.detach();
+  }
+});
 
 test("canonical history load survives browser collection while its evaluation is pending", async ({
   page,

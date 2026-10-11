@@ -55,6 +55,7 @@ export default library({
   },
   rules: {
     "folio-editor-commands/command-owner-boundary": "error",
+    "folio-canonical-load/evaluation-owner": "error",
     "folio-deletion-marks/preserve-pending-deletions": "error",
     // AST rules that oxlint delegates to the (dormant) type-aware pass in the
     // monorepo, so folio's source was never held to them. Folio's fork style
@@ -85,6 +86,7 @@ export default library({
   jsPlugins: [
     "./.oxlint-plugins/folio-clean-room-install.ts",
     "./.oxlint-plugins/folio-layer-boundaries.ts",
+    "./.oxlint-plugins/folio-canonical-load.ts",
     "./.oxlint-plugins/folio-asset-urls.ts",
     "./.oxlint-plugins/folio-base64.ts",
     "./.oxlint-plugins/folio-editor-commands.ts",

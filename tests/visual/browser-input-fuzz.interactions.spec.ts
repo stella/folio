@@ -1,3 +1,4 @@
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import type {} from "./browserTestBridge";
 import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
@@ -126,23 +127,19 @@ const load = async ({ page, bytes, baseline, suggesting, authority }: LoadFuzzOp
     await page.evaluate(() => {
       globalThis.__folioCanonicalFuzzErrors = [];
     });
-  await page.evaluate(
-    async ({ source, canonical, refused }) => {
-      if (canonical && !refused) {
-        if (!(await globalThis.__folioCanonical?.load(source)))
-          throw new TypeError("Canonical fuzz load unavailable.");
-        return;
-      }
-      const ref = globalThis.__folioPlayground?.getEditorRef();
-      if (!ref) throw new Error("browser editor unavailable");
-      await ref.loadDocumentBuffer(new Uint8Array(source));
-    },
-    {
-      source: [...new Uint8Array(bytes)],
-      canonical: authority === "canonical",
-      refused: activationRow !== undefined,
-    },
-  );
+  if (authority === "canonical" && !activationRow) {
+    if (!(await evaluateCanonicalLoad(page, [...new Uint8Array(bytes)])))
+      throw new TypeError("Canonical fuzz load unavailable.");
+  } else {
+    await page.evaluate(
+      async (source) => {
+        const ref = globalThis.__folioPlayground?.getEditorRef();
+        if (!ref) throw new Error("browser editor unavailable");
+        await ref.loadDocumentBuffer(new Uint8Array(source));
+      },
+      [...new Uint8Array(bytes)],
+    );
+  }
   if (activationRow) {
     await page.waitForFunction(() => (globalThis.__folioCanonicalFuzzErrors?.length ?? 0) > 0);
     const errors = await drainCanonicalErrors(page);
@@ -426,17 +423,19 @@ const runMode = async ({
   const buffer = await save(page);
   const reopened = await reopenSaved(buffer);
   expect(projectLive(project(reopened))).toEqual(live);
-  await page.evaluate(
-    async ({ saved, canonical }) => {
-      if (canonical) {
-        if (!(await globalThis.__folioCanonical?.load(saved)))
-          throw new TypeError("Canonical saved load unavailable.");
-        return;
-      }
-      await globalThis.__folioPlayground?.getEditorRef()?.loadDocumentBuffer(new Uint8Array(saved));
-    },
-    { saved: [...new Uint8Array(buffer)], canonical: authority === "canonical" },
-  );
+  if (authority === "canonical") {
+    if (!(await evaluateCanonicalLoad(page, [...new Uint8Array(buffer)])))
+      throw new TypeError("Canonical saved load unavailable.");
+  } else {
+    await page.evaluate(
+      async (saved) => {
+        await globalThis.__folioPlayground
+          ?.getEditorRef()
+          ?.loadDocumentBuffer(new Uint8Array(saved));
+      },
+      [...new Uint8Array(buffer)],
+    );
+  }
   await expect.poll(() => page.locator(".layout-page-content").allTextContents()).toEqual(painted);
   return {
     type: "ready",
@@ -728,11 +727,10 @@ const resolveCanonicalSaved = async ({
   revisionIds,
   decision,
 }: ResolveFuzzOptions) => {
+  if (!(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])))
+    throw new TypeError("Canonical fuzz load unavailable.");
   await page.evaluate(
-    async ({ bytes, ids, resolution }) => {
-      const bridge = globalThis.__folioCanonical;
-      if (!bridge || !(await bridge.load(bytes)))
-        throw new TypeError("Canonical fuzz load unavailable.");
+    ({ ids, resolution }) => {
       const ref = globalThis.__folioPlayground?.getEditorRef();
       if (!ref) throw new TypeError("Canonical fuzz editor unavailable.");
       const core = ref.getEditor();
@@ -741,7 +739,7 @@ const resolveCanonicalSaved = async ({
       if (ids.length > 0 && !core.resolveCanonicalRevisions(ids, resolution))
         throw new TypeError("Canonical fuzz review refused existing revisions.");
     },
-    { bytes: [...new Uint8Array(source)], ids: revisionIds, resolution: decision },
+    { ids: revisionIds, resolution: decision },
   );
   return reopenSaved(await save(page));
 };

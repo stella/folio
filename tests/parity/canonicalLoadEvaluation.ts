@@ -1,18 +1,86 @@
-import type { Page } from "@playwright/test";
+import type { Page, PlaywrightTestOptions } from "@playwright/test";
+import { TaggedError } from "better-result";
 import type {} from "./canonicalBridge";
 
-/** CDP awaiting a promise does not keep it alive across Chromium collection. */
+const CANONICAL_LOAD_TRANSPORTS = {
+  chromium: { type: "cdp" },
+  firefox: { type: "unsupported" },
+  webkit: { type: "unsupported" },
+} as const satisfies Record<PlaywrightTestOptions["browserName"], { type: "cdp" | "unsupported" }>;
+
+export class CanonicalLoadTransportError extends TaggedError("CanonicalLoadTransportError")<{
+  message: string;
+  engine: string;
+}> {}
+
+const isCanonicalLoadEngine = (engine: string): engine is keyof typeof CANONICAL_LOAD_TRANSPORTS =>
+  Object.hasOwn(CANONICAL_LOAD_TRANSPORTS, engine);
+
+const getCanonicalLoadTransport = (engine: string) => {
+  if (!isCanonicalLoadEngine(engine))
+    throw new CanonicalLoadTransportError({
+      engine,
+      message: `Unknown canonical load browser engine: ${engine}`,
+    });
+  return CANONICAL_LOAD_TRANSPORTS[engine];
+};
+
+/** Retain the exact promise CDP awaits, including across Chromium collection. */
 export const evaluateCanonicalLoad = async (page: Page, bytes: number[]) => {
-  // A non-thenable box gives Playwright a strong handle to the exact operation.
-  const operation = await page.evaluateHandle(
-    (source) => ({
-      pending: globalThis.__folioCanonical?.load(source),
-    }),
-    bytes,
-  );
+  const engine = page.context().browser()?.browserType().name() ?? "unavailable";
+  const transport = getCanonicalLoadTransport(engine);
+  switch (transport.type) {
+    case "unsupported":
+      throw new CanonicalLoadTransportError({
+        engine,
+        message: `Canonical load transport requires Chromium; ${engine} is unsupported`,
+      });
+    case "cdp":
+      break;
+    default: {
+      const exhaustive: never = transport;
+      return exhaustive;
+    }
+  }
+
+  const session = await page.context().newCDPSession(page);
+  let promiseObjectId: string | undefined;
   try {
-    return await operation.evaluate(({ pending }) => pending);
+    // Playwright's return-by-value evaluator creates a separate serialization
+    // promise. Rooting the source alone does not retain that awaited wrapper.
+    const operation = await session.send("Runtime.evaluate", {
+      expression: `globalThis.__folioCanonical?.load(${JSON.stringify(bytes)})`,
+      awaitPromise: false,
+    });
+    promiseObjectId = operation.result.objectId;
+    if (operation.exceptionDetails || operation.result.subtype !== "promise" || !promiseObjectId)
+      throw new CanonicalLoadTransportError({
+        engine,
+        message: operation.exceptionDetails?.text ?? "Canonical load did not return a promise",
+      });
+
+    const completion = await session.send("Runtime.awaitPromise", {
+      promiseObjectId,
+      returnByValue: true,
+    });
+    if (completion.exceptionDetails)
+      throw new CanonicalLoadTransportError({
+        engine,
+        message:
+          completion.exceptionDetails.exception?.description ?? completion.exceptionDetails.text,
+      });
+    if (typeof completion.result.value !== "boolean")
+      throw new CanonicalLoadTransportError({
+        engine,
+        message: "Canonical load did not return a boolean result",
+      });
+    return completion.result.value;
   } finally {
-    await operation.dispose();
+    try {
+      if (promiseObjectId)
+        await session.send("Runtime.releaseObject", { objectId: promiseObjectId });
+    } finally {
+      await session.detach();
+    }
   }
 };

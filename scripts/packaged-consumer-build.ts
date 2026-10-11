@@ -30,7 +30,7 @@ import path from "node:path";
 
 import { installCleanRoomDependencies } from "./clean-room-install";
 import {
-  REACT_PEER_MAJORS,
+  REACT_PEER_FLOOR,
   buildAndPack,
   consumerSrc,
   coreDir,
@@ -38,7 +38,6 @@ import {
   isDocxKernelWasmAsset,
   reactPeerInstallArgs,
   reactDir,
-  type ReactPeerMajor,
   writeConsumerPackageJson,
 } from "./packaged-consumer-lib";
 
@@ -63,38 +62,38 @@ try {
   const coreTarball = await buildAndPack(coreDir, corePackDir);
   const reactTarball = await buildAndPack(reactDir, reactPackDir);
 
-  const runBuild = async (reactMajor: ReactPeerMajor): Promise<void> => {
+  const runBuild = async (reactVersion: string): Promise<void> => {
     const consumerDir = await mkdtemp(
-      path.join(tmpdir(), `folio-packaged-consumer-r${reactMajor}-`),
+      path.join(tmpdir(), `folio-packaged-consumer-r${reactVersion}-`),
     );
     consumerDirs.push(consumerDir);
 
     // Copy the checked-in consumer app out of the monorepo so no workspace
     // linkage leaks in; install the packed artifacts npm-style.
-    console.log(`→ staging React ${reactMajor} consumer in ${consumerDir}`);
+    console.log(`→ staging React ${reactVersion} consumer in ${consumerDir}`);
     await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
     await cp(path.join(consumerSrc, "vite.config.ts"), path.join(consumerDir, "vite.config.ts"));
 
     await writeConsumerPackageJson({ consumerDir, coreTarball, docxCoreTarball });
 
-    console.log(`→ installing tarballs + React ${reactMajor} peers`);
+    console.log(`→ installing tarballs + React ${reactVersion} peers`);
     await installCleanRoomDependencies({
       consumerDir,
       dependencies: [
         reactTarball,
         coreTarball,
         docxCoreTarball,
-        ...reactPeerInstallArgs(reactMajor),
+        ...reactPeerInstallArgs(),
         "use-intl@^4",
         "vite@^8",
       ],
     });
 
-    console.log(`→ production vite build over the packed tarballs (React ${reactMajor})`);
+    console.log(`→ production vite build over the packed tarballs (React ${reactVersion})`);
     const build = await $`bun x vite build`.cwd(consumerDir).nothrow();
     if (build.exitCode !== 0) {
       console.error(build.stderr.toString() || build.stdout.toString());
-      failure = `\n✗ packaged-consumer: React ${reactMajor} production vite build FAILED against the packed tarballs.`;
+      failure = `\n✗ packaged-consumer: React ${reactVersion} production vite build FAILED against the packed tarballs.`;
       return;
     }
 
@@ -106,10 +105,10 @@ try {
       (f) => f.includes("font-metrics.worker") && f.endsWith(".js"),
     );
     if (!workerChunk) {
-      failure = `✗ packaged-consumer: React ${reactMajor} build produced no worker chunk. dist: ${distFiles.join(", ")}`;
+      failure = `✗ packaged-consumer: React ${reactVersion} build produced no worker chunk. dist: ${distFiles.join(", ")}`;
       return;
     }
-    workerChunks.push(`React ${reactMajor}: ${workerChunk}`);
+    workerChunks.push(`React ${reactVersion}: ${workerChunk}`);
 
     const main = await readFile(path.join(consumerDir, "dist", "main.js"), "utf8");
     const wasmAsset = distFiles.find(isDocxKernelWasmAsset);
@@ -120,18 +119,13 @@ try {
       `data:application/wasm;base64,${packagedWasm.toString("base64")}`,
     );
     if (!wasmAsset && !inlineWasm) {
-      failure = `✗ packaged-consumer: React ${reactMajor} build produced no DOCX kernel WebAssembly output. dist: ${distFiles.join(", ")}`;
+      failure = `✗ packaged-consumer: React ${reactVersion} build produced no DOCX kernel WebAssembly output. dist: ${distFiles.join(", ")}`;
       return;
     }
-    wasmOutputs.push(`React ${reactMajor}: ${wasmAsset ?? "library-mode inline asset"}`);
+    wasmOutputs.push(`React ${reactVersion}: ${wasmAsset ?? "library-mode inline asset"}`);
   };
 
-  for (const reactMajor of REACT_PEER_MAJORS) {
-    await runBuild(reactMajor);
-    if (failure !== null) {
-      break;
-    }
-  }
+  await runBuild(REACT_PEER_FLOOR.version);
 } finally {
   // `rm` with `force` tolerates a dir that was never created (empty string is
   // guarded); cleanup runs on success, on failure, and on a thrown step.
