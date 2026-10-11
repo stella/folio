@@ -41,11 +41,11 @@ type UseDrawerFocusOptions = {
   onClose: (() => void) | null;
   initial?: DrawerInitialFocus;
   /** Preferred restore target when an opening control was replaced during open. */
-  returnFocusRef?: RefObject<HTMLElement | null>;
+  returnFocusTarget?: () => HTMLElement | null;
 };
 
 export const useDrawerFocus = (options: UseDrawerFocusOptions) => {
-  const { container, onClose, returnFocusRef } = options;
+  const { container, onClose, returnFocusTarget } = options;
   const initial = options.initial ?? "item";
   const onCloseRef = useRef(onClose);
   useEffect(() => {
@@ -58,7 +58,6 @@ export const useDrawerFocus = (options: UseDrawerFocusOptions) => {
       return undefined;
     }
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const returnTarget = returnFocusRef?.current;
     const element = container.current;
     if (element) {
       initialFocusTarget(element, initial).focus({ preventScroll: true });
@@ -73,10 +72,11 @@ export const useDrawerFocus = (options: UseDrawerFocusOptions) => {
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+      const returnTarget = returnFocusTarget?.();
       const target = returnTarget?.isConnected ? returnTarget : previous;
       if (target?.isConnected) target.focus({ preventScroll: true });
     };
-  }, [active, container, initial, returnFocusRef]);
+  }, [active, container, initial, returnFocusTarget]);
 };
 
 type PanelScrimProps = {
