@@ -811,7 +811,10 @@ const paragraphRequest = (
         typeof requestedStyleId === "string",
       "A requested style id must be a string or null",
     );
-    const styleId = requestedStyleId ?? pre?.styleId ?? inherited?.styleId ?? null;
+    const styleId =
+      requestedStyleId === undefined
+        ? (pre?.styleId ?? inherited?.styleId ?? null)
+        : requestedStyleId;
     const styleNumbering = requestedStyleNumbering(model, styleId);
     if (styleNumbering === UNKNOWN_NUMBERING) {
       fields.listLevel = ANY;

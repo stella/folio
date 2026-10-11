@@ -2,13 +2,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FolioDocxReviewer,
 } from "@stll/folio-core/server";
 
-import { openReviewer, packDocument, toArrayBuffer } from "../support/documents.ts";
+import {
+  openReviewer,
+  packDocument,
+  styleNumberedDocument,
+  toArrayBuffer,
+} from "../support/documents.ts";
+import { GENERATORS } from "../support/operations.ts";
+import { createRandom } from "../support/random.ts";
 import { assertReadersAgree, saveAndReopen } from "../support/invariants.ts";
 import { ENABLED_RELATIONS, relationCheckCount, startRelations } from "../support/metamorphic.ts";
 import {
@@ -16,7 +24,15 @@ import {
   relationForOracle,
   type OracleMutation,
 } from "../support/oracle-mutations.ts";
-import { assertRequestedOutcome, capture } from "../support/oracle.ts";
+import {
+  assertRequestedOutcome,
+  capture,
+  compareWithModel,
+  expectOperation,
+  modelOf,
+  numberingFactsOf,
+  rowsOf,
+} from "../support/oracle.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 const prototype = FolioDocxReviewer.prototype;
@@ -232,3 +248,76 @@ for (const oracle of oracles) {
     },
   );
 }
+
+// The text-only mutation probe cannot expose style-clear numbering drift.
+// Exercise every requested numbering source, then restore its stale style tier.
+test("oracle sensitivity: style clear across numbering states", async () => {
+  const fixture = await styleNumberedDocument();
+  const generator = GENERATORS["setBlockParagraphProperties"];
+  assert.ok(generator);
+  const blocks = (await openReviewer(fixture)).getContent();
+  const generatedClearStates = new Set<string>();
+  // Pin this seed range independently of the operation matrix's fixture seeds.
+  for (let seed = 163_600; seed < 163_856; seed++) {
+    const operation = generator(blocks, createRandom(seed));
+    const properties = operation?.["properties"];
+    if (typeof properties !== "object" || properties === null || !("styleId" in properties))
+      continue;
+    if (properties.styleId !== null || !("numbering" in properties)) continue;
+    const numbering = properties.numbering;
+    if (typeof numbering !== "object" || numbering === null || !("kind" in numbering)) continue;
+    assert.equal(typeof numbering.kind, "string");
+    if (typeof numbering.kind === "string") generatedClearStates.add(numbering.kind);
+    if (numbering.kind === "reference") assert.equal("ilvl" in numbering, false);
+  }
+  assert.deepEqual(generatedClearStates, new Set(["inherit", "levelOnly", "reference"]));
+  for (const numberingKind of ["inherit", "levelOnly", "reference"] as const) {
+    const reviewer = await openReviewer(fixture);
+    const before = rowsOf(reviewer);
+    const anchor = before.find((row) => row.styleId === "Heading3");
+    assert.ok(anchor?.listReference, "fixture has inherited level-one numbering");
+    const numberingByKind = {
+      inherit: { kind: "inherit" },
+      levelOnly: { kind: "levelOnly", ilvl: 1 },
+      reference: paragraphNumberingReference({ numId: anchor.listReference.numId }),
+    } as const;
+    const operation = {
+      id: "clear-style-numbering",
+      type: "setBlockParagraphProperties",
+      blockId: anchor.id,
+      properties: { styleId: null, numbering: numberingByKind[numberingKind] },
+    } as const satisfies Parameters<Reviewer["applyDocumentOperations"]>[0]["operations"][number];
+    const pre = await capture(reviewer, "direct");
+    const receipt = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [operation],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    assert.equal(receipt.applied.length, 1, "style clear must apply");
+    await assertRequestedOutcome(reviewer, pre, { applied: [operation] }, numberingKind);
+    const after = rowsOf(reviewer);
+    const changed = after.find((row) => row.id === anchor.id);
+    assert.ok(changed);
+    assert.equal(changed.styleId, undefined);
+    assert.deepEqual(
+      changed.listReference,
+      numberingKind === "reference" ? { numId: anchor.listReference.numId, level: 0 } : undefined,
+    );
+    const model = modelOf(before);
+    model.numberingFacts = await numberingFactsOf(fixture);
+    expectOperation(model, operation);
+    assert.deepEqual(compareWithModel(model, after), []);
+    const staleStyle = after.map((row) =>
+      row.id === anchor.id
+        ? Object.assign({}, row, {
+            listLevel: anchor.listLevel,
+            listReference: anchor.listReference,
+          })
+        : row,
+    );
+    assert.match(compareWithModel(model, staleStyle).join("\n"), /number|listLevel/u);
+  }
+});

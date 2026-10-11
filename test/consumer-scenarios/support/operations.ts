@@ -81,6 +81,8 @@ const paragraphProperties = (blocks: readonly Block[], random: Random) => {
   return random.pick([
     { styleId: "Heading2" },
     { styleId: null },
+    { styleId: null, numbering: { kind: "inherit" } },
+    { styleId: null, numbering: { kind: "levelOnly", ilvl: random.int(2) } },
     { alignment: "center" },
     { alignment: null },
     { spacing: { spaceBefore: 120, spaceAfter: 120 } },
@@ -88,6 +90,10 @@ const paragraphProperties = (blocks: readonly Block[], random: Random) => {
     ...(refs.length > 0
       ? [
           { numbering: referenceNumbering(random.pick(refs)) },
+          {
+            styleId: null,
+            numbering: paragraphNumberingReference({ numId: random.pick(refs).numId }),
+          },
           { numbering: { kind: "none" as const } },
         ]
       : []),
