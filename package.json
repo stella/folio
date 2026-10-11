@@ -179,7 +179,7 @@
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2003",
-    "pixelmatch": "7.2.0",
+    "pixelmatch": "8.0.0",
     "pngjs": "7.0.0",
     "prosemirror-state": "^1.4.4",
     "react": "^19.2.7",
