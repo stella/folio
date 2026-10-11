@@ -198,6 +198,11 @@ test(
             state,
             commit: session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap(),
           }).unwrap();
+          for (const [index, paragraph] of session.document.package.document.content.entries()) {
+            if (paragraph.type !== "paragraph") continue;
+            expect(paragraph.formatting?.numPr).toEqual(authored.at(index));
+          }
+          expect(normalizeCanonicalListRendering(session.document).document).toBe(session.document);
           for (const mode of Object.values(FOLIO_DOCX_SERIALIZATION_MODE)) {
             const saved = await serializeCanonicalSave({
               snapshot: session.captureSaveSnapshot(),

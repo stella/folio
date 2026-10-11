@@ -11,11 +11,8 @@ import {
 import { panic } from "better-result";
 import type { Document, DocumentBody, Footnote, Endnote } from "../types/document";
 import { computeListRendering, getCachedNumberingMap } from "../docx/numberingParser";
-import {
-  mergeParagraphNumbering,
-  paragraphNumberingReferenceId,
-  sameStatedParagraphNumbering,
-} from "../docx/numberingReference";
+import { paragraphNumberingReferenceId } from "../docx/numberingReference";
+import { effectiveParagraphNumberingReference } from "../prosemirror/numberingAttr";
 import { computeListMarker, type ComputeListMarkerOptions } from "../docx/listMarkerComputation";
 import {
   cloneParagraphWithPropertySource,
@@ -58,7 +55,7 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
         snapshot: paragraphFormattingWithAuthoredIndentation(paragraph),
       });
       const formatting = paragraph.formatting;
-      const numPr = mergeParagraphNumbering(formatting?.numPrFromStyle, formatting?.numPr);
+      const numPr = effectiveParagraphNumberingReference(formatting ?? {});
       if (
         paragraph.listRendering === undefined &&
         formatting?.numPrFromStyle === undefined &&
@@ -97,27 +94,16 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
           patch: { numPrFromStyle: formatting.numPrFromStyle },
         });
       }
-      if (
-        formatting?.numPrFromStyle !== undefined &&
-        numPr?.kind === "reference" &&
-        !sameStatedParagraphNumbering(formatting.numPr, numPr)
-      ) {
-        next.formatting = { ...next.formatting, numPr };
-        inverse.push({
-          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-          story,
-          blockId:
-            paragraph.paraId ??
-            panic("Canonical numbering normalization requires paragraph identities."),
-          patch: { numPr: formatting.numPr ?? null },
-        });
-      }
       const authoredFormatting = paragraphFormattingWithAuthoredIndentation(next);
       const authored = paragraphIndentationFromFormatting(authoredFormatting);
       const inheritance = listIndentationProvenancePatch({
         direct: authored,
         styleFormatting: styles.resolveParagraphStyle(next.formatting?.styleId).paragraphFormatting,
-        numberingSource: next.formatting?.numPrFromStyle === undefined ? "paragraph" : "style",
+        numberingSource:
+          next.formatting?.numPr?.kind === "reference" ||
+          next.formatting?.numPrFromStyle === undefined
+            ? "paragraph"
+            : "style",
         numPr:
           numPr?.kind === "reference" ? { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 } : undefined,
         numbering,

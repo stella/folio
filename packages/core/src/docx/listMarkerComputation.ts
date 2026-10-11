@@ -56,7 +56,9 @@ export const computeListMarker = (
   }
 
   const abstractNumId = numbering.getAbstractNumId(numId);
-  const styleNumbering = paragraph.formatting?.numPrFromStyle;
+  const styleNumbering =
+    paragraph.formatting?.numPr?.kind !== "reference" &&
+    paragraph.formatting?.numPrFromStyle?.kind === "reference";
   const resumesRestartedInstance =
     firstEncounter &&
     listRendering.startOverride === undefined &&
