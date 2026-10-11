@@ -18,7 +18,15 @@ export const INSTALL_SCOPES = {
     workspaces: "none",
   },
   "browser-discovery": {
-    roots: ["@playwright/test", "typescript", "fast-check", "better-result", "jszip"],
+    roots: [
+      "@playwright/test",
+      "typescript",
+      "fast-check",
+      "better-result",
+      "jszip",
+      "@stll/folio-core",
+      "prosemirror-state",
+    ],
     workspaces: "runtime",
   },
   "typecheck-budget": {
@@ -36,6 +44,8 @@ export const INSTALL_SCOPES = {
       "pngjs",
       "@types/pngjs",
       "@playwright/test",
+      "@stll/folio-core",
+      "prosemirror-state",
     ],
     workspaces: "all",
   },
