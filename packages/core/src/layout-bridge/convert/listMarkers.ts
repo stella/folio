@@ -12,7 +12,6 @@ import type {
   ParagraphPropertyChangeAttrs,
   ParagraphAttrs as PMParagraphAttrs,
 } from "../../prosemirror/schema/nodes";
-import { advanceListMarker, type ListCounterState } from "../../prosemirror/listMarker";
 import type { Theme, TextFormatting } from "../../types/document";
 import { listMarkerFormattingFor } from "./textFormattingConversion";
 
@@ -24,10 +23,6 @@ export function applyMarkerAllCaps(
     return marker;
   }
   return marker.toLocaleUpperCase();
-}
-
-function computeListMarker(pmAttrs: PMParagraphAttrs, state: ListCounterState): string | null {
-  return advanceListMarker(pmAttrs, state);
 }
 
 /**
@@ -180,21 +175,7 @@ function toPreviousListAttrs(previousFormatting: ListPropertyFormatting): PMPara
   return attrs;
 }
 
-function resolveDeletedListMarker(
-  previousListAttrs: PMParagraphAttrs,
-  listCounterState: ListCounterState | undefined,
-): string | null {
-  if (listCounterState && previousListAttrs.numPr) {
-    // Advance the original counter stream in place (no clone): a
-    // removed-numbering deletion occupied a number in the pre-revision
-    // document, so it must progress the counter exactly like a deleted list
-    // item — otherwise a following deletion on the same numId reuses it.
-    const marker = computeListMarker(previousListAttrs, listCounterState);
-    if (marker) {
-      return marker;
-    }
-  }
-
+function resolveDeletedListMarker(previousListAttrs: PMParagraphAttrs): string | null {
   if (previousListAttrs.listMarker) {
     return previousListAttrs.listIsBullet
       ? convertBulletToUnicode(
@@ -214,13 +195,12 @@ function resolveDeletedListMarker(
 export function applyDeletedListMarkerAttrs(
   attrs: ParagraphAttrs,
   change: ListPropertyChange & { previousFormatting: ListPropertyFormatting },
-  listCounterState: ListCounterState | undefined,
   theme: Theme | null | undefined,
   fontAlternates: FontAlternates | undefined,
   paragraphMarkFormatting: () => TextFormatting | undefined,
 ): void {
   const previousListAttrs = toPreviousListAttrs(change.previousFormatting);
-  const marker = resolveDeletedListMarker(previousListAttrs, listCounterState);
+  const marker = resolveDeletedListMarker(previousListAttrs);
   if (!marker) {
     return;
   }

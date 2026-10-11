@@ -12,20 +12,11 @@
  */
 
 import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
-import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import type { ListRendering } from "../types/document";
+import { paragraphNumberingAttr, type ParagraphNumberingSources } from "./numberingAttr";
 import {
-  paragraphNumberingSourcesFromBoundary,
-  effectiveParagraphNumbering,
-  paragraphNumberingAttr,
-  type ParagraphNumberingSources,
-} from "./numberingAttr";
-import {
-  advanceListMarker,
   advanceVisibleListMarker,
-  cloneListCounterState,
   createListCounterState,
-  type ListCounterState,
   type ListCounterStreams,
 } from "./listMarker";
 import { hasListRendering } from "./listRenderingAttrs";
@@ -46,13 +37,6 @@ const foldedFieldSuffix = (attrs: Readonly<ParagraphAttrs>): string => {
   return tab === -1 ? "" : marker.slice(tab);
 };
 
-const withoutNumbering = (attrs: Readonly<ParagraphAttrs>): ParagraphAttrs => {
-  const unnumbered = { ...attrs };
-  Reflect.deleteProperty(unnumbered, "numPr");
-  Reflect.deleteProperty(unnumbered, "numPrFromStyle");
-  return unnumbered;
-};
-
 const staticMarker = (attrs: Readonly<ParagraphAttrs>): string | undefined => {
   const marker = attrs.listMarker;
   if (!marker) {
@@ -65,20 +49,6 @@ const staticMarker = (attrs: Readonly<ParagraphAttrs>): string | undefined => {
   ).trim();
   return text || undefined;
 };
-
-/** Most paragraphs: nothing to count and no marker to show. */
-const isPlainParagraph = (attrs: Readonly<ParagraphAttrs>): boolean =>
-  effectiveParagraphNumbering(
-    paragraphNumberingSourcesFromBoundary({
-      numPr: attrs.numPr,
-      numPrFromStyle: attrs.numPrFromStyle,
-    }),
-  ).kind === "none" &&
-  attrs.listMarker == null &&
-  attrs.listMarkerTemplate == null &&
-  (attrs._propertyChanges == null || attrs._propertyChanges.length === 0);
-
-const NO_PREVIOUS_LIST = { abstractNumId: null, fromStyle: false, numId: null };
 
 /**
  * The attrs the counter reads for a paragraph of the document model, as
@@ -125,72 +95,23 @@ export type ListLabelCounter = (attrs: Readonly<ParagraphAttrs>) => string | und
  * paragraph, numbered or not: whether a list continues depends on what stands
  * between its items.
  */
-export const createListLabelCounter = (): ListLabelCounter => {
-  const final = createListCounterState();
-  // The page also counts a tracked change's original state, in a second
-  // stream. Until the first tracked paragraph that stream advances exactly as
-  // `final` does, except that unnumbered paragraphs never reach it, so it is
-  // forked from `final` there rather than advanced twice all along.
-  let streams: ListCounterStreams | null = null;
-  let originalPreviousList: NonNullable<ListCounterState["previousList"]> = NO_PREVIOUS_LIST;
-  const advance = (counted: Readonly<ParagraphAttrs>): string | null => {
-    const tracked =
-      counted.pPrMark != null ||
-      (counted._propertyChanges != null && counted._propertyChanges.length > 0);
-    if (streams === null && tracked) {
-      const original = cloneListCounterState(final);
-      original.previousList = { ...originalPreviousList };
-      streams = { final, original };
-    }
-    if (streams !== null) {
-      return advanceVisibleListMarker(counted, streams).marker;
-    }
-    const marker = advanceListMarker(counted, final);
-    if (
-      effectiveParagraphNumbering(
-        paragraphNumberingSourcesFromBoundary({
-          numPr: counted.numPr,
-          numPrFromStyle: counted.numPrFromStyle,
-        }),
-      ).kind === "reference"
-    ) {
-      originalPreviousList = final.previousList ?? NO_PREVIOUS_LIST;
-    }
-    return marker;
-  };
-  return (attrs) => {
-    if (isPlainParagraph(attrs)) {
-      // All the counter does for a paragraph with no numbering, now or in a
-      // tracked change, is end the run of list items before it.
-      final.previousList = NO_PREVIOUS_LIST;
-      return undefined;
-    }
-    // A paragraph numbered at a level its list does not define carries no
-    // rendering (see `hasListRendering`): Word paints no marker for it and it
-    // counts as unnumbered, as the parser counts it.
-    const rendered = hasListRendering(attrs);
-    const marker = advance(rendered ? attrs : withoutNumbering(attrs));
-    if (attrs.listMarkerHidden === true || !rendered) {
-      return undefined;
-    }
-    // An unnumbered paragraph's counted marker is a removed number (a tracked
-    // change's previous state), which the page strikes through.
-    const counted =
-      paragraphNumberingReferenceId(
-        effectiveParagraphNumbering(
-          paragraphNumberingSourcesFromBoundary({
-            numPr: attrs.numPr,
-            numPrFromStyle: attrs.numPrFromStyle,
-          }),
-        ),
-      ) === undefined
-        ? null
-        : marker?.trim();
+export const createListLabelCounter =
+  (
+    streams: ListCounterStreams = {
+      final: createListCounterState(),
+      original: createListCounterState(),
+    },
+  ): ListLabelCounter =>
+  (attrs) => {
+    const visible = advanceVisibleListMarker(attrs, streams);
+    const rendered = hasListRendering(visible.counterAttrs);
+    const marker = visible.marker;
+    if (visible.counterAttrs.listMarkerHidden === true || !rendered) return undefined;
+    const counted = marker?.trim();
     if (counted) {
-      return `${counted}${foldedFieldSuffix(attrs)}`;
+      return `${counted}${foldedFieldSuffix(visible.counterAttrs)}`;
     }
     // What the page paints when the counter resolves nothing: the marker as
     // the paragraph carries it.
-    return staticMarker(attrs);
+    return staticMarker(visible.counterAttrs);
   };
-};

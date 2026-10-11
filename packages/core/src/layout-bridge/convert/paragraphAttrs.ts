@@ -447,7 +447,6 @@ export function convertParagraphAttrs(
       applyDeletedListMarkerAttrs(
         attrs,
         numberingRemovedChange,
-        undefined,
         theme,
         fontAlternates,
         paragraphMarkFormatting,

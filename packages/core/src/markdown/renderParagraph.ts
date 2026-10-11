@@ -73,6 +73,7 @@ export function renderParagraphBlock(
     numPrFromStyle,
   });
   if (para.pPrMark) counterAttrs.pPrMark = para.pPrMark;
+  let originalList: ListRendering | undefined;
   if (para.propertyChanges) {
     counterAttrs._propertyChanges = para.propertyChanges.map(
       ({ previousFormatting, ...change }) => {
@@ -90,6 +91,7 @@ export function renderParagraphBlock(
                 getCachedNumberingMap(pkg.numbering),
               ).rendering ?? undefined)
             : undefined;
+        originalList ??= previousRendering;
         const previousAttrs = listLabelAttrsFromRendering(previousRendering, {
           numPr: previousFormatting.numPr,
           numPrFromStyle: previousInherited,
@@ -133,8 +135,9 @@ export function renderParagraphBlock(
     };
   }
 
-  if (list && label !== undefined) {
-    return renderListItem(ctx, list, label, inline);
+  const visibleList = list ?? originalList;
+  if (visibleList && label !== undefined) {
+    return renderListItem(ctx, visibleList, label, inline);
   }
 
   ctx.listIndentWidths = [];

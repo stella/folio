@@ -1,0 +1,9 @@
+{
+  "all numbering readers preserve labels and complete counter streams": [
+    {
+      "seed": 1636002,
+      "note": "Reader parity across source tiers, tracked boundaries, restarts, and original paragraphs.",
+      "date": "2026-10-11"
+    }
+  ]
+}
