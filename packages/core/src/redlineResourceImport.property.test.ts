@@ -7,6 +7,7 @@ import { expectParagraphBlock } from "../../../test/paragraphBlock";
 import { FolioDocxReviewer } from "./ai-edits/headless";
 import { createDocx } from "./docx/rezip";
 import { generateRedlineDocx, GenerateRedlineDocxResourceImportError } from "./redline";
+import { createStyleResolver } from "./prosemirror/styles/styleResolver";
 import { createEmptyDocument } from "./utils/createDocument";
 import { alignFolioBlocks } from "./version-comparison";
 
@@ -176,4 +177,79 @@ test("a failing insertion style closure refuses the whole redline without changi
   } finally {
     applySpy.mockRestore();
   }
+});
+
+test("unstyled redline insertions preserve differing default paragraph styles in equal contexts", async () => {
+  await assertProperty(
+    fc.asyncProperty(
+      fc.record({
+        fontSize: fc.integer({ min: 16, max: 40 }),
+        spaceAfter: fc.integer({ min: 0, max: 400 }),
+        suffix: fc.stringMatching(/^[a-z]{1,12}$/u),
+      }),
+      async ({ fontSize, spaceAfter, suffix }) => {
+        for (const sameStyleId of [false, true]) {
+          for (const sourceBold of [false, true]) {
+            const fixture = async (side: "base" | "revised") => {
+              const document = createEmptyDocument();
+              document.package.theme = {
+                fontScheme: { minorFont: { latin: "Shared Font" } },
+              };
+              document.package.styles = {
+                docDefaults: { rPr: { fontSize } },
+                styles: [
+                  {
+                    type: "paragraph",
+                    styleId: side === "base" || sameStyleId ? NORMAL_STYLE : "TargetDefault",
+                    default: true,
+                    pPr: { spaceAfter: side === "base" ? spaceAfter : spaceAfter + 20 },
+                    rPr: { bold: side === "revised" ? sourceBold : !sourceBold },
+                  },
+                  { type: "paragraph", styleId: "Anchor" },
+                ],
+              };
+              document.package.document.content = [
+                paragraph("93000001", `Leading anchor ${suffix}`, "Anchor"),
+                ...(side === "revised"
+                  ? [{ ...paragraph("93000002", `Unstyled insertion ${suffix}`), formatting: {} }]
+                  : []),
+                paragraph("93000003", `Trailing anchor ${suffix}`, "Anchor"),
+              ];
+              return createDocx(document);
+            };
+            const base = await fixture("base");
+            const revised = await fixture("revised");
+            const original = await FolioDocxReviewer.fromBuffer(base);
+            const target = await FolioDocxReviewer.fromBuffer(revised);
+            const effectiveFormatting = (reviewer: FolioDocxReviewer) => {
+              const resolver = createStyleResolver(reviewer.toDocument().package.styles);
+              return reviewer.snapshot().blocks.map((block) => {
+                const paragraphBlock = expectParagraphBlock(block);
+                return {
+                  text: paragraphBlock.text,
+                  formatting: resolver.resolveParagraphStyle(paragraphBlock.styleId),
+                };
+              });
+            };
+            const outcome = await generateRedlineDocx(base, revised);
+            expect(outcome.skipped).toEqual([]);
+            const accepting = await FolioDocxReviewer.fromBuffer(outcome.buffer);
+            expect(accepting.acceptAll()).toBeGreaterThan(0);
+            const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+            expect(effectiveFormatting(accepted)).toEqual(effectiveFormatting(target));
+            const inserted = expectParagraphBlock(accepted.snapshot().blocks.at(1));
+            expect(inserted.styleId).toBeDefined();
+            const rejecting = await FolioDocxReviewer.fromBuffer(outcome.buffer);
+            expect(rejecting.rejectAll()).toBeGreaterThan(0);
+            const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+            expect(effectiveFormatting(rejected)).toEqual(effectiveFormatting(original));
+          }
+        }
+      },
+    ),
+    {
+      id: "unstyled redline insertions preserve differing default paragraph styles in equal contexts",
+      numRuns: 4,
+    },
+  );
 });

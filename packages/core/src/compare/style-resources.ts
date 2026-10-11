@@ -537,7 +537,16 @@ export const importReferencedStyleDefinitions = ({
       required.has(styleId) &&
       (!destinationById.has(styleId) || styleIdMap.get(styleId) !== styleId),
   );
-  if (contextMatches) {
+  const needsDefaultParagraphStyle =
+    materializeDefaultParagraphStyle &&
+    !effectiveDefaultParagraphFormattingMatches({
+      sourceStyles,
+      destinationStyles,
+      sourceTheme,
+      destinationTheme,
+      materializeThemeReferences,
+    });
+  if (contextMatches && !needsDefaultParagraphStyle) {
     if (additions.length === 0) {
       return { status: "unchanged", styles: destinationStyles, styleIdMap, importedStyleIds: [] };
     }
@@ -558,6 +567,10 @@ export const importReferencedStyleDefinitions = ({
   }
   const materializedStyles: Style[] = [];
   for (const style of additions) {
+    if (contextMatches) {
+      materializedStyles.push(remapImportedStyle({ style, styleIdMap, isolatedDefaultStyleIds }));
+      continue;
+    }
     const result = materializeEffectiveStyle({
       style,
       styles: sourceStyles,
@@ -576,15 +589,6 @@ export const importReferencedStyleDefinitions = ({
   }
   let defaultParagraphStyleId: string | undefined;
   let materializedDefaultParagraphStyle: Style | undefined;
-  const needsDefaultParagraphStyle =
-    materializeDefaultParagraphStyle &&
-    !effectiveDefaultParagraphFormattingMatches({
-      sourceStyles,
-      destinationStyles,
-      sourceTheme,
-      destinationTheme,
-      materializeThemeReferences,
-    });
   if (needsDefaultParagraphStyle) {
     defaultParagraphStyleId = nextAvailableStyleAlias({ taken, sequence: aliasSequence });
     const result = materializeEffectiveDefaultParagraphStyle({
