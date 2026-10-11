@@ -176,16 +176,18 @@ function renderListItem(
 ): RenderedParagraph {
   // Custom Word labels are paragraph text in CommonMark, not nesting parents.
   const nativeMarker = list.isBullet || /^\d{1,9}[.)]$/u.test(label);
-  if (!nativeMarker) ctx.listIndentWidths = [];
+  if (!nativeMarker) {
+    ctx.listIndentWidths = [];
+    return {
+      type: "paragraph",
+      markdown: escapeLeadingBlockMarker(`${label} ${inline}`).trimEnd(),
+    };
+  }
   ctx.listIndentWidths.length = list.level;
   const indent = " ".repeat(listIndentWidth(ctx, list.level));
   const marker = list.isBullet ? "- " : `${label} `;
-  if (nativeMarker) ctx.listIndentWidths[list.level] = marker.length;
-  const content = nativeMarker
-    ? `${marker}${escapeLeadingBlockMarker(inline)}`
-    : escapeLeadingBlockMarker(`${marker}${inline}`);
-  const markdown = `${indent}${content}`.trimEnd();
-  if (!nativeMarker) return { type: "paragraph", markdown };
+  ctx.listIndentWidths[list.level] = marker.length;
+  const markdown = `${indent}${marker}${escapeLeadingBlockMarker(inline)}`.trimEnd();
   return {
     type: "listItem",
     markdown,
