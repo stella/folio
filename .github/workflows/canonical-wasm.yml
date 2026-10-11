@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "crates/docx-kernel/**"
+      - "crates/text-shaper/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
