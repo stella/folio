@@ -1,6 +1,13 @@
 #!/usr/bin/env bun
 /** Install a task environment from the repository lock, then restore manifests. */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { installFrozenRepositoryDependencies } from "./clean-room-install";
 
@@ -45,6 +52,32 @@ type Manifest = {
 type Lock = {
   workspaces: Record<string, Manifest>;
   packages: Record<string, [string, ...unknown[]]>;
+};
+
+/** Logical package bytes, counting shared files once and excluding workspace sources. */
+export const installedPackageBytes = (repoRoot: string): number => {
+  const directories = new Set<string>();
+  const files = new Set<string>();
+  const pending = [path.join(repoRoot, "node_modules")];
+  let bytes = 0;
+  while (pending.length > 0) {
+    const item = pending.pop();
+    if (item === undefined) break;
+    const resolved = realpathSync(item);
+    if (resolved.startsWith(path.join(repoRoot, "packages") + path.sep)) continue;
+    const stat = statSync(resolved);
+    if (stat.isDirectory()) {
+      if (directories.has(resolved)) continue;
+      directories.add(resolved);
+      for (const name of readdirSync(resolved)) pending.push(path.join(resolved, name));
+      continue;
+    }
+    const identity = `${stat.dev}:${stat.ino}`;
+    if (files.has(identity)) continue;
+    files.add(identity);
+    bytes += stat.size;
+  }
+  return bytes;
 };
 
 export const scopeInstall = (scope: keyof typeof INSTALL_SCOPES, repoRoot: string) => {
@@ -131,6 +164,7 @@ if (import.meta.main) {
       if (existsSync(path.join(repoRoot, "node_modules/binaryen")))
         throw new TypeError("Scoped install includes an unrelated WASM optimizer");
       console.log(`Scoped install ${name}: ${Math.round(performance.now() - started)} ms`);
+      console.log(`Scoped install ${name}: ${installedPackageBytes(repoRoot)} package bytes`);
     } finally {
       for (const [file, text] of originals) writeFileSync(path.join(repoRoot, file), text);
     }
