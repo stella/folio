@@ -44,6 +44,7 @@
         "prosemirror-state": "^1.4.4",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
+        "semver": "7.8.5",
         "tinybench": "^5.0.0",
         "tsdown": "0.22.9",
         "tsx": "^4.23.13",

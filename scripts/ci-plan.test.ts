@@ -689,7 +689,10 @@ describe("CI plan", () => {
     const gated = new Set<string>();
     for (const [id, job] of Object.entries(jobs)) {
       if (UNPLANNED_JOBS.has(id)) continue;
-      expect([id, job.needs]).toEqual([id, PLAN_JOB]);
+      expect([id, job.needs]).toEqual([
+        id,
+        id === "consumer-scenarios-minimum" ? [PLAN_JOB, "consumer-scenarios"] : PLAN_JOB,
+      ]);
       const condition = job.if;
       if (PR_SCOPED_JOBS.has(id)) {
         expect(

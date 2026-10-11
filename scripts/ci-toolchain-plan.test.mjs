@@ -274,3 +274,175 @@ describe("required shared toolchain policy", () => {
     }
   });
 });
+
+describe("published Node minimum", () => {
+  const configuration = JSON.parse(readFileSync(path.join(repo, "stll-toolchain.json"), "utf8"));
+  const floor = configuration.engineFloors.at(0);
+
+  test("the minimum consumer run owns a scoped floor and reuses default-runtime tarballs", () => {
+    expect(configuration).toEqual({
+      engineFloors: [
+        {
+          package: "packages/cli",
+          workflow: ".github/workflows/ci.yml",
+          job: "consumer-scenarios-minimum",
+        },
+      ],
+    });
+    const minimum = workflow.jobs[floor.job];
+    const current = workflow.jobs["consumer-scenarios"];
+    expect(minimum.needs).toEqual(["ci-plan", "consumer-scenarios"]);
+    expect(minimum.if).toBe(current.if);
+    expect(current.steps.find((step) => step.uses?.startsWith("actions/setup-node@")).with).toEqual(
+      { "node-version-file": ".node-version" },
+    );
+    expect(current.steps.filter((step) => step.run?.includes("--pack-only"))).toEqual([
+      {
+        name: "Build consumer tarballs with the shared runtime",
+        run: "bun scripts/consumer-scenarios.ts --pack-only test-results/consumer-tarballs",
+      },
+    ]);
+    const upload = current.steps.find((step) => step.with?.name === "consumer-scenarios-tarballs");
+    const download = minimum.steps.find((step) => step.with?.name === upload.with.name);
+    expect(download.with.path).toBe(upload.with.path);
+    expect(
+      minimum.steps
+        .filter((step) => step.run?.includes("consumer-scenarios.ts"))
+        .map((step) => step.run),
+    ).toEqual([`bun scripts/consumer-scenarios.ts --typecheck --tarballs ${download.with.path}`]);
+    expect(JSON.parse(evaluationForMinimum().env.JOB_SCOPES)[floor.job]).toEqual({
+      area: "consumer_scenarios_required",
+      depth: "full",
+    });
+    const root = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
+    expect(root.scripts["check:toolchain"]).toBe(
+      "stll-toolchain-check && bun scripts/consumer-node-minimum.mjs --check",
+    );
+  });
+
+  const evaluationForMinimum = () =>
+    workflow.jobs["ci-result"].steps.find((step) => step.name === "Evaluate CI outcome");
+
+  test("the required outcome rejects a skipped or failed minimum consumer run", () => {
+    const evaluation = evaluationForMinimum();
+    const scopes = JSON.parse(evaluation.env.JOB_SCOPES);
+    const plan = Object.fromEntries(
+      Object.values(scopes)
+        .filter((scope) => scope.area)
+        .map((scope) => [scope.area, "true"]),
+    );
+    for (const result of ["success", "failure", "skipped", "cancelled"]) {
+      const needs = Object.fromEntries(
+        Object.keys(scopes).map((job) => [job, { result: "success" }]),
+      );
+      needs[floor.job].result = result;
+      const execution = Bun.spawnSync(["bash", "-c", evaluation.run], {
+        cwd: repo,
+        env: {
+          ...process.env,
+          EVENT: "merge_group",
+          PLAN_RESULT: "success",
+          NEEDS: JSON.stringify(needs),
+          PLAN: JSON.stringify({
+            ...plan,
+            trusted: "true",
+            suite_depth: "full",
+            toolchain_changed: "false",
+          }),
+          JOB_SCOPES: evaluation.env.JOB_SCOPES,
+        },
+      });
+      expect(execution.exitCode).toBe(result === "success" ? 0 : 1);
+      if (result !== "success") expect(execution.stdout.toString()).toContain(`${floor.job} (`);
+    }
+  });
+
+  test("engine minima are generated, checked exactly, and cannot drift within a major", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "folio-node-minimum-"));
+    const checker = path.join(repo, "node_modules/.bin/stll-toolchain-check");
+    const projection = path.join(repo, "scripts/consumer-node-minimum.mjs");
+    const shared = () => Bun.spawnSync(["bun", checker], { cwd: directory });
+    const project = (mode) => Bun.spawnSync(["bun", projection, mode], { cwd: directory });
+    const check = () => {
+      const result = shared();
+      return result.exitCode === 0 ? project("--check") : result;
+    };
+    const manifest = path.join(directory, floor.package, "package.json");
+    const workflowFile = path.join(directory, floor.workflow);
+    const setRange = (range) =>
+      writeFileSync(manifest, JSON.stringify({ name: "@example/cli", engines: { node: range } }));
+    try {
+      mkdirSync(path.dirname(manifest), { recursive: true });
+      mkdirSync(path.dirname(workflowFile), { recursive: true });
+      for (const file of [
+        ".github/dependabot.yml",
+        ".node-version",
+        "stll-toolchain.json",
+        floor.workflow,
+      ]) {
+        writeFileSync(path.join(directory, file), readFileSync(path.join(repo, file), "utf8"));
+      }
+      writeFileSync(
+        path.join(directory, "package.json"),
+        JSON.stringify({
+          private: true,
+          packageManager:
+            "bun@" +
+            JSON.parse(
+              readFileSync(
+                path.join(repo, "node_modules/@stll/oxlint-config/toolchain.json"),
+                "utf8",
+              ),
+            ).bun,
+          workspaces: ["packages/*"],
+        }),
+      );
+      setRange(">=22");
+      for (const args of [
+        ["init", "--quiet"],
+        ["add", "."],
+      ])
+        expect(Bun.spawnSync(["git", ...args], { cwd: directory }).exitCode).toBe(0);
+      expect(check().exitCode).toBe(0);
+      const original = readFileSync(workflowFile, "utf8");
+      const selected = Bun.YAML.parse(original).jobs[floor.job].steps.find((step) =>
+        step.uses?.startsWith("actions/setup-node@"),
+      ).with["node-version"];
+      writeFileSync(
+        workflowFile,
+        original.replace(`node-version: "${selected}"`, 'node-version: "22.23.3"'),
+      );
+      expect(shared().exitCode).toBe(0);
+      const drift = check();
+      expect(drift.exitCode).toBe(1);
+      expect(drift.stderr.toString()).toContain("[consumer-node-minimum]");
+      for (let major = 22; major < 26; major += 1) {
+        for (const [minor, patch] of [
+          [0, 0],
+          [1, 2],
+          [18, 4],
+        ]) {
+          const version = `${major}.${minor}.${patch}`;
+          setRange(`>=${version}`);
+          expect(check().exitCode).toBe(1);
+          const generated = project("--write");
+          expect({ status: generated.exitCode, diagnostic: generated.stderr.toString() }).toEqual({
+            status: 0,
+            diagnostic: "",
+          });
+          expect(
+            Bun.YAML.parse(readFileSync(workflowFile, "utf8")).jobs[floor.job].steps.find((step) =>
+              step.uses?.startsWith("actions/setup-node@"),
+            ).with["node-version"],
+          ).toBe(version);
+          expect(check().exitCode).toBe(0);
+          const once = readFileSync(workflowFile, "utf8");
+          expect(project("--write").exitCode).toBe(0);
+          expect(readFileSync(workflowFile, "utf8")).toBe(once);
+        }
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

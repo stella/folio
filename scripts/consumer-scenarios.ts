@@ -455,7 +455,7 @@ try {
     const nameFilter = args.only === null ? [] : ["--test-name-pattern", args.only];
     console.log(`→ node --test over ${files.length} scenario files (seed ${seed})`);
     const coverageDir = path.join(consumerDir, "coverage");
-    const run = await $`node --test --test-reporter=spec ${nameFilter} ${files}`
+    const run = await $`node --import tsx --test --test-reporter=spec ${nameFilter} ${files}`
       .cwd(consumerDir)
       .env({
         ...process.env,
