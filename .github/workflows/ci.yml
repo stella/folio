@@ -525,6 +525,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Focused unit tests
+        if: needs.ci-plan.outputs.suite_depth == 'fast'
         run: bun scripts/ci-test-shards.ts --shard 1 --depth fast
         env:
           CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
@@ -566,6 +567,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Focused unit tests
+        if: needs.ci-plan.outputs.suite_depth == 'fast'
         run: bun scripts/ci-test-shards.ts --shard 2 --depth fast
         env:
           CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
@@ -607,6 +609,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Focused unit tests
+        if: needs.ci-plan.outputs.suite_depth == 'fast'
         run: bun scripts/ci-test-shards.ts --shard 3 --depth fast
         env:
           CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
@@ -648,6 +651,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Focused unit tests
+        if: needs.ci-plan.outputs.suite_depth == 'fast'
         run: bun scripts/ci-test-shards.ts --shard 4 --depth fast
         env:
           CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}

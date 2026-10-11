@@ -19,6 +19,7 @@ import {
   changedTestPaths,
   FAST_SIBLING_TEST_CAP,
   selectFastTestSuites,
+  selectFullTestSuites,
   discoverTestSuites,
   focusedTestFiles,
   TEST_SHARD_COUNT,
@@ -275,6 +276,25 @@ describe("CI plan", () => {
     expect(suites.at(0)?.files).toHaveLength(5);
   });
 
+  test("full selection covers every discovered and focused file exactly once with owner preloads", () => {
+    const suites = discoverTestSuites();
+    const discovered = suites.flatMap(({ files }) => files);
+    const selected = selectFullTestSuites({ suites });
+    const full = selected.flatMap(({ files }) => files);
+    expect(full.toSorted()).toEqual([...new Set([...discovered, ...focusedTestFiles])].toSorted());
+    expect(new Set(full).size).toBe(full.length);
+    for (const suite of suites) {
+      expect(selected).toContain(suite);
+    }
+    for (const changedFiles of [[], discovered, focusedTestFiles]) {
+      const fast = selectFastTestSuites({ suites, changedFiles });
+      for (const file of fast.flatMap(({ files }) => files)) expect(full).toContain(file);
+    }
+    expect(selectFullTestSuites({ suites, focusedFiles: [...discovered, ...discovered] })).toBe(
+      suites,
+    );
+  });
+
   test("only non-test source changes select sibling tests", () => {
     const suites = [
       {
@@ -432,6 +452,10 @@ describe("CI plan", () => {
       );
       if (!isRecord(fast) || !isRecord(fast["env"]))
         throw new Error(`Missing fast selection for ${id}`);
+      expect(fast["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'fast'");
+      const full = steps.find((step) => isRecord(step) && step["id"] === "full-suite");
+      if (!isRecord(full)) throw new Error(`Missing full selection for ${id}`);
+      expect(full["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'full'");
       expect(fast["env"]["CI_TEST_BASE"]).toBe(
         "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}",
       );
