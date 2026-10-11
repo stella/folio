@@ -378,7 +378,10 @@ test(
           }
         },
       ),
-      { numRuns: 20 },
+      {
+        numRuns: 20,
+        id: "tracked property records and resolution preserve style numbering provenance",
+      },
     );
   },
   propertyTestTimeout(30_000),

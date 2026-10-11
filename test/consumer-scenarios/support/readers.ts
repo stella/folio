@@ -321,6 +321,25 @@ const withoutNoteTrailer = (markdown: string): string => {
 
 const isListTextToken = ({ type }: Token) => type === "text" || type === "paragraph";
 
+/** The exporter inserts exactly one blank line before an empty nested list item. */
+const isEmptyListItemSeparator = (tokens: readonly Token[], index: number): boolean => {
+  const separator = tokens.at(index);
+  const previous = tokens.at(index - 1);
+  const next = tokens.at(index + 1);
+  if (
+    index === 0 ||
+    separator?.type !== "space" ||
+    separator.raw !== "\n\n" ||
+    previous === undefined ||
+    !isListTextToken(previous) ||
+    next?.type !== "list"
+  ) {
+    return false;
+  }
+  const first = next.items.at(0);
+  return first !== undefined && !first.tokens.some(isListTextToken);
+};
+
 /**
  * `docxToMarkdown` → views, matched against the texts the content reader
  * reports (a Markdown line carries no block boundary of its own). Pipe-table
@@ -408,7 +427,8 @@ export const markdownViews = (
           if (!item.tokens.some(isListTextToken)) {
             appendParagraphs("", { kind: "listItem", ...(number === undefined ? {} : { number }) });
           }
-          for (const child of item.tokens) {
+          for (const [index, child] of item.tokens.entries()) {
+            if (isEmptyListItemSeparator(item.tokens, index)) continue;
             if (child.type === "list") {
               walk(child);
               continue;

@@ -5,3 +5,8 @@ linker = "isolated"
 globalStore = true
 # 5-day quarantine: reject package versions published less than 5 days ago.
 minimumReleaseAge = 432_000
+
+# Keep the extension compiler types aligned with the pinned Bun runtime.
+minimumReleaseAgeExcludes = [
+  "bun-types", # quarantine-expires: 2026-10-15T05:25:00.000Z
+]

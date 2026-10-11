@@ -289,7 +289,10 @@ test("native composition cancellation preserves the captured selection and journ
           }
         },
       ),
-      { numRuns: 20 },
+      {
+        numRuns: 20,
+        id: "native composition cancellation preserves the captured selection and journal",
+      },
     );
   } finally {
     jest.useRealTimers();
@@ -335,7 +338,10 @@ test("ordinary deletion after native compositionend commits and undoes as a new 
           }
         }
       }),
-      { numRuns: 10 },
+      {
+        numRuns: 10,
+        id: "ordinary deletion after native compositionend commits and undoes as a new gesture",
+      },
     );
   } finally {
     jest.useRealTimers();
@@ -415,7 +421,10 @@ test("ordinary deletion recovers a missing native compositionend as a new gestur
           }
         }
       }),
-      { numRuns: 10 },
+      {
+        numRuns: 10,
+        id: "ordinary deletion recovers a missing native compositionend as a new gesture",
+      },
     );
   } finally {
     jest.useRealTimers();
@@ -465,7 +474,10 @@ test("word, line and cut deletion remain explicit refusals after missing-end rec
           }
         }
       }),
-      { numRuns: 10 },
+      {
+        numRuns: 10,
+        id: "word, line and cut deletion remain explicit refusals after missing-end recovery",
+      },
     );
   } finally {
     jest.useRealTimers();
@@ -514,7 +526,10 @@ test("in-composition deletion edits the native proposal without cancelling its b
           }
         }
       }),
-      { numRuns: 10 },
+      {
+        numRuns: 10,
+        id: "in-composition deletion edits the native proposal without cancelling its baseline",
+      },
     );
   } finally {
     jest.useRealTimers();
@@ -583,7 +598,10 @@ test("fake-clock final input before and after expiry is idempotent and undoes as
           }
         },
       ),
-      { numRuns: 15 },
+      {
+        numRuns: 15,
+        id: "fake-clock final input before and after expiry is idempotent and undoes as one gesture",
+      },
     );
   } finally {
     jest.useRealTimers();
@@ -1008,7 +1026,10 @@ test("every canonical composition exit ends native composition and admits DOM re
         }
       },
     ),
-    { numRuns: 20 },
+    {
+      numRuns: 20,
+      id: "every canonical composition exit ends native composition and admits DOM redo",
+    },
   );
 });
 
@@ -1183,6 +1204,7 @@ test("native carrier identity omission preserves the canonical suffix and histor
           ["café 東京 é", "commit"],
           ["alpha", "commit"],
         ],
+        id: "native carrier identity omission preserves the canonical suffix and history",
       },
     );
   } finally {
@@ -1223,7 +1245,7 @@ test("native carrier saves equal direct canonical replacements", async () => {
         rig.destroy();
       }
     }),
-    { examples: [["café 東京 é"]] },
+    { examples: [["café 東京 é"]], id: "native carrier saves equal direct canonical replacements" },
   );
 });
 
@@ -1294,6 +1316,7 @@ test("native carrier identity tolerance refuses every other mark or attribute dr
         expect(native.state.selection.eq(baseline.selection)).toBe(true);
       },
     ),
+    { id: "native carrier identity tolerance refuses every other mark or attribute drift" },
   );
 });
 
@@ -1361,6 +1384,7 @@ test("a native rewrite of identical text never commits a replacement", async () 
         executed.textEdit++;
       },
     ),
+    { id: "a native rewrite of identical text never commits a replacement" },
   );
   expect(docs.length).toBeGreaterThan(0);
   expect(executed.markLoss).toBeGreaterThan(0);
@@ -1436,6 +1460,7 @@ test("native composition lifecycle keeps cancelled selections and commits explic
           [["shall", ""], "commit", "契約"],
           [["shall", ""], "commit", ""],
         ],
+        id: "native composition lifecycle keeps cancelled selections and commits explicit finals",
       },
     );
   } finally {
@@ -1508,6 +1533,7 @@ test("classified native finals commit empty replacements during end recovery", (
           rig.destroy();
         }
       }),
+      { id: "classified native finals commit empty replacements during end recovery" },
     );
   } finally {
     jest.useRealTimers();

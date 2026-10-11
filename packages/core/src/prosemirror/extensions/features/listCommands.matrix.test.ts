@@ -881,7 +881,10 @@ describe("list changes while suggesting", () => {
             }
           }
         }),
-        { numRuns: 8 },
+        {
+          numRuns: 8,
+          id: "toggle-on then toggle-off preserves authored indentation without tracking a net change",
+        },
       );
     },
     propertyTestTimeout(30_000),

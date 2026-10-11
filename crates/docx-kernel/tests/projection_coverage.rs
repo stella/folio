@@ -2654,6 +2654,7 @@ fn require_known_families(projection: &DocumentPackageProjection) -> Result<(), 
             bold: FormattingFactStatus::Known,
             highlight: FormattingFactStatus::Known,
             superscript: FormattingFactStatus::Known,
+            alignment: FormattingFactStatus::Known,
         })
         || document.revision_status != RevisionProjectionStatus::Complete
         || !matches!(facts.indentation, StructuralFactSet::Known(_))
@@ -3348,6 +3349,7 @@ impl TablePropertyDocument {
                     bold: FormattingFactStatus::Known,
                     highlight: FormattingFactStatus::Known,
                     superscript: FormattingFactStatus::Known,
+                    alignment: FormattingFactStatus::Known,
                 })
         {
             return Err(

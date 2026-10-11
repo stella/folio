@@ -6,6 +6,7 @@
 
 mod archive;
 mod compatibility;
+mod container;
 mod flat_opc;
 mod namespaces;
 mod numbering;
@@ -19,6 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 pub use archive::{DocumentParts, DocxLimits, extract_document_parts, extract_document_xml};
+pub use container::ParagraphContainer;
 pub use ooxml::{
     PackageParagraphId, ParagraphStructure, RevisionProjectionStatus, RevisionUnsupportedReason,
     RevisionView, TextFormattingSpan, TextMaterialization, TextStyle,
@@ -77,6 +79,7 @@ pub struct ProjectedParagraph {
     pub text: String,
     pub formatting: Vec<TextFormattingSpan>,
     pub structure: Option<ParagraphStructure>,
+    pub container: ParagraphContainer,
     pub alignment: Option<ParagraphAlignmentFact>,
 }
 
@@ -85,6 +88,7 @@ pub enum FormattingUnknownReason {
     DocumentPartOnly,
     StylesPartUnavailable,
     UnsupportedStyles,
+    UnsupportedAlignment,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -95,6 +99,7 @@ pub enum FormattingFactStatus {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FormattingCompleteness {
+    pub alignment: FormattingFactStatus,
     pub bold: FormattingFactStatus,
     pub highlight: FormattingFactStatus,
     pub superscript: FormattingFactStatus,
@@ -111,6 +116,9 @@ impl FormattingCompleteness {
                 }),
         };
         Self {
+            alignment: styles.map_or_else(FormattingFactStatus::Unknown, |()| {
+                FormattingFactStatus::Known
+            }),
             bold: status(TextStyle::Bold),
             highlight: status(TextStyle::Highlight),
             superscript: status(TextStyle::Superscript),
@@ -636,10 +644,19 @@ where
         dependencies.numbering,
         maximum_structural_facts,
     )?;
+    let mut formatting_completeness = projected.formatting_completeness;
+    formatting_completeness.alignment = FormattingFactStatus::Known;
     let mut paragraphs = Vec::with_capacity(projected.paragraphs.len());
     for (id, paragraph) in ids.into_iter().zip(projected.paragraphs) {
         let alignment =
             structure::resolve_paragraph_alignment(dependencies.styles, &paragraph.properties);
+        let alignment = match alignment {
+            Ok(fact) => fact,
+            Err(reason) => {
+                formatting_completeness.alignment = FormattingFactStatus::Unknown(reason);
+                None
+            }
+        };
         paragraphs.push(ProjectedParagraph {
             id,
             ordinal: paragraph.ordinal,
@@ -648,13 +665,14 @@ where
             text: paragraph.text,
             formatting: paragraph.formatting,
             structure: paragraph.structure,
+            container: paragraph.container,
             alignment,
         });
     }
     Ok(ProjectedDocumentWithReview {
         document: DocumentProjection {
             paragraphs,
-            formatting_completeness: projected.formatting_completeness,
+            formatting_completeness,
             revision_status: projected.revision_status,
             structural_facts,
         },

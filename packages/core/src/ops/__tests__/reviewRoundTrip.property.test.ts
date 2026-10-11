@@ -93,7 +93,7 @@ describe("tracked model round trip and resolution oracle", () => {
             ).toEqual({ messages: [], omitted: 0 });
           }
         }),
-        { numRuns: 20 },
+        { numRuns: 20, id: "L8: ${kind} survives editor save and reopen" },
       );
     });
 
@@ -125,7 +125,7 @@ describe("tracked model round trip and resolution oracle", () => {
             }
           }
         }),
-        { numRuns: 20 },
+        { numRuns: 20, id: "L9: ${kind} reports model and editor resolution differences" },
       );
       expect(attempted).toBeGreaterThan(0);
     });
@@ -165,7 +165,7 @@ describe("tracked model round trip and resolution oracle", () => {
         expect(reviewDifferences(pending, reopened)).toEqual({ messages: [], omitted: 0 });
         expect(storyRevisionIds(reopened)).toEqual(storyRevisionIds(pending));
       }),
-      { numRuns: 20 },
+      { numRuns: 20, id: "L8: deletion inside another insertion keeps both wrapper ids" },
     );
   });
 });

@@ -88,7 +88,11 @@ test(
           }
         },
       ),
-      { numRuns: 40, seed: 16091615 },
+      {
+        numRuns: 40,
+        seed: 16091615,
+        id: "restored historical runs preserve authorship through bulk and individual rejection",
+      },
     );
   },
   propertyTestTimeout(5_000),
@@ -263,7 +267,12 @@ test(
           }
         },
       ),
-      { seed: 260926, numRuns: 32, verbose: true },
+      {
+        seed: 260926,
+        numRuns: 32,
+        verbose: true,
+        id: "bulk resolution JSON replay and undo match its cached result",
+      },
     );
   },
   propertyTestTimeout(30_000),

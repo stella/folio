@@ -75,6 +75,9 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
         expect(markers).toEqual([`${baseMarker}\t${suffix}`, bullet ? "•" : nextDecimalMarker]);
       },
     ),
-    { numRuns: 50 },
+    {
+      numRuns: 50,
+      id: "folded LISTNUM display text stays literal while numbered and symbol-font bullet markers resolve",
+    },
   );
 });

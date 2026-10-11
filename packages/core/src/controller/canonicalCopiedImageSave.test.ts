@@ -420,7 +420,11 @@ test.each(CASES)(
         }
         assertExactModel(driver.session.captureSaveSnapshot().document, edited);
       }),
-      { seed: 20261022, numRuns: 2 },
+      {
+        seed: 20261022,
+        numRuns: 2,
+        id: "copied $resource image saves with exact $kind ownership in $mode",
+      },
     );
   },
 );

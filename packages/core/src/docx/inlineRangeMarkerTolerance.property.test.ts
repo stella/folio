@@ -226,7 +226,10 @@ describe("an unbalanced inline range marker never refuses the document", () => {
           }
         },
       ),
-      { numRuns: 60 },
+      {
+        numRuns: 60,
+        id: "every marker kind, in every wrapper, in every balance, opens and re-saves",
+      },
     );
   });
 

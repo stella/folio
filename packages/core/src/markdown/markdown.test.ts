@@ -214,7 +214,11 @@ test(
           }
         }
       }),
-      { seed: 1634001732, numRuns: 40 },
+      {
+        seed: 1634001732,
+        numRuns: 40,
+        id: "mark delimiters preserve parsed text and formatting with generated edge whitespace",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -246,7 +250,11 @@ test(
           expect(inlineBreaksToHtml(expected)).toBe(expected);
         },
       ),
-      { seed: 1634001732, numRuns: 60 },
+      {
+        seed: 1634001732,
+        numRuns: 60,
+        id: "inline break encoding preserves generated line boundaries and unfinished whitespace",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -281,7 +289,11 @@ describe("toMarkdown — block structure", () => {
             );
           },
         ),
-        { seed: 717860451, numRuns: 100 },
+        {
+          seed: 717860451,
+          numRuns: 100,
+          id: "generated whitespace-only headings do not emit extra Markdown blocks",
+        },
       );
     },
     propertyTestTimeout(30_000),
@@ -358,7 +370,11 @@ describe("toMarkdown — block structure", () => {
             }
           },
         ),
-        { seed: 1634001732, numRuns: 60 },
+        {
+          seed: 1634001732,
+          numRuns: 60,
+          id: "generated heading breaks preserve one Markdown block",
+        },
       );
     },
     propertyTestTimeout(30_000),
@@ -491,11 +507,38 @@ describe("toMarkdown — block structure", () => {
       para([run("another")], { listRendering: numbered(1, "%1.%2.") }),
       para([run("Payment")], { styleId: "Heading2", listRendering: numbered(0, "%1.") }),
     ]);
-    // The heading is its own block: it neither joins nor swallows the blank
-    // line around the list that follows it.
+    // Headings and custom-label prose each occupy their own Markdown block.
+    // A single newline between custom labels merges two authored paragraphs.
     expect(out).toBe(
-      "## 1. Scope\n\n### 1.1. Definitions\n\n1.2. an item\n1.3. another\n\n## 2. Payment",
+      "## 1. Scope\n\n### 1.1. Definitions\n\n1.2. an item\n\n1.3. another\n\n## 2. Payment",
     );
+    const imported = compileMarkdownToContent(out).content;
+    expect(imported).toHaveLength(5);
+    const prose = imported.filter(
+      (block) => block.type === "paragraph" && block.formatting?.outlineLevel === undefined,
+    );
+    expect(
+      prose.map((block) => {
+        expect(block.type).toBe("paragraph");
+        if (block.type !== "paragraph") throw new Error(`Unexpected block ${block.type}`);
+        expect(block.listRendering).toBeUndefined();
+        return {
+          kind: block.type,
+          text: block.content
+            .flatMap((item) =>
+              item.type === "run"
+                ? item.content.flatMap((part) => (part.type === "text" ? [part.text] : []))
+                : [],
+            )
+            .join(""),
+        };
+      }),
+    ).toEqual([
+      { kind: "paragraph", text: "1.2. an item" },
+      { kind: "paragraph", text: "1.3. another" },
+    ]);
+    const oldOutput = out.replace("an item\n\n1.3.", "an item\n1.3.");
+    expect(compileMarkdownToContent(oldOutput).content).toHaveLength(4);
   });
 
   test("a numbered heading whose level hides its marker (w:vanish) stays unnumbered", () => {

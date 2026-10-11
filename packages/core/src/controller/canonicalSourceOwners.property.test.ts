@@ -72,7 +72,10 @@ test("repeated undo restores every removed paragraph's original source ownership
         }
       },
     ),
-    { numRuns: 24 },
+    {
+      numRuns: 24,
+      id: "repeated undo restores every removed paragraph's original source ownership",
+    },
   );
 });
 
@@ -172,7 +175,10 @@ test(
           }
         }
       }),
-      { numRuns: 24 },
+      {
+        numRuns: 24,
+        id: "cross-paragraph history preserves exact owners while reopening establishes fresh captures",
+      },
     );
     expect(cases).toBeGreaterThan(0);
   },

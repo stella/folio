@@ -168,6 +168,7 @@ test("surplus identity pools retain their JSON and apply like consumed-only pool
         expect(undone.value.document).toStrictEqual(document);
       }
     }),
+    { id: "surplus identity pools retain their JSON and apply like consumed-only pools" },
   );
 });
 

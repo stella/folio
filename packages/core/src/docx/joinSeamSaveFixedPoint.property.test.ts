@@ -124,7 +124,10 @@ test("joined seams reach the parser's fixed point without crossing authored boun
         }
       }
     }),
-    { numRuns: 40 },
+    {
+      numRuns: 40,
+      id: "joined seams reach the parser's fixed point without crossing authored boundaries",
+    },
   );
 });
 
@@ -153,7 +156,7 @@ test("different run records keep both sides of a joined seam", () => {
         );
       }
     }),
-    { numRuns: 25 },
+    { numRuns: 25, id: "different run records keep both sides of a joined seam" },
   );
 });
 
@@ -187,7 +190,10 @@ test("alike authored containers on opposite sides of a join retain their identit
         );
       }
     }),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "alike authored containers on opposite sides of a join retain their identities",
+    },
   );
 });
 
@@ -224,7 +230,7 @@ test("a join changes only its seam even when other authored runs could merge", (
         run("suffix"),
       ]);
     }),
-    { numRuns: 25 },
+    { numRuns: 25, id: "a join changes only its seam even when other authored runs could merge" },
   );
 });
 
@@ -245,7 +251,10 @@ test("equal run attributes in different orders merge and restore each original o
       if (joined === undefined) panic("A join leaves its surviving paragraph");
       expect(joined.content).toHaveLength(1);
     }),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "equal run attributes in different orders merge and restore each original order",
+    },
   );
 });
 
@@ -271,7 +280,10 @@ test("equivalent nested formatting spellings merge and undo restores their exact
       if (joined === undefined) panic("A join leaves its surviving paragraph");
       expect(joined.content).toHaveLength(1);
     }),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "equivalent nested formatting spellings merge and undo restores their exact records",
+    },
   );
 });
 
@@ -301,6 +313,9 @@ test("splitting authored alike runs restores their segmentation and identities e
         }
       }
     }),
-    { numRuns: 25 },
+    {
+      numRuns: 25,
+      id: "splitting authored alike runs restores their segmentation and identities exactly",
+    },
   );
 });

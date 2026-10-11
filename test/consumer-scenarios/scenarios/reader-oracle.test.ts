@@ -17,6 +17,26 @@ import {
 import { contentView, markdownViews, readAll } from "../support/readers.ts";
 import { createRandom } from "../support/random.ts";
 
+test("loose list whitespace preserves empty nested items and rejects heading reclassification", () => {
+  const expected = [
+    { text: "Parent", kind: "listItem", number: "(bullet)" },
+    { text: "", kind: "listItem", number: "(bullet)" },
+  ] as const;
+  assert.deepEqual(markdownViews("- Parent\n\n  -", expected), expected);
+  assert.throws(
+    () => markdownViews("- Parent\n  -", expected),
+    /Unsupported list item Markdown token: heading/u,
+  );
+  assert.throws(
+    () => markdownViews("- Parent\n\n\n  -", expected),
+    /Unsupported list item Markdown token: space/u,
+  );
+  assert.throws(
+    () => markdownViews("- Parent\n\n  - Child", [expected[0], { ...expected[1], text: "Child" }]),
+    /Unsupported list item Markdown token: space/u,
+  );
+});
+
 type Document = ReturnType<typeof fromMarkdown>;
 type Numbering = NonNullable<Document["package"]["numbering"]>;
 type NumberingLevel = Numbering["abstractNums"][number]["levels"][number];

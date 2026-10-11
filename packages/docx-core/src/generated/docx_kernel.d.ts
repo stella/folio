@@ -15,7 +15,7 @@ row: number,
 column: number,
 ];
 export type DocxProjectionAlignmentValue = "center" | "justify" | "left" | "right";
-export type DocxProjectionAlignmentSource = "direct" | "style";
+export type DocxProjectionAlignmentSource = "direct" | "style" | "docDefaults";
 export type DocxProjectionAlignment = readonly [
 value: DocxProjectionAlignmentValue,
 source: DocxProjectionAlignmentSource,
@@ -28,19 +28,21 @@ formatting: readonly DocxProjectionFormattingSpan[],
 structure: DocxProjectionStructure,
 styleId: string | null,
 alignment: DocxProjectionAlignment,
+container: DocxProjectionContainer,
 ];
-export type DocxProjectionFormattingFamily = DocxProjectionFormattingSpan[2];
+export type DocxProjectionFormattingFamily = DocxProjectionFormattingSpan[2] | "alignment";
 export type DocxProjectionFormattingUnknownReason =
 | "document-part-only"
 | "styles-part-unavailable"
-| "unsupported-styles";
+| "unsupported-styles"
+| "unsupported-alignment";
 export type DocxProjectionFormattingFamilyStatus =
 | readonly [status: "known"]
 | readonly [
 status: "unknown-missing-styles",
 reason: "document-part-only" | "styles-part-unavailable",
 ]
-| readonly [status: "unknown-unread", reason: "unsupported-styles"];
+| readonly [status: "unknown-unread", reason: "unsupported-styles" | "unsupported-alignment"];
 export type DocxProjectionFormattingCompleteness = Readonly<
 Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>
 >;
@@ -120,7 +122,7 @@ status: "incomplete",
 reasons: readonly DocxProjectionRevisionUnsupportedReason[],
 ];
 export type DocxProjectionWire = readonly [
-schemaVersion: 6,
+schemaVersion: 7,
 paragraphs: readonly DocxProjectionParagraph[],
 structuralFacts: DocxProjectionStructuralFacts,
 revisionStatus: DocxProjectionRevisionStatus,
@@ -242,6 +244,8 @@ document: DocxProjectionWire,
 reviewFacts: DocxReviewFactsWire,
 ];
 
+
+export type DocxProjectionContainer = "body" | "tableCell";
 
 
 /**

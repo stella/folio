@@ -255,7 +255,10 @@ describe("canonical semantic undo partition", () => {
           }
         },
       ),
-      { numRuns: 75 },
+      {
+        numRuns: 75,
+        id: "generated intent sequences restore every group exactly without projection adjacency",
+      },
     );
   });
 

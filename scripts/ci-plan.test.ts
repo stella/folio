@@ -30,7 +30,7 @@ const PLAN_JOB = "ci-plan";
 // condition and nothing to scope.
 const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset", "ci-result"]);
 const AREA_OUTPUT =
-  /^\$\{\{ github\.event_name == 'merge_group' \|\| fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*) \}\}$/u;
+  /^\$\{\{ github\.event_name == 'merge_group' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*) \}\}$/u;
 const GATE =
   /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'(?: && needs\.ci-plan\.outputs\.suite_depth == 'full')?$/u;
 const PR_SCOPED_JOBS = new Set(["property-areas", "browser-discovery"]);
@@ -454,11 +454,11 @@ describe("CI plan", () => {
     );
   });
 
-  // The shared planner's full-depth output can depend on labels or non-PR
-  // events. Neither may promote this workflow's depth or expand its path scopes.
-  test("only merge groups select full depth and bypass path scopes", () => {
+  // Path planning stays scoped; a shared toolchain change promotes the whole suite.
+  test("merge groups and shared toolchain changes select full depth", () => {
+    expect(planOutputs["toolchain_changed"]).toBe("${{ steps.toolchain.outputs.changed }}");
     expect(planOutputs["suite_depth"]).toBe(
-      "${{ github.event_name == 'merge_group' && 'full' || 'fast' }}",
+      "${{ (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true') && 'full' || 'fast' }}",
     );
     expect(fullDepth).toBe("scoped");
   });
@@ -557,7 +557,7 @@ describe("CI plan", () => {
 
   test("published API preflight is selected before queue entry and evaluated by CI result", () => {
     expect(planOutputs["api_required"]).toBe(
-      "${{ github.event_name == 'merge_group' || steps.api-plan.outputs.api_required == 'true' }}",
+      "${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true' }}",
     );
     expect(jobs["build-api"]?.if).toBe("needs.ci-plan.outputs.api_required == 'true'");
     const steps = jobs[PLAN_JOB]?.steps;

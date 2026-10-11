@@ -107,7 +107,10 @@ test("collapsed removal covers exactly one equal hyperlink across formatting seg
       );
       assertRemoval({ nodes, link, neighbor });
     }),
-    { numRuns: 60 },
+    {
+      numRuns: 60,
+      id: "collapsed removal covers exactly one equal hyperlink across formatting segments",
+    },
   );
 });
 
@@ -162,7 +165,7 @@ test("collapsed removal crosses linked inline atoms without losing content", () 
       }
       expect([...exercised].sort()).toEqual(Object.keys(atomFactories).sort());
     }),
-    { numRuns: 40 },
+    { numRuns: 40, id: "collapsed removal crosses linked inline atoms without losing content" },
   );
 });
 
@@ -236,6 +239,9 @@ test("every generated field substring refuses atom splitting with exact accept a
     fc.property(fc.integer({ min: 2, max: 8 }), (length) =>
       assertPartialFieldRefusal("x".repeat(length)),
     ),
-    { numRuns: 20 },
+    {
+      numRuns: 20,
+      id: "every generated field substring refuses atom splitting with exact accept and reject content",
+    },
   );
 });

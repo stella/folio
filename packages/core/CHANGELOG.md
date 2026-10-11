@@ -1,5 +1,28 @@
 # @stll/folio-core
 
+## 0.58.4
+
+### Patch Changes
+
+- [#1652](https://github.com/stella/folio/pull/1652) [`9252849`](https://github.com/stella/folio/commit/9252849a9eb274398313aa1f8b0f3f8891c7b549) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve Markdown block boundaries, empty nested list items, and literal block-marker text.
+
+- [#1605](https://github.com/stella/folio/pull/1605) [`8919807`](https://github.com/stella/folio/commit/891980702cec4acd0ea26f19534eb78da4741f43) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize canonical list rendering after every edit, record authored paragraph review snapshots, and preserve section views when replacing body content.
+- Updated dependencies [[`8919807`](https://github.com/stella/folio/commit/891980702cec4acd0ea26f19534eb78da4741f43)]:
+  - @stll/docx-core@0.36.1
+
+## 0.58.3
+
+### Patch Changes
+
+- [#1650](https://github.com/stella/folio/pull/1650) [`9557c48`](https://github.com/stella/folio/commit/9557c48e856999ea0273c24c73aa473f5809970a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve opaque body blocks and bookmark boundaries when creating bilingual documents.
+
+## 0.58.2
+
+### Patch Changes
+
+- Updated dependencies [[`3a53991`](https://github.com/stella/folio/commit/3a53991f2229737a217591f23e81ea7a7004d342)]:
+  - @stll/docx-core@0.36.0
+
 ## 0.58.1
 
 ### Patch Changes

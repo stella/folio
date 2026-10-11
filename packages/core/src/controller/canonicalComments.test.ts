@@ -297,6 +297,7 @@ test("generated point/range comment histories preserve exact undo, projection an
       numRuns: 12,
       seed: 20261005,
       examples: COMMENTS_SOURCE_PATHS.map((path) => [["a"], "point" as const, path]),
+      id: "generated point/range comment histories preserve exact undo, projection and canonical snapshot save",
     },
   );
 });

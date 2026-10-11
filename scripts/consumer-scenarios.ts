@@ -53,6 +53,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { installCleanRoomDependencies } from "./clean-room-install";
 import { parseConsumerArgs } from "./consumer-scenario-args";
 
 import { commitSeed } from "../test/commit-seed";
@@ -287,7 +288,7 @@ const stageConsumer = async (
     ...CONSUMER_DEPENDENCIES,
     ...(typecheck ? TYPECHECK_DEPENDENCIES : []),
   ];
-  await $`bun add ${dependencies}`.cwd(consumerDir).quiet();
+  await installCleanRoomDependencies({ consumerDir, dependencies });
   return consumerDir;
 };
 

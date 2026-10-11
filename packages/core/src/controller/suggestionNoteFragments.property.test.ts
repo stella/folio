@@ -246,7 +246,10 @@ test("resolved note-occurrence deletion preserves text, references, and formatti
         }
       },
     ),
-    { numRuns: 20 },
+    {
+      numRuns: 20,
+      id: "resolved note-occurrence deletion preserves text, references, and formatting through save and reopen",
+    },
   );
 });
 

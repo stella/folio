@@ -173,7 +173,10 @@ test(
             }
           },
         ),
-        { numRuns: 36 },
+        {
+          numRuns: 36,
+          id: "native final text is committed exactly once or refused without a journal change",
+        },
       );
     } finally {
       jest.useRealTimers();
@@ -291,7 +294,7 @@ test(
             }
           }
         }),
-        { numRuns: 16 },
+        { numRuns: 16, id: "same-payload typing after native end is always a separate gesture" },
       );
     } finally {
       jest.useRealTimers();

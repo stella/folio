@@ -41,7 +41,10 @@ test(
           expect(result.position * 10).toBe(result.coordinate);
         },
       ),
-      { numRuns: 50 },
+      {
+        numRuns: 50,
+        id: "paint commits re-resolve changing targets and return one consistent snapshot",
+      },
     );
   },
   propertyTestTimeout(10_000),
@@ -115,7 +118,10 @@ test(
           expect(subscriptions).toBe(0);
         },
       ),
-      { numRuns: 50 },
+      {
+        numRuns: 50,
+        id: "current paint owns targets even when stale coordinates successfully roundtrip",
+      },
     );
   },
   propertyTestTimeout(10_000),

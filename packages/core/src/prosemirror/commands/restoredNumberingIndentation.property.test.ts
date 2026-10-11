@@ -305,7 +305,10 @@ test(
           await resolveAndRoundtrip(scenario, indents);
         }
       }),
-      { numRuns: 8 },
+      {
+        numRuns: 8,
+        id: "restored numbering keeps style, direct, and level indentation provenance",
+      },
     );
   },
   propertyTestTimeout(30_000),

@@ -1,3 +1,4 @@
+import { normalizeCanonicalListRendering } from "./canonicalListRendering";
 import { restoreCanonicalSelection } from "./canonicalSelection";
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import { mapTocSelection } from "./canonicalTocSelection";
@@ -49,6 +50,7 @@ import {
   cloneDocumentWithParagraphPropertySources,
   copyDocumentParagraphPropertySourceContract,
   copyParagraphPropertySource,
+  restoreParagraphIndentationProjection,
 } from "../docx/paragraphPropertySource";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
@@ -371,11 +373,13 @@ type PreservePropertySourcesOptions = {
   target: Document;
   source: Document;
   stories?: readonly OpStory[];
+  indentation?: "derive" | "restore";
 };
 const preservePropertySources = ({
   target,
   source,
   stories = documentStories(source),
+  indentation = "derive",
 }: PreservePropertySourcesOptions): void => {
   for (const story of stories) {
     const originals = findStoryBody(source, story)?.content ?? [];
@@ -390,8 +394,11 @@ const preservePropertySources = ({
       if (original.type !== "paragraph") continue;
       const next =
         original.paraId === undefined ? derived.at(index) : paragraphs.get(original.paraId);
-      if (next?.type === "paragraph" && next !== original)
+      if (next?.type === "paragraph" && next !== original) {
         copyParagraphPropertySource(next, original);
+        if (indentation === "restore")
+          restoreParagraphIndentationProjection({ target: next, source: original });
+      }
     }
   }
   copyDocumentParagraphPropertySourceContract(target, source);
@@ -1504,6 +1511,15 @@ class CanonicalSession {
         : Result.ok(stagedApplied);
     if (applied.isErr()) return refuse(applied.error.message);
     if (applied.value.inverse.length === 0) return noChange("The intent makes no document change.");
+    if (propertySourceDocument !== undefined)
+      preservePropertySources({
+        target: applied.value.document,
+        source: propertySourceDocument,
+        indentation: "restore",
+      });
+    const normalized = normalizeCanonicalListRendering(applied.value.document);
+    applied.value.document = normalized.document;
+    applied.value.inverse = normalized.inverse.concat(applied.value.inverse);
     const changed = changedStories({
       document: applied.value.document,
       previous: this.currentDocument,
@@ -1688,10 +1704,12 @@ export const createCanonicalSession = (
   const unsupported = unsupportedSeedReason(document);
   if (unsupported !== null) return refuse(unsupported);
   const owned = cloneDocumentWithParagraphPropertySources(document);
-  const normalized = normalizeForOps(owned);
-  preservePropertySources({ target: normalized, source: owned });
-  const validated = validateOpsDocument(normalized);
+  const identified = normalizeForOps(owned);
+  preservePropertySources({ target: identified, source: owned });
+  const validated = validateOpsDocument(identified);
   if (validated.isErr()) return refuse(validated.error.message);
+  const normalized = normalizeCanonicalListRendering(identified).document;
+  preservePropertySources({ target: normalized, source: owned });
   const projected = project({ document: normalized, styles });
   if (projected.isErr()) return projected;
   return Result.ok(

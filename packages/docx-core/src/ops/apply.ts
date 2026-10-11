@@ -1,6 +1,11 @@
 import { applyCommentOp } from "./comments";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { cloneModel } from "./modelClone";
+import {
+  getParagraphPropertySnapshot,
+  registerParagraphPropertySnapshot,
+  transferParagraphPropertySnapshot,
+} from "./paragraphPropertySnapshot";
 import { noteContentWithAutomaticMark } from "./noteMarks";
 import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
 import { documentStories, findStoryBody, sameStory } from "./stories";
@@ -1231,8 +1236,12 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
   if (structurallyEqual(formatting, paragraph.formatting)) {
     return unchanged(document);
   }
+  const next = withParagraphFormatting(paragraph, formatting);
+  registerParagraphPropertySnapshot({
+    paragraph: next,
+    snapshot: patchedSet(getParagraphPropertySnapshot(paragraph), op.patch, op.whenEmpty),
+  });
   if (revision !== undefined) {
-    const next = withParagraphFormatting(paragraph, formatting);
     next.propertyChanges = [
       foldedParagraphPropertyChange({ paragraph, formatting, stamp: revision }),
     ];
@@ -1254,7 +1263,7 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
       op,
       story: op.story,
       at: located.value,
-      paragraph: withParagraphFormatting(paragraph, formatting),
+      paragraph: next,
       newIds: undefined,
     },
     (result) =>
@@ -1374,7 +1383,7 @@ const trackSplit = ({
     made.propertyChanges = [
       madeSecond
         ? foldedParagraphPropertyChange({ paragraph, formatting: made.formatting, stamp })
-        : paragraphPropertyChange(stampInfo(stamp), paragraph.formatting),
+        : paragraphPropertyChange(stampInfo(stamp), paragraph),
     ];
   }
   return undefined;
@@ -2379,6 +2388,41 @@ const recordedRevisions = (
   return revisions;
 };
 
+type PreserveParagraphPropertySnapshotsOptions = { before: Document; edit: DocumentEdit };
+
+/** Content edits retain authored snapshots across immutable paragraph replacements. */
+const preserveParagraphPropertySnapshots = ({
+  before,
+  edit,
+}: PreserveParagraphPropertySnapshotsOptions): void => {
+  if (edit.touched.modified.length === 0) return;
+  const modified = new Set(edit.touched.modified.map(idKey));
+  for (const story of documentStories(edit.document)) {
+    const previous = findStoryBody(before, story);
+    const next = storyBody(edit.document, story);
+    if (previous === undefined || previous === next) continue;
+    const originals = new Map(
+      storyParagraphs(previous).flatMap(({ paragraph }) =>
+        paragraph.paraId !== undefined && modified.has(idKey(paragraph.paraId))
+          ? [[idKey(paragraph.paraId), paragraph] as const]
+          : [],
+      ),
+    );
+    if (originals.size === 0) continue;
+    for (const { paragraph } of storyParagraphs(next)) {
+      if (paragraph.paraId === undefined) continue;
+      const original = originals.get(idKey(paragraph.paraId));
+      if (
+        original === undefined ||
+        original === paragraph ||
+        !structurallyEqual(original.formatting, paragraph.formatting)
+      )
+        continue;
+      transferParagraphPropertySnapshot({ source: original, target: paragraph });
+    }
+  }
+};
+
 /** Apply one operation to a document that meets the seed contract. */
 export const applyDocumentOp = (
   document: Document,
@@ -2491,6 +2535,7 @@ export const applyDocumentOp = (
     );
   }
   meetsContract(edit.document);
+  preserveParagraphPropertySnapshots({ before: document, edit });
   return Result.ok({
     ...edit,
     inverse: edit.inverse.map(captureDocumentOp),

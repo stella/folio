@@ -159,7 +159,7 @@ export const deleteBlocks = ({
       if (survivor.formatting !== undefined) review.formatting = survivor.formatting;
       review.propertyChanges = [
         foldedParagraphPropertyChange({
-          paragraph: next,
+          paragraph,
           formatting: survivor.formatting,
           stamp: op.revision,
         }),

@@ -303,7 +303,7 @@ test.each(Object.values(STORIES))(
           await checkCapacity({ kind: type, attempts, length, pendingAt, merge });
         },
       ),
-      { numRuns: 20 },
+      { numRuns: 20, id: "$type formatting sequences preserve paragraph revision capacity" },
     );
   },
   propertyTestTimeout(120_000),

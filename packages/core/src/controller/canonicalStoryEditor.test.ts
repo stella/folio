@@ -111,7 +111,11 @@ for (const story of stories) {
             views.pop();
           },
         ),
-        { numRuns: 60, seed: 2392 },
+        {
+          numRuns: 60,
+          seed: 2392,
+          id: "${story.kind} typing addresses the native caret before selection observation",
+        },
       );
     },
     propertyTestTimeout(30_000),

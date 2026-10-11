@@ -1,5 +1,17 @@
 # @stll/docx-core
 
+## 0.36.1
+
+### Patch Changes
+
+- [#1605](https://github.com/stella/folio/pull/1605) [`8919807`](https://github.com/stella/folio/commit/891980702cec4acd0ea26f19534eb78da4741f43) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize canonical list rendering after every edit, record authored paragraph review snapshots, and preserve section views when replacing body content.
+
+## 0.36.0
+
+### Minor Changes
+
+- [#1642](https://github.com/stella/folio/pull/1642) [`3a53991`](https://github.com/stella/folio/commit/3a53991f2229737a217591f23e81ea7a7004d342) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Breaking: projection wire schema 7 adds the paragraph container (body or tableCell), retained in fragments without document coordinates, and alignment completeness. Document-default alignment uses distinct docDefaults provenance; unread dependencies and unsupported alignment values remain explicit unknowns.
+
 ## 0.35.0
 
 ### Minor Changes

@@ -121,9 +121,10 @@ fn count_unknowns(
         bold,
         highlight,
         superscript,
+        alignment,
     } = formatting_completeness;
     let mut formatting_reasons = BTreeSet::new();
-    for status in [bold, highlight, superscript] {
+    for status in [bold, highlight, superscript, alignment] {
         match status {
             FormattingFactStatus::Known => {}
             FormattingFactStatus::Unknown(reason) => {

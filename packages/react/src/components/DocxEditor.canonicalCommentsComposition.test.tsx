@@ -340,7 +340,10 @@ for (const shape of SHAPES) {
                 }
               },
             ),
-            { numRuns: 3 },
+            {
+              numRuns: 3,
+              id: "canonical comments render during ${shape} ${mode} composition ${completion}",
+            },
           );
         },
         propertyTestTimeout(30_000),

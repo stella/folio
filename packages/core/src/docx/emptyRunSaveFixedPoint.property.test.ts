@@ -269,6 +269,7 @@ describe("a run that holds no payload is never written", () => {
               },
             ],
           ],
+          id: "any sequence of empty, near-empty and not-yet-filled runs is a fixed point after the first save",
         },
       );
     },

@@ -210,7 +210,10 @@ describe("comparing documents whose kept paragraphs gain or lose note references
             await expectExactComparison({ base, revised });
           },
         ),
-        { numRuns: 20 },
+        {
+          numRuns: 20,
+          id: "restored references get result-owned identities across document-local import collisions",
+        },
       );
     },
     propertyTestTimeout(30_000),

@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { readFile } from "node:fs/promises";
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 
 import {
   type DocxProjectionFactSet,
@@ -9,7 +10,9 @@ import {
   type DocxProjectionOutlineLevelFact,
   type DocxProjectionParagraph,
   type DocxProjectionWire,
+  docxProjectionSchemaVersion,
   initializeDocxProjection,
+  projectMainDocumentXml,
   projectCompressedDocx,
 } from "../packages/docx-core/src/projection";
 import { parseDocx } from "@stll/folio-core/docx/parser";
@@ -30,6 +33,7 @@ const KNOWN_FORMATTING = {
   bold: ["known"],
   highlight: ["known"],
   superscript: ["known"],
+  alignment: ["known"],
 } as const satisfies Record<DocxProjectionFormattingFamily, DocxProjectionFormattingFamilyStatus>;
 
 type ProjectionOptions = {
@@ -37,11 +41,28 @@ type ProjectionOptions = {
   outlineLevels?: DocxProjectionFactSet<DocxProjectionOutlineLevelFact>;
 };
 
+await initializeDocxProjection({
+  wasm: await readFile(
+    new URL("../packages/docx-core/src/generated/docx_kernel_bg.wasm", import.meta.url),
+  ),
+});
+
+const fixtureSchemaVersion = await (async () => {
+  const version = await docxProjectionSchemaVersion();
+  const wire = await projectMainDocumentXml(
+    new TextEncoder().encode(
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>',
+    ),
+  );
+  if (version === wire[0]) return version;
+  return panic("Projection schema getter disagrees with the runtime wire");
+})();
+
 const projection = ({
   paragraphs,
   outlineLevels = ["known", []],
 }: ProjectionOptions): DocxProjectionWire => [
-  6,
+  fixtureSchemaVersion,
   paragraphs,
   [UNKNOWN_FACTS, UNKNOWN_FACTS, UNKNOWN_FACTS, UNKNOWN_FACTS, outlineLevels],
   ["complete"],
@@ -66,6 +87,7 @@ const kernelParagraph = ({
   table === undefined ? [] : ["table", table[0], table[1], table[2]],
   styleId,
   null,
+  table === undefined ? "body" : "tableCell",
 ];
 
 const typeScriptParagraph = (
