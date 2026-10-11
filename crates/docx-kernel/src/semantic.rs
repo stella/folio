@@ -1012,7 +1012,7 @@ mod tests {
         let empty =
             format!("<w:document xmlns:w=\"{W}\"><w:body><w:r><w:t/></w:r></w:body></w:document>");
         let empty_scan = scan_wordprocessing_part(empty.as_bytes(), ScanLimits::default())?;
-        assert!(empty_scan.blocks.is_empty());
+        assert_eq!(empty_scan.blocks, Vec::<super::TextBlock>::new());
         Ok(())
     }
 
@@ -1020,7 +1020,7 @@ mod tests {
     fn rejects_namespace_spoofing_and_accepts_strict_ooxml() -> Result<(), super::ScanError> {
         let spoof = b"<w:document xmlns:w=\"urn:not-word\"><w:body><w:p><w:r><w:t>secret</w:t></w:r></w:p></w:body></w:document>";
         let spoof_scan = scan_wordprocessing_part(spoof, ScanLimits::default())?;
-        assert!(spoof_scan.blocks.is_empty());
+        assert_eq!(spoof_scan.blocks, Vec::<super::TextBlock>::new());
 
         let strict = b"<d:document xmlns:d=\"http://purl.oclc.org/ooxml/wordprocessingml/main\"><d:body><d:p><d:r><d:t>strict</d:t></d:r></d:p></d:body></d:document>";
         let strict_scan = scan_wordprocessing_part(strict, ScanLimits::default())?;
