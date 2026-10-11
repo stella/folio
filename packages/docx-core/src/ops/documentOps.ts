@@ -14,6 +14,7 @@ export { compareGaps, defaultInsertionGap, inlineLeafSpans, zeroWidthLeavesAt } 
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
+export { registerParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
 export {
   applyDocumentOpEnvelope,
   applyDocumentOp,

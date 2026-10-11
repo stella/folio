@@ -19,7 +19,7 @@
     {
       "seed": 1529073804,
       "path": "0:0:0",
-      "note": "List edit generator covers numbering removal, outdent, level change, split and both joins; exact history and save/reopen rendering must remain fixed points. The original pasted-list generator omitted edits after paste.",
+      "note": "List edit generator covers numbering removal, outdent, level change, split and both joins; exact history and save/reopen rendering must remain fixed points. The original pasted-list generator omitted edits after paste; replay also checks suggesting edits and rejection in a fresh canonical session.",
       "date": "2026-10-08"
     },
     {
@@ -31,8 +31,8 @@
     {
       "seed": 1529073804,
       "path": "0:0:0:0",
-      "note": "Numbering removal must clear inherited indentation in the authority before save/reopen.",
-      "date": "2026-10-09"
+      "note": "Numbering removal clears inherited indentation before save/reopen. Authored first-line offsets must not materialize an absent hanging flag; the expanded indentation profiles exposed this normalization mismatch.",
+      "date": "2026-10-11"
     }
   ],
   "activation validates identities before normalizing inherited list overrides": [

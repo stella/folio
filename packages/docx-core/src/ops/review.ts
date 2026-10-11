@@ -20,6 +20,7 @@ import type {
   TrackedRunContent,
 } from "../model/document";
 import { structurallyEqual } from "./equality";
+import { getParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
 import { IDENTITY_SPACES, slotKey } from "./ids";
 import {
   childNodes,
@@ -186,13 +187,13 @@ export const withMarkFormatting = (
   return { ...paragraphPropertiesOf(properties), ...markFormatting };
 };
 
-/** A tracked paragraph property change from `previous`. */
+/** A tracked paragraph property change from the paragraph's authored properties. */
 export const paragraphPropertyChange = (
   info: TrackedChangeInfo,
-  previous: ParagraphFormatting | undefined,
+  paragraph: Paragraph,
 ): ParagraphPropertyChange => {
   const change: ParagraphPropertyChange = { type: "paragraphPropertyChange", info };
-  const recorded = paragraphPropertiesOf(previous);
+  const recorded = paragraphPropertiesOf(getParagraphPropertySnapshot(paragraph));
   if (recorded !== undefined) {
     change.previousFormatting = recorded;
   }
@@ -212,8 +213,7 @@ export const foldedParagraphPropertyChange = ({
   stamp,
 }: FoldParagraphPropertyChangeOptions): ParagraphPropertyChange => {
   const existing = paragraph.propertyChanges?.at(0);
-  if (existing === undefined)
-    return paragraphPropertyChange(stampInfo(stamp), paragraph.formatting);
+  if (existing === undefined) return paragraphPropertyChange(stampInfo(stamp), paragraph);
   const info = { ...existing.info, ...stampInfo(stamp), id: existing.info.id };
   if (stamp.initials === undefined) delete info.initials;
   // A companion date belongs to the previous attribution, not the new stamp.

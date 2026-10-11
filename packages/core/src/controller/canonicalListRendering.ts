@@ -1,6 +1,7 @@
 /** Canonical edits retain authored fields; list rendering follows the current numbering. */
 import {
   withBodyContent,
+  registerParagraphPropertySnapshot,
   OP_STORIES,
   DOCUMENT_OP_TYPES,
   EMPTY_PROPERTY_SETS,
@@ -22,10 +23,7 @@ import {
   assignParagraphIndentationProjection,
   sameParagraphIndentationProjection,
 } from "../docx/paragraphPropertySource";
-import {
-  paragraphIndentationFromFormatting,
-  withDirectParagraphIndentation,
-} from "../prosemirror/paragraphIndentation";
+import { paragraphIndentationFromFormatting } from "../prosemirror/paragraphIndentation";
 import { listRenderingDefinitionsMatch } from "../docx/listRendering";
 import { canonicalJson } from "../utils/canonicalJson";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
@@ -55,6 +53,10 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
     };
     const content = body.content.map((paragraph) => {
       if (paragraph.type !== "paragraph") return paragraph;
+      registerParagraphPropertySnapshot({
+        paragraph,
+        snapshot: paragraphFormattingWithAuthoredIndentation(paragraph),
+      });
       const formatting = paragraph.formatting;
       const numPr = mergeParagraphNumbering(formatting?.numPrFromStyle, formatting?.numPr);
       if (
@@ -110,9 +112,8 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
           patch: { numPr: formatting.numPr ?? null },
         });
       }
-      const authored = paragraphIndentationFromFormatting(
-        paragraphFormattingWithAuthoredIndentation(paragraph),
-      );
+      const authoredFormatting = paragraphFormattingWithAuthoredIndentation(next);
+      const authored = paragraphIndentationFromFormatting(authoredFormatting);
       const inheritance = listIndentationProvenancePatch({
         direct: authored,
         styleFormatting: styles.resolveParagraphStyle(next.formatting?.styleId).paragraphFormatting,
@@ -121,7 +122,6 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
           numPr?.kind === "reference" ? { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 } : undefined,
         numbering,
       });
-      const authoredFormatting = withDirectParagraphIndentation(next.formatting, authored);
       assignParagraphIndentationProjection({
         paragraph: next,
         authored: authoredFormatting,
@@ -180,12 +180,14 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
         next.listRendering = rendering;
       }
       computeListMarker(next, counters);
+      registerParagraphPropertySnapshot({ paragraph: next, snapshot: authoredFormatting });
       if (
         sameParagraphIndentationProjection({ left: next, right: paragraph }) &&
         canonicalJson(next.formatting) === canonicalJson(formatting) &&
         canonicalJson(next.listRendering) === canonicalJson(cached)
-      )
+      ) {
         return paragraph;
+      }
       return next;
     });
     return content.every((paragraph, index) => paragraph === body.content[index])

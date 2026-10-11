@@ -1,6 +1,7 @@
 import { panic } from "better-result";
+import { transferParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
 
-/** Clone model records while retaining opaque, enumerable in-memory bindings. */
+/** Clone model records while retaining private in-memory bindings. */
 type CopyPrivateBindingsOptions = { source: unknown; target: unknown; seen: WeakSet<object> };
 const copyPrivateBindings = ({ source, target, seen }: CopyPrivateBindingsOptions): void => {
   if (
@@ -12,6 +13,7 @@ const copyPrivateBindings = ({ source, target, seen }: CopyPrivateBindingsOption
   )
     return;
   seen.add(source);
+  transferParagraphPropertySnapshot({ source, target });
   for (const key of Object.getOwnPropertySymbols(source)) {
     const descriptor = Object.getOwnPropertyDescriptor(source, key);
     if (descriptor?.enumerable && "value" in descriptor)

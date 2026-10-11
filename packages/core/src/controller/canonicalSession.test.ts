@@ -1090,7 +1090,9 @@ describe("canonical session", () => {
       if (result.isErr()) {
         expect(result.error).toBeInstanceOf(CanonicalSessionError);
         expect(result.error.message).toBe(
-          "Canonical sessions currently require plain paragraphs and supported inline atoms.",
+          container === "table"
+            ? "Canonical sessions cannot activate documents containing tables."
+            : "Canonical sessions currently require plain paragraphs and supported inline atoms.",
         );
       }
       expect(document).toStrictEqual(original);

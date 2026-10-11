@@ -763,6 +763,9 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
     readonly APPEND: "append";
 }>;
 
+// @public
+export const registerParagraphPropertySnapshot: (input: RegisterParagraphPropertySnapshotOptions) => void;
+
 // @public (undocumented)
 export type RemoveHeaderFooterOp = {
     type: typeof DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER;

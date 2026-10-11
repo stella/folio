@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { panic } from "better-result";
+import { storyRevisionIds } from "../../../../test/reviewProjection";
 import { Fragment, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Paragraph } from "../types/document";
@@ -10,11 +12,13 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { schema } from "../prosemirror/schema";
 import {
   createCanonicalSession,
+  type CanonicalSession,
   CanonicalSessionError,
   publishCanonicalProjection,
 } from "./canonicalSession";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 import { validateDocxPackage } from "@stll/docx-core";
+import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp } from "@stll/docx-core/ops";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import fc from "fast-check";
 import JSZip from "jszip";
@@ -131,6 +135,7 @@ test(
         },
       ),
       {
+        id: "generated LISTNUM level edits preserve child counters, history and save/reopen",
         examples: [
           [1, 1, "inside"],
           [1, 1, "leading"],
@@ -273,7 +278,8 @@ test(
         fc.constantFrom("Alpha", "é", "😀", "東京"),
         fc.constantFrom("direct", "style"),
         fc.integer({ min: 0, max: 12 }),
-        async (kind, level, text, provenance, start) => {
+        fc.constantFrom("inherited", "zero", "matching", "custom"),
+        async (kind, level, text, provenance, start, indentationProfile) => {
           const minted = mintListInstance(undefined, { kind, start });
           const source = await createDocx({
             package: {
@@ -305,7 +311,35 @@ test(
                       ? { numPr: { kind: "reference", numId: minted.numId, ilvl } }
                       : { styleId: "List", numPr: { kind: "levelOnly", ilvl } }
                   ) satisfies NonNullable<Paragraph["formatting"]>;
-                  return Object.assign(paragraph, { formatting });
+                  const indentation = (() => {
+                    switch (indentationProfile) {
+                      case "inherited":
+                        return {};
+                      case "zero":
+                        return { indentLeft: 0, indentFirstLine: 0, hangingIndent: false };
+                      case "matching":
+                        return (
+                          minted.definitions.abstractNums
+                            .at(0)
+                            ?.levels.find((entry) => entry.ilvl === ilvl)?.pPr ??
+                          panic("A minted list level must have indentation.")
+                        );
+                      case "custom":
+                        return {
+                          indentLeft: 360,
+                          indentRight: 120,
+                          indentFirstLine: 120,
+                          hangingIndent: false,
+                        };
+                      default: {
+                        const unreachable: never = indentationProfile;
+                        return unreachable;
+                      }
+                    }
+                  })();
+                  return Object.assign(paragraph, {
+                    formatting: { ...formatting, ...indentation },
+                  });
                 }),
               },
             },
@@ -325,18 +359,18 @@ test(
             const before = session.document;
             const beforeProjection = state.doc.toJSON();
             const beforeSelection = state.selection.toJSON();
-            const at = session.projection.inputAddressAt(position).unwrap();
-            const commit = (() => {
+            const prepareEdit = (editSession: CanonicalSession, editState: EditorState) => {
+              const at = editSession.projection.inputAddressAt(position).unwrap();
               switch (edit) {
                 case "remove":
-                  return session.prepareIntent(state, {
+                  return editSession.prepareIntent(editState, {
                     type: "formatParagraph",
                     at,
                     patch: { numPr: { kind: "none" } },
                   });
                 case "outdent":
                 case "level":
-                  return session.prepareIntent(state, {
+                  return editSession.prepareIntent(editState, {
                     type: "formatParagraph",
                     at,
                     patch: {
@@ -348,7 +382,7 @@ test(
                     },
                   });
                 case "levelOnly":
-                  return session.prepareIntent(state, {
+                  return editSession.prepareIntent(editState, {
                     type: "formatParagraph",
                     at,
                     patch: {
@@ -356,7 +390,7 @@ test(
                     },
                   });
                 case "idOnly":
-                  return session.prepareIntent(state, {
+                  return editSession.prepareIntent(editState, {
                     type: "formatParagraph",
                     at,
                     patch: {
@@ -364,17 +398,18 @@ test(
                     },
                   });
                 case "split":
-                  return session.prepareSplit(state);
+                  return editSession.prepareSplit(editState);
                 case "joinBackward":
-                  return session.prepareJoin(state, "backward");
+                  return editSession.prepareJoin(editState, "backward");
                 case "joinForward":
-                  return session.prepareJoin(state, "forward");
+                  return editSession.prepareJoin(editState, "forward");
                 default: {
                   const unreachable: never = edit;
                   return unreachable;
                 }
               }
-            })().unwrap();
+            };
+            const commit = prepareEdit(session, state).unwrap();
             state = publishCanonicalProjection({ session, state, commit }).unwrap().state;
             const after = session.document;
             const afterProjection = state.doc.toJSON();
@@ -409,12 +444,43 @@ test(
                 expect(reopened.package.numbering).toEqual(snapshot.document.package.numbering);
               }
             }
+            const suggested = createCanonicalSession(parsed).unwrap();
+            suggested.setMode({ type: "suggesting", author: "Reviewer" });
+            let suggestedState = EditorState.create({ schema, doc: suggested.projection.doc });
+            suggestedState = suggestedState.apply(
+              suggestedState.tr.setSelection(TextSelection.create(suggestedState.doc, position)),
+            );
+            const beforeSuggestion = structuredClone(suggested.document);
+            suggestedState = publishCanonicalProjection({
+              session: suggested,
+              state: suggestedState,
+              commit: prepareEdit(suggested, suggestedState).unwrap(),
+            }).unwrap().state;
+            // Rejection must restore authored properties, even when the snapshot
+            // began with derived list indentation and is loaded in a fresh session.
+            const reviewing = createCanonicalSession(suggested.document).unwrap();
+            let reviewState = EditorState.create({ schema, doc: reviewing.projection.doc });
+            reviewState = publishCanonicalProjection({
+              session: reviewing,
+              state: reviewState,
+              commit: reviewing
+                .prepareResolve(reviewState, {
+                  revisionIds: storyRevisionIds(reviewing.document),
+                  resolution: "reject",
+                })
+                .unwrap(),
+            }).unwrap().state;
+            expect(structuredClone(reviewing.document)).toEqual(beforeSuggestion);
+            expect(reviewState.doc.toJSON()).toEqual(beforeProjection);
             exercised.add(edit);
           }
           expect([...exercised].toSorted()).toEqual([...listEdits].toSorted());
         },
       ),
-      { numRuns: 5 },
+      {
+        numRuns: 5,
+        id: "generated list edits normalize rendering and preserve exact history and save fixed points",
+      },
     );
   },
   propertyTestTimeout(30_000),
@@ -484,12 +550,42 @@ test(
             });
             expect(block.listRendering?.level).toBe(levels.at(index));
           }
+          const state = EditorState.create({ schema, doc: session.projection.doc });
+          const anchor = session.document.package.document.content.at(0);
+          if (anchor?.type !== "paragraph" || anchor.paraId === undefined)
+            return panic("Missing identified fixture paragraph.");
+          const before = structuredClone(session.document);
+          for (const identity of [undefined, anchor.paraId]) {
+            const inserted: Paragraph = {
+              type: "paragraph",
+              ...(identity === undefined ? {} : { paraId: identity }),
+              formatting: {
+                numPrFromStyle: { kind: "reference", numId: minted.numId, ilvl: 0 },
+                numPr: { kind: "levelOnly", ilvl: levels.at(0) ?? 0 },
+              },
+              content: [{ type: "run", content: [{ type: "text", text: "Inserted list item" }] }],
+            };
+            const operation = {
+              type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+              story: OP_STORIES.MAIN,
+              at: { type: "before", blockId: anchor.paraId },
+              blocks: [inserted],
+            } as const satisfies DocumentOp;
+            const refusedInsertion = session.prepareOperations(state, [operation]);
+            expect(refusedInsertion.isErr()).toBe(true);
+            if (refusedInsertion.isErr())
+              expect(refusedInsertion.error).toBeInstanceOf(CanonicalSessionError);
+            expect(structuredClone(session.document)).toStrictEqual(before);
+          }
           expect(identities.size).toBe(levels.length);
           expect(structuredClone(identified)).toStrictEqual(identifiedOriginal);
           expect(document).toStrictEqual(original);
         },
       ),
-      { numRuns: 20 },
+      {
+        numRuns: 20,
+        id: "activation validates identities before normalizing inherited list overrides",
+      },
     );
   },
   propertyTestTimeout(5_000),
