@@ -85,6 +85,7 @@
     "build:core": "bun --filter '@stll/folio-core' build",
     "build:react": "bun --filter '@stll/folio-react' build",
     "typecheck": "bun --filter '*' typecheck && bun run typecheck:parity && bun run typecheck:benchmarks && bun run typecheck:corpus && bun run typecheck:corpus-edit-fuzz && bun run typecheck:tooling && bun run typecheck:reserved-values && bun run typecheck:container-contract",
+    "typecheck:compiler-parity": "stll-typecheck-parity --project packages/core/tsconfig.build.json --project packages/react/tsconfig.build.json --project packages/docx-core/tsconfig.build.json --project packages/agents/tsconfig.build.json --project packages/cli/tsconfig.build.json --project packages/editor-web/tsconfig.build.json --project packages/playground/tsconfig.json --project plugins/vscode/tsconfig.json --project scripts/tsconfig.budgets.json --project specifications/reserved-values/tsconfig.json --project specifications/container-contract/tsconfig.json",
     "typecheck:container-contract": "bun scripts/tsc-native.ts -p specifications/container-contract/tsconfig.json",
     "typecheck:parity": "tsc -p parity/tsconfig.check.json --noEmit",
     "typecheck:reserved-values": "bun scripts/tsc-native.ts -p specifications/reserved-values/tsconfig.json",
@@ -140,7 +141,7 @@
     "test:visual:update": "bunx playwright test --update-snapshots",
     "test:visual:report": "bunx playwright show-report",
     "bench:compare": "bun benchmarks/compare/run.ts",
-    "test:source-guards": "bun test scripts/shared-docx-fixtures.test.ts scripts/browser-preview-imports.test.ts scripts/workflow-cache-policy.test.ts scripts/canonical-timer-owner.test.ts scripts/canonical-cutover.test.ts scripts/canonical-command-census.test.ts scripts/canonical-range-producers.test.ts scripts/property-test-budgets.test.ts scripts/property-timeout.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/zip-part-writer.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts"
+    "test:source-guards": "bun test scripts/shared-docx-fixtures.test.ts scripts/browser-preview-imports.test.ts scripts/workflow-cache-policy.test.ts scripts/canonical-timer-owner.test.ts scripts/canonical-cutover.test.ts scripts/canonical-command-census.test.ts scripts/canonical-range-producers.test.ts scripts/property-test-budgets.test.ts scripts/property-timeout.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/zip-part-writer.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts scripts/ci-toolchain-plan.test.mjs"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
@@ -154,7 +155,7 @@
     "@playwright/test": "^1.61.1",
     "@rolldown/plugin-babel": "^0.2.2",
     "@stll/folio-core": "workspace:*",
-    "@stll/oxlint-config": "0.8.0",
+    "@stll/oxlint-config": "0.14.1",
     "@types/babel__core": "^7.20.5",
     "@types/node": "^26.2.0",
     "@types/pngjs": "6.0.5",

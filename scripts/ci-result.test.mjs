@@ -14,12 +14,13 @@ const areaOutputs = planOutputs.filter(
   (output) => output.endsWith("_required") && output !== "code_required",
 );
 
-const needsFor = (depth, event, codeRequired = "true") => {
+const needsFor = ({ depth, event, codeRequired = "true", toolchainChanged = "false" }) => {
   const outputs = {
     ...Object.fromEntries(areaOutputs.map((area) => [area, "true"])),
     trusted: "true",
     suite_depth: depth,
     code_required: codeRequired,
+    toolchain_changed: toolchainChanged,
   };
   const needs = { "ci-plan": { result: "success", outputs } };
   for (const [job, scope] of Object.entries(scopes)) {
@@ -79,29 +80,38 @@ describe("CI result", () => {
   });
 
   const scenarios = [
-    ["fast", "pull_request", "true"],
-    ["fast", "pull_request", "false"],
-    ["fast", "push", "true"],
-    ["fast", "workflow_dispatch", "true"],
-    ["fast", "schedule", "true"],
-    ["full", "merge_group", "true"],
+    ["fast", "pull_request", "true", "false"],
+    ["fast", "pull_request", "false", "false"],
+    ["fast", "push", "true", "false"],
+    ["fast", "workflow_dispatch", "true", "false"],
+    ["fast", "schedule", "true", "false"],
+    ["full", "merge_group", "true", "false"],
+    ["full", "pull_request", "true", "true"],
+    ["full", "push", "true", "true"],
+    ["full", "workflow_dispatch", "true", "true"],
+    ["full", "schedule", "true", "true"],
   ];
   test("every declared job is selected in at least one scenario", () => {
     const exercised = new Set();
-    for (const [depth, event, codeRequired] of scenarios) {
-      for (const [job, { result }] of Object.entries(needsFor(depth, event, codeRequired))) {
+    for (const [depth, event, codeRequired, toolchainChanged] of scenarios) {
+      for (const [job, { result }] of Object.entries(
+        needsFor({ depth, event, codeRequired, toolchainChanged }),
+      )) {
         if (job !== "ci-plan" && result === "success") exercised.add(job);
       }
     }
     expect([...exercised].toSorted()).toEqual(Object.keys(scopes).toSorted());
   });
 
-  for (const [depth, event, codeRequired] of scenarios) {
-    test(`every selected ${depth} ${event} code=${codeRequired} job must succeed`, () => {
-      const baseline = needsFor(depth, event, codeRequired);
+  for (const [depth, event, codeRequired, toolchainChanged] of scenarios) {
+    const baseline = needsFor({ depth, event, codeRequired, toolchainChanged });
+    const scenario = `${depth} ${event} code=${codeRequired} toolchain=${toolchainChanged}`;
+    test(`successful selected jobs approve ${scenario}`, () => {
       expect(runResult(event, baseline).exitCode).toBe(0);
-      for (const [job, { result }] of Object.entries(baseline)) {
-        if (job === "ci-plan" || result !== "success") continue;
+    });
+    for (const [job, { result }] of Object.entries(baseline)) {
+      if (job === "ci-plan" || result !== "success") continue;
+      test(`${job} must succeed for ${scenario}`, () => {
         for (const failure of ["failure", "cancelled", "skipped", "missing"]) {
           const needs =
             failure === "missing"
@@ -112,12 +122,12 @@ describe("CI result", () => {
           expect(run.exitCode).toBe(1);
           expect(run.stdout.toString()).toContain(`${job} (selected, ${failure})`);
         }
-      }
-    });
+      });
+    }
   }
 
   test("an unexpected failure, cancelled plan, or wrong event depth fails", () => {
-    const needs = needsFor("fast", "pull_request");
+    const needs = needsFor({ depth: "fast", event: "pull_request" });
     needs["docx-kernel"].result = "failure";
     expect(runResult("pull_request", needs).exitCode).toBe(1);
     needs["ci-plan"].result = "cancelled";
@@ -125,27 +135,55 @@ describe("CI result", () => {
 
     for (const event of ["pull_request", "push", "workflow_dispatch", "schedule"]) {
       for (const depth of ["full", "invalid"]) {
-        const run = runResult(event, needsFor(depth, event));
+        const run = runResult(event, needsFor({ depth, event }));
         expect(run.exitCode).toBe(1);
         expect(run.stdout.toString()).toContain(`wrong suite depth for ${event}`);
       }
     }
     for (const depth of ["fast", "invalid"]) {
-      const run = runResult("merge_group", needsFor(depth, "merge_group"));
+      const run = runResult("merge_group", needsFor({ depth, event: "merge_group" }));
       expect(run.exitCode).toBe(1);
       expect(run.stdout.toString()).toContain("wrong suite depth for merge_group");
     }
 
-    const untrusted = needsFor("full", "merge_group");
+    const untrusted = needsFor({ depth: "full", event: "merge_group" });
     untrusted["ci-plan"].outputs.trusted = "false";
     expect(runResult("merge_group", untrusted).exitCode).toBe(1);
   });
 
   test("a skipped plan passes only while the PR is still a draft", () => {
-    const needs = needsFor("fast", "pull_request");
+    const needs = needsFor({ depth: "fast", event: "pull_request" });
     needs["ci-plan"].result = "skipped";
     expect(runResult("pull_request", needs, "true").exitCode).toBe(0);
     expect(runResult("pull_request", needs, "false").exitCode).toBe(1);
     expect(runResult("merge_group", needs, "true").exitCode).toBe(1);
+  });
+
+  test("changed or unreadable toolchains cannot retain fast depth", () => {
+    // The detector promotes both outcomes through the same validated changed output.
+    const needs = needsFor({ depth: "fast", event: "pull_request", toolchainChanged: "true" });
+    expect(runResult("pull_request", needs).exitCode).toBe(1);
+    const full = needsFor({ depth: "full", event: "pull_request", toolchainChanged: "true" });
+    expect(runResult("pull_request", full).exitCode).toBe(0);
+  });
+
+  test("toolchain promotion requires every planned area, including the API gate", () => {
+    const required = planOutputs.filter((output) => output.endsWith("_required"));
+    expect(required).toContain("api_required");
+    expect(required).toContain("code_required");
+    for (const area of required)
+      for (const value of ["false", undefined]) {
+        const needs = needsFor({ depth: "full", event: "pull_request", toolchainChanged: "true" });
+        needs["ci-plan"].outputs[area] = value;
+        expect(runResult("pull_request", needs).exitCode, `${area}=${value}`).toBe(1);
+      }
+  });
+
+  test("missing or invalid detector outputs cannot approve the plan", () => {
+    for (const toolchainChanged of ["", "invalid", "TRUE", null, undefined]) {
+      const needs = needsFor({ depth: "fast", event: "pull_request" });
+      needs["ci-plan"].outputs.toolchain_changed = toolchainChanged;
+      expect(runResult("pull_request", needs).exitCode).toBe(1);
+    }
   });
 });

@@ -137,6 +137,14 @@
     {
       "run": "bun run typecheck",
       "if": null
+    },
+    {
+      "run": "bunx --no-install stll-typecheck-probe --project packages/core/tsconfig.build.json --seed-dir packages/core/src -- bun check -p packages/core/tsconfig.build.json",
+      "if": null
+    },
+    {
+      "run": "bun run typecheck:compiler-parity --changed-since \"$TOOLCHAIN_BASE\"",
+      "if": null
     }
   ],
   "build-api": [
