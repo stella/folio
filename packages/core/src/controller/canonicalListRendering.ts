@@ -11,7 +11,6 @@ import {
 import { panic } from "better-result";
 import type { Document, DocumentBody, Footnote, Endnote } from "../types/document";
 import { computeListRendering, getCachedNumberingMap } from "../docx/numberingParser";
-import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import { effectiveParagraphNumberingReference } from "../prosemirror/numberingAttr";
 import { computeListMarker, type ComputeListMarkerOptions } from "../docx/listMarkerComputation";
 import {
@@ -78,9 +77,7 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
       const next = cloneParagraphWithPropertySource(paragraph, {});
       if (
         formatting?.numPrFromStyle !== undefined &&
-        formatting.numPr !== undefined &&
-        paragraphNumberingReferenceId(numPr) !==
-          paragraphNumberingReferenceId(formatting.numPrFromStyle)
+        (formatting.numPr?.kind === "reference" || formatting.numPr?.kind === "none")
       ) {
         next.formatting = { ...formatting };
         delete next.formatting.numPrFromStyle;

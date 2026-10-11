@@ -541,6 +541,12 @@ test(
             const commit = prepareEdit(session, state).unwrap();
             state = publishCanonicalProjection({ session, state, commit }).unwrap().state;
             const after = session.document;
+            for (const paragraph of after.package.document.content) {
+              if (paragraph.type !== "paragraph") continue;
+              const stated = paragraph.formatting?.numPr;
+              if (stated?.kind === "reference" || stated?.kind === "none")
+                expect(paragraph.formatting?.numPrFromStyle).toBeUndefined();
+            }
             const afterProjection = state.doc.toJSON();
             const afterSelection = state.selection.toJSON();
             expect(normalizeCanonicalListRendering(after).document).toBe(after);
