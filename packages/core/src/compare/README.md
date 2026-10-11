@@ -358,7 +358,7 @@ carries the current numbers and the failing cases.
   but the note part is saved by patching the notes it already holds, so a new
   note cannot be written yet. The comparison names the cause
   (`a note reference names a footnote or endnote the base document does not
-have`) rather than writing the reference as text.
+  have`) rather than writing the reference as text.
 - **A text box is compared as body text** (2026-09-05). Its paragraphs are part
   of the main story, so their text is compared, but the round-trip self-check
   tags only the enclosing table cell — an insertion that landed inside a box

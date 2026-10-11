@@ -198,7 +198,10 @@ const MERGEABLE = BODY_PARAGRAPHS.filter(
 
 const CASES: Case[] = [
   ...BODY_PARAGRAPHS.map(
-    (text): Case => ({ name: `deleteBlock "${text}"`, steps: [deleteStep(text)] }),
+    (text): Case => ({
+      name: `deleteBlock "${text}"`,
+      steps: [deleteStep(text)],
+    }),
   ),
   ...MERGEABLE.map(
     (text): Case => ({
@@ -228,7 +231,10 @@ const CASES: Case[] = [
     }),
   ),
   ...BODY_PARAGRAPHS.map(
-    (text): Case => ({ name: `splitBlock "${text}"`, steps: [splitStep(text)] }),
+    (text): Case => ({
+      name: `splitBlock "${text}"`,
+      steps: [splitStep(text)],
+    }),
   ),
   {
     name: "deleteTable",

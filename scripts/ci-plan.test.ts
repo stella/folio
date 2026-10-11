@@ -19,6 +19,7 @@ import {
   changedTestPaths,
   FAST_SIBLING_TEST_CAP,
   selectFastTestSuites,
+  selectFullTestSuites,
   discoverTestSuites,
   focusedTestFiles,
   TEST_SHARD_COUNT,
@@ -27,8 +28,8 @@ import {
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
 // The changeset gate runs beside the plan: it has its own pull-request-only
-// condition and nothing to scope.
-const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset", "ci-result"]);
+// condition and nothing to scope. Lint always checks repository toolchain policy.
+const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset", "lint", "ci-result"]);
 const AREA_OUTPUT =
   /^\$\{\{ github\.event_name == 'merge_group' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*) \}\}$/u;
 const GATE =
@@ -117,7 +118,8 @@ describe("CI plan", () => {
   test("each split job retains its complete command list and step depth guards", () => {
     const splitJobs = Object.entries(jobs)
       .filter(
-        ([, job]) =>
+        ([id, job]) =>
+          id === "lint" ||
           job.if === "needs.ci-plan.outputs.code_required == 'true'" ||
           job.if ===
             "needs.ci-plan.outputs.code_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'" ||
@@ -171,7 +173,7 @@ describe("CI plan", () => {
     expect(guardSteps).toEqual([
       { name: "Static source guards", run: "bun run test:source-guards" },
     ]);
-    expect(jobs["lint"]?.if).toBe("needs.ci-plan.outputs.code_required == 'true'");
+    expect(jobs["lint"]?.if).toBeUndefined();
   });
 
   test("discovery includes new nested test files under every command root", () => {
@@ -272,6 +274,25 @@ describe("CI plan", () => {
         .toSorted(),
     ).toEqual(selectedFiles.toSorted());
     expect(suites.at(0)?.files).toHaveLength(5);
+  });
+
+  test("full selection covers every discovered and focused file exactly once with owner preloads", () => {
+    const suites = discoverTestSuites();
+    const discovered = suites.flatMap(({ files }) => files);
+    const selected = selectFullTestSuites({ suites });
+    const full = selected.flatMap(({ files }) => files);
+    expect(full.toSorted()).toEqual([...new Set([...discovered, ...focusedTestFiles])].toSorted());
+    expect(new Set(full).size).toBe(full.length);
+    for (const suite of suites) {
+      expect(selected).toContain(suite);
+    }
+    for (const changedFiles of [[], discovered, focusedTestFiles]) {
+      const fast = selectFastTestSuites({ suites, changedFiles });
+      for (const file of fast.flatMap(({ files }) => files)) expect(full).toContain(file);
+    }
+    expect(selectFullTestSuites({ suites, focusedFiles: [...discovered, ...discovered] })).toBe(
+      suites,
+    );
   });
 
   test("only non-test source changes select sibling tests", () => {
@@ -431,6 +452,10 @@ describe("CI plan", () => {
       );
       if (!isRecord(fast) || !isRecord(fast["env"]))
         throw new Error(`Missing fast selection for ${id}`);
+      expect(fast["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'fast'");
+      const full = steps.find((step) => isRecord(step) && step["id"] === "full-suite");
+      if (!isRecord(full)) throw new Error(`Missing full selection for ${id}`);
+      expect(full["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'full'");
       expect(fast["env"]["CI_TEST_BASE"]).toBe(
         "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}",
       );
@@ -688,7 +713,10 @@ describe("CI plan", () => {
     const gated = new Set<string>();
     for (const [id, job] of Object.entries(jobs)) {
       if (UNPLANNED_JOBS.has(id)) continue;
-      expect([id, job.needs]).toEqual([id, PLAN_JOB]);
+      expect([id, job.needs]).toEqual([
+        id,
+        id === "consumer-scenarios-minimum" ? [PLAN_JOB, "consumer-scenarios"] : PLAN_JOB,
+      ]);
       const condition = job.if;
       if (PR_SCOPED_JOBS.has(id)) {
         expect(

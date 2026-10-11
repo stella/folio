@@ -140,7 +140,11 @@ export const runArbitrary: fc.Arbitrary<Run> = fc.record(
 const markerId = fc.integer({ min: 1, max: 40 });
 
 const bookmarkStartArbitrary = markerId.map(
-  (id): ParagraphContent => ({ type: "bookmarkStart", id, name: `_Ref${id}` }),
+  (id): ParagraphContent => ({
+    type: "bookmarkStart",
+    id,
+    name: `_Ref${id}`,
+  }),
 );
 const bookmarkEndArbitrary = markerId.map((id): ParagraphContent => ({ type: "bookmarkEnd", id }));
 
@@ -150,7 +154,12 @@ const markerArbitrary: fc.Arbitrary<ParagraphContent> = fc.oneof(
   markerId.map((id): ParagraphContent => ({ type: "commentRangeStart", id })),
   markerId.map((id): ParagraphContent => ({ type: "commentRangeEnd", id })),
   markerId.map(
-    (id): ParagraphContent => ({ type: "moveToRangeStart", id, name: `move${id}`, author: "A" }),
+    (id): ParagraphContent => ({
+      type: "moveToRangeStart",
+      id,
+      name: `move${id}`,
+      author: "A",
+    }),
   ),
   markerId.map((id): ParagraphContent => ({ type: "moveToRangeEnd", id })),
 );

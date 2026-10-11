@@ -1,0 +1,9 @@
+{
+  "engineFloors": [
+    {
+      "package": "packages/cli",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "consumer-scenarios-minimum"
+    }
+  ]
+}

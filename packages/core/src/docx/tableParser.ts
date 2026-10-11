@@ -1692,7 +1692,10 @@ const parseCellChildren = ({
   return withPreservedChildren(
     modelled,
     { children: captured },
-    (xml): PreservedBlock => ({ type: "preservedBlock", xml }),
+    (xml): PreservedBlock => ({
+      type: "preservedBlock",
+      xml,
+    }),
   );
 };
 
