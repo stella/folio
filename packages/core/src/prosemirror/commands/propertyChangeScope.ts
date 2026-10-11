@@ -243,6 +243,7 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
   if (directAlignment !== undefined) {
     snapshot["alignment"] = directAlignment;
   }
+  snapshot["numPrFromStyle"] = attrs.numPrFromStyle ?? null;
   Object.assign(snapshot, directParagraphSpacing(attrs), directParagraphIndentation(attrs));
   return snapshot;
 };

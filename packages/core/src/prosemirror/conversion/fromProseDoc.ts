@@ -1,4 +1,7 @@
-import { effectiveParagraphNumbering } from "../numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumbering,
+} from "../numberingAttr";
 import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 /**
  * ProseMirror to Document Conversion
@@ -1958,7 +1961,14 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
  * list markers on the way out of the editor.
  */
 function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering"] {
-  const numId = paragraphNumberingReferenceId(effectiveParagraphNumbering(attrs));
+  const numId = paragraphNumberingReferenceId(
+    effectiveParagraphNumbering(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: attrs.numPr,
+        numPrFromStyle: attrs.numPrFromStyle,
+      }),
+    ),
+  );
   if (numId === undefined) {
     return undefined;
   }
@@ -2057,7 +2067,14 @@ function convertPMParagraph(
   if (pFormatting) {
     paragraph.formatting = pFormatting;
   }
-  if (effectiveParagraphNumbering(attrs)?.kind === "reference") {
+  if (
+    effectiveParagraphNumbering(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: attrs.numPr,
+        numPrFromStyle: attrs.numPrFromStyle,
+      }),
+    )?.kind === "reference"
+  ) {
     const inheritedIndentation = paragraphIndentationFromFormatting(attrs._resolvedFormatting);
     if (inheritedIndentation) {
       assignParagraphIndentationProjection({
@@ -2118,14 +2135,16 @@ const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): Paragrap
       ? normalizedChangeInfo
       : { ...normalizedChangeInfo, currentFormatting };
   }
-  // `null` is the attr's tombstone — the paragraph carried no numbering before
-  // the change — and the model spells that as the field being absent.
-  const { numPr, ...previousWithoutNumPr } = previousFormatting;
+  // Attr null encodes an absent source slot; style inheritance remains separate.
+  const { numPr, numPrFromStyle, ...previousWithoutNumPr } = previousFormatting;
   const normalizedPrevious =
     numPr == null ? previousWithoutNumPr : { ...previousWithoutNumPr, numPr };
   return {
     ...normalizedChangeInfo,
-    previousFormatting: normalizedPrevious,
+    previousFormatting: {
+      ...normalizedPrevious,
+      ...(numPrFromStyle == null ? {} : { numPrFromStyle }),
+    },
     ...(currentFormatting !== undefined && { currentFormatting }),
   };
 };
@@ -2438,7 +2457,15 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   const snapToGrid = authored("snapToGrid", attrs.snapToGrid);
   // A zero left or first-line indent is stated only where a numbering level
   // could supply another value; elsewhere it reads as the absent default.
-  const numbered = paragraphNumberingReferenceId(effectiveParagraphNumbering(attrs)) !== undefined;
+  const numbered =
+    paragraphNumberingReferenceId(
+      effectiveParagraphNumbering(
+        paragraphNumberingSourcesFromBoundary({
+          numPr: attrs.numPr,
+          numPrFromStyle: attrs.numPrFromStyle,
+        }),
+      ),
+    ) !== undefined;
   const statedIndent = (value: number | undefined): number | undefined =>
     value === 0 && !numbered ? undefined : value;
   const indentLeft = statedIndent(authored("indentLeft", attrs.indentLeft));

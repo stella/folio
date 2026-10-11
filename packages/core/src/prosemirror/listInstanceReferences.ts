@@ -7,7 +7,10 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { completeListNumbering, type ListInstanceReference } from "../docx/listNumberingInstances";
-import { effectiveParagraphNumberingReference } from "./numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumberingReference,
+} from "./numberingAttr";
 import type { NumberingDefinitions } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import {
@@ -29,7 +32,12 @@ type ReferenceSink = {
  * define an instance from.
  */
 const collectReference = (attrs: ListRenderingSourceAttrs, sink: ReferenceSink): void => {
-  const numbering = effectiveParagraphNumberingReference(attrs);
+  const numbering = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
+  );
   if (numbering === undefined || sink.isDefined(numbering.numId)) {
     return;
   }
@@ -78,7 +86,12 @@ export const paragraphListReferences = (node: PMNode): number[] => {
   const attrs = expectParagraphAttrs(node);
   const numIds: number[] = [];
   const add = (source: ListRenderingSourceAttrs): void => {
-    const numbering = effectiveParagraphNumberingReference(source);
+    const numbering = effectiveParagraphNumberingReference(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: source.numPr,
+        numPrFromStyle: source.numPrFromStyle,
+      }),
+    );
     if (numbering !== undefined) numIds.push(numbering.numId);
   };
   add(attrs);

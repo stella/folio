@@ -1,4 +1,7 @@
-import { effectiveParagraphNumbering } from "./numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumbering,
+} from "./numberingAttr";
 /**
  * The list rendering (marker, indentation bookkeeping) a paragraph's
  * numbering gives it, as a paragraph-property change records and restores it.
@@ -79,7 +82,12 @@ export const rejectedListRenderingPatch = ({
   const restored = restoredNumbering ?? undefined;
   const sameEffectiveNumbering = sameStatedParagraphNumbering(
     restored,
-    effectiveParagraphNumbering(current),
+    effectiveParagraphNumbering(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: current.numPr,
+        numPrFromStyle: current.numPrFromStyle,
+      }),
+    ),
   );
   if (!sameEffectiveNumbering) return listRenderingFor(restored, numbering);
 

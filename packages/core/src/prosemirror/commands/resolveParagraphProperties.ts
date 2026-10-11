@@ -1,7 +1,11 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { SectionProperties } from "../../types/document";
 import type { NumberingMap } from "../../docx/numberingParser";
-import { effectiveParagraphNumbering, paragraphNumberingAttr } from "../numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumbering,
+  paragraphNumberingAttr,
+} from "../numberingAttr";
 import { resolveParagraphNumbering } from "../../docx/numberingReference";
 import { expectParagraphAttrs } from "../attrs";
 import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
@@ -97,10 +101,12 @@ export const resolveParagraphChangeAttrs = ({
           recordedNumbering?.kind === "reference" || recordedNumbering?.kind === "none"
             ? null
             : inheritedNumbering;
-        const effectiveNumbering = effectiveParagraphNumbering({
-          numPr: recordedNumbering,
-          numPrFromStyle: restoredNumPrFromStyle,
-        });
+        const effectiveNumbering = effectiveParagraphNumbering(
+          paragraphNumberingSourcesFromBoundary({
+            numPr: recordedNumbering,
+            numPrFromStyle: restoredNumPrFromStyle,
+          }),
+        );
         const restoredNumbering =
           effectiveNumbering === undefined ? null : paragraphNumberingAttr(effectiveNumbering);
         const restoredFormatting = paragraphRejectOriginalFormatting(

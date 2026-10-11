@@ -1,6 +1,9 @@
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../prosemirror/schema/nodes";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
-import { effectiveParagraphNumbering } from "../prosemirror/numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumbering,
+} from "../prosemirror/numberingAttr";
 import { classifyResourceReference } from "./referenceClassification";
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
@@ -637,7 +640,12 @@ const statedNumberingAttrPatch = ({
   else projected.numPr = numPr;
   if (numPrFromStyle === undefined) Reflect.deleteProperty(projected, "numPrFromStyle");
   else projected.numPrFromStyle = numPrFromStyle;
-  const effective = effectiveParagraphNumbering(projected);
+  const effective = effectiveParagraphNumbering(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: projected.numPr,
+      numPrFromStyle: projected.numPrFromStyle,
+    }),
+  );
   const rendering =
     effective?.kind === "reference"
       ? listLevelAttrPatch(projected, effective.ilvl ?? 0, numbering)
@@ -822,7 +830,12 @@ const paragraphPropertiesPatch = ({
           ? numPrFromStyle
           : readParagraphNumberingAttr(patch["numPrFromStyle"]),
     };
-    const effectiveNumbering = effectiveParagraphNumbering(nextSources);
+    const effectiveNumbering = effectiveParagraphNumbering(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: nextSources.numPr,
+        numPrFromStyle: nextSources.numPrFromStyle,
+      }),
+    );
     if (effectiveNumbering?.kind === "reference") {
       const direct =
         properties.indentation === undefined
@@ -3398,7 +3411,9 @@ const restyledListAttrs = ({
   const kept = statedByOldStyle ? null : stated;
   // Out of every list, the new style's included.
   const numPr = removesNumbering ? removedNumberingAttr(fromStyle) : kept;
-  const effective = effectiveParagraphNumbering({ numPr, numPrFromStyle: fromStyle });
+  const effective = effectiveParagraphNumbering(
+    paragraphNumberingSourcesFromBoundary({ numPr, numPrFromStyle: fromStyle }),
+  );
   return {
     ...CLEARED_LIST_RENDERING_ATTRS,
     ...(effective?.kind === "reference" &&
@@ -3630,10 +3645,12 @@ const buildInsertedParagraphs = ({
           : null;
       const finalNumbering = readParagraphNumberingAttr(attrs["numPr"]);
       const finalFromStyle = readParagraphNumberingAttr(attrs["numPrFromStyle"]);
-      const effectiveNumbering = effectiveParagraphNumbering({
-        numPr: finalNumbering ?? undefined,
-        numPrFromStyle: finalFromStyle,
-      });
+      const effectiveNumbering = effectiveParagraphNumbering(
+        paragraphNumberingSourcesFromBoundary({
+          numPr: finalNumbering ?? undefined,
+          numPrFromStyle: finalFromStyle,
+        }),
+      );
       if (effectiveNumbering?.kind === "reference") {
         Object.assign(
           attrs,

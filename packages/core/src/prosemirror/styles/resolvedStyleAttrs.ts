@@ -1,6 +1,7 @@
 import { panic } from "better-result";
 
 import {
+  paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumbering,
   effectiveParagraphNumberingReference,
 } from "../numberingAttr";
@@ -273,7 +274,14 @@ export function listLevelIndentRemovalPatch(
   attrs: Readonly<ParagraphAttrs>,
   numbering: NumberingMap | null | undefined,
 ): ParagraphAttrsPatch {
-  if (effectiveParagraphNumbering(attrs)?.kind !== "reference") {
+  if (
+    effectiveParagraphNumbering(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: attrs.numPr,
+        numPrFromStyle: attrs.numPrFromStyle,
+      }),
+    )?.kind !== "reference"
+  ) {
     return {};
   }
   const direct = directParagraphIndentation(attrs);
@@ -307,7 +315,12 @@ export function listLevelAttrPatch(
   ilvl: number,
   numbering: NumberingMap | null | undefined,
 ): ParagraphAttrsPatch {
-  const reference = effectiveParagraphNumberingReference(attrs);
+  const reference = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
+  );
   if (reference === undefined) {
     panic("Cannot change list level without an effective numbering reference");
   }

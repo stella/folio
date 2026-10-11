@@ -18,7 +18,11 @@ import {
   paragraphNumberingReferenceId,
 } from "../docx/numberingReference";
 import type { ListRendering } from "../types/document";
-import { effectiveParagraphNumbering, paragraphNumberingAttr } from "./numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumbering,
+  paragraphNumberingAttr,
+} from "./numberingAttr";
 import {
   advanceListMarker,
   advanceVisibleListMarker,
@@ -67,7 +71,12 @@ const staticMarker = (attrs: Readonly<ParagraphAttrs>): string | undefined => {
 
 /** Most paragraphs: nothing to count and no marker to show. */
 const isPlainParagraph = (attrs: Readonly<ParagraphAttrs>): boolean =>
-  effectiveParagraphNumbering(attrs).kind === "none" &&
+  effectiveParagraphNumbering(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
+  ).kind === "none" &&
   attrs.listMarker == null &&
   attrs.listMarkerTemplate == null &&
   (attrs._propertyChanges == null || attrs._propertyChanges.length === 0);
@@ -139,7 +148,14 @@ export const createListLabelCounter = (): ListLabelCounter => {
       return advanceVisibleListMarker(counted, streams).marker;
     }
     const marker = advanceListMarker(counted, final);
-    if (effectiveParagraphNumbering(counted).kind === "reference") {
+    if (
+      effectiveParagraphNumbering(
+        paragraphNumberingSourcesFromBoundary({
+          numPr: counted.numPr,
+          numPrFromStyle: counted.numPrFromStyle,
+        }),
+      ).kind === "reference"
+    ) {
       originalPreviousList = final.previousList ?? NO_PREVIOUS_LIST;
     }
     return marker;
@@ -162,7 +178,14 @@ export const createListLabelCounter = (): ListLabelCounter => {
     // An unnumbered paragraph's counted marker is a removed number (a tracked
     // change's previous state), which the page strikes through.
     const counted =
-      paragraphNumberingReferenceId(effectiveParagraphNumbering(attrs)) === undefined
+      paragraphNumberingReferenceId(
+        effectiveParagraphNumbering(
+          paragraphNumberingSourcesFromBoundary({
+            numPr: attrs.numPr,
+            numPrFromStyle: attrs.numPrFromStyle,
+          }),
+        ),
+      ) === undefined
         ? null
         : marker?.trim();
     if (counted) {

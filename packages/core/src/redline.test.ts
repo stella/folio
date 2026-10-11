@@ -1173,7 +1173,10 @@ describe("generateRedlineDocx inserted list items", () => {
       if (identicalParagraph?.type !== "paragraph")
         throw new Error("Expected identical-definition insertion");
       expect(identicalParagraph.formatting?.styleId).toBe("Numbered");
-      expect(identicalAccepted.snapshot().blocks.at(-1)?.listReference?.numId).toBe(1);
+      const identicalBlock = identicalAccepted.snapshot().blocks.at(-1);
+      if (!identicalBlock || identicalBlock.kind === "diagnostic")
+        throw new Error("Expected inserted paragraph block");
+      expect(identicalBlock.listReference?.numId).toBe(1);
 
       const unsupportedRevision = await makeDocument({
         inserted: true,

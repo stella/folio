@@ -8,7 +8,10 @@ import { getFontAlternate, type FontAlternates } from "../../fonts/fontAlternate
 import type { ParagraphAttrs, TabAlignment, TabStop } from "../../layout-engine/types";
 import { mergeParagraphTabStops } from "../../utils/paragraphFormattingMerge";
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
-import { effectiveParagraphNumberingReference } from "../../prosemirror/numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumberingReference,
+} from "../../prosemirror/numberingAttr";
 import { directionIsRtl, directionToBidi } from "../../prosemirror/paragraphDirection";
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
 import { advanceVisibleListMarker, type ListCounterStreams } from "../../prosemirror/listMarker";
@@ -202,7 +205,12 @@ export function convertParagraphAttrs(
   let indentFirstLine =
     typeof pmAttrs.indentFirstLine === "number" ? pmAttrs.indentFirstLine : undefined;
   let hangingIndent = pmAttrs.hangingIndent;
-  const numbering = effectiveParagraphNumberingReference(pmAttrs);
+  const numbering = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: pmAttrs.numPr,
+      numPrFromStyle: pmAttrs.numPrFromStyle,
+    }),
+  );
   if (numbering !== undefined && indentLeft === undefined && indentFirstLine === undefined) {
     // Fallback: calculate indentation based on level
     // An authored first-line or hanging position is already a complete list

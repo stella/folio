@@ -455,11 +455,11 @@ export type ParagraphPropertyChangeAttrs = Omit<
     provenance?: TrackedChangeProvenance;
     suggestionId?: string | null;
   };
-  previousFormatting?: Omit<ParagraphFormatting, "numPr"> & {
+  previousFormatting?: Omit<ParagraphFormatting, "numPr" | "numPrFromStyle"> & {
     // The attr, not the model field: what a list command records here is the
-    // attr it replaced. `null` is the third state and means the paragraph
-    // carried no numbering before the change.
+    // attr it replaced. Null encodes an absent source slot, not effective absence.
     numPr?: ParagraphAttrs["numPr"] | null;
+    numPrFromStyle?: ParagraphAttrs["numPrFromStyle"] | null;
   } & Partial<
       Pick<
         ParagraphAttrs,

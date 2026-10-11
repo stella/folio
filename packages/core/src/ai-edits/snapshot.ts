@@ -18,6 +18,7 @@ import {
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { createListLabelCounter } from "../prosemirror/listLabels";
 import {
+  paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumberingReference,
   paragraphNumberingAttr,
   readParagraphNumberingAttr,
@@ -1030,18 +1031,22 @@ const getDisplayLabel = (
 };
 
 const getListReference = (node: PMNode): FolioAIParagraphBlock["listReference"] | undefined => {
-  const numbering = effectiveParagraphNumberingReference({
-    numPr: readParagraphNumberingAttr(node.attrs["numPr"]),
-    numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
-  });
+  const numbering = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: readParagraphNumberingAttr(node.attrs["numPr"]),
+      numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
+    }),
+  );
   return numbering ? { numId: numbering.numId, level: numbering.ilvl } : undefined;
 };
 
 const getNumberingReferenceKey = (node: PMNode): string | null => {
-  const numbering = effectiveParagraphNumberingReference({
-    numPr: readParagraphNumberingAttr(node.attrs["numPr"]),
-    numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
-  });
+  const numbering = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: readParagraphNumberingAttr(node.attrs["numPr"]),
+      numPrFromStyle: readParagraphNumberingAttr(node.attrs["numPrFromStyle"]),
+    }),
+  );
   return numbering ? `${String(numbering.numId)}:${String(numbering.ilvl)}` : null;
 };
 

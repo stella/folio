@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
+import type { Node as PMNode } from "prosemirror-model";
+import { advanceListMarker, advanceVisibleListMarker, createListCounterState } from "../listMarker";
 import fc from "fast-check";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import JSZip from "jszip";
 import { findChild, findChildren, parseXml } from "../../docx/xmlParser";
 import { EditorState, TextSelection } from "prosemirror-state";
@@ -382,6 +385,127 @@ test(
         numRuns: 20,
         id: "tracked property records and resolution preserve style numbering provenance",
       },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+const pendingCounterProjection = (doc: PMNode) => {
+  const streams = { final: createListCounterState(), original: createListCounterState() };
+  const final: (string | null)[] = [];
+  const original: (string | null)[] = [];
+  doc.forEach((node) => {
+    const projected = advanceVisibleListMarker(expectParagraphAttrs(node), streams);
+    final.push(projected.advances.find(({ stream }) => stream === "final")?.marker ?? null);
+    original.push(projected.advances.find(({ stream }) => stream === "original")?.marker ?? null);
+  });
+  return { final, original, streams };
+};
+
+const resolvedCounterProjection = (doc: PMNode) => {
+  const counters = createListCounterState();
+  const markers: (string | null)[] = [];
+  doc.forEach((node) => markers.push(advanceListMarker(expectParagraphAttrs(node), counters)));
+  return { markers, counters };
+};
+
+test(
+  "pending style-numbering counter streams equal resolved documents",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 20 }),
+        fc.integer({ min: 0, max: 8 }),
+        async (numId, level) => {
+          for (const authored of ["absent", "levelOnly", "reference", "none"] as const) {
+            for (const transition of ["remove", "switch", "style then switch"] as const) {
+              const source = sourceDocument({ numId, level, numberingSource: "style" });
+              const target = source.package.document.content.at(1);
+              if (target?.type !== "paragraph") throw new Error("Expected target paragraph");
+              const overrides = {
+                absent: undefined,
+                levelOnly: { kind: "levelOnly", ilvl: level },
+                none: { kind: "none" },
+                reference: paragraphNumberingReference({ numId, ilvl: level }),
+              } as const;
+              const numPr = overrides[authored];
+              target.formatting = {
+                styleId: "Numbered",
+                ...(numPr === undefined ? {} : { numPr }),
+              };
+              source.package.document.content.push({
+                type: "paragraph",
+                formatting: { styleId: "Numbered" },
+                content: [{ type: "run", content: [{ type: "text", text: "Following" }] }],
+              });
+              const document = await parseDocx(await createDocx(source));
+              let state = EditorState.create({
+                doc: toProseDoc(document),
+                plugins: [
+                  createDocumentStylesPlugin(document.package.styles),
+                  createDocumentNumberingPlugin(document.package.numbering),
+                  createSuggestionModePlugin(true, "Reviewer"),
+                ],
+              });
+              const position = state.doc.child(0).nodeSize;
+              if (transition === "style then switch") {
+                const tr = state.tr;
+                carryParagraphProperties({
+                  tr,
+                  position,
+                  source: state.doc.child(0),
+                  styleResolver: getDocumentStyleResolver(state),
+                  numbering: getDocumentNumbering(state),
+                  revision: { id: 42, author: "Reviewer", date: "2026-09-01T00:00:00Z" },
+                });
+                state = state.apply(tr);
+              }
+              state = state.apply(
+                state.tr.setSelection(TextSelection.create(state.doc, position + 1)),
+              );
+              const runtime = ListExtension().onSchemaReady({ schema });
+              const command =
+                transition === "remove"
+                  ? runtime.commands?.removeList?.()
+                  : runtime.commands?.toggleBulletList?.();
+              if (!command) throw new Error("Expected list transition command");
+              command(state, (tr) => {
+                state = state.apply(tr);
+              });
+              for (const pendingDoc of [
+                state.doc,
+                toProseDoc(
+                  await parseDocx(
+                    await repackDocx(
+                      fromProseDoc(state.doc, document, { stylesheetSource: { type: "package" } }),
+                    ),
+                  ),
+                ),
+              ]) {
+                const pending = pendingCounterProjection(pendingDoc);
+                for (const decision of ["accept", "reject"] as const) {
+                  let resolved = EditorState.create({
+                    doc: pendingDoc,
+                    plugins: [
+                      createDocumentStylesPlugin(document.package.styles),
+                      createDocumentNumberingPlugin(document.package.numbering),
+                    ],
+                  });
+                  const resolve = decision === "accept" ? acceptAllChanges : rejectAllChanges;
+                  resolve()(resolved, (tr) => {
+                    resolved = resolved.apply(tr);
+                  });
+                  const expected = resolvedCounterProjection(resolved.doc);
+                  const stream = decision === "accept" ? "final" : "original";
+                  expect(pending[stream]).toEqual(expected.markers);
+                  expect(pending.streams[stream]).toEqual(expected.counters);
+                }
+              }
+            }
+          }
+        },
+      ),
+      { numRuns: 10, id: "pending style-numbering counter streams equal resolved documents" },
     );
   },
   propertyTestTimeout(30_000),

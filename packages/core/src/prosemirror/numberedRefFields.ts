@@ -2,7 +2,10 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 
 import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { expectFieldAttrs, expectParagraphAttrs } from "./attrs";
-import { effectiveParagraphNumberingReference } from "./numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumberingReference,
+} from "./numberingAttr";
 import {
   advanceVisibleListMarker,
   createListCounterState,
@@ -178,7 +181,12 @@ function numberTargetForAdvancedMarker(
   state: ListCounterState,
   contexts: NumberingContexts,
 ): NumberedTarget | null {
-  const numbering = effectiveParagraphNumberingReference(attrs);
+  const numbering = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
+  );
   if (
     numbering === undefined ||
     attrs.listIsBullet ||

@@ -46,7 +46,10 @@ import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
 import { rebaseParagraphRuns } from "../../rebaseParagraphRuns";
 import { expectParagraphAttrs } from "../../attrs";
-import { effectiveParagraphNumberingReference } from "../../numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumberingReference,
+} from "../../numberingAttr";
 import { autospacingMatchesBase } from "../../autospacingBase";
 import { removeSectionBreakAtSelection, setSectionBreakType } from "../../commands/sectionBreak";
 import {
@@ -82,7 +85,12 @@ import type { ExtensionRuntime } from "../types";
 function paragraphAttrsToDOMStyle(attrs: ParagraphAttrs): string {
   const rawIndentLeft: unknown = Reflect.get(attrs, "indentLeft");
   let indentLeft = typeof rawIndentLeft === "number" ? rawIndentLeft : undefined;
-  const numbering = effectiveParagraphNumberingReference(attrs);
+  const numbering = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
+  );
   if (numbering !== undefined && (rawIndentLeft === null || rawIndentLeft === undefined)) {
     indentLeft = (numbering.ilvl + 1) * 720;
   }
@@ -148,7 +156,12 @@ function numFmtToClass(numFmt: CounterFormat | undefined): string {
 function getListClass(
   attrs: Pick<ParagraphAttrs, "numPr" | "numPrFromStyle" | "listIsBullet" | "listNumFmt">,
 ): string {
-  const numbering = effectiveParagraphNumberingReference(attrs);
+  const numbering = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
+  );
   if (numbering === undefined) return "";
   const level = numbering.ilvl;
 
@@ -861,7 +874,12 @@ function makeDecreaseIndent(amount: number = 720): Command {
         // A numbered paragraph that states no left indent reads its level's,
         // so reaching zero there has to be stated.
         const numbered =
-          effectiveParagraphNumberingReference(expectParagraphAttrs(node)) !== undefined;
+          effectiveParagraphNumberingReference(
+            paragraphNumberingSourcesFromBoundary({
+              numPr: expectParagraphAttrs(node).numPr,
+              numPrFromStyle: expectParagraphAttrs(node).numPrFromStyle,
+            }),
+          ) !== undefined;
         tr = tr.setNodeMarkup(pos, undefined, {
           ...node.attrs,
           indentLeft: newIndent > 0 || numbered ? newIndent : null,
@@ -1113,7 +1131,13 @@ export const ParagraphExtension = createNodeExtension({
             const indentLeft = Math.max(0, (attrs.indentLeft ?? 0) - (amount ?? 720));
             return {
               indentLeft:
-                indentLeft > 0 || effectiveParagraphNumberingReference(attrs) !== undefined
+                indentLeft > 0 ||
+                effectiveParagraphNumberingReference(
+                  paragraphNumberingSourcesFromBoundary({
+                    numPr: attrs.numPr,
+                    numPrFromStyle: attrs.numPrFromStyle,
+                  }),
+                ) !== undefined
                   ? indentLeft
                   : null,
             };

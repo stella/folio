@@ -118,9 +118,9 @@ describe("a rejected w:pPrChange rebuilds the serializer's pPr source", () => {
 
 describe("effective paragraph numbering", () => {
   test.each([
-    {},
-    { numPr: paragraphNumberingAttr({ kind: "none" }) },
-    { numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: 3 }) },
+    { numPr: undefined, numPrFromStyle: undefined },
+    { numPr: paragraphNumberingAttr({ kind: "none" }), numPrFromStyle: undefined },
+    { numPr: paragraphNumberingAttr({ kind: "levelOnly", ilvl: 3 }), numPrFromStyle: undefined },
   ])("no effective reference is typed none, never level zero", (sources) => {
     expect(effectiveParagraphNumbering(sources)).toEqual({ kind: "none" });
     expect(effectiveParagraphNumberingReference(sources)).toBeUndefined();
@@ -128,7 +128,9 @@ describe("effective paragraph numbering", () => {
 
   test("only an existing reference defaults an omitted level to zero", () => {
     const stated = paragraphNumberingAttr({ kind: "reference", numId: 4 });
-    expect(effectiveParagraphNumberingReference({ numPr: stated })).toEqual({
+    expect(
+      effectiveParagraphNumberingReference({ numPr: stated, numPrFromStyle: undefined }),
+    ).toEqual({
       kind: "reference",
       numId: 4,
       ilvl: 0,

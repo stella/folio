@@ -6,6 +6,7 @@ import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import {
+  paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumberingReference,
   readParagraphNumberingAttr,
 } from "../prosemirror/numberingAttr";
@@ -233,10 +234,12 @@ test("style rebinding then numbering remapping applies source ids once", async (
                 })
               : paragraph.stated;
           expect(
-            effectiveParagraphNumberingReference({
-              numPr: readParagraphNumberingAttr(reboundNode?.attrs["numPr"]),
-              numPrFromStyle: readParagraphNumberingAttr(reboundNode?.attrs["numPrFromStyle"]),
-            }),
+            effectiveParagraphNumberingReference(
+              paragraphNumberingSourcesFromBoundary({
+                numPr: readParagraphNumberingAttr(reboundNode?.attrs["numPr"]),
+                numPrFromStyle: readParagraphNumberingAttr(reboundNode?.attrs["numPrFromStyle"]),
+              }),
+            ),
           ).toEqual(
             paragraphNumberingReference({
               numId: expectedEffective.numId,

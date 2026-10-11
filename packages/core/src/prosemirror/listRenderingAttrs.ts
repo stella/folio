@@ -10,8 +10,9 @@
 
 import type { ListRendering } from "../types/document";
 import {
+  paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumberingReference,
-  type ParagraphNumberingSources,
+  type ParagraphNumberingBoundarySources,
 } from "./numberingAttr";
 import type { ParagraphAttrs } from "./schema/nodes";
 
@@ -108,7 +109,7 @@ export const hasListRendering = (
 
 /** The attrs a rendering is read back from: a paragraph's, or a recorded previous state's. */
 export type ListRenderingSourceAttrs = Pick<ParagraphAttrs, ListRenderingAttrKey> &
-  ParagraphNumberingSources;
+  Partial<ParagraphNumberingBoundarySources>;
 
 type ListRenderingFromAttrsOptions = {
   attrs: ListRenderingSourceAttrs;
@@ -141,7 +142,12 @@ export const listRenderingFromAttrs = ({
     implicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances ?? undefined,
     markerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips ?? undefined,
   };
-  const numbering = effectiveParagraphNumberingReference(attrs);
+  const numbering = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
+  );
   return {
     marker: attrs.listMarker ?? "",
     level: numbering?.ilvl ?? 0,

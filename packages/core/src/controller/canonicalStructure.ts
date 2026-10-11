@@ -1,4 +1,7 @@
-import { effectiveParagraphNumbering } from "../prosemirror/numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumbering,
+} from "../prosemirror/numberingAttr";
 import { BUILT_IN_STYLE_NAME, createBuiltInStyleIndex } from "../docx/builtInStyles";
 import { collectHeadings } from "../utils/headingCollector";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -43,7 +46,12 @@ const selectedParagraphs = (session: CanonicalSession, state: EditorState) => {
 };
 
 const effectiveNumbering = (paragraph: Paragraph | undefined) =>
-  effectiveParagraphNumbering(paragraph?.formatting ?? {});
+  effectiveParagraphNumbering(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: paragraph?.formatting?.numPr,
+      numPrFromStyle: paragraph?.formatting?.numPrFromStyle,
+    }),
+  );
 
 const numberingIntent = (
   session: CanonicalSession,

@@ -9,15 +9,27 @@ import {
 } from "@stll/docx-core/model";
 
 export type ParagraphNumberingSources = {
-  numPr?: ParagraphNumberingOverride | null | undefined;
-  numPrFromStyle?: ParagraphNumberingOverride | null | undefined;
+  numPr: ParagraphNumberingOverride | undefined;
+  numPrFromStyle: ParagraphNumberingOverride | undefined;
 };
+
+export type ParagraphNumberingBoundarySources = {
+  numPr: ParagraphNumberingOverride | null | undefined;
+  numPrFromStyle: ParagraphNumberingOverride | null | undefined;
+};
+
+/** Normalize attr absence at the boundary, while requiring both source tiers. */
+export const paragraphNumberingSourcesFromBoundary = ({
+  numPr,
+  numPrFromStyle,
+}: ParagraphNumberingBoundarySources): ParagraphNumberingSources => ({
+  numPr: numPr ?? undefined,
+  numPrFromStyle: numPrFromStyle ?? undefined,
+});
 
 /** Effective membership is derived; neither source slot becomes an authored override. */
 export const effectiveParagraphNumbering = ({ numPr, numPrFromStyle }: ParagraphNumberingSources) =>
-  resolveParagraphNumbering(
-    mergeParagraphNumbering(numPrFromStyle ?? undefined, numPr ?? undefined),
-  );
+  resolveParagraphNumbering(mergeParagraphNumbering(numPrFromStyle, numPr));
 
 /** A list reference for membership consumers; cancellation and absence are not lists.
  * OOXML defaults an omitted ilvl to zero only within an existing numbering reference.

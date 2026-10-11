@@ -11,7 +11,10 @@ import {
 import { panic } from "better-result";
 import type { Document, DocumentBody, Footnote, Endnote } from "../types/document";
 import { computeListRendering, getCachedNumberingMap } from "../docx/numberingParser";
-import { effectiveParagraphNumberingReference } from "../prosemirror/numberingAttr";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumberingReference,
+} from "../prosemirror/numberingAttr";
 import { computeListMarker, type ComputeListMarkerOptions } from "../docx/listMarkerComputation";
 import {
   cloneParagraphWithPropertySource,
@@ -71,7 +74,12 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
           patch: { numPrFromStyle: formatting.numPrFromStyle },
         });
       }
-      const numPr = effectiveParagraphNumberingReference(next.formatting ?? {});
+      const numPr = effectiveParagraphNumberingReference(
+        paragraphNumberingSourcesFromBoundary({
+          numPr: next.formatting?.numPr,
+          numPrFromStyle: next.formatting?.numPrFromStyle,
+        }),
+      );
       if (
         paragraph.listRendering === undefined &&
         formatting?.numPrFromStyle === undefined &&

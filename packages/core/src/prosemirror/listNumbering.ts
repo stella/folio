@@ -1,4 +1,9 @@
-import { effectiveParagraphNumbering, effectiveParagraphNumberingReference } from "./numberingAttr";
+import {
+  effectiveParagraphNumbering,
+  effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
+  paragraphNumberingAttr,
+} from "./numberingAttr";
 /**
  * Which numbering instance a list command puts a paragraph in, and the
  * *Restart Numbering*, *Continue Numbering* and *Set Numbering Value* commands.
@@ -82,6 +87,7 @@ const listChangeSnapshot = (
     node.type.create(attrs, node.content, node.marks),
   );
   previousFormatting["numPr"] ??= null;
+  previousFormatting["numPrFromStyle"] = attrs["numPrFromStyle"] ?? null;
   for (const key of LIST_RENDERING_ATTR_KEYS) {
     previousFormatting[key] = attrs[key] ?? null;
   }
@@ -108,15 +114,15 @@ const originalListFormatting = ({
   styleResolver,
 }: OriginalListFormattingOptions): Record<string, unknown> => {
   const original: Record<string, unknown> = { ...record };
-  if (recordsListRendering(record)) {
-    return original;
-  }
-  const inherited = styleResolver?.resolveParagraphStyle(record.styleId ?? undefined)
-    .paragraphFormatting?.numPr;
+  const inherited = styleResolver
+    ? styleResolver.resolveParagraphStyle(record.styleId ?? undefined).paragraphFormatting?.numPr
+    : (record.numPrFromStyle ?? undefined);
+  original["numPrFromStyle"] = inherited === undefined ? null : paragraphNumberingAttr(inherited);
+  if (recordsListRendering(record)) return original;
   Object.assign(
     original,
     listRenderingFor(
-      effectiveParagraphNumbering({ numPr: record.numPr, numPrFromStyle: inherited }),
+      effectiveParagraphNumbering({ numPr: record.numPr ?? undefined, numPrFromStyle: inherited }),
       numbering,
     ),
   );
@@ -230,7 +236,12 @@ const directListMembership = (
     return null;
   }
   const attrs = expectParagraphAttrs(node);
-  const effective = effectiveParagraphNumberingReference(attrs);
+  const effective = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
+  );
   if (attrs.numPr?.kind !== "reference" || effective === undefined) {
     return null;
   }
