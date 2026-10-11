@@ -228,6 +228,7 @@ import type {
 import { assertValidProseMirrorDocument } from "../validation";
 import { completeNumberingForDoc } from "../listInstanceReferences";
 import {
+  LIST_RENDERING_ATTR_KEYS,
   hasListRendering,
   listRenderingFromAttrs as listRenderingFieldsFromAttrs,
 } from "../listRenderingAttrs";
@@ -2139,6 +2140,10 @@ const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): Paragrap
   const { numPr, numPrFromStyle, ...previousWithoutNumPr } = previousFormatting;
   const normalizedPrevious =
     numPr == null ? previousWithoutNumPr : { ...previousWithoutNumPr, numPr };
+  // Clearing a rendered list is editor bookkeeping, not a DOCX formatting property.
+  for (const key of LIST_RENDERING_ATTR_KEYS) {
+    if (normalizedPrevious[key] == null) Reflect.deleteProperty(normalizedPrevious, key);
+  }
   return {
     ...normalizedChangeInfo,
     previousFormatting: {

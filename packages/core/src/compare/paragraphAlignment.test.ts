@@ -1534,6 +1534,7 @@ describe("paragraph alignment provenance in editor state", () => {
           type: "paragraphPropertyChange",
           info: { id: 1, author: OPTIONS.author, date: OPTIONS.timestamp },
           previousFormatting: {
+            numPrFromStyle: null,
             styleId: STYLE_ID,
             ...(beforeDirect === undefined ? {} : { alignment: beforeDirect }),
           },
@@ -2097,7 +2098,7 @@ describe("paragraph alignment provenance in editor state", () => {
           provenance: "user",
           suggestionId: null,
         },
-        previousFormatting: { styleId: STYLE_ID, alignment: "center" },
+        previousFormatting: { styleId: STYLE_ID, alignment: "center", numPrFromStyle: null },
       },
     ]);
     const acceptedSuggestionBuffer = await createDocx(
@@ -2397,7 +2398,7 @@ describe("paragraph alignment provenance in editor state", () => {
       {
         type: "paragraphPropertyChange",
         info: { id: 1, author: "reviewer", date: OPTIONS.timestamp },
-        previousFormatting: { styleId: STYLE_ID, alignment: "center" },
+        previousFormatting: { styleId: STYLE_ID, alignment: "center", numPrFromStyle: null },
       },
     ]);
 
@@ -2903,7 +2904,7 @@ describe("paragraph alignment provenance in editor state", () => {
         );
         expect(pendingAttrs._propertyChanges).toEqual([
           expect.objectContaining({
-            previousFormatting: { styleId: STYLE_ID, alignment: "center" },
+            previousFormatting: { styleId: STYLE_ID, alignment: "center", numPrFromStyle: null },
           }),
         ]);
         expect(
@@ -3020,6 +3021,7 @@ describe("paragraph alignment provenance in editor state", () => {
       expect(pending._propertyChanges).toEqual([
         expect.objectContaining({
           previousFormatting: {
+            numPrFromStyle: null,
             styleId: STYLE_ID,
             alignment: "center",
           },
