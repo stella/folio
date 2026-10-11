@@ -145,7 +145,7 @@ For downstream per-block blame (host-side, keyed by entity + paraId + author
 
 - timestamp), folio needs to report which blocks a change touched.
   `applyAIEditOperations` / `applyDocumentOperations` return `{ applied,
-skipped }` where each applied entry carries `revisionIds` (note: nested per
+  skipped }` where each applied entry carries `revisionIds` (note: nested per
   entry, not top-level). Design: extend each applied entry with the affected
   `blockIds` (paragraph-granular), and add a ref method returning paraIds
   touched since a given snapshot. Implement when the host blame schema lands;

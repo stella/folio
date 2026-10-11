@@ -135,17 +135,13 @@ function remapTable(block: TableBlock, context: RemapContext): TableBlock {
     ...block,
     ...remapNodeRange(block, context.toSource),
     ...remapSdtGroups(block.sdtGroups, context.toSource),
-    rows: block.rows.map(
-      (row): TableRow => ({
-        ...row,
-        cells: row.cells.map(
-          (cell): TableCell => ({
-            ...cell,
-            blocks: cell.blocks.map((cellBlock) => remapBlock(cellBlock, context)),
-          }),
-        ),
-      }),
-    ),
+    rows: block.rows.map((row): TableRow => ({
+      ...row,
+      cells: row.cells.map((cell): TableCell => ({
+        ...cell,
+        blocks: cell.blocks.map((cellBlock) => remapBlock(cellBlock, context)),
+      })),
+    })),
   };
 }
 

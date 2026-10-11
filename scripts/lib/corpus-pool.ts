@@ -113,9 +113,8 @@ class PooledWorker {
     const answered = await Promise.race([
       lines
         .next()
-        .then(
-          (result): PendingLine =>
-            result.done === true ? { line: null, ended: "eof" } : { line: result.value },
+        .then((result): PendingLine =>
+          result.done === true ? { line: null, ended: "eof" } : { line: result.value },
         ),
       timeout.promise,
     ]);

@@ -128,12 +128,10 @@ describe("one edited block is one change without authored paragraph ids", () => 
     async () => {
       const bases = new Map<IdCoverage, ArrayBuffer>(
         await Promise.all(
-          Object.values(ID_COVERAGE).map(
-            async (coverage): Promise<[IdCoverage, ArrayBuffer]> => [
-              coverage,
-              await baseForCoverage(coverage),
-            ],
-          ),
+          Object.values(ID_COVERAGE).map(async (coverage): Promise<[IdCoverage, ArrayBuffer]> => [
+            coverage,
+            await baseForCoverage(coverage),
+          ]),
         ),
       );
 

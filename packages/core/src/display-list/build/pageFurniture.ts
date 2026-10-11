@@ -82,18 +82,16 @@ export const paintColumnSeparators = (page: Page): readonly DisplayPrimitive[] =
  * landed, so like the column rules they are derivable from the `Layout` alone.
  */
 export const paintFlowedNoteSeparators = (page: Page): readonly DisplayPrimitive[] =>
-  (page.noteSeparators ?? []).map(
-    (rule): DisplayPrimitive => ({
-      kind: "rect",
-      rect: {
-        xPx: rule.x,
-        yPx: rule.y,
-        widthPx: rule.width,
-        heightPx: NOTE_SEPARATOR_RULE_THICKNESS,
-      },
-      fill: DOC_CANVAS_TEXT,
-    }),
-  );
+  (page.noteSeparators ?? []).map((rule): DisplayPrimitive => ({
+    kind: "rect",
+    rect: {
+      xPx: rule.x,
+      yPx: rule.y,
+      widthPx: rule.width,
+      heightPx: NOTE_SEPARATOR_RULE_THICKNESS,
+    },
+    fill: DOC_CANVAS_TEXT,
+  }));
 
 export type FootnoteAreaPaintOptions = {
   readonly composer: PageComposer;

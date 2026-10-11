@@ -417,10 +417,9 @@ describe("published Node minimum", () => {
       const selected = Bun.YAML.parse(original).jobs[floor.job].steps.find((step) =>
         step.uses?.startsWith("actions/setup-node@"),
       ).with["node-version"];
-      writeFileSync(
-        workflowFile,
-        original.replace(`node-version: "${selected}"`, 'node-version: "22.23.3"'),
-      );
+      const drifted = original.replace(`node-version: "${selected}"`, 'node-version: "22.23.3"');
+      expect(drifted).not.toBe(original);
+      writeFileSync(workflowFile, drifted);
       expect(shared().exitCode).toBe(0);
       const drift = check();
       expect(drift.exitCode).toBe(1);

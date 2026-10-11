@@ -1241,7 +1241,7 @@ consequences:
   by exactly the roots the table leaves `null` — the union is derived from the
   table, so a rebuilder added drops its reason and a `null` added demands one —
   and the reason names what folio lacks (`folio splices it by id rather than
-rebuilding it from the model`) rather than restating that a file was copied.
+  rebuilding it from the model`) rather than restating that a file was copied.
 - **L3 reports `null` on the part leg.** A declaration part is not in the
   ProseMirror projection, so `lost-in-the-editor-projection` cannot name
   anything about it. `false` would charge the pair for a leg that never ran and

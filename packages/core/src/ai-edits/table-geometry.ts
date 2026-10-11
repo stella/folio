@@ -139,7 +139,9 @@ const PROPERTY_REVISION_DISPOSITIONS = {
 
 /** The revisions a geometry scope below moves, derived from the dispositions. */
 type GeometryPropertyRevisionKind = {
-  [Kind in PropertyRevisionKind]: (typeof PROPERTY_REVISION_DISPOSITIONS)[Kind] extends "moved-by-a-geometry-scope"
+  [
+    Kind in PropertyRevisionKind
+  ]: (typeof PROPERTY_REVISION_DISPOSITIONS)[Kind] extends "moved-by-a-geometry-scope"
     ? Kind
     : never;
 }[PropertyRevisionKind];
