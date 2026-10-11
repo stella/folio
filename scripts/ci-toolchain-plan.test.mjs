@@ -279,16 +279,28 @@ describe("published Node minimum", () => {
   const configuration = JSON.parse(readFileSync(path.join(repo, "stll-toolchain.json"), "utf8"));
   const floor = configuration.engineFloors.at(0);
 
-  test("the minimum consumer run owns a scoped floor and reuses default-runtime tarballs", () => {
-    expect(configuration).toEqual({
-      engineFloors: [
-        {
-          package: "packages/cli",
-          workflow: ".github/workflows/ci.yml",
-          job: "consumer-scenarios-minimum",
-        },
-      ],
+  test("the Hawk exception matches the workflow and invoked toolchain", () => {
+    const exception = configuration.rustExceptions.at(0);
+    expect(exception).toEqual({
+      pin: "1.97.1",
+      reason: "cargo-hawk requires Rust 1.97.1; remove when Hawk supports the shared Rust pin.",
+      tracking: "https://github.com/stella/tooling/issues/99",
+      expires: "2026-11-11",
     });
+    expect(workflow.env.HAWK_RUST_TOOLCHAIN).toBe(exception.pin);
+    const manifest = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
+    expect(manifest.scripts["rust:hawk"]).toStartWith(`cargo +${exception.pin} hawk check `);
+    expect(manifest.scripts["kernel:check"]).toContain("bun run rust:hawk");
+  });
+
+  test("the minimum consumer run owns a scoped floor and reuses default-runtime tarballs", () => {
+    expect(configuration.engineFloors).toEqual([
+      {
+        package: "packages/cli",
+        workflow: ".github/workflows/ci.yml",
+        job: "consumer-scenarios-minimum",
+      },
+    ]);
     const minimum = workflow.jobs[floor.job];
     const current = workflow.jobs["consumer-scenarios"];
     expect(minimum.needs).toEqual(["ci-plan", "consumer-scenarios"]);
