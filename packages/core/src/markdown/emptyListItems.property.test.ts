@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { lexMarkdown } from "../../../docx-core/src/markdown/lexer";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { BlockContent, ListRendering, Paragraph } from "../types/document";
@@ -121,6 +120,27 @@ const mixedItemArbitrary = fc.record({
 });
 type MixedItem = fc.ArbitraryValue<typeof mixedItemArbitrary>;
 
+const markdownParagraphKinds = (markdown: string) => {
+  const imported = fromMarkdown(markdown);
+  expect(imported.warnings ?? []).toEqual([]);
+  return imported.package.document.content.map((block) => {
+    expect(block.type).toBe("paragraph");
+    if (block.type !== "paragraph") throw new Error(`Unexpected block ${block.type}`);
+    expect(block.formatting?.outlineLevel).toBeUndefined();
+    expect(block.formatting?.styleId).toBeUndefined();
+    // The consumer parser projects code blocks as paragraphs with monospace
+    // runs. These generated source paragraphs author no code or font changes.
+    for (const item of block.content) {
+      expect(item.type).toBe("run");
+      if (item.type === "run") expect(item.formatting?.fontFamily).toBeUndefined();
+    }
+    return {
+      text: paragraphText(block),
+      kind: block.listRendering === undefined ? "paragraph" : "listItem",
+    };
+  });
+};
+
 const verifyMixedKinds = (items: MixedItem[]): void => {
   const source = items.map(({ level, marker }, index) =>
     paragraph(`Item ${index}`, {
@@ -131,32 +151,7 @@ const verifyMixedKinds = (items: MixedItem[]): void => {
     }),
   );
   const markdown = toMarkdown({ package: { document: { content: source } } });
-  // Inspect the same grammar used by the importer before code blocks become
-  // ordinary model paragraphs with monospace runs.
-  const tokens = lexMarkdown(markdown);
-  const pending = [...tokens];
-  for (let token = pending.pop(); token !== undefined; token = pending.pop()) {
-    expect(
-      token.type === "list" ||
-        token.type === "text" ||
-        token.type === "paragraph" ||
-        token.type === "space",
-    ).toBe(true);
-    if (token.type === "list" && "items" in token) {
-      for (const item of token.items) pending.push(...item.tokens);
-    }
-  }
-  const imported = fromMarkdown(markdown).package.document.content;
-  expect(
-    imported.map((block) => {
-      expect(block.type).toBe("paragraph");
-      if (block.type !== "paragraph") throw new Error(`Unexpected block ${block.type}`);
-      return {
-        text: paragraphText(block),
-        kind: block.listRendering === undefined ? "paragraph" : "listItem",
-      };
-    }),
-  ).toEqual(
+  expect(markdownParagraphKinds(markdown)).toEqual(
     items.map(({ marker }, index) => {
       const native = marker === "-" || marker === "1.";
       return {
@@ -195,3 +190,7 @@ test(
   },
   propertyTestTimeout(30_000),
 );
+
+test("mixed-label block oracle rejects unauthored indented code", () => {
+  expect(() => markdownParagraphKinds("    a. Code")).toThrow(/toBeUndefined/u);
+});
