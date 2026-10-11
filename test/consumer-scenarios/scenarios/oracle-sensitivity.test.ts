@@ -259,7 +259,12 @@ test("oracle sensitivity: style clear across numbering states", async () => {
   const generatedClearStates = new Set<string>();
   // Pin this seed range independently of the operation matrix's fixture seeds.
   for (let seed = 163_600; seed < 163_856; seed++) {
-    const operation = generator(blocks, createRandom(seed));
+    const random = createRandom(seed);
+    const operation = generator(blocks, random);
+    const originalDraws = createRandom(seed);
+    // Target, new-list format, existing reference, base property selection.
+    for (let draw = 0; draw < 4; draw++) originalDraws.next();
+    assert.equal(random.state(), originalDraws.state(), "new dimensions preserve sequence draws");
     const properties = operation?.["properties"];
     if (typeof properties !== "object" || properties === null || !("styleId" in properties))
       continue;

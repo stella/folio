@@ -15,7 +15,7 @@ import type { FolioAIBlock, FolioAIParagraphBlock } from "@stll/folio-core/ai-ed
 
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 
-import { type Random, sentence } from "./random.ts";
+import { createRandom, type Random, sentence } from "./random.ts";
 import { gapWeight, weightedChoice } from "./feature-coverage.ts";
 import { type Picker, uniformPicker, wordsOf } from "./targets.ts";
 
@@ -78,11 +78,9 @@ const range = (block: Block, pick: Picker) => {
 
 const paragraphProperties = (blocks: readonly Block[], random: Random) => {
   const refs = numberingRefs(blocks);
-  return random.pick([
+  const properties = random.pick([
     { styleId: "Heading2" },
     { styleId: null },
-    { styleId: null, numbering: { kind: "inherit" } },
-    { styleId: null, numbering: { kind: "levelOnly", ilvl: random.int(2) } },
     { alignment: "center" },
     { alignment: null },
     { spacing: { spaceBefore: 120, spaceAfter: 120 } },
@@ -90,11 +88,23 @@ const paragraphProperties = (blocks: readonly Block[], random: Random) => {
     ...(refs.length > 0
       ? [
           { numbering: referenceNumbering(random.pick(refs)) },
+          { numbering: { kind: "none" as const } },
+        ]
+      : []),
+  ]);
+  if (!("styleId" in properties) || properties.styleId !== null) return properties;
+  // New dimensions must not shift the draws that pinned operation sequences use.
+  const numberingRandom = createRandom(random.state());
+  return numberingRandom.pick([
+    properties,
+    { styleId: null, numbering: { kind: "inherit" } },
+    { styleId: null, numbering: { kind: "levelOnly", ilvl: numberingRandom.int(2) } },
+    ...(refs.length > 0
+      ? [
           {
             styleId: null,
-            numbering: paragraphNumberingReference({ numId: random.pick(refs).numId }),
+            numbering: paragraphNumberingReference({ numId: numberingRandom.pick(refs).numId }),
           },
-          { numbering: { kind: "none" as const } },
         ]
       : []),
   ]);
