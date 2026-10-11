@@ -31,6 +31,26 @@ if (!ENABLED) {
     () => {},
   );
 } else {
+  test("pinned seed 889732909: merging before an empty nested bullet", async () => {
+    await runFlowFile({
+      version: 1,
+      kind: "random",
+      generation: "targeted",
+      fixture: "public-corpus:003e08fc366ccc3f36f621b32f4c897f4e42b00853d0311a6b56b3e36423e1d6",
+      mode: "tracked-changes",
+      seed: 889732909,
+      steps: [
+        {
+          action: "story batch",
+          seed: 2089463052,
+          operations: [{ type: "mergeBlockWithNext", blockId: "08D286CB", separator: " " }],
+          atomic: false,
+        },
+      ],
+      origin: "shrunk from random flow seed 889732909",
+    });
+  });
+
   test("pinned #1520 seed 1634001732: restyling a heading with inline breaks", async () => {
     await runFlowFile({
       version: 1,

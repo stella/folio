@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.36.1
+
+### Patch Changes
+
+- [#1605](https://github.com/stella/folio/pull/1605) [`8919807`](https://github.com/stella/folio/commit/891980702cec4acd0ea26f19534eb78da4741f43) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize canonical list rendering after every edit, record authored paragraph review snapshots, and preserve section views when replacing body content.
+
 ## 0.36.0
 
 ### Minor Changes

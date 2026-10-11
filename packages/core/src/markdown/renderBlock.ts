@@ -15,9 +15,11 @@ import {
 import type { BlockContent, DocxPackage } from "../types/document";
 import { projectAcceptedBlocks } from "../internal/acceptedBlockProjection";
 import { pushWarning } from "./internals";
-import { renderParagraphBlock } from "./renderParagraph";
+import { renderParagraphBlock, type RenderedParagraph } from "./renderParagraph";
 import { renderTable } from "./renderTable";
 import type { RenderContext } from "./types";
+
+type RenderedBlock = RenderedParagraph | { type: "delimiter" };
 
 export function renderBlocks(
   ctx: RenderContext,
@@ -36,83 +38,77 @@ export function renderBlocks(
   }
   const ordered = projection?.blocks ?? blocks;
 
-  for (const block of ordered) {
+  const renderBlock = (block: BlockContent): RenderedBlock => {
     switch (block.type) {
       case "paragraph": {
         // A hidden-marker (`w:vanish`) list paragraph renders as plain prose,
         // and a numbered heading as a heading, so neither joins a run of list
         // items (neither may suppress the blank line around one).
-        const { markdown: md, isListItem } = renderParagraphBlock(ctx, pkg, block);
-        if (!md) {
-          prevWasListItem = false;
-          continue;
-        }
-        if (isListItem && prevWasListItem) {
-          out.push(md);
-        } else if (out.length) {
-          out.push("", md);
-        } else {
-          out.push(md);
-        }
-        prevWasListItem = isListItem;
-        break;
+        return renderParagraphBlock(ctx, pkg, block);
       }
       case "table": {
         ctx.listIndentWidths = [];
         const md = renderTable(ctx, pkg, block);
         ctx.listIndentWidths = [];
-        if (md) {
-          if (out.length) {
-            out.push("");
-          }
-          out.push(md);
-        }
-        prevWasListItem = false;
-        break;
+        return { type: "paragraph", markdown: md };
       }
       case "blockSdt":
       case "blockCustomXml": {
         ctx.listIndentWidths = [];
         const nested = renderBlocks(ctx, pkg, block.content);
-        if (nested) {
-          if (out.length) {
-            out.push("");
-          }
-          out.push(nested);
-        }
         ctx.listIndentWidths = [];
-        prevWasListItem = false;
-        break;
+        return { type: "paragraph", markdown: nested };
       }
       // Markup folio keeps opaquely, with no text it can claim to render.
       case "preservedBlock": {
-        const previousLength = out.length;
+        let markdown: string;
         if (isAltChunkMarkup(block.xml)) {
-          out.push(
+          markdown =
             block.readerText === undefined
               ? ALT_CHUNK_READER_DIAGNOSTIC
-              : `${ALT_CHUNK_READER_DIAGNOSTIC}\n\n${block.readerText}`,
-          );
+              : `${ALT_CHUNK_READER_DIAGNOSTIC}\n\n${block.readerText}`;
         } else if (opaqueRevisionCarrierName(block.xml) !== undefined) {
-          out.push(OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC);
+          markdown = OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC;
         } else if (isOpaqueNestedRowMarkup(block.xml)) {
-          out.push("[Unsupported nested w:tr content]");
+          markdown = "[Unsupported nested w:tr content]";
+        } else {
+          return { type: "delimiter" };
         }
-        if (out.length !== previousLength) {
-          ctx.listIndentWidths = [];
-          prevWasListItem = false;
-        }
-        break;
+        ctx.listIndentWidths = [];
+        return { type: "paragraph", markdown };
       }
       // A delimiter, with no text to render.
       case "bookmarkStart":
       case "bookmarkEnd":
-        break;
+        return { type: "delimiter" };
       default: {
         const unsupported: never = block;
         panic(`Unsupported block content in markdown: ${JSON.stringify(unsupported)}`);
       }
     }
+  };
+
+  // Every emitted block passes this boundary owner, including wrapper and
+  // preserved-content projections. Only explicitly tight list items can join.
+  for (const block of ordered) {
+    const rendered = renderBlock(block);
+    switch (rendered.type) {
+      case "delimiter":
+        continue;
+      case "paragraph":
+        if (rendered.markdown && out.length) out.push("");
+        prevWasListItem = false;
+        break;
+      case "listItem":
+        if (out.length && (!prevWasListItem || rendered.separation === "loose")) out.push("");
+        prevWasListItem = true;
+        break;
+      default: {
+        const unsupported: never = rendered;
+        panic(`Unsupported rendered block: ${JSON.stringify(unsupported)}`);
+      }
+    }
+    if (rendered.markdown) out.push(rendered.markdown);
   }
 
   ctx.listIndentWidths = outerListIndentWidths;

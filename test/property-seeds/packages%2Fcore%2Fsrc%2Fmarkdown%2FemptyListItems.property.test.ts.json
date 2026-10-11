@@ -1,0 +1,16 @@
+{
+  "empty nested list paragraphs survive Markdown export and import": [
+    {
+      "seed": 889732909,
+      "note": "An empty nested bullet after a nonempty parent must survive the Markdown round trip with its list depth and siblings intact.",
+      "date": "2026-10-11"
+    }
+  ],
+  "mixed native and custom list labels preserve Markdown block kinds": [
+    {
+      "seed": 2064273106,
+      "note": "Mixed marker sequences preserve block kinds; escaped literal equals labels remain prose, not syntax.",
+      "date": "2026-10-11"
+    }
+  ]
+}
