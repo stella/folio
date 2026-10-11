@@ -13,7 +13,7 @@ import {
 } from "@stll/folio-core/server";
 import type { FolioAIBlock, FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
-import type { FolioAIBlockParagraphProperties } from "@stll/folio-core/ai-edits/types";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 
 import { type Random, sentence } from "./random.ts";
 import { gapWeight, weightedChoice } from "./feature-coverage.ts";
@@ -397,11 +397,7 @@ export const MISTAKES: Record<
           text: "x",
           ...(refs.length > 0
             ? {
-                numbering: {
-                  kind: "reference",
-                  numId: random.pick(refs).numId,
-                  ilvl: 8,
-                } as const satisfies NonNullable<FolioAIBlockParagraphProperties["numbering"]>,
+                numbering: paragraphNumberingReference({ numId: random.pick(refs).numId, ilvl: 8 }),
               }
             : {}),
         },
@@ -435,9 +431,7 @@ export const undefinedNumbering = (blocks: readonly Block[]) => {
   const used = new Set(numberingRefs(blocks).map((ref) => ref.numId));
   let numId = 1;
   while (used.has(numId)) numId += 1;
-  return { kind: "reference", numId: numId + 40, ilvl: 0 } as const satisfies NonNullable<
-    FolioAIBlockParagraphProperties["numbering"]
-  >;
+  return paragraphNumberingReference({ numId: numId + 40, ilvl: 0 });
 };
 
 /** Give each operation an id and wrap them as a core batch. */
