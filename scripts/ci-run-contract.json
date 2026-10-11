@@ -143,6 +143,10 @@
       "if": null
     },
     {
+      "run": "bun install --frozen-lockfile",
+      "if": null
+    },
+    {
       "run": "bun run typecheck:compiler-parity --changed-since \"$TOOLCHAIN_BASE\"",
       "if": null
     }

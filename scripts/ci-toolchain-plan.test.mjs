@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -84,6 +84,31 @@ describe("shared toolchain CI selection", () => {
       step.run?.includes("stll-typecheck-probe"),
     );
     expect(projects.has(/--project (\S+)/.exec(probe.run)?.[1])).toBe(true);
+  });
+
+  test("every native project install root is installed before compiler comparison", () => {
+    const manifest = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
+    const roots = new Set();
+    for (const [, project] of manifest.scripts["typecheck:compiler-parity"].matchAll(
+      /--project (\S+)/g,
+    )) {
+      let directory = path.dirname(path.join(repo, project));
+      while (!existsSync(path.join(directory, "bun.lock"))) {
+        if (directory === repo) throw new Error(`No install root for ${project}`);
+        directory = path.dirname(directory);
+      }
+      roots.add(directory);
+    }
+    const steps = workflow.jobs.typecheck.steps;
+    const comparison = steps.findIndex((step) => step.run?.includes("typecheck:compiler-parity"));
+    expect(comparison).toBeGreaterThan(0);
+    const installed = new Set(
+      steps
+        .slice(0, comparison)
+        .filter((step) => step.run === "bun install --frozen-lockfile")
+        .map((step) => path.resolve(repo, step["working-directory"] ?? ".")),
+    );
+    expect([...installed].toSorted()).toEqual([...roots].toSorted());
   });
 
   test("a committed Bun change selects full suites against the event base", () => {
