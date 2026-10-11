@@ -243,8 +243,7 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     expect(
       advanceListMarker(
         {
-          numPr: { kind: "reference", numId: 2, ilvl: 1 },
-          numPrFromStyle: { kind: "reference", numId: 2, ilvl: 1 },
+          numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 2, ilvl: 1 }),
           listMarker: "(%1.%2)",
           listAbstractNumId: 4,
           listLevelNumFmts: ["decimal", "decimal"],

@@ -12,16 +12,13 @@
  */
 
 import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
-import {
-  type ParagraphNumberingOverride,
-  paragraphNumberingReference,
-  paragraphNumberingReferenceId,
-} from "../docx/numberingReference";
+import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import type { ListRendering } from "../types/document";
 import {
   paragraphNumberingSourcesFromBoundary,
   effectiveParagraphNumbering,
   paragraphNumberingAttr,
+  type ParagraphNumberingSources,
 } from "./numberingAttr";
 import {
   advanceListMarker,
@@ -90,15 +87,16 @@ const NO_PREVIOUS_LIST = { abstractNumId: null, fromStyle: false, numId: null };
  * every list paragraph through here.
  */
 export const listLabelAttrsFromRendering = (
-  rendering: ListRendering,
-  numPrFromStyle: ParagraphNumberingOverride | undefined,
+  rendering: ListRendering | undefined,
+  { numPr, numPrFromStyle }: ParagraphNumberingSources,
 ): ParagraphAttrs => {
   const attrs: ParagraphAttrs = {
-    numPr: paragraphNumberingAttr(
-      paragraphNumberingReference({ numId: rendering.numId, ilvl: rendering.level }),
-    ),
+    ...(numPr === undefined ? {} : { numPr: paragraphNumberingAttr(numPr) }),
+    ...(numPrFromStyle === undefined
+      ? {}
+      : { numPrFromStyle: paragraphNumberingAttr(numPrFromStyle) }),
   };
-  if (numPrFromStyle) attrs.numPrFromStyle = paragraphNumberingAttr(numPrFromStyle);
+  if (rendering === undefined) return attrs;
   if (rendering.marker) attrs.listMarker = rendering.marker;
   if (rendering.markerTemplate) attrs.listMarkerTemplate = rendering.markerTemplate;
   if (rendering.isBullet) attrs.listIsBullet = true;
