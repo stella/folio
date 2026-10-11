@@ -1,0 +1,112 @@
+version: 2
+updates:
+  - package-ecosystem: bun
+    directories:
+      - "/"
+      - "/plugins/vscode"
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "07:00"
+      timezone: Europe/Prague
+    cooldown:
+      default-days: 5
+    groups:
+      dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    # These pins are updated through the shared toolchain policy.
+    ignore:
+      - dependency-name: "typescript"
+      - dependency-name: "oxlint"
+      - dependency-name: "@oxlint/plugins"
+      - dependency-name: "oxfmt"
+      - dependency-name: "oxlint-tsgolint"
+      - dependency-name: "@stll/oxlint-plugin"
+      - dependency-name: "lefthook"
+      - dependency-name: "@typescript/native"
+      - dependency-name: "typescript-compat"
+      - dependency-name: "bun-types"
+  - package-ecosystem: cargo
+    directories:
+      - "/"
+      - "/benchmarks/cross-language/rust"
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "07:00"
+      timezone: Europe/Prague
+    cooldown:
+      default-days: 5
+    groups:
+      dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "07:00"
+      timezone: Europe/Prague
+    cooldown:
+      default-days: 5
+    groups:
+      dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    # These pins are updated through the shared toolchain policy.
+    ignore:
+      - dependency-name: "actions/checkout"
+      - dependency-name: "oven-sh/setup-bun"
+      - dependency-name: "actions/setup-node"
+      - dependency-name: "actions/setup-python"
+      - dependency-name: "astral-sh/setup-uv"
+      - dependency-name: "actions/cache"
+      - dependency-name: "actions/cache/restore"
+      - dependency-name: "actions/cache/save"
+      - dependency-name: "actions/upload-artifact"
+      - dependency-name: "actions/download-artifact"
+      - dependency-name: "stella/.github/.github/workflows/package-consumer-compat.yml"
+  - package-ecosystem: docker
+    directories:
+      - "/docker/audit"
+      - "/scripts"
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "07:00"
+      timezone: Europe/Prague
+    cooldown:
+      default-days: 5
+    groups:
+      dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    # These pins are updated through the shared toolchain policy.
+    ignore:
+      - dependency-name: "node"
+      - dependency-name: "python"
+      - dependency-name: "oven/bun"
+      - dependency-name: "library/node"
+      - dependency-name: "library/python"
+      - dependency-name: "library/oven/bun"
+      - dependency-name: "docker.io/node"
+      - dependency-name: "docker.io/python"
+      - dependency-name: "docker.io/oven/bun"
+      - dependency-name: "docker.io/library/node"
+      - dependency-name: "docker.io/library/python"
+      - dependency-name: "docker.io/library/oven/bun"
+      - dependency-name: "index.docker.io/node"
+      - dependency-name: "index.docker.io/python"
+      - dependency-name: "index.docker.io/oven/bun"
+      - dependency-name: "index.docker.io/library/node"
+      - dependency-name: "index.docker.io/library/python"
+      - dependency-name: "index.docker.io/library/oven/bun"
+      - dependency-name: "registry-1.docker.io/node"
+      - dependency-name: "registry-1.docker.io/python"
+      - dependency-name: "registry-1.docker.io/oven/bun"
+      - dependency-name: "registry-1.docker.io/library/node"
+      - dependency-name: "registry-1.docker.io/library/python"
+      - dependency-name: "registry-1.docker.io/library/oven/bun"

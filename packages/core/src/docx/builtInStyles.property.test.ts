@@ -156,19 +156,15 @@ const paragraphText = (index: number): string => `para${index}`;
 const buildDocument = (styles: StyleDefinitions, paragraphs: GeneratedParagraph[]): Document => ({
   package: {
     document: {
-      content: paragraphs.map(
-        (paragraph, index): Paragraph => ({
-          type: "paragraph",
-          paraId: (index + 1).toString(16).padStart(8, "0").toUpperCase(),
-          content: [{ type: "run", content: [{ type: "text", text: paragraphText(index) }] }],
-          formatting: {
-            ...(paragraph.styleId === undefined ? {} : { styleId: paragraph.styleId }),
-            ...(paragraph.outlineLevel === undefined
-              ? {}
-              : { outlineLevel: paragraph.outlineLevel }),
-          },
-        }),
-      ),
+      content: paragraphs.map((paragraph, index): Paragraph => ({
+        type: "paragraph",
+        paraId: (index + 1).toString(16).padStart(8, "0").toUpperCase(),
+        content: [{ type: "run", content: [{ type: "text", text: paragraphText(index) }] }],
+        formatting: {
+          ...(paragraph.styleId === undefined ? {} : { styleId: paragraph.styleId }),
+          ...(paragraph.outlineLevel === undefined ? {} : { outlineLevel: paragraph.outlineLevel }),
+        },
+      })),
     },
     styles,
   },

@@ -248,22 +248,20 @@ describe("semantic table edit properties", () => {
           const table = tableOf(f.document, nested);
           let next = 0x100;
           const paragraphs = rows.map((content) =>
-            content.map(
-              (spans): Paragraph => ({
-                type: "paragraph",
-                paraId: id(next++),
-                content: spans.map(({ text, bold, hyperlink }) => {
-                  const run = {
-                    type: "run",
-                    formatting: { bold },
-                    content: [{ type: "text", text }],
-                  } satisfies Run;
-                  return hyperlink
-                    ? { type: "hyperlink", href: "https://example.org", children: [run] }
-                    : run;
-                }),
+            content.map((spans): Paragraph => ({
+              type: "paragraph",
+              paraId: id(next++),
+              content: spans.map(({ text, bold, hyperlink }) => {
+                const run = {
+                  type: "run",
+                  formatting: { bold },
+                  content: [{ type: "text", text }],
+                } satisfies Run;
+                return hyperlink
+                  ? { type: "hyperlink", href: "https://example.org", children: [run] }
+                  : run;
               }),
-            ),
+            })),
           );
           for (const [rowIndex, row] of table.rows.entries()) {
             const cell = row.cells.at(0);

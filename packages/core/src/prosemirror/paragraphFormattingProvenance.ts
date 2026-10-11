@@ -100,7 +100,9 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK = {
 } as const satisfies Record<keyof ParagraphFormatting, ParagraphFieldWriteBack>;
 
 export type StyleResolvedParagraphField = {
-  [Field in keyof typeof PARAGRAPH_FORMATTING_WRITE_BACK]: (typeof PARAGRAPH_FORMATTING_WRITE_BACK)[Field] extends {
+  [
+    Field in keyof typeof PARAGRAPH_FORMATTING_WRITE_BACK
+  ]: (typeof PARAGRAPH_FORMATTING_WRITE_BACK)[Field] extends {
     kind: "style-resolved-attr";
   }
     ? Field

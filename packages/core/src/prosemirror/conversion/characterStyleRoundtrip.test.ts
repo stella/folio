@@ -701,14 +701,11 @@ describe("character style round-trip", () => {
   });
 
   test("serialized editor state stays linear for many inherited toggle runs", () => {
-    const paragraphs = Array.from(
-      { length: 1000 },
-      (_, index): Paragraph => ({
-        type: "paragraph",
-        formatting: { styleId: "ToggleHeading" },
-        content: [runText(`Term ${index}`)],
-      }),
-    );
+    const paragraphs = Array.from({ length: 1000 }, (_, index): Paragraph => ({
+      type: "paragraph",
+      formatting: { styleId: "ToggleHeading" },
+      content: [runText(`Term ${index}`)],
+    }));
     const plain: Document = {
       package: {
         document: { content: paragraphs.map(({ content, type }) => ({ content, type })) },

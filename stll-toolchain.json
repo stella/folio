@@ -1,4 +1,11 @@
 {
+  "engineFloors": [
+    {
+      "package": "packages/cli",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "consumer-scenarios-minimum"
+    }
+  ],
   "rustExceptions": [
     {
       "pin": "1.97.1",

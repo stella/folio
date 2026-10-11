@@ -432,11 +432,10 @@ export const watchFlushRequests = ({
       checking = false;
     }
   };
-  const watcher = Result.try(
-    (): FSWatcher =>
-      watch(path.dirname(documentPath), (_event, name) => {
-        if (name === null || name.startsWith(prefix)) check().catch(surfaceBackgroundError);
-      }),
+  const watcher = Result.try((): FSWatcher =>
+    watch(path.dirname(documentPath), (_event, name) => {
+      if (name === null || name.startsWith(prefix)) check().catch(surfaceBackgroundError);
+    }),
   );
   if (watcher.isOk()) watcher.value.on("error", () => undefined);
   const timer = setInterval(() => {

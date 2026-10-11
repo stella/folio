@@ -85,6 +85,22 @@ export const focusedTestFiles = focusedTests;
 export const FAST_SIBLING_TEST_CAP = 150;
 const SOURCE_FILE = /^packages\/[^/]+\/src\/.*\.[cm]?[jt]sx?$/u;
 
+type FullTestSuitesOptions = {
+  suites: TestSuite[];
+  focusedFiles?: string[];
+};
+
+/** Full selection includes fixed-list tests outside workspace discovery exactly once. */
+export const selectFullTestSuites = ({
+  suites,
+  focusedFiles = focusedTests,
+}: FullTestSuitesOptions): TestSuite[] => {
+  const discovered = new Set(suites.flatMap(({ files }) => files));
+  const extra = [...new Set(focusedFiles)].filter((file) => !discovered.has(file));
+  if (extra.length === 0) return suites;
+  return [...suites, { cwd: ".", preloads: [], files: extra }];
+};
+
 /** Deleted paths never expand a fast suite; git returns rename destinations. */
 export const changedTestPaths = (base: string, repoRoot = REPO_ROOT): string[] => {
   const result = Bun.spawnSync(
@@ -154,7 +170,7 @@ if (import.meta.main) {
   const base = process.env["CI_TEST_BASE"];
   const selectedSuites =
     depth === "full"
-      ? suites
+      ? selectFullTestSuites({ suites })
       : selectFastTestSuites({
           suites,
           changedFiles: base ? changedTestPaths(base) : [],
