@@ -673,8 +673,7 @@ test(
             expect(block.paraId).toBeDefined();
             if (block.paraId !== undefined) identities.add(block.paraId);
             expect(block.formatting?.numPr).toEqual({
-              kind: "reference",
-              numId: minted.numId,
+              kind: "levelOnly",
               ilvl: levels.at(index),
             });
             expect(block.listRendering?.level).toBe(levels.at(index));
