@@ -35,18 +35,22 @@ const injectReviewerDefect = (oracle: OracleMutation): (() => void) => {
   const addDrift = (reviewer: Reviewer) => {
     const block = getContent.call(reviewer).at(0);
     assert.ok(block, "mutation fixture has an insertion anchor");
-    const result = apply.call(reviewer, {
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        {
-          id: "mutation-drift",
-          type: "insertAfterBlock",
-          blockId: block.id,
-          text: "Unrequested paragraph.",
-        },
-      ],
-    });
+    const result = apply.call(
+      reviewer,
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "mutation-drift",
+            type: "insertAfterBlock",
+            blockId: block.id,
+            text: "Unrequested paragraph.",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.equal(result.applied.length, 1, "injected drift must apply");
   };
   switch (oracle) {

@@ -183,6 +183,7 @@ test("inserted nested carriers project and rebind every paragraph exactly once",
       },
     ),
     {
+      id: "inserted nested carriers project and rebind every paragraph exactly once",
       // Vary nested paragraph count; every run covers both shapes and sibling counts.
       numRuns: 4,
     },

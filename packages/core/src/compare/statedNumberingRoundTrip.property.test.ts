@@ -274,7 +274,10 @@ test("accept and reject preserve authored numbering independently from rendered 
         expect(rejectedProjection).toEqual(baseProjection);
       }
     }),
-    { numRuns: 1 },
+    {
+      id: "accept and reject preserve authored numbering independently from rendered membership",
+      numRuns: 1,
+    },
   );
 });
 
@@ -382,7 +385,10 @@ test("accept and reject preserve style-only numbering across colliding definitio
         );
       }
     }),
-    { numRuns: 1 },
+    {
+      id: "accept and reject preserve style-only numbering across colliding definitions",
+      numRuns: 1,
+    },
   );
 });
 
@@ -469,7 +475,10 @@ test("compare and redline preserve inserted style-only numbering across collisio
         }
       }
     }),
-    { numRuns: 1 },
+    {
+      id: "compare and redline preserve inserted style-only numbering across collisions",
+      numRuns: 1,
+    },
   );
 });
 

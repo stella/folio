@@ -156,7 +156,7 @@ describe("migrateFolioYjsSnapshot", () => {
           // pair and absent when the element stated neither slot.
           expect(proseDocumentOf(once.update).eq(proseDocument(blocks, currentAttrs))).toBe(true);
         }),
-        { numRuns: 60 },
+        { id: "is a fixed point and leaves content alone", numRuns: 60 },
       );
     },
     propertyTestTimeout(20_000),
@@ -173,7 +173,7 @@ describe("migrateFolioYjsSnapshot", () => {
           expect(migrated.fromVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
           expect(migrated.update).toBe(versioned);
         }),
-        { numRuns: 60 },
+        { id: "returns a current snapshot byte for byte", numRuns: 60 },
       );
     },
     propertyTestTimeout(20_000),

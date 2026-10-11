@@ -251,6 +251,6 @@ test("style rebinding then numbering remapping applies source ids once", async (
         }
       }
     }),
-    { numRuns: 1 },
+    { id: "style rebinding then numbering remapping applies source ids once", numRuns: 1 },
   );
 });

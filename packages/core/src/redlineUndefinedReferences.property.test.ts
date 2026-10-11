@@ -205,6 +205,9 @@ test("undefined inserted references stay dangling or are cleared before binding 
     }),
     // Every generated text exercises both resource types and definition states,
     // with and without an unrelated insertion through real DOCX round trips.
-    { numRuns: 4 },
+    {
+      id: "undefined inserted references stay dangling or are cleared before binding base resources",
+      numRuns: 4,
+    },
   );
 });

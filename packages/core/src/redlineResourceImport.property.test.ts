@@ -168,7 +168,10 @@ test("a failing insertion style closure refuses the whole redline without changi
       }),
       // Every generated text exercises all four removal/insertion combinations.
       // Four texts keep the real DOCX parse/serialize surface inexpensive locally.
-      { numRuns: 4 },
+      {
+        id: "a failing insertion style closure refuses the whole redline without changing input packages",
+        numRuns: 4,
+      },
     );
   } finally {
     applySpy.mockRestore();
