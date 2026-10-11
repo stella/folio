@@ -1,0 +1,9 @@
+{
+  "empty nested list paragraphs survive Markdown export and import": [
+    {
+      "seed": 889732909,
+      "note": "An empty nested bullet after a nonempty parent must survive the Markdown round trip with its list depth and siblings intact.",
+      "date": "2026-10-11"
+    }
+  ]
+}

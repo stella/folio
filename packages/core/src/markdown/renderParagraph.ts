@@ -38,8 +38,10 @@ export function renderParagraph(
   return renderParagraphBlock(ctx, pkg, para).markdown;
 }
 
-/** A rendered paragraph, and whether it is a Markdown list item. */
-export type RenderedParagraph = { markdown: string; isListItem: boolean };
+/** List items declare the boundary needed to preserve their Markdown structure. */
+export type RenderedParagraph =
+  | { type: "paragraph"; markdown: string }
+  | { type: "listItem"; markdown: string; separation: "tight" | "loose" };
 
 /**
  * Render a paragraph. A list item is a paragraph that shows a marker, which is
@@ -81,19 +83,19 @@ export function renderParagraphBlock(
     // Markdown bullet syntax to borrow.
     if (!inline || (!inline.trim() && label === undefined)) {
       // Whitespace without a visible list label carries no text block.
-      return { markdown: "", isListItem: false };
+      return { type: "paragraph", markdown: "" };
     }
     const hashes = "#".repeat(Math.min(MAX_MARKDOWN_HEADING_LEVEL, headingLevel + 1));
     // ATX headings occupy one source line; physical newlines create new blocks.
     const headingInline = inlineBreaksToHtml(inline);
     return {
       markdown: label ? `${hashes} ${label} ${headingInline}` : `${hashes} ${headingInline}`,
-      isListItem: false,
+      type: "paragraph",
     };
   }
 
   if (list && label !== undefined) {
-    return { markdown: renderListItem(ctx, list, label, inline), isListItem: true };
+    return renderListItem(ctx, list, label, inline);
   }
 
   ctx.listIndentWidths = [];
@@ -104,11 +106,11 @@ export function renderParagraphBlock(
         .split("\n")
         .map((line) => `> ${line}`)
         .join("\n"),
-      isListItem: false,
+      type: "paragraph",
     };
   }
 
-  return { markdown: escapeLeadingBlockMarker(inline), isListItem: false };
+  return { type: "paragraph", markdown: escapeLeadingBlockMarker(inline) };
 }
 
 /** The paragraph's 0-based heading level, as `builtInStyles` classifies it. */
@@ -133,8 +135,9 @@ function escapeLeadingBlockMarker(text: string): string {
   // a later line. Only horizontal whitespace `[ \t]` leads the marker so the
   // anchor doesn't cross the newline.
   return text
-    .replace(/^(?<ws>[ \t]*)(?<marker>[#>])/gmu, "$<ws>\\$<marker>")
-    .replace(/^(?<ws>[ \t]*)(?<marker>[-+*])(?<after>[ \t])/gmu, "$<ws>\\$<marker>$<after>")
+    .replace(/^(?<ws>[ \t]*)(?<marker>[#>=])/gmu, "$<ws>\\$<marker>")
+    .replace(/^(?<ws>[ \t]*)(?<marker>[-+*])(?=[ \t]|$)/gmu, "$<ws>\\$<marker>")
+    .replace(/^(?<ws>[ \t]*)-(?=[- \t]*$)/gmu, "$<ws>\\-")
     .replace(
       /^(?<ws>[ \t]*)(?<num>\d{1,9})(?<marker>[.)])(?<after>[ \t])/gmu,
       "$<ws>$<num>\\$<marker>$<after>",
@@ -170,7 +173,7 @@ function renderListItem(
   list: ListRendering,
   label: string,
   inline: string,
-): string {
+): RenderedParagraph {
   // Custom Word labels are paragraph text in CommonMark, not nesting parents.
   const nativeMarker = list.isBullet || /^\d{1,9}[.)]$/u.test(label);
   if (!nativeMarker) ctx.listIndentWidths = [];
@@ -178,5 +181,16 @@ function renderListItem(
   const indent = " ".repeat(listIndentWidth(ctx, list.level));
   const marker = list.isBullet ? "- " : `${label} `;
   if (nativeMarker) ctx.listIndentWidths[list.level] = marker.length;
-  return `${indent}${marker}${inline}`.trimEnd();
+  const content = nativeMarker
+    ? `${marker}${escapeLeadingBlockMarker(inline)}`
+    : escapeLeadingBlockMarker(`${marker}${inline}`);
+  const markdown = `${indent}${content}`.trimEnd();
+  if (!nativeMarker) return { type: "paragraph", markdown };
+  return {
+    type: "listItem",
+    markdown,
+    // Empty list markers cannot interrupt paragraph text; a nested hyphen
+    // instead becomes a Setext underline. Separate every empty item.
+    separation: inline.trim().length === 0 ? "loose" : "tight",
+  };
 }
