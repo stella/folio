@@ -154,7 +154,7 @@ enum NamespaceKind {
     Wordprocessing,
 }
 
-fn namespace_kind(namespace: &ResolveResult<'_>) -> NamespaceKind {
+const fn namespace_kind(namespace: &ResolveResult<'_>) -> NamespaceKind {
     let ResolveResult::Bound(Namespace(value)) = namespace else {
         return NamespaceKind::Other;
     };
