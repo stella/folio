@@ -1,4 +1,4 @@
-import type { Page, PlaywrightTestOptions } from "@playwright/test";
+import type { Page, PlaywrightWorkerOptions } from "@playwright/test";
 import { TaggedError } from "better-result";
 import type {} from "./canonicalBridge";
 
@@ -6,7 +6,10 @@ const CANONICAL_LOAD_TRANSPORTS = {
   chromium: { type: "cdp" },
   firefox: { type: "unsupported" },
   webkit: { type: "unsupported" },
-} as const satisfies Record<PlaywrightTestOptions["browserName"], { type: "cdp" | "unsupported" }>;
+} as const satisfies Record<
+  PlaywrightWorkerOptions["browserName"],
+  { type: "cdp" | "unsupported" }
+>;
 
 export class CanonicalLoadTransportError extends TaggedError("CanonicalLoadTransportError")<{
   message: string;

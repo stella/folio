@@ -49,6 +49,7 @@
         "tsx": "^4.23.13",
         "typescript": "6.0.3",
         "use-intl": "^4.13.2",
+        "zod": "4.4.3",
       },
     },
     "packages/agents": {
