@@ -58,6 +58,7 @@ export const useDrawerFocus = (options: UseDrawerFocusOptions) => {
       return undefined;
     }
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const returnTarget = returnFocusRef?.current;
     const element = container.current;
     if (element) {
       initialFocusTarget(element, initial).focus({ preventScroll: true });
@@ -72,7 +73,6 @@ export const useDrawerFocus = (options: UseDrawerFocusOptions) => {
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      const returnTarget = returnFocusRef?.current;
       const target = returnTarget?.isConnected ? returnTarget : previous;
       if (target?.isConnected) target.focus({ preventScroll: true });
     };

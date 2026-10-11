@@ -1427,6 +1427,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   // Find/Replace hook
   const findReplace = useFindReplaceState();
+  const { openFind, openReplace } = findReplace;
 
   // Page setup dialog state
   const [showPageSetup, setShowPageSetup] = useState(false);
@@ -1545,18 +1546,17 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       return undefined;
     }
 
-    const frame = requestAnimationFrame(() => {
+    let pendingFrame: number | null = requestAnimationFrame(() => {
+      pendingFrame = null;
       assignRef(initialScrollRef, { status: "applied" });
       scrollEditorTo(scrollContainerRef.current, { top: initialScrollTop, behavior: "instant" });
     });
-    assignRef(initialScrollRef, { status: "scheduled", frame });
+    assignRef(initialScrollRef, { status: "scheduled", frame: pendingFrame });
 
     return () => {
-      const initialScroll = initialScrollRef.current;
-      if (initialScroll.status === "scheduled" && initialScroll.frame === frame) {
-        cancelAnimationFrame(frame);
-        assignRef(initialScrollRef, { status: "waiting" });
-      }
+      if (pendingFrame === null) return;
+      cancelAnimationFrame(pendingFrame);
+      assignRef(initialScrollRef, { status: "waiting" });
     };
   }, [initialScrollTop, loadedDocumentIdentity, state.documentLoad.status]);
 
@@ -3454,10 +3454,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       openPrintPreview: handleDirectPrint,
       print: handleDirectPrint,
       openFind: () => {
-        findReplace.openFind(readFindSelectionSeed());
+        openFind(readFindSelectionSeed());
       },
       openReplace: () => {
-        findReplace.openReplace(readFindSelectionSeed());
+        openReplace(readFindSelectionSeed());
       },
       loadDocument: (document) => {
         pendingSuggestionRegistryRef.current.clear();
@@ -4093,8 +4093,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       setZoomWithViewportAnchor,
       zoomRef,
       handleDirectPrint,
-      findReplace.openFind,
-      findReplace.openReplace,
+      openFind,
+      openReplace,
+      getCanonicalApi,
       loadParsedDocument,
       loadBuffer,
       updateComments,
@@ -4102,7 +4103,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       createComment,
       commentsRef,
       getCommentsDirty,
-      setCommentsDirty,
       getActiveEditorStory,
       refreshBodyHistoryAvailability,
       experimentalSession,
