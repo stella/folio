@@ -1,18 +1,24 @@
 import type { Page } from "@playwright/test";
 import type {} from "../../tests/parity/canonicalBridge";
 
-export const loadUnrelatedParameter = (page: Page) =>
+export const loadSiblingParameter = (page: Page) =>
   page.evaluate(() => {
-    const bridge = globalThis.__folioCanonical;
+    const canonical = (() => {
+      const bridge = globalThis.__folioCanonical;
+      return bridge !== undefined;
+    })();
     const invokeUnrelated = (bridge: { load: () => boolean }) => bridge.load();
-    return { canonical: bridge !== undefined, unrelated: invokeUnrelated({ load: () => true }) };
+    return { canonical, unrelated: invokeUnrelated({ load: () => true }) };
   });
 
-export const loadUnrelatedDestructuredParameter = (page: Page) =>
+export const loadSiblingDestructuredParameter = (page: Page) =>
   page.evaluate(() => {
-    const load = globalThis.__folioCanonical?.load;
+    const canonical = (() => {
+      const load = globalThis.__folioCanonical?.load;
+      return load !== undefined;
+    })();
     const invokeUnrelated = ({ load }: { load: () => boolean }) => load();
-    return { canonical: load !== undefined, unrelated: invokeUnrelated({ load: () => true }) };
+    return { canonical, unrelated: invokeUnrelated({ load: () => true }) };
   });
 
 export const loadShadowedCanonicalName = (page: Page) =>

@@ -1,12 +1,12 @@
 import type { Page } from "@playwright/test";
 import type {} from "../../tests/parity/canonicalBridge";
 
-export const loadCapturedAlias = (page: Page, bytes: number[]) =>
+export const loadCapturedAlias = (page: Page, sourceBytes: number[]) =>
   page.evaluate((input) => {
     const bridge = globalThis.__folioCanonical!;
     const start = (bytes: number[]) => bridge.load(bytes);
     return start(input);
-  }, bytes);
+  }, sourceBytes);
 
 export const loadGlobalDespiteShadow = (page: Page, bytes: number[]) =>
   page.evaluate((input) => {
@@ -15,12 +15,12 @@ export const loadGlobalDespiteShadow = (page: Page, bytes: number[]) =>
     return start(input);
   }, bytes);
 
-export const loadUnshadowedDestructuredAlias = (page: Page, bytes: number[]) =>
+export const loadUnshadowedDestructuredAlias = (page: Page, sourceBytes: number[]) =>
   page.evaluate((input) => {
     const { load } = globalThis.__folioCanonical!;
     const start = (bytes: number[]) => load(bytes);
     return start(input);
-  }, bytes);
+  }, sourceBytes);
 
 export const loadNamedCallback = (page: Page, bytes: number[]) => {
   const loadInBrowser = (input: number[]) => globalThis.__folioCanonical!.load(input);
