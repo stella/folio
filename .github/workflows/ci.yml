@@ -121,10 +121,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
-      - run: bun install --frozen-lockfile
+      - run: bun scripts/ci-scoped-install.ts ci-plan
       - name: Detect shared toolchain changes
         id: toolchain
         shell: bash
@@ -161,10 +161,10 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
-      - run: bun install --frozen-lockfile
+      - run: bun scripts/ci-scoped-install.ts browser-discovery
       - name: Discover every Node Playwright project without browsers
         run: bun scripts/ci-browser-discovery.ts
 
@@ -212,11 +212,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: "package.json"
 
-      - run: bun install --frozen-lockfile
+      - run: bun scripts/ci-scoped-install.ts docs-format
 
       - name: Format check
         run: bun run format:check
@@ -679,11 +679,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: "package.json"
 
-      - run: bun install --frozen-lockfile
+      - run: bun scripts/ci-scoped-install.ts typecheck-budget
 
       - name: Guard deterministic compiler workload
         run: |
