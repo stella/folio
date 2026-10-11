@@ -8,7 +8,7 @@
         "@babel/core": "^8.0.1",
         "@changesets/changelog-github": "^1.0.0",
         "@changesets/cli": "^3.0.0",
-        "@codspeed/tinybench-plugin": "^5.7.1",
+        "@codspeed/tinybench-plugin": "6.0.0-beta.2",
         "@formatjs/icu-messageformat-parser": "^3.5.12",
         "@happy-dom/global-registrator": "^20.14.0",
         "@microsoft/api-extractor": "7.58.11",
@@ -423,9 +423,9 @@
 
     "@cloudflare/kv-asset-handler": ["@cloudflare/kv-asset-handler@0.4.2", "", {}, "sha512-SIOD2DxrRRwQ+jgzlXCqoEFiKOFqaPjhnNTGKXSRLvp1HiOvapLaFG2kEr9dYQTYe8rKrd9uvDUzmAITeNyaHQ=="],
 
-    "@codspeed/core": ["@codspeed/core@5.7.1", "", { "dependencies": { "axios": "^1.4.0", "find-up": "^6.3.0", "form-data": "^4.0.4", "node-gyp-build": "^4.6.0", "stack-trace": "1.0.0-pre2" } }, "sha512-7mrFkqaY14rXu3XHv3o7bK3btLK0LFRxfeK3bQC8dLduI/Ty9eq8Hv8rx04FAY/onQbRTx3rUUQg5xprYHpATQ=="],
+    "@codspeed/core": ["@codspeed/core@6.0.0-beta.2", "", { "dependencies": { "axios": "^1.4.0", "find-up": "^6.3.0", "form-data": "^4.0.4", "node-gyp-build": "^4.6.0", "stack-trace": "1.0.0-pre2" } }, "sha512-l/elGsNOwQV/m8PZMK0j7FHRNvFytgeSUUwUFuO6WSDZGYe3uH+da5mMjS1KpRsRElYvshkKrqvnRRqxzWQ/tQ=="],
 
-    "@codspeed/tinybench-plugin": ["@codspeed/tinybench-plugin@5.7.1", "", { "dependencies": { "@codspeed/core": "^5.7.1" }, "peerDependencies": { "tinybench": ">=4.0.1" } }, "sha512-4YZvqqbic55rJrjqawB8wHnKkCklFlHlrTfnLB8/w2EXEJ7XwkFpRDSGYQxV30K4K6llRLc0aYvYy1WwgCqVBw=="],
+    "@codspeed/tinybench-plugin": ["@codspeed/tinybench-plugin@6.0.0-beta.2", "", { "dependencies": { "@codspeed/core": "^6.0.0-beta.2" }, "peerDependencies": { "tinybench": ">=4.0.1" } }, "sha512-WNqsTuiBSGk/bNKwDsRCYIxVq44cfU0ZIBHyLKD8uk7HBNPz+dwN5zCbcy6O0iNwIFOt3u1Co2nKCW9Nm9mzNA=="],
 
     "@colordx/core": ["@colordx/core@5.5.0", "", {}, "sha512-3PxTH8itZzltK0U9jTwVVnjLXvnDYuq3m+QXsHkENxWiPRh4WaoLcs1SQjqgZ55kS+QyirpH5BVwzP2gMVG6EQ=="],
 

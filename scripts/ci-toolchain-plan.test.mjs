@@ -357,12 +357,21 @@ describe("published Node minimum", () => {
     }
   });
 
-  test("engine minima are generated, checked exactly, and cannot drift within a major", () => {
+  test.each(
+    Array.from({ length: 4 }, (_, majorOffset) => 22 + majorOffset).flatMap((major) =>
+      [
+        [0, 0],
+        [1, 2],
+        [18, 4],
+      ].map(([minor, patch]) => [major, minor, patch]),
+    ),
+  )("engine minimum %i.%i.%i is generated exactly and idempotently", (major, minor, patch) => {
     const directory = mkdtempSync(path.join(tmpdir(), "folio-node-minimum-"));
     const checker = path.join(repo, "node_modules/.bin/stll-toolchain-check");
     const projection = path.join(repo, "scripts/consumer-node-minimum.mjs");
-    const shared = () => Bun.spawnSync(["bun", checker], { cwd: directory });
-    const project = (mode) => Bun.spawnSync(["bun", projection, mode], { cwd: directory });
+    const shared = () => Bun.spawnSync([process.execPath, checker], { cwd: directory });
+    const project = (mode) =>
+      Bun.spawnSync([process.execPath, projection, mode], { cwd: directory });
     const check = () => {
       const result = shared();
       return result.exitCode === 0 ? project("--check") : result;
@@ -416,31 +425,23 @@ describe("published Node minimum", () => {
       const drift = check();
       expect(drift.exitCode).toBe(1);
       expect(drift.stderr.toString()).toContain("[consumer-node-minimum]");
-      for (let major = 22; major < 26; major += 1) {
-        for (const [minor, patch] of [
-          [0, 0],
-          [1, 2],
-          [18, 4],
-        ]) {
-          const version = `${major}.${minor}.${patch}`;
-          setRange(`>=${version}`);
-          expect(check().exitCode).toBe(1);
-          const generated = project("--write");
-          expect({ status: generated.exitCode, diagnostic: generated.stderr.toString() }).toEqual({
-            status: 0,
-            diagnostic: "",
-          });
-          expect(
-            Bun.YAML.parse(readFileSync(workflowFile, "utf8")).jobs[floor.job].steps.find((step) =>
-              step.uses?.startsWith("actions/setup-node@"),
-            ).with["node-version"],
-          ).toBe(version);
-          expect(check().exitCode).toBe(0);
-          const once = readFileSync(workflowFile, "utf8");
-          expect(project("--write").exitCode).toBe(0);
-          expect(readFileSync(workflowFile, "utf8")).toBe(once);
-        }
-      }
+      const version = `${major}.${minor}.${patch}`;
+      setRange(`>=${version}`);
+      expect(check().exitCode).toBe(1);
+      const generated = project("--write");
+      expect({ status: generated.exitCode, diagnostic: generated.stderr.toString() }).toEqual({
+        status: 0,
+        diagnostic: "",
+      });
+      expect(
+        Bun.YAML.parse(readFileSync(workflowFile, "utf8")).jobs[floor.job].steps.find((step) =>
+          step.uses?.startsWith("actions/setup-node@"),
+        ).with["node-version"],
+      ).toBe(version);
+      expect(check().exitCode).toBe(0);
+      const once = readFileSync(workflowFile, "utf8");
+      expect(project("--write").exitCode).toBe(0);
+      expect(readFileSync(workflowFile, "utf8")).toBe(once);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

@@ -39,11 +39,6 @@ const INTENTIONAL_BREAKS: Readonly<Record<string, IntentionalBreak>> = {
     range: "^3.36.0",
     reason: "simple-git 4 resolves dependency advisories",
   },
-  tinypool: {
-    dependent: "oxfmt",
-    range: "2.1.0",
-    reason: "tinypool 2.2.0 resolves dependency advisories",
-  },
   valibot: {
     dependent: "@stll/conditions",
     range: "1.4.2",
