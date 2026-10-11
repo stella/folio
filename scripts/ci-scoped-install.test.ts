@@ -10,7 +10,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { INSTALL_SCOPES, installedPackageBytes, scopeInstall } from "./ci-scoped-install";
+import {
+  INSTALL_SCOPES,
+  installedPackageBytes,
+  isInstallScope,
+  scopeInstall,
+} from "./ci-scoped-install";
 
 const root = path.resolve(import.meta.dir, "..");
 type JobSteps = { steps: { run?: string; uses?: string }[] };
@@ -96,10 +101,10 @@ describe("scoped CI environments", () => {
         expect(source.dependencies).toEqual(original.workspaces[dir].dependencies);
       }
     };
-    check("docs-format");
-    check("ci-plan");
-    check("browser-discovery");
-    check("typecheck-budget");
+    for (const scope of Object.keys(INSTALL_SCOPES)) {
+      if (!isInstallScope(scope)) throw new TypeError(`Unknown install scope: ${scope}`);
+      check(scope);
+    }
   });
 
   test("missing declared tool and workspace roots fail before any file changes", () => {

@@ -41,6 +41,9 @@ export const INSTALL_SCOPES = {
   },
 } as const;
 
+export const isInstallScope = (scope: string): scope is keyof typeof INSTALL_SCOPES =>
+  Object.hasOwn(INSTALL_SCOPES, scope);
+
 type Manifest = {
   name: string;
   workspaces?: string[];
@@ -150,7 +153,7 @@ export const scopeInstall = (scope: keyof typeof INSTALL_SCOPES, repoRoot: strin
 
 if (import.meta.main) {
   const scope = process.argv.at(2);
-  if (scope === undefined || !Object.hasOwn(INSTALL_SCOPES, scope))
+  if (scope === undefined || !isInstallScope(scope))
     throw new TypeError("Expected a scoped CI job name");
   const repoRoot = path.resolve(import.meta.dir, "..");
   if (existsSync(path.join(repoRoot, "node_modules")))
@@ -169,14 +172,5 @@ if (import.meta.main) {
       for (const [file, text] of originals) writeFileSync(path.join(repoRoot, file), text);
     }
   };
-  switch (scope) {
-    case "docs-format":
-    case "ci-plan":
-    case "browser-discovery":
-    case "typecheck-budget":
-      run(scope);
-      break;
-    default:
-      throw new TypeError("Unknown scoped install");
-  }
+  run(scope);
 }
