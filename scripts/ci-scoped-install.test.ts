@@ -49,6 +49,9 @@ describe("scoped CI environments", () => {
       writeFileSync(path.join(source, "source.ts"), "workspace source");
       symlinkSync(source, path.join(modules, "workspace"));
       expect(installedPackageBytes(fixture)).toBe(bytes);
+      const alias = path.join(fixture, "root-alias");
+      symlinkSync(fixture, alias);
+      expect(installedPackageBytes(alias)).toBe(bytes);
     } finally {
       rmSync(fixture, { recursive: true, force: true });
     }

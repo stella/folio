@@ -59,15 +59,16 @@ type Lock = {
 
 /** Logical package bytes, counting shared files once and excluding workspace sources. */
 export const installedPackageBytes = (repoRoot: string): number => {
+  const physicalRoot = realpathSync(repoRoot);
   const directories = new Set<string>();
   const files = new Set<string>();
-  const pending = [path.join(repoRoot, "node_modules")];
+  const pending = [path.join(physicalRoot, "node_modules")];
   let bytes = 0;
   while (pending.length > 0) {
     const item = pending.pop();
     if (item === undefined) break;
     const resolved = realpathSync(item);
-    if (resolved.startsWith(path.join(repoRoot, "packages") + path.sep)) continue;
+    if (resolved.startsWith(path.join(physicalRoot, "packages") + path.sep)) continue;
     const stat = statSync(resolved);
     if (stat.isDirectory()) {
       if (directories.has(resolved)) continue;
