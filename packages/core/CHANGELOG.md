@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.58.3
+
+### Patch Changes
+
+- [#1650](https://github.com/stella/folio/pull/1650) [`9557c48`](https://github.com/stella/folio/commit/9557c48e856999ea0273c24c73aa473f5809970a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve opaque body blocks and bookmark boundaries when creating bilingual documents.
+
 ## 0.58.2
 
 ### Patch Changes
