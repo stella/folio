@@ -1,10 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 const repo = path.resolve(import.meta.dir, "..");
 const workflow = Bun.YAML.parse(readFileSync(path.join(repo, ".github/workflows/ci.yml"), "utf8"));
+const proofs = Bun.YAML.parse(
+  readFileSync(path.join(repo, ".github/workflows/typecheck-proofs.yml"), "utf8"),
+);
 const detector = workflow.jobs["ci-plan"].steps.find((step) => step.id === "toolchain");
 const runDetector = ({ result, base = "event-base" }) => {
   const directory = mkdtempSync(path.join(tmpdir(), "folio-toolchain-plan-"));
@@ -38,12 +49,35 @@ describe("shared toolchain CI selection", () => {
       );
       expect(checkout.with["fetch-depth"]).toBe(0);
     }
-    expect(
-      workflow.jobs.typecheck.steps.some(
-        (step) =>
-          step.run === 'bun run typecheck:compiler-parity --changed-since "$TOOLCHAIN_BASE"',
-      ),
-    ).toBe(true);
+  });
+
+  test("compiler proofs run only through the manual workflow", () => {
+    expect(proofs.on).toEqual({ workflow_dispatch: null });
+    expect(proofs.permissions).toEqual({ contents: "read" });
+    expect(proofs.env.TOOLCHAIN_BASE).toBe("unavailable-toolchain-base");
+    const proofCommands = proofs.jobs["typecheck-proofs"].steps
+      .filter((step) => /stll-typecheck-probe|typecheck:compiler-parity/.test(step.run ?? ""))
+      .map((step) => step.run);
+    expect(proofCommands).toEqual([
+      "bunx --no-install stll-typecheck-probe --project packages/core/tsconfig.build.json --seed-dir packages/core/src -- bun check -p packages/core/tsconfig.build.json",
+      'bun run typecheck:compiler-parity --changed-since "$TOOLCHAIN_BASE"',
+    ]);
+    for (const file of readdirSync(path.join(repo, ".github/workflows"))) {
+      if (!/\.ya?ml$/.test(file) || file === "typecheck-proofs.yml") continue;
+      const automatic = Bun.YAML.parse(
+        readFileSync(path.join(repo, ".github/workflows", file), "utf8"),
+      );
+      for (const job of Object.values(automatic.jobs ?? {})) {
+        for (const step of job.steps ?? []) {
+          expect(step.run ?? "").not.toMatch(/stll-typecheck-probe|typecheck:compiler-parity/);
+        }
+        expect(job.uses ?? "").not.toContain("typecheck-proofs.yml");
+      }
+    }
+    expect(workflow.jobs.typecheck.steps.filter((step) => step.run)).toEqual([
+      { run: "bun install --frozen-lockfile" },
+      { name: "Typecheck", run: "bun run typecheck" },
+    ]);
   });
 
   test("parity selects exactly the native TS7 projects declared by repository scripts", () => {
@@ -80,7 +114,7 @@ describe("shared toolchain CI selection", () => {
     ].map((match) => match[1]);
     expect(selected.toSorted()).toEqual([...projects].toSorted());
     expect(selected.length).toBe(new Set(selected).size);
-    const probe = workflow.jobs.typecheck.steps.find((step) =>
+    const probe = proofs.jobs["typecheck-proofs"].steps.find((step) =>
       step.run?.includes("stll-typecheck-probe"),
     );
     expect(projects.has(/--project (\S+)/.exec(probe.run)?.[1])).toBe(true);
@@ -99,7 +133,7 @@ describe("shared toolchain CI selection", () => {
       }
       roots.add(directory);
     }
-    const steps = workflow.jobs.typecheck.steps;
+    const steps = proofs.jobs["typecheck-proofs"].steps;
     const comparison = steps.findIndex((step) => step.run?.includes("typecheck:compiler-parity"));
     expect(comparison).toBeGreaterThan(0);
     const installed = new Set(
