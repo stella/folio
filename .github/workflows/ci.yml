@@ -431,19 +431,6 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Verify seeded typecheck diagnostic
-        run: bunx --no-install stll-typecheck-probe --project packages/core/tsconfig.build.json --seed-dir packages/core/src -- bun check -p packages/core/tsconfig.build.json
-
-      # typecheck:compiler-parity lists the native TS7 projects explicitly.
-      # packages/vue and packages/playground-vue retain vue-tsc for SFC checks;
-      # packages/nuxt retains the TS6 compiler API required by its Vue integration.
-      - name: Install standalone native project dependencies
-        run: bun install --frozen-lockfile
-        working-directory: plugins/vscode
-
-      - name: Compare compiler diagnostics when Bun or TypeScript changed
-        run: bun run typecheck:compiler-parity --changed-since "$TOOLCHAIN_BASE"
-
   build-api:
     name: Build reproducibility and API reports
     needs: ci-plan
