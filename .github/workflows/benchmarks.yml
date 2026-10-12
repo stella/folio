@@ -1,38 +1,13 @@
 name: Benchmarks
 
-# Continuous benchmark-regression checking via CodSpeed.
+# On-demand benchmark checking via CodSpeed.
 #
 # The job runs the tinybench suite under Node (CodSpeed instruments Node, not
 # Bun) in CPU-simulation mode, so the numbers are hardware-agnostic and stable
 # on shared GitHub runners. Authentication uses OpenID Connect, so no
 # long-lived token has to be stored in the repository.
 #
-# Pull requests and main pushes run the `fast` corpus; the nightly schedule runs
-# the `full` corpus, adding the large document. CodSpeed reports benchmarks a
-# run omits as skipped and carries their last result forward.
-
 on:
-  push:
-    branches: [main]
-  # Pull requests run only when measured code or its inputs change; every main
-  # push still runs so each commit has a baseline.
-  pull_request:
-    paths:
-      - ".github/workflows/benchmarks.yml"
-      - ".node-version"
-      - "benchmarks/**"
-      - "bun.lock"
-      - "crates/docx-kernel/**"
-      - "package.json"
-      - "scripts/check-codspeed-runtime.mjs"
-      - "packages/core/package.json"
-      - "packages/core/src/**"
-      - "packages/docx-core/package.json"
-      - "packages/docx-core/src/**"
-      - "tests/visual/fixtures/*.docx"
-  schedule:
-    - cron: "17 3 * * *"
-  # `workflow_dispatch` lets CodSpeed trigger backtest runs to seed baselines.
   workflow_dispatch:
     inputs:
       corpus:
@@ -42,9 +17,8 @@ on:
         default: fast
 
 concurrency:
-  # Each main commit is a CodSpeed baseline, so only superseded PR runs cancel.
-  group: benchmarks-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: benchmarks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   scale-complexity:
@@ -107,7 +81,7 @@ jobs:
       - name: Run benchmarks
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         env:
-          FOLIO_BENCH_CORPUS: ${{ github.event_name == 'schedule' && 'full' || inputs.corpus || 'fast' }}
+          FOLIO_BENCH_CORPUS: ${{ inputs.corpus || 'fast' }}
         with:
           mode: simulation
           run: node --import tsx benchmarks/index.ts

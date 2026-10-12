@@ -41,13 +41,10 @@ test("second-engine specs run only in the report-only projects", () => {
   expect(record?.use?.browserName).toBeUndefined();
 });
 
-test("the WebKit workflow is nightly, on macOS, read-only and never files issues", () => {
+test("the WebKit workflow is manual, on macOS, read-only and never files issues", () => {
   const source = readFileSync(".github/workflows/nightly-webkit-parity.yml", "utf8");
   const workflow = requireRecord(Bun.YAML.parse(source));
-  expect(Object.keys(requireRecord(workflow["on"])).toSorted()).toEqual([
-    "schedule",
-    "workflow_dispatch",
-  ]);
+  expect(Object.keys(requireRecord(workflow["on"])).toSorted()).toEqual(["workflow_dispatch"]);
   const jobs = requireRecord(workflow["jobs"]);
   expect(Object.keys(jobs)).toEqual(["webkit-layout-parity"]);
   const job = requireRecord(jobs["webkit-layout-parity"]);

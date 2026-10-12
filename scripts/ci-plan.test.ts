@@ -550,16 +550,68 @@ describe("CI plan", () => {
     expect(titles.length).toBeGreaterThan(0);
   }, 30_000);
 
-  // CodSpeed rejects merge_group events, so benchmarks keep their own
-  // pull-request, main-push and nightly triggers.
-  test("benchmarks never run on merge groups", () => {
-    const triggers = readWorkflow("benchmarks.yml")["on"];
-    if (!isRecord(triggers)) throw new Error("benchmarks.yml is missing triggers");
-    expect(Object.keys(triggers)).not.toContain("merge_group");
-    expect(Object.keys(triggers)).toContain("push");
+  test("benchmarks and extended proofs run only on demand", () => {
+    for (const file of [
+      "benchmarks.yml",
+      "oracle-mutation-check.yml",
+      "nightly-webkit-parity.yml",
+      "property-proofs.yml",
+      "parity-e2e.yml",
+      "corpus-proofs.yml",
+      "typecheck-proofs.yml",
+    ]) {
+      const workflow = readWorkflow(file);
+      const triggers = workflow["on"];
+      if (!isRecord(triggers)) throw new Error(`${file} is missing triggers`);
+      expect(Object.keys(triggers)).toEqual(["workflow_dispatch"]);
+      const proofJobs = workflow["jobs"];
+      if (!isRecord(proofJobs)) throw new Error(`${file} is missing jobs`);
+      for (const job of Object.values(proofJobs)) {
+        if (!isRecord(job)) throw new Error(`${file} contains an invalid job`);
+        expect(job["if"]).not.toBe("github.event_name == 'merge_group'");
+      }
+    }
   });
 
-  for (const file of ["oracle-mutation-check.yml", "vscode-extension.yml"]) {
+  test("mixed workflows preserve scheduled fuzz and move every proof job", () => {
+    const lanes = [
+      {
+        scheduled: "nightly-property-test.yml",
+        fuzz: ["consumer-fuzz", "report-consumer-fuzz"],
+        manual: "property-proofs.yml",
+        proofs: [
+          "property-test",
+          "docx-kernel-property",
+          "conformance-full",
+          "report-property",
+          "report-conformance",
+        ],
+      },
+      {
+        scheduled: "nightly-corpus-gate.yml",
+        fuzz: ["edit-fuzz", "edit-fuzz-ratchet"],
+        manual: "corpus-proofs.yml",
+        proofs: ["shard", "tier2", "ratchet"],
+      },
+    ];
+    for (const lane of lanes) {
+      const automatic = readWorkflow(lane.scheduled);
+      const manual = readWorkflow(lane.manual);
+      if (
+        !isRecord(automatic["jobs"]) ||
+        !isRecord(manual["jobs"]) ||
+        !isRecord(automatic["on"]) ||
+        !isRecord(manual["on"])
+      )
+        throw new Error("Mixed lane mappings unavailable");
+      expect(Object.keys(automatic["jobs"])).toEqual(lane.fuzz);
+      expect(Object.keys(manual["jobs"])).toEqual(lane.proofs);
+      expect(Object.keys(automatic["on"]).toSorted()).toEqual(["schedule", "workflow_dispatch"]);
+      expect(Object.keys(manual["on"])).toEqual(["workflow_dispatch"]);
+    }
+  });
+
+  for (const file of ["vscode-extension.yml"]) {
     test(`${file} runs heavy jobs only for merge groups`, () => {
       const workflow = readWorkflow(file);
       const triggers = workflow["on"];
