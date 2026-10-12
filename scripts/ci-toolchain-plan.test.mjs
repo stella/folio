@@ -80,7 +80,7 @@ describe("shared toolchain CI selection", () => {
     ]);
   });
 
-  test("parity selects exactly the native TS7 projects declared by repository scripts", () => {
+  test("parity selects exactly the Bun projects declared by repository scripts", () => {
     const tracked = Bun.spawnSync(["git", "ls-files", "package.json", "**/package.json"], {
       cwd: repo,
     });
@@ -90,17 +90,9 @@ describe("shared toolchain CI selection", () => {
       const manifest = JSON.parse(readFileSync(path.join(repo, file), "utf8"));
       for (const command of Object.values(manifest.scripts ?? {})) {
         if (typeof command !== "string") continue;
-        const native = /^bun (?:\.\.\/)*scripts\/tsc-native\.ts(?: (.*))?$/.exec(command);
-        if (!native) continue;
-        const args = (native[1] ?? "").split(/\s+/).filter(Boolean);
-        let project = "tsconfig.json";
-        for (let index = 0; index < args.length; index += 1) {
-          if (args[index] === "--noEmit") continue;
-          if (args[index] !== "-p" || !args[index + 1])
-            throw new Error(`Unsupported native compiler arguments in ${file}`);
-          project = args[index + 1];
-          index += 1;
-        }
+        const checked = /^bun check --no-pretty --all --project=(\S+)$/.exec(command);
+        if (!checked) continue;
+        const project = checked[1];
         projects.add(
           path
             .relative(repo, path.resolve(repo, path.dirname(file), project))
@@ -120,7 +112,7 @@ describe("shared toolchain CI selection", () => {
     expect(projects.has(/--project (\S+)/.exec(probe.run)?.[1])).toBe(true);
   });
 
-  test("every native project install root is installed before compiler comparison", () => {
+  test("every Bun project install root is installed before compiler comparison", () => {
     const manifest = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
     const roots = new Set();
     for (const [, project] of manifest.scripts["typecheck:compiler-parity"].matchAll(

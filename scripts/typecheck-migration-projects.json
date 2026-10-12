@@ -1,0 +1,98 @@
+[
+  {
+    "config": "benchmarks/tsconfig.json",
+    "cwd": ".",
+    "old": "bunx tsc -p benchmarks/tsconfig.json --noEmit",
+    "new": "bun check --no-pretty --all --project=benchmarks/tsconfig.json"
+  },
+  {
+    "config": "packages/agents/tsconfig.build.json",
+    "cwd": "packages/agents",
+    "old": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
+    "new": "bun check --no-pretty --all --project=tsconfig.build.json"
+  },
+  {
+    "config": "packages/cli/tsconfig.build.json",
+    "cwd": "packages/cli",
+    "old": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
+    "new": "bun check --no-pretty --all --project=tsconfig.build.json"
+  },
+  {
+    "config": "packages/core/tsconfig.build.json",
+    "cwd": "packages/core",
+    "old": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
+    "new": "bun check --no-pretty --all --project=tsconfig.build.json"
+  },
+  {
+    "config": "packages/docx-core/tsconfig.build.json",
+    "cwd": "packages/docx-core",
+    "old": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
+    "new": "bun check --no-pretty --all --project=tsconfig.build.json"
+  },
+  {
+    "config": "packages/editor-web/tsconfig.build.json",
+    "cwd": "packages/editor-web",
+    "old": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
+    "new": "bun check --no-pretty --all --project=tsconfig.build.json"
+  },
+  {
+    "config": "packages/nuxt/tsconfig.json",
+    "cwd": "packages/nuxt",
+    "old": "tsc --noEmit",
+    "new": "bun check --no-pretty --all --project=tsconfig.json"
+  },
+  {
+    "config": "packages/playground/tsconfig.json",
+    "cwd": "packages/playground",
+    "old": "bun ../../scripts/tsc-native.ts --noEmit",
+    "new": "bun check --no-pretty --all --project=tsconfig.json"
+  },
+  {
+    "config": "packages/react/tsconfig.build.json",
+    "cwd": "packages/react",
+    "old": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
+    "new": "bun check --no-pretty --all --project=tsconfig.build.json"
+  },
+  {
+    "config": "parity/tsconfig.check.json",
+    "cwd": ".",
+    "old": "tsc -p parity/tsconfig.check.json --noEmit",
+    "new": "bun check --no-pretty --all --project=parity/tsconfig.check.json"
+  },
+  {
+    "config": "plugins/vscode/tsconfig.json",
+    "cwd": "plugins/vscode",
+    "old": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.json",
+    "new": "bun check --no-pretty --all --project=tsconfig.json"
+  },
+  {
+    "config": "scripts/tsconfig.budgets.json",
+    "cwd": ".",
+    "old": "bun scripts/tsc-native.ts -p scripts/tsconfig.budgets.json",
+    "new": "bun check --no-pretty --all --project=scripts/tsconfig.budgets.json"
+  },
+  {
+    "config": "scripts/tsconfig.corpus.json",
+    "cwd": ".",
+    "old": "bunx tsc -p scripts/tsconfig.corpus.json --noEmit",
+    "new": "bun check --no-pretty --all --project=scripts/tsconfig.corpus.json"
+  },
+  {
+    "config": "specifications/container-contract/tsconfig.json",
+    "cwd": ".",
+    "old": "bun scripts/tsc-native.ts -p specifications/container-contract/tsconfig.json",
+    "new": "bun check --no-pretty --all --project=specifications/container-contract/tsconfig.json"
+  },
+  {
+    "config": "specifications/reserved-values/tsconfig.json",
+    "cwd": ".",
+    "old": "bun scripts/tsc-native.ts -p specifications/reserved-values/tsconfig.json",
+    "new": "bun check --no-pretty --all --project=specifications/reserved-values/tsconfig.json"
+  },
+  {
+    "config": "test/tsconfig.corpus-edit-fuzz.json",
+    "cwd": ".",
+    "old": "bunx tsc -p test/tsconfig.corpus-edit-fuzz.json --noEmit",
+    "new": "bun check --no-pretty --all --project=test/tsconfig.corpus-edit-fuzz.json"
+  }
+]
