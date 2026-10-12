@@ -38,6 +38,7 @@ export const installFrozenRepositoryDependencies = (repoRoot: string): void => {
     !isRecord(config) ||
     !isRecord(config["install"]) ||
     typeof config["install"]["minimumReleaseAge"] !== "number" ||
+    !Number.isSafeInteger(config["install"]["minimumReleaseAge"]) ||
     config["install"]["minimumReleaseAge"] <= 0
   )
     throw new TypeError("Frozen repository installs require the release-age policy");

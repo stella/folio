@@ -18,6 +18,8 @@ import {
   scopeInstall,
 } from "./ci-scoped-install";
 
+import { installFrozenRepositoryDependencies } from "./clean-room-install";
+
 const root = path.resolve(import.meta.dir, "..");
 type JobSteps = { steps: { run?: string; uses?: string; with?: { "no-cache"?: unknown } }[] };
 const checkScopedJobs = (jobs: Record<string, JobSteps>) => {
@@ -36,6 +38,32 @@ const checkScopedJobs = (jobs: Record<string, JobSteps>) => {
 };
 
 describe("scoped CI environments", () => {
+  test("invalid release ages fail before starting an install", () => {
+    const fixture = mkdtempSync(path.join(tmpdir(), "folio-ci-policy-"));
+    try {
+      for (const age of [
+        "nan",
+        "+nan",
+        "-nan",
+        "inf",
+        "+inf",
+        "-inf",
+        "0",
+        "-1",
+        "1.5",
+        "9007199254740992",
+        '"1"',
+        "true",
+      ]) {
+        writeFileSync(path.join(fixture, "bunfig.toml"), `[install]\nminimumReleaseAge = ${age}\n`);
+        expect(() => installFrozenRepositoryDependencies(fixture)).toThrow(
+          "Frozen repository installs require the release-age policy",
+        );
+      }
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
   test("package size is invariant under shared links and excludes workspace sources", () => {
     const fixture = mkdtempSync(path.join(tmpdir(), "folio-ci-size-"));
     try {
