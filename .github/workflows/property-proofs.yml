@@ -230,6 +230,8 @@ jobs:
 
   property-areas:
     name: Properties of the changed areas (5x runs)
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:

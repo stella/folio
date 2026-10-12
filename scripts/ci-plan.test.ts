@@ -569,6 +569,9 @@ describe("CI plan", () => {
       for (const job of Object.values(proofJobs)) {
         if (!isRecord(job)) throw new Error(`${file} contains an invalid job`);
         expect(job["if"]).not.toBe("github.event_name == 'merge_group'");
+        const permissions = job["permissions"] ?? workflow["permissions"];
+        if (!isRecord(permissions)) throw new Error(`${file} lacks checkout permissions`);
+        expect(permissions["contents"]).toBe("read");
       }
     }
   });
