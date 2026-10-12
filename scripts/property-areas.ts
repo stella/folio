@@ -4,7 +4,7 @@
  *
  * PR CI runs every property at its own `numRuns` (factor 1) inside the main
  * test step. A property that fails on a few percent of seeds can pass there and
- * redden unrelated PRs later, so this step reruns the property files of the
+ * redden unrelated changes later, so the manual proof reruns the property files of the
  * areas the branch touched with `PROPERTY_TEST_NUM_RUNS_FACTOR` raised (5 by
  * default): a change to `packages/core/src/compare/**` searches the compare
  * properties five times as hard, and nothing else pays for it.
@@ -22,7 +22,7 @@
  *
  * `--base` (default `origin/main`) is diffed from its merge base with HEAD.
  * `--factor` defaults to `PROPERTY_TEST_NUM_RUNS_FACTOR`, else 5 for a change
- * and 1 for `--all` (the nightly sets the variable). `--dry-run` prints the
+ * and 1 for `--all` (the extended proof sets the variable). `--dry-run` prints the
  * selection without running it.
  */
 

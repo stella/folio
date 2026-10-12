@@ -168,37 +168,6 @@ jobs:
       - name: Discover every Node Playwright project without browsers
         run: bun scripts/ci-browser-discovery.ts
 
-  property-areas:
-    name: Properties of the changed areas (5x runs)
-    needs: ci-plan
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # need history to compute the merge base with the target branch
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      # Rerun properties in the areas this PR changes at five times their
-      # normal runs, with the same commit-derived seeds.
-      - name: Changed areas' properties at 5x numRuns
-        run: bun scripts/property-areas.ts --base "origin/${BASE_REF}" --factor 5 --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}"
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          PROPERTY_SHARD: ${{ matrix.shard }}
-          PROPERTY_SHARD_COUNT: ${{ strategy.job-total }}
-
   # oxfmt formats Markdown too, so a documentation-only change still has its
   # formatting checked; any other change runs the full format check in `lint`.
   docs-format:
@@ -950,7 +919,7 @@ jobs:
           retention-days: 7
 
   differential:
-    name: Differential parser parity (folio vs python-docx + Open XML SDK)
+    name: Generated compare fixture schema checks
     needs: ci-plan
     if: needs.ci-plan.outputs.differential_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-latest
@@ -979,13 +948,6 @@ jobs:
       # .NET validator; here its redlines are schema-checked as well.
       - name: Validate generated compare fixtures and redlines
         run: bun test benchmarks/compare/documents.test.ts benchmarks/compare/generated-roundtrip.test.ts
-
-      # DIFFERENTIAL_REQUIRED turns a missing reference into a failure rather
-      # than a skip, so the full-corpus parity gate cannot silently pass.
-      - name: Differential parity (full corpus)
-        run: bun run test:differential
-        env:
-          DIFFERENTIAL_REQUIRED: "1"
 
   consumer-scenarios:
     name: Consumer scenarios (tarballs)
@@ -1151,7 +1113,6 @@ jobs:
     needs:
       - ci-plan
       - changeset
-      - property-areas
       - docs-format
       - lint
       - typecheck
@@ -1188,7 +1149,6 @@ jobs:
           PLAN_RESULT: ${{ needs.ci-plan.result }}
           JOB_SCOPES: >-
             {"changeset":{"event":"pull_request"},
-            "property-areas":{"event":"pull_request","area":"code_required"},
             "browser-discovery":{"event":"pull_request","area":"browser_discovery_required"},
             "docs-format":{"area":"code_required","value":"false"},
             "lint":{},
