@@ -109,7 +109,6 @@ jobs:
       browser_discovery_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).browser_discovery }}
       api_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true' }}
       code_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).code }}
-      typecheck_budget_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).typecheck_budget }}
       container_contract_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).container_contract }}
       docx_kernel_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).docx_kernel }}
       interactions_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions }}
@@ -661,28 +660,6 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  typecheck-budget:
-    name: Typecheck cost budget
-    needs: ci-plan
-    if: needs.ci-plan.outputs.typecheck_budget_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      - name: Guard deterministic compiler workload
-        run: |
-          bun scripts/typecheck-budget.ts --self-test
-          bun run typecheck:budget
-
   container-contract:
     name: Container contract and survival census
     needs: ci-plan
@@ -1162,7 +1139,6 @@ jobs:
       - tests-2
       - tests-3
       - tests-4
-      - typecheck-budget
       - container-contract
       - docx-kernel
       - browser-input-pinned
@@ -1199,7 +1175,6 @@ jobs:
             "tests-2":{"area":"code_required"},
             "tests-3":{"area":"code_required"},
             "tests-4":{"area":"code_required"},
-            "typecheck-budget":{"area":"typecheck_budget_required","depth":"full"},
             "container-contract":{"area":"container_contract_required","depth":"full"},
             "docx-kernel":{"area":"docx_kernel_required","depth":"full"},
             "browser-input-pinned":{"area":"interactions_required"},

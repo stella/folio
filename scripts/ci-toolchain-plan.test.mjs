@@ -80,7 +80,59 @@ describe("shared toolchain CI selection", () => {
     ]);
   });
 
-  test("parity selects exactly the native TS7 projects declared by repository scripts", () => {
+  test("compiler-work counters run only as a manual proof after parity", () => {
+    expect(workflow.jobs["typecheck-budget"]).toBeUndefined();
+    expect(workflow.jobs["ci-plan"].outputs.typecheck_budget_required).toBeUndefined();
+    const budgetJob = proofs.jobs["typecheck-budget"];
+    expect(budgetJob.needs).toBe("typecheck-proofs");
+    expect(budgetJob.if).toBe("always()");
+    expect(budgetJob.steps.filter((step) => step.run)).toEqual([
+      { run: "bun install --frozen-lockfile" },
+      {
+        name: "Guard deterministic compiler workload",
+        run: "bun scripts/typecheck-budget.ts --self-test\nbun run typecheck:budget\n",
+      },
+    ]);
+    for (const file of readdirSync(path.join(repo, ".github/workflows"))) {
+      if (!/\.ya?ml$/.test(file) || file === "typecheck-proofs.yml") continue;
+      const automatic = Bun.YAML.parse(
+        readFileSync(path.join(repo, ".github/workflows", file), "utf8"),
+      );
+      for (const job of Object.values(automatic.jobs ?? {})) {
+        for (const step of job.steps ?? []) {
+          expect(step.run ?? "").not.toMatch(/typecheck-budget\.ts|typecheck:budget/);
+        }
+      }
+    }
+  });
+
+  test("ordinary typecheck commands use Bun and preserve Vue SFC checkers", () => {
+    const rootManifest = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
+    const projects = Bun.spawnSync(["git", "ls-files", "**/package.json"], { cwd: repo });
+    expect(projects.exitCode).toBe(0);
+    const vueProjects = new Set([
+      "packages/vue/package.json",
+      "packages/playground-vue/package.json",
+    ]);
+    const retained = new Set();
+    for (const file of projects.stdout.toString().trim().split("\n")) {
+      const manifest = JSON.parse(readFileSync(path.join(repo, file), "utf8"));
+      const command = manifest.scripts?.typecheck;
+      if (command === undefined) continue;
+      if (vueProjects.has(file)) {
+        expect(command).toMatch(/^vue-tsc --noEmit(?: -p \S+)?$/);
+        retained.add(file);
+        continue;
+      }
+      expect(command).toMatch(/^bun check --no-pretty --all --project=\S+$/);
+    }
+    expect([...retained].toSorted()).toEqual([...vueProjects].toSorted());
+    for (const [, name] of rootManifest.scripts.typecheck.matchAll(/bun run (\S+)/g)) {
+      expect(rootManifest.scripts[name]).toMatch(/^bun check --no-pretty --all --project=\S+$/);
+    }
+  });
+
+  test("parity selects exactly the Bun projects declared by repository scripts", () => {
     const tracked = Bun.spawnSync(["git", "ls-files", "package.json", "**/package.json"], {
       cwd: repo,
     });
@@ -90,17 +142,9 @@ describe("shared toolchain CI selection", () => {
       const manifest = JSON.parse(readFileSync(path.join(repo, file), "utf8"));
       for (const command of Object.values(manifest.scripts ?? {})) {
         if (typeof command !== "string") continue;
-        const native = /^bun (?:\.\.\/)*scripts\/tsc-native\.ts(?: (.*))?$/.exec(command);
-        if (!native) continue;
-        const args = (native[1] ?? "").split(/\s+/).filter(Boolean);
-        let project = "tsconfig.json";
-        for (let index = 0; index < args.length; index += 1) {
-          if (args[index] === "--noEmit") continue;
-          if (args[index] !== "-p" || !args[index + 1])
-            throw new Error(`Unsupported native compiler arguments in ${file}`);
-          project = args[index + 1];
-          index += 1;
-        }
+        const checked = /^bun check --no-pretty --all --project=(\S+)$/.exec(command);
+        if (!checked) continue;
+        const project = checked[1];
         projects.add(
           path
             .relative(repo, path.resolve(repo, path.dirname(file), project))
@@ -120,7 +164,7 @@ describe("shared toolchain CI selection", () => {
     expect(projects.has(/--project (\S+)/.exec(probe.run)?.[1])).toBe(true);
   });
 
-  test("every native project install root is installed before compiler comparison", () => {
+  test("every Bun project install root is installed before compiler comparison", () => {
     const manifest = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
     const roots = new Set();
     for (const [, project] of manifest.scripts["typecheck:compiler-parity"].matchAll(
