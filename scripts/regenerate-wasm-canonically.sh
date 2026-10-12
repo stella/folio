@@ -31,7 +31,6 @@ fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 image="folio-canonical-wasm"
 
-rust_version="$(sed -n 's/^channel = "\(.*\)"$/\1/p' "${root}/rust-toolchain.toml")"
 wasm_bindgen_version="$(
   awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print; exit }' \
     "${root}/Cargo.lock"
@@ -40,7 +39,6 @@ bun_version="$(sed -n 's/.*"packageManager": "bun@\(.*\)".*/\1/p' "${root}/packa
 
 docker build \
   --platform linux/amd64 \
-  --build-arg "RUST_VERSION=${rust_version}" \
   --build-arg "WASM_BINDGEN_VERSION=${wasm_bindgen_version}" \
   --build-arg "BUN_VERSION=${bun_version}" \
   --file "${root}/scripts/canonical-wasm.Dockerfile" \

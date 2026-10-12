@@ -161,20 +161,24 @@ test("host view-ready navigation wins over a pending initial scroll offset", asy
   globalThis.cancelAnimationFrame = (id) => {
     frames.delete(id);
   };
-  try {
+  const initialDocument = createEmptyDocument({ initialText: "Initial scroll precedence" });
+  const renderOffset = async (initialScrollTop: number) => {
     await act(async () => {
       root.render(
         <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
           <DocxEditor
             ref={editor}
-            document={createEmptyDocument({ initialText: "Initial scroll precedence" })}
+            document={initialDocument}
             showToolbar={false}
-            initialScrollTop={42}
+            initialScrollTop={initialScrollTop}
             onEditorViewReady={onEditorViewReady}
           />
         </IntlProvider>,
       );
     });
+  };
+  try {
+    await renderOffset(42);
     await act(async () => {
       editor.current?.ensureEditorView({ focus: false });
     });
@@ -186,6 +190,16 @@ test("host view-ready navigation wins over a pending initial scroll offset", asy
       for (const callback of scheduled) callback(performance.now());
     });
     expect(scrollRoot.scrollTop).toBe(321);
+    // Exercise cleanup after view-ready cancels the frame, then further updates.
+    for (const offset of [84, 128, 42]) {
+      await renderOffset(offset);
+      const pending = [...frames.values()];
+      frames.clear();
+      await act(async () => {
+        for (const callback of pending) callback(performance.now());
+      });
+      expect(scrollRoot.scrollTop).toBe(321);
+    }
   } finally {
     await act(async () => root.unmount());
     globalThis.requestAnimationFrame = previousRequest;

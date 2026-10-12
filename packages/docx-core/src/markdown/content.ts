@@ -81,12 +81,10 @@ const tableFromToken = (token: Tokens.Table): Table => ({
   type: "table",
   rows: [
     { type: "tableRow", cells: token.header.map((cell) => cellOf(cell)) },
-    ...token.rows.map(
-      (row): TableRow => ({
-        type: "tableRow",
-        cells: row.map((cell) => cellOf(cell)),
-      }),
-    ),
+    ...token.rows.map((row): TableRow => ({
+      type: "tableRow",
+      cells: row.map((cell) => cellOf(cell)),
+    })),
   ],
 });
 

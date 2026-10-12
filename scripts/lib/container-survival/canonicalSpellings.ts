@@ -18,13 +18,13 @@
  * cannot disagree about which two names are one slot. What stays hand-written
  * is what no schema states: the three defaults are prose the XSD cannot express
  * (`CT_OnOff/@w:val`, `CT_VMerge/@w:val` and `CT_TabStop/@w:leader` all carry
- * `default: undefined` in the committed graph), and so is the line where folio
+ * `default: undefined` in the committed graph), and so is the declaration where folio
  * performs each canonicalisation, which {@link RENAME_SITES} holds total over
  * the generated table: a rename nobody has decided about cannot land.
  *
  * The guard runs the other way too: every entry must be exercised by a pair the
  * census generates (`container-survival-canonical.test.ts`), which makes the
- * table shrink-only, and each entry carries the rule it rests on and the line
+ * table shrink-only, and each entry carries the rule it rests on and the declaration
  * that performs it, because the one failure mode that matters is a wrong entry
  * reading a real loss as a survival.
  */
@@ -41,15 +41,15 @@ import { type QualifiedName, qualify, WML_NAMESPACE } from "./schemaSpace";
 /**
  * Where folio performs a canonicalisation.
  *
- * The text is part of the citation: a line number alone rots the moment
- * something above it moves, and a rotted citation for a table whose entries
- * cannot be derived is how a wrong equivalence survives review.
+ * The declaration and code are checked together. Formatting can move a writer
+ * without changing its citation; a different writer cannot satisfy it.
  */
 type Citation = {
   /** Repository-relative path of the serializer. */
   file: string;
-  line: number;
-  /** What that line reads, checked by the test that reads the file. */
+  /** The top-level declaration that owns the write. */
+  declaration: string;
+  /** Code within that declaration, checked without comments or whitespace. */
   writes: string;
 };
 
@@ -112,49 +112,49 @@ const ON_OFF_SERIALIZER = "packages/docx-core/src/serialize/xml.ts";
  * without somebody saying whether folio writes it. `null` is that decision, not
  * an omission: folio writes neither spelling of the slot, the authored name is
  * a real loss, and an entry here would turn it into a reported survival. Each
- * citation reads the line that binds the writer's name to this very table key,
+ * citation reads the declaration that binds the writer's name to this very table key,
  * so the two cannot drift apart without the citation going stale.
  */
 const RENAME_SITES = {
   "CT_Border start": [
     {
       file: TABLE_SERIALIZER,
-      line: 226,
+      declaration: "BORDER_LEFT",
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Border start"]',
     },
   ],
   "CT_Border end": [
     {
       file: TABLE_SERIALIZER,
-      line: 227,
+      declaration: "BORDER_RIGHT",
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Border end"]',
     },
   ],
   "CT_TblWidth start": [
     {
       file: TABLE_SERIALIZER,
-      line: 289,
+      declaration: "MARGIN_LEFT",
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_TblWidth start"]',
     },
   ],
   "CT_TblWidth end": [
     {
       file: TABLE_SERIALIZER,
-      line: 290,
+      declaration: "MARGIN_RIGHT",
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_TblWidth end"]',
     },
   ],
   "CT_Ind @start": [
     {
       file: PARAGRAPH_FORMATTING,
-      line: 218,
+      declaration: "INDENT_LEFT",
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"]',
     },
   ],
   "CT_Ind @end": [
     {
       file: PARAGRAPH_FORMATTING,
-      line: 219,
+      declaration: "INDENT_RIGHT",
       writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"]',
     },
   ],
@@ -210,7 +210,7 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
     writtenBy: [
       {
         file: ON_OFF_SERIALIZER,
-        line: 32,
+        declaration: "serializeOnOffElement",
         writes: "return value ? `<w:${name}/>`",
       },
     ],
@@ -226,7 +226,9 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "graph records no default, and the omitted value means continue. Recorded as the evidence " +
       "record `vmerge-absent-means-continue`, and as the reserved value `absent|continue` in " +
       "`specifications/reserved-values/formatting.ts`.",
-    writtenBy: [{ file: TABLE_SERIALIZER, line: 786, writes: '"<w:vMerge/>"' }],
+    writtenBy: [
+      { file: TABLE_SERIALIZER, declaration: "serializeVerticalMerge", writes: '"<w:vMerge/>"' },
+    ],
   },
   {
     kind: "value",
@@ -238,7 +240,9 @@ const OMITTED_ATTRIBUTE_SPELLINGS = [
       "A tab stop with no w:leader draws no leader: the attribute is optional, the committed " +
       "graph records no default, and `none` is the member of ST_TabTlc that says so. folio " +
       "reads the token and writes the attribute only for a leader that draws something.",
-    writtenBy: [{ file: PARAGRAPH_FORMATTING, line: 158, writes: 'leader !== "none"' }],
+    writtenBy: [
+      { file: PARAGRAPH_FORMATTING, declaration: "serializeTabStops", writes: 'leader !== "none"' },
+    ],
   },
 ] as const satisfies readonly CanonicalSpelling[];
 

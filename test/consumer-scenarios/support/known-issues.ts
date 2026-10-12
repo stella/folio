@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Relation } from "./metamorphic.ts";
+import { deletedNoteSymptom } from "./deleted-note-symptom.ts";
 
 export const OPEN_ISSUES = {} as const;
 
@@ -71,7 +72,14 @@ export const KNOWN_FAILING_FLOWS: readonly {
 }[] = [{ seed: 18568230, steps: 16, finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES" }];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
-export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
+type FailureSymptom = RegExp | ((failure: unknown) => boolean);
+
+export const matchesFailureSymptom = (symptom: FailureSymptom, failure: unknown): boolean => {
+  if (typeof symptom === "function") return symptom(failure);
+  return symptom.test(failure instanceof Error ? failure.message : String(failure));
+};
+
+export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
   LEGACY_TOC_REGENERATION_DANGLING_REFERENCES:
     /legacy TOC regeneration preserves previously referenced bookmark names/u,
   LEGACY_PARAGRAPH_TAB_EDITS_LOST:
@@ -82,9 +90,7 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
     /\[rejectAll\] the flow's batches replayed tracked and rejected do not give the fixture back[^\n]*\n\s*\{"type":"footnote","noteId":\d+\}: \.blocks\[\d+\]: undefined → \{"kind":"heading","text":""/u,
   BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
     /\[batchSequential\] the batch \(suggested: [^)]*\) leaves otherwise than its operations one at a time:\n\s*op-\d+ refused one at a time: pendingDeletion/u,
-  // The saving reviewer (expected, `-`) lists a note the reopened package lacks.
-  DELETED_REFERENCE_NOTES_STAY_LISTED:
-    /the reopened package shows something else than the reviewer that saved it[\s\S]*?\n\s*- +'\[(?:footnote|endnote) #\d+\]/u,
+  DELETED_REFERENCE_NOTES_STAY_LISTED: deletedNoteSymptom,
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
     /\[directTracked\] the flow's batches replayed tracked and accepted read otherwise than replayed direct[^\n]*\n\s*\{"type":"main"\}: \.comments\[\d+\]: /u,
   // The expected texts list the new cell; the reader's do not.
@@ -152,7 +158,7 @@ export const KNOWN_FAILING_FOLLOW_UPS: readonly {
 export const expectedFailure = (
   issue: OpenIssue | Finding,
   name: string,
-  symptom: RegExp,
+  symptom: FailureSymptom,
   body: () => Promise<void> | void,
 ): void => {
   const tag = typeof issue === "number" ? `#${issue}` : issue;
@@ -169,8 +175,7 @@ export const expectedFailure = (
           "Make it a plain scenario and drop the entry from support/known-issues.ts.",
       );
     }
-    const message = failure instanceof Error ? failure.message : String(failure);
-    if (!symptom.test(message)) {
+    if (!matchesFailureSymptom(symptom, failure)) {
       // It fails, but not the way the issue does: a real regression.
       throw failure;
     }

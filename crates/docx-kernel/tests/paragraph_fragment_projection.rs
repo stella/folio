@@ -162,7 +162,10 @@ fn text_and_formatting_match_the_same_paragraph_in_a_complete_package() {
     assert_eq!(fragment_paragraph.text, full_paragraph.text);
     assert_eq!(fragment_paragraph.formatting, full_paragraph.formatting);
     assert_eq!(fragment_paragraph.style_id, full_paragraph.style_id);
-    assert!(!fragment_paragraph.formatting.is_empty());
+    assert_ne!(
+        fragment_paragraph.formatting,
+        Vec::<stella_docx_kernel::TextFormattingSpan>::new()
+    );
     assert_eq!(
         actual.formatting_completeness,
         FormattingCompleteness {
@@ -218,13 +221,13 @@ fn missing_styles_leave_formatting_incomplete_but_preserve_direct_facts() {
             .expect("complete paragraph")
             .formatting
     );
-    assert!(
-        !actual
+    assert_ne!(
+        actual
             .paragraphs
             .first()
             .expect("direct paragraph")
-            .formatting
-            .is_empty()
+            .formatting,
+        Vec::<stella_docx_kernel::TextFormattingSpan>::new()
     );
     assert_partial(&actual);
 }

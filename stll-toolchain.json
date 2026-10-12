@@ -1,0 +1,17 @@
+{
+  "engineFloors": [
+    {
+      "package": "packages/cli",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "consumer-scenarios-minimum"
+    }
+  ],
+  "rustExceptions": [
+    {
+      "pin": "1.97.1",
+      "reason": "cargo-hawk requires Rust 1.97.1; remove when Hawk supports the shared Rust pin.",
+      "tracking": "https://github.com/stella/tooling/issues/99",
+      "expires": "2026-11-11"
+    }
+  ]
+}

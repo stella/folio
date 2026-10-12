@@ -197,39 +197,37 @@ const MERGEABLE = BODY_PARAGRAPHS.filter(
 );
 
 const CASES: Case[] = [
-  ...BODY_PARAGRAPHS.map(
-    (text): Case => ({ name: `deleteBlock "${text}"`, steps: [deleteStep(text)] }),
-  ),
-  ...MERGEABLE.map(
-    (text): Case => ({
-      name: `mergeBlockWithNext "${text}"`,
-      steps: [
-        {
-          operation: (id) => ({ id: "merge", type: "mergeBlockWithNext", blockId: id(text) }),
-          outcome: merged(text),
-        },
-      ],
-    }),
-  ),
-  ...BODY_PARAGRAPHS.map(
-    (text): Case => ({
-      name: `replaceBlock "${text}"`,
-      steps: [
-        {
-          operation: (id) => ({
-            id: "replace",
-            type: "replaceBlock",
-            blockId: id(text),
-            text: "Replaced.",
-          }),
-          outcome: replaced(text, "Replaced."),
-        },
-      ],
-    }),
-  ),
-  ...BODY_PARAGRAPHS.map(
-    (text): Case => ({ name: `splitBlock "${text}"`, steps: [splitStep(text)] }),
-  ),
+  ...BODY_PARAGRAPHS.map((text): Case => ({
+    name: `deleteBlock "${text}"`,
+    steps: [deleteStep(text)],
+  })),
+  ...MERGEABLE.map((text): Case => ({
+    name: `mergeBlockWithNext "${text}"`,
+    steps: [
+      {
+        operation: (id) => ({ id: "merge", type: "mergeBlockWithNext", blockId: id(text) }),
+        outcome: merged(text),
+      },
+    ],
+  })),
+  ...BODY_PARAGRAPHS.map((text): Case => ({
+    name: `replaceBlock "${text}"`,
+    steps: [
+      {
+        operation: (id) => ({
+          id: "replace",
+          type: "replaceBlock",
+          blockId: id(text),
+          text: "Replaced.",
+        }),
+        outcome: replaced(text, "Replaced."),
+      },
+    ],
+  })),
+  ...BODY_PARAGRAPHS.map((text): Case => ({
+    name: `splitBlock "${text}"`,
+    steps: [splitStep(text)],
+  })),
   {
     name: "deleteTable",
     steps: [

@@ -207,9 +207,8 @@ export const resolveParagraphIdentities = ({
   sourceParaIds,
   serializedParaIds,
 }: ResolveParagraphIdentitiesOptions): ParagraphIdentityPlan => {
-  const sourceIdentities = sourceParaIds.map(
-    (paraId, ordinal): ParagraphIdentity =>
-      paraId === undefined ? { type: "anonymous", ordinal } : { type: "authored", paraId, ordinal },
+  const sourceIdentities = sourceParaIds.map((paraId, ordinal): ParagraphIdentity =>
+    paraId === undefined ? { type: "anonymous", ordinal } : { type: "authored", paraId, ordinal },
   );
   const sourceIds = new Set(sourceParaIds.filter((paraId) => paraId !== undefined));
   const identities = serializedParaIds.map((paraId, ordinal): ParagraphIdentity => {

@@ -78,20 +78,17 @@ const numberingIntent = (
     numId = Math.max(0, ...(definitions?.nums.map((num) => num.numId) ?? [])) + 1;
     const abstractNumId =
       Math.max(-1, ...(definitions?.abstractNums.map((num) => num.abstractNumId) ?? [])) + 1;
-    const levels = Array.from(
-      { length: 9 },
-      (_, level): ListLevel => ({
-        ilvl: level,
-        start: level === 0 ? (request.start ?? 1) : 1,
-        numFmt: request.kind === "bullet" ? "bullet" : (request.format?.numFmt ?? "decimal"),
-        lvlText:
-          request.kind === "bullet"
-            ? "•"
-            : (request.format?.lvlText ?? "%1.").replaceAll("%1", `%${level + 1}`),
-        suffix: "tab",
-        pPr: { indentLeft: (level + 1) * 720, indentFirstLine: 360, hangingIndent: true },
-      }),
-    );
+    const levels = Array.from({ length: 9 }, (_, level): ListLevel => ({
+      ilvl: level,
+      start: level === 0 ? (request.start ?? 1) : 1,
+      numFmt: request.kind === "bullet" ? "bullet" : (request.format?.numFmt ?? "decimal"),
+      lvlText:
+        request.kind === "bullet"
+          ? "•"
+          : (request.format?.lvlText ?? "%1.").replaceAll("%1", `%${level + 1}`),
+      suffix: "tab",
+      pPr: { indentLeft: (level + 1) * 720, indentFirstLine: 360, hangingIndent: true },
+    }));
     target = {
       type: "new",
       num: { numId, abstractNumId },
