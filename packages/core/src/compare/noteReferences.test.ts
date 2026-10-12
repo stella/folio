@@ -55,22 +55,18 @@ const buildDocx = async (
     if (paragraph?.type !== "paragraph") throw new Error("fixture paragraph is missing");
     paragraph.content = [{ type: "run", formatting: {}, content: pieces.map(runContentOf) }];
   }
-  model.package.footnotes = notes.footnotes.map(
-    (id): Footnote => ({
-      type: "footnote",
-      id,
-      noteType: "normal",
-      content: [noteBody(`Footnote ${id}.`)],
-    }),
-  );
-  model.package.endnotes = notes.endnotes.map(
-    (id): Endnote => ({
-      type: "endnote",
-      id,
-      noteType: "normal",
-      content: [noteBody(`Endnote ${id}.`)],
-    }),
-  );
+  model.package.footnotes = notes.footnotes.map((id): Footnote => ({
+    type: "footnote",
+    id,
+    noteType: "normal",
+    content: [noteBody(`Footnote ${id}.`)],
+  }));
+  model.package.endnotes = notes.endnotes.map((id): Endnote => ({
+    type: "endnote",
+    id,
+    noteType: "normal",
+    content: [noteBody(`Endnote ${id}.`)],
+  }));
   const bytes = (await ensureParaIds(new Uint8Array(await createDocx(model)))).docx;
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 };

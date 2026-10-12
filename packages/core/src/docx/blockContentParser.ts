@@ -293,14 +293,10 @@ const parseBlockContentWithState = (
     context: { resources: { styles, theme, numbering, rels, media }, state, modelled },
   });
 
-  return withPreservedChildren(
-    modelled,
-    preserved,
-    (xml): PreservedBlock => ({
-      type: "preservedBlock",
-      xml,
-    }),
-  );
+  return withPreservedChildren(modelled, preserved, (xml): PreservedBlock => ({
+    type: "preservedBlock",
+    xml,
+  }));
 };
 
 const parseBlockSdt = (

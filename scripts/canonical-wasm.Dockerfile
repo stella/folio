@@ -4,11 +4,9 @@
 # linux/amd64. A developer on another platform regenerates through this image so
 # the artifact they commit is the one CI will reproduce.
 #
-# Versions come from the repository: the Rust toolchain from rust-toolchain.toml
-# and wasm-bindgen from Cargo.lock, both passed in as build arguments so this
-# file never becomes a second place they are pinned.
-ARG RUST_VERSION
-FROM rust:${RUST_VERSION}-bookworm
+# Rust must match rust-toolchain.toml; the shared toolchain checker guards both.
+# wasm-bindgen comes from Cargo.lock through a build argument.
+FROM rust:1.99.0-bookworm@sha256:114c7a4425406451c2866b6aafe69fe29b1b298832db1277d411ac73c82d04d6
 
 ARG WASM_BINDGEN_VERSION
 ARG BUN_VERSION

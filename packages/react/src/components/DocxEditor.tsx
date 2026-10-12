@@ -532,7 +532,7 @@ const createPagedEditorBinding = () => {
 
 type InitialScrollState =
   | { status: "waiting" }
-  | { status: "scheduled"; frame: number }
+  | { status: "scheduled"; cancel: () => void }
   | { status: "applied" };
 
 /**
@@ -943,7 +943,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const initialScroll = initialScrollRef.current;
         switch (initialScroll.status) {
           case "scheduled":
-            cancelAnimationFrame(initialScroll.frame);
+            initialScroll.cancel();
             scrollEditorTo(scrollContainerRef.current, {
               top: initialScrollTop,
               behavior: "instant",
@@ -1427,6 +1427,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   // Find/Replace hook
   const findReplace = useFindReplaceState();
+  const { openFind, openReplace } = findReplace;
 
   // Page setup dialog state
   const [showPageSetup, setShowPageSetup] = useState(false);
@@ -1475,7 +1476,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onCompatibilityChange,
     onReset: useCallback(() => {
       const initialScroll = initialScrollRef.current;
-      if (initialScroll.status === "scheduled") cancelAnimationFrame(initialScroll.frame);
+      if (initialScroll.status === "scheduled") initialScroll.cancel();
       assignRef(initialScrollRef, { status: "waiting" });
       if (scrollContainerRef.current) {
         scrollEditorTo(scrollContainerRef.current, { top: 0, left: 0, behavior: "instant" });
@@ -1545,18 +1546,22 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       return undefined;
     }
 
-    const frame = requestAnimationFrame(() => {
+    let pendingFrame: number | null = requestAnimationFrame(() => {
+      pendingFrame = null;
       assignRef(initialScrollRef, { status: "applied" });
       scrollEditorTo(scrollContainerRef.current, { top: initialScrollTop, behavior: "instant" });
     });
-    assignRef(initialScrollRef, { status: "scheduled", frame });
+    const cancelPendingFrame = () => {
+      if (pendingFrame === null) return;
+      cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+    };
+    assignRef(initialScrollRef, { status: "scheduled", cancel: cancelPendingFrame });
 
     return () => {
-      const initialScroll = initialScrollRef.current;
-      if (initialScroll.status === "scheduled" && initialScroll.frame === frame) {
-        cancelAnimationFrame(frame);
-        assignRef(initialScrollRef, { status: "waiting" });
-      }
+      if (pendingFrame === null) return;
+      cancelPendingFrame();
+      assignRef(initialScrollRef, { status: "waiting" });
     };
   }, [initialScrollTop, loadedDocumentIdentity, state.documentLoad.status]);
 
@@ -3454,10 +3459,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       openPrintPreview: handleDirectPrint,
       print: handleDirectPrint,
       openFind: () => {
-        findReplace.openFind(readFindSelectionSeed());
+        openFind(readFindSelectionSeed());
       },
       openReplace: () => {
-        findReplace.openReplace(readFindSelectionSeed());
+        openReplace(readFindSelectionSeed());
       },
       loadDocument: (document) => {
         pendingSuggestionRegistryRef.current.clear();
@@ -4093,8 +4098,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       setZoomWithViewportAnchor,
       zoomRef,
       handleDirectPrint,
-      findReplace.openFind,
-      findReplace.openReplace,
+      openFind,
+      openReplace,
+      getCanonicalApi,
       loadParsedDocument,
       loadBuffer,
       updateComments,
@@ -4102,7 +4108,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       createComment,
       commentsRef,
       getCommentsDirty,
-      setCommentsDirty,
       getActiveEditorStory,
       refreshBodyHistoryAvailability,
       experimentalSession,

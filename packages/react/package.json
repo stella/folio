@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-react",
-  "version": "0.25.3",
+  "version": "0.26.0",
   "description": "React editor for folio: a Word-document (.docx) editor for the browser, built on @stll/folio-core and ProseMirror.",
   "keywords": [
     "document-editor",
@@ -58,7 +58,7 @@
     "build:css": "bun scripts/build-css.ts",
     "prepack": "bun run build",
     "pack:dry-run": "bun pm pack --dry-run",
-    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
+    "typecheck": "bun check --no-pretty --all --project=tsconfig.build.json",
     "test": "bun test src"
   },
   "dependencies": {

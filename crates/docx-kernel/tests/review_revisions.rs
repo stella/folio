@@ -653,7 +653,7 @@ impl Model {
     }
 }
 
-fn relocate(origins: &[(usize, u32, u32)], at: SourcePoint) -> ReviewPoint {
+const fn relocate(origins: &[(usize, u32, u32)], at: SourcePoint) -> ReviewPoint {
     let (paragraph_ordinal, utf8, utf16) = origins[at.paragraph];
     point(paragraph_ordinal, utf8 + at.utf8, utf16 + at.utf16)
 }

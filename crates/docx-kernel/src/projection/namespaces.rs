@@ -33,7 +33,7 @@ impl OoxmlNamespace {
     }
 }
 
-pub(super) fn is_fully_supported_namespace(namespace: &[u8]) -> bool {
+pub(super) const fn is_fully_supported_namespace(namespace: &[u8]) -> bool {
     matches!(
         namespace,
         WORDPROCESSINGML_TRANSITIONAL | WORDPROCESSINGML_STRICT

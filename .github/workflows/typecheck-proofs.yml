@@ -1,0 +1,64 @@
+name: Typecheck proofs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# No event base exists for a manual run; compare every declared project.
+env:
+  TOOLCHAIN_BASE: unavailable-toolchain-base
+
+jobs:
+  typecheck-proofs:
+    name: Typecheck proofs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Verify seeded typecheck diagnostic
+        run: bunx --no-install stll-typecheck-probe --project packages/core/tsconfig.build.json --seed-dir packages/core/src -- bun check -p packages/core/tsconfig.build.json
+
+      # typecheck:compiler-parity lists the Bun projects explicitly.
+      # packages/vue and packages/playground-vue retain vue-tsc for SFC checks;
+      # TypeScript 6 remains installed for compiler API consumers.
+      - name: Install standalone native project dependencies
+        run: bun install --frozen-lockfile
+        working-directory: plugins/vscode
+
+      - name: Compare compiler diagnostics
+        run: bun run typecheck:compiler-parity --changed-since "$TOOLCHAIN_BASE"
+
+  typecheck-budget:
+    name: Compiler-work budget
+    needs: typecheck-proofs
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: "package.json"
+          no-cache: true
+
+      - run: bun scripts/ci-scoped-install.ts typecheck-budget
+
+      - name: Guard deterministic compiler workload
+        run: |
+          bun scripts/typecheck-budget.ts --self-test
+          bun run typecheck:budget

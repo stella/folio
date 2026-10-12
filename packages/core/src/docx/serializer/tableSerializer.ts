@@ -1158,12 +1158,10 @@ export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSe
   parts.push(
     serializeTableCarriers(
       withPreservedChildren(
-        row.cells.map(
-          (cell): ControlledChild => ({
-            carriers: carriersFor(cell),
-            xml: serializeTableCell(cell, serializeParagraph),
-          }),
-        ),
+        row.cells.map((cell): ControlledChild => ({
+          carriers: carriersFor(cell),
+          xml: serializeTableCell(cell, serializeParagraph),
+        })),
         positionedChildren(row.preserved, row.bookmarks),
         preservedChild,
       ),
@@ -1204,12 +1202,10 @@ export function serializeTable(table: Table, serializeParagraph: ParagraphSerial
     serializeTableGrid(table),
     serializeTableCarriers(
       withPreservedChildren(
-        table.rows.map(
-          (row): ControlledChild => ({
-            carriers: carriersFor(row),
-            xml: serializeTableRow(row, serializeParagraph),
-          }),
-        ),
+        table.rows.map((row): ControlledChild => ({
+          carriers: carriersFor(row),
+          xml: serializeTableRow(row, serializeParagraph),
+        })),
         positionedChildren(table.preserved, table.bookmarks),
         preservedChild,
       ),

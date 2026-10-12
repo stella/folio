@@ -98,15 +98,26 @@ export function VerticalRuler({
   // Values handleDrag reads change on every margin update while a drag is in
   // flight. Stash them in a ref read inside the (stable) handler so the
   // mousemove/mouseup effect binds document listeners once per drag, not per frame.
-  const dragParams = {
-    dragging,
-    zoom,
-    pageHeightTwips,
-    topMarginTwips,
-    bottomMarginTwips,
-    onTopMarginChange,
-    onBottomMarginChange,
-  };
+  const dragParams = useMemo(
+    () => ({
+      dragging,
+      zoom,
+      pageHeightTwips,
+      topMarginTwips,
+      bottomMarginTwips,
+      onTopMarginChange,
+      onBottomMarginChange,
+    }),
+    [
+      dragging,
+      zoom,
+      pageHeightTwips,
+      topMarginTwips,
+      bottomMarginTwips,
+      onTopMarginChange,
+      onBottomMarginChange,
+    ],
+  );
   const dragParamsRef = useRef(dragParams);
   useEffect(() => {
     dragParamsRef.current = dragParams;

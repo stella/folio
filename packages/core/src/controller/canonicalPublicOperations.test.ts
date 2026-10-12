@@ -191,9 +191,9 @@ describe("canonical public operation batches", () => {
 });
 
 type CompiledKind = {
-  [Kind in keyof typeof CANONICAL_PUBLIC_OPERATION_DISPOSITIONS]: (typeof CANONICAL_PUBLIC_OPERATION_DISPOSITIONS)[Kind] extends "compile"
-    ? Kind
-    : never;
+  [
+    Kind in keyof typeof CANONICAL_PUBLIC_OPERATION_DISPOSITIONS
+  ]: (typeof CANONICAL_PUBLIC_OPERATION_DISPOSITIONS)[Kind] extends "compile" ? Kind : never;
 }[keyof typeof CANONICAL_PUBLIC_OPERATION_DISPOSITIONS];
 
 test("all supported compiler kinds share direct/tracked undo and typed refusals", () => {

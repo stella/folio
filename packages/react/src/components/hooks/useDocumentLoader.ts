@@ -119,7 +119,15 @@ export const useDocumentLoader = ({
       setDocumentLoadState,
       setLoadedDocumentIdentity,
     });
-  });
+  }, [
+    manager,
+    history,
+    experimentalSession,
+    onError,
+    onCompatibilityChange,
+    onReset,
+    setDocumentLoadState,
+  ]);
 
   // Session-mode changes reload the same source under the newly committed mode.
   type CommittedSourceOptions = {

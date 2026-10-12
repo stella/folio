@@ -33,6 +33,13 @@ export const nonReactPackageOverride = {
 // where `bun run lint` runs).
 
 export default library({
+  react: {
+    files: [
+      "packages/react/**/*.{ts,tsx}",
+      "packages/editor-web/**/*.{ts,tsx}",
+      "packages/playground/**/*.{ts,tsx}",
+    ],
+  },
   options: {
     // Folio's source carries `eslint-disable` / `oxlint-disable` directives
     // calibrated for the full monorepo ruleset (ultracite's core + react

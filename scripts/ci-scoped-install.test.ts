@@ -59,17 +59,24 @@ describe("scoped CI environments", () => {
     }
   });
   test("every scoped job uses its environment without restoring the full workspace cache", () => {
-    const workflow = Bun.YAML.parse(
-      readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8"),
-    );
-    checkScopedJobs(workflow.jobs);
+    const jobs: Record<string, JobSteps> = {};
+    for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({ cwd: root })) {
+      const workflow = Bun.YAML.parse(readFileSync(path.join(root, file), "utf8"));
+      for (const scope of Object.keys(INSTALL_SCOPES)) {
+        const job = workflow.jobs?.[scope];
+        if (job === undefined) continue;
+        expect(jobs[scope], `Duplicate scoped job: ${scope}`).toBeUndefined();
+        jobs[scope] = job;
+      }
+    }
+    checkScopedJobs(jobs);
     for (const scope of Object.keys(INSTALL_SCOPES)) {
       for (const invalidStep of [
         { run: "bun install --frozen-lockfile" },
         { uses: "stella/.github/actions/setup-bun-cached@fixture" },
         { uses: "oven-sh/setup-bun@fixture", with: { "no-cache": false } },
       ]) {
-        const invalid = structuredClone(workflow.jobs);
+        const invalid = structuredClone(jobs);
         invalid[scope].steps.push(invalidStep);
         expect(() => checkScopedJobs(invalid)).toThrow();
       }

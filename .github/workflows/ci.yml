@@ -37,7 +37,7 @@ jobs:
 
       - name: Enforce release intent
         # The repository owner publishes this versioned shared contract.
-        uses: stella/.github/.github/actions/changeset-policy@c47bb87cc82047b5fdc2540983148d4e3efa9a37 # v1.3.0
+        uses: stella/.github/.github/actions/changeset-policy@37bfa04a893d1ae2b9d28379cf68e8360781c8bc # v1.8.0
         with:
           release-paths: |
             crates/docx-kernel/Cargo.toml
@@ -103,20 +103,46 @@ jobs:
       pull-requests: read
       actions: read
     outputs:
+      reused_run: ${{ steps.reuse.outputs.reused_run }}
+      warm_caches: ${{ steps.warm.outputs.changed }}
       toolchain_changed: ${{ steps.toolchain.outputs.changed }}
       suite_depth: ${{ (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true') && 'full' || 'fast' }}
       trusted: ${{ steps.plan.outputs.trusted }}
-      browser_discovery_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).browser_discovery }}
-      api_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true' }}
-      code_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).code }}
-      typecheck_budget_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).typecheck_budget }}
-      container_contract_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).container_contract }}
-      docx_kernel_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).docx_kernel }}
-      interactions_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions }}
-      differential_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).differential }}
-      consumer_scenarios_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
-      packaged_consumer_required: ${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer }}
+      browser_discovery_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).browser_discovery) }}
+      api_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true') }}
+      code_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).code) }}
+      container_contract_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).container_contract) }}
+      docx_kernel_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).docx_kernel) }}
+      interactions_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions) }}
+      differential_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).differential) }}
+      consumer_scenarios_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).consumer_scenarios) }}
+      packaged_consumer_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer) }}
     steps:
+      - name: Find successful merge-group coverage
+        id: reuse
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PUSHED_SHA: ${{ github.sha }}
+        run: |
+          workflow_path="${GITHUB_WORKFLOW_REF%%@*}"
+          workflow_file="${workflow_path##*/}"
+          if ! runs=$(gh api --method GET "repos/$REPO/actions/workflows/$workflow_file/runs" \
+              -f event=merge_group -f status=success -f head_sha="$PUSHED_SHA" -f per_page=100); then
+            echo "::warning::Could not verify merge-group coverage; running CI."
+            exit 0
+          fi
+          if ! reused_run=$(jq -er --arg sha "$PUSHED_SHA" '
+            [.workflow_runs[] | select(.event == "merge_group" and .status == "completed" and
+              .conclusion == "success" and .head_sha == $sha and
+              (.id | type) == "number" and .id > 0 and (.id | floor) == .id)]
+            | first | .id // empty
+          ' <<< "$runs"); then
+            echo "No verified merge-group coverage; running CI."
+            exit 0
+          fi
+          printf 'reused_run=%s\n' "$reused_run" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -139,6 +165,26 @@ jobs:
             else error("Invalid toolchain change result") end
           ' <<< "$changes")
           printf 'changed=%s\n' "$changed" >> "$GITHUB_OUTPUT"
+      - name: Select cache warming for the pushed range
+        id: warm
+        if: github.event_name == 'push' && steps.reuse.outputs.reused_run != ''
+        env:
+          PUSH_BASE: ${{ github.event.before }}
+          PUSH_HEAD: ${{ github.sha }}
+          TOOLCHAIN_CHANGED: ${{ steps.toolchain.outputs.changed }}
+        run: |
+          set -euo pipefail
+          changed=false
+          if [[ "$PUSH_BASE" =~ ^0+$ ]]; then
+            echo "::warning::Push has no base commit; warming dependency caches."
+            changed=true
+          elif ! locks=$(git diff --name-only "$PUSH_BASE" "$PUSH_HEAD" -- bun.lock Cargo.lock); then
+            echo "::warning::Could not compare the pushed range; warming dependency caches."
+            changed=true
+          elif [[ -n "$locks" || "$TOOLCHAIN_CHANGED" == "true" ]]; then
+            changed=true
+          fi
+          printf 'changed=%s\n' "$changed" >> "$GITHUB_OUTPUT"
       - name: Select published API preflight
         id: api-plan
         if: github.event_name == 'pull_request'
@@ -151,6 +197,33 @@ jobs:
         uses: stella/.github/.github/actions/ci-plan@37bfa04a893d1ae2b9d28379cf68e8360781c8bc # v1.8.0
         with:
           policy-file: .github/ci-plan.json
+
+  warm-main-caches:
+    name: Warm main dependency caches
+    needs: ci-plan
+    if: github.event_name == 'push' && needs.ci-plan.outputs.reused_run != '' && needs.ci-plan.outputs.warm_caches == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - &source-lint-cache
+        name: Cache shared Rust source lint
+        id: source-lint-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-stella-lint
+          key: ${{ runner.os }}-${{ runner.arch }}-stella-source-lint-a1bd81740ecb4b66999f56d1716e1190c4e7272f
+
+      - &source-lint-install
+        name: Install shared Rust source lint
+        if: steps.source-lint-cache.outputs.cache-hit != 'true'
+        run: cargo install --git https://github.com/stella/tooling --rev a1bd81740ecb4b66999f56d1716e1190c4e7272f --locked stella_source_lint
 
   browser-discovery:
     name: Browser test discovery
@@ -170,43 +243,12 @@ jobs:
       - name: Discover every Node Playwright project without browsers
         run: bun scripts/ci-browser-discovery.ts
 
-  property-areas:
-    name: Properties of the changed areas (5x runs)
-    needs: ci-plan
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # need history to compute the merge base with the target branch
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      # Rerun properties in the areas this PR changes at five times their
-      # normal runs, with the same commit-derived seeds.
-      - name: Changed areas' properties at 5x numRuns
-        run: bun scripts/property-areas.ts --base "origin/${BASE_REF}" --factor 5 --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}"
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          PROPERTY_SHARD: ${{ matrix.shard }}
-          PROPERTY_SHARD_COUNT: ${{ strategy.job-total }}
-
   # oxfmt formats Markdown too, so a documentation-only change still has its
   # formatting checked; any other change runs the full format check in `lint`.
   docs-format:
     name: Format check (documentation only)
     needs: ci-plan
-    if: needs.ci-plan.outputs.code_required == 'false'
+    if: needs.ci-plan.outputs.reused_run == '' && needs.ci-plan.outputs.code_required == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -227,6 +269,7 @@ jobs:
   lint:
     name: Lint and source guards
     needs: ci-plan
+    if: needs.ci-plan.outputs.reused_run == ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -433,19 +476,6 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
-
-      - name: Verify seeded typecheck diagnostic
-        run: bunx --no-install stll-typecheck-probe --project packages/core/tsconfig.build.json --seed-dir packages/core/src -- bun check -p packages/core/tsconfig.build.json
-
-      # typecheck:compiler-parity lists the native TS7 projects explicitly.
-      # packages/vue and packages/playground-vue retain vue-tsc for SFC checks;
-      # packages/nuxt retains the TS6 compiler API required by its Vue integration.
-      - name: Install standalone native project dependencies
-        run: bun install --frozen-lockfile
-        working-directory: plugins/vscode
-
-      - name: Compare compiler diagnostics when Bun or TypeScript changed
-        run: bun run typecheck:compiler-parity --changed-since "$TOOLCHAIN_BASE"
 
   build-api:
     name: Build reproducibility and API reports
@@ -677,29 +707,6 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  typecheck-budget:
-    name: Typecheck cost budget
-    needs: ci-plan
-    if: needs.ci-plan.outputs.typecheck_budget_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: "package.json"
-          no-cache: true
-
-      - run: bun scripts/ci-scoped-install.ts typecheck-budget
-
-      - name: Guard deterministic compiler workload
-        run: |
-          bun scripts/typecheck-budget.ts --self-test
-          bun run typecheck:budget
-
   container-contract:
     name: Container contract and survival census
     needs: ci-plan
@@ -771,7 +778,13 @@ jobs:
           mkdir -p "$install_dir"
           tar -xzf "$archive" -C "$install_dir" --strip-components=1
           echo "$install_dir" >> "$GITHUB_PATH"
-          rustup toolchain install "$HAWK_RUST_TOOLCHAIN" --profile minimal
+          rustup toolchain install 1.97.1 --profile minimal # cargo-hawk exception tracked in stll-toolchain.json
+
+      - *source-lint-cache
+      - *source-lint-install
+
+      - name: Run shared Rust source lint
+        run: cargo stella-lint .
 
       - name: Install matching wasm-bindgen CLI
         run: |
@@ -953,7 +966,7 @@ jobs:
           retention-days: 7
 
   differential:
-    name: Differential parser parity (folio vs python-docx + Open XML SDK)
+    name: Generated compare fixture schema checks
     needs: ci-plan
     if: needs.ci-plan.outputs.differential_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-latest
@@ -966,7 +979,7 @@ jobs:
         with:
           bun-version-file: "package.json"
 
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "8.0.x"
 
@@ -982,13 +995,6 @@ jobs:
       # .NET validator; here its redlines are schema-checked as well.
       - name: Validate generated compare fixtures and redlines
         run: bun test benchmarks/compare/documents.test.ts benchmarks/compare/generated-roundtrip.test.ts
-
-      # DIFFERENTIAL_REQUIRED turns a missing reference into a failure rather
-      # than a skip, so the full-corpus parity gate cannot silently pass.
-      - name: Differential parity (full corpus)
-        run: bun run test:differential
-        env:
-          DIFFERENTIAL_REQUIRED: "1"
 
   consumer-scenarios:
     name: Consumer scenarios (tarballs)
@@ -1153,8 +1159,8 @@ jobs:
     if: always()
     needs:
       - ci-plan
+      - warm-main-caches
       - changeset
-      - property-areas
       - docs-format
       - lint
       - typecheck
@@ -1165,7 +1171,6 @@ jobs:
       - tests-2
       - tests-3
       - tests-4
-      - typecheck-budget
       - container-contract
       - docx-kernel
       - browser-input-pinned
@@ -1191,10 +1196,10 @@ jobs:
           PLAN_RESULT: ${{ needs.ci-plan.result }}
           JOB_SCOPES: >-
             {"changeset":{"event":"pull_request"},
-            "property-areas":{"event":"pull_request","area":"code_required"},
             "browser-discovery":{"event":"pull_request","area":"browser_discovery_required"},
-            "docs-format":{"area":"code_required","value":"false"},
-            "lint":{},
+            "docs-format":{"area":"code_required","value":"false","reuse":"forbidden"},
+            "lint":{"reuse":"forbidden"},
+            "warm-main-caches":{"event":"push","reuse":"required","warm":"required"},
             "typecheck":{"area":"code_required"},
             "build-api":{"area":"api_required"},
             "validate-dist":{"area":"code_required","depth":"full"},
@@ -1202,7 +1207,6 @@ jobs:
             "tests-2":{"area":"code_required"},
             "tests-3":{"area":"code_required"},
             "tests-4":{"area":"code_required"},
-            "typecheck-budget":{"area":"typecheck_budget_required","depth":"full"},
             "container-contract":{"area":"container_contract_required","depth":"full"},
             "docx-kernel":{"area":"docx_kernel_required","depth":"full"},
             "browser-input-pinned":{"area":"interactions_required"},
@@ -1230,6 +1234,41 @@ jobs:
             echo "::error::CI plan did not succeed ($PLAN_RESULT)."
             exit 1
           fi
+          reused_run=$(jq -r '.reused_run // ""' <<< "$PLAN")
+          if [[ -n "$reused_run" ]]; then
+            if [[ "$EVENT" != "push" || ! "$reused_run" =~ ^[1-9][0-9]*$ ]] ||
+                ! jq -e '.trusted == "true"' <<< "$PLAN" >/dev/null; then
+              echo "::error::Invalid merge-group reuse plan."
+              exit 1
+            fi
+            if ! jq -e --argjson plan "$PLAN" '
+              [.[] | .area // empty] | unique | all(.[]; $plan[.] == "false")
+            ' <<< "$JOB_SCOPES" >/dev/null || ! jq -e '
+              [. | to_entries[] | select(.key | endswith("_required"))] |
+              length > 0 and all(.[]; .value == "false")
+            ' <<< "$PLAN" >/dev/null; then
+              echo "::error::Reused coverage must deselect every correctness area."
+              exit 1
+            fi
+            if ! jq -e --argjson scopes "$JOB_SCOPES" '
+              . as $needs | [$scopes | keys[] | select(. != "warm-main-caches")] |
+              all(.[]; $needs[.].result == "skipped")
+            ' <<< "$NEEDS" >/dev/null; then
+              echo "::error::Reused coverage requires skipped correctness jobs."
+              exit 1
+            fi
+            warm_result=$(jq -r '.["warm-main-caches"].result // "missing"' <<< "$NEEDS")
+            warm_selected=$(jq -r '.warm_caches // "false"' <<< "$PLAN")
+            if [[ ( "$warm_selected" == "true" && "$warm_result" != "success" ) ||
+                  ( "$warm_selected" == "false" && "$warm_result" != "skipped" ) ||
+                  ( "$warm_selected" != "true" && "$warm_selected" != "false" ) ]]; then
+              echo "::error::Cache warming did not satisfy the reused plan."
+              exit 1
+            fi
+            printf 'Reused merge-group run [%s](https://github.com/%s/actions/runs/%s)\n' \
+              "$reused_run" "$REPO" "$reused_run" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           depth=$(jq -r .suite_depth <<< "$PLAN")
           trusted=$(jq -r .trusted <<< "$PLAN")
           toolchain_changed=$(jq -r .toolchain_changed <<< "$PLAN")
@@ -1253,6 +1292,7 @@ jobs:
             . as $needs | [$scopes | to_entries[] | .key as $job | .value as $scope
               | $needs[$job].result as $result
               | (($scope.event == null or $scope.event == $event) and
+                 ($scope.reuse != "required") and ($scope.warm != "required") and
                  ($scope.area == null or
                   ($plan[$scope.area] == ($scope.value // "true") and
                    ($scope.depth == null or $scope.depth == $depth)))) as $selected

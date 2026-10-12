@@ -55,14 +55,12 @@ const buildDocx = async (): Promise<ArrayBuffer> => {
       ],
     },
   ];
-  model.package.footnotes = [30, 10].map(
-    (id, index): Footnote => ({
-      type: "footnote",
-      id,
-      noteType: "normal",
-      content: [noteBody(`Footnote ${index + 1}.`)],
-    }),
-  );
+  model.package.footnotes = [30, 10].map((id, index): Footnote => ({
+    type: "footnote",
+    id,
+    noteType: "normal",
+    content: [noteBody(`Footnote ${index + 1}.`)],
+  }));
   model.package.endnotes = [
     { type: "endnote", id: 7, noteType: "normal", content: [noteBody("Endnote one.")] } as Endnote,
   ];

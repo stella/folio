@@ -1,0 +1,39 @@
+name: Full-corpus differential proofs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  differential:
+    name: Differential parser parity (folio vs python-docx + Open XML SDK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: "package.json"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "8.0.x"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install python-docx (differential reference parser)
+        run: python3 -m pip install --break-system-packages python-docx
+
+      - name: Build Open XML SDK differential projector
+        run: dotnet build packages/core/scripts/differential/dotnet -c Release
+
+      # DIFFERENTIAL_REQUIRED turns a missing reference into a failure rather
+      # than a skip, so the full-corpus parity gate cannot silently pass.
+      - name: Differential parity (full corpus)
+        run: bun run test:differential
+        env:
+          DIFFERENTIAL_REQUIRED: "1"

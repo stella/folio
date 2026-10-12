@@ -53,40 +53,34 @@ const documentFor = ({
           rows: [
             {
               type: "tableRow",
-              cells: cells.map(
-                (_cell, column): TableCell => ({
-                  type: "tableCell",
-                  ...(origin === "restart" ? { formatting: { vMerge: "restart" } } : {}),
-                  content: [paragraph(`Top ${column}`)],
-                }),
-              ),
+              cells: cells.map((_cell, column): TableCell => ({
+                type: "tableCell",
+                ...(origin === "restart" ? { formatting: { vMerge: "restart" } } : {}),
+                content: [paragraph(`Top ${column}`)],
+              })),
             },
             ...Array.from({ length: continuations }, (_value, row) => ({
               type: "tableRow" as const,
-              cells: cells.map(
-                ({ continuation, text }, column): TableCell => ({
-                  type: "tableCell",
-                  ...(continuation
-                    ? {
-                        formatting:
-                          decision === "accept" && origin === "restart"
-                            ? { vMerge: "continue" }
-                            : {},
-                        structuralChange: {
-                          type: "tableCellMerge",
-                          info: date === "present" ? INFO : { id: INFO.id, author: INFO.author },
-                          verticalMerge: decision === "accept" ? "continue" : "rest",
-                          verticalMergeOriginal: decision === "reject" ? "continue" : "rest",
-                        },
-                      }
-                    : {}),
-                  content: [
-                    paragraph(
-                      (rowTexts?.at(row)?.at(column) ?? text) ? `Below ${row}-${column}` : "",
-                    ),
-                  ],
-                }),
-              ),
+              cells: cells.map(({ continuation, text }, column): TableCell => ({
+                type: "tableCell",
+                ...(continuation
+                  ? {
+                      formatting:
+                        decision === "accept" && origin === "restart" ? { vMerge: "continue" } : {},
+                      structuralChange: {
+                        type: "tableCellMerge",
+                        info: date === "present" ? INFO : { id: INFO.id, author: INFO.author },
+                        verticalMerge: decision === "accept" ? "continue" : "rest",
+                        verticalMergeOriginal: decision === "reject" ? "continue" : "rest",
+                      },
+                    }
+                  : {}),
+                content: [
+                  paragraph(
+                    (rowTexts?.at(row)?.at(column) ?? text) ? `Below ${row}-${column}` : "",
+                  ),
+                ],
+              })),
             })),
           ],
         },

@@ -2813,12 +2813,10 @@ const trustedBodyPairs = <Block extends FolioContentBlock>(
 ): TrustedBodyPair<Block>[] => {
   const evidence = contentStructureEvidenceIndexes(base, revised);
   const stableCandidates = [...stableContentSequencePairs(base, revised)]
-    .map(
-      (pairIndex): FolioContentBlockPair => ({
-        baseIndex: Math.floor(pairIndex / revised.length),
-        revisedIndex: pairIndex % revised.length,
-      }),
-    )
+    .map((pairIndex): FolioContentBlockPair => ({
+      baseIndex: Math.floor(pairIndex / revised.length),
+      revisedIndex: pairIndex % revised.length,
+    }))
     .filter(
       ({ baseIndex, revisedIndex }) =>
         base[baseIndex]?.item.containerPathKey === revised[revisedIndex]?.item.containerPathKey,

@@ -425,7 +425,10 @@ fn legitimate_detector_accepts_exact_audited_counts() {
     let allowed = parse_legitimate_unknowns(
         "fixture-a.docx\tCurrent\tcomment\tUnsupportedLocation\t4\tComments have no document anchors.\n",
     );
-    assert!(legitimate_unknown_violations(&allowed, &allowed).is_empty());
+    assert_eq!(
+        legitimate_unknown_violations(&allowed, &allowed),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
@@ -478,9 +481,15 @@ fn legitimate_detector_requires_counts_and_list_to_stay_current() {
         let observed = parse_legitimate_unknowns(&format!(
             "fixture-a.docx\tCurrent\tcomment\tUnsupportedLocation\t{count}\tSynthetic count change."
         ));
-        assert!(!legitimate_unknown_violations(&observed, &allowed).is_empty());
+        assert_ne!(
+            legitimate_unknown_violations(&observed, &allowed),
+            Vec::<String>::new()
+        );
     }
-    assert!(!legitimate_unknown_violations(&BTreeMap::new(), &allowed).is_empty());
+    assert_ne!(
+        legitimate_unknown_violations(&BTreeMap::new(), &allowed),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
