@@ -104,7 +104,7 @@ test("warm-main only installs caches after reused coverage and dependency change
   }
 });
 
-test("the pushed range warms only for either lockfile or a toolchain change", () => {
+test("the pushed range warms for dependency changes or an unavailable base", () => {
   const directory = mkdtempSync(join(tmpdir(), "folio-push-range-"));
   const git = (...args) => {
     const result = Bun.spawnSync(["git", ...args], { cwd: directory });
@@ -155,6 +155,24 @@ test("the pushed range warms only for either lockfile or a toolchain change", ()
       expect(result.exitCode).toBe(0);
       expect(readFileSync(output, "utf8")).toBe(`changed=${expected}\n`);
       base = head;
+    }
+    for (const unavailableBase of ["0".repeat(40), "1".repeat(40)]) {
+      const output = join(directory, "output");
+      writeFileSync(output, "");
+      const result = Bun.spawnSync(["bash", "-c", warming.run], {
+        cwd: directory,
+        env: {
+          ...process.env,
+          PUSH_BASE: unavailableBase,
+          PUSH_HEAD: base,
+          TOOLCHAIN_CHANGED: "false",
+          GITHUB_OUTPUT: output,
+        },
+      });
+      expect(result.exitCode).toBe(0);
+      expect(readFileSync(output, "utf8")).toBe("changed=true\n");
+      expect(result.stdout.toString()).toContain("::warning::");
+      expect(result.stdout.toString()).toContain("warming dependency caches.");
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

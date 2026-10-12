@@ -174,8 +174,13 @@ jobs:
         run: |
           set -euo pipefail
           changed=false
-          locks=$(git diff --name-only "$PUSH_BASE" "$PUSH_HEAD" -- bun.lock Cargo.lock)
-          if [[ -n "$locks" || "$TOOLCHAIN_CHANGED" == "true" ]]; then
+          if [[ "$PUSH_BASE" =~ ^0+$ ]]; then
+            echo "::warning::Push has no base commit; warming dependency caches."
+            changed=true
+          elif ! locks=$(git diff --name-only "$PUSH_BASE" "$PUSH_HEAD" -- bun.lock Cargo.lock); then
+            echo "::warning::Could not compare the pushed range; warming dependency caches."
+            changed=true
+          elif [[ -n "$locks" || "$TOOLCHAIN_CHANGED" == "true" ]]; then
             changed=true
           fi
           printf 'changed=%s\n' "$changed" >> "$GITHUB_OUTPUT"
