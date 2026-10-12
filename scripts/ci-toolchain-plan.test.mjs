@@ -270,13 +270,13 @@ describe("required shared toolchain policy", () => {
     (step) => step.name === "Evaluate CI outcome",
   );
 
-  test("the existing lint job always runs the policy without error tolerance", () => {
+  test("the existing lint job runs the policy without error tolerance unless CI is reused", () => {
     expect(lint.needs).toBe("ci-plan");
-    expect(lint.if).toBeUndefined();
+    expect(lint.if).toBe("needs.ci-plan.outputs.reused_run == ''");
     expect(lint["continue-on-error"]).toBeUndefined();
     const guards = lint.steps.filter((step) => step.run === "bun run check:toolchain");
     expect(guards).toEqual([{ name: "Shared toolchain policy", run: "bun run check:toolchain" }]);
-    expect(JSON.parse(evaluation.env.JOB_SCOPES).lint).toEqual({});
+    expect(JSON.parse(evaluation.env.JOB_SCOPES).lint).toEqual({ reuse: "forbidden" });
   });
 
   test("the required outcome rejects unsuccessful lint even for scoped PRs", () => {
