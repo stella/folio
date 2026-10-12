@@ -1,15 +1,103 @@
-name: Typecheck migration measurements
+name: Nightly Parity E2E
 
 on:
+  schedule:
+    # 05:37 UTC daily, offset from the nightly property-test cron (05:17) so the
+    # two jobs don't contend for runners at the same minute.
+    - cron: "37 5 * * *"
   workflow_dispatch:
+    inputs:
+      seed:
+        description: Replay a PROPERTY_TEST_SEED (blank searches a fresh seed)
+        required: false
+        type: string
+      path:
+        description: Replay a PROPERTY_TEST_PATH after shrinking
+        required: false
+        type: string
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
-  typecheck-migration:
+  parity-e2e:
+    name: Cross-adapter parity e2e (React vs Vue)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    outputs:
+      cross_host_findings: ${{ steps.cross-host.outcome == 'failure' }}
+
+    steps:
+      # persist-credentials: false — this job can be manually dispatched on any
+      # branch ref, so the checkout token must not linger in the git config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: |
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
+          bunx playwright install --with-deps chromium
+
+      # The `parity` Playwright project boots both the React (4200) and Vue
+      # (4201) playground dev servers via the config's webServer array and runs
+      # each cross-adapter spec against both, asserting the two adapters behave
+      # identically through the shared `window.__folioParity` bridge. Kept on a
+      # nightly cadence (not the PR `ci` job) because it boots two dev servers
+      # and the static React<->Vue parity gates (check:parity-contract,
+      # check:export-parity) already guard the API surface on every PR.
+      - name: Parity e2e specs
+        run: bun run test:e2e:parity --workers=1 --output=fuzz-playwright/parity
+
+      - name: Generated four-host differential
+        if: always()
+        id: cross-host
+        continue-on-error: true
+        timeout-minutes: 12
+        env:
+          PROPERTY_TEST_NUM_RUNS_FACTOR: "4"
+          PROPERTY_TEST_SEED_SALT: ${{ github.run_id }}
+          PROPERTY_TEST_SEED: ${{ inputs.seed }}
+          PROPERTY_TEST_PATH: ${{ inputs.path }}
+        run: |
+          set -o pipefail
+          mkdir -p fuzz-artifacts/cross-host
+          bunx playwright test --project=parity-fuzzer tests/parity/cross-host-flow.spec.ts --workers=1 --output=fuzz-playwright/cross-host 2>&1 | tee fuzz-artifacts/cross-host/cross-host.log
+
+      - name: Upload differential repro artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cross-host-differential-repro
+          path: |
+            fuzz-artifacts/
+            fuzz-playwright/
+          retention-days: 14
+
+  cross-host-report:
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
+    name: File four-host differential findings
+    needs: parity-e2e
+    if: always() && github.ref == 'refs/heads/main' && needs.parity-e2e.outputs.cross_host_findings == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -17,24 +105,16 @@ jobs:
       - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-      - run: bun install --frozen-lockfile
-      - run: bun install --frozen-lockfile
-        working-directory: plugins/vscode
-      - name: Measure old and Bun diagnostics with seeded errors
-        run: python3 scripts/typecheck-migration-proof.py
-      - name: Compare compiler diagnostics across migrated projects
-        if: always()
-        run: |
-          mkdir -p typecheck-migration-results
-          set -o pipefail
-          bun run typecheck:compiler-parity 2>&1 | tee typecheck-migration-results/compiler-parity.log
-      - name: Record parity summary
-        if: always()
-        run: cat typecheck-migration-results/compiler-parity.log >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload measurements
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: typecheck-migration-results
-          path: typecheck-migration-results
-          retention-days: 14
+          name: cross-host-differential-repro
+          path: fuzz-results
+      - name: File findings by fingerprint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          bun scripts/fuzz-failure-issues.ts
+          --log fuzz-results/fuzz-artifacts/cross-host/cross-host.log --records fuzz-results/fuzz-artifacts/cross-host/findings
+          --source "four-host differential" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"

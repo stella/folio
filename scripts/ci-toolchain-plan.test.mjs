@@ -80,6 +80,32 @@ describe("shared toolchain CI selection", () => {
     ]);
   });
 
+  test("ordinary typecheck commands use Bun and preserve Vue SFC checkers", () => {
+    const rootManifest = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
+    const projects = Bun.spawnSync(["git", "ls-files", "**/package.json"], { cwd: repo });
+    expect(projects.exitCode).toBe(0);
+    const vueProjects = new Set([
+      "packages/vue/package.json",
+      "packages/playground-vue/package.json",
+    ]);
+    const retained = new Set();
+    for (const file of projects.stdout.toString().trim().split("\n")) {
+      const manifest = JSON.parse(readFileSync(path.join(repo, file), "utf8"));
+      const command = manifest.scripts?.typecheck;
+      if (command === undefined) continue;
+      if (vueProjects.has(file)) {
+        expect(command).toMatch(/^vue-tsc --noEmit(?: -p \S+)?$/);
+        retained.add(file);
+        continue;
+      }
+      expect(command).toMatch(/^bun check --no-pretty --all --project=\S+$/);
+    }
+    expect([...retained].toSorted()).toEqual([...vueProjects].toSorted());
+    for (const [, name] of rootManifest.scripts.typecheck.matchAll(/bun run (\S+)/g)) {
+      expect(rootManifest.scripts[name]).toMatch(/^bun check --no-pretty --all --project=\S+$/);
+    }
+  });
+
   test("parity selects exactly the Bun projects declared by repository scripts", () => {
     const tracked = Bun.spawnSync(["git", "ls-files", "package.json", "**/package.json"], {
       cwd: repo,
