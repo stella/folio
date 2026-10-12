@@ -73,14 +73,14 @@
     "@fontsource/tinos": "^5.2.7",
     "@stll/folio-core": "workspace:^",
     "better-result": "3.0.1",
-    "lucide-react": "1.24.0",
-    "prosemirror-history": "^1.5.0",
+    "lucide-react": "1.52.0",
+    "prosemirror-history": "^1.5.1",
     "prosemirror-model": "^1.25.9",
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
     "prosemirror-view": "^1.42.6",
     "react-compiler-runtime": "^1.0.0",
-    "yjs": "^13.6.31"
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",

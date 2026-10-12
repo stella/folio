@@ -52,9 +52,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nuxt/kit": "^3.14.0 || ^4.0.0",
+    "@nuxt/kit": "^4.6.0",
     "@stll/folio-vue": "workspace:^",
-    "prosemirror-history": "^1.4.0",
+    "prosemirror-history": "^1.5.1",
     "prosemirror-model": "^1.19.4",
     "prosemirror-state": "^1.4.3",
     "prosemirror-tables": "^1.8.5",
@@ -62,8 +62,8 @@
   },
   "devDependencies": {
     "@nuxt/module-builder": "^1.0.0",
-    "@nuxt/schema": "^4.5.1",
-    "nuxt": "^4.5.1",
+    "@nuxt/schema": "^4.6.0",
+    "nuxt": "^4.6.0",
     "vue": "^3.5.43"
   },
   "peerDependencies": {
