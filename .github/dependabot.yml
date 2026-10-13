@@ -26,6 +26,10 @@ updates:
       - dependency-name: "lefthook"
       - dependency-name: "@typescript/native"
       - dependency-name: "typescript-compat"
+      # Editor typings must not exceed the oldest supported editor
+      # (plugins/vscode engines.vscode); raise both together.
+      - dependency-name: "@types/vscode"
+        versions: [">=1.102.0"]
       - dependency-name: "bun-types"
   - package-ecosystem: cargo
     directories:
