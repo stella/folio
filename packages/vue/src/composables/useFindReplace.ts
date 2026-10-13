@@ -7,7 +7,6 @@ import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import { resolveFindMatchRange } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import type { Document } from "@stll/folio-core/types/document";
 import type { Layout } from "@stll/folio-core/layout-engine";
-import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
   createFindMatchView,
   getRenderedSearchStories,
@@ -98,11 +97,8 @@ export function useFindReplace({
     }
     const refresh = cause === "refresh" && matchedQuery === searchText.value;
     matchedQuery = searchText.value;
-    const searchDocument = bodyDoc
-      ? fromProseDoc(bodyDoc, document, { stylesheetSource: { type: "package" } })
-      : document;
     const nextMatches = findInDocument(
-      searchDocument,
+      document,
       searchText.value,
       {
         ...options,
@@ -121,7 +117,7 @@ export function useFindReplace({
     matchView = container
       ? createFindMatchView({
           container,
-          document: searchDocument,
+          document,
           bodyDoc,
           matches: nextMatches,
           commentRoot: commentRoot?.value ?? undefined,

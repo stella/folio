@@ -171,7 +171,11 @@ describe("story-local painted search ranges", () => {
       const source =
         range.story === OP_STORIES.MAIN
           ? toProseDoc(doc)
-          : headerFooterToProseDoc(storyBody(doc, range.story).content, doc.package);
+          : headerFooterToProseDoc(storyBody(doc, range.story).content, {
+              ...(doc.package.styles === undefined ? {} : { styles: doc.package.styles }),
+              ...(doc.package.theme === undefined ? {} : { theme: doc.package.theme }),
+              ...(doc.package.numbering === undefined ? {} : { numbering: doc.package.numbering }),
+            });
       expect(source.textBetween(range.from, range.to)).toBe("hit");
     }
     expect(doc).toEqual(before);
@@ -387,6 +391,8 @@ describe("view-only search geometry", () => {
     commentText.getBoundingClientRect = () => new DOMRect(80, 260, 110, 18);
     commentRoot.append(commentText);
     document.body.append(commentRoot);
+    const commentScroll = spyOn(commentRoot, "scrollTo").mockImplementation(() => {});
+    const bodyScroll = spyOn(container, "scrollTo").mockImplementation(() => {});
     const intervals: { start: number; end: number }[] = [];
     const createRange = document.createRange.bind(document);
     const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
@@ -411,13 +417,15 @@ describe("view-only search geometry", () => {
       document.querySelector('[data-current="true"]')?.getAttribute("data-find-match-index"),
     ).toBe("1");
     expect(view.reveal(1)).toBe(true);
-    expect(commentRoot.scrollTop).toBe(219);
-    expect(container.scrollTop).toBe(0);
+    expect(commentScroll).toHaveBeenCalledWith({ top: 219, left: 0, behavior: "smooth" });
+    expect(bodyScroll).not.toHaveBeenCalled();
     expect(doc).toEqual(before);
     expect(commentText.textContent).toBe("comment hit");
     view.destroy();
     expect(document.querySelectorAll("[data-find-match-index]").length).toBe(0);
     rangeFactory.mockRestore();
+    commentScroll.mockRestore();
+    bodyScroll.mockRestore();
   });
 
   test.each(["read-only", "editing"])(
@@ -427,6 +435,7 @@ describe("view-only search geometry", () => {
       const before = structuredClone(doc);
       const matches = findInDocument(doc, "hit", createDefaultFindOptions());
       const container = viewport();
+      const scroll = spyOn(container, "scrollTo").mockImplementation(() => {});
       container.contentEditable = String(mode === "editing");
       for (const range of resolveDocumentFindRanges({ document: doc, matches })) {
         appendPaintedSpan({ container, ...range, top: 200 + range.index * 40 });
@@ -444,16 +453,16 @@ describe("view-only search geometry", () => {
       expect(
         overlay?.querySelector('[data-current="true"]')?.getAttribute("data-find-match-index"),
       ).toBe(String(matches.length - 1));
-      expect(overlay?.querySelector<HTMLElement>('[data-current="true"]')?.style.outline).toContain(
-        "2px solid",
-      );
-      expect(overlay?.querySelector<HTMLElement>('[data-current="false"]')?.style.outline).toBe(
-        "none",
-      );
+      const currentMark = overlay?.querySelector<HTMLElement>('[data-current="true"]');
+      expect(currentMark?.style.outlineWidth).toBe("2px");
+      expect(currentMark?.style.outlineStyle).toBe("solid");
+      expect(
+        overlay?.querySelector<HTMLElement>('[data-current="false"]')?.style.outlineWidth,
+      ).toBe("0px");
       for (const [index] of matches.entries()) {
-        container.scrollTop = 0;
+        scroll.mockClear();
         expect(view.reveal(index)).toBe(true);
-        expect(container.scrollTop).toBe(159 + index * 40);
+        expect(scroll).toHaveBeenCalledWith({ top: 159 + index * 40, left: 0, behavior: "smooth" });
       }
       expect(view.reveal(matches.length)).toBe(false);
       expect(
@@ -462,6 +471,7 @@ describe("view-only search geometry", () => {
       expect(doc).toEqual(before);
       view.destroy();
       expect(container.querySelector("[data-folio-find-overlay]")).toBeNull();
+      scroll.mockRestore();
     },
   );
 
@@ -475,6 +485,7 @@ describe("view-only search geometry", () => {
     expect(range).toBeDefined();
     if (!range) return;
     const container = viewport();
+    const scroll = spyOn(container, "scrollTo").mockImplementation(() => {});
     appendPaintedSpan({ container, ...range, from: 1, to: 18, top: 200 });
     appendPaintedSpan({ container, ...range, from: 1, to: 7, top: 800 });
     appendPaintedSpan({ container, ...range, from: 7, to: range.from + 1, top: 800 });
@@ -484,8 +495,9 @@ describe("view-only search geometry", () => {
     const view = createFindMatchView({ container, document: doc, matches });
     expect(container.querySelectorAll("[data-find-match-index]").length).toBe(3);
     expect(view.reveal(0)).toBe(true);
-    expect(container.scrollTop).toBe(159);
+    expect(scroll).toHaveBeenCalledWith({ top: 159, left: 0, behavior: "smooth" });
     view.destroy();
+    scroll.mockRestore();
   });
 
   test("destroy disconnects both observers", () => {

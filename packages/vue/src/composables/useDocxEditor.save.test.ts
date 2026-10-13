@@ -61,6 +61,8 @@ test.each(["settled", "overlapping"])(
       const view = editor.editorView.value ?? panic("Expected body editor view");
       dispatchEditorTextInput(view, { from: 6, to: 6, text: " edited" });
       expect(view.state.doc.textContent).toBe("Start edited");
+      const snapshot = editor.getDocument() ?? panic("Expected live document snapshot");
+      expect(toProseDoc(snapshot).textContent).toBe(view.state.doc.textContent);
       expect(editor.isDirty.value).toBe(true);
       const saving = editor.save();
       if (timing === "overlapping") {
@@ -76,7 +78,9 @@ test.each(["settled", "overlapping"])(
       expect(toProseDoc(reopened).textContent).toBe("Start edited");
       expect(editor.isDirty.value).toBe(timing === "overlapping");
       if (timing === "overlapping") {
-        expect(editor.getDocument()).not.toBeNull();
+        const latestSnapshot =
+          editor.getDocument() ?? panic("Expected concurrent document snapshot");
+        expect(toProseDoc(latestSnapshot).textContent).toBe(view.state.doc.textContent);
         expect(view.state.doc.textContent).toBe("Start edited concurrent");
         const completed = await editor.save();
         if (!completed) panic("Expected completed save");

@@ -371,6 +371,7 @@ export type DocxEditorHandle = EditorHandle & {
 
 // @public (undocumented)
 export type DocxEditorProps = {
+    onFindResultChange?: (result: FindResult | null) => void;
     documentBuffer?: DocxInput | null;
     password?: string | undefined;
     document?: Document_2 | null;
@@ -458,6 +459,11 @@ export type DocxEditorProps = {
 
 // @public
 export type DocxEditorRef = {
+    find: (searchText: string, options?: Partial<FindOptions>) => FindResult | null;
+    findNext: () => FindMatch | null;
+    findPrevious: () => FindMatch | null;
+    getFindResult: () => FindResult | null;
+    clearFind: () => void;
     getDocument: () => Document_2 | null;
     hasPendingChanges: () => boolean;
     getEditorRef: () => PagedEditorRef | null;
@@ -554,6 +560,10 @@ export { extractDocumentStyleSetFromDocx }
 
 export { ExtractDocumentStyleSetOptions }
 
+export { FindMatch }
+
+export { FindOptions }
+
 // @public
 export function FindReplaceDialog(props: FindReplaceDialogProps): React_2.ReactElement | null;
 
@@ -574,6 +584,8 @@ export type FindReplaceDialogProps = {
     className?: string;
     style?: CSSProperties;
 };
+
+export { FindResult }
 
 export { finishAutocompleteSuggestion }
 

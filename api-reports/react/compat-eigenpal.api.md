@@ -22,6 +22,9 @@ import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
+import { FindMatch } from '@stll/folio-core/utils/findReplace';
+import { FindOptions } from '@stll/folio-core/utils/findReplace';
+import { FindResult } from '@stll/folio-core/utils/findReplace';
 import { FolioAIEditApplyMode } from '@stll/folio-core/ai-edits';
 import { FolioAIEditApplyResult } from '@stll/folio-core/ai-edits';
 import { FolioAIEditOperation } from '@stll/folio-core/ai-edits';
@@ -118,6 +121,11 @@ export type DocxEditorHandle = EditorHandle & {
 
 // @public
 export type DocxEditorRef = {
+    find: (searchText: string, options?: Partial<FindOptions>) => FindResult | null;
+    findNext: () => FindMatch | null;
+    findPrevious: () => FindMatch | null;
+    getFindResult: () => FindResult | null;
+    clearFind: () => void;
     getDocument: () => Document_2 | null;
     hasPendingChanges: () => boolean;
     getEditorRef: () => PagedEditorRef | null;

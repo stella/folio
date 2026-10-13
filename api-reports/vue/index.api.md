@@ -79,6 +79,9 @@ import { extractDocumentStyleSet } from '@stll/folio-core/style-sets/extract';
 import { extractDocumentStyleSetFromDocx } from '@stll/folio-core/style-sets/extract';
 import { ExtractDocumentStyleSetOptions } from '@stll/folio-core/style-sets/extract';
 import { ExtractPropTypes } from 'vue';
+import { FindMatch } from '@stll/folio-core/utils/findReplace';
+import { FindOptions } from '@stll/folio-core/utils/findReplace';
+import { FindResult } from '@stll/folio-core/utils/findReplace';
 import { finishAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { FolioAIBlock } from '@stll/folio-core/ai-edits';
 import { FolioAIBlockAnchor } from '@stll/folio-core/ai-edits';
@@ -433,6 +436,7 @@ export type DocxEditorProps = {
     onModeChange?: (mode: EditorMode) => void;
     onReadonlyEditAttempt?: () => void;
     comments?: Comment_2[];
+    onFindResultChange?: (result: FindResult | null) => void;
     onCommentsChange?: (comments: Comment_2[]) => void;
     onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
     onEditorViewReady?: (view: EditorView | null) => void;
@@ -477,6 +481,11 @@ export type DocxEditorRef = {
     openPrintPreview: () => void;
     print: () => void;
     openFind: () => void;
+    find: (searchText: string, options?: Partial<FindOptions>) => FindResult | null;
+    findNext: () => FindMatch | null;
+    findPrevious: () => FindMatch | null;
+    getFindResult: () => FindResult | null;
+    clearFind: () => void;
     openReplace: () => void;
     loadDocument: (doc: Document_2) => void;
     loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;
@@ -556,8 +565,14 @@ export { extractDocumentStyleSetFromDocx }
 
 export { ExtractDocumentStyleSetOptions }
 
+export { FindMatch }
+
+export { FindOptions }
+
 // @public
 export const FindReplaceDialog: any;
+
+export { FindResult }
 
 export { finishAutocompleteSuggestion }
 

@@ -57,6 +57,12 @@ export const resolveDocumentFindRanges = ({
   matches,
 }: Omit<FindMatchViewOptions, "container" | "commentRoot">): ResolvedMatch[] => {
   const resolved: ResolvedMatch[] = [];
+  const { styles, theme, numbering } = document.package;
+  const conversionOptions = {
+    ...(styles !== undefined && { styles }),
+    ...(theme !== undefined && { theme }),
+    ...(numbering !== undefined && { numbering }),
+  };
   const byStory = new Map<string, { match: FindMatch; index: number }[]>();
   for (const [index, match] of matches.entries()) {
     if (match.commentId !== undefined) continue;
@@ -71,7 +77,7 @@ export const resolveDocumentFindRanges = ({
     const doc =
       story === OP_STORIES.MAIN
         ? (bodyDoc ?? toProseDoc(document))
-        : headerFooterToProseDoc(storyBody(document, story).content, document.package);
+        : headerFooterToProseDoc(storyBody(document, story).content, conversionOptions);
     const groups = new Map<number | undefined, typeof entries>();
     for (const entry of entries) {
       const group = groups.get(entry.match.textBoxIndex);
@@ -159,7 +165,9 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
         const active = index === currentIndex;
         element.dataset["current"] = String(active);
         element.style.background = active ? "var(--doc-find-current)" : "var(--doc-find-highlight)";
-        element.style.outline = active ? "2px solid var(--doc-find-current)" : "none";
+        element.style.outlineWidth = active ? "2px" : "0px";
+        element.style.outlineStyle = "solid";
+        element.style.outlineColor = "var(--doc-find-current)";
       }
     }
   };

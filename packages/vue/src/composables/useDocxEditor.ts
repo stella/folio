@@ -1452,8 +1452,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     if (isCanonicalSession()) return null;
     const document = docModel.value;
     if (!document) return null;
+    const live = manager.api.getDocument() ?? document;
     return cloneForHost(
-      noteEditorManager.snapshotDocument(headerFooterManager.snapshotDocument(document)),
+      noteEditorManager.snapshotDocument(headerFooterManager.snapshotDocument(live)),
     );
   }
 
