@@ -566,9 +566,6 @@ fn parse_comment_rows(
                     let comment_id =
                         comment_attribute(&reader, &element, NamespaceKind::Wordprocessing, b"id")?
                             .ok_or(invalid)?;
-                    if !comment_ids.insert(comment_id.clone()) {
-                        return Err(invalid);
-                    }
                     let wrapper_paragraph_id = comment_paragraph_id(&reader, &element)?;
                     let paragraph_id_from_wrapper = wrapper_paragraph_id.is_some();
                     current = Some((
@@ -706,14 +703,20 @@ fn parse_comment_rows(
                 if namespace_kind(&namespace) == NamespaceKind::Wordprocessing
                     && element.local_name().as_ref().as_bytes() == b"comment"
                 {
-                    let (comment_depth, comment) = current.take().ok_or(invalid)?;
+                    let (comment_depth, mut comment) = current.take().ok_or(invalid)?;
                     if depth != comment_depth || text_depth.is_some() || property_depth.is_some() {
                         return Err(invalid);
+                    }
+                    // References address the first definition; later rows cannot be addressed.
+                    if !comment_ids.insert(comment.comment_id.clone()) {
+                        continue;
                     }
                     if let Some(paragraph_id) = &comment.paragraph_id
                         && !paragraph_ids.insert(paragraph_id.clone())
                     {
-                        return Err(invalid);
+                        // The first row owns extension joins; preserve the later comment itself.
+                        comment.paragraph_id = None;
+                        comment.paragraph_id_from_wrapper = false;
                     }
                     output.push(comment);
                 }
@@ -769,18 +772,10 @@ fn parse_comment_extensions(
                         .map(|value| parse_on_off(&value))
                         .transpose()?
                         .unwrap_or(false);
-                    if output
-                        .insert(
-                            paragraph_id,
-                            CommentExtension {
-                                parent_paragraph_id,
-                                resolved,
-                            },
-                        )
-                        .is_some()
-                    {
-                        return Err(invalid);
-                    }
+                    output.entry(paragraph_id).or_insert(CommentExtension {
+                        parent_paragraph_id,
+                        resolved,
+                    });
                 }
                 depth = depth.checked_add(1).ok_or(invalid)?;
             }
@@ -827,4 +822,66 @@ fn contains_parent_cycle(comments: &[AttributedComment]) -> bool {
         complete.extend(path);
     }
     false
+}
+
+#[cfg(test)]
+mod collision_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn repeated_comment_definitions_preserve_first_content(id in 0_u32..100_000, repeats in 1_usize..24) {
+            let first = format!(r#"<w:comment w:id="{id}" w:author="First"><w:p><w:r><w:t>First content</w:t></w:r></w:p></w:comment>"#);
+            let later = format!(r#"<w:comment w:id="{id}" w:author="Later"><w:p><w:r><w:t>Later content</w:t></w:r></w:p></w:comment>"#);
+            let clean = format!(r#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">{first}</w:comments>"#);
+            let collision = clean.replace("</w:comments>", &format!("{}</w:comments>", later.repeat(repeats)));
+            let baseline = parse_comment_rows(clean.as_bytes(), 32, TextMaterialization::WordHost).unwrap();
+            let actual = parse_comment_rows(collision.as_bytes(), 32, TextMaterialization::WordHost).unwrap();
+            prop_assert_eq!(actual.len(), baseline.len());
+            prop_assert_eq!(&actual[0].content, &baseline[0].content);
+            prop_assert_eq!(&actual[0].author, &baseline[0].author);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn repeated_paragraph_joins_keep_every_comment_but_first_join_owner(paragraph_id in 1_u32..0x7fff_ffff, count in 2_usize..24) {
+            let rows = (0..count).map(|index| format!(r#"<w:comment w:id="{index}" w14:paraId="{paragraph_id:08X}" w:author="Fixture"><w:p><w:r><w:t>Content {index}</w:t></w:r></w:p></w:comment>"#)).collect::<String>();
+            let xml = format!(r#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">{rows}</w:comments>"#);
+            let actual = parse_comment_rows(xml.as_bytes(), 32, TextMaterialization::WordHost).unwrap();
+            prop_assert_eq!(actual.len(), count);
+            prop_assert_eq!(actual.iter().filter(|row| row.paragraph_id.is_some()).count(), 1);
+            let expected_id = format!("{paragraph_id:08X}");
+            prop_assert_eq!(actual[0].paragraph_id.as_deref(), Some(expected_id.as_str()));
+            for (index, row) in actual.iter().enumerate() {
+                prop_assert_eq!(&row.comment_id, &index.to_string());
+                prop_assert!(row.content.contains(&format!("Content {index}")));
+            }
+        }
+
+        #[test]
+        fn repeated_extension_rows_preserve_first_metadata(paragraph_id in 1_u32..0x7fff_ffff, repeats in 1_usize..24, resolved in any::<bool>()) {
+            let first = format!(r#"<w15:commentEx w15:paraId="{paragraph_id:08X}" w15:done="{resolved}"/>"#);
+            let later = format!(r#"<w15:commentEx w15:paraId="{paragraph_id:08X}" w15:done="{}" w15:paraIdParent="5ABC6789"/>"#, !resolved);
+            let xml = format!(r#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">{first}{}</w15:commentsEx>"#, later.repeat(repeats));
+            let actual = parse_comment_extensions(xml.as_bytes(), 32).unwrap();
+            prop_assert_eq!(actual.len(), 1);
+            let row = actual.get(&format!("{paragraph_id:08X}")).unwrap();
+            prop_assert_eq!(row.resolved, resolved);
+            prop_assert_eq!(&row.parent_paragraph_id, &None);
+        }
+    }
+
+    #[test]
+    fn malformed_duplicate_extension_is_still_unknown() {
+        let xml = br#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="15AB23CD" w15:done="1"/><w15:commentEx w15:paraId="15AB23CD" w15:done="perhaps"/></w15:commentsEx>"#;
+        assert!(parse_comment_extensions(xml, 32).is_err());
+    }
+
+    #[test]
+    fn malformed_duplicate_comment_is_still_unknown() {
+        let xml = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="23"><w:p/></w:comment><w:comment w:id="23"><w:p></w:comment></w:comments>"#;
+        assert!(parse_comment_rows(xml, 32, TextMaterialization::WordHost).is_err());
+    }
 }

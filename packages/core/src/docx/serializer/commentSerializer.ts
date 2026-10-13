@@ -16,6 +16,18 @@ import { serializeWithPreservedChildren } from "../containerChildren";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTextFormatting } from "./textFormattingSerializer";
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { getDocumentSourceBaseline } from "../headerFooterVerbatim";
+import { canonicalJson } from "../../utils/canonicalJson";
+
+/** An unrelated body edit must retain unmodelled duplicate comment definitions. */
+export const canReplayCommentsPart = (document: Document): boolean => {
+  const baseline = getDocumentSourceBaseline(document);
+  return (
+    baseline.type === "captured" &&
+    canonicalJson(document.package.document.comments ?? []) ===
+      canonicalJson(baseline.body.comments ?? [])
+  );
+};
 
 /** An owned empty part survives deletion of its final thread. */
 export const hasOwnedCommentsPart = (document: Document): boolean =>

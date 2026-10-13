@@ -450,6 +450,10 @@ impl NumberingParser {
                     .current_abstract
                     .take()
                     .ok_or(ProjectionError::InvalidNumberingXml)?;
+                // Only the first definition contributes lookup and style-link facts.
+                if self.catalog.abstracts.contains_key(&current.id) {
+                    return Ok(());
+                }
                 if let Some(style_link) = current.value.style_link.as_ref() {
                     self.catalog
                         .style_links
@@ -457,14 +461,7 @@ impl NumberingParser {
                         .and_modify(|id| *id = None)
                         .or_insert(Some(current.id));
                 }
-                if self
-                    .catalog
-                    .abstracts
-                    .insert(current.id, current.value)
-                    .is_some()
-                {
-                    return Err(ProjectionError::InvalidNumberingXml);
-                }
+                self.catalog.abstracts.insert(current.id, current.value);
             }
             Frame::NumberingInstance => {
                 let current = self
@@ -474,20 +471,13 @@ impl NumberingParser {
                 let abstract_num_id = current
                     .abstract_num_id
                     .ok_or(ProjectionError::InvalidNumberingXml)?;
-                if self
-                    .catalog
+                self.catalog
                     .instances
-                    .insert(
-                        current.id,
-                        NumberingInstance {
-                            abstract_num_id,
-                            overrides: current.overrides,
-                        },
-                    )
-                    .is_some()
-                {
-                    return Err(ProjectionError::InvalidNumberingXml);
-                }
+                    .entry(current.id)
+                    .or_insert(NumberingInstance {
+                        abstract_num_id,
+                        overrides: current.overrides,
+                    });
             }
             _ => {}
         }
@@ -627,14 +617,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_ambiguous_invalid_and_unbounded_numbering() {
+    fn retains_first_definition_and_rejects_invalid_or_unbounded_numbering() {
         let duplicate = format!(
             r#"<w:numbering xmlns:w="{W}"><w:abstractNum w:abstractNumId="1"/><w:abstractNum w:abstractNumId="1"/></w:numbering>"#
         );
-        assert!(matches!(
-            parse_numbering(duplicate.as_bytes(), 2),
-            Err(ProjectionError::InvalidNumberingXml)
-        ));
+        assert_eq!(
+            parse_numbering(duplicate.as_bytes(), 2)
+                .unwrap()
+                .abstracts
+                .len(),
+            1
+        );
 
         let invalid_level = format!(
             r#"<w:numbering xmlns:w="{W}"><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="9"/></w:abstractNum></w:numbering>"#
@@ -680,5 +673,26 @@ mod tests {
         let ambiguous_catalog =
             parse_numbering(ambiguous_link.as_bytes(), 6).expect("ambiguous link should parse");
         assert!(ambiguous_catalog.indentation(4, 0).is_err());
+    }
+}
+
+#[cfg(test)]
+mod collision_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn repeated_definitions_preserve_first_resolved_indentation(id in 0_u32..100_000, repeats in 1_usize..24, first_indent in 0_i32..10_000, later_indent in 10_001_i32..20_000) {
+            let abstract_definition = |indent| format!(r#"<w:abstractNum w:abstractNumId="{id}"><w:lvl w:ilvl="0"><w:pPr><w:ind w:left="{indent}"/></w:pPr></w:lvl></w:abstractNum>"#);
+            let num = format!(r#"<w:num w:numId="{id}"><w:abstractNumId w:val="{id}"/></w:num>"#);
+            let first = abstract_definition(first_indent);
+            let later = abstract_definition(later_indent);
+            let xml = format!(r#"<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">{first}{}{num}{}</w:numbering>"#, later.repeat(repeats), num.repeat(repeats));
+            let catalog = parse_numbering(xml.as_bytes(), 128).unwrap();
+            prop_assert_eq!(catalog.abstracts.len(), 1);
+            prop_assert_eq!(catalog.instances.len(), 1);
+            prop_assert_eq!(catalog.indentation(id, 0).unwrap().left_twips, Some(first_indent));
+        }
     }
 }

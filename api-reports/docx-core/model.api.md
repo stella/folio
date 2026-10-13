@@ -688,6 +688,24 @@ export type ImageWrapPolygon = {
     lineTo: WrapPolygonPoint[];
 };
 
+// @public (undocumented)
+export const IMPORTED_ID_COLLISION_KINDS: {
+    readonly bookmark: "bookmark";
+    readonly comment: "comment";
+    readonly footnote: "footnote";
+    readonly endnote: "endnote";
+    readonly revision: "revision";
+    readonly paraId: "paraId";
+    readonly textId: "textId";
+    readonly numId: "numId";
+    readonly abstractNumId: "abstractNumId";
+    readonly drawing: "drawing";
+    readonly relationship: "relationship";
+};
+
+// @public (undocumented)
+export type ImportedIdCollisionKind = (typeof IMPORTED_ID_COLLISION_KINDS)[keyof typeof IMPORTED_ID_COLLISION_KINDS];
+
 // @public
 export type InlineSdt = {
     type: "inlineSdt";
@@ -1151,6 +1169,7 @@ export const PARSE_WARNING_CODES: {
     readonly documentPartMissing: "document-part-missing";
     readonly documentModelIssue: "document-model-issue";
     readonly duplicateCommentId: "duplicate-comment-id";
+    readonly duplicateImportedId: "duplicate-imported-id";
     readonly missingCommentId: "missing-comment-id";
     readonly duplicateNoteId: "duplicate-note-id";
     readonly danglingCommentReference: "dangling-comment-reference";
@@ -1178,6 +1197,7 @@ export const PARSE_WARNING_CODES: {
 // @public (undocumented)
 export type ParseWarning = {
     code: ParseWarningCode;
+    identityKind?: ImportedIdCollisionKind;
     location: ParseWarningLocation;
     value?: string;
     count: number;

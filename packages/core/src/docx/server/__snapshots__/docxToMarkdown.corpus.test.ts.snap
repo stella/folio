@@ -24,6 +24,52 @@ exports[`docxToMarkdown corpus snapshots extracts date-fractional-seconds.docx 1
 
 exports[`docxToMarkdown corpus snapshots extracts dropdown-empty-value.docx 1`] = `"Choose: (none)"`;
 
+exports[`docxToMarkdown corpus snapshots extracts duplicate-bookmark-ids.docx 1`] = `
+"First target
+
+Later target
+
+Stale reference"
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-abstractNumId.docx 1`] = `"1. Numbered text"`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-bookmark.docx 1`] = `"FirstLater"`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-comment.docx 1`] = `"<comment author="Fixture" id="23">Commented</comment><comment author="Fixture" id="23"></comment>"`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-drawing.docx 1`] = `""`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-endnote.docx 1`] = `
+"Note[^e1]
+
+[^e1]: First note"
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-footnote.docx 1`] = `
+"Note[^1]
+
+[^1]: First note"
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-numId.docx 1`] = `"1. Numbered text"`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-paraId.docx 1`] = `
+"First
+
+Later"
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-relationship.docx 1`] = `"[Linked text](https://example.org/first)"`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-revision.docx 1`] = `"<ins author="Fixture" date="2024-01-01T00:00:00Z" id="83">First revision</ins><ins author="Fixture" date="2024-01-01T00:00:00Z" id="83">Later revision</ins>"`;
+
+exports[`docxToMarkdown corpus snapshots extracts duplicate-imported-textId.docx 1`] = `
+"First
+
+Later"
+`;
+
 exports[`docxToMarkdown corpus snapshots extracts empty-sdt-content.docx 1`] = `"Before:  :after"`;
 
 exports[`docxToMarkdown corpus snapshots extracts extraspec-bookmark-sibling.docx 1`] = `

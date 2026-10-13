@@ -6,6 +6,7 @@ import {
 import { paraIdAttribute, textIdAttribute } from "./paraIdAttribute";
 import { panic } from "better-result";
 import type { ParseContext } from "./parseContext";
+import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
 import { REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
 import { scanSelectedStreamingXmlElements } from "./selectedXmlIdentityScan";
 import { toTransitionalNamespaceUri } from "./transitionalSpelling";
@@ -19,8 +20,7 @@ const PACKAGE_RELATIONSHIP_NAMESPACE =
 type CollisionRule = {
   kind: ImportedIdCollisionKind;
   scope: "part" | "package";
-  namespace: string;
-  elements: ReadonlySet<string>;
+  sites: readonly { namespace: string; elements: ReadonlySet<string> }[];
   attribute: string;
   attributeNamespace: string | null;
   encoding: "decimal" | "hex" | "string";
@@ -42,8 +42,7 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   bookmark: {
     kind: IMPORTED_ID_COLLISION_KINDS.bookmark,
     scope: "part",
-    namespace: NAMESPACES.w,
-    elements: new Set(["bookmarkStart"]),
+    sites: [{ namespace: NAMESPACES.w, elements: new Set(["bookmarkStart"]) }],
     attribute: "id",
     attributeNamespace: NAMESPACES.w,
     encoding: "decimal",
@@ -51,8 +50,7 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   comment: {
     kind: IMPORTED_ID_COLLISION_KINDS.comment,
     scope: "part",
-    namespace: NAMESPACES.w,
-    elements: new Set(["comment"]),
+    sites: [{ namespace: NAMESPACES.w, elements: new Set(["comment"]) }],
     attribute: "id",
     attributeNamespace: NAMESPACES.w,
     encoding: "decimal",
@@ -60,8 +58,7 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   footnote: {
     kind: IMPORTED_ID_COLLISION_KINDS.footnote,
     scope: "part",
-    namespace: NAMESPACES.w,
-    elements: new Set(["footnote"]),
+    sites: [{ namespace: NAMESPACES.w, elements: new Set(["footnote"]) }],
     attribute: "id",
     attributeNamespace: NAMESPACES.w,
     encoding: "decimal",
@@ -69,8 +66,7 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   endnote: {
     kind: IMPORTED_ID_COLLISION_KINDS.endnote,
     scope: "part",
-    namespace: NAMESPACES.w,
-    elements: new Set(["endnote"]),
+    sites: [{ namespace: NAMESPACES.w, elements: new Set(["endnote"]) }],
     attribute: "id",
     attributeNamespace: NAMESPACES.w,
     encoding: "decimal",
@@ -78,8 +74,7 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   revision: {
     kind: IMPORTED_ID_COLLISION_KINDS.revision,
     scope: "package",
-    namespace: NAMESPACES.w,
-    elements: REVISION_ELEMENT_NAMES,
+    sites: [{ namespace: NAMESPACES.w, elements: REVISION_ELEMENT_NAMES }],
     attribute: "id",
     attributeNamespace: NAMESPACES.w,
     encoding: "decimal",
@@ -87,8 +82,11 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   paraId: {
     kind: IMPORTED_ID_COLLISION_KINDS.paraId,
     scope: "part",
-    namespace: NAMESPACES.w,
-    elements: new Set(["p"]),
+    sites: [
+      { namespace: NAMESPACES.w, elements: new Set(["p"]) },
+      { namespace: NAMESPACES.w15, elements: new Set(["commentEx"]) },
+      { namespace: OOXML_NAMESPACES.w16cex.uri, elements: new Set(["comment"]) },
+    ],
     attribute: "paraId",
     attributeNamespace: WORD_2010_NAMESPACE,
     encoding: "hex",
@@ -96,8 +94,7 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   textId: {
     kind: IMPORTED_ID_COLLISION_KINDS.textId,
     scope: "part",
-    namespace: NAMESPACES.w,
-    elements: new Set(["p"]),
+    sites: [{ namespace: NAMESPACES.w, elements: new Set(["p"]) }],
     attribute: "textId",
     attributeNamespace: WORD_2010_NAMESPACE,
     encoding: "hex",
@@ -105,8 +102,7 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   numId: {
     kind: IMPORTED_ID_COLLISION_KINDS.numId,
     scope: "part",
-    namespace: NAMESPACES.w,
-    elements: new Set(["num"]),
+    sites: [{ namespace: NAMESPACES.w, elements: new Set(["num"]) }],
     attribute: "numId",
     attributeNamespace: NAMESPACES.w,
     encoding: "decimal",
@@ -114,8 +110,7 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   abstractNumId: {
     kind: IMPORTED_ID_COLLISION_KINDS.abstractNumId,
     scope: "part",
-    namespace: NAMESPACES.w,
-    elements: new Set(["abstractNum"]),
+    sites: [{ namespace: NAMESPACES.w, elements: new Set(["abstractNum"]) }],
     attribute: "abstractNumId",
     attributeNamespace: NAMESPACES.w,
     encoding: "decimal",
@@ -123,8 +118,7 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   drawing: {
     kind: IMPORTED_ID_COLLISION_KINDS.drawing,
     scope: "package",
-    namespace: NAMESPACES.wp,
-    elements: new Set(["docPr"]),
+    sites: [{ namespace: NAMESPACES.wp, elements: new Set(["docPr"]) }],
     attribute: "id",
     attributeNamespace: null,
     encoding: "decimal",
@@ -132,8 +126,7 @@ export const IMPORTED_ID_COLLISION_REGISTRY = {
   relationship: {
     kind: IMPORTED_ID_COLLISION_KINDS.relationship,
     scope: "part",
-    namespace: PACKAGE_RELATIONSHIP_NAMESPACE,
-    elements: new Set(["Relationship"]),
+    sites: [{ namespace: PACKAGE_RELATIONSHIP_NAMESPACE, elements: new Set(["Relationship"]) }],
     attribute: "Id",
     attributeNamespace: null,
     encoding: "string",
@@ -163,11 +156,15 @@ export const diagnoseImportedIdCollisions = (
     const partSeen = new Map<string, { part: string; offset: number }>();
     const scoped = context.scoped({ part });
     scanSelectedStreamingXmlElements(xml, ({ element, attributeValueSpans }) => {
+      if (element.name === undefined) return;
       const namespace = toTransitionalNamespaceUri(getNamespaceUri(element) ?? "");
       const localName = getLocalName(element.name);
       for (const rule of rules) {
         const kind = rule.kind;
-        if (namespace !== rule.namespace || !rule.elements.has(localName)) continue;
+        if (
+          !rule.sites.some((site) => namespace === site.namespace && site.elements.has(localName))
+        )
+          continue;
         const paragraphIdentity = paragraphIdentityForKind(kind, element);
         const seen = rule.scope === "package" ? packageSeen : partSeen;
         for (const [name, rawValue] of Object.entries(element.attributes ?? {})) {

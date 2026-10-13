@@ -8,6 +8,7 @@ import { ColorValue } from '@stll/docx-core/model';
 import { Command } from 'prosemirror-state';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
+import { ImportedIdCollisionKind } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Mark } from 'prosemirror-model';
 import { MarkSpec } from 'prosemirror-model';

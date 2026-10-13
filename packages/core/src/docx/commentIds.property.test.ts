@@ -20,6 +20,7 @@ import JSZip from "jszip";
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseDocx } from "./parser";
+import { repackDocx } from "./rezip";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -122,6 +123,17 @@ describe("duplicate comment ids (property)", () => {
             warning.startsWith("Dropped "),
           );
           expect(reported.length).toBe(duplicates > 0 ? 1 : 0);
+
+          // A body-only edit owns no comment definition, including the later
+          // duplicate definitions the editable model intentionally omits.
+          document.package.document.content.push({
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text: "Body edit" }] }],
+          });
+          const saved = await JSZip.loadAsync(
+            await repackDocx(document, { updateModifiedDate: false }),
+          );
+          expect(await saved.file("word/comments.xml")?.async("string")).toBe(commentsXmlFor(ids));
         }),
         propertyConfig({ numRuns: 60 }),
       );

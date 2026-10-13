@@ -924,15 +924,16 @@ pub(super) fn materialize_structure(
         )?),
         Err(reason) => StructuralFactSet::Unknown(reason),
     };
-    let internal_references = match (input.references, &bookmarks) {
-        (Ok([]), _) => StructuralFactSet::Known(Vec::new()),
-        (Ok(references), StructuralFactSet::Known(bookmark_facts)) => StructuralFactSet::Known(
-            materialize_references(references, bookmark_facts, &mut fact_budget)?,
+    let internal_references = match (input.references, &bookmarks, input.bookmarks) {
+        (Ok([]), _, _) => StructuralFactSet::Known(Vec::new()),
+        (Ok(references), StructuralFactSet::Known(_), Ok(ranges)) => StructuralFactSet::Known(
+            materialize_references(references, ranges, input.paragraph_texts, &mut fact_budget)?,
         ),
-        (Err(reason), _) => StructuralFactSet::Unknown(reason),
-        (_, StructuralFactSet::Unknown(_)) => {
+        (Err(reason), _, _) => StructuralFactSet::Unknown(reason),
+        (_, StructuralFactSet::Unknown(_), _) => {
             StructuralFactSet::Unknown(StructuralFactUnknownReason::IncompleteBookmarkRanges)
         }
+        (_, _, Err(reason)) => StructuralFactSet::Unknown(reason),
     };
 
     Ok(DocumentStructureFacts {
@@ -1056,16 +1057,23 @@ fn materialize_bookmarks(
 
 fn materialize_references(
     references: &[RawInternalReference],
-    bookmarks: &[BookmarkFact],
+    bookmarks: &[RawBookmarkRange],
+    texts: &[&str],
     fact_budget: &mut StructuralFactBudget,
 ) -> Result<Vec<InternalReferenceFact>, ProjectionError> {
     let mut facts = Vec::new();
-    let mut targets_by_name: HashMap<&str, Vec<&BookmarkFact>> = HashMap::new();
+    let mut targets_by_name: HashMap<&str, &RawBookmarkRange> = HashMap::new();
     for bookmark in bookmarks {
         targets_by_name
             .entry(&bookmark.name)
-            .or_default()
-            .push(bookmark);
+            .and_modify(|first| {
+                if (bookmark.start.paragraph_ordinal, bookmark.start.utf8)
+                    < (first.start.paragraph_ordinal, first.start.utf8)
+                {
+                    *first = bookmark;
+                }
+            })
+            .or_insert(bookmark);
     }
     let mut emitted_target_names = HashSet::new();
     for reference in references {
@@ -1085,15 +1093,16 @@ fn materialize_references(
         if emitted_target_names.insert(reference.reference_id.as_str())
             && let Some(targets) = targets_by_name.get(reference.reference_id.as_str())
         {
-            for bookmark in targets {
+            segment_range(texts, &targets.start, &targets.end, |paragraph, span| {
                 fact_budget.consume(1)?;
                 facts.push(InternalReferenceFact {
-                    paragraph_ordinal: bookmark.paragraph_ordinal,
+                    paragraph_ordinal: paragraph,
                     reference_id: reference.reference_id.clone(),
                     role: InternalReferenceRole::Target,
-                    span: bookmark.span,
+                    span,
                 });
-            }
+                Ok(())
+            })?;
         }
     }
     facts.sort_by(|left, right| {
@@ -1269,5 +1278,28 @@ mod tests {
         assert!(cycle_resolved.is_empty());
         assert!(cycle_steps <= WORD_STYLE_LIMIT.saturating_add(1));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod collision_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn later_matching_ranges_do_not_change_reference_navigation(id in 0_u32..100_000, repeats in 1_usize..24) {
+            let point = |utf8| ReviewPoint { paragraph_ordinal: 0, utf8, utf16: utf8 };
+            let first = RawBookmarkRange { id, name: "target".to_owned(), start: point(0), end: point(5) };
+            let later = RawBookmarkRange { id, name: "target".to_owned(), start: point(6), end: point(11) };
+            let reference = RawInternalReference { reference_id: "target".to_owned(), source: point(11) };
+            let mut ranges = vec![later; repeats];
+            // Completion order can differ from source start order for nested ranges.
+            ranges.push(first.clone());
+            let texts = ["First Later"];
+            let clean = materialize_references(std::slice::from_ref(&reference), &[first], &texts, &mut StructuralFactBudget::new(128)).unwrap();
+            let collision = materialize_references(&[reference], &ranges, &texts, &mut StructuralFactBudget::new(128)).unwrap();
+            prop_assert_eq!(collision, clean);
+        }
     }
 }

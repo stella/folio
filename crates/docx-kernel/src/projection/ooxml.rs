@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 
 use quick_xml::XmlVersion;
 use quick_xml::escape::resolve_predefined_entity;
@@ -959,8 +959,7 @@ struct ProjectionState {
     body_seen: bool,
     next_table_ordinal: usize,
     maximum_paragraphs: usize,
-    open_bookmarks: HashMap<u32, (String, BookmarkPoint)>,
-    seen_bookmark_ids: HashSet<u32>,
+    open_bookmarks: HashMap<u32, VecDeque<(String, BookmarkPoint)>>,
     bookmarks: Vec<PendingBookmarkRange>,
     references: Vec<RawInternalReference>,
     bookmarks_complete: bool,
@@ -2348,12 +2347,14 @@ impl ProjectionState {
             self.bookmarks_complete = false;
             return Ok(());
         };
-        if name.is_empty()
-            || !self.seen_bookmark_ids.insert(id)
-            || self.open_bookmarks.insert(id, (name, point)).is_some()
-        {
+        if name.is_empty() {
             self.bookmarks_complete = false;
+            return Ok(());
         }
+        self.open_bookmarks
+            .entry(id)
+            .or_default()
+            .push_back((name, point));
         Ok(())
     }
 
@@ -2368,10 +2369,17 @@ impl ProjectionState {
             self.bookmarks_complete = false;
             return Ok(());
         };
-        let Some((name, start)) = self.open_bookmarks.remove(&id) else {
+        let Some((name, start)) = self
+            .open_bookmarks
+            .get_mut(&id)
+            .and_then(VecDeque::pop_front)
+        else {
             self.bookmarks_complete = false;
             return Ok(());
         };
+        if self.open_bookmarks.get(&id).is_some_and(VecDeque::is_empty) {
+            self.open_bookmarks.remove(&id);
+        }
         self.bookmarks.push(PendingBookmarkRange {
             id,
             name,
@@ -2873,4 +2881,64 @@ fn normalized_font_symbol(font: Option<&str>, encoded: u32) -> Option<&'static s
         .iter()
         .find(|mapping| mapping.encoded == encoded && mapping.font.eq_ignore_ascii_case(font))
         .map(|mapping| mapping.unicode)
+}
+
+#[cfg(test)]
+mod collision_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn project_bookmarks(body: &str) -> RawDocumentProjection {
+        let xml = format!(
+            r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>{body}</w:p></w:body></w:document>"#
+        );
+        project_document_xml(
+            xml.as_bytes(),
+            32,
+            RevisionView::Current,
+            TextMaterialization::WordHost,
+            Err(FormattingUnknownReason::DocumentPartOnly),
+            None,
+        )
+        .unwrap()
+    }
+
+    proptest! {
+        #[test]
+        fn balanced_duplicate_ranges_retain_all_content(id in 0_u32..100_000, count in 1_usize..24, overlap in any::<bool>()) {
+            let start = |index| format!(r#"<w:bookmarkStart w:id="{id}" w:name="target{index}"/>"#);
+            let end = format!(r#"<w:bookmarkEnd w:id="{id}"/>"#);
+            let text = r#"<w:r><w:t>Content</w:t></w:r>"#;
+            let body = if overlap {
+                let starts = (0..count).map(start).collect::<String>();
+                format!("{starts}{text}{}", end.repeat(count))
+            } else {
+                (0..count).map(|index| format!("{}{text}{end}", start(index))).collect::<String>()
+            };
+            let output = project_bookmarks(&body);
+            let bookmarks = output.bookmarks.unwrap();
+            prop_assert_eq!(bookmarks.len(), count);
+            prop_assert_eq!(&output.paragraphs[0].text, &"Content".repeat(if overlap { 1 } else { count }));
+            for (index, bookmark) in bookmarks.iter().enumerate() {
+                prop_assert_eq!(bookmark.id, id);
+                prop_assert_eq!(&bookmark.name, &format!("target{index}"));
+            }
+        }
+    }
+
+    #[test]
+    fn unmatched_colliding_ranges_remain_unknown() {
+        let start = r#"<w:bookmarkStart w:id="37" w:name="target"/>"#;
+        let end = r#"<w:bookmarkEnd w:id="37"/>"#;
+        assert!(
+            project_bookmarks(&format!("{start}{start}{end}"))
+                .bookmarks
+                .is_err()
+        );
+        assert!(
+            project_bookmarks(&format!("{start}{end}{end}"))
+                .bookmarks
+                .is_err()
+        );
+    }
 }

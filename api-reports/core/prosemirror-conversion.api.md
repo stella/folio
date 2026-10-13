@@ -4,6 +4,7 @@
 
 ```ts
 
+import { ImportedIdCollisionKind } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
 import { ParseWarningCode } from '@stll/docx-core/model';

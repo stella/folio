@@ -3,7 +3,7 @@ import fc from "fast-check";
 import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { buildBookmarkText } from "../fields/bookmarkText";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -32,36 +32,40 @@ const semanticProjection = (doc: ReturnType<typeof toProseDoc>) => {
 };
 
 describe("imported bookmark collisions", () => {
-  test("every range survives with unique ids and repair is a fixed point", () => {
-    fc.assert(
-      fc.property(
-        fc.array(fc.integer({ min: 0, max: 12 }), { minLength: 1, maxLength: 40 }),
-        (ids) => {
-          const xml = `<x:document xmlns:x="${W}"><x:body>${ids.map((id, index) => `<x:p><x:bookmarkStart x:id="${id}" x:name="b${index}"/><x:r><x:t>text ${index}</x:t></x:r><x:bookmarkEnd x:id="${id}"/></x:p>`).join("")}</x:body></x:document>`;
-          const parts = new Map([["word/document.xml", xml]]);
-          const repaired = normalizeBookmarkIdsInXmlParts(parts);
-          const output = repaired.get("word/document.xml") ?? "";
-          const starts = [...output.matchAll(/bookmarkStart x:id="(\d+)"/gu)].map((match) =>
-            Number(match.at(1)),
-          );
-          const ends = [...output.matchAll(/bookmarkEnd x:id="(\d+)"/gu)].map((match) =>
-            Number(match.at(1)),
-          );
-          expect(starts.length).toBe(ids.length);
-          expect(new Set(starts).size).toBe(ids.length);
-          expect(ends).toEqual(starts);
-          expect(output.replace(/x:id="\d+"/gu, "")).toBe(xml.replace(/x:id="\d+"/gu, ""));
-          const seen = new Set<number>();
-          for (const [index, id] of ids.entries()) {
-            if (!seen.has(id)) expect(starts.at(index)).toBe(id);
-            seen.add(id);
-          }
-          expect(normalizeBookmarkIdsInXmlParts(repaired)).toBe(repaired);
-        },
-      ),
-      propertyConfig(),
-    );
-  });
+  test(
+    "every range survives with unique ids and repair is a fixed point",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.array(fc.integer({ min: 0, max: 12 }), { minLength: 1, maxLength: 40 }),
+          (ids) => {
+            const xml = `<x:document xmlns:x="${W}"><x:body>${ids.map((id, index) => `<x:p><x:bookmarkStart x:id="${id}" x:name="b${index}"/><x:r><x:t>text ${index}</x:t></x:r><x:bookmarkEnd x:id="${id}"/></x:p>`).join("")}</x:body></x:document>`;
+            const parts = new Map([["word/document.xml", xml]]);
+            const repaired = normalizeBookmarkIdsInXmlParts(parts);
+            const output = repaired.get("word/document.xml") ?? "";
+            const starts = [...output.matchAll(/bookmarkStart x:id="(\d+)"/gu)].map((match) =>
+              Number(match.at(1)),
+            );
+            const ends = [...output.matchAll(/bookmarkEnd x:id="(\d+)"/gu)].map((match) =>
+              Number(match.at(1)),
+            );
+            expect(starts.length).toBe(ids.length);
+            expect(new Set(starts).size).toBe(ids.length);
+            expect(ends).toEqual(starts);
+            expect(output.replace(/x:id="\d+"/gu, "")).toBe(xml.replace(/x:id="\d+"/gu, ""));
+            const seen = new Set<number>();
+            for (const [index, id] of ids.entries()) {
+              if (!seen.has(id)) expect(starts.at(index)).toBe(id);
+              seen.add(id);
+            }
+            expect(normalizeBookmarkIdsInXmlParts(repaired)).toBe(repaired);
+          },
+        ),
+        propertyConfig(),
+      );
+    },
+    propertyTestTimeout(5_000),
+  );
 
   test("overlapping duplicates close in encounter order and reserve future ids", () => {
     const xml = `<x:p xmlns:x="${W}"><x:bookmarkStart x:id="7" x:name="first"/><x:bookmarkStart x:id="7" x:name="later"/><x:bookmarkEnd x:id="7"/><x:bookmarkEnd x:id="7"/><x:bookmarkStart x:id="0" x:name="reserved"/><x:bookmarkEnd x:id="0"/></x:p>`;

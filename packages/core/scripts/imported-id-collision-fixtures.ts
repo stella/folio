@@ -101,7 +101,7 @@ export const IMPORTED_ID_COLLISION_FIXTURES = {
   relationship: {
     body: `<w:p><w:hyperlink xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rIdLink"><w:r><w:t>Linked text</w:t></w:r></w:hyperlink></w:p>`,
     parts: {
-      "word/_rels/document.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdLink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.org/first" TargetMode="External"/><Relationship Id="rIdLink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.org/later" TargetMode="External"/></Relationships>`,
+      "word/_rels/document.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdLink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.org/first" TargetMode="External"/><Relationship Id="rIdLink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.org/later" TargetMode="External"/></Relationships>`,
     },
   },
 } as const satisfies Record<ImportedIdCollisionKind, CollisionFixture>;
