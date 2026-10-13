@@ -1,4 +1,7 @@
-import { resolvePendingRunFormatting } from "./runPropertyReviewOracle";
+import {
+  assertOutsideRunReviewCoverage,
+  resolvePendingRunFormatting,
+} from "./runPropertyReviewOracle";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
@@ -187,6 +190,13 @@ const compile = ({
     refusals.set(applied.error.reason, (refusals.get(applied.error.reason) ?? 0) + 1);
     throw applied.error;
   }
+  if (intent.type === "formatRun")
+    assertOutsideRunReviewCoverage({
+      before: document,
+      after: applied.value.document,
+      from: intent.from,
+      to: intent.to,
+    });
   expectInverse(applied.value, document);
   return applied.value;
 };

@@ -1,4 +1,7 @@
-import { resolvePendingRunFormatting } from "./runPropertyReviewOracle";
+import {
+  assertOutsideRunReviewCoverage,
+  resolvePendingRunFormatting,
+} from "./runPropertyReviewOracle";
 /**
  * The laws every direct operation keeps, over synthetic documents built from
  * the model (tracked operations: `review.property.test.ts`).
@@ -417,6 +420,12 @@ describe("document operations", () => {
             },
           }).unwrap();
           const edit = applyDocumentOps(original, plan.ops).unwrap();
+          assertOutsideRunReviewCoverage({
+            before: original,
+            after: edit.document,
+            from: intent.from,
+            to: intent.to,
+          });
           expect(edit.revisions.length).toBeGreaterThan(0);
           const rejected = applyDocumentOp(edit.document, {
             type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -456,6 +465,12 @@ describe("document operations", () => {
             },
           }).unwrap();
           const later = applyDocumentOps(edit.document, laterPlan.ops).unwrap();
+          assertOutsideRunReviewCoverage({
+            before: edit.document,
+            after: later.document,
+            from: laterIntent.from,
+            to: laterIntent.to,
+          });
           const rejectEarlier = applyDocumentOp(later.document, {
             type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
             story: OP_STORIES.MAIN,
@@ -479,6 +494,46 @@ describe("document operations", () => {
         id: "rejecting generated run formatting restores authored boundaries inside wrappers and pending review",
       },
     );
+  });
+
+  test("run review coverage detects a lost unchanged formatting revision outside the edit", () => {
+    const before = normalizeForOps({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                { type: "run", content: [{ type: "text", text: "a" }] },
+                {
+                  type: "run",
+                  formatting: { bold: true },
+                  content: [{ type: "text", text: "b" }],
+                  propertyChanges: [
+                    {
+                      type: "runPropertyChange",
+                      info: { id: 1, author: "Earlier" },
+                      previousFormatting: { bold: true },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies Document);
+    const after = structuredClone(before);
+    const paragraph = after.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Expected paragraph");
+    const run = paragraph.content.at(1);
+    if (run?.type !== "run") panic("Expected reviewed run");
+    const from = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 };
+    const to = { ...from, offset: 1 };
+    assertOutsideRunReviewCoverage({ before, after, from, to });
+    delete run.propertyChanges;
+    expect(() => assertOutsideRunReviewCoverage({ before, after, from, to })).toThrow();
   });
 
   // Undo restores each edit-time record; rejection restores the first pending baseline.
@@ -2520,6 +2575,20 @@ describe("document operations", () => {
           const trackedEdit = applyDocumentOps(document, tracked.value.ops);
           if (directEdit.isErr()) throw directEdit.error;
           if (trackedEdit.isErr()) throw trackedEdit.error;
+          if (intent.type === "formatRun") {
+            assertOutsideRunReviewCoverage({
+              before: document,
+              after: directEdit.value.document,
+              from: intent.from,
+              to: intent.to,
+            });
+            assertOutsideRunReviewCoverage({
+              before: document,
+              after: trackedEdit.value.document,
+              from: intent.from,
+              to: intent.to,
+            });
+          }
           const originalChanges = storyParagraphs(document.package.document).flatMap(
             ({ paragraph: sourceParagraph }) => sourceParagraph.propertyChanges ?? [],
           );
