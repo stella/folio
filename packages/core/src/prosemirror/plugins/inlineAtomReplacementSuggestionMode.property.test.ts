@@ -16,6 +16,7 @@ import { assertProperty, propertyTestTimeout } from "../../../../../test/propert
 
 import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
 import { schema } from "../schema";
+import { canonicalFieldNode } from "../fieldRepresentation";
 import { dispatchEditorTextInput } from "../textInput";
 import {
   canCarryTrackedRunMark,
@@ -25,7 +26,12 @@ import { createSuggestionModePlugin } from "./suggestionMode";
 
 /** Every node-selectable inline atom a tracked run can own, from the disposition map. */
 const SELECTABLE_ATOMS: readonly PMNode[] = Object.keys(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS)
-  .map((name) => schema.nodes[name]?.createAndFill() ?? null)
+  .map((name) => {
+    const node = schema.nodes[name]?.createAndFill();
+    // Imported structured fields cache their native result text. Schema defaults
+    // alone leave a tab result with an empty cache, outside the producer state.
+    return node ? canonicalFieldNode(node) : null;
+  })
   .filter(
     (node): node is PMNode =>
       node !== null &&
