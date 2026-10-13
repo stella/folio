@@ -2,6 +2,7 @@ import type { BenchOptions } from "tinybench";
 
 /** Explicit statistical settings shared by every microbenchmark group. */
 export const MICRO_BENCH_OPTIONS = {
+  retainSamples: true,
   iterations: 10,
   time: 500,
   warmup: true,
