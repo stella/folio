@@ -642,6 +642,40 @@ describe("model ranges", () => {
     }, fakeMeasure);
   });
 
+  test.each([false, true])(
+    "cached field glyphs preserve decoration coordinates with small caps %s",
+    (smallCaps) => {
+      withFakeTextMeasure(() => {
+        const block: ParagraphBlock = {
+          kind: "paragraph",
+          id: "p",
+          runs: [
+            {
+              kind: "field",
+              fieldType: "OTHER",
+              instruction: "DOCVARIABLE label",
+              fallback: "Alert",
+              pmStart: 2,
+              pmEnd: 3,
+              smallCaps,
+            },
+          ],
+        };
+        const runs = glyphRuns(buildDisplayList(buildLayout([block])));
+        expect(runs.map((run) => run.text)).toEqual(smallCaps ? ["A", "LERT"] : ["Alert"]);
+        expect(runs.map((run) => run.decorationRange)).toEqual(
+          (smallCaps ? [0, 1] : [0]).map((textOffset) => ({
+            start: 2,
+            end: 3,
+            story: { kind: "body" },
+            textOffset,
+          })),
+        );
+        expect(runs.every((run) => run.pmRange === undefined)).toBe(true);
+      }, fakeMeasure);
+    },
+  );
+
   test("a substituted field value carries none: the model holds the field, not the digits", () => {
     withFakeTextMeasure(() => {
       const block: ParagraphBlock = {
@@ -652,6 +686,7 @@ describe("model ranges", () => {
       const runs = glyphRuns(buildDisplayList(buildLayout([block])));
       expect(runs.at(0)?.text).toBe("1");
       expect(runs.at(0)?.pmRange).toBeUndefined();
+      expect(runs.at(0)?.decorationRange).toBeUndefined();
     }, fakeMeasure);
   });
 });

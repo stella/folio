@@ -271,6 +271,99 @@ const viewport = () => {
 };
 
 describe("view-only search geometry", () => {
+  test("cached field substrings and following text use separate painted coordinates", () => {
+    const doc: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "complexField",
+                  fieldType: "DOCVARIABLE",
+                  instruction: " DOCVARIABLE label ",
+                  fieldCode: [],
+                  fieldResult: [
+                    { type: "run", content: [{ type: "text", text: "field hit value" }] },
+                  ],
+                },
+                { type: "run", content: [{ type: "text", text: " after hit" }] },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const before = structuredClone(doc);
+    const bodyDoc = toProseDoc(doc);
+    expect(bodyDoc.child(0).child(0).type.name).toBe("field");
+    const matches = findInDocument(doc, "hit", createDefaultFindOptions());
+    expect(matches).toHaveLength(2);
+    const ranges = resolveDocumentFindRanges({ document: doc, bodyDoc, matches });
+    expect(ranges).toEqual([
+      {
+        from: 1,
+        to: 2,
+        index: 0,
+        story: "main",
+        atomicTextRanges: [{ from: 1, to: 2, startOffset: 6, endOffset: 9 }],
+      },
+      { from: 9, to: 12, index: 1, story: "main" },
+    ]);
+    const container = viewport();
+    const pageElement = document.createElement("div");
+    pageElement.className = "layout-page";
+    const fieldSpan = document.createElement("span");
+    fieldSpan.dataset["decorationStart"] = "1";
+    fieldSpan.dataset["decorationEnd"] = "2";
+    fieldSpan.textContent = "field hit value";
+    const followingSpan = document.createElement("span");
+    followingSpan.dataset["pmStart"] = "2";
+    followingSpan.dataset["pmEnd"] = "12";
+    followingSpan.textContent = " after hit";
+    pageElement.append(fieldSpan, followingSpan);
+    container.append(pageElement);
+    const measured: { text: string | null; start: number; end: number }[] = [];
+    const createRange = document.createRange.bind(document);
+    const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
+      const range = createRange();
+      Object.defineProperty(range, "getClientRects", {
+        value: () => {
+          measured.push({
+            text: range.startContainer.textContent,
+            start: range.startOffset,
+            end: range.endOffset,
+          });
+          return [
+            new DOMRect(
+              30 + range.startOffset * 10,
+              200,
+              (range.endOffset - range.startOffset) * 10,
+              18,
+            ),
+          ];
+        },
+      });
+      return range;
+    });
+    const view = createFindMatchView({ container, document: doc, bodyDoc, matches });
+    expect(measured).toEqual([
+      { text: "field hit value", start: 6, end: 9 },
+      { text: " after hit", start: 7, end: 10 },
+    ]);
+    expect(
+      [...container.querySelectorAll<HTMLElement>("[data-find-match-index]")].map(
+        (mark) => mark.style.width,
+      ),
+    ).toEqual(["30px", "30px"]);
+    expect(fieldSpan.hasAttribute("data-pm-start")).toBe(false);
+    expect(fieldSpan.hasAttribute("data-pm-end")).toBe(false);
+    expect(doc).toEqual(before);
+    view.destroy();
+    rangeFactory.mockRestore();
+  });
+
   test.each([0.5, 2])(
     "scaled paint surface keeps search marks in local coordinates at zoom %s",
     (zoom) => {

@@ -102,6 +102,14 @@ export const resolveDocumentFindRanges = ({
           resolved.push({
             from: range.from + source.offset,
             to: range.to + source.offset,
+            ...(range.atomicTextRanges && {
+              atomicTextRanges: range.atomicTextRanges.map((atom) => ({
+                from: atom.from + source.offset,
+                to: atom.to + source.offset,
+                startOffset: atom.startOffset,
+                endOffset: atom.endOffset,
+              })),
+            }),
             index: entry.index,
             story,
           });
@@ -176,22 +184,21 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
     targets.clear();
     const spans = new Map<string, HTMLElement[]>();
     for (const span of container.querySelectorAll<HTMLElement>(
-      ".layout-page span[data-pm-start][data-pm-end]",
+      ".layout-page span[data-pm-start][data-pm-end], .layout-page span[data-decoration-start][data-decoration-end]",
     )) {
       const key = spanStoryKey(span);
       const group = spans.get(key);
       if (group) group.push(span);
       else spans.set(key, [span]);
     }
-    for (const group of spans.values())
-      group.sort((a, b) => Number(a.dataset["pmEnd"]) - Number(b.dataset["pmEnd"]));
+    for (const group of spans.values()) group.sort((a, b) => spanEnd(a) - spanEnd(b));
     const suffixStarts = new Map<string, number[]>();
     for (const [key, group] of spans) {
       const starts = Array.from({ length: group.length }, () => Number.POSITIVE_INFINITY);
       let minimum = Number.POSITIVE_INFINITY;
       for (let index = group.length - 1; index >= 0; index--) {
         const span = group.at(index);
-        if (span) minimum = Math.min(minimum, Number(span.dataset["pmStart"]));
+        if (span) minimum = Math.min(minimum, spanStart(span));
         starts[index] = minimum;
       }
       suffixStarts.set(key, starts);
@@ -237,7 +244,7 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       while (low < high) {
         const middle = (low + high) >>> 1;
         const span = group.at(middle);
-        if (span && Number(span.dataset["pmEnd"]) <= range.from) low = middle + 1;
+        if (span && spanEnd(span) <= range.from) low = middle + 1;
         else high = middle;
       }
       for (let index = low; index < group.length; index++) {
@@ -248,7 +255,26 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
           break;
         const span = group.at(index);
         if (!span) continue;
-        const measured = measurePaintedSpanRange(span, range.from, range.to);
+        const atom = range.atomicTextRanges?.find(
+          ({ from, to }) => from === spanStart(span) && to === spanEnd(span),
+        );
+        const textOffset = Number(span.dataset["decorationTextOffset"] ?? 0);
+        if (
+          atom &&
+          (atom.endOffset <= textOffset ||
+            atom.startOffset >= textOffset + (span.textContent?.length ?? 0))
+        )
+          continue;
+        const atomRange = atom
+          ? createTextStreamRange(
+              span,
+              Math.max(0, atom.startOffset - textOffset),
+              Math.min(span.textContent?.length ?? 0, atom.endOffset - textOffset),
+            )
+          : null;
+        const measured = atomRange
+          ? ({ type: "text", rects: [...atomRange.getClientRects()] } as const)
+          : measurePaintedSpanRange(span, range.from, range.to);
         if (measured.type === "outside") continue;
         const previousTarget = targets.get(range.index);
         if (!previousTarget || (previousTarget.compareDocumentPosition(span) & 2) !== 0)
@@ -343,3 +369,8 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
     },
   };
 };
+
+const spanStart = (span: HTMLElement) =>
+  Number(span.dataset["pmStart"] ?? span.dataset["decorationStart"]);
+const spanEnd = (span: HTMLElement) =>
+  Number(span.dataset["pmEnd"] ?? span.dataset["decorationEnd"]);

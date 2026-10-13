@@ -2624,10 +2624,20 @@ function convertField(
   let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
   const hasPageBreakContent = fieldResultHasPageBreakContent(field);
+  const resultRuns =
+    field.type === "complexField"
+      ? field.fieldResult
+      : field.content.flatMap((content) => (content.type === "run" ? [content] : []));
+  const hasNonTextResult = resultRuns.some((run) =>
+    run.content.some((content) => content.type !== "text"),
+  );
+  // Native tokens need their source representation even when conversion emits
+  // text (hyphens); a cached-text atom cannot reconstruct those units.
   // A capture has no other carrier: a field collapsed to its display text
   // would drop the markup, so a field holding one keeps its children.
   const hasStructuredSourceContent =
     hasPageBreakContent ||
+    hasNonTextResult ||
     (field.type === "simpleField" &&
       field.content.some(
         (content) =>
@@ -2800,11 +2810,7 @@ function convertField(
     createMark: runScope.createMark,
   });
 
-  const createStructuredField = fieldRequiresStructuredContent(inlineNodes);
-  const resultRuns =
-    field.type === "simpleField"
-      ? field.content.flatMap((content) => (content.type === "run" ? [content] : []))
-      : field.fieldResult;
+  const createStructuredField = hasNonTextResult || fieldRequiresStructuredContent(inlineNodes);
   const emptyResultRuns =
     displayText === "" &&
     resultRuns.length > 0 &&

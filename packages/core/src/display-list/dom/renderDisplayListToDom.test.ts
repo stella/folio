@@ -123,6 +123,35 @@ const renderPrimitives = (
 /** The run's text as a document-order reader (a `Range`, a copy) sees it. */
 const runText = (span: StubElement | undefined) => span?.textContent ?? "";
 
+test("decoration-only glyph ranges preserve source metadata without editing positions", () => {
+  const run = {
+    kind: "glyphRun",
+    font: 0,
+    fontSizePx: 12,
+    color: { r: 0, g: 0, b: 0, a: 1 },
+    xPx: 100,
+    baselineYPx: 50,
+    text: "cached field",
+    advancesPx: Array.from("cached field", () => 5),
+    direction: "ltr",
+    kerning: false,
+    smallCaps: false,
+    decorationRange: { start: 12, end: 13, story: { kind: "header", rId: "rId7" }, textOffset: 0 },
+  } as const satisfies DisplayGlyphRun;
+  const page = renderPrimitives([run]);
+  const span = page.children.at(0);
+  expect(span?.textContent).toBe("cached field");
+  expect(span?.dataset).toMatchObject({
+    decorationStart: "12",
+    decorationEnd: "13",
+    decorationTextOffset: "0",
+    story: "header",
+    hfRid: "rId7",
+  });
+  expect(span?.dataset["pmStart"]).toBeUndefined();
+  expect(span?.dataset["pmEnd"]).toBeUndefined();
+});
+
 const findByClass = (element: StubElement, className: string): StubElement | undefined => {
   if (element.className.split(" ").includes(className)) {
     return element;

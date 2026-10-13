@@ -16,6 +16,7 @@ import type {
 } from "../types/content";
 import type { Document } from "../types/document";
 import { decodeOoxmlSymbolCharacter } from "./ooxmlSymbol";
+import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
 
 type ParagraphFindMatch = {
   paragraphIndex: number;
@@ -270,10 +271,7 @@ const paragraphShapes = (content: readonly ParagraphContent[], mode: DisplayMode
           if (child.type === "shape") shapes.push({ shape: child.shape, visible: itemVisible });
         }
       } else if (item.type === "hyperlink") {
-        visit(
-          item.children.filter((child) => child.type === "run" || child.type === "inlineWrapper"),
-          itemVisible,
-        );
+        visit(item.children, itemVisible);
       } else if (item.type === "complexField") {
         visit(item.fieldResult, itemVisible);
       } else if ("content" in item) {
@@ -304,9 +302,7 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
         continue;
       }
       if (item.type === "hyperlink") {
-        visit(
-          item.children.filter((child) => child.type === "run" || child.type === "inlineWrapper"),
-        );
+        visit(item.children);
         continue;
       }
       if (item.type === "complexField") {
@@ -451,19 +447,38 @@ const getRunSearchProjection = (run: Run): SearchProjection => {
   let text = "";
   const pageBreakOffsets: number[] = [];
   for (const item of run.content) {
-    if (item.type === "text") {
-      text += item.text;
-    } else if (item.type === "symbol") {
-      text += decodeOoxmlSymbolCharacter(item.char) ?? "";
-    } else if (item.type === "tab") {
-      text += "\t";
-    } else if (
-      item.type === "break" &&
-      (item.breakType === undefined || item.breakType === "textWrapping")
-    ) {
-      text += "\n";
-    } else if (item.type === "break" && item.breakType === "page") {
-      pageBreakOffsets.push(text.length);
+    switch (item.type) {
+      case "text":
+      case "preservedXml":
+        text += item.text;
+        break;
+      case "symbol":
+        text += decodeOoxmlSymbolCharacter(item.char) ?? "";
+        break;
+      case "tab":
+        text += "\t";
+        break;
+      case "softHyphen":
+      case "noBreakHyphen":
+        text += HYPHEN_TEXT_CARRIERS[item.type];
+        break;
+      case "break":
+        if (item.breakType === "page") pageBreakOffsets.push(text.length);
+        else text += "\n";
+        break;
+      case "footnoteRef":
+      case "endnoteRef":
+      case "noteMarker":
+      case "fieldChar":
+      case "instrText":
+      case "renderedPageBreak":
+      case "drawing":
+      case "shape":
+        break;
+      default: {
+        const unprojected: never = item;
+        panic(`Unsupported run content: ${JSON.stringify(unprojected)}`);
+      }
     }
   }
   return { text, pageBreakOffsets };
@@ -472,14 +487,7 @@ const getRunSearchProjection = (run: Run): SearchProjection => {
 // A transparent wrapper inside the link is read through: the text it holds is
 // the link's text, and the editor puts it on the line.
 const getHyperlinkSearchProjection = (hyperlink: Hyperlink): SearchProjection =>
-  joinSearchProjections(
-    hyperlink.children.flatMap((child) => {
-      if (child.type === "run") {
-        return [getRunSearchProjection(child)];
-      }
-      return child.type === "inlineWrapper" ? [getParagraphContentSearchProjection(child)] : [];
-    }),
-  );
+  joinSearchProjections(hyperlink.children.map(getParagraphContentSearchProjection));
 
 /** Nothing on the line: a marker, or markup with no text under it. */
 const noSearchText = (): SearchProjection => ({ text: "", pageBreakOffsets: [] });
@@ -521,6 +529,8 @@ const getParagraphContentSearchProjection = (content: ParagraphContent): SearchP
       return joinSearchProjections(content.content.map(getParagraphContentSearchProjection));
     case "complexField":
       return joinSearchProjections(content.fieldResult.map(getRunSearchProjection));
+    case "preservedInline":
+      return { text: content.text, pageBreakOffsets: [] };
     case "bookmarkStart":
     case "bookmarkEnd":
     case "commentRangeStart":
@@ -531,7 +541,6 @@ const getParagraphContentSearchProjection = (content: ParagraphContent): SearchP
     case "moveToRangeStart":
     case "moveToRangeEnd":
     case "mathEquation":
-    case "preservedInline":
       return noSearchText();
     default: {
       const unprojected: never = content;

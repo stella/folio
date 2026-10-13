@@ -283,6 +283,8 @@ export type DisplayGlyphRun = {
    * substituted field value, a tab leader.
    */
   readonly pmRange?: DisplayModelRange;
+  /** Source atom for view-only decorations; never used for editing positions. */
+  readonly decorationRange?: DisplayModelRange & { readonly textOffset: number };
 };
 
 /** An axis-aligned rectangle, filled and/or stroked. At least one is set. */

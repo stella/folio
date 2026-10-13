@@ -1,7 +1,7 @@
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
-import { expectSymbolAttrs } from "./attrs";
+import { expectFieldAttrs, expectPreservedXmlAttrs, expectSymbolAttrs } from "./attrs";
 
 import { findAllMatches } from "../utils/findReplace";
 import type { FindOptions } from "../utils/findReplace";
@@ -26,6 +26,8 @@ export type FindMatchPosition = {
 export type FindMatchRange = {
   from: number;
   to: number;
+  /** Character subranges inside source atoms, whose text exceeds their PM size. */
+  atomicTextRanges?: { from: number; to: number; startOffset: number; endOffset: number }[];
 };
 
 export type ProseMirrorFindMatch = FindMatchPosition &
@@ -181,6 +183,7 @@ function resolveTextRangeInParagraph({
   let textOffset = 0;
   const range = { from: null as number | null, to: null as number | null };
   const pageBreakOffsets: number[] = [];
+  const atomicTextRanges: NonNullable<FindMatchRange["atomicTextRanges"]> = [];
 
   paragraph.descendants((node, pos) => {
     if (node.type.name === "pageBreakRun") {
@@ -195,12 +198,26 @@ function resolveTextRangeInParagraph({
     const textStart = textOffset;
     const textEnd = textStart + tokenLength;
     const nodeStart = paragraphPos + 1 + pos;
+    const atomic = node.type.name === "field" || node.type.name === "preservedXml";
+
+    if (atomic && textStart < endOffset && textEnd > startOffset) {
+      atomicTextRanges.push({
+        from: nodeStart,
+        to: nodeStart + node.nodeSize,
+        startOffset: Math.max(0, startOffset - textStart),
+        endOffset: Math.min(tokenLength, endOffset - textStart),
+      });
+    }
 
     if (range.from === null && startOffset >= textStart && startOffset < textEnd) {
-      range.from = nodeStart + Math.min(startOffset - textStart, node.nodeSize);
+      range.from = atomic
+        ? nodeStart
+        : nodeStart + Math.min(startOffset - textStart, node.nodeSize);
     }
     if (range.to === null && endOffset > textStart && endOffset <= textEnd) {
-      range.to = nodeStart + Math.min(endOffset - textStart, node.nodeSize);
+      range.to = atomic
+        ? nodeStart + node.nodeSize
+        : nodeStart + Math.min(endOffset - textStart, node.nodeSize);
     }
 
     textOffset = textEnd;
@@ -216,10 +233,16 @@ function resolveTextRangeInParagraph({
     return null;
   }
 
-  return { from: range.from, to: range.to };
+  return {
+    from: range.from,
+    to: range.to,
+    ...(atomicTextRanges.length > 0 && { atomicTextRanges }),
+  };
 }
 
 function getSearchTextTokenLength(node: ProseMirrorNode): number {
+  if (node.type.name === "field") return expectFieldAttrs(node).displayText.length;
+  if (node.type.name === "preservedXml") return expectPreservedXmlAttrs(node).text.length;
   if (node.isText) {
     return node.text?.length ?? 0;
   }
@@ -234,6 +257,14 @@ function getSearchTextTokenLength(node: ProseMirrorNode): number {
 function getSearchableParagraphText(paragraph: ProseMirrorNode): string {
   let text = "";
   paragraph.descendants((node) => {
+    if (node.type.name === "field") {
+      text += expectFieldAttrs(node).displayText;
+      return false;
+    }
+    if (node.type.name === "preservedXml") {
+      text += expectPreservedXmlAttrs(node).text;
+      return false;
+    }
     if (node.isText) {
       text += node.text ?? "";
       return false;

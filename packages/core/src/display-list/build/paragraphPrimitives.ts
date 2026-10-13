@@ -564,6 +564,7 @@ type EmitGlyphRunOptions = {
    * an editing surface maps clicks and selections through it.
    */
   readonly pmRange?: DisplayGlyphRun["pmRange"];
+  readonly decorationRange?: DisplayGlyphRun["decorationRange"];
   /** Set for a line-edge space run painted at no width. */
   readonly collapsedEdge?: DisplayGlyphRun["collapsedEdge"];
 };
@@ -655,6 +656,7 @@ const emitGlyphRun = ({
   lineHeightPx,
   isRtl,
   pmRange,
+  decorationRange,
   collapsedEdge,
 }: EmitGlyphRunOptions): void => {
   if (glyphs.text.length === 0) {
@@ -749,6 +751,7 @@ const emitGlyphRun = ({
     ...(unicodeBidi === undefined ? {} : { unicodeBidi }),
     ...(stroke === undefined ? {} : { stroke }),
     ...(pmRange === undefined ? {} : { pmRange }),
+    ...(decorationRange === undefined ? {} : { decorationRange }),
     ...(collapsedEdge === undefined ? {} : { collapsedEdge }),
   } as const;
 
@@ -775,6 +778,7 @@ const emitGlyphRun = ({
     // primitive this run would otherwise paint as.
     const adjustments = glyphs.adjustments === undefined ? {} : { adjustments: glyphs.adjustments };
     let segmentXPx = paintXPx;
+    let segmentTextOffset = 0;
     for (const segment of smallCapsRuns) {
       sink.glyphs.push({
         kind: "glyphRun",
@@ -786,8 +790,17 @@ const emitGlyphRun = ({
         smallCaps: true,
         ...adjustments,
         ...commonFields,
+        ...(decorationRange === undefined
+          ? {}
+          : {
+              decorationRange: {
+                ...decorationRange,
+                textOffset: decorationRange.textOffset + segmentTextOffset,
+              },
+            }),
       });
       segmentXPx += segment.widthPx;
+      segmentTextOffset += segment.text.length;
     }
   }
 
@@ -1177,6 +1190,18 @@ const paintLine = ({
           sink,
           context,
           run: { ...run, kind: "text", text: glyphs.text },
+          ...(run.pmStart === undefined ||
+          run.pmEnd === undefined ||
+          resolveFieldText(run, context) !== run.fallback
+            ? {}
+            : {
+                decorationRange: {
+                  start: run.pmStart,
+                  end: run.pmEnd,
+                  story: context.story,
+                  textOffset: 0,
+                },
+              }),
           glyphs,
           style,
           paintXPx: paintXOf(),

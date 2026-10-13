@@ -2,11 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
 
 import type { Document } from "../types/document";
-import type { HeaderFooter, Paragraph, Run } from "../types/content";
+import type { ComplexField, HeaderFooter, Paragraph, Run, SimpleField } from "../types/content";
 import { FindReplaceManager } from "../managers/FindReplaceManager";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { findInProseMirrorDocument } from "../prosemirror/findReplaceSelection";
-import { createDefaultFindOptions, findAllMatches, findInDocument } from "./findReplace";
+import {
+  createDefaultFindOptions,
+  findAllMatches,
+  findInDocument,
+  getFindParagraphText,
+} from "./findReplace";
 
 const document: Document = {
   package: {
@@ -41,6 +47,199 @@ const document: Document = {
 const paragraph = (text: string): Paragraph => ({
   type: "paragraph",
   content: [{ type: "run", content: [{ type: "text", text }] }],
+});
+
+const textRun = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+
+const fieldTokenRun: Run = {
+  type: "run",
+  content: [
+    { type: "text", text: "Cache" },
+    { type: "symbol", char: "00A7", font: "Arial" },
+    { type: "softHyphen" },
+    { type: "noBreakHyphen" },
+    { type: "tab" },
+    { type: "break", breakType: "textWrapping" },
+    { type: "break", breakType: "column" },
+    { type: "text", text: "42 HIT" },
+  ],
+};
+
+const fieldProjectionFixtures = {
+  simpleDigit: {
+    type: "simpleField",
+    fieldType: "PAGE",
+    instruction: "PAGE",
+    content: [textRun("42")],
+  },
+  complexDigit: {
+    type: "complexField",
+    fieldType: "PAGE",
+    instruction: "PAGE",
+    fieldCode: [],
+    fieldResult: [textRun("42")],
+  },
+  simpleString: {
+    type: "simpleField",
+    fieldType: "REF",
+    instruction: "REF bookmark",
+    content: [textRun("Cached HIT")],
+  },
+  complexString: {
+    type: "complexField",
+    fieldType: "REF",
+    instruction: "REF bookmark",
+    fieldCode: [],
+    fieldResult: [textRun("Cached HIT")],
+  },
+  simpleTokens: {
+    type: "simpleField",
+    fieldType: "REF",
+    instruction: "REF bookmark",
+    content: [fieldTokenRun],
+  },
+  complexTokens: {
+    type: "complexField",
+    fieldType: "REF",
+    instruction: "REF bookmark",
+    fieldCode: [],
+    fieldResult: [fieldTokenRun],
+  },
+  simpleHyphens: {
+    type: "simpleField",
+    fieldType: "REF",
+    instruction: "REF bookmark",
+    content: [
+      {
+        type: "run",
+        content: [
+          { type: "text", text: "soft" },
+          { type: "softHyphen" },
+          { type: "noBreakHyphen" },
+          { type: "text", text: "hard" },
+        ],
+      },
+    ],
+  },
+  complexHyphens: {
+    type: "complexField",
+    fieldType: "REF",
+    instruction: "REF bookmark",
+    fieldCode: [],
+    fieldResult: [
+      {
+        type: "run",
+        content: [
+          { type: "text", text: "soft" },
+          { type: "softHyphen" },
+          { type: "noBreakHyphen" },
+          { type: "text", text: "hard" },
+        ],
+      },
+    ],
+  },
+  transparent: {
+    type: "simpleField",
+    fieldType: "REF",
+    instruction: "REF bookmark",
+    content: [
+      {
+        type: "inlineWrapper",
+        kind: "smartTag",
+        element: "tag",
+        content: [textRun("Wrapped HIT")],
+      },
+    ],
+  },
+  hyperlink: {
+    type: "simpleField",
+    fieldType: "REF",
+    instruction: "REF bookmark",
+    content: [
+      { type: "hyperlink", href: "https://example.test", children: [textRun("Linked HIT")] },
+    ],
+  },
+  opaqueRun: {
+    type: "complexField",
+    fieldType: "REF",
+    instruction: "REF bookmark",
+    fieldCode: [],
+    fieldResult: [
+      {
+        type: "run",
+        content: [
+          {
+            type: "preservedXml",
+            xml: "<w:ruby><w:rubyBase><w:r><w:t>Base HIT</w:t></w:r></w:rubyBase></w:ruby>",
+            text: "Base HIT",
+          },
+        ],
+      },
+    ],
+  },
+  opaqueInline: {
+    type: "simpleField",
+    fieldType: "REF",
+    instruction: "REF bookmark",
+    content: [
+      {
+        type: "preservedInline",
+        xml: "<w:customXml><w:r><w:t>Inline HIT</w:t></w:r></w:customXml>",
+        text: "Inline HIT",
+      },
+    ],
+  },
+} as const satisfies Record<string, SimpleField | ComplexField>;
+
+describe("field and native text search projection parity", () => {
+  test.each(Object.entries(fieldProjectionFixtures))(
+    "%s preserves cached tokens, substring hits, and trailing offsets through conversion",
+    (name, field) => {
+      const sourceParagraph: Paragraph = {
+        type: "paragraph",
+        content: [textRun("before "), field, textRun(" tail HIT hit")],
+      };
+      const source: Document = { package: { document: { content: [sourceParagraph] } } };
+      const pmDoc = toProseDoc(source);
+      const saved = fromProseDoc(pmDoc, source, { stylesheetSource: { type: "package" } });
+      const savedParagraph = saved.package.document.content.at(0);
+      if (savedParagraph?.type !== "paragraph") panic("Roundtrip paragraph missing");
+      const visibleText = getFindParagraphText(sourceParagraph);
+      expect(getFindParagraphText(savedParagraph)).toBe(visibleText);
+      const queries = new Set([...visibleText, "tail", "HIT", "hit", "42", "Cached", "before "]);
+      for (const options of [
+        createDefaultFindOptions(),
+        { matchCase: true, matchWholeWord: false },
+      ]) {
+        for (const query of queries) {
+          const project = ({
+            paragraphIndex,
+            startOffset,
+            endOffset,
+            text,
+          }: {
+            paragraphIndex: number;
+            startOffset: number;
+            endOffset: number;
+            text: string;
+          }) => ({ paragraphIndex, startOffset, endOffset, text });
+          const modelMatches = findInDocument(source, query, options).map(project);
+          expect(findInProseMirrorDocument(pmDoc, query, options).map(project)).toEqual(
+            modelMatches,
+          );
+          expect(findInDocument(saved, query, options).map(project)).toEqual(modelMatches);
+          if (query === "tail") expect(modelMatches).toHaveLength(1);
+        }
+      }
+      expect(findInDocument(source, "REF bookmark", createDefaultFindOptions())).toHaveLength(0);
+      if (["simpleDigit", "complexDigit", "simpleString", "complexString"].includes(name)) {
+        expect(pmDoc.child(0).child(1).type.name).toBe("field");
+      }
+      if (["simpleHyphens", "complexHyphens", "simpleTokens", "complexTokens"].includes(name)) {
+        expect(pmDoc.child(0).child(1).type.name).toBe("structuredField");
+      }
+    },
+  );
 });
 
 const allStoriesDocument = (): Document => ({

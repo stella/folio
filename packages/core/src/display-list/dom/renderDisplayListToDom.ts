@@ -382,13 +382,17 @@ const applyAdjustments = (
  * and in each note, so a surface has to know which one it landed in before it
  * can use the number at all.
  */
-const applyModelRange = (span: HTMLElement, range: DisplayModelRange | undefined): void => {
+const applyModelRange = (
+  span: HTMLElement,
+  range: DisplayModelRange | undefined,
+  purpose: "editing" | "decoration" = "editing",
+): void => {
   if (range === undefined) {
     return;
   }
-  span.className = "layout-run-text";
-  span.dataset["pmStart"] = String(range.start);
-  span.dataset["pmEnd"] = String(range.end);
+  if (purpose === "editing") span.className = "layout-run-text";
+  span.dataset[purpose === "editing" ? "pmStart" : "decorationStart"] = String(range.start);
+  span.dataset[purpose === "editing" ? "pmEnd" : "decorationEnd"] = String(range.end);
   const { story } = range;
   span.dataset["story"] = story.kind;
   switch (story.kind) {
@@ -472,6 +476,9 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   // equivalence harness without measuring anything.
   span.dataset["advanceSum"] = String(advanceSum);
   applyModelRange(span, run.pmRange);
+  applyModelRange(span, run.decorationRange, "decoration");
+  if (run.decorationRange)
+    span.dataset["decorationTextOffset"] = String(run.decorationRange.textOffset);
   if (run.collapsedEdge !== undefined) {
     // Addressable and painted at no width, as the line was fitted: the browser
     // must not advance the spaces this run holds, and a surface steps the caret
