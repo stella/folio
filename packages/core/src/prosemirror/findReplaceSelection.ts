@@ -1,7 +1,7 @@
 import type { Node as ProseMirrorNode } from "prosemirror-model";
+import { getInlineDisplayText } from "./inlineDisplayText";
 
-import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
-import { expectFieldAttrs, expectPreservedXmlAttrs, expectSymbolAttrs } from "./attrs";
+import { expectFieldAttrs, expectPreservedXmlAttrs } from "./attrs";
 
 import { findAllMatches, isPageDependentSearchField } from "../utils/findReplace";
 import type { FindOptions } from "../utils/findReplace";
@@ -83,7 +83,7 @@ export function findInProseMirrorDocument(
 
   const matches: ProseMirrorFindMatch[] = [];
   forEachSearchParagraph(doc, (paragraph, paragraphPos, paragraphIndex) => {
-    const text = getSearchableParagraphText(paragraph);
+    const text = getInlineDisplayText(paragraph);
     for (const { start, end } of findAllMatches(text, searchText, options)) {
       const range = resolveTextRangeInParagraph({
         paragraph,
@@ -194,7 +194,7 @@ function resolveTextRangeInParagraph({
       const length =
         node.type.name === "field"
           ? expectFieldAttrs(node).displayText.length
-          : getSearchableParagraphText(node).length;
+          : getInlineDisplayText(node).length;
       excludedTextRanges.push({ start: textOffset, end: textOffset + length });
     }
     if (node.type.name === "pageBreakRun") {
@@ -264,36 +264,4 @@ function getSearchTextTokenLength(node: ProseMirrorNode): number {
   }
 
   return 0;
-}
-
-function getSearchableParagraphText(paragraph: ProseMirrorNode): string {
-  let text = "";
-  paragraph.descendants((node) => {
-    if (node.type.name === "field") {
-      text += expectFieldAttrs(node).displayText;
-      return false;
-    }
-    if (node.type.name === "preservedXml") {
-      text += expectPreservedXmlAttrs(node).text;
-      return false;
-    }
-    if (node.isText) {
-      text += node.text ?? "";
-      return false;
-    }
-    if (node.type.name === "tab") {
-      text += "\t";
-      return false;
-    }
-    if (node.type.name === "hardBreak") {
-      text += "\n";
-      return false;
-    }
-    if (node.type.name === "symbol") {
-      text += decodeOoxmlSymbolCharacter(expectSymbolAttrs(node).char) ?? "";
-      return false;
-    }
-    return true;
-  });
-  return text;
 }

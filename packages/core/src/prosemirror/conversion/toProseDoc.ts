@@ -19,6 +19,7 @@ import {
 import { listRenderingFor } from "../listRendering";
 
 import { fieldRequiresStructuredContent } from "../fieldRepresentation";
+import { getInlineDisplayText } from "../inlineDisplayText";
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
@@ -2619,7 +2620,6 @@ function convertField(
   }: ConvertFieldOptions,
 ): PMNode | null {
   // Extract display text and formatting from field content/result
-  let displayText = "";
   let fieldFormatting: TextFormatting | undefined;
   let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
@@ -2628,39 +2628,10 @@ function convertField(
     field.type === "complexField"
       ? field.fieldResult
       : field.content.flatMap((content) => (content.type === "run" ? [content] : []));
-  const hasNonTextResult = resultRuns.some((run) =>
-    run.content.some((content) => content.type !== "text"),
-  );
-  // Native tokens need their source representation even when conversion emits
-  // text (hyphens); a cached-text atom cannot reconstruct those units.
-  // A capture has no other carrier: a field collapsed to its display text
-  // would drop the markup, so a field holding one keeps its children.
-  const hasStructuredSourceContent =
-    hasPageBreakContent ||
-    hasNonTextResult ||
-    (field.type === "simpleField" &&
-      field.content.some(
-        (content) =>
-          content.type === "hyperlink" ||
-          content.type === "preservedInline" ||
-          content.type === "inlineWrapper" ||
-          content.type === "insertion" ||
-          content.type === "deletion" ||
-          content.type === "moveFrom" ||
-          content.type === "moveTo",
-      ));
   const appendRun = (run: Run, into: PMNode[]): void => {
-    for (const content of run.content) {
-      if (content.type === "text") {
-        displayText += content.text;
-      }
-    }
     // Use formatting from the first run that has it.
     fieldFormatting ??= run.formatting;
     fieldPropertyChanges ??= run.propertyChanges;
-    if (field.type !== "simpleField" && !hasStructuredSourceContent) {
-      return;
-    }
     into.push(
       ...convertRun(
         run,
@@ -2671,16 +2642,15 @@ function convertField(
       ),
     );
   };
-  const collectDisplay = (items: readonly ParagraphContent[]): void => {
+  const collectFormatting = (items: readonly ParagraphContent[]): void => {
     for (const item of items) {
       switch (item.type) {
         case "run":
-          for (const child of item.content) if (child.type === "text") displayText += child.text;
           fieldFormatting ??= item.formatting;
           fieldPropertyChanges ??= item.propertyChanges;
           break;
         case "hyperlink":
-          collectDisplay(item.children);
+          collectFormatting(item.children);
           break;
         case "inlineWrapper":
         case "inlineSdt":
@@ -2688,19 +2658,16 @@ function convertField(
         case "deletion":
         case "moveFrom":
         case "moveTo":
-          collectDisplay(item.content);
+          collectFormatting(item.content);
           break;
         case "simpleField":
-          collectDisplay(item.content);
+          collectFormatting(item.content);
           break;
         case "complexField":
-          collectDisplay(item.fieldResult);
+          collectFormatting(item.fieldResult);
           break;
         case "preservedInline":
-          displayText += item.text;
-          break;
         case "mathEquation":
-          displayText += item.plainText ?? "";
           break;
         case "bookmarkStart":
         case "bookmarkEnd":
@@ -2734,11 +2701,6 @@ function convertField(
         case "hyperlink":
           for (const { content: child } of withInlineWrapperStacks(content.children)) {
             if (child.type === "run") {
-              for (const runContent of child.content) {
-                if (runContent.type === "text") {
-                  displayText += runContent.text;
-                }
-              }
               fieldFormatting ??= child.formatting;
               fieldPropertyChanges ??= child.propertyChanges;
             }
@@ -2758,7 +2720,7 @@ function convertField(
         case "deletion":
         case "moveFrom":
         case "moveTo": {
-          collectDisplay(content.content);
+          collectFormatting(content.content);
           itemNodes.push(
             ...convertTrackedChange(
               content,
@@ -2810,7 +2772,10 @@ function convertField(
     createMark: runScope.createMark,
   });
 
-  const createStructuredField = hasNonTextResult || fieldRequiresStructuredContent(inlineNodes);
+  const createStructuredField =
+    (field.type === "simpleField" || hasPageBreakContent) &&
+    fieldRequiresStructuredContent(inlineNodes);
+  const displayText = getInlineDisplayText(schema.node("paragraph", null, inlineNodes));
   const emptyResultRuns =
     displayText === "" &&
     resultRuns.length > 0 &&

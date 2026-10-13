@@ -7,6 +7,8 @@ import { FindReplaceManager } from "../managers/FindReplaceManager";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { findInProseMirrorDocument } from "../prosemirror/findReplaceSelection";
+import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
+import { expectFieldAttrs } from "../prosemirror/attrs";
 import {
   createDefaultFindOptions,
   findAllMatches,
@@ -272,6 +274,19 @@ describe("page-dependent field search exclusion", () => {
         },
       };
       const pmDoc = toProseDoc(source);
+      const pageOnly: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [makeField(parsedType, instruction)],
+              },
+            ],
+          },
+        },
+      };
+      const pageOnlyPm = toProseDoc(pageOnly);
       for (const displayMode of [undefined, "all-markup", "no-markup"] as const) {
         const options = {
           ...createDefaultFindOptions(),
@@ -304,6 +319,10 @@ describe("page-dependent field search exclusion", () => {
         expect(findInDocument(onlyPageField, "3", options)).toEqual([]);
         expect(findInDocument(source, "3", options).map(project)).toEqual(expected);
         expect(findInProseMirrorDocument(pmDoc, "3", options).map(project)).toEqual(expected);
+        expect(findInDocument(source, "head 3", options)).toHaveLength(0);
+        expect(findInProseMirrorDocument(pmDoc, "head 3", options)).toHaveLength(0);
+        expect(findInDocument(pageOnly, "3", options)).toHaveLength(0);
+        expect(findInProseMirrorDocument(pageOnlyPm, "3", options)).toHaveLength(0);
         expect(findInDocument(source, "tail", options).map(project)).toEqual([
           { paragraphIndex: 0, startOffset: 9, endOffset: 13, text: "tail" },
         ]);
@@ -322,6 +341,14 @@ describe("field and native text search projection parity", () => {
       };
       const source: Document = { package: { document: { content: [sourceParagraph] } } };
       const pmDoc = toProseDoc(source);
+      const fieldNode = pmDoc.child(0).child(1);
+      if (fieldNode.type.name === "structuredField") {
+        const normalized = canonicalFieldNode(fieldNode);
+        expect(expectFieldAttrs(normalized).displayText).toBe(
+          getFindParagraphText({ type: "paragraph", content: [field] }),
+        );
+        expect(canonicalFieldNode(normalized)).toBe(normalized);
+      }
       const saved = fromProseDoc(pmDoc, source, { stylesheetSource: { type: "package" } });
       const savedParagraph = saved.package.document.content.at(0);
       if (savedParagraph?.type !== "paragraph") panic("Roundtrip paragraph missing");
@@ -353,10 +380,21 @@ describe("field and native text search projection parity", () => {
         }
       }
       expect(findInDocument(source, "REF bookmark", createDefaultFindOptions())).toHaveLength(0);
-      if (["simpleDigit", "complexDigit", "simpleString", "complexString"].includes(name)) {
+      if (
+        [
+          "simpleDigit",
+          "complexDigit",
+          "simpleString",
+          "complexString",
+          "simpleHyphens",
+          "complexHyphens",
+          "complexTokens",
+          "opaqueRun",
+        ].includes(name)
+      ) {
         expect(pmDoc.child(0).child(1).type.name).toBe("field");
       }
-      if (["simpleHyphens", "complexHyphens", "simpleTokens", "complexTokens"].includes(name)) {
+      if (["simpleTokens", "transparent", "hyperlink", "opaqueInline"].includes(name)) {
         expect(pmDoc.child(0).child(1).type.name).toBe("structuredField");
       }
     },

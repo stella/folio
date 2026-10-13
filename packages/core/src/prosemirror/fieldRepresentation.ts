@@ -1,4 +1,5 @@
 import type { Node as PMNode } from "prosemirror-model";
+import { getInlineDisplayText } from "./inlineDisplayText";
 import { INLINE_WRAPPER_MARK_NAME } from "./extensions/marks/InlineWrapperExtension";
 
 /** Current children alone decide whether a field needs editable structural content. */
@@ -18,9 +19,10 @@ export const fieldRequiresStructuredContent = (children: readonly PMNode[]): boo
 /** Resolution returns text-only fields to the same atom representation as initial conversion. */
 export const canonicalFieldNode = (node: PMNode): PMNode => {
   if (node.type.name !== "structuredField") return node;
-  const attrs = { ...node.attrs, displayText: node.textContent };
+  const displayText = getInlineDisplayText(node);
+  const attrs = { ...node.attrs, displayText };
   if (fieldRequiresStructuredContent(node.content.content)) {
-    return node.attrs["displayText"] === node.textContent
+    return node.attrs["displayText"] === displayText
       ? node
       : node.type.create(attrs, node.content, node.marks);
   }
