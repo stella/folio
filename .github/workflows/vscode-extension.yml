@@ -68,12 +68,18 @@ jobs:
           grep -q 'extension/dist/editor/editor\.css$' "$RUNNER_TEMP/vsix.txt"
           grep -q 'extension/dist/editor/fonts/.*\.woff2$' "$RUNNER_TEMP/vsix.txt"
 
+      - name: Resolve current stable VS Code for the cache
+        id: editor-version
+        run: |
+          version=$(curl -fsSL https://update.code.visualstudio.com/api/releases/stable | jq -er '.[0]')
+          echo "stable=$version" >> "$GITHUB_OUTPUT"
+
       - name: Cache VS Code for the smoke test
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: plugins/vscode/.vscode-test
-          key: vscode-test-${{ runner.os }}-1.86.0-stable-${{ github.run_id }}
-          restore-keys: vscode-test-${{ runner.os }}-1.86.0-stable-
+          key: vscode-test-${{ runner.os }}-1.86.0-${{ steps.editor-version.outputs.stable }}
+          restore-keys: vscode-test-${{ runner.os }}-1.86.0-
 
       # Opens a .docx in a real VS Code with the built extension, types, saves,
       # and reverts (test/smoke).
