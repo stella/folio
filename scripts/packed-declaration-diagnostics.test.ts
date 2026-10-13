@@ -74,6 +74,16 @@ test("published declarations reject unresolved subpaths of declared dependencies
       'export type Model = import("third-party/private").Model;',
     );
     expect(check()).toEqual([]);
+    await writeFile(
+      path.join(editor, "index.d.ts"),
+      'import type { Component } from "./Component.vue"; export type Model = Component;',
+    );
+    expect(check().map(({ code }) => code)).toContain(2307);
+    await writeFile(
+      path.join(editor, "Component.vue.d.ts"),
+      "export type Component = { value: string };\n",
+    );
+    expect(check()).toEqual([]);
   } finally {
     await rm(consumer, { recursive: true, force: true });
   }
