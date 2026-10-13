@@ -321,6 +321,7 @@ const reconcilePartRelationships = (
   return { ...document, package: { ...document.package, relationships } };
 };
 
+/** Reconcile modeled comment and numbering parts with their document relationships. */
 export const reconcileDocumentPartRelationships = (document: Document): Document =>
   reconcilePartRelationships(document, "document");
 
