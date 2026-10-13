@@ -88,13 +88,14 @@ test("round-trip comparison checks both full resolution documents", async () => 
   await assertReviewRoundTrip({ live: reviewer, reopened, context: "round trip" });
   const changed = reopened.toDocument();
   changed.package.document.content.push(paragraph("Different"));
+  const changedSaved = await openReviewer(new Uint8Array(await createDocx(changed)));
   await assert.rejects(
     assertReviewRoundTrip({
       live: reviewer,
       reopened: {
         getContent: () => reopened.getContent(),
         getChanges: () => reopened.getChanges(),
-        toDocument: () => changed,
+        toResolvedDocument: (decision) => changedSaved.toResolvedDocument(decision),
       },
       context: "changed resolution",
     }),
@@ -115,13 +116,14 @@ test("round-trip comparison checks both full resolution documents", async () => 
     }
   }
   assert.ok(altered > 0);
+  const rejectedSaved = await openReviewer(new Uint8Array(await createDocx(rejected)));
   await assert.rejects(
     assertReviewRoundTrip({
       live: reviewer,
       reopened: {
         getContent: () => reopened.getContent(),
         getChanges: () => reopened.getChanges(),
-        toDocument: () => rejected,
+        toResolvedDocument: (decision) => rejectedSaved.toResolvedDocument(decision),
       },
       context: "changed rejected content",
     }),
@@ -158,16 +160,58 @@ test("round-trip comparison preserves table formatting in parsed resolution pack
   const cell = table.rows.at(0)?.cells.at(0);
   if (!cell) throw new Error("Expected table cell");
   cell.formatting = { ...cell.formatting, textDirection: "tbRl" };
+  const changedSaved = await openReviewer(new Uint8Array(await createDocx(changed)));
   await assert.rejects(
     assertReviewRoundTrip({
       live: reviewer,
       reopened: {
         getContent: () => reopened.getContent(),
         getChanges: () => reopened.getChanges(),
-        toDocument: () => changed,
+        toResolvedDocument: (decision) => changedSaved.toResolvedDocument(decision),
       },
       context: "changed table formatting",
     }),
     /accept-all document differs/,
   );
+});
+
+// Coverage alone missed idempotent loss of a revision's original formatting.
+test("round-trip comparison detects lossy revision formatting with unchanged coverage", async () => {
+  const model = fromMarkdown("Alpha");
+  const sourceParagraph = model.package.document.content.at(0);
+  if (sourceParagraph?.type !== "paragraph") throw new Error("Expected paragraph");
+  const run = sourceParagraph.content.find(({ type }) => type === "run");
+  if (run?.type !== "run") throw new Error("Expected run");
+  run.formatting = { bold: true };
+  run.propertyChanges = [
+    {
+      type: "runPropertyChange",
+      info: { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+      previousFormatting: { italic: true },
+    },
+  ];
+  const reviewer = await openReviewer(new Uint8Array(await createDocx(model)));
+  const original = structuredClone(reviewer.toDocument());
+  const lossy = structuredClone(reviewer.toDocument());
+  const lossyParagraph = lossy.package.document.content.at(0);
+  if (lossyParagraph?.type !== "paragraph") throw new Error("Expected paragraph");
+  const lossyRun = lossyParagraph.content.find(({ type }) => type === "run");
+  const change = lossyRun?.type === "run" ? lossyRun.propertyChanges?.at(0) : undefined;
+  if (!change) throw new Error("Expected formatting revision");
+  delete change.previousFormatting;
+  // Simulate an exporter that drops the same field on every save. The live
+  // in-memory resolution remains independent of that lossy export boundary.
+  const live = {
+    getContent: () => reviewer.getContent(),
+    getChanges: () => reviewer.getChanges(),
+    toDocument: () => lossy,
+    toResolvedDocument: (decision: "accept" | "reject") => reviewer.toResolvedDocument(decision),
+  };
+  const reopened = await openReviewer(new Uint8Array(await createDocx(live.toDocument())));
+  assertRevisionCoverage(live.getChanges(), reopened.getChanges());
+  await assert.rejects(
+    assertReviewRoundTrip({ live, reopened, context: "lossy formatting save" }),
+    /reject-all document differs/,
+  );
+  assert.deepEqual(structuredClone(reviewer.toDocument()), original);
 });

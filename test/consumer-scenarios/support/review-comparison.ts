@@ -4,7 +4,7 @@ import { openReviewer } from "./documents.ts";
 import { projectContentPair } from "./identity.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
-type ReviewSource = Pick<Reviewer, "getContent" | "getChanges" | "toDocument">;
+type ReviewSource = Pick<Reviewer, "getContent" | "getChanges" | "toResolvedDocument">;
 type Change = ReturnType<Reviewer["getChanges"]>[number];
 type Coverage = Pick<Change, "type" | "author" | "date" | "text" | "blockId">;
 
@@ -33,10 +33,8 @@ export const assertRevisionCoverage = (left: readonly Change[], right: readonly 
   assert.deepEqual(revisionCoverage(right), revisionCoverage(left));
 
 const resolved = async (reviewer: ReviewSource, decision: "accept" | "reject") => {
-  // Copy the live model independently of the package-saving path under test.
-  const copy = await openReviewer(new Uint8Array(await createDocx(reviewer.toDocument())));
-  if (decision === "accept") copy.acceptAll();
-  else copy.rejectAll();
+  // Resolve before any serialization, so a lossy revision save cannot alter both baselines.
+  const document = reviewer.toResolvedDocument(decision);
   const positional = new Set(
     reviewer
       .getContent()
@@ -44,7 +42,7 @@ const resolved = async (reviewer: ReviewSource, decision: "accept" | "reject") =
       .map(({ id }) => id),
   );
   // Compare persisted resolved documents, rather than editor capture metadata.
-  const bytes = await copy.toBuffer();
+  const bytes = await createDocx(document);
   const persisted = await openReviewer(new Uint8Array(bytes));
   // Parse the saved package directly: editor capture retains base section
   // mirrors and resolves inherited cell formatting into display attributes.

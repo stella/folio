@@ -2805,6 +2805,19 @@ export class FolioDocxReviewer {
     };
   }
 
+  /** Resolve ordinary revisions on a detached in-memory document. */
+  toResolvedDocument(decision: "accept" | "reject"): Document {
+    const copy = new FolioDocxReviewer({
+      baseDocument: this.toDocument(),
+      originalBuffer: this.originalBuffer,
+      state: this.state,
+      author: this.author,
+    });
+    if (decision === "accept") copy.acceptAll();
+    else copy.rejectAll();
+    return copy.toDocument();
+  }
+
   /** The current document model with edits merged back in. */
   toDocument(): Document {
     const document = this.documentFromStateSnapshot(this.captureReviewerState());

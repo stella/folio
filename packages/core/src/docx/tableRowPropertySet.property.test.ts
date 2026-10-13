@@ -28,6 +28,7 @@ import { CONTAINER_CHILDREN, type DeclaredChild } from "./containerChildren.gen"
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
 import { parseTable } from "./tableParser";
+import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -223,4 +224,42 @@ describe("a row's property set survives a rebuild", () => {
     expect(saved).toContain('<w:trPrChange w:id="6" w:author="Reviewer"');
     expect(saved).toContain("<w:tblHeader/>");
   });
+});
+
+// Metadata-only trPr carriers must not become authored empty row properties.
+test("row revision carriers preserve absent empty and populated property sets", () => {
+  const reopen = (table: Table) =>
+    parsed(
+      serializeTable(table, serializeParagraph).replace(
+        "<w:tbl>",
+        `<w:tbl xmlns:w="${W}" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}">`,
+      ),
+    );
+  for (const presence of ["absent", "empty", "populated"] as const) {
+    for (const kind of ["insertion", "deletion", "formatting"] as const) {
+      const source = parsed(tableXml(""));
+      const row = source.rows.at(0);
+      if (!row) throw new Error("Expected row");
+      if (presence === "absent") delete row.formatting;
+      else
+        row.formatting =
+          presence === "empty" ? {} : { height: { value: 480 }, heightRule: "atLeast" };
+      const expected = reopen(source).rows.at(0)?.formatting;
+      const info = { id: 7, author: "Reviewer" };
+      if (kind === "formatting")
+        row.propertyChanges = [{ type: "tableRowPropertyChange", info, previousFormatting: {} }];
+      else
+        row.structuralChange = {
+          type: kind === "insertion" ? "tableRowInsertion" : "tableRowDeletion",
+          info,
+        };
+      const pending = reopen(source);
+      const pendingRow = pending.rows.at(0);
+      if (!pendingRow) throw new Error("Expected pending row");
+      delete pendingRow.structuralChange;
+      delete pendingRow.propertyChanges;
+      const resolved = reopen(pending);
+      expect(resolved.rows.at(0)?.formatting).toStrictEqual(expected);
+    }
+  }
 });

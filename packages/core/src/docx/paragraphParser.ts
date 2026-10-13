@@ -172,7 +172,7 @@ function extractMathText(el: XmlElement): string {
  * Capture the authored paragraph properties separately from structural and
  * revision children, which have their own model fields and lifecycles.
  */
-const captureParagraphPropertySource = (pPr: XmlElement): string =>
+const captureParagraphPropertySource = (pPr: XmlElement, paragraph: Paragraph): string =>
   captureVerbatimXml(
     cloneElement(pPr, {
       elements: (pPr.elements ?? []).flatMap((child) => {
@@ -189,20 +189,21 @@ const captureParagraphPropertySource = (pPr: XmlElement): string =>
         if (localName !== "rPr" || !WORDPROCESSINGML_NAMESPACE_URIS.has(child.namespaceUri ?? "")) {
           return [child];
         }
-        return [
-          cloneElement(child, {
-            elements: (child.elements ?? []).filter((runProperty) => {
-              if (runProperty.type !== "element") {
-                return true;
-              }
-              const runPropertyName = getLocalName(runProperty.name);
-              return (
-                !WORDPROCESSINGML_NAMESPACE_URIS.has(runProperty.namespaceUri ?? "") ||
-                !PARAGRAPH_MARK_CHANGE_KINDS.some((kind) => kind === runPropertyName)
-              );
-            }),
-          }),
-        ];
+        const elements = (child.elements ?? []).filter((runProperty) => {
+          if (runProperty.type !== "element") return true;
+          const runPropertyName = getLocalName(runProperty.name);
+          return (
+            !WORDPROCESSINGML_NAMESPACE_URIS.has(runProperty.namespaceUri ?? "") ||
+            !PARAGRAPH_MARK_CHANGE_KINDS.some((kind) => kind === runPropertyName)
+          );
+        });
+        // Removing sibling-owned revisions must not author an empty property set.
+        if (
+          paragraph.formatting?.runProperties === undefined &&
+          elements.every((element) => element.type === "text" && !(element.text ?? "").trim())
+        )
+          return [];
+        return [cloneElement(child, { elements })];
       }),
     }),
   );
@@ -2408,7 +2409,7 @@ export function parseParagraph(
   }
 
   if (pPr) {
-    assignParagraphPropertySource(paragraph, captureParagraphPropertySource(pPr));
+    assignParagraphPropertySource(paragraph, captureParagraphPropertySource(pPr, paragraph));
   }
 
   return paragraph;
