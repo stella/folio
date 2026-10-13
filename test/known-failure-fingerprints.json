@@ -37,7 +37,7 @@
       "acceptance": {
         "issue": 1350,
         "primary": "de4ea4376e144f1e",
-        "title": "Fuzz failure [24e996d99fd086cb]: consumer flow trackedChanges / tracked-changes: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked):",
+        "title": "Fuzz failure [24e996d99fd086cb]: consumer flow trackedChanges / tracked-changes: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct \u2192 tracked):",
         "flow": {
           "version": 1,
           "kind": "random",
@@ -125,7 +125,7 @@
       "acceptance": {
         "issue": 1355,
         "primary": "a382d2d2b765caf7",
-        "title": "Fuzz failure [0151749367fd20ab]: consumer flow directNumbered / tracked-changes: end of flow: [rejectAll] the flow's batches replayed tracked and rejected do not give the fixture back (fixture → rejected):",
+        "title": "Fuzz failure [0151749367fd20ab]: consumer flow directNumbered / tracked-changes: end of flow: [rejectAll] the flow's batches replayed tracked and rejected do not give the fixture back (fixture \u2192 rejected):",
         "flow": {
           "version": 1,
           "kind": "random",
@@ -252,7 +252,7 @@
       "acceptance": {
         "issue": 1361,
         "primary": "b3cc737b6d20bf0c",
-        "title": "Fuzz failure [3d8b6715ac1390a3]: consumer flow styleNumbered / direct: [readerStability] getContent reads otherwise after the save than before it (before → after):",
+        "title": "Fuzz failure [3d8b6715ac1390a3]: consumer flow styleNumbered / direct: [readerStability] getContent reads otherwise after the save than before it (before \u2192 after):",
         "flow": {
           "version": 1,
           "kind": "collisions",
@@ -1456,7 +1456,7 @@
                 {
                   "type": "replaceInBlock",
                   "blockId": "5E88C024",
-                  "find": "🎉",
+                  "find": "\ud83c\udf89",
                   "replace": "",
                   "precondition": {
                     "blockTextHash": "hs2py72"
@@ -2362,71 +2362,6 @@
     {
       "fingerprint": "3fd5801d7296db3e",
       "issueOrPr": "#1384",
-      "firstSeen": "2026-10-02"
-    },
-    {
-      "fingerprint": "549dda931aa1b431",
-      "issueOrPr": "#1466",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "type": "consumer",
-        "issue": 1466,
-        "primary": "3031f8841bda4736",
-        "reportSeed": 1026398924,
-        "title": "tracked bullet acceptance followed by merge leaves a missing numbering definition",
-        "causeMessage": "Cannot repack invalid DOCX document model:\nDOCX model error at package.document.content[3].formatting.numPr.numId: Numbering definition 3 is missing.",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "trackedChanges",
-          "mode": "tracked-changes",
-          "seed": 1026397197,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 1338526882,
-              "operations": [
-                {
-                  "type": "insertAfterBlock",
-                  "blockId": "5E88C024",
-                  "text": "Agreement party supplier invoice term.",
-                  "numbering": {
-                    "kind": "newList",
-                    "format": "bullet"
-                  }
-                }
-              ]
-            },
-            {
-              "action": "accept all",
-              "seed": 1714597764
-            },
-            {
-              "action": "story batch",
-              "seed": 4114059415,
-              "operations": [
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "31617F9A",
-                  "separator": " "
-                }
-              ]
-            }
-          ],
-          "weights": {
-            "version": 1,
-            "cells": {},
-            "operations": []
-          },
-          "origin": "shrunk from unpin+splice+reseed of 716b1e669abc7a9b",
-          "title": "PINNED #1466, reported seed 1026398924: inserted bullet accepted before a tracked merge must remain saveable"
-        }
-      }
-    },
-    {
-      "fingerprint": "3031f8841bda4736",
-      "issueOrPr": "#1466",
       "firstSeen": "2026-10-02"
     },
     {

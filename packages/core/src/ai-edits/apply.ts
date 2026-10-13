@@ -5646,6 +5646,13 @@ const applyFolioAIEditOperationsInternal = ({
           // merge tracked leaves it. `join` keeps the first node's attrs.
           const secondSection = second ? sectionPropertiesOf(second) : null;
           const joined = tr.doc.nodeAt(item.blockFrom);
+          if (joined && second) {
+            tr = tr.setNodeAttribute(
+              item.blockFrom,
+              "pPrMark",
+              expectParagraphAttrs(second).pPrMark ?? null,
+            );
+          }
           if (joined && sectionPropertiesOf(joined) !== secondSection) {
             tr = tr.setNodeAttribute(item.blockFrom, "_sectionProperties", secondSection);
           }

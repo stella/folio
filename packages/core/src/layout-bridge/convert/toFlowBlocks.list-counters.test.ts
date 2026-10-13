@@ -65,6 +65,33 @@ function markersOf(blocks: ReturnType<typeof toFlowBlocks>): string[] {
 }
 
 describe("toFlowBlocks counter sharing by abstractNumId", () => {
+  test("empty historical formatting never borrows current list membership", () => {
+    for (const previousFormatting of [undefined, {}, { numPrFromStyle: null }]) {
+      const streams = { final: createListCounterState(), original: createListCounterState() };
+      const changed = {
+        numPr: paragraphNumberingAttr({ kind: "reference", numId: 7, ilvl: 0 }),
+        listMarkerTemplate: "%1.",
+        listNumFmt: "decimal",
+        _propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: INS_MARK.info,
+            ...(previousFormatting === undefined ? {} : { previousFormatting }),
+          },
+        ],
+      } satisfies ParagraphAttrs;
+      const projected = advanceVisibleListMarker(changed, streams);
+      expect(projected.advances.map(({ marker }) => marker)).toEqual(["1.", null]);
+      const deleted = advanceVisibleListMarker(
+        { ...changed, _propertyChanges: null, pPrMark: DEL_MARK },
+        streams,
+      );
+      expect(deleted.marker).toBe("1.");
+      expect(streams.final.counters.get(7)?.at(0)).toBe(1);
+      expect(streams.original.counters.get(7)?.at(0)).toBe(1);
+    }
+  });
+
   test("rejects levels outside the OOXML 0..8 boundary before growing counter state", () => {
     for (const ilvl of [-1, 9, 1_000_000, Number.POSITIVE_INFINITY]) {
       const state = createListCounterState();
@@ -94,15 +121,24 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
   test("numId zero templates reuse the most recently advanced interleaved list", () => {
     const state = createListCounterState();
 
-    expect(advanceListMarker({ numPr: { kind: "reference", numId: 1, ilvl: 0 } }, state)).toBe(
-      "1.",
-    );
-    expect(advanceListMarker({ numPr: { kind: "reference", numId: 2, ilvl: 0 } }, state)).toBe(
-      "1.",
-    );
-    expect(advanceListMarker({ numPr: { kind: "reference", numId: 1, ilvl: 0 } }, state)).toBe(
-      "2.",
-    );
+    expect(
+      advanceListMarker(
+        { numPr: { kind: "reference", numId: 1, ilvl: 0 }, listNumFmt: "decimal" },
+        state,
+      ),
+    ).toBe("1.");
+    expect(
+      advanceListMarker(
+        { numPr: { kind: "reference", numId: 2, ilvl: 0 }, listNumFmt: "decimal" },
+        state,
+      ),
+    ).toBe("1.");
+    expect(
+      advanceListMarker(
+        { numPr: { kind: "reference", numId: 1, ilvl: 0 }, listNumFmt: "decimal" },
+        state,
+      ),
+    ).toBe("2.");
     const cloned = cloneListCounterState(state);
     expect(
       advanceListMarker(
@@ -188,6 +224,7 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     const attrs = {
       numPrFromStyle: paragraphNumberingAttr({ kind: "reference", numId: 7, ilvl: 1 }),
       listMarkerTemplate: "(%1.%2)",
+      listNumFmt: "decimal",
       listAbstractNumId: 4,
       listLevelNumFmts: ["decimal", "decimal"],
     } satisfies ParagraphAttrs;

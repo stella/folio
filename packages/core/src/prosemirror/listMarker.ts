@@ -123,10 +123,9 @@ export function cloneListCounterState(state: ListCounterState): ListCounterState
 }
 
 function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
-  const previous = attrs._propertyChanges?.find(
-    ({ previousFormatting }) => previousFormatting !== undefined,
-  )?.previousFormatting;
-  if (!previous) return null;
+  const change = attrs._propertyChanges?.at(0);
+  if (!change) return null;
+  const previous = change.previousFormatting ?? {};
   return {
     ...(previous.numPr == null ? {} : { numPr: previous.numPr }),
     ...(previous.numPrFromStyle == null ? {} : { numPrFromStyle: previous.numPrFromStyle }),
