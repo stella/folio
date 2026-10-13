@@ -1,6 +1,7 @@
 import type { CSSProperties, VNodeChild } from "vue";
 
 import type { ReviewDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
+import type { EditorReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
@@ -289,7 +290,7 @@ export type DocxEditorProps = {
   /** Callback when the editing mode changes */
   onModeChange?: (mode: EditorMode) => void;
   /** Callback when a readonly user action would mutate the document. */
-  onReadonlyEditAttempt?: () => void;
+  onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
   /**
    * Controlled comments array. When provided, the editor reads comment thread
    * metadata from this prop and emits every change through `onCommentsChange`.
@@ -427,6 +428,8 @@ export type HighlightPassageOptions = {
  * Imperative handle exposed by the DocxEditor component.
  */
 export type DocxEditorRef = {
+  /** Why user edits are blocked in the current view, or null when editing is enabled. */
+  getReadOnlyReason: () => EditorReadOnlyReason | null;
   /** Get the current document */
   getDocument: () => Document | null;
   /** Whether the live ProseMirror state has edits that have not been serialized. */

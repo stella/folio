@@ -261,3 +261,5 @@ export {
 } from "@stll/folio-core/markdown";
 
 export type { ReviewDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
+
+export type { EditorReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";

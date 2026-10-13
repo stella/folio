@@ -17,6 +17,7 @@
     :view="view"
     :markup-view="markupView"
     :read-only="readOnly"
+    :on-readonly-edit-attempt="onReadonlyEditAttempt"
     :scroll-visible-position-into-view="scrollVisiblePositionIntoView"
     @close="emit('update:showFindReplace', false)"
   />
@@ -73,7 +74,10 @@
 
 <script setup lang="ts">
 import type { EditorView } from "prosemirror-view";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
 
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import type { SectionProperties } from "@stll/folio-core/types/document";
@@ -105,6 +109,7 @@ withDefaults(
     view: EditorView | null;
     markupView?: DisplayMode;
     readOnly?: boolean;
+    onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
     bookmarks: BookmarkOption[];
     selectedImagePmPos: number | null;
     sectionProperties: SectionProperties | null;

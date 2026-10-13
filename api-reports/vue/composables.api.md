@@ -16,6 +16,7 @@ import { CSSProperties } from 'vue';
 import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
 import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
+import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { extractTrackedChanges } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
@@ -207,6 +208,7 @@ export type UseFindReplaceOptions = {
     editorView: Readonly<Ref<EditorView | null>>;
     markupView?: Readonly<Ref<DisplayMode>>;
     readOnly?: Readonly<Ref<boolean>>;
+    onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
     scrollVisiblePositionIntoView?: (pmPos: number) => void;
 };
 

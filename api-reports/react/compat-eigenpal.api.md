@@ -20,6 +20,7 @@ import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { DocxCompatibility } from '@stll/folio-core/docx/compatibility';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { FolioAIEditApplyMode } from '@stll/folio-core/ai-edits';
@@ -119,6 +120,7 @@ export type DocxEditorHandle = EditorHandle & {
 
 // @public
 export type DocxEditorRef = {
+    getReadOnlyReason: () => EditorReadOnlyReason | null;
     getDocument: () => Document_2 | null;
     hasPendingChanges: () => boolean;
     getEditorRef: () => PagedEditorRef | null;

@@ -96,7 +96,10 @@ import {
   resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
 import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 
@@ -137,6 +140,7 @@ export const applyWithStagedOperationComments = <
 };
 
 export type UseDocxEditorRefApiOptions = {
+  getReadOnlyReason?: () => EditorReadOnlyReason | null;
   /** Headless controller handle (imperative API + events; Seam 6). */
   editor: FolioEditor;
   /** Off-screen ProseMirror EditorView, or null before mount. */
@@ -875,6 +879,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const view = opts.editorView.value;
       return view ? getCommentAnchorsFromDoc(view.state.doc) : [];
     },
+    getReadOnlyReason: () => opts.getReadOnlyReason?.() ?? null,
     getSelectionText: () => {
       const view = opts.editorView.value;
       return view ? getSelectedText(view.state) : "";

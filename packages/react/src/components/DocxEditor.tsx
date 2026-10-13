@@ -711,13 +711,20 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const [anchorPositions, setAnchorPositions] =
     useState<Map<string, number>>(EMPTY_ANCHOR_POSITIONS);
 
-  const { editingMode, readOnly, trackChangesOn, toggleTrackChanges, displayMode, setDisplayMode } =
-    useEditorMode({
-      modeProp,
-      onModeChange,
-      readOnlyProp,
-      ...(reviewDisplayMode === undefined ? {} : { reviewDisplayMode }),
-    });
+  const {
+    editingMode,
+    readOnly,
+    readOnlyReason,
+    trackChangesOn,
+    toggleTrackChanges,
+    displayMode,
+    setDisplayMode,
+  } = useEditorMode({
+    modeProp,
+    onModeChange,
+    readOnlyProp,
+    ...(reviewDisplayMode === undefined ? {} : { reviewDisplayMode }),
+  });
 
   useEffect(() => {
     pagedEditorRef.current
@@ -1847,24 +1854,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     return true;
   }, []);
 
-  const replaceEditorMatches = useCallback(
-    (matches: readonly FindMatch[], replacement: string): boolean => {
-      const view = pagedEditorRef.current?.getView();
-      if (readOnly || !view) return false;
-      const ranges: { from: number; to: number }[] = [];
-      for (const match of matches) {
-        if (!match.authoredRange) return false;
-        ranges.push(match.authoredRange);
-      }
-      const transaction = view.state.tr;
-      for (const range of ranges.toSorted((left, right) => right.from - left.from)) {
-        transaction.insertText(replacement, range.from, range.to);
-      }
-      view.dispatch(transaction);
-      return true;
-    },
-    [readOnly],
-  );
+  const notifyReadonlyEditAttempt = useCallback(() => {
+    if (readOnlyReason) onReadonlyEditAttempt?.(readOnlyReason);
+  }, [readOnlyReason, onReadonlyEditAttempt]);
 
   // Find/Replace handlers (depends on handleDocumentChange)
   const {
@@ -1883,7 +1875,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     handleDocumentChange,
     findReplace,
     selectMatch: selectFindMatch,
-    replaceEditorMatches,
+    readOnlyReason,
+    onReadonlyEditAttempt,
   });
 
   useLayoutEffect(() => {
@@ -3454,6 +3447,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   useImperativeHandle(
     ref,
     () => ({
+      getReadOnlyReason: () => readOnlyReason,
       getDocument: () => buildCurrentDocument(),
       hasPendingChanges: () => {
         const view = pagedEditorRef.current?.getView();
@@ -3488,6 +3482,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         openFind(readFindSelectionSeed());
       },
       openReplace: () => {
+        if (readOnlyReason) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         openReplace(readFindSelectionSeed());
       },
       loadDocument: (document) => {
@@ -4137,6 +4135,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       author,
       buildCurrentDocument,
       displayMode,
+      readOnlyReason,
+      notifyReadonlyEditAttempt,
       scrollPageInfo,
       handleSave,
       setZoomWithViewportAnchor,
@@ -5358,7 +5358,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           {...(onCut !== undefined ? { onCut } : {})}
                           {...(onPaste !== undefined ? { onPaste } : {})}
                           {...(onReadonlyEditAttempt !== undefined
-                            ? { onReadOnlyEditAttempt: onReadonlyEditAttempt }
+                            ? { onReadOnlyEditAttempt: notifyReadonlyEditAttempt }
                             : {})}
                           onSelectionChange={handlePagedSelectionChange}
                           {...(onSelectionTextChange !== undefined

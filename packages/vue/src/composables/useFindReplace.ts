@@ -4,7 +4,11 @@ import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import { getEditorReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
 import {
   findInMarkupView,
   type ProseMirrorFindMatch,
@@ -15,6 +19,7 @@ export type UseFindReplaceOptions = {
   editorView: Readonly<Ref<EditorView | null>>;
   markupView?: Readonly<Ref<DisplayMode>>;
   readOnly?: Readonly<Ref<boolean>>;
+  onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
   scrollVisiblePositionIntoView?: (pmPos: number) => void;
 };
 
@@ -38,6 +43,7 @@ export function useFindReplace({
   editorView,
   markupView,
   readOnly,
+  onReadonlyEditAttempt,
   scrollVisiblePositionIntoView,
 }: UseFindReplaceOptions): UseFindReplaceReturn {
   const manager = new FindReplaceManager<ProseMirrorFindMatch>();
@@ -100,13 +106,23 @@ export function useFindReplace({
     return stepped.match;
   };
 
+  const refuseReadonlyReplacement = (view: EditorView): boolean => {
+    const reason = getEditorReadOnlyReason({
+      editingMode: view.editable ? "editing" : "viewing",
+      readOnlyProp: readOnly?.value ?? false,
+      displayMode: markupView?.value ?? "all-markup",
+    });
+    if (reason === null) return false;
+    onReadonlyEditAttempt?.(reason);
+    return true;
+  };
+
   const replaceCurrent = (): boolean => {
     const view = editorView.value;
     const match = currentMatch.value;
     if (
       !view ||
-      readOnly?.value ||
-      !view.editable ||
+      refuseReadonlyReplacement(view) ||
       !match ||
       match.to > view.state.doc.content.size
     ) {
@@ -119,7 +135,7 @@ export function useFindReplace({
 
   const replaceAll = (): number => {
     const view = editorView.value;
-    if (!view || readOnly?.value || !view.editable || matches.value.length === 0) {
+    if (!view || refuseReadonlyReplacement(view) || matches.value.length === 0) {
       return 0;
     }
     let transaction = view.state.tr;

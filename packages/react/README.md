@@ -53,6 +53,13 @@ display). It controls the displayed text, formatting, numbering, table rows,
 pagination and search. The controlled prop updates the view without reparsing.
 Omit it to let the editor's review selector control the view.
 
+Projected views (`final`, `original`, and Simple Markup in the review selector)
+are read-only: typing and replacement are refused. Switch to `all-markup` to
+edit. `ref.current.getReadOnlyReason()` returns `review-display-mode`,
+`host-read-only`, `viewing-mode`, or `null` when editing is allowed.
+`onReadonlyEditAttempt(reason)` receives the exported `EditorReadOnlyReason`
+when a user attempts an edit.
+
 `showCommentHighlights` defaults to `true` and independently hides comment
 highlights in `all-markup`. Highlights are always hidden in `final` and
 `original`. Neither prop changes the document, revisions or comments: saving

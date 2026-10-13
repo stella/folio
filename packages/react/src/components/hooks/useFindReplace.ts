@@ -16,7 +16,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorState } from "prosemirror-state";
 
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import { getReviewViewReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
 import { findInMarkupView } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import type { ProseMirrorFindMatch } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import type { Document } from "@stll/folio-core/types/document";
@@ -50,8 +54,8 @@ type UseFindReplaceParams = {
   findReplace: FindReplaceStateReturn;
   /** Select and reveal a match in the live editor */
   selectMatch?: (match: FindMatch) => boolean;
-  /** Replace projected matches through their authored editor ranges. */
-  replaceEditorMatches?: (matches: readonly FindMatch[], replaceText: string) => boolean;
+  readOnlyReason?: EditorReadOnlyReason | null;
+  onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
 };
 
 export type UseFindReplaceReturn = {
@@ -84,9 +88,11 @@ export function useFindReplace({
   handleDocumentChange,
   findReplace,
   selectMatch,
-  replaceEditorMatches,
+  readOnlyReason,
+  onReadonlyEditAttempt,
 }: UseFindReplaceParams): UseFindReplaceReturn {
   const markupView = markupViewProp ?? "all-markup";
+  const replacementRefusal = getReviewViewReadOnlyReason(markupView) ?? readOnlyReason ?? null;
   const manager = useMemo(() => new FindReplaceManager<FindMatch>(), []);
   const [currentResult, setCurrentResult] = useState<FindResult | null>(null);
   const activeSearch = useRef<{ searchText: string; options: FindOptions } | null>(null);
@@ -188,15 +194,6 @@ export function useFindReplace({
         return false;
       }
 
-      const result = manager.getResult();
-      const match = result?.matches.at(result.currentIndex);
-      if (match?.authoredRange) {
-        if (!replaceEditorMatches?.([match], replaceText)) return false;
-        const search = activeSearch.current;
-        if (search) handleFind(search.searchText, search.options);
-        return true;
-      }
-
       const newDoc = manager.replaceCurrent(currentDocument, replaceText);
       if (!newDoc) {
         return false;
@@ -205,7 +202,7 @@ export function useFindReplace({
       handleDocumentChange(newDoc);
       return true;
     },
-    [readDocumentState, manager, handleDocumentChange, replaceEditorMatches, handleFind],
+    [readDocumentState, manager, handleDocumentChange],
   );
 
   const handleReplaceAll = useCallback(
@@ -215,18 +212,6 @@ export function useFindReplace({
         return 0;
       }
 
-      const editorState = getEditorState?.();
-      if (editorState && markupView !== "all-markup") {
-        const matches = findInMarkupView({
-          state: editorState,
-          markupView,
-          searchText,
-          options,
-        }).map(toEditorFindMatch);
-        if (matches.length === 0 || !replaceEditorMatches?.(matches, replaceText)) return 0;
-        resetFindResult();
-        return matches.length;
-      }
       const matches = findInDocument(currentDocument, searchText, options);
       const outcome = manager.replaceAll(currentDocument, matches, replaceText);
       if (!outcome) {
@@ -237,16 +222,17 @@ export function useFindReplace({
       resetFindResult();
       return outcome.replacedCount;
     },
-    [
-      readDocumentState,
-      getEditorState,
-      markupView,
-      manager,
-      handleDocumentChange,
-      resetFindResult,
-      replaceEditorMatches,
-    ],
+    [readDocumentState, manager, handleDocumentChange, resetFindResult],
   );
+
+  const refuseReplace = useCallback(() => {
+    if (replacementRefusal) onReadonlyEditAttempt?.(replacementRefusal);
+    return false;
+  }, [replacementRefusal, onReadonlyEditAttempt]);
+  const refuseReplaceAll = useCallback(() => {
+    refuseReplace();
+    return 0;
+  }, [refuseReplace]);
 
   return {
     currentResult,
@@ -254,7 +240,7 @@ export function useFindReplace({
     handleFind,
     handleFindNext,
     handleFindPrevious,
-    handleReplace,
-    handleReplaceAll,
+    handleReplace: replacementRefusal ? refuseReplace : handleReplace,
+    handleReplaceAll: replacementRefusal ? refuseReplaceAll : handleReplaceAll,
   };
 }

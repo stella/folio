@@ -7,8 +7,15 @@ import { panic } from "better-result";
 import { act, createRef, useImperativeHandle, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { EditorState } from "prosemirror-state";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
 import { schema } from "@stll/folio-core/prosemirror/schema";
+import { parseDocx } from "@stll/folio-core/docx/parser";
+import { repackDocx } from "@stll/folio-core/docx/rezip";
+import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
+import { buildRawPackage, SECTION, WORD_STYLES } from "@stll/folio-core/__tests__/documentShapes";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import type { Document } from "@stll/folio-core/types/document";
 import type { FindMatch } from "../dialogs/findReplaceUtils";
@@ -27,13 +34,6 @@ type FindHarnessRef = {
   operations: ReturnType<typeof useFindReplace>;
   matches: FindMatch[];
 };
-
-type RecordedReplacement = { matches: readonly FindMatch[]; replacement: string };
-const createReplacementRecorder =
-  (replacements: RecordedReplacement[]) => (matches: readonly FindMatch[], replacement: string) => {
-    replacements.push({ matches, replacement });
-    return true;
-  };
 
 test("query and document resets clear manager navigation, reactive result, and dialog matches together", async () => {
   const ref = createRef<FindHarnessRef>();
@@ -107,20 +107,13 @@ test("switching markup views refreshes active results and preserves authored sel
   });
   const fixture = createEmptyDocument({ initialText: "needle kept" });
   const selected: FindMatch[] = [];
-  const Harness = ({
-    markupView,
-    replaceEditorMatches,
-  }: {
-    markupView: DisplayMode;
-    replaceEditorMatches?: (matches: readonly FindMatch[], replacement: string) => boolean;
-  }) => {
+  const Harness = ({ markupView }: { markupView: DisplayMode }) => {
     const findReplace = useFindDialogState();
     const containerRef = useRef<HTMLDivElement>(null);
     const operations = useFindReplace({
       documentState: fixture,
       getEditorState: () => state,
       markupView,
-      replaceEditorMatches,
       containerRef,
       handleDocumentChange: noop,
       findReplace,
@@ -148,22 +141,71 @@ test("switching markup views refreshes active results and preserves authored sel
     expect(selected.at(-1)?.authoredRange).toEqual({ from: 1, to: 7 });
     expect(getOperations().handleReplace("replacement")).toBe(false);
     expect(getOperations().handleReplaceAll("needle", "replacement", options)).toBe(0);
-    const replacements: RecordedReplacement[] = [];
-    const replaceEditorMatches = createReplacementRecorder(replacements);
-    await act(async () =>
-      root.render(<Harness markupView="original" replaceEditorMatches={replaceEditorMatches} />),
-    );
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
+test("replacement spanning a hidden revision is refused without changing saved bytes", async () => {
+  const input = await buildRawPackage({
+    styles: WORD_STYLES,
+    body:
+      '<w:p><w:r><w:t>left</w:t></w:r><w:del w:id="1" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"><w:r><w:delText xml:space="preserve"> hidden </w:delText></w:r></w:del><w:r><w:t>right</w:t></w:r></w:p>' +
+      SECTION(),
+  });
+  let currentDocument = await parseDocx(input, { preloadFonts: false, detectVariables: false });
+  let state = EditorState.create({ doc: toProseDoc(currentDocument) });
+  const authored = state.doc;
+  const savedBefore = new Uint8Array(
+    await repackDocx(currentDocument, { updateModifiedDate: false }),
+  );
+  const refusals: EditorReadOnlyReason[] = [];
+  const ref = createRef<FindHarnessRef>();
+  const Harness = ({ markupView }: { markupView: DisplayMode }) => {
+    const findReplace = useFindDialogState();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const operations = useFindReplace({
+      getDocumentState: () => currentDocument,
+      getEditorState: () => state,
+      markupView,
+      onReadonlyEditAttempt: (reason) => refusals.push(reason),
+      containerRef,
+      handleDocumentChange: (document) => {
+        currentDocument = document;
+        state = EditorState.create({ doc: toProseDoc(document) });
+      },
+      findReplace,
+    });
+    useImperativeHandle(ref, () => ({ operations, matches: findReplace.state.matches }));
+    return null;
+  };
+  const root = createRoot(document.createElement("div"));
+  const getOperations = () => ref.current?.operations ?? panic("Find hook handle missing");
+  try {
+    await act(async () => root.render(<Harness markupView="no-markup" />));
     await act(async () => {
+      expect(getOperations().handleFind("leftright", options)?.totalCount).toBe(1);
+    });
+    expect(ref.current?.matches.at(0)?.authoredRange).toEqual({ from: 1, to: 18 });
+    await act(async () => {
+      expect(getOperations().handleReplace("replacement")).toBe(false);
+      expect(getOperations().handleReplaceAll("leftright", "replacement", options)).toBe(0);
+    });
+    expect(state.doc).toBe(authored);
+    expect(
+      new Uint8Array(await repackDocx(currentDocument, { updateModifiedDate: false })),
+    ).toEqual(savedBefore);
+    expect(refusals).toEqual(["review-display-mode", "review-display-mode"]);
+    await act(async () => root.render(<Harness markupView="all-markup" />));
+    await act(async () => {
+      getOperations().handleFind("left", options);
       expect(getOperations().handleReplace("replacement")).toBe(true);
     });
-    expect(replacements.at(-1)).toMatchObject({
-      matches: [{ authoredRange: { from: 1, to: 7 } }],
-      replacement: "replacement",
-    });
+    expect(state.doc.textContent).toBe("replacement hidden right");
     await act(async () => {
-      expect(getOperations().handleReplaceAll("needle", "replacement", options)).toBe(1);
+      expect(getOperations().handleReplaceAll("right", "end", options)).toBe(1);
     });
-    expect(replacements).toHaveLength(2);
+    expect(state.doc.textContent).toBe("replacement hidden end");
   } finally {
     await act(async () => root.unmount());
   }

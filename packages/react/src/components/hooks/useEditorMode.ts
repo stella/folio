@@ -2,11 +2,15 @@ import { useCallback, useState, useSyncExternalStore } from "react";
 
 import {
   EditorModeManager,
-  isReadOnlyMode,
+  getEditorReadOnlyReason,
   isTrackChangesMode,
   toggledTrackChangesMode,
 } from "@stll/folio-core/managers/EditorModeManager";
-import type { DisplayMode, EditorMode } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
 
 import { reviewDisplayModeToDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
 import type { ReviewDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
@@ -31,6 +35,7 @@ export type UseEditorModeReturn = {
   setEditingMode: (mode: EditorMode) => void;
   /** True when the host opts into read-only OR the mode is `"viewing"`. */
   readOnly: boolean;
+  readOnlyReason: EditorReadOnlyReason | null;
   /** True when the mode is `"suggesting"`. */
   trackChangesOn: boolean;
   /** Toggle between `"editing"` and `"suggesting"`. */
@@ -80,7 +85,16 @@ export function useEditorMode({
     [modeProp, onModeChange, manager],
   );
 
-  const readOnly = isReadOnlyMode(editingMode, readOnlyProp);
+  const effectiveDisplayMode =
+    reviewDisplayMode === undefined
+      ? displayMode
+      : reviewDisplayModeToDisplayMode(reviewDisplayMode);
+  const readOnlyReason = getEditorReadOnlyReason({
+    editingMode,
+    readOnlyProp,
+    displayMode: effectiveDisplayMode,
+  });
+  const readOnly = readOnlyReason !== null;
   const trackChangesOn = isTrackChangesMode(editingMode);
 
   const toggleTrackChanges = useCallback(() => {
@@ -98,12 +112,10 @@ export function useEditorMode({
     editingMode,
     setEditingMode,
     readOnly,
+    readOnlyReason,
     trackChangesOn,
     toggleTrackChanges,
-    displayMode:
-      reviewDisplayMode === undefined
-        ? displayMode
-        : reviewDisplayModeToDisplayMode(reviewDisplayMode),
+    displayMode: effectiveDisplayMode,
     setDisplayMode,
   };
 }

@@ -40,6 +40,9 @@ bun add @stll/folio-core
 layout pipeline's `markupView` input. The shared projection reuses the
 accept-all/reject-all resolver without changing editor state. Layout and
 search consume that projection; saved DOCX always uses the authored state.
+`getEditorReadOnlyReason` in `managers/EditorModeManager` makes projected review
+views read-only. Both adapters expose the resulting `EditorReadOnlyReason`
+through `getReadOnlyReason()` and `onReadonlyEditAttempt(reason)`.
 `showCommentHighlights` on the layout pipeline defaults to `true`; final
 (`no-markup`) and original suppress comment highlights regardless of it.
 

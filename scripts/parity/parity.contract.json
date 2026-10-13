@@ -120,6 +120,7 @@
       "getEditorRef",
       "getPageText",
       "getSelectionText",
+      "getReadOnlyReason",
       "getScrollRoot",
       "getSuggestions",
       "getTargetPage",

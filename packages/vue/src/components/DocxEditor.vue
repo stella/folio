@@ -109,6 +109,7 @@
     <DocxEditorDialogs
       :markup-view="displayMode"
       :read-only="readOnly"
+      :on-readonly-edit-attempt="reportReadonlyEditAttempt"
       v-model:show-find-replace="showFindReplace"
       v-model:show-hyperlink="showHyperlink"
       v-model:show-insert-symbol="showInsertSymbol"
@@ -555,6 +556,7 @@ import DocxEditorOverlays from "./DocxEditor/DocxEditorOverlays.vue";
 import type { DocxEditorProps, EditorMode } from "./DocxEditor/types";
 import {
   isTrackChangesMode,
+  getEditorReadOnlyReason,
   toggledTrackChangesMode,
 } from "@stll/folio-core/managers/EditorModeManager";
 import { reviewDisplayModeToDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
@@ -677,7 +679,6 @@ function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
 }
 
 const editorMode = ref<EditorMode>(props.mode);
-const readOnly = computed(() => props.readOnly || editorMode.value === "viewing");
 
 // Review controls (mirrors React's `useEditorMode` display state + toggle):
 //  - `showReviewControls` gates the toolbar's track-changes toggle + markup
@@ -696,6 +697,19 @@ const displayMode = computed(() =>
     ? internalDisplayMode.value
     : reviewDisplayModeToDisplayMode(props.reviewDisplayMode),
 );
+const readOnlyReason = computed(() =>
+  getEditorReadOnlyReason({
+    editingMode: editorMode.value,
+    readOnlyProp: props.readOnly,
+    displayMode: displayMode.value,
+  }),
+);
+const readOnly = computed(() => readOnlyReason.value !== null);
+
+function reportReadonlyEditAttempt(): void {
+  const reason = readOnlyReason.value;
+  if (reason !== null) props.onReadonlyEditAttempt?.(reason);
+}
 
 function toggleTrackChanges(): void {
   setEditorMode(toggledTrackChangesMode(editorMode.value));
@@ -902,7 +916,7 @@ const {
   onCopy: () => props.onCopy?.(),
   onCut: () => props.onCut?.(),
   onPaste: () => props.onPaste?.(),
-  onReadOnlyEditAttempt: () => props.onReadonlyEditAttempt?.(),
+  onReadOnlyEditAttempt: reportReadonlyEditAttempt,
   // Selective-save feature flags + tripwire observability, mirroring React's
   // DocxEditor save path. Read fresh on each save() so prop updates are honored.
   featureFlags: () => props.featureFlags,
@@ -1773,6 +1787,7 @@ onMounted(() => {
 
 // ---- Imperative ref surface ---------------------------------------------
 const { exposed } = useDocxEditorRefApi({
+  getReadOnlyReason: () => readOnlyReason.value,
   markupView: displayMode,
   editor,
   editorView,

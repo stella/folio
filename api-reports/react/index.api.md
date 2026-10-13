@@ -70,6 +70,7 @@ import { DocumentStyleSet } from '@stll/folio-core/style-sets/types';
 import { DocxCompatibility } from '@stll/folio-core/docx/compatibility';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { EndnoteProperties } from '@stll/folio-core/types/document';
@@ -431,7 +432,7 @@ export type DocxEditorProps = {
     onPaste?: () => void;
     mode?: EditorMode;
     onModeChange?: (mode: EditorMode) => void;
-    onReadonlyEditAttempt?: () => void;
+    onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
     comments?: Comment_2[];
     onCommentsChange?: (comments: Comment_2[]) => void;
     onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
@@ -461,6 +462,7 @@ export type DocxEditorProps = {
 
 // @public
 export type DocxEditorRef = {
+    getReadOnlyReason: () => EditorReadOnlyReason | null;
     getDocument: () => Document_2 | null;
     hasPendingChanges: () => boolean;
     getEditorRef: () => PagedEditorRef | null;
@@ -550,6 +552,8 @@ export type EditorHandle = {
 };
 
 export { EditorMode }
+
+export { EditorReadOnlyReason }
 
 export { extractDocumentStyleSet }
 

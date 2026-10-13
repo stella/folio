@@ -4,6 +4,7 @@ GlobalRegistrator.register();
 
 import { afterAll, expect, test } from "bun:test";
 import { panic } from "better-result";
+import type { EditorReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
 import type { Node as PMNode } from "prosemirror-model";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
@@ -89,6 +90,11 @@ const reviewDocument = async (): Promise<Uint8Array> => {
   });
 };
 
+const createEditAttemptRecorder =
+  (reasons: EditorReadOnlyReason[]) => (reason: EditorReadOnlyReason) => {
+    reasons.push(reason);
+  };
+
 const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterAll(() => {
@@ -103,6 +109,8 @@ test("host review display modes change visible layout without changing saved DOC
   document.body.append(container);
   const root = createRoot(container);
   const editor = createRef<DocxEditorRef>();
+  const refusals: EditorReadOnlyReason[] = [];
+  const onReadonlyEditAttempt = createEditAttemptRecorder(refusals);
   const modes = [
     { mode: "all-markup", showCommentHighlights: true },
     { mode: "all-markup", showCommentHighlights: false },
@@ -154,9 +162,9 @@ test("host review display modes change visible layout without changing saved DOC
               document={parsedDocument}
               reviewDisplayMode={mode}
               showCommentHighlights={showCommentHighlights}
-              readOnly
               pageRenderer="display-list"
               showToolbar={false}
+              onReadonlyEditAttempt={onReadonlyEditAttempt}
             />
           </IntlProvider>,
         );
@@ -175,6 +183,27 @@ test("host review display modes change visible layout without changing saved DOC
       }
 
       const controller = editor.current?.getEditor() ?? panic("Expected the editor controller");
+      const view = controller.getView() ?? panic("Expected the body editor view");
+      if (mode === "final" || mode === "original") {
+        expect(editor.current?.getReadOnlyReason()).toBe("review-display-mode");
+        expect(view.editable).toBe(false);
+        const authored = view.state.doc;
+        const event = new InputEvent("beforeinput", {
+          inputType: "insertText",
+          data: "refused",
+          bubbles: true,
+          cancelable: true,
+        });
+        await act(async () => {
+          view.dom.dispatchEvent(event);
+        });
+        expect(event.defaultPrevented).toBe(true);
+        expect(refusals.at(-1)).toBe("review-display-mode");
+        expect(view.state.doc).toBe(authored);
+      } else {
+        expect(editor.current?.getReadOnlyReason()).toBeNull();
+        expect(view.editable).toBe(true);
+      }
       const layout = controller.getLayout() ?? panic("Expected the settled page layout");
       visibleByMode.push(
         layout.pages
