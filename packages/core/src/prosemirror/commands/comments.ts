@@ -1,3 +1,4 @@
+import { commentPoint, resolvedCommentPoints } from "../replacedAnnotations";
 /**
  * Comment and Track Changes Commands
  *
@@ -189,6 +190,16 @@ function resolveChange(
       (typeof mark.attrs["revisionId"] === "number" && revisionSet.has(mark.attrs["revisionId"]));
 
     if (dispatch) {
+      const points =
+        mode === "accept"
+          ? resolvedCommentPoints({
+              doc: state.doc,
+              removes: (node, position) =>
+                position >= from &&
+                position + node.nodeSize <= to &&
+                node.marks.some((mark) => mark.type === removeType && matchesRevision(mark)),
+            })
+          : new Map<number, number>();
       const tr = state.tr;
       // Joins below re-read the runs they move themselves.
       tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
@@ -707,6 +718,9 @@ function resolveChange(
         if (!field) continue;
         if (field.type === node.type) tr.setNodeMarkup(position, undefined, node.attrs, node.marks);
         else tr.replaceWith(position, position + field.nodeSize, node);
+      }
+      for (const [id, position] of [...points].toReversed()) {
+        tr.insert(tr.mapping.map(position, -1), commentPoint(tr.doc.type.schema, id));
       }
       if (tr.steps.length > 0) {
         dispatch(tr);

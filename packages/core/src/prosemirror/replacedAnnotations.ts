@@ -12,15 +12,12 @@
  * hyperlink simply stops being a link. Zero-width anchors fare worse still: a
  * plain replace deletes them outright.
  *
- * Word moves a range start that sits inside a replaced span to the beginning
- * of the replacement and lets the range keep covering the new text; it keeps
- * a link across a replacement of its display text. A range wholly inside the
- * span collapses onto the replacement, and disappears only when every
- * character it covered is gone. One rule per marker kind, and that is the
- * whole contract:
+ * Text replacement preserves a comment's aligned coverage. Unchanged text
+ * keeps its ranges; inserted text takes the comments of the replaced aligned
+ * span. A range with no remaining content becomes a point at the replacement
+ * start. The applier decides alignment once for direct and tracked edits.
  *
- * - `comment` mark: the replacement carries every comment the span covered, so
- *   a range that started inside it starts at the replacement instead.
+ * - `comment` mark: carried over its aligned replacement span.
  * - `hyperlink` mark: the replacement carries the first link the span held, so
  *   replacing a link's display text leaves the link on the new text. A span
  *   crossing two links keeps the one it opens in, because the mark excludes
@@ -57,9 +54,8 @@
  * - every other mark: formatting, and left to boundary inheritance, which
  *   already gives the replacement the formatting of the text it replaces.
  *
- * Deleting the whole of a comment's span leaves it no mark anywhere, so
- * `CommentReferenceExtension` drops the orphan reference and the save drops
- * the comment: the one case where a range is meant to disappear.
+ * Removing the owning block removes its comment. Replacing its last covered
+ * text within a surviving block retains a point rather than dropping it.
  */
 
 import { Fragment, Mark, type Node as PMNode, type Schema } from "prosemirror-model";
@@ -70,6 +66,8 @@ import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBound
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "./extensions/nodes/TextBoxAnchorExtension";
 import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
+import { expectParagraphAttrs, expectTableRowAttrs, expectTableCellAttrs } from "./attrs";
+import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import { isZeroWidthAnchor } from "./zeroWidthAnchors";
 
 /**
@@ -99,6 +97,53 @@ export const nonInclusiveMarkNames = (schema: Schema): string[] =>
 const isCarried = (mark: Mark): boolean =>
   NON_INCLUSIVE_MARK_DISPOSITION[mark.type.name as keyof typeof NON_INCLUSIVE_MARK_DISPOSITION] ===
   "carry";
+
+/** One typed point for a comment whose aligned coverage has no content left. */
+export const commentPoint = (schema: Schema, id: number): PMNode =>
+  schema.node(RANGE_ANCHOR_NODE_NAME, {
+    start: { type: "commentRangeStart", id },
+    end: { type: "commentRangeEnd", id },
+  });
+
+type ResolvedCommentPointsOptions = {
+  doc: PMNode;
+  removes: (node: PMNode, position: number) => boolean;
+};
+
+/** Point fallback excludes comments belonging to retired blocks and table cells. */
+export const resolvedCommentPoints = ({
+  doc,
+  removes,
+}: ResolvedCommentPointsOptions): Map<number, number> => {
+  const points = new Map<number, number>();
+  const retained = new Set<number>();
+  doc.descendants((node, position) => {
+    if (node.type.name === "paragraph") {
+      const mark = expectParagraphAttrs(node).pPrMark;
+      if (mark?.kind === "del" || mark?.kind === "moveFrom") return false;
+    }
+    if (node.type.name === "tableRow" && expectTableRowAttrs(node).trDel) return false;
+    if (
+      (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
+      expectTableCellAttrs(node).cellMarker?.kind === "del"
+    )
+      return false;
+    if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+      const attrs = readRangeAnchorAttrs(node);
+      if (attrs.ok && attrs.value.start.type === "commentRangeStart")
+        retained.add(attrs.value.start.id);
+    }
+    if (!node.isInline || isZeroWidthAnchor(node)) return;
+    for (const mark of node.marks) {
+      if (mark.type.name !== "comment") continue;
+      const id = mark.attrs["commentId"];
+      if (!removes(node, position)) retained.add(id);
+      else if (!points.has(id)) points.set(id, position);
+    }
+  });
+  for (const id of retained) points.delete(id);
+  return points;
+};
 
 /** Anchors an edit must put back, and where relative to the replacement. */
 const ANCHOR_PLACEMENT = {

@@ -1,3 +1,4 @@
+import { commentPoint, resolvedCommentPoints } from "../prosemirror/replacedAnnotations";
 import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
 import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
 import { panic } from "better-result";
@@ -40,6 +41,7 @@ type RevisionReplacementRange = RevisionRange & {
 };
 
 type RevisionInlineContext = {
+  pointComments: Set<number>;
   mode: RevisionResolutionMode;
   keepType: MarkType | undefined;
   removeType: MarkType | undefined;
@@ -285,6 +287,25 @@ const resolveInlineContent = ({
       contentChanged = true;
       resolvedBoundaries.add(children.length);
     }
+    if (resolved === null && child.isInline) {
+      const anchors: PMNode[] = [];
+      for (const mark of child.marks) {
+        const id = mark.attrs["commentId"];
+        if (mark.type.name !== "comment" || !context.pointComments.delete(id)) continue;
+        anchors.push(commentPoint(child.type.schema, id));
+      }
+      if (anchors.length > 0) {
+        const fragment = Fragment.fromArray(anchors);
+        const range = context.replacementRanges.at(-1);
+        if (!range || range.from !== contentStart + offset) panic("Missing resolved inline range");
+        range.newSize = fragment.size;
+        range.slice = new Slice(fragment, 0, 0);
+        for (const anchor of anchors) {
+          children.push(anchor);
+          positions.push(contentStart + offset);
+        }
+      }
+    }
     if (resolved) {
       children.push(resolved);
       positions.push(contentStart + offset);
@@ -407,7 +428,16 @@ export const resolveInlineRevisions = ({
   removeType,
   styleResolver,
 }: ResolveInlineRevisionsOptions) => {
+  const pointComments = new Set(
+    mode === "accept"
+      ? resolvedCommentPoints({
+          doc,
+          removes: (node) => removeType?.isInSet(node.marks) !== undefined,
+        }).keys()
+      : [],
+  );
   const context: RevisionInlineContext = {
+    pointComments,
     mode,
     keepType,
     removeType,
