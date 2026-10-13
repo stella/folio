@@ -56,6 +56,7 @@ import {
 import { openReviewer } from "./documents.ts";
 import { projectContentPair, projectSnapshotIdentities } from "./identity.ts";
 import { comparableMarkdown } from "./markdown-comparison.ts";
+import { assertReviewRoundTrip } from "./review-comparison.ts";
 import type { Finding } from "./known-issues.ts";
 import type { Mode } from "./operations.ts";
 import { resolvedState, type Row } from "./oracle.ts";
@@ -1032,7 +1033,12 @@ export const startRelations = async ({
     checked("batchSequential");
   };
 
-  const readerStability = (live: Reviewer, reopened: Reviewer, context: string): void => {
+  const readerStability = async (
+    live: Reviewer,
+    reopened: Reviewer,
+    context: string,
+  ): Promise<void> => {
+    await assertReviewRoundTrip({ live, reopened, context });
     const content = projectContentPair({
       leftRows: live.getContent(),
       rightRows: reopened.getContent(),
@@ -1044,27 +1050,12 @@ export const startRelations = async ({
         content[side === "left" ? "leftAliases" : "rightAliases"],
       ),
       toMarkdown: comparableMarkdown(toMarkdown(target.toDocument())) as unknown,
-      // Revision ids and dates can change on save. Keep every entry's kind,
-      // author, content and containing block, including duplicate entries.
-      getChanges: target
-        .getChanges()
-        .map(({ type, author, text, blockId }) => ({
-          type,
-          author,
-          text,
-          blockId:
-            blockId === null
-              ? null
-              : (content[side === "left" ? "leftAliases" : "rightAliases"].get(blockId) ?? blockId),
-        }))
-        .toSorted((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
       getComments: target.getComments() as unknown,
     });
     const tolerances: Record<keyof ReturnType<typeof views>, Tolerance<unknown>[]> = {
       getContent: [],
       snapshot: [],
       toMarkdown: [],
-      getChanges: [],
       getComments: [],
     };
     const a = views(live, "left");
@@ -1100,7 +1091,7 @@ export const startRelations = async ({
       }
       if (on("readerStability")) {
         if (pending) skipped("readerStability", "pending suggestions stay out of the package");
-        else readerStability(live, saved.reopened, context);
+        else await readerStability(live, saved.reopened, context);
       }
     },
     finish: async () => {
