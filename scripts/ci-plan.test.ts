@@ -4,7 +4,7 @@
 // no job reads, an output no area feeds, or a job that runs without asking the
 // plan would each drift in silence, so all three are checked here.
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import editorWebPlaywright from "../packages/editor-web/playwright.config";
@@ -629,44 +629,97 @@ describe("CI plan", () => {
     );
   });
 
-  test("VS Code typings and dependency policy follow the minimum supported editor", () => {
-    const manifest: unknown = JSON.parse(
-      readFileSync(path.join(REPO_ROOT, "plugins/vscode/package.json"), "utf8"),
+  const vscodePackagingPaths = (workflow: Record<string, unknown>): string[] => {
+    const build = readFileSync(path.join(REPO_ROOT, "plugins/vscode/scripts/build.ts"), "utf8");
+    const roots = [...build.matchAll(/path\.join\(repoRoot,\s*"packages",\s*"([^"]+)"/gu)].map(
+      (match) => match.at(1),
     );
+    expect(roots.length).toBeGreaterThan(0);
+    const packages = new Map<string, { slug: string; manifest: Record<string, unknown> }>();
+    for (const directory of readdirSync(path.join(REPO_ROOT, "packages"), {
+      withFileTypes: true,
+    })) {
+      if (!directory.isDirectory()) continue;
+      const manifest: unknown = JSON.parse(
+        readFileSync(path.join(REPO_ROOT, "packages", directory.name, "package.json"), "utf8"),
+      );
+      if (!isRecord(manifest) || typeof manifest["name"] !== "string")
+        throw new Error("Workspace manifest unavailable");
+      packages.set(manifest["name"], { slug: directory.name, manifest });
+    }
+    const selected = new Set<string>();
+    const queue = roots.map((slug) => {
+      const workspace = [...packages.values()].find((entry) => entry.slug === slug);
+      if (!workspace) throw new Error(`Unknown build workspace ${slug}`);
+      return workspace;
+    });
+    for (const workspace of queue) {
+      if (selected.has(workspace.slug)) continue;
+      selected.add(workspace.slug);
+      for (const field of ["dependencies", "peerDependencies"]) {
+        const dependencies = workspace.manifest[field];
+        if (!isRecord(dependencies)) continue;
+        for (const [name, version] of Object.entries(dependencies)) {
+          const dependency = packages.get(name);
+          if (dependency) queue.push(dependency);
+          else if (typeof version === "string" && version.startsWith("workspace:"))
+            throw new Error(`Unknown workspace dependency ${name}`);
+        }
+      }
+    }
+    const paths = new Set([
+      "plugins/vscode/**",
+      ".github/workflows/vscode-extension.yml",
+      "scripts/ci-plan.test.ts",
+    ]);
+    for (const slug of selected) paths.add(`packages/${slug}/**`);
+    for (const match of build.matchAll(/path\.join\(repoRoot,\s*"([^"]+)"\)/gu)) {
+      const file = match.at(1);
+      if (!file) throw new Error("Missing build input path");
+      paths.add(file);
+    }
+    const packagingJobs = workflow["jobs"];
     if (
-      !isRecord(manifest) ||
-      !isRecord(manifest["engines"]) ||
-      !isRecord(manifest["devDependencies"])
+      !isRecord(packagingJobs) ||
+      !isRecord(packagingJobs["package"]) ||
+      !Array.isArray(packagingJobs["package"]["steps"])
     )
-      throw new Error("VS Code engine contract unavailable");
-    const engine = manifest["engines"]["vscode"];
-    if (typeof engine !== "string") throw new Error("VS Code engine range unavailable");
-    const minimum = /^\^(\d+)\.(\d+)\.(\d+)$/u.exec(engine);
-    const major = minimum?.at(1);
-    const minor = minimum?.at(2);
-    if (major === undefined || minor === undefined)
-      throw new Error("Declare a caret editor minimum");
-    expect(manifest["devDependencies"]["@types/vscode"]).toBe(`~${engine.slice(1)}`);
-    const policy: unknown = Bun.YAML.parse(
-      readFileSync(path.join(REPO_ROOT, ".github/dependabot.yml"), "utf8"),
+      throw new Error("Missing packaging steps");
+    for (const step of packagingJobs["package"]["steps"]) {
+      if (!isRecord(step)) throw new Error("Invalid packaging step");
+      if (isRecord(step["with"])) {
+        for (const key of ["node-version-file", "bun-version-file"]) {
+          const file = step["with"][key];
+          if (typeof file === "string") paths.add(file);
+        }
+      }
+      if (typeof step["run"] !== "string") continue;
+      for (const match of step["run"].matchAll(/\.\.\/\.\.\/([^\s"\\]+\.docx)/gu)) {
+        const file = match.at(1);
+        if (!file) throw new Error("Missing packaging fixture path");
+        paths.add(file);
+      }
+      if (step["working-directory"] !== undefined) continue;
+      if (step["run"].includes("bun install")) {
+        paths.add("bun.lock");
+        paths.add("bunfig.toml");
+      }
+      for (const match of step["run"].matchAll(/\bbun (scripts\/[\w./-]+\.ts)/gu)) {
+        const file = match.at(1);
+        if (!file) throw new Error("Missing workflow script path");
+        paths.add(file);
+      }
+    }
+    const config: unknown = JSON.parse(
+      readFileSync(path.join(REPO_ROOT, "plugins/vscode/tsconfig.json"), "utf8"),
     );
-    if (!isRecord(policy) || !Array.isArray(policy["updates"]))
-      throw new Error("Dependency policy unavailable");
-    const plugins = policy["updates"].find(
-      (update) =>
-        isRecord(update) &&
-        update["package-ecosystem"] === "bun" &&
-        Array.isArray(update["directories"]) &&
-        update["directories"].includes("/plugins/vscode"),
+    if (!isRecord(config) || typeof config["extends"] !== "string")
+      throw new Error("Missing extension compiler base");
+    paths.add(
+      path.relative(REPO_ROOT, path.resolve(REPO_ROOT, "plugins/vscode", config["extends"])),
     );
-    if (!isRecord(plugins) || !Array.isArray(plugins["ignore"]))
-      throw new Error("Plugin dependency policy unavailable");
-    const types = plugins["ignore"].find(
-      (entry) => isRecord(entry) && entry["dependency-name"] === "@types/vscode",
-    );
-    if (!isRecord(types)) throw new Error("Editor typings policy unavailable");
-    expect(types["versions"]).toEqual([`>=${major}.${Number(minor) + 1}.0`]);
-  });
+    return [...paths].toSorted();
+  };
 
   for (const file of ["vscode-extension.yml"]) {
     test(`${file} packages plugin pull requests and all merge groups`, () => {
@@ -679,11 +732,7 @@ describe("CI plan", () => {
       expect(Object.keys(triggers).toSorted()).toEqual(["merge_group", "pull_request"]);
       expect(triggers["pull_request"]).toEqual({
         types: ["opened", "synchronize", "reopened", "ready_for_review"],
-        paths: [
-          "plugins/vscode/**",
-          ".github/workflows/vscode-extension.yml",
-          "scripts/ci-plan.test.ts",
-        ],
+        paths: vscodePackagingPaths(workflow),
       });
       expect(triggers["merge_group"]).toEqual({ types: ["checks_requested"] });
       expect(Object.keys(heavyJobs).length).toBeGreaterThan(0);

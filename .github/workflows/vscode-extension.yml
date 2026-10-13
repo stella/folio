@@ -6,9 +6,23 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - "plugins/vscode/**"
       - ".github/workflows/vscode-extension.yml"
+      - ".node-version"
+      - "LICENSE"
+      - "bun.lock"
+      - "bunfig.toml"
+      - "package.json"
+      - "packages/agents/**"
+      - "packages/cli/**"
+      - "packages/core/**"
+      - "packages/docx-core/**"
+      - "packages/editor-web/**"
+      - "packages/react/**"
+      - "parity/fixtures/layout-kitchen-sink.docx"
+      - "plugins/vscode/**"
       - "scripts/ci-plan.test.ts"
+      - "scripts/sync-plugin-cli-version.ts"
+      - "tsconfig.base.json"
   merge_group:
     types: [checks_requested]
 
