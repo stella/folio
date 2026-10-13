@@ -8,14 +8,14 @@ import { declarationResolutionDiagnostics } from "./lib/packed-declaration-diagn
 test("published declarations reject unresolved subpaths of declared dependencies", async () => {
   const consumer = await mkdtemp(path.join(tmpdir(), "folio-declaration-consumer-"));
   try {
-    const editor = path.join(consumer, "node_modules", "@example", "editor");
+    const editor = path.join(consumer, "node_modules", "@stll", "folio-core");
     const model = path.join(consumer, "node_modules", "model");
     await mkdir(editor, { recursive: true });
     await mkdir(model, { recursive: true });
     await writeFile(
       path.join(editor, "package.json"),
       JSON.stringify({
-        name: "@example/editor",
+        name: "@stll/folio-core",
         dependencies: { model: "1.0.0" },
         exports: { ".": { types: "./index.d.ts" } },
       }),
@@ -30,7 +30,7 @@ test("published declarations reject unresolved subpaths of declared dependencies
     await writeFile(path.join(model, "index.d.ts"), "export type Model = { value: string };\n");
     await writeFile(
       path.join(consumer, "consumer.ts"),
-      'import type { Model } from "@example/editor"; export type Consumer = Model;',
+      'import type { Model } from "@stll/folio-core"; export type Consumer = Model;',
     );
     const projectFile = path.join(consumer, "tsconfig.json");
     await writeFile(
@@ -48,9 +48,16 @@ test("published declarations reject unresolved subpaths of declared dependencies
       }),
     );
     const check = () =>
-      declarationResolutionDiagnostics({ projectFile, packageNames: ["@example/editor"] });
+      declarationResolutionDiagnostics({ projectFile, packageNames: ["@stll/folio-core"] });
     await writeFile(path.join(editor, "index.d.ts"), 'export type { Model } from "model/private";');
     expect(check().map(({ code }) => code)).toContain(2307);
+    const checker = path.join(import.meta.dir, "lib", "packed-declaration-diagnostics.ts");
+    const refused = Bun.spawnSync([process.execPath, checker, projectFile], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(refused.exitCode).toBe(1);
+    expect(refused.stderr.toString()).toContain("model/private");
     await writeFile(path.join(editor, "index.d.ts"), 'export type { Missing } from "model";');
     expect(check().map(({ code }) => code)).toContain(2305);
     await writeFile(path.join(editor, "index.d.ts"), 'export type { Model } from "model";');
@@ -70,4 +77,4 @@ test("published declarations reject unresolved subpaths of declared dependencies
   } finally {
     await rm(consumer, { recursive: true, force: true });
   }
-});
+}, 15_000);
