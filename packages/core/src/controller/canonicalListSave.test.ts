@@ -760,6 +760,43 @@ test(
               },
             },
           });
+          const canonical = createCanonicalSession(
+            await parseDocx(buffer, { preloadFonts: false }),
+          ).unwrap();
+          let state = EditorState.create({ schema, doc: canonical.projection.doc });
+          const before = canonical.document;
+          const position = { story: "main", blockId: "00000001", offset: 0 } as const;
+          state = publishCanonicalProjection({
+            session: canonical,
+            state,
+            commit: canonical
+              .prepareOps(
+                state,
+                [
+                  {
+                    type: "setParagraphProps",
+                    story: "main",
+                    blockId: position.blockId,
+                    patch: { styleId: "Numbered" },
+                  },
+                ],
+                { type: "text", anchor: position, head: position },
+              )
+              .unwrap(),
+          }).unwrap().state;
+          const after = canonical.document;
+          state = publishCanonicalProjection({
+            session: canonical,
+            state,
+            commit: canonical.prepareUndo(state).unwrap(),
+          }).unwrap().state;
+          expect(canonicalReviewModel(canonical.document)).toEqual(canonicalReviewModel(before));
+          state = publishCanonicalProjection({
+            session: canonical,
+            state,
+            commit: canonical.prepareRedo(state).unwrap(),
+          }).unwrap().state;
+          expect(canonicalReviewModel(canonical.document)).toEqual(canonicalReviewModel(after));
           for (const mode of ["direct", "tracked-changes"] as const) {
             const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
             const block = reviewer.snapshot().blocks.at(0);

@@ -278,7 +278,10 @@ const isCommentRelationship = (type: string): boolean =>
   Object.values(COMMENT_PART_RELATIONSHIPS).some((part) => part.type === type);
 
 /** Keep the same part ids as the packager: numeric rId maximum plus one. */
-export const reconcileDocumentPartRelationships = (document: Document): Document => {
+const reconcilePartRelationships = (
+  document: Document,
+  scope: "comments" | "document",
+): Document => {
   const comments = document.package.document.comments ?? [];
   const relationships = new Map(document.package.relationships ?? []);
   let next =
@@ -294,7 +297,9 @@ export const reconcileDocumentPartRelationships = (document: Document): Document
     numbering: {
       type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
       target: "numbering.xml",
-      needed: (numbering?.abstractNums.length ?? 0) > 0 || (numbering?.nums.length ?? 0) > 0,
+      needed:
+        scope === "document" &&
+        ((numbering?.abstractNums.length ?? 0) > 0 || (numbering?.nums.length ?? 0) > 0),
     },
     comments: { ...COMMENT_PART_RELATIONSHIPS.comments, needed: comments.length > 0 },
     commentsExtended: { ...COMMENT_PART_RELATIONSHIPS.commentsExtended, needed: extended },
@@ -316,6 +321,9 @@ export const reconcileDocumentPartRelationships = (document: Document): Document
   return { ...document, package: { ...document.package, relationships } };
 };
 
+export const reconcileDocumentPartRelationships = (document: Document): Document =>
+  reconcilePartRelationships(document, "document");
+
 const edited = (
   before: Document,
   after: Document,
@@ -323,7 +331,7 @@ const edited = (
   ids: ReadonlySet<number>,
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   if (op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
-    after = reconcileDocumentPartRelationships(after);
+    after = reconcilePartRelationships(after, "comments");
   const invalid = contractViolation(after);
   if (invalid) return fail(op, invalid.message, invalid.reason);
   // An edit may keep a loaded orphan, never strand another comment.

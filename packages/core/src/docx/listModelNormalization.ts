@@ -1,3 +1,4 @@
+// PARSE-WARNING-EXEMPT: Recomputes derived list rendering after edits; authored numbering and source XML are preserved.
 /** Canonical edits retain authored fields; list rendering follows the current numbering. */
 import {
   withBodyContent,
@@ -73,14 +74,17 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
       ) {
         next.formatting = { ...formatting };
         delete next.formatting.numPrFromStyle;
-        // Provenance participates in exact formatting history; rendering is recomputed.
-        inverse.push({
+      }
+      // Derived provenance still belongs to exact inverse preconditions.
+      if (
+        canonicalJson(next.formatting?.numPrFromStyle) !== canonicalJson(formatting?.numPrFromStyle)
+      ) {
+        inverse.unshift({
           type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
           story,
-          blockId:
-            paragraph.paraId ??
-            panic("Canonical numbering normalization requires paragraph identities."),
-          patch: { numPrFromStyle: formatting.numPrFromStyle },
+          blockId: paragraph.paraId ?? panic("List normalization requires paragraph identities."),
+          patch: { numPrFromStyle: formatting?.numPrFromStyle ?? null },
+          whenEmpty: formatting === undefined ? EMPTY_PROPERTY_SETS.OMIT : EMPTY_PROPERTY_SETS.KEEP,
         });
       }
       const numPr = effectiveParagraphNumberingReference(
