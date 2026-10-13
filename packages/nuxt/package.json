@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@nuxt/kit": "^3.14.0 || ^4.0.0",
+    "@nuxt/schema": "^3.14.0 || ^4.0.0",
     "@stll/folio-vue": "workspace:^",
     "prosemirror-history": "^1.4.0",
     "prosemirror-model": "^1.19.4",

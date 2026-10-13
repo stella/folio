@@ -3,7 +3,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { apiRequiredForPaths, changedApiPaths, publishedPackagePaths } from "./ci-api-plan";
+import {
+  apiRequiredForPaths,
+  changedApiPaths,
+  packagedConsumerRequiredForPaths,
+  publishedPackagePaths,
+} from "./ci-api-plan";
 
 const fixtures = new Set<string>();
 afterEach(() => {
@@ -225,6 +230,53 @@ describe("manifest-derived published API scope", () => {
   });
 });
 
+describe("manifest-derived packed dependency scope", () => {
+  test("new public source and manifests select the smoke; private source and docs do not", () => {
+    const repoRoot = fixture({
+      workspaces: ["modules/*"],
+      manifests: {
+        "modules/public": { name: "public" },
+        "modules/private": { name: "private", private: true },
+      },
+    });
+    write(repoRoot, "modules/new/package.json", JSON.stringify({ name: "new" }));
+    const published = publishedPackagePaths(repoRoot);
+    for (const file of [
+      ...published.map((directory) => `${directory}/src/nested/entry.ts`),
+      "modules/new/package.json",
+      "modules/private/package.json",
+      "modules/deleted/package.json",
+      "package.json",
+      "bun.lock",
+      "bunfig.toml",
+    ])
+      expect(
+        packagedConsumerRequiredForPaths({
+          changedPaths: [file],
+          publishedPackagePaths: published,
+        }),
+      ).toBe(true);
+    for (const file of [
+      "modules/private/src/entry.ts",
+      "modules/new/README.md",
+      "docs/guide.md",
+      "modules/public/src-other/file.ts",
+    ])
+      expect(
+        packagedConsumerRequiredForPaths({
+          changedPaths: [file],
+          publishedPackagePaths: published,
+        }),
+      ).toBe(false);
+    expect(() =>
+      packagedConsumerRequiredForPaths({
+        changedPaths: ["bun.lock", "../outside"],
+        publishedPackagePaths: published,
+      }),
+    ).toThrow();
+  });
+});
+
 describe("PR diff and fail-closed CLI", () => {
   test("renames out of published source and deletions retain their source paths", () => {
     const { repoRoot, base } = gitFixture();
@@ -286,12 +338,12 @@ describe("PR diff and fail-closed CLI", () => {
     };
     expect(run(["--base", base, "--head", docsHead])).toEqual({
       exitCode: 0,
-      output: "previous=value\napi_required=false\n",
+      output: "previous=value\napi_required=false\npackaged_consumer_required=false\n",
       stderr: "",
     });
     expect(run(["--head", sourceHead, "--base", base])).toEqual({
       exitCode: 0,
-      output: "previous=value\napi_required=true\n",
+      output: "previous=value\napi_required=true\npackaged_consumer_required=true\n",
       stderr: "",
     });
     for (const args of [
@@ -304,12 +356,16 @@ describe("PR diff and fail-closed CLI", () => {
     ]) {
       const result = run(args);
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toBe("previous=value\napi_required=true\n");
+      expect(result.output).toBe(
+        "previous=value\napi_required=true\npackaged_consumer_required=true\n",
+      );
       expect(result.stderr).not.toBe("");
     }
     write(repoRoot, "modules/public/package.json", "{invalid");
     const malformed = run(["--base", base, "--head", docsHead]);
     expect(malformed.exitCode).not.toBe(0);
-    expect(malformed.output).toBe("previous=value\napi_required=true\n");
+    expect(malformed.output).toBe(
+      "previous=value\napi_required=true\npackaged_consumer_required=true\n",
+    );
   });
 });

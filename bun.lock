@@ -176,6 +176,7 @@
       "version": "0.3.20",
       "dependencies": {
         "@nuxt/kit": "^3.14.0 || ^4.0.0",
+        "@nuxt/schema": "^3.14.0 || ^4.0.0",
         "@stll/folio-vue": "workspace:^",
         "prosemirror-history": "^1.4.0",
         "prosemirror-model": "^1.19.4",
@@ -280,6 +281,7 @@
         "@fontsource/tinos": "^5.2.7",
         "@stll/folio-core": "workspace:^",
         "better-result": "3.0.1",
+        "react": "^19.2.0",
         "use-intl": "^4.13.0",
         "yjs": "^13.6.31",
       },
