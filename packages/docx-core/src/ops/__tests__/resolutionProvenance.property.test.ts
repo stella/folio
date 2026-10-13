@@ -505,6 +505,56 @@ test("generated later property rejection retains earlier cut provenance", () => 
   expect([...refusals]).toStrictEqual([]);
 });
 
+// Same-range formatting fixtures missed seams blocked by independent pending reviews.
+test("overlapping formatting rejection preserves authored runs in either resolution order", () => {
+  const refusals = new Map<DocumentOpRefusalReason, number>();
+  assertProperty(
+    fc.property(shapeArbitrary, fc.boolean(), (shape, reverse) => {
+      const original = fixture(shape);
+      const unit = shape.token === "😀" ? 2 : 1;
+      const first = compile({
+        document: original,
+        intent: {
+          type: "formatRun",
+          from: position({ offset: 0 }),
+          to: position({ offset: 2 * unit }),
+          patch: { bold: true },
+        },
+        mode: "suggesting",
+        refusals,
+      });
+      const second = compile({
+        document: first.document,
+        intent: {
+          type: "formatRun",
+          from: position({ offset: unit }),
+          to: position({ offset: 3 * unit }),
+          patch: { underline: { style: "single" } },
+        },
+        mode: "suggesting",
+        refusals,
+      });
+      const ids = [
+        ...new Set(
+          storyParagraphs(second.document.package.document)
+            .flatMap(({ paragraph }) => runsIn(paragraph.content))
+            .flatMap((run) => (run.propertyChanges ?? []).map((change) => change.info.id)),
+        ),
+      ];
+      expect(ids.length).toBeGreaterThan(1);
+      let resolved = second.document;
+      for (const id of reverse ? ids.toReversed() : ids)
+        resolved = resolve({ document: resolved, revisionIds: [id], decision: "reject" });
+      expect(resolved).toStrictEqual(resolvePendingRunFormatting(original, "reject"));
+    }),
+    {
+      numRuns: 24,
+      id: "overlapping formatting rejection preserves authored runs in either resolution order",
+    },
+  );
+  expect([...refusals]).toStrictEqual([]);
+});
+
 // A later review adds slots to the retained run. Prefix identity transfers
 // restore only the recorded slots and preserve the appended review action.
 test("generated retained source identities survive a later pending formatting action", () => {
