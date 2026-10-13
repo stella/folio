@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { canonicalFieldModel } from "./field-model.ts";
 import { openReviewer } from "./documents.ts";
 import { projectContentPair } from "./identity.ts";
 
@@ -168,7 +169,7 @@ export const canonicalReviewModel = (
           : project(entry, `${modelPath}/${key}`),
       ]);
     }
-    const projected = Object.fromEntries(entries);
+    const projected = canonicalFieldModel(Object.fromEntries(entries));
     if (
       "type" in value &&
       value.type === "paragraph" &&

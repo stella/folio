@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import JSZip from "jszip";
+import type { SimpleField, ComplexField } from "@stll/docx-core/model";
 import { test } from "node:test";
 import { createDocx, paragraph } from "@stll/folio-core/server";
 import { fromMarkdown } from "@stll/folio-core/markdown";
@@ -317,4 +319,105 @@ test("capture-only formatting holders disappear while authored properties stay s
       /Unclassified model capture field/,
     );
   }
+});
+
+test("field model comparison preserves meaning across simple and complex forms", () => {
+  const simple = {
+    type: "simpleField",
+    instruction: " DATE ",
+    fieldType: "DATE",
+    fldLock: false,
+    dirty: true,
+    content: [
+      { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "1 May 2026" }] },
+    ],
+  } satisfies SimpleField;
+  const complex = {
+    type: "complexField",
+    instruction: "DATE",
+    fieldType: "DATE",
+    fldLock: false,
+    dirty: true,
+    formatting: { bold: true },
+    fieldCode: [
+      { type: "run", formatting: { bold: true }, content: [{ type: "instrText", text: "DATE" }] },
+    ],
+    fieldResult: simple.content,
+  } satisfies ComplexField;
+  const expected = canonicalReviewModel(simple);
+  assert.deepEqual(canonicalReviewModel(complex), expected);
+  for (const changed of [
+    { ...complex, instruction: "PAGE" },
+    { ...complex, fldLock: true },
+    { ...complex, dirty: false },
+    { ...complex, fieldResult: [] },
+    { ...complex, fieldCode: [{ type: "run", content: [{ type: "instrText", text: "PAGE" }] }] },
+    {
+      ...complex,
+      fieldResult: [
+        {
+          type: "run",
+          content: [{ type: "text", text: "1 May 2026" }],
+          propertyChanges: [
+            {
+              type: "runPropertyChange",
+              info: { id: 9, author: "Reviewer" },
+              previousFormatting: { italic: true },
+            },
+          ],
+        },
+      ],
+    },
+  ] satisfies ComplexField[])
+    assert.notDeepEqual(canonicalReviewModel(changed), expected);
+});
+
+test("a simple DATE field in a deleted paragraph keeps its resolved model and untouched XML", async () => {
+  const model = fromMarkdown("Field paragraph");
+  const first = model.package.document.content.at(0);
+  if (first?.type !== "paragraph") throw new Error("Expected field paragraph");
+  first.content = [
+    {
+      type: "simpleField",
+      instruction: " DATE ",
+      fieldType: "DATE",
+      fldLock: true,
+      dirty: false,
+      content: [
+        {
+          type: "run",
+          formatting: { italic: true },
+          content: [{ type: "text", text: "1 May 2026" }],
+        },
+      ],
+    },
+  ];
+  const bytes = new Uint8Array(await createDocx(model));
+  const reviewer = await openReviewer(bytes);
+  const originalXml = await (
+    await JSZip.loadAsync(bytes)
+  )
+    .file("word/document.xml")
+    ?.async("string");
+  assert.ok(originalXml?.includes("fldSimple"));
+  const unchangedXml = await (
+    await JSZip.loadAsync(await reviewer.toBuffer())
+  )
+    .file("word/document.xml")
+    ?.async("string");
+  assert.equal(unchangedXml, originalXml);
+  const block = reviewer.getContent().at(0);
+  if (!block) throw new Error("Expected field block");
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: 1,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  assert.equal(result.applied.length, 1);
+  assert.deepEqual(result.skipped, []);
+  const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+  await assertReviewRoundTrip({ live: reviewer, reopened, context: "tracked DATE field" });
 });
