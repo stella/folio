@@ -95,7 +95,6 @@ type MountedView = {
   appliedNumbering: NumberingDefinitions | null | undefined;
   appliedStyles: StyleDefinitions | null | undefined;
   appliedTheme: Theme | null | undefined;
-  baseEditable: DirectEditorProps["editable"];
   dirty: boolean;
   kind: HeaderFooterPartKind;
   manager: ExtensionManager;
@@ -233,12 +232,12 @@ export const createHeaderFooterEditorManager = (
     if (getReadOnly) {
       const readOnly = getReadOnly();
       for (const part of mounted.values()) {
-        const expectedEditable = !readOnly && (part.baseEditable?.(part.view.state) ?? true);
+        const expectedEditable = !readOnly;
         if (part.view.editable === expectedEditable) {
           continue;
         }
         part.view.setProps({
-          editable: (state) => !getReadOnly() && (part.baseEditable?.(state) ?? true),
+          editable: () => !getReadOnly(),
         });
       }
     }
@@ -355,7 +354,6 @@ export const createHeaderFooterEditorManager = (
             selectionChanged: true,
           }),
       });
-      const baseEditable = canonical.props.editable;
       const canonicalProjection = usesCanonicalSession(
         deps.getExperimentalSession?.(),
         CANONICAL_GAP.authorityRouting,
@@ -372,7 +370,7 @@ export const createHeaderFooterEditorManager = (
       }
       const view = (deps.createView ?? createEditorView)(mountNode, {
         ...canonical.props,
-        editable: (state) => !(deps.getReadOnly?.() ?? false) && (baseEditable?.(state) ?? true),
+        editable: () => !(deps.getReadOnly?.() ?? false),
         state: canonicalProjection
           ? EditorState.create({
               doc: canonicalProjection,
@@ -411,7 +409,6 @@ export const createHeaderFooterEditorManager = (
         appliedNumbering: numbering,
         appliedStyles: styles,
         appliedTheme: theme,
-        baseEditable,
         dirty: false,
         kind: part.kind,
         manager,

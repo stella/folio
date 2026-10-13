@@ -30,7 +30,8 @@ const persistentHeaderDocument = {
 } satisfies Document;
 
 test("persistent header/footer views refuse edits through read-only switches", async () => {
-  if (typeof document === "undefined") GlobalRegistrator.register();
+  const ownsDom = typeof document === "undefined";
+  if (ownsDom) GlobalRegistrator.register();
   const actEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div");
@@ -65,6 +66,7 @@ test("persistent header/footer views refuse edits through read-only switches", a
     await act(async () => root.unmount());
     host.remove();
     Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", actEnvironment);
+    if (ownsDom) GlobalRegistrator.unregister();
   }
 });
 
