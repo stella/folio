@@ -1,5 +1,6 @@
 ---
 "@stll/folio-core": patch
+"@stll/docx-core": minor
 ---
 
-Resolve whole-document input boundaries through editable paragraph content gaps.
+Resolve whole-document input boundaries and coalesce pending run formatting revisions.

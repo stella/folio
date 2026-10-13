@@ -12,6 +12,8 @@
  * - styles.ts      — Styles, theme, fonts, relationships, media
  */
 
+export { getSingularRunPropertyChange } from "./runPropertyReview";
+
 import type { DocumentBody, EndnoteProperties, Footnote, Endnote, HeaderFooter } from "./content";
 import type { NumberingDefinitions } from "./lists";
 import type { ParseWarning } from "./parseWarning";
