@@ -837,11 +837,11 @@ mod collision_tests {
             let later = format!(r#"<w:comment w:id="{id}" w:author="Later"><w:p><w:r><w:t>Later content</w:t></w:r></w:p></w:comment>"#);
             let clean = format!(r#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">{first}</w:comments>"#);
             let collision = clean.replace("</w:comments>", &format!("{}</w:comments>", later.repeat(repeats)));
-            let baseline = parse_comment_rows(clean.as_bytes(), 32, TextMaterialization::WordHost).expect("synthetic collision fixture should retain valid projection facts");
-            let actual = parse_comment_rows(collision.as_bytes(), 32, TextMaterialization::WordHost).expect("synthetic collision fixture should retain valid projection facts");
+            let baseline = parse_comment_rows(clean.as_bytes(), 32, TextMaterialization::WordHost).map_err(|error| TestCaseError::fail(format!("unexpected fixture error: {error:?}")))?;
+            let actual = parse_comment_rows(collision.as_bytes(), 32, TextMaterialization::WordHost).map_err(|error| TestCaseError::fail(format!("unexpected fixture error: {error:?}")))?;
             prop_assert_eq!(actual.len(), baseline.len());
-            prop_assert_eq!(&actual.first().expect("nonempty fixture retains its first comment").content, &baseline.first().expect("clean fixture contains one comment").content);
-            prop_assert_eq!(&actual.first().expect("nonempty fixture retains its first comment").author, &baseline.first().expect("clean fixture contains one comment").author);
+            prop_assert_eq!(&actual.first().ok_or_else(|| TestCaseError::fail("nonempty fixture retains its first comment"))?.content, &baseline.first().ok_or_else(|| TestCaseError::fail("clean fixture contains one comment"))?.content);
+            prop_assert_eq!(&actual.first().ok_or_else(|| TestCaseError::fail("nonempty fixture retains its first comment"))?.author, &baseline.first().ok_or_else(|| TestCaseError::fail("clean fixture contains one comment"))?.author);
         }
     }
 
@@ -850,14 +850,14 @@ mod collision_tests {
         fn repeated_paragraph_joins_keep_every_comment_but_first_join_owner(paragraph_id in 1_u32..0x7fff_ffff, count in 2_usize..24) {
             let mut rows = String::new();
             for index in 0..count {
-                write!(rows, r#"<w:comment w:id="{index}" w14:paraId="{paragraph_id:08X}" w:author="Fixture"><w:p><w:r><w:t>Content {index}</w:t></w:r></w:p></w:comment>"#).expect("writing fixture XML into a String cannot fail");
+                write!(rows, r#"<w:comment w:id="{index}" w14:paraId="{paragraph_id:08X}" w:author="Fixture"><w:p><w:r><w:t>Content {index}</w:t></w:r></w:p></w:comment>"#).map_err(|error| TestCaseError::fail(format!("fixture XML write failed: {error:?}")))?;
             }
             let xml = format!(r#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">{rows}</w:comments>"#);
-            let actual = parse_comment_rows(xml.as_bytes(), 32, TextMaterialization::WordHost).expect("synthetic collision fixture should retain valid projection facts");
+            let actual = parse_comment_rows(xml.as_bytes(), 32, TextMaterialization::WordHost).map_err(|error| TestCaseError::fail(format!("unexpected fixture error: {error:?}")))?;
             prop_assert_eq!(actual.len(), count);
             prop_assert_eq!(actual.iter().filter(|row| row.paragraph_id.is_some()).count(), 1);
             let expected_id = format!("{paragraph_id:08X}");
-            prop_assert_eq!(actual.first().expect("nonempty fixture retains its first comment").paragraph_id.as_deref(), Some(expected_id.as_str()));
+            prop_assert_eq!(actual.first().ok_or_else(|| TestCaseError::fail("nonempty fixture retains its first comment"))?.paragraph_id.as_deref(), Some(expected_id.as_str()));
             for (index, row) in actual.iter().enumerate() {
                 prop_assert_eq!(&row.comment_id, &index.to_string());
                 let expected_content = format!("Content {index}");
@@ -870,23 +870,25 @@ mod collision_tests {
             let first = format!(r#"<w15:commentEx w15:paraId="{paragraph_id:08X}" w15:done="{resolved}"/>"#);
             let later = format!(r#"<w15:commentEx w15:paraId="{paragraph_id:08X}" w15:done="{}" w15:paraIdParent="5ABC6789"/>"#, !resolved);
             let xml = format!(r#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">{first}{}</w15:commentsEx>"#, later.repeat(repeats));
-            let actual = parse_comment_extensions(xml.as_bytes(), 32).expect("synthetic collision fixture should retain valid projection facts");
+            let actual = parse_comment_extensions(xml.as_bytes(), 32).map_err(|error| TestCaseError::fail(format!("unexpected fixture error: {error:?}")))?;
             prop_assert_eq!(actual.len(), 1);
-            let row = actual.get(&format!("{paragraph_id:08X}")).expect("synthetic collision fixture should retain valid projection facts");
+            let row = actual.get(&format!("{paragraph_id:08X}")).ok_or_else(|| TestCaseError::fail("first extension row must remain indexed"))?;
             prop_assert_eq!(row.resolved, resolved);
             prop_assert_eq!(&row.parent_paragraph_id, &None);
         }
     }
 
     #[test]
-    fn malformed_duplicate_extension_is_still_unknown() {
+    fn malformed_duplicate_extension_is_still_unknown() -> Result<(), TestCaseError> {
         let xml = br#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="15AB23CD" w15:done="1"/><w15:commentEx w15:paraId="15AB23CD" w15:done="perhaps"/></w15:commentsEx>"#;
-        assert!(parse_comment_extensions(xml, 32).is_err());
+        prop_assert!(parse_comment_extensions(xml, 32).is_err());
+        Ok(())
     }
 
     #[test]
-    fn malformed_duplicate_comment_is_still_unknown() {
+    fn malformed_duplicate_comment_is_still_unknown() -> Result<(), TestCaseError> {
         let xml = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="23"><w:p/></w:comment><w:comment w:id="23"><w:p></w:comment></w:comments>"#;
-        assert!(parse_comment_rows(xml, 32, TextMaterialization::WordHost).is_err());
+        prop_assert!(parse_comment_rows(xml, 32, TextMaterialization::WordHost).is_err());
+        Ok(())
     }
 }

@@ -2900,7 +2900,7 @@ mod collision_tests {
     use proptest::prelude::*;
     use std::fmt::Write as _;
 
-    fn project_bookmarks(body: &str) -> RawDocumentProjection {
+    fn project_bookmarks(body: &str) -> Result<RawDocumentProjection, TestCaseError> {
         let xml = format!(
             r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>{body}</w:p></w:body></w:document>"#
         );
@@ -2912,7 +2912,7 @@ mod collision_tests {
             Err(FormattingUnknownReason::DocumentPartOnly),
             None,
         )
-        .expect("synthetic collision fixture should retain valid projection facts")
+        .map_err(|error| TestCaseError::fail(format!("unexpected fixture error: {error:?}")))
     }
 
     proptest! {
@@ -2923,20 +2923,20 @@ mod collision_tests {
             let body = if overlap {
                 let mut starts = String::new();
                 for index in 0..count {
-                    write!(starts, r#"<w:bookmarkStart w:id="{id}" w:name="target{index}"/>"#).expect("writing fixture XML into a String cannot fail");
+                    write!(starts, r#"<w:bookmarkStart w:id="{id}" w:name="target{index}"/>"#).map_err(|error| TestCaseError::fail(format!("fixture XML write failed: {error:?}")))?;
                 }
                 format!("{starts}{text}{}", end.repeat(count))
             } else {
                 let mut ranges = String::new();
                 for index in 0..count {
-                    write!(ranges, r#"<w:bookmarkStart w:id="{id}" w:name="target{index}"/>{text}{end}"#).expect("writing fixture XML into a String cannot fail");
+                    write!(ranges, r#"<w:bookmarkStart w:id="{id}" w:name="target{index}"/>{text}{end}"#).map_err(|error| TestCaseError::fail(format!("fixture XML write failed: {error:?}")))?;
                 }
                 ranges
             };
-            let output = project_bookmarks(&body);
-            let bookmarks = output.bookmarks.expect("synthetic collision fixture should retain valid projection facts");
+            let output = project_bookmarks(&body)?;
+            let bookmarks = output.bookmarks.map_err(|error| TestCaseError::fail(format!("unexpected fixture error: {error:?}")))?;
             prop_assert_eq!(bookmarks.len(), count);
-            prop_assert_eq!(&output.paragraphs.first().expect("fixture has one paragraph").text, &"Content".repeat(if overlap { 1 } else { count }));
+            prop_assert_eq!(&output.paragraphs.first().ok_or_else(|| TestCaseError::fail("fixture has one paragraph"))?.text, &"Content".repeat(if overlap { 1 } else { count }));
             for (index, bookmark) in bookmarks.iter().enumerate() {
                 prop_assert_eq!(bookmark.id, id);
                 prop_assert_eq!(&bookmark.name, &format!("target{index}"));
@@ -2945,18 +2945,21 @@ mod collision_tests {
     }
 
     #[test]
-    fn unmatched_colliding_ranges_remain_unknown() {
+    fn unmatched_colliding_ranges_remain_unknown() -> Result<(), TestCaseError> {
         let start = r#"<w:bookmarkStart w:id="37" w:name="target"/>"#;
         let end = r#"<w:bookmarkEnd w:id="37"/>"#;
-        assert!(
-            project_bookmarks(&format!("{start}{start}{end}"))
+        prop_assert!(
+            project_bookmarks(&format!("{start}{start}{end}"))?
                 .bookmarks
-                .is_err()
+                .is_err(),
+            "unmatched colliding range must remain unknown"
         );
-        assert!(
-            project_bookmarks(&format!("{start}{end}{end}"))
+        prop_assert!(
+            project_bookmarks(&format!("{start}{end}{end}"))?
                 .bookmarks
-                .is_err()
+                .is_err(),
+            "unmatched colliding range must remain unknown"
         );
+        Ok(())
     }
 }
