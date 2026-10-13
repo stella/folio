@@ -71,11 +71,19 @@ export async function openEditor(
  * (insertText, boldFirstWord, getDocumentText).
  */
 export async function ensureLiveView(page: Page): Promise<void> {
-  await page.evaluate(() => window.__folioParity?.ensureView());
   await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.hasView() ?? false), {
-      timeout: 30_000,
-    })
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const bridge = window.__folioParity;
+          if (!bridge) return false;
+          if (!bridge.hasView()) bridge.ensureView();
+          return bridge.hasView();
+        }),
+      {
+        timeout: 30_000,
+      },
+    )
     .toBe(true);
 }
 

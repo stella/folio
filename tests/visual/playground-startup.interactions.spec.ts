@@ -1,6 +1,28 @@
 import { expect, test } from "@playwright/test";
 import { ensureLiveView } from "../parity/parity-fixture";
 
+test("deferred view readiness requests follow the current bridge", async ({ page }) => {
+  await page.goto("/?paragraphs=12");
+  await expect
+    .poll(() => page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0))
+    .toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const bridge = window.__folioParity;
+    if (!bridge) throw new Error("Expected editor bridge");
+    const ensure = bridge.ensureView;
+    const hasView = bridge.hasView;
+    let requests = 0;
+    bridge.ensureView = () => {
+      requests++;
+      if (requests > 1) ensure();
+    };
+    // A request against a loading editor can finish before its replacement is ready.
+    bridge.hasView = () => requests > 1 && hasView();
+  });
+  await ensureLiveView(page);
+  expect(await page.evaluate(() => window.__folioParity?.hasView())).toBe(true);
+});
+
 for (const query of ["", "?paragraphs=12", "?file=sample.docx&paragraphs=12"]) {
   test(`playground initializes its document and keeps the scroll bridge through rerenders (${query || "default"})`, async ({
     page,
