@@ -1,5 +1,5 @@
 import { EMPTY_PROPERTY_SETS } from "@stll/docx-core/ops";
-import type { TableRow } from "../types/document";
+import type { TableRow, PreservedAttribute } from "../types/document";
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
 import { getAttributeByNamespaceUri, type XmlElement } from "./xmlParser";
 
@@ -21,3 +21,9 @@ export const serializeEmptyRowProperties = (row: TableRow): string[] => {
     ? [`folio:${EMPTY_ROW_PROPERTIES_ATTRIBUTE}="${EMPTY_PROPERTY_SETS.KEEP}"`]
     : [];
 };
+
+export const isEmptyRowPropertiesAttribute = ({
+  namespace,
+  name,
+}: Pick<PreservedAttribute, "namespace" | "name">): boolean =>
+  namespace === OOXML_NAMESPACES.folio.uri && name === EMPTY_ROW_PROPERTIES_ATTRIBUTE;

@@ -200,7 +200,12 @@ const captureParagraphPropertySource = (pPr: XmlElement, paragraph: Paragraph): 
         // Removing sibling-owned revisions must not author an empty property set.
         if (
           paragraph.formatting?.runProperties === undefined &&
-          elements.every((element) => element.type === "text" && !(element.text ?? "").trim())
+          elements.every(
+            (element) =>
+              element.type === "text" &&
+              (element.text === undefined ||
+                (typeof element.text === "string" && element.text.trim() === "")),
+          )
         )
           return [];
         return [cloneElement(child, { elements })];

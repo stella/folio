@@ -1,5 +1,5 @@
 import {
-  EMPTY_ROW_PROPERTIES_ATTRIBUTE,
+  isEmptyRowPropertiesAttribute,
   retainsEmptyRowProperties,
 } from "./tableRowPropertyPresence";
 /**
@@ -62,7 +62,7 @@ import type {
 } from "../types/document";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import { blockCustomXmlShell } from "./blockCustomXmlShell";
-import { attributeRemainder } from "./attributeRemainder";
+import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import { TABLE_LOOK_FLAGS } from "./tableLook";
 import {
@@ -2006,9 +2006,9 @@ export function parseTableRow(
   // row models none of them.
   const remainingAttributes = attributeRemainder({
     element: trElement,
-    modelled: new Set([EMPTY_ROW_PROPERTIES_ATTRIBUTE]),
-  });
-  if (remainingAttributes) {
+    modelled: NO_MODELLED_ATTRIBUTES,
+  })?.filter((attribute) => !isEmptyRowPropertiesAttribute(attribute));
+  if (remainingAttributes?.length) {
     row.preservedAttributes = remainingAttributes;
   }
 
