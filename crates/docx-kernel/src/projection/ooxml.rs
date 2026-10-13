@@ -2384,7 +2384,10 @@ impl ProjectionState {
             self.bookmarks_complete = false;
             return Ok(());
         };
-        queue.cursor = queue.cursor.checked_add(1).ok_or(())?;
+        queue.cursor = queue
+            .cursor
+            .checked_add(1)
+            .ok_or(ProjectionError::InvalidDocumentXml)?;
         if queue.cursor == queue.starts.len() {
             self.open_bookmarks.remove(&id);
         }
