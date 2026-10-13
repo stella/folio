@@ -152,6 +152,7 @@ describe("CI plan", () => {
       "scripts/on-off-spelling.test.ts",
       "scripts/consumer-scenario-dependencies.test.ts",
       "scripts/check-package-dependencies.test.ts",
+      "scripts/packed-declaration-diagnostics.test.ts",
       "scripts/packed-exports.test.ts",
       "scripts/published-packages.test.ts",
       "scripts/adapter-layout-timing.test.ts",

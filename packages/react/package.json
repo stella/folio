@@ -72,6 +72,8 @@
     "@fontsource/source-sans-3": "^5.2.9",
     "@fontsource/tinos": "^5.2.7",
     "@stll/folio-core": "workspace:^",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "better-result": "3.0.1",
     "lucide-react": "1.24.0",
     "prosemirror-history": "^1.5.0",

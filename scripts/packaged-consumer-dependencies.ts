@@ -107,6 +107,13 @@ for (const entry of ${JSON.stringify(assets)}) { await access(fileURLToPath(impo
       );
       const compiler = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
       await $`node ${compiler} -p tsconfig.json`.cwd(consumer);
+      const declarationCheck = path.join(
+        repoRoot,
+        "scripts",
+        "lib",
+        "packed-declaration-diagnostics.ts",
+      );
+      await $`bun ${declarationCheck} ${path.join(consumer, "tsconfig.json")}`.cwd(repoRoot);
       console.log(
         `PASS ${pkg.name}: ${esm.length} ESM, ${cjs.length} CJS, ${typed.length} type entries`,
       );
