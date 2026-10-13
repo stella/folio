@@ -475,7 +475,7 @@ export type LineBreakRun = {
 };
 
 // @public (undocumented)
-export type ListMarkerFormatting = Pick<RunFormatting, "fontFamily" | "alternateFontFamily" | "eastAsiaFontFamily" | "eastAsiaAlternateFontFamily" | "complexScriptFontFamily" | "complexScriptAlternateFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript" | "color">;
+export type ListMarkerFormatting = Pick<RunFormatting, "embeddedFontFamilyMap" | "fontFamily" | "alternateFontFamily" | "eastAsiaFontFamily" | "eastAsiaAlternateFontFamily" | "complexScriptFontFamily" | "complexScriptAlternateFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript" | "color">;
 
 // @public
 export type MathRun = RunFormatting & {
@@ -639,6 +639,7 @@ export type PaginatorOptions = {
 
 // @public
 export type ParagraphAttrs = {
+    embeddedFontFamilyMap?: ReadonlyMap<string, string>;
     alignment?: "left" | "center" | "right" | "justify";
     justificationCompatibility?: {
         type: "legacy";
@@ -794,6 +795,7 @@ export type Run = TextRun | TabRun | ImageRun | LineBreakRun | RenderedPageBreak
 
 // @public
 export type RunFormatting = {
+    embeddedFontFamilyMap?: ReadonlyMap<string, string>;
     bold?: boolean;
     italic?: boolean;
     underline?: boolean | {

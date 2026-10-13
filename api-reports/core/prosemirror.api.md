@@ -136,7 +136,13 @@ export function deleteTable(state: EditorState, dispatch?: (tr: Transaction) => 
 export function distributeColumns(): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
 // @public (undocumented)
-export const documentStylesKey: PluginKey<StyleResolver | null>;
+export const documentStylesKey: Readonly<{
+    key: string;
+    createKey: () => PluginKey<StyleResolver | null>;
+    owns: (plugin: Plugin_2<StyleResolver | null>) => boolean;
+    get: (state: EditorState) => Plugin_2<StyleResolver | null> | undefined;
+    getState: (state: EditorState) => StyleResolver | null | undefined;
+}>;
 
 // @public (undocumented)
 export const ensureParaIdsInState: (state: EditorState) => EditorState;
@@ -548,7 +554,13 @@ export type SelectionContext = {
 export type SelectionState = SelectionSnapshot;
 
 // @public
-export const selectionTrackerKey: PluginKey<SelectionContext>;
+export const selectionTrackerKey: Readonly<{
+    key: string;
+    createKey: () => PluginKey<SelectionContext>;
+    owns: (plugin: Plugin_2<SelectionContext>) => boolean;
+    get: (state: EditorState) => Plugin_2<SelectionContext> | undefined;
+    getState: (state: EditorState) => SelectionContext | undefined;
+}>;
 
 // @public (undocumented)
 export function selectRow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean;

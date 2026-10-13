@@ -54,6 +54,7 @@ export type ConvertFootnoteOptions = {
   theme?: Theme | null;
   defaultSize?: number;
   fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
+  embeddedFontFamilyMap?: ToFlowBlocksOptions["embeddedFontFamilyMap"];
   measureBlocks?: MeasureBlocksFn;
   /** Document-wide `w:defaultTabStop` in twips — forwarded to toFlowBlocks. */
   defaultTabStopTwips?: number;
@@ -375,6 +376,9 @@ export function convertNoteStoryToFlowBlocks(
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
   }
+  if (options.embeddedFontFamilyMap !== undefined) {
+    flowOptions.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
+  }
   if (options.fontAlternates !== undefined) {
     flowOptions.fontAlternates = options.fontAlternates;
   }
@@ -669,6 +673,11 @@ function createFootnoteNumberRun(
     fontSize: firstFormattedRun?.fontSize ?? paragraph.attrs?.defaultFontSize ?? FOOTNOTE_FONT_SIZE,
     superscript: true,
   };
+  const embeddedFontFamilyMap =
+    firstFormattedRun?.embeddedFontFamilyMap ?? paragraph.attrs?.embeddedFontFamilyMap;
+  if (embeddedFontFamilyMap) {
+    numberRun.embeddedFontFamilyMap = embeddedFontFamilyMap;
+  }
   const fontFamily = firstFormattedRun?.fontFamily ?? paragraph.attrs?.defaultFontFamily;
   if (fontFamily) {
     numberRun.fontFamily = fontFamily;
