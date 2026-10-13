@@ -79,13 +79,14 @@ export function useFindReplace({
   documentState,
   getDocumentState,
   getEditorState,
-  markupView = "all-markup",
+  markupView: markupViewProp,
   containerRef,
   handleDocumentChange,
   findReplace,
   selectMatch,
   replaceEditorMatches,
 }: UseFindReplaceParams): UseFindReplaceReturn {
+  const markupView = markupViewProp ?? "all-markup";
   const manager = useMemo(() => new FindReplaceManager<FindMatch>(), []);
   const [currentResult, setCurrentResult] = useState<FindResult | null>(null);
   const activeSearch = useRef<{ searchText: string; options: FindOptions } | null>(null);
