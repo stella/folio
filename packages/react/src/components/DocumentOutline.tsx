@@ -79,10 +79,11 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
   const OutlineRail = useFolioUI().OutlineRail;
   const navRef = useRef<HTMLElement>(null);
   const expandButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusTarget = useCallback(() => expandButtonRef.current, []);
   useDrawerFocus({
     container: navRef,
     onClose: surface === "expanded" && onClose ? onClose : null,
-    returnFocusRef: expandButtonRef,
+    returnFocusTarget,
   });
   const controlMinimumStyle = {
     minWidth: PANEL_METRICS.controlMinimumSize,

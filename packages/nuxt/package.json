@@ -49,7 +49,7 @@
   "scripts": {
     "build": "nuxt-module-build build",
     "prepack": "bun run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun check --no-pretty --all --project=tsconfig.json"
   },
   "dependencies": {
     "@nuxt/kit": "^3.14.0 || ^4.0.0",

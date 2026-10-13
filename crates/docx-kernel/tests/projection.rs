@@ -755,7 +755,10 @@ fn selects_regular_and_complex_script_bold_from_the_effective_run_state() {
             style: TextStyle::Bold,
         }]
     );
-    assert!(projection.paragraphs[5].formatting.is_empty());
+    assert_eq!(
+        projection.paragraphs[5].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
     assert_eq!(
         projection.paragraphs[6].formatting,
         [TextFormattingSpan {
@@ -780,7 +783,10 @@ fn selects_regular_and_complex_script_bold_from_the_effective_run_state() {
             style: TextStyle::Bold,
         }]
     );
-    assert!(projection.paragraphs[9].formatting.is_empty());
+    assert_eq!(
+        projection.paragraphs[9].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
     assert_eq!(
         projection.paragraphs[10].formatting,
         [TextFormattingSpan {
@@ -807,7 +813,10 @@ fn selects_regular_and_complex_script_bold_from_the_effective_run_state() {
             style: TextStyle::Bold,
         }]
     );
-    assert!(projection.paragraphs[14].formatting.is_empty());
+    assert_eq!(
+        projection.paragraphs[14].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
     assert_eq!(
         projection.paragraphs[15].formatting,
         [TextFormattingSpan {
@@ -1007,7 +1016,10 @@ fn keeps_numbering_label_formatting_separate_and_math_formatting_incomplete() {
         allocate,
     )
     .expect("numbering-label formatting should preserve body spans");
-    assert!(numbered.paragraphs[0].formatting.is_empty());
+    assert_eq!(
+        numbered.paragraphs[0].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
     assert_eq!(
         numbered.formatting_completeness,
         FormattingCompleteness {
@@ -1026,7 +1038,10 @@ fn keeps_numbering_label_formatting_separate_and_math_formatting_incomplete() {
     )
     .expect("math text should survive unsupported math formatting");
     assert_eq!(math.paragraphs[0].text, "A");
-    assert!(math.paragraphs[0].formatting.is_empty());
+    assert_eq!(
+        math.paragraphs[0].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
     assert_eq!(
         math.formatting_completeness,
         FormattingCompleteness {
@@ -1101,9 +1116,18 @@ fn resolves_toggle_levels_and_ignores_historical_style_snapshots() {
             },
         ]
     );
-    assert!(projection.paragraphs[1].formatting.is_empty());
-    assert!(projection.paragraphs[2].formatting.is_empty());
-    assert!(projection.paragraphs[3].formatting.is_empty());
+    assert_eq!(
+        projection.paragraphs[1].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
+    assert_eq!(
+        projection.paragraphs[2].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
+    assert_eq!(
+        projection.paragraphs[3].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
     assert_eq!(
         projection.paragraphs[4].formatting,
         [TextFormattingSpan {
@@ -1154,7 +1178,10 @@ fn ignores_style_identifiers_beyond_the_word_limit() {
     .expect("Word-ignored style identifiers should not invalidate the package");
 
     assert_eq!(projection.paragraphs[0].style_id, None);
-    assert!(projection.paragraphs[0].formatting.is_empty());
+    assert_eq!(
+        projection.paragraphs[0].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
     assert_eq!(
         projection.formatting_completeness,
         FormattingCompleteness {
@@ -1218,8 +1245,14 @@ fn style_toggle_chains_preserve_false_and_direct_values_remain_absolute() {
             style: TextStyle::Bold,
         }]
     );
-    assert!(projection.paragraphs[1].formatting.is_empty());
-    assert!(projection.paragraphs[2].formatting.is_empty());
+    assert_eq!(
+        projection.paragraphs[1].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
+    assert_eq!(
+        projection.paragraphs[2].formatting,
+        Vec::<TextFormattingSpan>::new()
+    );
 }
 
 #[test]

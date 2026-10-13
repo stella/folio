@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const workflow = Bun.YAML.parse(
@@ -21,11 +23,15 @@ const needsFor = ({ depth, event, codeRequired = "true", toolchainChanged = "fal
     suite_depth: depth,
     code_required: codeRequired,
     toolchain_changed: toolchainChanged,
+    reused_run: "",
+    warm_caches: "false",
   };
   const needs = { "ci-plan": { result: "success", outputs } };
   for (const [job, scope] of Object.entries(scopes)) {
     const selected =
       (scope.event === undefined || scope.event === event) &&
+      scope.reuse !== "required" &&
+      scope.warm !== "required" &&
       (scope.area === undefined ||
         (outputs[scope.area] === (scope.value ?? "true") &&
           (scope.depth === undefined || scope.depth === depth)));
@@ -34,20 +40,32 @@ const needsFor = ({ depth, event, codeRequired = "true", toolchainChanged = "fal
   return needs;
 };
 
-const runResult = (event, needs, draft = "false") =>
-  Bun.spawnSync(["bash", "-c", `gh() { echo "$DRAFT_STATE"; }; ${resultStep.run}`], {
-    env: {
-      ...process.env,
-      EVENT: event,
-      NEEDS: JSON.stringify(needs),
-      PLAN: JSON.stringify(needs["ci-plan"].outputs),
-      PLAN_RESULT: needs["ci-plan"].result,
-      JOB_SCOPES: JSON.stringify(scopes),
-      DRAFT_STATE: draft,
-      REPO: "stella/folio",
-      PR_NUMBER: "1",
-    },
-  });
+const runResult = (event, needs, draft = "false") => {
+  const directory = mkdtempSync(join(tmpdir(), "folio-ci-outcome-"));
+  const summary = join(directory, "summary");
+  try {
+    const result = Bun.spawnSync(
+      ["bash", "-c", `gh() { echo "$DRAFT_STATE"; }; ${resultStep.run}`],
+      {
+        env: {
+          ...process.env,
+          EVENT: event,
+          NEEDS: JSON.stringify(needs),
+          PLAN: JSON.stringify(needs["ci-plan"].outputs),
+          PLAN_RESULT: needs["ci-plan"].result,
+          JOB_SCOPES: JSON.stringify(scopes),
+          DRAFT_STATE: draft,
+          REPO: "stella/folio",
+          PR_NUMBER: "1",
+          GITHUB_STEP_SUMMARY: summary,
+        },
+      },
+    );
+    return { ...result, summary: Bun.file(summary).size > 0 ? readFileSync(summary, "utf8") : "" };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+};
 
 describe("CI result", () => {
   test("the aggregate observes every job and each scope matches the workflow gate", () => {
@@ -66,8 +84,9 @@ describe("CI result", () => {
     for (const [job, scope] of Object.entries(scopes)) {
       const gate = jobs[job].if;
       if (scope.event) {
-        expect(gate).toContain("github.event_name == 'pull_request'");
-        expect(gate).toContain("github.event.pull_request.draft != true");
+        expect(gate).toContain(`github.event_name == '${scope.event}'`);
+        if (scope.event === "pull_request")
+          expect(gate).toContain("github.event.pull_request.draft != true");
       }
       if (scope.area) {
         expect(planOutputs).toContain(scope.area);
@@ -100,6 +119,9 @@ describe("CI result", () => {
         if (job !== "ci-plan" && result === "success") exercised.add(job);
       }
     }
+    for (const [job, { result }] of Object.entries(reusedNeeds("true"))) {
+      if (job !== "ci-plan" && result === "success") exercised.add(job);
+    }
     expect([...exercised].toSorted()).toEqual(Object.keys(scopes).toSorted());
   });
 
@@ -124,6 +146,69 @@ describe("CI result", () => {
         }
       });
     }
+  }
+
+  const reusedNeeds = (warm = "false") => {
+    const needs = needsFor({ depth: "fast", event: "push" });
+    for (const key of planOutputs.filter((output) => output.endsWith("_required"))) {
+      needs["ci-plan"].outputs[key] = "false";
+    }
+    needs["ci-plan"].outputs.reused_run = "38238759782";
+    needs["ci-plan"].outputs.warm_caches = warm;
+    for (const job of Object.keys(scopes)) needs[job].result = "skipped";
+    if (warm === "true") needs["warm-main-caches"].result = "success";
+    return needs;
+  };
+
+  test("a reused push accepts skipped correctness jobs and links its successful run", () => {
+    for (const warm of ["false", "true"]) {
+      const result = runResult("push", reusedNeeds(warm));
+      expect(result.exitCode).toBe(0);
+      expect(result.summary).toBe(
+        "Reused merge-group run [38238759782](https://github.com/stella/folio/actions/runs/38238759782)\n",
+      );
+    }
+  });
+
+  test("all-skipped pushes require valid reuse and fulfilled cache warming", () => {
+    for (const reused of ["", "0", "invalid", undefined]) {
+      const needs = reusedNeeds();
+      needs["ci-plan"].outputs.reused_run = reused;
+      expect(runResult("push", needs).exitCode).toBe(1);
+    }
+    for (const event of ["pull_request", "merge_group", "workflow_dispatch"]) {
+      expect(runResult(event, reusedNeeds()).exitCode).toBe(1);
+    }
+    for (const result of ["failure", "cancelled", "skipped", "missing"]) {
+      const needs = reusedNeeds("true");
+      needs["warm-main-caches"].result = result;
+      expect(runResult("push", needs).exitCode).toBe(1);
+    }
+    for (const area of planOutputs.filter((key) => key.endsWith("_required"))) {
+      const needs = reusedNeeds();
+      needs["ci-plan"].outputs[area] = "true";
+      expect(runResult("push", needs).exitCode).toBe(1);
+    }
+    for (const warm of ["", "invalid"]) {
+      expect(runResult("push", reusedNeeds(warm)).exitCode).toBe(1);
+    }
+    const untrusted = reusedNeeds();
+    untrusted["ci-plan"].outputs.trusted = "false";
+    expect(runResult("push", untrusted).exitCode).toBe(1);
+  });
+
+  for (const job of Object.keys(scopes).filter((key) => key !== "warm-main-caches")) {
+    test(`reused pushes require ${job} to be present and skipped`, () => {
+      for (const result of ["success", "failure", "cancelled", "missing"]) {
+        const baseline = reusedNeeds();
+        const needs =
+          result === "missing"
+            ? Object.fromEntries(Object.entries(baseline).filter(([name]) => name !== job))
+            : baseline;
+        if (result !== "missing") needs[job].result = result;
+        expect(runResult("push", needs).exitCode).toBe(1);
+      }
+    });
   }
 
   test("an unexpected failure, cancelled plan, or wrong event depth fails", () => {

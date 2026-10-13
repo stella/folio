@@ -9,6 +9,8 @@ import { keyDifferences, validateExactObjectKeys } from "./lib/exact-object";
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_PATH = path.join(import.meta.dir, "typecheck-budget.json");
 const BASELINE_RELATIVE_PATH = "scripts/typecheck-budget.json";
+// Compiler-work counters remain a separate metric: Bun check does not expose
+// Types/Instantiations. Preserve this counter baseline independently of correctness checks.
 const NATIVE_TSC = path.join(REPO_ROOT, "node_modules/@typescript/native/bin/tsc");
 const CLASSIC_TSC = path.join(REPO_ROOT, "node_modules/typescript/bin/tsc");
 

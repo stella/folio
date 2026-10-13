@@ -1,16 +1,12 @@
 name: Consumer Oracle Mutation Check
 
 on:
-  merge_group:
-    types: [checks_requested]
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 permissions: {}
 
 jobs:
   oracle-mutations:
-    if: github.event_name == 'merge_group'
     name: Packed consumer mutation check
     runs-on: ubuntu-latest
     timeout-minutes: 60

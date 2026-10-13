@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "crates/docx-kernel/**"
+      - "crates/text-shaper/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -12,6 +13,9 @@ on:
       - "bun.lock"
       - "packages/docx-core/package.json"
       - "packages/docx-core/src/generated/**"
+      - "packages/core/package.json"
+      - "packages/core/src/generated/**"
+      - "scripts/build-shaper-wasm.ts"
       - "scripts/build-docx-kernel-wasm.ts"
       - "scripts/lib/rust-wasm-artifact.ts"
       - ".github/workflows/canonical-wasm.yml"
@@ -148,17 +152,38 @@ jobs:
           fi
           exit "$generation_status"
 
+      - name: Prove canonical WebAssembly determinism
+        run: |
+          bun --filter '@stll/folio-core' wasm:generate
+          sha256sum packages/docx-core/src/generated/* packages/core/src/generated/* > "$RUNNER_TEMP/wasm-build-first.sha256"
+          cargo clean --release --target wasm32-unknown-unknown
+          bun --filter '@stll/docx-core' wasm:generate
+          bun --filter '@stll/folio-core' wasm:generate
+          sha256sum packages/docx-core/src/generated/* packages/core/src/generated/* > "$RUNNER_TEMP/wasm-build-second.sha256"
+          diff -u "$RUNNER_TEMP/wasm-build-first.sha256" "$RUNNER_TEMP/wasm-build-second.sha256"
+          cat "$RUNNER_TEMP/wasm-build-second.sha256"
+
+      - name: Upload WebAssembly determinism hashes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: canonical-wasm-determinism
+          path: ${{ runner.temp }}/wasm-build-*.sha256
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Upload canonical projection artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: canonical-wasm
-          path: packages/docx-core/src/generated/
+          path: |
+            packages/docx-core/src/generated/
+            packages/core/src/generated/
           retention-days: 7
           if-no-files-found: error
 
       - name: Verify committed projection artifact
         run: |
-          drift="$(git status --porcelain=v1 --untracked-files=all -- packages/docx-core/src/generated)"
+          drift="$(git status --porcelain=v1 --untracked-files=all -- packages/docx-core/src/generated packages/core/src/generated)"
           if [[ -n "${drift}" ]]; then
             echo "canonical projection artifacts differ from the committed files:" >&2
             echo "${drift}" >&2

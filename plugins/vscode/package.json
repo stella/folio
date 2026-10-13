@@ -36,7 +36,7 @@
     "publish": "vsce publish --no-dependencies --azure-credential",
     "publish:open-vsx": "ovsx publish folio.vsix",
     "test": "bun test src",
-    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.json",
+    "typecheck": "bun check --no-pretty --all --project=tsconfig.json",
     "test:smoke": "bun test/smoke/run.ts"
   },
   "devDependencies": {

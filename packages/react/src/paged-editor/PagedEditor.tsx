@@ -5998,6 +5998,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         scrollToParaIdImpl,
         scrollToPositionImpl,
         setPassageHighlightImpl,
+        experimentalSession,
       ],
     );
 

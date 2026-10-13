@@ -144,13 +144,13 @@ fn strict_and_transitional_packages_preserve_related_styles_and_numbering() {
         ];
         let expected = project_docx(&zip_package(&entries), DocxLimits::default(), allocate)
             .expect("ZIP with related dependencies should project");
-        assert!(
-            !expected
+        assert_ne!(
+            expected
                 .paragraphs
                 .first()
                 .expect("related paragraph")
-                .formatting
-                .is_empty()
+                .formatting,
+            Vec::<stella_docx_kernel::TextFormattingSpan>::new()
         );
         assert!(
             matches!(&expected.structural_facts.indentation, StructuralFactSet::Known(facts) if !facts.is_empty())

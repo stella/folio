@@ -1,5 +1,13 @@
 # @stll/folio-core
 
+## 0.58.5
+
+### Patch Changes
+
+- [#1658](https://github.com/stella/folio/pull/1658) [`d38384d`](https://github.com/stella/folio/commit/d38384d6d8654fa5c4a95fc300683c993bcd7771) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Regenerate bundled WebAssembly with the pinned Rust toolchain.
+- Updated dependencies [[`d38384d`](https://github.com/stella/folio/commit/d38384d6d8654fa5c4a95fc300683c993bcd7771)]:
+  - @stll/docx-core@0.36.2
+
 ## 0.58.4
 
 ### Patch Changes

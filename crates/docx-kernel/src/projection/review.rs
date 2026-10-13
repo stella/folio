@@ -252,7 +252,7 @@ fn bound_revision_details(
     (revisions, remaining)
 }
 
-fn namespace_kind(namespace: &ResolveResult<'_>) -> NamespaceKind {
+const fn namespace_kind(namespace: &ResolveResult<'_>) -> NamespaceKind {
     let ResolveResult::Bound(Namespace(value)) = namespace else {
         return NamespaceKind::Other;
     };

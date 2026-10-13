@@ -61,7 +61,7 @@ pub struct ShapeRequest<'a> {
     pub features_off: &'a [String],
 }
 
-fn tag_of(value: &str) -> Option<rustybuzz::ttf_parser::Tag> {
+const fn tag_of(value: &str) -> Option<rustybuzz::ttf_parser::Tag> {
     let bytes = value.as_bytes();
     let [a, b, c, d] = bytes else { return None };
     Some(rustybuzz::ttf_parser::Tag::from_bytes(&[*a, *b, *c, *d]))

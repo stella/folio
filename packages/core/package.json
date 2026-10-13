@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-core",
-  "version": "0.58.4",
+  "version": "0.58.5",
   "description": "Headless, framework-neutral core of folio: the OOXML (.docx) parser, document model, ProseMirror integration, and page-layout engine. No React.",
   "keywords": [
     "document-model",
@@ -78,7 +78,7 @@
     "build": "rm -rf dist && tsdown",
     "prepack": "bun run build",
     "pack:dry-run": "bun pm pack --dry-run",
-    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
+    "typecheck": "bun check --no-pretty --all --project=tsconfig.build.json",
     "test": "bun test src scripts",
     "test:conformance:full": "FOLIO_CONFORMANCE=full bun test src/__tests__/editorCommandConformance.test.ts",
     "wasm:check": "bun ../../scripts/build-shaper-wasm.ts --check",

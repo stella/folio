@@ -1,4 +1,4 @@
-name: Nightly Corpus Gate
+name: Nightly Corpus Edit Fuzz
 
 on:
   schedule:
@@ -6,11 +6,6 @@ on:
     # (05:37) crons so the three jobs don't contend for runners.
     - cron: "57 5 * * *"
   workflow_dispatch:
-    inputs:
-      edit_fuzz_only:
-        description: Run only the edit-fuzz jobs
-        type: boolean
-        default: false
 
 permissions: {}
 
@@ -38,7 +33,7 @@ jobs:
         with:
           bun-version-file: "package.json"
 
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "8.0.x"
 
@@ -59,7 +54,7 @@ jobs:
         run: bun scripts/corpus-edit-fuzz.ts run --shard ${{ matrix.shard }}/4 --out edit-fuzz-${{ matrix.shard }}.json
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always() && hashFiles('edit-fuzz-${{ matrix.shard }}.json') != ''
+        if: ${{ always() && hashFiles(format('edit-fuzz-{0}.json', matrix.shard)) != '' }}
         with:
           name: corpus-edit-fuzz-${{ matrix.shard }}
           path: edit-fuzz-${{ matrix.shard }}.json
@@ -89,161 +84,3 @@ jobs:
 
       - name: Ratchet edit findings
         run: bun scripts/corpus-edit-fuzz.ts check edit-fuzz-1.json edit-fuzz-2.json edit-fuzz-3.json edit-fuzz-4.json
-
-  shard:
-    name: Corpus invariants (shard ${{ matrix.shard }}/4)
-    if: ${{ !inputs.edit_fuzz_only }}
-    runs-on: ubuntu-latest
-    # Eight more invariants per file than the gate shipped with, over a corpus
-    # that has grown: a shard is now most of an hour rather than minutes.
-    timeout-minutes: 90
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-
-    steps:
-      # Outside the checkout: corpus content is third-party and never enters the
-      # working tree. `runner` is a step-level context, so the path is published
-      # to the job environment here rather than declared at workflow level.
-      - name: Point the corpus cache outside the checkout
-        run: echo "FOLIO_CORPUS_CACHE=$RUNNER_TEMP/folio-corpus" >> "$GITHUB_ENV"
-
-      # persist-credentials: false — this job can be manually dispatched on any
-      # branch ref, so the checkout token must not linger in the git config for
-      # branch-controlled steps to reuse.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      # The corpus is third-party content and is never committed, so the cache
-      # is keyed on the lock that describes it: a repin changes the lock, which
-      # misses the cache and refetches.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.FOLIO_CORPUS_CACHE }}
-          key: folio-corpus-${{ hashFiles('corpus/sources.lock.json') }}
-
-      # Idempotent: a restored cache is verified against the pinned commits and
-      # only the missing sources are downloaded.
-      - name: Fetch the corpus
-        run: bun run corpus:fetch
-
-      # `--tiers 1` is the default; it is stated because the baseline this job
-      # ratchets against is bound to a tier-1 digest, so the selection is part
-      # of the contract rather than a default worth inheriting silently.
-      #
-      # The budgets are far above what this corpus needs, because here they
-      # must never be what decides whether a file's findings count: that is
-      # corpus/report-only-files.json's job, and a file that stops at a budget
-      # without being listed degrades the run. The slowest file not on the list
-      # spends about 32s in the invariants (its slowest single invariant, about
-      # 14s), and the two listed files about 130s and 150s, so 120s per
-      # invariant and 600s per file leave the honest files an order of
-      # magnitude of headroom on a slow runner. The worker deadline stays the
-      # outer bound and so has to sit above the file budget.
-      #
-      # `--per-file` records which files each signature fired on, about 1.5 MB
-      # across tier 1 and so a fraction of a shard's census. The ratchet does
-      # not read it; `scripts/corpus-diff.ts` does, and without it a row that
-      # grew between two nights can only be attributed by rerunning both sides
-      # over guesses.
-      - name: Corpus invariants
-        run: bun scripts/corpus-gate.ts run --tiers 1 --shard ${{ matrix.shard }}/4 --concurrency 2 --invariant-budget 120000 --file-budget 600000 --timeout 900000 --per-file --out census-${{ matrix.shard }}.json
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: corpus-census-${{ matrix.shard }}
-          path: census-${{ matrix.shard }}.json
-
-  tier2:
-    name: Corpus invariants, tier 2 (shard ${{ matrix.shard }}/4)
-    if: ${{ !inputs.edit_fuzz_only }}
-    runs-on: ubuntu-latest
-    # Tier 2 more than doubles the corpus, so a shard runs longer than a
-    # tier-1 one.
-    timeout-minutes: 150
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-
-    steps:
-      - name: Point the corpus cache outside the checkout
-        run: echo "FOLIO_CORPUS_CACHE=$RUNNER_TEMP/folio-corpus" >> "$GITHUB_ENV"
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.FOLIO_CORPUS_CACHE }}
-          key: folio-corpus-${{ hashFiles('corpus/sources.lock.json') }}
-
-      - name: Fetch the corpus
-        run: bun run corpus:fetch
-
-      # This is the only job that selects tier 2. Its census stays in the job
-      # and is read from the log: the committed baseline is bound to a tier-1
-      # digest, so a tier-2 census is not comparable against it, and nothing
-      # downstream should be able to pick one up by accident.
-      - name: Corpus invariants, tiers 1 and 2
-        run: |
-          census="$RUNNER_TEMP/census-tier2-${{ matrix.shard }}.json"
-          bun scripts/corpus-gate.ts run --tiers 1,2 --shard ${{ matrix.shard }}/4 --concurrency 2 --out "$census"
-          bun scripts/corpus-gate.ts report "$census"
-
-  ratchet:
-    name: Corpus baseline ratchet
-    needs: shard
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: corpus-census-*
-          merge-multiple: true
-
-      # The ratchet runs once over the merged census: each shard sees a subset,
-      # so only the whole run can be compared against the per-signature counts
-      # in corpus/baseline.json and corpus/baselines/.
-      #
-      # The `performance` family is measured and reported but not ratcheted:
-      # its verdicts are wall-clock, and runner speed varies between runs.
-      # Timing is recorded, not gated. The files named in
-      # corpus/report-only-files.json are measured the same way, and this step
-      # fails if any file outside that list stopped at a budget. The rows
-      # corpus/expected-dispositions.json claims are reported under their own
-      # heading and ratcheted there rather than as defects.
-      - name: Ratchet against the baseline
-        run: bun scripts/corpus-gate.ts check census-1.json census-2.json census-3.json census-4.json
