@@ -5,4 +5,4 @@
 "@stll/folio-nuxt": minor
 ---
 
-Require host-managed ProseMirror and Yjs peers and isolate editor shortcuts, styles, and embedded fonts per instance.
+Require host-managed ProseMirror and Yjs peers; isolate editor keys, shortcuts, styles, and fonts while preserving plugin state access across module evaluations.
