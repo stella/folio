@@ -1,5 +1,17 @@
 # @stll/folio-react
 
+## 0.26.0
+
+### Minor Changes
+
+- [#1646](https://github.com/stella/folio/pull/1646) [`5816dd0`](https://github.com/stella/folio/commit/5816dd01e37ca662f602d8066cb85542c2048f21) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Require React and React DOM 19.2; closed hyperlink, image, table, page setup, paste, and watermark dialogs now return null, so direct function callers must handle nullable results.
+
+### Patch Changes
+
+- [#1658](https://github.com/stella/folio/pull/1658) [`d38384d`](https://github.com/stella/folio/commit/d38384d6d8654fa5c4a95fc300683c993bcd7771) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Fix hook dependencies, preserve applied initial scroll after cancellation, and restore focus across drawer control replacement.
+- Updated dependencies [[`d38384d`](https://github.com/stella/folio/commit/d38384d6d8654fa5c4a95fc300683c993bcd7771)]:
+  - @stll/folio-core@0.58.5
+
 ## 0.25.3
 
 ### Patch Changes

@@ -97,15 +97,22 @@ const packages = [...new Bun.Glob("packages/*/package.json").scanSync({ cwd: REP
 
 const overrideMatches = (filename: string) =>
   nonReactPackageOverride.files.some((pattern) => new Bun.Glob(pattern).match(filename));
+const reactPresetOverride = config.overrides?.find((override) =>
+  Object.hasOwn(override.rules ?? {}, "react/hooks"),
+);
+const reactPresetMatches = (filename: string) =>
+  reactPresetOverride?.files.some((pattern) => new Bun.Glob(pattern).match(filename)) ?? false;
 
 describe("React lint package scope", () => {
   test("the shared config owns React Compiler policy without local severity overrides", () => {
     expect(config.options?.denyWarnings).toBe(true);
     const compilerRules = Object.keys(reactCompilerRules);
     expect(compilerRules.length).toBeGreaterThan(0);
+    expect(reactPresetOverride).toBeDefined();
+    expect(reactPresetOverride?.plugins).toContain("react");
     for (const [rule, level] of Object.entries(reactCompilerRules)) {
       if (level !== "off") expect(level, rule).toBe("error");
-      expect(config.rules?.[rule], rule).toBe(level);
+      expect(reactPresetOverride?.rules?.[rule], rule).toBe(level);
     }
     const source = readFileSync(path.join(REPO_ROOT, "oxlint.config.ts"), "utf8");
     expect(source).not.toMatch(/WarningsExpireAt|WarningPolicyAt|Date\.(?:now|parse)\(/u);
@@ -140,8 +147,9 @@ describe("React lint package scope", () => {
       }
       expect(compilerRules, property.name.text).not.toContain(property.name.text);
     }
+    expect(config.rules).not.toHaveProperty("react/hooks");
     for (const override of config.overrides ?? []) {
-      if (override === nonReactPackageOverride) continue;
+      if (override === reactPresetOverride || override === nonReactPackageOverride) continue;
       for (const rule of Object.keys(override.rules ?? {})) {
         expect(compilerRules, rule).not.toContain(rule);
       }
@@ -167,9 +175,11 @@ describe("React lint package scope", () => {
     }
   });
 
-  test("the override covers every and only non-React package", () => {
+  test("React and non-React overrides match the package import census", () => {
     expect(packages.length).toBeGreaterThan(0);
     for (const { directory, usesReact } of packages) {
+      expect(reactPresetMatches(`${directory}/src/probe.ts`), directory).toBe(usesReact);
+      expect(reactPresetMatches(`${directory}/src/nested/probe.tsx`), directory).toBe(usesReact);
       expect(overrideMatches(`${directory}/src/probe.ts`), directory).toBe(!usesReact);
       expect(overrideMatches(`${directory}/src/nested/probe.tsx`), directory).toBe(!usesReact);
     }
@@ -181,25 +191,16 @@ describe("React lint package scope", () => {
     }
   });
 
-  test("all configured React rules are off in non-React packages", () => {
-    const rules = [
-      config.rules,
-      ...(config.overrides ?? [])
-        .filter((override) => override !== nonReactPackageOverride)
-        .map((override) => override.rules),
-    ];
-    const reactRules = [
-      ...new Set(rules.flatMap((entries) => Object.keys(entries ?? {}).filter(isReactRule))),
-    ];
-    expect(reactRules.length).toBeGreaterThan(0);
-    expect(Object.keys(nonReactPackageOverride.rules).toSorted()).toEqual(reactRules.toSorted());
-    for (const [rule, level] of Object.entries(nonReactPackageOverride.rules)) {
-      expect(level, rule).toBe("off");
+  test("React Compiler policy is confined to React-owned source", () => {
+    expect(reactPresetOverride).toBeDefined();
+    expect(
+      Object.keys(reactPresetOverride?.rules ?? {}).filter(isReactRule).length,
+    ).toBeGreaterThan(0);
+    for (const { directory, usesReact } of packages) {
+      expect(reactPresetMatches(`${directory}/src/probe.ts`), directory).toBe(usesReact);
     }
-    // Generic JSX accessibility and architecture rules retain the shared policy.
-    expect(Object.keys(nonReactPackageOverride.rules).every(isReactRule)).toBe(true);
     expect(config.overrides?.at(-1)).toBe(nonReactPackageOverride);
-    expect(config.rules?.["react/hooks"]).toBe(reactCompilerRules["react/hooks"]);
+    expect(reactPresetOverride?.rules?.["react/hooks"]).toBe(reactCompilerRules["react/hooks"]);
   });
 
   test.each([

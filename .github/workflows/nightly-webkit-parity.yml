@@ -1,9 +1,6 @@
-name: Nightly WebKit Layout Parity
+name: WebKit Layout Parity
 
 on:
-  schedule:
-    # 06:07 UTC daily, offset from the other nightly jobs.
-    - cron: "7 6 * * *"
   workflow_dispatch:
 
 permissions: {}

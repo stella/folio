@@ -108,7 +108,7 @@ enum ParagraphMarkRevision {
 }
 
 impl ParagraphMarkRevision {
-    fn from_element(name: &[u8]) -> Option<Self> {
+    const fn from_element(name: &[u8]) -> Option<Self> {
         match name {
             b"ins" | b"moveTo" => Some(Self::Added),
             b"del" | b"moveFrom" => Some(Self::Removed),
@@ -2541,14 +2541,14 @@ fn enclosing_row(frames: &mut [Frame]) -> Option<&mut RowFrame> {
     None
 }
 
-fn revision_is_suppressed(name: &[u8], view: RevisionView) -> bool {
+const fn revision_is_suppressed(name: &[u8], view: RevisionView) -> bool {
     match view {
         RevisionView::Current => matches!(name, b"del" | b"moveFrom"),
         RevisionView::Original => matches!(name, b"ins" | b"moveTo"),
     }
 }
 
-fn is_change_snapshot(name: &[u8]) -> bool {
+const fn is_change_snapshot(name: &[u8]) -> bool {
     matches!(
         name,
         b"pPrChange"
@@ -2562,7 +2562,7 @@ fn is_change_snapshot(name: &[u8]) -> bool {
     )
 }
 
-fn is_unsupported_revision_markup(name: &[u8]) -> bool {
+const fn is_unsupported_revision_markup(name: &[u8]) -> bool {
     matches!(
         name,
         b"customXmlDelRangeStart"
