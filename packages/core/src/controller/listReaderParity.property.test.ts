@@ -486,10 +486,21 @@ const assertSparseReaders = async ({
   });
   expect(labels(parsed)).toEqual(expected);
   const pm = toProseDoc(parsed);
+  const layoutBlocks = toFlowBlocks(pm).filter((block) => block.kind === "paragraph");
   expect(
-    toFlowBlocks(pm)
-      .filter((block) => block.kind === "paragraph")
-      .map((block) => block.attrs?.listMarker),
+    layoutBlocks.map(({ attrs }) => ({
+      marker: attrs?.listMarker,
+      hidden: attrs?.listMarkerHidden === true,
+    })),
+  ).toEqual(
+    parsed.package.document.content.map((block) => ({
+      marker: block.type === "paragraph" ? block.listRendering?.marker : undefined,
+      hidden: block.type === "paragraph" && block.listRendering?.markerHidden === true,
+    })),
+  );
+  // Layout retains a hidden marker as metadata; the painter consults this flag.
+  expect(
+    layoutBlocks.map(({ attrs }) => (attrs?.listMarkerHidden ? undefined : attrs?.listMarker)),
   ).toEqual(expected);
   const converted = fromProseDoc(pm, parsed, { stylesheetSource: { type: "package" } });
   expect(labels(converted)).toEqual(expected);
