@@ -38,7 +38,7 @@
           :placeholder="t('findReplace.findPlaceholder')"
           :aria-label="t('findReplace.findText')"
           @keydown="handleSearchKeyDown"
-          @input="performSearch"
+          @input="scheduleSearch"
         />
         <span class="find-replace-dialog__count">{{ matchCountText }}</span>
         <FolioButton
@@ -131,10 +131,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
-import type { EditorView } from "prosemirror-view";
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
-import { useFindReplace } from "../../composables/useFindReplace";
+import type { UseFindReplaceReturn } from "../../composables/useFindReplace";
 
 const { t } = useTranslation();
 
@@ -145,8 +144,7 @@ const { Button: FolioButton, Input: FolioInput, Checkbox: FolioCheckbox } = useF
 
 const props = defineProps<{
   isOpen: boolean;
-  view: EditorView | null;
-  scrollVisiblePositionIntoView?: (pmPos: number) => void;
+  search: UseFindReplaceReturn;
 }>();
 
 const emit = defineEmits<{
@@ -162,15 +160,13 @@ const {
   matches,
   currentIndex,
   performSearch,
+  scheduleSearch,
   findNext,
   findPrevious,
   replaceCurrent: handleReplace,
   replaceAll: handleReplaceAll,
   clear: clearHighlights,
-} = useFindReplace({
-  editorView: toRef(props, "view"),
-  scrollVisiblePositionIntoView: (pmPos) => props.scrollVisiblePositionIntoView?.(pmPos),
-});
+} = props.search;
 const matchCase = toRef(options, "matchCase");
 const matchWholeWord = toRef(options, "matchWholeWord");
 

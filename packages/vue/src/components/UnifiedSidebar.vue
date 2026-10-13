@@ -29,6 +29,7 @@
   >
     <div
       class="unified-sidebar__inner"
+      :data-folio-scroll="isDrawer ? '' : undefined"
       :style="isDrawer ? drawerInnerStyle : { minHeight: minHeightPx + 'px' }"
     >
       <!-- Every item — add-comment input, comments, tracked changes —

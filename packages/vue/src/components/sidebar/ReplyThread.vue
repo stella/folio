@@ -23,7 +23,12 @@
         </div>
       </div>
       <div class="reply-thread__body" :class="{ 'reply-thread__body--clamp': !isExpanded }">
-        {{ getCommentText(reply.content) }}
+        <template v-for="(paragraph, paragraphIndex) in reply.content" :key="paragraphIndex">
+          <span :data-find-comment-id="reply.id" :data-find-comment-paragraph="paragraphIndex">{{
+            getFindParagraphText(paragraph)
+          }}</span
+          >{{ " " }}
+        </template>
       </div>
     </div>
   </div>
@@ -32,7 +37,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { Comment } from "@stll/folio-core/types/content";
-import { getCommentText, formatDate } from "./sidebarUtils";
+import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
+import { formatDate } from "./sidebarUtils";
 import Avatar from "./Avatar.vue";
 
 const props = defineProps<{

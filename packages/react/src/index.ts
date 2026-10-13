@@ -259,3 +259,5 @@ export {
   type MarkdownOptions,
   type MarkdownResult,
 } from "@stll/folio-core/markdown";
+
+export type { FindMatch, FindOptions, FindResult } from "@stll/folio-core/utils/findReplace";

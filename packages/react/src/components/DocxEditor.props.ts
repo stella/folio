@@ -60,6 +60,7 @@ import type { DocumentLoadState } from "./hooks/useDocumentLoader";
 // `EditorMode` is owned by `./hooks/useEditorMode`. Re-imported here for use
 // in `DocxEditorProps`; the canonical export is from the hook module.
 import type { EditorMode } from "./hooks/useEditorMode";
+import type { FindMatch, FindOptions, FindResult } from "@stll/folio-core/utils/findReplace";
 import type { SelectionFormatting } from "./Toolbar";
 
 /** Image context surfaced to the toolbar when the cursor is on an image node. */
@@ -85,6 +86,8 @@ export type ActiveTrackedChangeInfo = {
 };
 
 export type DocxEditorProps = {
+  /** Active document search result, including the zero-based current match index. */
+  onFindResultChange?: (result: FindResult | null) => void;
   /** Document data — ArrayBuffer, Uint8Array, Blob, or File */
   documentBuffer?: DocxInput | null;
   /** Password for Agile-encrypted .docx files (Office 2010+). */
@@ -440,6 +443,12 @@ export type HighlightPassageOptions = {
  * Imperative handle exposed by the DocxEditor component.
  */
 export type DocxEditorRef = {
+  /** Find and highlight every occurrence in the document's stories. */
+  find: (searchText: string, options?: Partial<FindOptions>) => FindResult | null;
+  findNext: () => FindMatch | null;
+  findPrevious: () => FindMatch | null;
+  getFindResult: () => FindResult | null;
+  clearFind: () => void;
   /** Get the current document */
   getDocument: () => Document | null;
   /** Whether the live ProseMirror state has edits that have not been serialized. */

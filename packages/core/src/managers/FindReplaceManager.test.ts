@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { FindReplaceManager, getAdjacentFindIndex } from "./FindReplaceManager";
+import type { OpStory } from "@stll/docx-core/ops";
+import type { Document } from "../types/document";
 
 type TestMatch = {
   paragraphIndex: number;
@@ -14,6 +16,51 @@ const match = (id: string, paragraphIndex: number, startOffset: number): TestMat
   paragraphIndex,
   startOffset,
   endOffset: startOffset + 1,
+});
+
+type StoryTestMatch = TestMatch & {
+  story: OpStory;
+  textBoxIndex?: number;
+  commentId?: number;
+};
+
+const unsupportedMatches = [
+  { ...match("header", 0, 0), story: { kind: "header", rId: "rId1" } },
+  { ...match("footer", 0, 0), story: { kind: "footer", rId: "rId2" } },
+  { ...match("footnote", 0, 0), story: { kind: "footnote", id: 1 } },
+  { ...match("endnote", 0, 0), story: { kind: "endnote", id: 2 } },
+  { ...match("shape", 0, 0), story: "main", textBoxIndex: 0 },
+  { ...match("comment", 0, 0), story: "main", commentId: 7 },
+] as const satisfies readonly StoryTestMatch[];
+
+describe("FindReplaceManager replacement story boundaries", () => {
+  test.each(unsupportedMatches)(
+    "keeps $id navigable while refusing body replacement",
+    (secondary) => {
+      const document: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "run", content: [{ type: "text", text: "body" }] }],
+              },
+            ],
+          },
+        },
+      };
+      const before = structuredClone(document);
+      const body = { ...match("body", 0, 0), story: "main" } as const satisfies StoryTestMatch;
+      const manager = new FindReplaceManager<StoryTestMatch>();
+      manager.setMatches([body, secondary]);
+      expect(manager.goTo(1)?.match).toEqual(secondary);
+      expect(manager.replaceCurrent(document, "changed")).toBeNull();
+      expect(manager.replaceAll(document, [body, secondary], "changed")).toBeNull();
+      expect(document).toEqual(before);
+      expect(manager.navigate("previous")?.match).toEqual(body);
+      expect(manager.replaceCurrent(document, "B")).not.toBeNull();
+    },
+  );
 });
 
 describe("getAdjacentFindIndex", () => {
@@ -77,4 +124,17 @@ describe("FindReplaceManager cursor", () => {
     expect(manager.goTo(9)).toBeNull();
     expect(manager.getResult()?.currentIndex).toBe(2);
   });
+});
+
+// Refreshes keep the current cursor bounded as the result set shrinks.
+test("result refresh preserves or clamps the cursor", () => {
+  const manager = new FindReplaceManager<TestMatch>();
+  const matches = [match("a", 0, 0), match("b", 1, 0), match("c", 2, 0)];
+  for (const index of [-1, 0, 1, 2, 3, 20]) {
+    const result = manager.setMatches(matches, index);
+    expect(result.currentIndex).toBe(Math.max(0, Math.min(index, matches.length - 1)));
+    expect(manager.navigate("next")?.index).toBe((result.currentIndex + 1) % matches.length);
+  }
+  expect(manager.setMatches([], 4).currentIndex).toBe(0);
+  expect(manager.navigate("next")).toBeNull();
 });

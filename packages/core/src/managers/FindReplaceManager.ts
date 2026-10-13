@@ -5,14 +5,15 @@
  * Extracted from the React `useFindReplace` hook (the document-aware half).
  *
  * Owns the active find result (the matches plus the cursor index) and runs the
- * document-level replace operations. Matching itself (scanning a document for
- * hits) and the side effects (scroll-into-view, host selection, dialog state)
- * stay in the adapter. The manager is generic over the adapter's match shape
+ * document-level replace operations. The shared findReplace utility scans
+ * stories, and findMatchView projects view-only highlights. Adapters bind
+ * dialog state and document access. The manager is generic over the adapter's match shape
  * and only reads each match's paragraph-relative offsets via `FindMatchPosition`,
  * so a richer adapter match (content index, matched text) round-trips untouched.
  */
 
 import type { FindMatchPosition } from "../prosemirror/findReplaceSelection";
+import type { OpStory } from "@stll/docx-core/ops";
 import type { Document } from "../types/document";
 import { replaceTextInDocument } from "../utils/replaceText";
 
@@ -54,7 +55,18 @@ const toReplaceRange = (match: FindMatchPosition) => ({
   end: { paragraphIndex: match.paragraphIndex, offset: match.endOffset },
 });
 
-export class FindReplaceManager<TMatch extends FindMatchPosition> {
+type ReplaceableFindPosition = FindMatchPosition & {
+  story?: OpStory;
+  textBoxIndex?: number;
+  commentId?: number;
+};
+
+const isBodyMatch = (match: ReplaceableFindPosition): boolean =>
+  (match.story === undefined || match.story === "main") &&
+  match.textBoxIndex === undefined &&
+  match.commentId === undefined;
+
+export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
   private result: FindReplaceResult<TMatch> | null = null;
 
   /** The active find result, or null when there is no active search. */
@@ -72,8 +84,12 @@ export class FindReplaceManager<TMatch extends FindMatchPosition> {
    * first match. The result is kept even when `matches` is empty so callers can
    * surface a "no results" state.
    */
-  setMatches(matches: TMatch[]): FindReplaceResult<TMatch> {
-    this.result = { matches, totalCount: matches.length, currentIndex: 0 };
+  setMatches(matches: TMatch[], currentIndex = 0): FindReplaceResult<TMatch> {
+    this.result = {
+      matches,
+      totalCount: matches.length,
+      currentIndex: Math.max(0, Math.min(currentIndex, matches.length - 1)),
+    };
     return this.result;
   }
 
@@ -121,7 +137,7 @@ export class FindReplaceManager<TMatch extends FindMatchPosition> {
     }
 
     const match = result.matches[result.currentIndex];
-    if (!match) {
+    if (!match || !isBodyMatch(match)) {
       return null;
     }
 
@@ -143,7 +159,7 @@ export class FindReplaceManager<TMatch extends FindMatchPosition> {
     matches: readonly TMatch[],
     replaceText: string,
   ): ReplaceAllOutcome | null {
-    if (matches.length === 0) {
+    if (matches.length === 0 || matches.some((match) => !isBodyMatch(match))) {
       return null;
     }
 

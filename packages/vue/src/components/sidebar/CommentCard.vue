@@ -45,7 +45,12 @@
     </div>
 
     <div class="comment-card__body">
-      {{ getCommentText(comment.content) }}
+      <template v-for="(paragraph, paragraphIndex) in comment.content" :key="paragraphIndex">
+        <span :data-find-comment-id="comment.id" :data-find-comment-paragraph="paragraphIndex">{{
+          getFindParagraphText(paragraph)
+        }}</span
+        >{{ " " }}
+      </template>
     </div>
 
     <ReplyThread :replies="replies" :is-expanded="expanded" />
@@ -60,7 +65,8 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { Comment } from "@stll/folio-core/types/content";
-import { getCommentText, formatDate } from "./sidebarUtils";
+import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
+import { formatDate } from "./sidebarUtils";
 import MaterialSymbol from "../ui/MaterialSymbol.vue";
 import Avatar from "./Avatar.vue";
 import ReplyThread from "./ReplyThread.vue";

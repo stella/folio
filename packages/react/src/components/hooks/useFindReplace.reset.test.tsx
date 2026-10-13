@@ -82,3 +82,74 @@ test("query and document resets clear manager navigation, reactive result, and d
     await act(async () => root.unmount());
   }
 });
+
+// Host search and dialog navigation share the manager in both editor modes.
+test.each([true, false])(
+  "host counts and story navigation work with readOnly=%s",
+  async (readOnly) => {
+    const fixture = createEmptyDocument({ initialText: "needle needle" });
+    fixture.package.footnotes = [
+      {
+        type: "footnote",
+        id: 1,
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text: "needle" }] }],
+          },
+        ],
+      },
+    ];
+    const before = structuredClone(fixture);
+    const ref = createRef<FindHarnessRef>();
+    const notifications: ReturnType<typeof useFindReplace>["currentResult"][] = [];
+    const Harness = () => {
+      const findReplace = useFindDialogState();
+      const containerRef = useRef<HTMLDivElement>(null);
+      const operations = useFindReplace({
+        documentState: fixture,
+        containerRef,
+        handleDocumentChange: noop,
+        findReplace,
+        readOnly,
+        onFindResultChange: (result) => notifications.push(result),
+      });
+      useImperativeHandle(ref, () => ({ operations, matches: findReplace.state.matches }));
+      return null;
+    };
+    const root = createRoot(document.createElement("div"));
+    const operations = () => ref.current?.operations ?? panic("Find hook handle missing");
+    try {
+      await act(async () => root.render(<Harness />));
+      await act(async () => {
+        expect(operations().handleFind("needle", options)?.totalCount).toBe(3);
+      });
+      await act(async () => {
+        operations().handleFindNext();
+      });
+      await act(async () => {
+        expect(operations().handleFindNext()?.story).toEqual({ kind: "footnote", id: 1 });
+      });
+      expect(operations().getFindResult()?.currentIndex).toBe(2);
+      expect(operations().handleReplace("changed")).toBe(false);
+      await act(async () => {
+        operations().handleFindNext();
+      });
+      await act(async () => {
+        operations().handleFindPrevious();
+      });
+      expect(notifications.map((result) => result?.currentIndex)).toEqual([0, 1, 2, 0, 2]);
+      await act(async () => {
+        operations().handleFind("absent", options);
+      });
+      expect(operations().getFindResult()).toMatchObject({ totalCount: 0, currentIndex: 0 });
+      await act(async () => {
+        operations().resetFindResult();
+      });
+      expect(notifications.at(-1)).toBeNull();
+      expect(fixture).toEqual(before);
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);

@@ -62,3 +62,5 @@ original license and copyright are preserved in [`NOTICE.md`](./NOTICE.md).
 ## License
 
 [Apache-2.0](./LICENSE)
+
+See [document search](../../docs/document-search.md) for highlighting, navigation, and result callbacks.

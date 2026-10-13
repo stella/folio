@@ -52,6 +52,7 @@ import type {
   Theme,
 } from "@stll/folio-core/types/document";
 import type { Comment } from "@stll/folio-core/types/content";
+import type { FindMatch, FindOptions, FindResult } from "@stll/folio-core/utils/findReplace";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
@@ -292,6 +293,8 @@ export type DocxEditorProps = {
    * thread metadata lives outside the doc.
    */
   comments?: Comment[];
+  /** Current document search results, including the zero-based current hit. */
+  onFindResultChange?: (result: FindResult | null) => void;
   /** Fires whenever the comments array changes (controlled and uncontrolled). */
   onCommentsChange?: (comments: Comment[]) => void;
   /** Callback with the parsed document's editing compatibility report. */
@@ -458,6 +461,12 @@ export type DocxEditorRef = {
    * seed the search box from the selection yet (React does).
    */
   openFind: () => void;
+  /** Search all document stories without changing document content. */
+  find: (searchText: string, options?: Partial<FindOptions>) => FindResult | null;
+  findNext: () => FindMatch | null;
+  findPrevious: () => FindMatch | null;
+  getFindResult: () => FindResult | null;
+  clearFind: () => void;
   /**
    * Open the replace dialog. The Vue panel has one open state, so this opens
    * the same panel as {@link openFind}, with the replace row reachable from

@@ -14,8 +14,7 @@
 <template>
   <FindReplaceDialog
     :is-open="showFindReplace"
-    :view="view"
-    :scroll-visible-position-into-view="scrollVisiblePositionIntoView"
+    :search="search"
     @close="emit('update:showFindReplace', false)"
   />
 
@@ -71,6 +70,7 @@
 
 <script setup lang="ts">
 import type { EditorView } from "prosemirror-view";
+import type { UseFindReplaceReturn } from "../../composables/useFindReplace";
 
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import type { SectionProperties } from "@stll/folio-core/types/document";
@@ -98,11 +98,11 @@ type HyperlinkSubmitPayload = {
 };
 
 defineProps<{
+  search: UseFindReplaceReturn;
   view: EditorView | null;
   bookmarks: BookmarkOption[];
   selectedImagePmPos: number | null;
   sectionProperties: SectionProperties | null;
-  scrollVisiblePositionIntoView: (pmPos: number) => void;
   showFindReplace: boolean;
   showHyperlink: boolean;
   showInsertSymbol: boolean;

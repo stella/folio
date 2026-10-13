@@ -25,6 +25,7 @@ import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/cano
  */
 
 import type { Ref } from "vue";
+import type { UseFindReplaceReturn } from "./useFindReplace";
 
 import { TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
@@ -207,6 +208,7 @@ export type UseDocxEditorRefApiOptions = {
    * panel has a single open state, so both land here.
    */
   openFindReplace: () => void;
+  search: UseFindReplaceReturn;
   /** Optional host hook for print. */
   onPrint?: (() => void) | undefined;
   /** Optional host hook fired with the serialized `.docx` bytes after `save()`. */
@@ -509,6 +511,11 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     openPrintPreview: () => print(),
     print,
     openFind: () => opts.openFindReplace(),
+    find: opts.search.find,
+    findNext: opts.search.findNext,
+    findPrevious: opts.search.findPrevious,
+    getFindResult: opts.search.getFindResult,
+    clearFind: opts.search.clear,
     openReplace: () => opts.openFindReplace(),
     loadDocument: (document) => {
       pendingSuggestionRegistry.clear();

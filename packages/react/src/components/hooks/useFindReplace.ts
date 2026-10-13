@@ -12,10 +12,17 @@
  * operations (find, replace, scroll-to-match) on top.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Node as PMNode } from "prosemirror-model";
 
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
 import type { Document } from "@stll/folio-core/types/document";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import {
+  createFindMatchView,
+  getRenderedSearchStories,
+} from "@stll/folio-core/utils/findMatchView";
+import type { Layout } from "@stll/folio-core/layout-engine/types";
 import { findInDocument, scrollToMatch } from "../dialogs/findReplaceUtils";
 import type { FindMatch, FindOptions, FindResult } from "../dialogs/findReplaceUtils";
 import type { UseFindReplaceReturn as FindReplaceStateReturn } from "../dialogs/useFindReplace";
@@ -37,6 +44,11 @@ type UseFindReplaceParams = {
   findReplace: FindReplaceStateReturn;
   /** Select and reveal a match in the live editor */
   selectMatch?: (match: FindMatch) => boolean;
+  getBodyDoc?: () => PMNode | undefined;
+  getLayout?: () => Layout | null;
+  displayMode?: DisplayMode;
+  onFindResultChange?: ((result: FindResult | null) => void) | undefined;
+  readOnly?: boolean;
 };
 
 export type UseFindReplaceReturn = {
@@ -54,6 +66,8 @@ export type UseFindReplaceReturn = {
   handleReplace: (replaceText: string) => boolean;
   /** Replace all matches */
   handleReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => number;
+  getFindResult: () => FindResult | null;
+  refreshFind: () => void;
 };
 
 // ============================================================================
@@ -67,16 +81,36 @@ export function useFindReplace({
   handleDocumentChange,
   findReplace,
   selectMatch,
+  getBodyDoc,
+  getLayout,
+  displayMode,
+  onFindResultChange,
+  readOnly,
 }: UseFindReplaceParams): UseFindReplaceReturn {
   const manager = useMemo(() => new FindReplaceManager<FindMatch>(), []);
   const [currentResult, setCurrentResult] = useState<FindResult | null>(null);
   const { setMatches, goToMatch } = findReplace;
+  const matchView = useRef<ReturnType<typeof createFindMatchView> | null>(null);
+  const query = useRef<{ text: string; options: FindOptions } | null>(null);
+  const resultCallback = useRef(onFindResultChange);
+  useEffect(() => {
+    resultCallback.current = onFindResultChange;
+  }, [onFindResultChange]);
+  const publish = useCallback((result: FindResult | null) => {
+    setCurrentResult(result);
+    resultCallback.current?.(result);
+  }, []);
+
+  useEffect(() => () => matchView.current?.destroy(), []);
 
   const resetFindResult = useCallback(() => {
     manager.clear();
-    setCurrentResult(null);
+    query.current = null;
+    matchView.current?.destroy();
+    matchView.current = null;
+    publish(null);
     setMatches([], 0);
-  }, [manager, setMatches]);
+  }, [manager, setMatches, publish]);
 
   const readDocumentState = useCallback(
     () => getDocumentState?.() ?? documentState ?? null,
@@ -85,11 +119,20 @@ export function useFindReplace({
 
   const revealMatch = useCallback(
     (match: FindMatch) => {
-      if (!selectMatch?.(match) && containerRef.current) {
+      const index = manager.getResult()?.currentIndex ?? 0;
+      matchView.current?.paint(index);
+      if (matchView.current?.reveal(index)) return;
+      if (selectMatch?.(match)) return;
+      if (
+        (match.story === undefined || match.story === "main") &&
+        match.textBoxIndex === undefined &&
+        match.commentId === undefined &&
+        containerRef.current
+      ) {
         scrollToMatch(containerRef.current, match);
       }
     },
-    [selectMatch, containerRef],
+    [selectMatch, containerRef, manager],
   );
 
   const handleFind = useCallback(
@@ -100,45 +143,91 @@ export function useFindReplace({
         return null;
       }
 
-      const matches = findInDocument(currentDocument, searchText, options);
-      const result = manager.setMatches(matches);
-      setCurrentResult(result);
-      setMatches(matches, 0);
+      const previous = query.current;
+      const refresh =
+        previous?.text === searchText &&
+        previous.options.matchCase === options.matchCase &&
+        previous.options.matchWholeWord === options.matchWholeWord &&
+        previous.options.useRegex === options.useRegex;
+      const currentIndex = refresh ? (manager.getResult()?.currentIndex ?? 0) : 0;
+      query.current = { text: searchText, options };
+      const matches = findInDocument(
+        currentDocument,
+        searchText,
+        { ...options, includeComments: true, ...(displayMode && { displayMode }) },
+        getLayout ? { renderedStories: getRenderedSearchStories(getLayout()) } : undefined,
+      );
+      const result = manager.setMatches(matches, currentIndex);
+      matchView.current?.destroy();
+      const container = containerRef.current;
+      matchView.current =
+        container && getBodyDoc
+          ? createFindMatchView({
+              container,
+              document: currentDocument,
+              bodyDoc: getBodyDoc(),
+              matches,
+            })
+          : null;
+      publish(result);
+      setMatches(matches, result.currentIndex);
+      matchView.current?.paint(result.currentIndex);
 
-      if (matches.length > 0) {
+      if (matches.length > 0 && !refresh) {
         // SAFETY: length > 0 guarantees index 0 exists
         revealMatch(matches[0]!);
       }
 
       return result;
     },
-    [readDocumentState, manager, setMatches, revealMatch, resetFindResult],
+    [
+      readDocumentState,
+      manager,
+      setMatches,
+      revealMatch,
+      resetFindResult,
+      displayMode,
+      containerRef,
+      getBodyDoc,
+      getLayout,
+      publish,
+    ],
   );
+
+  useEffect(() => {
+    if (!query.current) return;
+    const timer = setTimeout(() => {
+      const active = query.current;
+      if (active) handleFind(active.text, active.options);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [handleFind]);
 
   const handleFindNext = useCallback((): FindMatch | null => {
     const stepped = manager.navigate("next");
     if (!stepped) {
       return null;
     }
-    setCurrentResult(manager.getResult());
+    publish(manager.getResult());
     goToMatch(stepped.index);
     revealMatch(stepped.match);
     return stepped.match;
-  }, [manager, goToMatch, revealMatch]);
+  }, [manager, goToMatch, revealMatch, publish]);
 
   const handleFindPrevious = useCallback((): FindMatch | null => {
     const stepped = manager.navigate("previous");
     if (!stepped) {
       return null;
     }
-    setCurrentResult(manager.getResult());
+    publish(manager.getResult());
     goToMatch(stepped.index);
     revealMatch(stepped.match);
     return stepped.match;
-  }, [manager, goToMatch, revealMatch]);
+  }, [manager, goToMatch, revealMatch, publish]);
 
   const handleReplace = useCallback(
     (replaceText: string): boolean => {
+      if (readOnly) return false;
       const currentDocument = readDocumentState();
       if (!currentDocument) {
         return false;
@@ -152,17 +241,27 @@ export function useFindReplace({
       handleDocumentChange(newDoc);
       return true;
     },
-    [readDocumentState, manager, handleDocumentChange],
+    [readDocumentState, manager, handleDocumentChange, readOnly],
   );
 
   const handleReplaceAll = useCallback(
     (searchText: string, replaceText: string, options: FindOptions): number => {
+      if (readOnly) return 0;
       const currentDocument = readDocumentState();
       if (!currentDocument || !searchText.trim()) {
         return 0;
       }
 
-      const matches = findInDocument(currentDocument, searchText, options);
+      const matches = findInDocument(
+        currentDocument,
+        searchText,
+        {
+          ...options,
+          includeComments: true,
+          ...(displayMode && { displayMode }),
+        },
+        getLayout ? { renderedStories: getRenderedSearchStories(getLayout()) } : undefined,
+      );
       const outcome = manager.replaceAll(currentDocument, matches, replaceText);
       if (!outcome) {
         return 0;
@@ -172,7 +271,15 @@ export function useFindReplace({
       resetFindResult();
       return outcome.replacedCount;
     },
-    [readDocumentState, manager, handleDocumentChange, resetFindResult],
+    [
+      readDocumentState,
+      manager,
+      handleDocumentChange,
+      resetFindResult,
+      readOnly,
+      displayMode,
+      getLayout,
+    ],
   );
 
   return {
@@ -183,5 +290,10 @@ export function useFindReplace({
     handleFindPrevious,
     handleReplace,
     handleReplaceAll,
+    getFindResult: () => manager.getResult(),
+    refreshFind: () => {
+      const active = query.current;
+      if (active) handleFind(active.text, active.options);
+    },
   };
 }

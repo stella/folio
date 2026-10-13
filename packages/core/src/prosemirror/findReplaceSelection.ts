@@ -54,6 +54,22 @@ export function resolveFindMatchRange(
   return resolved;
 }
 
+/** Resolve a result set in one paragraph traversal, preserving result order. */
+export const resolveFindMatchRanges = (
+  doc: ProseMirrorNode,
+  matches: readonly FindMatchPosition[],
+): (FindMatchRange | null)[] => {
+  const paragraphs = new Map<number, { paragraph: ProseMirrorNode; paragraphPos: number }>();
+  forEachSearchParagraph(doc, (paragraph, paragraphPos, paragraphIndex) => {
+    paragraphs.set(paragraphIndex, { paragraph, paragraphPos });
+    return true;
+  });
+  return matches.map((match) => {
+    const paragraph = paragraphs.get(match.paragraphIndex);
+    return paragraph ? resolveTextRangeInParagraph({ ...paragraph, ...match }) : null;
+  });
+};
+
 export function findInProseMirrorDocument(
   doc: ProseMirrorNode,
   searchText: string,

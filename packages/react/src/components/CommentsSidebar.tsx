@@ -22,29 +22,21 @@ import React, {
 import { CheckIcon, MoreVerticalIcon } from "lucide-react";
 import { useLocale, useTranslations } from "use-intl";
 
+import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
 import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { commentAnchorSelector } from "@stll/folio-core/render-dom/commentAnchorAttributes";
-import type { Comment, Paragraph } from "@stll/folio-core/types/content";
+import type { Comment } from "@stll/folio-core/types/content";
 import { closestHtmlElement, queryHtmlElement } from "@stll/folio-core/utils/domGuards";
 import { containedHandler } from "../utils/contained-handler";
 import { useDrawerFocus } from "./panelDrawer";
 import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 
-/** Extract plain text from a Comment's paragraph content */
-function getCommentText(paragraphs?: Paragraph[]): string {
-  if (!paragraphs?.length) {
-    return "";
-  }
-  return paragraphs
-    .flatMap((p) =>
-      p.content
-        .filter((c) => c.type === "run")
-        .flatMap((r) => ("content" in r ? r.content : []))
-        .filter((c) => c.type === "text")
-        .map((t) => ("text" in t ? t.text : "")),
-    )
-    .join("");
-}
+const renderCommentText = (comment: Comment) =>
+  comment.content.map((paragraph, index) => (
+    <span key={index} data-find-comment-id={comment.id} data-find-comment-paragraph={index}>
+      {getFindParagraphText(paragraph)}
+    </span>
+  ));
 
 function formatDate(dateStr: string | undefined, locale: string): string {
   if (!dateStr) {
@@ -801,7 +793,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
                   : {}),
               }}
             >
-              {getCommentText(reply.content)}
+              {renderCommentText(reply)}
             </div>
           </div>
         ))}
@@ -1079,7 +1071,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
             marginTop: 5,
           }}
         >
-          {getCommentText(comment.content)}
+          {renderCommentText(comment)}
         </div>
 
         {renderReplies(replies, isExpanded)}
@@ -1119,6 +1111,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       {/* Cards container — relative for absolute card positioning; in a
           drawer, a list pinned to the viewport that scrolls on its own. */}
       <div
+        data-folio-scroll={isDrawer ? "" : undefined}
         style={
           isDrawer
             ? {

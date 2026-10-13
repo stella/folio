@@ -107,6 +107,7 @@
     </div>
 
     <DocxEditorDialogs
+      :search="documentSearch"
       v-model:show-find-replace="showFindReplace"
       v-model:show-hyperlink="showHyperlink"
       v-model:show-insert-symbol="showInsertSymbol"
@@ -116,7 +117,6 @@
       v-model:show-watermark="showWatermark"
       v-model:show-numbering-value="showNumberingValue"
       :view="activeEditorView"
-      :scroll-visible-position-into-view="scrollVisiblePositionIntoView"
       :bookmarks="bookmarks"
       :current-watermark="currentWatermark"
       :selected-image-pm-pos="selectedImage?.pmPos ?? null"
@@ -576,6 +576,8 @@ import { useColorMode } from "../composables/useColorMode";
 import { useContextMenus } from "../composables/useContextMenus";
 import { useDocumentLifecycle } from "../composables/useDocumentLifecycle";
 import { useDocxEditor } from "../composables/useDocxEditor";
+import { useFindReplace } from "../composables/useFindReplace";
+import type { FindResult } from "@stll/folio-core/utils/findReplace";
 import { useDocxEditorRefApi } from "../composables/useDocxEditorRefApi";
 import { useFormattingActions } from "../composables/useFormattingActions";
 import { useFontLifecycle } from "../composables/useFontLifecycle";
@@ -624,6 +626,7 @@ const emit = defineEmits<{
   (e: "menu-action", action: string): void;
   (e: "mode-change", mode: EditorMode): void;
   (e: "comments-change", comments: Comment[]): void;
+  (e: "find-result-change", result: FindResult | null): void;
 }>();
 
 // Provide the consumer's UI-injection overrides (or the built-in defaults) to
@@ -1739,6 +1742,7 @@ onMounted(() => {
   });
   const offDoc = editor.on("docChange", () => {
     stateTick.value++;
+    if (documentSearch.searchText.value) documentSearch.scheduleSearch();
     outlineSidebar.recomputeHeadingsIfOpen();
   });
   const offLayout = editor.on("layoutComplete", () => {
@@ -1759,6 +1763,48 @@ onMounted(() => {
     cleanupTableResize();
     offFontsLoaded();
   });
+});
+
+const documentSearch = useFindReplace({
+  editorView,
+  pagesRef,
+  getDocument: () => {
+    const document = getDocument();
+    if (!document) return null;
+    return {
+      ...document,
+      package: {
+        ...document.package,
+        document: { ...document.package.document, comments: comments.value },
+      },
+    };
+  },
+  layout,
+  commentRoot: rootRef,
+  revealComment: (commentId) => {
+    const comment = comments.value.find(({ id }) => id === commentId);
+    activeSidebarItem.value = `comment-${comment?.parentId ?? commentId}`;
+    showSidebar.value = true;
+    if (panelLayout.value.comments === "drawer") panelOverlay.value = "comments";
+  },
+  displayMode,
+  readOnly,
+  onResultChange: (result) => {
+    props.onFindResultChange?.(result);
+    emit("find-result-change", result);
+  },
+});
+watch(layout, () => {
+  if (documentSearch.searchText.value) documentSearch.scheduleSearch();
+});
+watch(comments, () => {
+  if (documentSearch.searchText.value) documentSearch.scheduleSearch();
+});
+watch(displayMode, () => {
+  if (documentSearch.searchText.value) documentSearch.scheduleSearch();
+});
+watch(isReady, (ready) => {
+  if (!ready) documentSearch.clear();
 });
 
 // ---- Imperative ref surface ---------------------------------------------
@@ -1808,6 +1854,7 @@ const { exposed } = useDocxEditorRefApi({
   closeNoteStory,
   getHeaderFooterView,
   setZoom,
+  search: documentSearch,
   openFindReplace: () => {
     showFindReplace.value = true;
   },
@@ -1835,6 +1882,17 @@ defineExpose(exposed);
 
 <style scoped>
 .docx-editor-vue {
+  --doc-find-highlight: color-mix(
+    in srgb,
+    var(--doc-primary, var(--primary, #1a73e8)) 25%,
+    transparent
+  );
+  --doc-find-current: color-mix(
+    in srgb,
+    var(--doc-primary, var(--primary, #1a73e8)) 55%,
+    transparent
+  );
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
