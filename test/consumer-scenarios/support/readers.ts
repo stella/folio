@@ -421,6 +421,9 @@ type LabelFields = {
   listReference?: { numId: number; level: number };
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /** The label fields a block or row carries, without the absent ones. */
 export const labelFields = (source: Record<string, unknown>): LabelFields => {
   const statedNumbering = source["statedNumbering"];
