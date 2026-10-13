@@ -675,6 +675,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const painter = new LayoutPainter({ pageGap, showShadow: true });
   const headerFooterManager = createHeaderFooterEditorManager({
     getHost: () => headerFooterHost.value,
+    getReadOnly: () => toValue(readOnly),
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
     getExperimentalSession: () => toValue(experimentalSession),
@@ -1134,6 +1135,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     (isReadOnly) => {
       manager.syncEditable();
       if (isReadOnly) closeNoteStory();
+      headerFooterManager.sync();
     },
   );
 

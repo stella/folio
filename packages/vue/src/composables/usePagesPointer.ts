@@ -11,7 +11,7 @@ import { CANONICAL_GAP, usesCanonicalSession } from "@stll/folio-core/types/cano
  * still lives in the parent — passed in as a callback.
  */
 
-import { onBeforeUnmount, onMounted, ref, shallowRef, type Ref, type ShallowRef } from "vue";
+import { onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref, type ShallowRef } from "vue";
 import type { Node as PMNode } from "prosemirror-model";
 import { TextSelection, NodeSelection, type Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
@@ -548,6 +548,14 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       syncHfPMs: opts.syncHfPMs,
     });
   }
+
+  watch(
+    opts.readOnly,
+    (isReadOnly) => {
+      if (isReadOnly && hfEdit.value) handleHfSave();
+    },
+    { flush: "sync" },
+  );
 
   function handleHfRemove() {
     const doc = opts.getDocument();

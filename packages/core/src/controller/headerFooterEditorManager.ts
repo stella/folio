@@ -68,6 +68,7 @@ export type HeaderFooterEditorTransaction = {
 export type HeaderFooterEditorManagerDeps = {
   createView?: ((mountNode: HTMLElement, props: DirectEditorProps) => EditorView) | undefined;
   getDocument: () => Document | null;
+  getReadOnly?: (() => boolean) | undefined;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
   onSessionRefusal?: ((reason: string, gap: CanonicalGap, error?: Error) => void) | undefined;
@@ -94,6 +95,7 @@ type MountedView = {
   appliedNumbering: NumberingDefinitions | null | undefined;
   appliedStyles: StyleDefinitions | null | undefined;
   appliedTheme: Theme | null | undefined;
+  baseEditable: DirectEditorProps["editable"];
   dirty: boolean;
   kind: HeaderFooterPartKind;
   manager: ExtensionManager;
@@ -227,6 +229,20 @@ export const createHeaderFooterEditorManager = (
       return;
     }
 
+    const getReadOnly = deps.getReadOnly;
+    if (getReadOnly) {
+      const readOnly = getReadOnly();
+      for (const part of mounted.values()) {
+        const expectedEditable = !readOnly && (part.baseEditable?.(part.view.state) ?? true);
+        if (part.view.editable === expectedEditable) {
+          continue;
+        }
+        part.view.setProps({
+          editable: (state) => !getReadOnly() && (part.baseEditable?.(state) ?? true),
+        });
+      }
+    }
+
     // Pending IME input owns its view until the shared session commits.
     if (
       usesCanonicalSession(deps.getExperimentalSession?.(), CANONICAL_GAP.authorityRouting) &&
@@ -339,6 +355,7 @@ export const createHeaderFooterEditorManager = (
             selectionChanged: true,
           }),
       });
+      const baseEditable = canonical.props.editable;
       const canonicalProjection = usesCanonicalSession(
         deps.getExperimentalSession?.(),
         CANONICAL_GAP.authorityRouting,
@@ -355,6 +372,7 @@ export const createHeaderFooterEditorManager = (
       }
       const view = (deps.createView ?? createEditorView)(mountNode, {
         ...canonical.props,
+        editable: (state) => !(deps.getReadOnly?.() ?? false) && (baseEditable?.(state) ?? true),
         state: canonicalProjection
           ? EditorState.create({
               doc: canonicalProjection,
@@ -365,6 +383,7 @@ export const createHeaderFooterEditorManager = (
             })
           : buildInitialState(headerFooter, styles, theme, numbering, manager),
         dispatchTransaction(transaction) {
+          if ((deps.getReadOnly?.() ?? false) && transaction.docChanged) return;
           if (canonical.dispatch(transaction)) return;
           const nextState = view.state.apply(transaction);
           const docChanged = !nextState.doc.eq(view.state.doc);
@@ -392,6 +411,7 @@ export const createHeaderFooterEditorManager = (
         appliedNumbering: numbering,
         appliedStyles: styles,
         appliedTheme: theme,
+        baseEditable,
         dirty: false,
         kind: part.kind,
         manager,

@@ -6126,6 +6126,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         <HiddenHeaderFooterPMs
           ref={hfPMsRef}
           document={document}
+          readOnly={readOnly}
           onTransaction={handleHfPmTransaction}
           getCanonicalApi={getCanonicalApi}
           onSessionRefusal={handleSessionRefusal}

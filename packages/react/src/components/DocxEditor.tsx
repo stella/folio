@@ -1313,6 +1313,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     // already resolved internally for save / remove.
     getHfView: pagedEditorBinding.getHfView,
   });
+  useLayoutEffect(() => {
+    if (readOnly && hfEditPosition) handleBodyClick();
+  }, [readOnly, hfEditPosition, handleBodyClick]);
   let activeHfRId = hfEditIsFirstPage ? activeFirstFooterRId : activeFooterRId;
   if (hfEditPosition === "header") {
     activeHfRId = hfEditIsFirstPage ? activeFirstHeaderRId : activeHeaderRId;
