@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { paragraphLogicalText } from "@stll/docx-core/ops";
-import type { Document, ParagraphContent } from "../types/document";
+import type { Document, ParagraphContent, Comment } from "../types/document";
 import { getTrackedChangesFromDoc } from "../ai-edits/read";
 import { assertProperty } from "../../../../test/property-testing";
 import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
@@ -26,6 +26,21 @@ test("successive typing follows the replacement caret across comment boundaries"
           const source = {
             package: {
               document: {
+                comments: Array.from(
+                  { length: Math.max(1, references) },
+                  (_, id) =>
+                    ({
+                      id,
+                      author: "Reviewer",
+                      content: [
+                        {
+                          type: "paragraph",
+                          paraId: (0x20000000 + id).toString(16),
+                          content: [{ type: "run", content: [{ type: "text", text: "Comment" }] }],
+                        },
+                      ],
+                    }) satisfies Comment,
+                ),
                 content: [
                   {
                     type: "paragraph",
@@ -42,7 +57,9 @@ test("successive typing follows the replacement caret across comment boundaries"
               },
             },
           } satisfies Document;
-          const session = createCanonicalSession(source).unwrap();
+          const created = createCanonicalSession(source);
+          expect(created.isErr() ? created.error : undefined).toBeUndefined();
+          const session = created.unwrap();
           session.setMode(type === "editing" ? { type } : { type, author: "Reviewer" });
           let state = EditorState.create({ doc: session.projection.doc });
           state = state.apply(
@@ -51,17 +68,27 @@ test("successive typing follows the replacement caret across comment boundaries"
           const typed = [first, "y", "z"];
           for (const text of typed) {
             const { from, to } = state.selection;
-            const commit = session
-              .prepareReplace(state, { from, to, text, semantic: "typing" })
-              .unwrap();
-            state = publishCanonicalProjection({ session, state, commit }).unwrap().state;
+            const prepared = session.prepareReplace(state, { from, to, text, semantic: "typing" });
+            expect(prepared.isErr() ? prepared.error : undefined).toBeUndefined();
+            const published = publishCanonicalProjection({
+              session,
+              state,
+              commit: prepared.unwrap(),
+            });
+            expect(published.isErr() ? published.error : undefined).toBeUndefined();
+            state = published.unwrap().state;
           }
           const revisionIds = [...new Set(getTrackedChangesFromDoc(state.doc).map(({ id }) => id))];
           if (revisionIds.length > 0) {
-            const commit = session
-              .prepareResolve(state, { revisionIds, resolution: "accept" })
-              .unwrap();
-            state = publishCanonicalProjection({ session, state, commit }).unwrap().state;
+            const prepared = session.prepareResolve(state, { revisionIds, resolution: "accept" });
+            expect(prepared.isErr() ? prepared.error : undefined).toBeUndefined();
+            const published = publishCanonicalProjection({
+              session,
+              state,
+              commit: prepared.unwrap(),
+            });
+            expect(published.isErr() ? published.error : undefined).toBeUndefined();
+            state = published.unwrap().state;
           }
           const paragraph = session.document.package.document.content.at(0);
           if (paragraph?.type !== "paragraph") throw new Error("Expected paragraph");
@@ -69,6 +96,10 @@ test("successive typing follows the replacement caret across comment boundaries"
         }
       },
     ),
-    { seed: 1404001, numRuns: 12 },
+    {
+      seed: 1404001,
+      numRuns: 12,
+      id: "typing after replacement preserves caret order across comment anchors",
+    },
   );
 });

@@ -122,8 +122,9 @@ test("overlapping formatting has one latest-author revision and the first baseli
             );
             if (decision === "reject") {
               for (const run of runsOf(resolved)) {
-                expect(run.formatting).toEqual(
-                  hasBaseline ? { fontSize: 22, bold: false } : undefined,
+                // An empty persisted w:rPr has no authored properties, like an absent one.
+                expect(run.formatting ?? {}).toEqual(
+                  hasBaseline ? { fontSize: 22, bold: false } : {},
                 );
               }
             } else {
@@ -135,6 +136,10 @@ test("overlapping formatting has one latest-author revision and the first baseli
         }
       },
     ),
-    { seed: 1404002, numRuns: 12 },
+    {
+      seed: 1404002,
+      numRuns: 12,
+      id: "overlapping formatter actions retain one earliest baseline and latest author",
+    },
   );
 });

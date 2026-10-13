@@ -447,6 +447,17 @@ export const physicalPositionAtEditorOffset = (
   return at;
 };
 
+// A zero-width ordinal belongs to one offset. At a new text offset, the
+// projection resolves the available gap instead of reusing the insertion gap.
+const replacementCaret = (at: TextPosition, text: string): TextPosition => ({
+  story: at.story,
+  blockId: at.blockId,
+  offset: at.offset + text.length,
+  ...(text.length === 0 && at.zeroWidthBefore !== undefined
+    ? { zeroWidthBefore: at.zeroWidthBefore }
+    : {}),
+});
+
 const paragraphAt = (document: Document, at: TextPosition) =>
   storyParagraphs(storyBody(document, at.story)).find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(at.blockId),
@@ -1739,13 +1750,7 @@ export const compileEditorIntent = (
           )
             selection = { ...selection, blockId: op.nextBlockId };
           if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT)
-            selection = {
-              ...op.at,
-              offset: op.at.offset + text.length,
-              ...(text.length > 0 && op.at.zeroWidthBefore !== undefined
-                ? { zeroWidthBefore: 0 }
-                : {}),
-            };
+            selection = replacementCaret(op.at, text);
         }
         break;
       }
@@ -1823,11 +1828,7 @@ export const compileEditorIntent = (
           slice: { openStart: 0, openEnd: 0, content },
           ...allocationFields,
         });
-      selection = {
-        ...at,
-        offset: from.offset + text.length,
-        ...(text.length > 0 && at.zeroWidthBefore !== undefined ? { zeroWidthBefore: 0 } : {}),
-      };
+      selection = replacementCaret(at, text);
       break;
     }
     case "splitParagraph": {
