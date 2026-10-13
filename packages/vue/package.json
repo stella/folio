@@ -89,27 +89,28 @@
     "@fontsource/tinos": "^5.2.7",
     "@stll/folio-core": "workspace:^",
     "better-result": "3.0.1",
-    "use-intl": "^4.13.0",
-    "yjs": "^13.6.31"
+    "use-intl": "^4.13.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.7",
     "prosemirror-history": "^1.5.0",
-    "prosemirror-model": "^1.25.10",
+    "prosemirror-model": "^1.25.9",
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
     "prosemirror-view": "^1.42.6",
     "vite": "8.1.5",
     "vite-plugin-dts": "^5.0.3",
     "vue": "^3.5.43",
-    "vue-tsc": "^3.3.7"
+    "vue-tsc": "^3.3.7",
+    "yjs": "^13.6.31"
   },
   "peerDependencies": {
-    "prosemirror-history": "^1.4.0",
-    "prosemirror-model": "^1.19.4",
-    "prosemirror-state": "^1.4.3",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-model": "^1.25.9",
+    "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
     "prosemirror-view": "^1.42.6",
-    "vue": "^3.3.0"
+    "vue": "^3.3.0",
+    "yjs": "^13.6.31"
   }
 }

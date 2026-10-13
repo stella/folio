@@ -439,6 +439,7 @@ export type HeaderFooterSelectionState = {
 };
 
 export type UseDocxEditorReturn = {
+  setEmbeddedFontFamilies: (families: ReadonlyMap<string, string> | null) => void;
   /** The headless controller (imperative API + layout access + events). */
   editor: FolioEditor;
   /** Off-screen ProseMirror EditorView, or null before mount. */
@@ -1554,6 +1555,13 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   onScopeDispose(destroy);
 
   return {
+    setEmbeddedFontFamilies: (families: ReadonlyMap<string, string> | null): void => {
+      if (families) {
+        session.embeddedFontFamilyMap = new Map(families);
+        return;
+      }
+      delete session.embeddedFontFamilyMap;
+    },
     editor,
     editorView,
     editorState,

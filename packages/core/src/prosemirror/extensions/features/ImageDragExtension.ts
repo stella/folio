@@ -8,18 +8,19 @@
  * - Custom drag initiation from mousedown on selected images
  */
 
-import { Plugin, PluginKey, NodeSelection } from "prosemirror-state";
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
+import { Plugin, NodeSelection } from "prosemirror-state";
 
 import { createExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 
-const imageDragKey = new PluginKey("imageDrag");
+const imageDragKey = createPluginKeyOwner("imageDrag");
 
 export const ImageDragExtension = createExtension({
   name: "imageDrag",
   onSchemaReady(_ctx: ExtensionContext): ExtensionRuntime {
     const plugin = new Plugin({
-      key: imageDragKey,
+      key: imageDragKey.createKey(),
       props: {
         handleDOMEvents: {
           dragstart(view, event) {

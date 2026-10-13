@@ -11,6 +11,7 @@
  *   (retracting your own suggestion)
  */
 
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import { addTrackedDeletionMark } from "../addTrackedDeletionMark";
 import {
   joinBackward,
@@ -21,14 +22,7 @@ import {
 import { isHistoryTransaction } from "prosemirror-history";
 import { undoInputRule } from "prosemirror-inputrules";
 import { Slice, type Fragment, type Node as PMNode, type MarkType } from "prosemirror-model";
-import {
-  AllSelection,
-  EditorState,
-  Plugin,
-  PluginKey,
-  Selection,
-  TextSelection,
-} from "prosemirror-state";
+import { AllSelection, EditorState, Plugin, Selection, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import { Mapping, ReplaceStep, type Step } from "prosemirror-transform";
@@ -59,7 +53,7 @@ import { documentStylesKey, getDocumentStyleResolver } from "./documentStyles";
 import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
-export const suggestionModeKey = new PluginKey<SuggestionModeState>("suggestionMode");
+export const suggestionModeKey = createPluginKeyOwner<SuggestionModeState>("suggestionMode");
 export const SUGGESTION_META = "suggestionModeApplied";
 export const SUGGESTION_BYPASS_META = "suggestionModeBypass";
 /**
@@ -1644,7 +1638,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
   let compositionId: number | null = null;
 
   return new Plugin({
-    key: suggestionModeKey,
+    key: suggestionModeKey.createKey(),
 
     state: {
       // Seed the revision-id counter from the loaded document on every

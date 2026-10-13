@@ -41,6 +41,8 @@ export type BlockId = string | number;
  * Common run formatting properties applied to text runs.
  */
 export type RunFormatting = {
+  /** Embedded families owned by this editor, never ambient process state. */
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   bold?: boolean;
   italic?: boolean;
   /**
@@ -187,6 +189,7 @@ export type RunFormatting = {
 
 export type ListMarkerFormatting = Pick<
   RunFormatting,
+  | "embeddedFontFamilyMap"
   | "fontFamily"
   | "alternateFontFamily"
   | "eastAsiaFontFamily"
@@ -495,6 +498,7 @@ export const isListNumPr = (
  * Paragraph block attributes.
  */
 export type ParagraphAttrs = {
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   alignment?: "left" | "center" | "right" | "justify";
   /** Document-generation policy for justified line fitting. */
   justificationCompatibility?: { type: "legacy" };

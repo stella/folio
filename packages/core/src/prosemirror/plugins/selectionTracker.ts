@@ -8,7 +8,8 @@
  * - Selection range information
  */
 
-import { Plugin, PluginKey } from "prosemirror-state";
+import { createPluginKeyOwner } from "../pluginKeyOwner";
+import { Plugin } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
@@ -46,7 +47,7 @@ export type SelectionContext = {
 /**
  * Plugin key for accessing selection tracker state
  */
-export const selectionTrackerKey = new PluginKey<SelectionContext>("selectionTracker");
+export const selectionTrackerKey = createPluginKeyOwner<SelectionContext>("selectionTracker");
 
 /**
  * Callback type for selection changes
@@ -105,7 +106,7 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
  */
 export function createSelectionTrackerPlugin(onSelectionChange?: SelectionChangeCallback): Plugin {
   return new Plugin({
-    key: selectionTrackerKey,
+    key: selectionTrackerKey.createKey(),
 
     state: {
       init(_, state) {

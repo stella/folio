@@ -318,11 +318,7 @@ export {
   type EmbeddedFont,
   type EmbeddedFontParts,
 } from "./fonts/embeddedFonts";
-export {
-  getGoogleFontsEnabled,
-  setGoogleFontsEnabled,
-  setEmbeddedFontFamilyMap,
-} from "./utils/fontResolver";
+export { getGoogleFontsEnabled, setGoogleFontsEnabled } from "./utils/fontResolver";
 
 // Collaboration snapshot compatibility: the attr-schema version a stored Yjs
 // snapshot was written under. The editor refuses to load one written by newer

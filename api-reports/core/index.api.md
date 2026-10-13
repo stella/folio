@@ -133,7 +133,13 @@ export type AISuggestionSeverity = "typo" | "style" | "substantive";
 export type AISuggestionStatus = "pending" | "accepted" | "rejected" | "stale";
 
 // @public (undocumented)
-export const anonymizationDecorationsKey: PluginKey<AnonymizationDecorationState>;
+export const anonymizationDecorationsKey: Readonly<{
+    key: string;
+    createKey: () => PluginKey<AnonymizationDecorationState>;
+    owns: (plugin: Plugin_2<AnonymizationDecorationState>) => boolean;
+    get: (state: EditorState) => Plugin_2<AnonymizationDecorationState> | undefined;
+    getState: (state: EditorState) => AnonymizationDecorationState | undefined;
+}>;
 
 // @public (undocumented)
 export type AnonymizationMatch = {
@@ -188,7 +194,13 @@ export function applySuggestions(options: ApplyOptions): ApplyResult;
 export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
 // @public (undocumented)
-export const autocompleteSuggestionKey: PluginKey<AutocompleteSuggestionPluginState>;
+export const autocompleteSuggestionKey: Readonly<{
+    key: string;
+    createKey: () => PluginKey<AutocompleteSuggestionPluginState>;
+    owns: (plugin: Plugin_2<AutocompleteSuggestionPluginState>) => boolean;
+    get: (state: EditorState) => Plugin_2<AutocompleteSuggestionPluginState> | undefined;
+    getState: (state: EditorState) => AutocompleteSuggestionPluginState | undefined;
+}>;
 
 // @public (undocumented)
 export const autocompleteSuggestionPlugin: (options?: AutocompleteSuggestionPluginOptions) => Plugin_2<AutocompleteSuggestionPluginState>;
@@ -1883,7 +1895,7 @@ export const scrollFolioPositionIntoView: (view: EditorView, pmPos: number) => b
 
 // @public (undocumented)
 export function setActiveCitationMeta(activeId: string | null): {
-    key: PluginKey<AICitationDecorationState>;
+    key: PluginKeyOwner<AICitationDecorationState>;
     payload: {
         type: typeof ACTIVE_META;
         activeId: string | null;
@@ -1892,7 +1904,7 @@ export function setActiveCitationMeta(activeId: string | null): {
 
 // @public (undocumented)
 export function setAICitationsMeta(citations: AICitationRange[]): {
-    key: PluginKey<AICitationDecorationState>;
+    key: PluginKeyOwner<AICitationDecorationState>;
     payload: {
         type: typeof SET_META;
         citations: AICitationRange[];
@@ -1901,7 +1913,7 @@ export function setAICitationsMeta(citations: AICitationRange[]): {
 
 // @public (undocumented)
 export function setAISuggestionsMeta(suggestions: AISuggestion[]): {
-    key: PluginKey<AISuggestionDecorationState>;
+    key: PluginKeyOwner<AISuggestionDecorationState>;
     payload: {
         type: typeof SET_META_2;
         suggestions: AISuggestion[];
@@ -1910,7 +1922,7 @@ export function setAISuggestionsMeta(suggestions: AISuggestion[]): {
 
 // @public (undocumented)
 export const setAnonymizationTermsMeta: (terms: readonly AnonymizationTerm[]) => {
-    key: PluginKey<AnonymizationDecorationState>;
+    key: PluginKeyOwner<AnonymizationDecorationState>;
     payload: {
         type: typeof SET_META_3;
         terms: readonly AnonymizationTerm[];
@@ -1918,11 +1930,8 @@ export const setAnonymizationTermsMeta: (terms: readonly AnonymizationTerm[]) =>
 };
 
 // @public (undocumented)
-export const setEmbeddedFontFamilyMap: (map: ReadonlyMap<string, string> | null) => void;
-
-// @public (undocumented)
 export function setFocusedSuggestionMeta(focusedId: string | null): {
-    key: PluginKey<AISuggestionDecorationState>;
+    key: PluginKeyOwner<AISuggestionDecorationState>;
     payload: {
         type: typeof FOCUS_META;
         focusedId: string | null;
@@ -1971,7 +1980,13 @@ export type TemplatePreviewValues = {
 };
 
 // @public (undocumented)
-export const templateSlashMenuKey: PluginKey<TemplateSlashMenuState>;
+export const templateSlashMenuKey: Readonly<{
+    key: string;
+    createKey: () => PluginKey<TemplateSlashMenuState>;
+    owns: (plugin: Plugin_2<TemplateSlashMenuState>) => boolean;
+    get: (state: EditorState) => Plugin_2<TemplateSlashMenuState> | undefined;
+    getState: (state: EditorState) => TemplateSlashMenuState | undefined;
+}>;
 
 // @public
 export type TemplateSlashMenuKeyAction = "up" | "down" | "forward" | "back" | "commit" | "dismiss";

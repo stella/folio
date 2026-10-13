@@ -747,6 +747,7 @@ export type ConvertHeaderFooterOptions = {
   theme?: Theme | null;
   defaultSize?: number;
   fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   measureBlocks: MeasureBlocksFn;
   /** Document-wide `w:defaultTabStop` in twips — forwarded to toFlowBlocks. */
   defaultTabStopTwips?: number;
@@ -869,6 +870,9 @@ export function convertHeaderFooterPmDocToContent(
   }
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
+  }
+  if (options.embeddedFontFamilyMap !== undefined) {
+    flowOptions.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
   }
   if (options.fontAlternates !== undefined) {
     flowOptions.fontAlternates = options.fontAlternates;

@@ -17,6 +17,8 @@ import type { Theme, StyleDefinitions } from "../../types/document";
 export type ToFlowBlocksOptions = {
   /** Paint comment anchors and highlights; false leaves authored marks intact. */
   showCommentHighlights?: boolean;
+  /** Embedded families owned by this editor, never ambient process state. */
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   /** Default font family. */
   defaultFont?: string;
   /** Default font size in points. */

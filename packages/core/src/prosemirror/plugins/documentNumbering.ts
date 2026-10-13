@@ -1,7 +1,8 @@
 /** Document-scoped numbering definitions for list-editing commands. */
 
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey, type EditorState, type Transaction } from "prosemirror-state";
+import { Plugin, type EditorState, type Transaction } from "prosemirror-state";
 import {
   AddMarkStep,
   DocAttrStep,
@@ -26,7 +27,7 @@ type DocumentNumberingState = {
   map: NumberingMap | null;
 };
 
-const documentNumberingKey = new PluginKey<DocumentNumberingState>("documentNumbering");
+const documentNumberingKey = createPluginKeyOwner<DocumentNumberingState>("documentNumbering");
 
 const completedState = (
   definitions: NumberingDefinitions | null,
@@ -87,7 +88,7 @@ export const createDocumentNumberingPlugin = (
   definitions: NumberingDefinitions | null | undefined,
 ): Plugin =>
   new Plugin<DocumentNumberingState>({
-    key: documentNumberingKey,
+    key: documentNumberingKey.createKey(),
     state: {
       init: (_config, state) => completedState(definitions ?? null, state.doc),
       apply: (tr, current, _oldState, state) =>

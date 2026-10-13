@@ -516,7 +516,10 @@ import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { useTransientNotice } from "../composables/useTransientNotice";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
-import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
+import {
+  DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
+  historyShortcutOwner,
+} from "@stll/folio-core/managers/editorShortcuts";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
   clearAllCaches,
@@ -844,7 +847,7 @@ useKeyboardShortcuts({
   showFindReplace,
   showHyperlink,
   handleZoomKeyDown,
-  scope: () => props.keyboardShortcuts ?? "document",
+  scope: () => props.keyboardShortcuts ?? DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
   roots: [rootRef],
 });
 
@@ -875,6 +878,7 @@ const {
   getActiveNoteView,
   getCommands,
   reLayout,
+  setEmbeddedFontFamilies,
 } = useDocxEditor({
   hiddenContainer: hiddenPmRef,
   hiddenHeaderFooterContainer: hiddenHfPmRef,
@@ -992,6 +996,7 @@ useFontLifecycle({
   getDocument,
   fonts: () => props.fonts,
   remeasure: remeasureForFontChange,
+  setEmbeddedFontFamilies,
 });
 
 // ---- Feature composables (order: image → hyperlink → pointer → context) --

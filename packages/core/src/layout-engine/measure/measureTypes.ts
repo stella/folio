@@ -11,6 +11,8 @@
  * Font styling properties for measurement
  */
 export type FontStyle = {
+  /** Embedded families owned by this editor, never ambient process state. */
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   fontFamily?: string;
   alternateFontFamily?: string;
   /**

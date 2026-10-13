@@ -160,6 +160,7 @@ export type UseDocxEditorOptions = {
 
 // @public (undocumented)
 export type UseDocxEditorReturn = {
+    setEmbeddedFontFamilies: (families: ReadonlyMap<string, string> | null) => void;
     editor: FolioEditor;
     editorView: Ref<EditorView | null>;
     editorState: Ref<EditorState | null>;

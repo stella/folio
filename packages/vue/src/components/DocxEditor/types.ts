@@ -206,9 +206,9 @@ export type DocxEditorProps = {
    * replace (Cmd/Ctrl+F, Cmd/Ctrl+H), hyperlink (Cmd/Ctrl+K), `File > Open`
    * (Cmd/Ctrl+O) and zoom (Cmd/Ctrl+0, +, -). Editing keymaps inside the
    * document body are unaffected.
-   *  - `"document"`: every press on the page. Default; for a page whose only
+   *  - `"document"`: every press on the page; for a page whose only
    *    surface is the editor.
-   *  - `"editor"`: only a press whose target is inside this editor, so a host
+   *  - `"editor"` (default): only a press whose target is inside this editor, so a host
    *    that docks the editor beside other panes keeps its own bindings
    *    elsewhere.
    *  - `"none"`: the editor answers no page-level press. The host dispatches

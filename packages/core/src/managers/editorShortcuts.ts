@@ -16,6 +16,8 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { deleteTable, getTableContext } from "../prosemirror/commands/table";
 import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/HistoryExtension";
 
+export const DEFAULT_KEYBOARD_SHORTCUT_SCOPE = "editor";
+
 export function isMacPlatform(): boolean {
   if (typeof navigator === "undefined") {
     return false;

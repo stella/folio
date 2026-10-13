@@ -6,9 +6,10 @@
  * Used by the selective save system to patch only changed paragraphs in document.xml.
  */
 
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
 import { isHistoryTransaction } from "prosemirror-history";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 import {
   AddMarkStep,
@@ -36,9 +37,8 @@ import { sectionMarkEditsOf } from "../../sectionMarkEdits";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 
-export const paragraphChangeTrackerKey = new PluginKey<InternalParagraphChangeTrackerState>(
-  "paragraphChangeTracker",
-);
+export const paragraphChangeTrackerKey =
+  createPluginKeyOwner<InternalParagraphChangeTrackerState>("paragraphChangeTracker");
 
 const CLEAR_META = "clear";
 const IGNORE_META = "ignore";
@@ -400,7 +400,7 @@ const mapStepTouches = (
 
 export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTrackerState> {
   return new Plugin<InternalParagraphChangeTrackerState>({
-    key: paragraphChangeTrackerKey,
+    key: paragraphChangeTrackerKey.createKey(),
     state: {
       init(_config, state): InternalParagraphChangeTrackerState {
         const counts = countDocumentStructure(state.doc);

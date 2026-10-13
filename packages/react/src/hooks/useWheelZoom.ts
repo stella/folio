@@ -18,7 +18,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { isKeydownInShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
+import {
+  DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
+  isKeydownInShortcutScope,
+} from "@stll/folio-core/managers/editorShortcuts";
 import type { KeyboardShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
 import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "@stll/folio-core/utils/zoom";
 
@@ -56,7 +59,7 @@ export type UseWheelZoomOptions = {
   onZoomChange?: (zoom: number) => void;
   /**
    * Which presses the zoom shortcuts (Cmd/Ctrl+0, Cmd/Ctrl++, Cmd/Ctrl+-)
-   * answer (default: `"document"`). `"editor"` answers only a press inside
+   * answer (default: `"editor"`). `"editor"` answers only a press inside
    * `shortcutRoots`, so a host that docks the editor beside other panes keeps
    * its own bindings elsewhere; `"none"` binds no keyboard listener.
    */
@@ -200,7 +203,7 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
     containerRef,
     getCurrentZoom,
     onZoomChange,
-    keyboardShortcuts = "document",
+    keyboardShortcuts = DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
     shortcutRoots = NO_SHORTCUT_ROOTS,
     preventDefault = true,
   } = options;

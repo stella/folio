@@ -48,7 +48,7 @@ const FOOTNOTE_FONT_SIZE = 8;
 
 export type MeasureBlocksFn = (blocks: FlowBlock[], contentWidth: number) => Measure[];
 
-export type ConvertFootnoteOptions = {
+export type ConvertFootnoteOptions = Pick<ToFlowBlocksOptions, "embeddedFontFamilyMap"> & {
   /** Whether comment highlights are painted. Defaults to true. */
   showCommentHighlights?: boolean;
   styles?: StyleDefinitions | null;
@@ -379,6 +379,9 @@ export function convertNoteStoryToFlowBlocks(
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
   }
+  if (options.embeddedFontFamilyMap !== undefined) {
+    flowOptions.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
+  }
   if (options.fontAlternates !== undefined) {
     flowOptions.fontAlternates = options.fontAlternates;
   }
@@ -673,6 +676,11 @@ function createFootnoteNumberRun(
     fontSize: firstFormattedRun?.fontSize ?? paragraph.attrs?.defaultFontSize ?? FOOTNOTE_FONT_SIZE,
     superscript: true,
   };
+  const embeddedFontFamilyMap =
+    firstFormattedRun?.embeddedFontFamilyMap ?? paragraph.attrs?.embeddedFontFamilyMap;
+  if (embeddedFontFamilyMap) {
+    numberRun.embeddedFontFamilyMap = embeddedFontFamilyMap;
+  }
   const fontFamily = firstFormattedRun?.fontFamily ?? paragraph.attrs?.defaultFontFamily;
   if (fontFamily) {
     numberRun.fontFamily = fontFamily;

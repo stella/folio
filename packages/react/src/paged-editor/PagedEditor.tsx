@@ -130,7 +130,6 @@ import type {
 } from "@stll/folio-core/layout-bridge/engine/selectionRects";
 import type * as SelectionGeometry from "@stll/folio-core/layout-bridge/engine/selectionRects";
 import { resolveHeaderFooterSelectionGeometry } from "@stll/folio-core/render-dom/HeaderFooterSelectionOverlay";
-import { setEmbeddedFontFamilyMap } from "@stll/folio-core/utils/fontResolver";
 // Layout engine
 import { resolveSectionHeaderFooterRefs, type ColumnLayout } from "@stll/folio-core/layout-engine";
 import { recordLayoutPhase } from "@stll/folio-core/layout-engine/layoutInstrumentation";
@@ -1462,7 +1461,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const [noteStoryActive, setNoteStoryActive] = useState(false);
     const painterRef = useRef<LayoutPainter | null>(null);
     const noteStoryPlugins = useMemo(
-      () => externalPlugins.filter(({ spec }) => spec.key === suggestionModeKey),
+      () => externalPlugins.filter((plugin) => suggestionModeKey.owns(plugin)),
       [externalPlugins],
     );
     const handleActiveNoteStoryChange = useCallback(
@@ -5619,7 +5618,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // resolves after this point (measurement + paint) picks up the
         // scoped family instead of the raw DOCX name — which is never
         // registered on `document.fonts` (see `fonts/embeddedFonts.ts`).
-        setEmbeddedFontFamilyMap(familyMap.size > 0 ? familyMap : null);
+        layoutSessionRef.current.embeddedFontFamilyMap = new Map(familyMap);
         const view = hiddenPMRef.current?.getView();
         if (!view) {
           return undefined;
@@ -5633,7 +5632,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       return () => {
         cancelled = true;
         removeFontFaces(registered);
-        setEmbeddedFontFamilyMap(null);
+        delete layoutSessionRef.current.embeddedFontFamilyMap;
       };
     }, [embeddedFontBuffer, runtime]);
 
