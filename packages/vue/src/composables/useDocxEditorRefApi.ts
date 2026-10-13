@@ -96,6 +96,8 @@ import {
   resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 
 type LiveDocumentOperationUndoEntry = {
@@ -159,6 +161,7 @@ export type UseDocxEditorRefApiOptions = {
   clearCommentsDirty: () => void;
   /** Computed page layout, or null before first paint. */
   layout: Ref<Layout | null>;
+  markupView?: Readonly<Ref<DisplayMode>>;
   /** Painted pages container (the `HTMLDivElement` the painter writes into). */
   pagesRef: Ref<HTMLElement | null>;
   /** Scroll root wrapping the full painted editor area. */
@@ -881,7 +884,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (!view) {
         return null;
       }
-      return getPageTextFromLayout(opts.layout.value, view.state.doc, page);
+      return getPageTextFromLayout({
+        layout: opts.layout.value,
+        doc: view.state.doc,
+        page,
+        projection: projectMarkupView(view.state, opts.markupView?.value ?? "all-markup"),
+      });
     },
     getTargetPage: (target, snapshot) => {
       const view = opts.editorView.value;

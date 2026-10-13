@@ -1773,6 +1773,7 @@ onMounted(() => {
 
 // ---- Imperative ref surface ---------------------------------------------
 const { exposed } = useDocxEditorRefApi({
+  markupView: displayMode,
   editor,
   editorView,
   // Doc-dirty flag (any doc-changing transaction; cleared on save + load) and

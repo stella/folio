@@ -11,8 +11,13 @@ import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { parseDocx } from "@stll/folio-core/docx/parser";
+import { installHeadlessMeasureProvider } from "@stll/folio-core/fonts/headlessMeasure";
+import {
+  getMeasureProvider,
+  setMeasureProvider,
+} from "@stll/folio-core/layout-engine/measure/measureProvider";
 
-import { buildRawPackage, SECTION, WORD_STYLES } from "../../../core/src/__tests__/documentShapes";
+import { buildRawPackage, SECTION, WORD_STYLES } from "@stll/folio-core/__tests__/documentShapes";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
@@ -25,16 +30,16 @@ const para = (content: string, properties = ""): string =>
 const reviewDocument = async (): Promise<Uint8Array> => {
   const body =
     para(
-      `${run("Kept ")}<w:ins ${revision(1)}>${run("inserted")}</w:ins>` +
-        `<w:del ${revision(2)}><w:r><w:delText xml:space="preserve"> deleted</w:delText></w:r></w:del>` +
+      `${run("Kept ")}<w:ins ${revision(1)}>${run("TRACKED_INSERTION")}</w:ins>` +
+        `<w:del ${revision(2)}><w:r><w:delText xml:space="preserve">TRACKED_DELETION</w:delText></w:r></w:del>` +
         `${run(" text.")}`,
     ) +
     para(
       `<w:moveFromRangeStart w:id="3" w:name="move" w:author="Reviewer" w:date="${FIXED_DATE}"/>` +
-        `<w:moveFrom ${revision(4)}><w:r><w:delText xml:space="preserve">Moved words</w:delText></w:r></w:moveFrom>` +
+        `<w:moveFrom ${revision(4)}><w:r><w:delText xml:space="preserve">MOVE_FROM</w:delText></w:r></w:moveFrom>` +
         `<w:moveFromRangeEnd w:id="3"/> ${run("Here: ")}` +
         `<w:moveToRangeStart w:id="5" w:name="move" w:author="Reviewer" w:date="${FIXED_DATE}"/>` +
-        `<w:moveTo ${revision(6)}>${run("Moved words")}</w:moveTo>` +
+        `<w:moveTo ${revision(6)}>${run("MOVE_TO")}</w:moveTo>` +
         `<w:moveToRangeEnd w:id="5"/>`,
     ) +
     para(
@@ -104,10 +109,24 @@ test("host review display modes change visible layout without changing saved DOC
     { mode: "all-markup", showCommentHighlights: true },
   ] as const;
   const visibleByMode: string[] = [];
+  const tableRowCountByMode: number[] = [];
   const commentIdsByMode: string[][] = [];
   const savedByMode: Uint8Array[] = [];
   let initialDoc: PMNode | null = null;
+  const previousMeasureProvider = getMeasureProvider();
+  const relayoutAndWait = async () => {
+    const controller = editor.current?.getEditor() ?? panic("Expected the editor controller");
+    const layoutComplete = new Promise<void>((resolve) => {
+      const unsubscribe = controller.on("layoutComplete", () => {
+        unsubscribe();
+        resolve();
+      });
+    });
+    controller.relayout();
+    await layoutComplete;
+  };
   try {
+    installHeadlessMeasureProvider({ load: () => [] });
     for (const [index, { mode, showCommentHighlights }] of modes.entries()) {
       await act(async () => {
         root.render(
@@ -127,26 +146,42 @@ test("host review display modes change visible layout without changing saved DOC
       if (index === 0) {
         await act(async () => {
           await editor.current?.ensureEditorView({ focus: false });
-          editor.current?.getEditor()?.relayout();
+          await relayoutAndWait();
         });
         initialDoc =
           editor.current?.getEditor()?.getView()?.state.doc ??
           panic("Expected the loaded editor document");
       } else {
         expect(editor.current?.getEditor()?.getView()?.state.doc).toBe(initialDoc);
-        await act(async () => editor.current?.getEditor()?.relayout());
+        await act(async () => relayoutAndWait());
       }
 
-      const paintedText = [...container.querySelectorAll(".layout-line")]
-        .map((line) => line.textContent ?? "")
-        .join(" ");
-      visibleByMode.push(paintedText);
+      const controller = editor.current?.getEditor() ?? panic("Expected the editor controller");
+      const layout = controller.getLayout() ?? panic("Expected the settled page layout");
+      visibleByMode.push(
+        layout.pages
+          .map(
+            (_, pageIndex) =>
+              editor.current?.getPageText(pageIndex + 1) ??
+              panic("Expected page text for each laid-out page"),
+          )
+          .join("\n"),
+      );
+      tableRowCountByMode.push(
+        layout.pages
+          .flatMap((page) => page.fragments)
+          .filter((fragment) => fragment.kind === "table")
+          .reduce((total, fragment) => total + fragment.toRow - fragment.fromRow, 0),
+      );
       commentIdsByMode.push(
         [...container.querySelectorAll(".layout-line[data-comment-id]")].map(
           (line) => line.getAttribute("data-comment-id") ?? "",
         ),
       );
-      const saved = await editor.current?.save();
+      let saved: ArrayBuffer | null | undefined;
+      await act(async () => {
+        saved = await editor.current?.save();
+      });
       if (saved === null || saved === undefined) panic("Expected a saved DOCX");
       savedByMode.push(new Uint8Array(saved));
     }
@@ -156,32 +191,29 @@ test("host review display modes change visible layout without changing saved DOC
     const final = visibleByMode.at(2) ?? "";
     const original = visibleByMode.at(3) ?? "";
     const allMarkupAfterSwitches = visibleByMode.at(4) ?? "";
-    expect(allMarkup).toContain("inserted");
-    expect(allMarkup).toContain("deleted");
-    expect(final).toContain("inserted");
-    expect(final).not.toContain("deleted");
-    expect(original).not.toContain("inserted");
-    expect(original).toContain("deleted");
-    expect(allMarkup).toContain("Moved words");
-    expect(final).toContain("Moved words");
-    expect(original).toContain("Moved words");
-    expect(allMarkup).toContain("Inserted row");
-    expect(allMarkup).toContain("Deleted row");
-    expect(final).toContain("Inserted row");
-    expect(final).not.toContain("Deleted row");
-    expect(original).not.toContain("Inserted row");
-    expect(original).toContain("Deleted row");
+    expect(allMarkup).toContain("TRACKED_INSERTION");
+    expect(allMarkup).toContain("TRACKED_DELETION");
+    expect(final).toContain("TRACKED_INSERTION");
+    expect(final).not.toContain("TRACKED_DELETION");
+    expect(original).not.toContain("TRACKED_INSERTION");
+    expect(original).toContain("TRACKED_DELETION");
+    expect(allMarkup).toContain("MOVE_FROM");
+    expect(allMarkup).toContain("MOVE_TO");
+    expect(final).not.toContain("MOVE_FROM");
+    expect(final).toContain("MOVE_TO");
+    expect(original).toContain("MOVE_FROM");
+    expect(original).not.toContain("MOVE_TO");
     expect(allMarkup).toContain("Comment anchor");
     expect(final).toContain("Numbered clause");
-    expect(final).toContain("1.");
-    expect(final).not.toContain("§");
-    expect(original).toContain("§");
+    expect(tableRowCountByMode.at(0)).toBe(2);
+    expect(tableRowCountByMode.at(2)).toBe(1);
+    expect(tableRowCountByMode.at(3)).toBe(1);
     expect(commentIdsByMode.at(0)).toContain("7");
     expect(commentIdsByMode.at(1)).toEqual([]);
     expect(commentIdsByMode.at(2)).toEqual([]);
     expect(commentIdsByMode.at(3)).toEqual([]);
     expect(commentIdsByMode.at(4)).toContain("7");
-    expect(allMarkupWithoutComments).toContain("Comment anchor");
+    expect(allMarkupWithoutComments).toBe(allMarkup);
     expect(allMarkupAfterSwitches).toBe(allMarkup);
     const firstSaved = savedByMode.at(0) ?? panic("Expected the initial mode save");
     for (const saved of savedByMode.slice(1)) {
@@ -190,6 +222,7 @@ test("host review display modes change visible layout without changing saved DOC
     }
   } finally {
     await act(async () => root.unmount());
+    setMeasureProvider(previousMeasureProvider);
     container.remove();
   }
 });

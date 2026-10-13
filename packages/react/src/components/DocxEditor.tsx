@@ -250,6 +250,7 @@ import {
 } from "@stll/folio-core/ai-edits/blockRange";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import { resolveCommentCreationRange } from "./commentAnchors";
+import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 import { toast } from "./toast";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
@@ -4034,7 +4035,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           return null;
         }
         const layout = pagedEditorRef.current?.getEditor()?.getLayout() ?? null;
-        return getPageTextFromLayout(layout, view.state.doc, page);
+        return getPageTextFromLayout({
+          layout,
+          doc: view.state.doc,
+          page,
+          projection: projectMarkupView(view.state, displayMode),
+        });
       },
       getTargetPage: (target, snapshot) => {
         const view = pagedEditorRef.current?.getView();
@@ -4130,6 +4136,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [
       author,
       buildCurrentDocument,
+      displayMode,
       scrollPageInfo,
       handleSave,
       setZoomWithViewportAnchor,

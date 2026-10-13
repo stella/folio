@@ -1867,6 +1867,9 @@ export type ResolvedAnchor = {
 export function resolveSuggestionAnchor(doc: Node_2, suggestion: AISuggestion): ResolvedAnchor | null;
 
 // @public (undocumented)
+export type ReviewDisplayMode = (typeof REVIEW_DISPLAY_MODES)[number];
+
+// @public (undocumented)
 export const scanDirectives: (doc: Node_2) => DirectiveRange[];
 
 // @public

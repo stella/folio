@@ -118,9 +118,9 @@ type ParagraphSpec = {
   mark: (typeof PARAGRAPH_MARKS)[number];
   justified: boolean;
   alignmentChange: boolean;
-  numberingChange: boolean;
-  commented: boolean;
 };
+
+type ReviewProperties = { numberingChange: boolean; commented: boolean };
 
 type MoveSpec = { from: number; to: number; text: string };
 
@@ -143,8 +143,6 @@ const paragraphArb = fc.record({
   ),
   justified: fc.boolean(),
   alignmentChange: fc.boolean(),
-  numberingChange: fc.boolean(),
-  commented: fc.boolean(),
 });
 
 const cellArb = fc.array(segmentArb, { minLength: 1, maxLength: 3 });
@@ -182,7 +180,10 @@ const FIXED_DATE = "2026-01-01T00:00:00Z";
 const escapeText = (text: string): string =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-const buildBody = ({ paragraphs, move, table }: DocumentSpec): string => {
+const buildBody = (
+  { paragraphs, move, table }: DocumentSpec,
+  review?: ReviewProperties,
+): string => {
   let nextId = 1;
   const revision = (): string => `w:id="${nextId++}" w:author="Reviewer" w:date="${FIXED_DATE}"`;
   const run = (text: string, rPr = ""): string =>
@@ -224,18 +225,18 @@ const buildBody = ({ paragraphs, move, table }: DocumentSpec): string => {
         ? ""
         : `<w:rPr><w:${mark === "inserted" ? "ins" : "del"} ${revision()}/></w:rPr>`;
     const alignment = `<w:jc w:val="${paragraph.justified ? "both" : "left"}"/>`;
-    const numbering = paragraph.numberingChange
+    const numbering = review?.numberingChange
       ? `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>`
       : "";
-    const numberingBefore = paragraph.numberingChange
+    const numberingBefore = review?.numberingChange
       ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>'
       : "";
     const propertyChange =
-      paragraph.alignmentChange || paragraph.numberingChange
+      paragraph.alignmentChange || review?.numberingChange
         ? `<w:pPrChange ${revision()}><w:pPr>${paragraph.alignmentChange ? `<w:jc w:val="${paragraph.justified ? "left" : "both"}"/>` : alignment}${numberingBefore}</w:pPr></w:pPrChange>`
         : "";
     let content = paragraph.segments.map(segmentXml).join("");
-    if (paragraph.commented)
+    if (review?.commented)
       content = `<w:commentRangeStart w:id="${index}"/>${content}<w:commentRangeEnd w:id="${index}"/><w:r><w:commentReference w:id="${index}"/></w:r>`;
     if (move && move.from === index) content += moveXml("From", move.text);
     if (move && move.to === index) content += moveXml("To", move.text);
@@ -271,27 +272,30 @@ const buildBody = ({ paragraphs, move, table }: DocumentSpec): string => {
   return xml.join("") + SECTION();
 };
 
-const buildDocument = async (spec: DocumentSpec): Promise<Document> =>
+const buildDocument = async (spec: DocumentSpec, review?: ReviewProperties): Promise<Document> =>
   parseShapeDocument(
     await buildRawPackage({
-      body: buildBody(spec),
+      body: buildBody(spec, review),
       styles: WORD_STYLES,
-      parts: [
-        {
-          path: "word/numbering.xml",
-          contentType:
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
-          relationshipType: "numbering",
-          body: `<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="0"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="5"/></w:lvlOverride></w:num></w:numbering>`,
-        },
-        {
-          path: "word/comments.xml",
-          contentType:
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
-          relationshipType: "comments",
-          body: `<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${spec.paragraphs.map((paragraph, index) => (paragraph.commented ? `<w:comment w:id="${index}" w:author="Reviewer" w:date="${FIXED_DATE}"><w:p><w:r><w:t>Review</w:t></w:r></w:p></w:comment>` : "")).join("")}</w:comments>`,
-        },
-      ],
+      parts:
+        review === undefined
+          ? []
+          : [
+              {
+                path: "word/numbering.xml",
+                contentType:
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+                relationshipType: "numbering",
+                body: `<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="0"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="5"/></w:lvlOverride></w:num></w:numbering>`,
+              },
+              {
+                path: "word/comments.xml",
+                contentType:
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+                relationshipType: "comments",
+                body: `<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${spec.paragraphs.map((_paragraph, index) => (review?.commented ? `<w:comment w:id="${index}" w:author="Reviewer" w:date="${FIXED_DATE}"><w:p><w:r><w:t>Review</w:t></w:r></w:p></w:comment>` : "")).join("")}</w:comments>`,
+              },
+            ],
     }),
   );
 
@@ -307,18 +311,13 @@ type MarkupViewExt = { view: DisplayMode };
  * later render, so a pass an edit already scheduled can run under the new view
  * before the layout-input effect does.
  */
-const viewArb = fc.oneof(
-  fc.constantFrom(...DISPLAY_MODES),
-  fc.constantFrom(...REVIEW_DISPLAY_MODES).map(reviewDisplayModeToDisplayMode),
-);
-
 const markupViewEventKind = defineFreshRenderEventKind<
   { view: DisplayMode; layout: LoadLayout },
   MarkupViewExt
 >({
   kind: "markupView",
   arbitrary: fc.record({
-    view: viewArb,
+    view: fc.constantFrom(...DISPLAY_MODES),
     layout: fc.constantFrom(LOAD_LAYOUT.immediate, LOAD_LAYOUT.nextRender),
   }),
   apply: (rig, { view, layout }) => rig.updateExt(() => ({ view }), layout),
@@ -388,12 +387,13 @@ type MarkupViewScenario = {
   initialView: DisplayMode;
   leadingFrame: boolean;
   events: FreshRenderEvent<MarkupViewExt>[];
+  review?: { properties: ReviewProperties; oracleView: DisplayMode };
 };
 
 const scenarioArb: fc.Arbitrary<MarkupViewScenario> = fc.record({
   document: documentArb,
   mode: fc.constantFrom(...EDITOR_MODES),
-  initialView: viewArb,
+  initialView: fc.constantFrom(...DISPLAY_MODES),
   leadingFrame: fc.boolean(),
   events: fc.array(fc.oneof(...EVENT_KINDS), { minLength: 1, maxLength: 12 }),
 });
@@ -529,10 +529,10 @@ type MarkupViewVerdict = {
 type ViewWiring = "as-input" | "all-markup";
 
 const runScenario = async (
-  { document: spec, mode, initialView, leadingFrame, events }: MarkupViewScenario,
+  { document: spec, mode, initialView, leadingFrame, events, review }: MarkupViewScenario,
   wiring: ViewWiring,
 ): Promise<MarkupViewVerdict> => {
-  const document: Document = await buildDocument(spec);
+  const document: Document = await buildDocument(spec, review?.properties);
   let verdict: MarkupViewVerdict | null = null;
   withFakeTextMeasure(
     () => {
@@ -560,7 +560,7 @@ const runScenario = async (
         committed: rig.committed(),
         fresh: rig.fresh(),
         materialised: rig.fresh({
-          state: materialise(rig.state, view),
+          state: materialise(rig.state, review?.oracleView ?? view),
           deps: { ...documentDeps, markupView: "all-markup" },
         }),
         misaddressed: misaddressedRuns(blocks, rig.state),
@@ -596,8 +596,6 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           mark: "plain",
           justified: false,
           alignmentChange: false,
-          numberingChange: false,
-          commented: false,
         },
         {
           segments: [
@@ -607,8 +605,6 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           mark: "plain",
           justified: false,
           alignmentChange: true,
-          numberingChange: false,
-          commented: false,
         },
         {
           segments: [
@@ -621,8 +617,6 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           mark: "deleted",
           justified: false,
           alignmentChange: false,
-          numberingChange: false,
-          commented: false,
         },
         {
           segments: [
@@ -634,16 +628,12 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           mark: "deleted",
           justified: false,
           alignmentChange: true,
-          numberingChange: false,
-          commented: false,
         },
         {
           segments: [{ kind: "insertion", text: "days ten shall notice business goods " }],
           mark: "inserted",
           justified: true,
           alignmentChange: false,
-          numberingChange: false,
-          commented: false,
         },
       ],
       move: null,
@@ -664,32 +654,24 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           mark: "plain",
           justified: false,
           alignmentChange: false,
-          numberingChange: false,
-          commented: false,
         },
         {
           segments: [{ kind: "plain", text: "the " }],
           mark: "deleted",
           justified: false,
           alignmentChange: false,
-          numberingChange: false,
-          commented: false,
         },
         {
           segments: [{ kind: "deletion", text: "the " }],
           mark: "deleted",
           justified: false,
           alignmentChange: false,
-          numberingChange: false,
-          commented: false,
         },
         {
           segments: [{ kind: "plain", text: "the " }],
           mark: "deleted",
           justified: false,
           alignmentChange: false,
-          numberingChange: false,
-          commented: false,
         },
       ],
       move: null,
@@ -740,6 +722,49 @@ describe("markup views lay out the text they show", () => {
         numRuns: 40,
         examples: PINNED_SCENARIOS.map((scenario) => [scenario]),
         id: "every view settles on the layout of the text it reads, through any event sequence",
+      },
+    );
+  });
+
+  test("host views match accept-all and reject-all with tracked numbering and comments", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        scenarioArb,
+        fc.record({ numberingChange: fc.boolean(), commented: fc.boolean() }),
+        async (scenario, properties) => {
+          for (const hostView of REVIEW_DISPLAY_MODES) {
+            const view = reviewDisplayModeToDisplayMode(hostView);
+            const oracleViews = {
+              "all-markup": "all-markup",
+              final: "no-markup",
+              original: "original",
+            } as const satisfies Record<(typeof REVIEW_DISPLAY_MODES)[number], DisplayMode>;
+            const verdict = await runScenario(
+              {
+                ...scenario,
+                review: { properties, oracleView: oracleViews[hostView] },
+                events: [
+                  ...scenario.events,
+                  {
+                    kind: "markupView",
+                    apply: (rig) => rig.updateExt(() => ({ view }), LOAD_LAYOUT.immediate),
+                  },
+                ],
+              },
+              "as-input",
+            );
+            expect(verdict.staleCommits).toEqual([]);
+            expect(verdict.committed).toEqual(verdict.fresh);
+            expect(verdict.committed).toEqual(verdict.materialised);
+            expect(verdict.misaddressed).toEqual([]);
+            expect(verdict.unpaintable).toEqual([]);
+            expect(verdict.misplacedBars).toEqual([]);
+          }
+        },
+      ),
+      {
+        numRuns: 20,
+        id: "host views match accept-all and reject-all with tracked numbering and comments",
       },
     );
   });

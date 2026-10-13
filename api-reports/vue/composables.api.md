@@ -132,6 +132,7 @@ export type UseDocxEditorOptions = {
     pageGap?: number;
     pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
     markupView?: MaybeRefOrGetter<DisplayMode>;
+    showCommentHighlights?: MaybeRefOrGetter<boolean>;
     showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
     marginGuideColor?: MaybeRefOrGetter<string | undefined>;
     password?: MaybeRefOrGetter<string | undefined>;
@@ -204,6 +205,8 @@ export function useFindReplace(input: UseFindReplaceOptions): UseFindReplaceRetu
 // @public (undocumented)
 export type UseFindReplaceOptions = {
     editorView: Readonly<Ref<EditorView | null>>;
+    markupView?: Readonly<Ref<DisplayMode>>;
+    readOnly?: Readonly<Ref<boolean>>;
     scrollVisiblePositionIntoView?: (pmPos: number) => void;
 };
 

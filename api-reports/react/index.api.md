@@ -156,6 +156,7 @@ import { RefObject } from 'react';
 import { resetTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ResolvedAnchor } from '@stll/folio-core/ai-suggestions/conflict';
 import { resolveSuggestionAnchor } from '@stll/folio-core/ai-suggestions/conflict';
+import { ReviewDisplayMode } from '@stll/folio-core/managers/reviewDisplayMode';
 import { scanDirectives } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
 import { scrollFolioPositionIntoView } from '@stll/folio-core/paged-layout/scrollToPmPosition';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
@@ -403,6 +404,8 @@ export type DocxEditorProps = {
     keyboardShortcuts?: KeyboardShortcutScope;
     hostShortcuts?: readonly HostShortcut[];
     readOnly?: boolean;
+    reviewDisplayMode?: ReviewDisplayMode;
+    showCommentHighlights?: boolean;
     autoOpenReviewSidebar?: boolean;
     components?: Partial<FolioUIComponents>;
     toolbarExtra?: ReactNode;
@@ -928,6 +931,8 @@ export { resetTemplateSlashQuery }
 export { ResolvedAnchor }
 
 export { resolveSuggestionAnchor }
+
+export { ReviewDisplayMode }
 
 export { scanDirectives }
 
