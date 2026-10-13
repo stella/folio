@@ -55,7 +55,7 @@ type UseFindReplaceParams = {
   /** Select and reveal a match in the live editor */
   selectMatch?: (match: FindMatch) => boolean;
   readOnlyReason?: EditorReadOnlyReason | null;
-  onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
+  onReadonlyEditAttempt?: ((reason: EditorReadOnlyReason) => void) | undefined;
 };
 
 export type UseFindReplaceReturn = {

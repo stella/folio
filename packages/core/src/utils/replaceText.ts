@@ -57,8 +57,9 @@ export function replaceTextInDocument(
         schema.text(text, textFormattingToMarks(formatting)),
       );
     } else {
-      transaction.insertText(text, range.from, range.to);
+      transaction.insertText(text, proseRange.from, proseRange.to);
     }
+    // canonical-gap: pm-save-projection
     return fromProseDoc(transaction.doc, newDoc, { stylesheetSource: { type: "package" } });
   } else {
     const startParagraph = getParagraphByIndex(body, start.paragraphIndex);

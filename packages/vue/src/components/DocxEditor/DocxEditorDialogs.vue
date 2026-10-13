@@ -17,7 +17,7 @@
     :view="view"
     :markup-view="markupView"
     :read-only="readOnly"
-    :on-readonly-edit-attempt="onReadonlyEditAttempt"
+    :on-readonly-edit-attempt="notifyReadonlyEditAttempt"
     :scroll-visible-position-into-view="scrollVisiblePositionIntoView"
     @close="emit('update:showFindReplace', false)"
   />
@@ -104,7 +104,7 @@ type HyperlinkSubmitPayload = {
   tooltip: string;
 };
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     view: EditorView | null;
     markupView?: DisplayMode;
@@ -127,6 +127,10 @@ withDefaults(
   }>(),
   { markupView: "all-markup", readOnly: false },
 );
+
+function notifyReadonlyEditAttempt(reason: EditorReadOnlyReason): void {
+  props.onReadonlyEditAttempt?.(reason);
+}
 
 const emit = defineEmits<{
   (e: "update:showFindReplace", value: boolean): void;
