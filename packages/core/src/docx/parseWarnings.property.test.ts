@@ -161,6 +161,16 @@ describe("parse warnings (property)", () => {
             const code = SEEDED_DEFECTS[name];
             expect(codes.includes(code)).toBe(seed[name] > 0);
           }
+          const collisions = warnings.filter(
+            ({ code }) => code === PARSE_WARNING_CODES.duplicateImportedId,
+          );
+          expect(collisions.filter(({ identityKind }) => identityKind === "comment")).toHaveLength(
+            seed.duplicateCommentId,
+          );
+          expect(collisions.filter(({ identityKind }) => identityKind === "footnote")).toHaveLength(
+            seed.duplicateNoteId,
+          );
+          expect(collisions).toHaveLength(seed.duplicateCommentId + seed.duplicateNoteId);
           for (const warning of warnings) {
             expect(warning.location.part.length).toBeGreaterThan(0);
             expect(warning.count).toBeGreaterThanOrEqual(1);
@@ -187,7 +197,13 @@ describe("parse warnings (property)", () => {
     const document = await parseDocx(await docxFor(everything), { preloadFonts: false });
 
     expect(codesIn(document.parseWarnings ?? []).toSorted()).toEqual(
-      SEEDED_DEFECT_NAMES.map((name) => SEEDED_DEFECTS[name]).toSorted(),
+      [
+        ...SEEDED_DEFECT_NAMES.map((name) => SEEDED_DEFECTS[name]),
+        ...Array.from(
+          { length: everything.duplicateCommentId + everything.duplicateNoteId },
+          () => PARSE_WARNING_CODES.duplicateImportedId,
+        ),
+      ].toSorted(),
     );
   });
 
