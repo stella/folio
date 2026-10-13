@@ -259,6 +259,7 @@ test("publish preparation preserves nested locale wildcard destinations", async 
       expect(manifest.exports[pattern]).toEqual({
         types: `./dist/i18n/messages/*${suffix}.d.ts`,
         import: `./dist/i18n/messages/*${suffix}.js`,
+        default: `./dist/i18n/messages/*${suffix}.js`,
       });
     }
   } finally {

@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import path from "node:path";
 
 test("publish preparation maps source, asset and private exports to dist", async () => {
-  const packageRoot = await mkdtemp(path.join(tmpdir(), "folio-prepare-publish-"));
+  const packageRoot = await realpath(await mkdtemp(path.join(tmpdir(), "folio-prepare-publish-")));
   try {
     await mkdir(path.join(packageRoot, "dist"));
     await writeFile(path.join(packageRoot, "dist/index.js"), "export {};\n");
