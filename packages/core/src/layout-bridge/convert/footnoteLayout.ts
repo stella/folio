@@ -48,13 +48,12 @@ const FOOTNOTE_FONT_SIZE = 8;
 
 export type MeasureBlocksFn = (blocks: FlowBlock[], contentWidth: number) => Measure[];
 
-export type ConvertFootnoteOptions = {
+export type ConvertFootnoteOptions = Pick<ToFlowBlocksOptions, "embeddedFontFamilyMap"> & {
   styles?: StyleDefinitions | null;
   numbering?: NumberingDefinitions;
   theme?: Theme | null;
   defaultSize?: number;
   fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
-  embeddedFontFamilyMap?: ToFlowBlocksOptions["embeddedFontFamilyMap"];
   measureBlocks?: MeasureBlocksFn;
   /** Document-wide `w:defaultTabStop` in twips — forwarded to toFlowBlocks. */
   defaultTabStopTwips?: number;

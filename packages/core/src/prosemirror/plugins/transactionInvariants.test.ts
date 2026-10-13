@@ -8,6 +8,7 @@ import { ExtensionManager } from "../extensions/ExtensionManager";
 import { createStarterKit } from "../extensions/StarterKit";
 import { toggleNumberedList } from "../extensions/features/ListExtension";
 import { singletonManager } from "../schema";
+import { createDocumentNumberingPlugin } from "./documentNumbering";
 import {
   checkEditorStateInvariants,
   createTransactionInvariantPlugin,
@@ -41,7 +42,12 @@ const expectInvariantBehavior = ({
   plugins,
   mode,
 }: ExpectInvariantBehaviorOptions): void => {
-  const state = EditorState.create({ schema, plugins: [...plugins] });
+  // The manager owns schema/runtime plugins; document numbering is supplied
+  // separately by the editor controller, including a document with no lists.
+  const state = EditorState.create({
+    schema,
+    plugins: [createDocumentNumberingPlugin(null), ...plugins],
+  });
   const paragraph = state.doc.firstChild;
   if (!paragraph) throw new TypeError("The default document has no paragraph");
   const applyInvalidReference = () =>
