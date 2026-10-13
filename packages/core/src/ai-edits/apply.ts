@@ -5656,6 +5656,20 @@ const applyFolioAIEditOperationsInternal = ({
           if (joined && sectionPropertiesOf(joined) !== secondSection) {
             tr = tr.setNodeAttribute(item.blockFrom, "_sectionProperties", secondSection);
           }
+          const endingMark = second ? expectParagraphAttrs(second).pPrMark : null;
+          if (joined && (endingMark?.kind === "del" || endingMark?.kind === "moveFrom")) {
+            const survivor = paragraphLeftAfter({ doc: tr.doc, paragraphPos: item.blockFrom });
+            if (survivor !== null) {
+              tr = carryParagraphProperties({
+                tr,
+                position: survivor,
+                source: joined,
+                styleResolver,
+                numbering,
+                revision: endingMark.info,
+              }).tr;
+            }
+          }
         } else {
           const revisionIdMark = operationRevisionSeed++;
           appliedRevisionIds = [revisionIdMark];

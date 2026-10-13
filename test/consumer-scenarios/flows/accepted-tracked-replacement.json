@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 774176527,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1909965473,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "5E88C024",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "commentOnRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableRow",
+    "insertTableColumn"
+  ],
+  "title": "accepted tracked replacement"
+}

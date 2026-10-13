@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "direct",
+  "seed": 1576446606,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1448564212,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "5E88C024",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "title": "accepted direct edit equivalence"
+}

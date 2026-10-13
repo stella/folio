@@ -31,56 +31,6 @@
       "firstSeen": "2026-10-01"
     },
     {
-      "fingerprint": "24e996d99fd086cb",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1350,
-        "primary": "de4ea4376e144f1e",
-        "title": "Fuzz failure [24e996d99fd086cb]: consumer flow trackedChanges / tracked-changes: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct \u2192 tracked):",
-        "flow": {
-          "version": 1,
-          "kind": "random",
-          "generation": "targeted",
-          "fixture": "trackedChanges",
-          "mode": "tracked-changes",
-          "seed": 774176527,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 1909965473,
-              "operations": [
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "5E88C024",
-                  "separator": " "
-                }
-              ]
-            }
-          ],
-          "swarm": [
-            "commentOnRange",
-            "insertBeforeBlock",
-            "deleteBlock",
-            "mergeBlockWithNext",
-            "setBlockParagraphProperties",
-            "commentOnBlock",
-            "insertTable",
-            "insertTableRow",
-            "insertTableColumn"
-          ],
-          "origin": "shrunk from dropOperation+swap+splice of 4f24093d375ec040"
-        },
-        "type": "consumer",
-        "reportSeed": 774176758
-      }
-    },
-    {
-      "fingerprint": "de4ea4376e144f1e",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02"
-    },
-    {
       "fingerprint": "4fd39893ffb61a7a",
       "issueOrPr": "#1351",
       "firstSeen": "2026-10-02",
@@ -125,7 +75,7 @@
       "acceptance": {
         "issue": 1355,
         "primary": "a382d2d2b765caf7",
-        "title": "Fuzz failure [0151749367fd20ab]: consumer flow directNumbered / tracked-changes: end of flow: [rejectAll] the flow's batches replayed tracked and rejected do not give the fixture back (fixture \u2192 rejected):",
+        "title": "Fuzz failure [0151749367fd20ab]: consumer flow directNumbered / tracked-changes: end of flow: [rejectAll] the flow's batches replayed tracked and rejected do not give the fixture back (fixture → rejected):",
         "flow": {
           "version": 1,
           "kind": "random",
@@ -252,7 +202,7 @@
       "acceptance": {
         "issue": 1361,
         "primary": "b3cc737b6d20bf0c",
-        "title": "Fuzz failure [3d8b6715ac1390a3]: consumer flow styleNumbered / direct: [readerStability] getContent reads otherwise after the save than before it (before \u2192 after):",
+        "title": "Fuzz failure [3d8b6715ac1390a3]: consumer flow styleNumbered / direct: [readerStability] getContent reads otherwise after the save than before it (before → after):",
         "flow": {
           "version": 1,
           "kind": "collisions",
@@ -360,45 +310,6 @@
     },
     {
       "fingerprint": "03f9404118ecce41",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02"
-    },
-    {
-      "fingerprint": "66dd1eb0d7e26bfc",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1380,
-        "primary": "9ee376a632ca2edc",
-        "title": "consumer flow trackedChanges / direct: tracked acceptance differs from direct editing",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "trackedChanges",
-          "mode": "direct",
-          "seed": 1576446606,
-          "steps": [
-            {
-              "action": "suggest_changes",
-              "seed": 1448564212,
-              "operations": [
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "5E88C024",
-                  "separator": " "
-                }
-              ]
-            }
-          ]
-        },
-        "type": "consumer",
-        "reportSeed": 1576446606,
-        "reportSeeds": [1576446606, 1785652249, 1785652364]
-      }
-    },
-    {
-      "fingerprint": "9ee376a632ca2edc",
       "issueOrPr": "#1350",
       "firstSeen": "2026-10-02"
     },
@@ -1456,7 +1367,7 @@
                 {
                   "type": "replaceInBlock",
                   "blockId": "5E88C024",
-                  "find": "\ud83c\udf89",
+                  "find": "🎉",
                   "replace": "",
                   "precondition": {
                     "blockTextHash": "hs2py72"
