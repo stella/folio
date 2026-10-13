@@ -85,4 +85,21 @@ for (const file of new Bun.Glob(`${REUSABLE_WORKFLOW_FIXTURES}/**/*.{yml,yaml}`)
   const absolute = path.join(root, file);
   if (!sources.has(absolute)) rmSync(absolute);
 }
+// Use the repository format without changing the pinned declarations.
+if (sources.size > 0) {
+  const formatted = Bun.spawnSync([path.join(root, "node_modules/.bin/oxfmt"), ...sources.keys()], {
+    cwd: root,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  if (formatted.exitCode !== 0)
+    throw new WorkflowRefreshError({ message: "Cannot format pinned reusable workflows." });
+  for (const [file, source] of sources) {
+    if (
+      JSON.stringify(Bun.YAML.parse(source)) !==
+      JSON.stringify(Bun.YAML.parse(readFileSync(file, "utf8")))
+    )
+      panic("Formatting changed a pinned workflow declaration", { file });
+  }
+}
 console.log(`Refreshed ${sources.size} pinned reusable workflows.`);

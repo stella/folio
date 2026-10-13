@@ -29,7 +29,7 @@ on:
           current release PR. Must enforce required checks and pin the PR head.
         required: false
         type: string
-        default: ''
+        default: ""
       sync-cargo-inherited-lock:
         description: >-
           Validate and synchronize Cargo.lock entries for workspace packages
@@ -84,7 +84,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '24'
+          node-version: "24"
           package-manager-cache: false
 
       - name: Inspect release lifecycle
@@ -213,9 +213,9 @@ jobs:
           INPUT_VERSION-SCRIPT: bash ${{ steps.version-command.outputs.path }}
           INPUT_PR-TITLE: ${{ inputs.title }}
           INPUT_COMMIT-MESSAGE: ${{ inputs.commit }}
-          INPUT_CREATE-GITHUB-RELEASES: 'true'
-          INPUT_PUSH-GIT-TAGS: 'true'
-          INPUT_PUSH-WITH-GIT-CLI: 'false'
+          INPUT_CREATE-GITHUB-RELEASES: "true"
+          INPUT_PUSH-GIT-TAGS: "true"
+          INPUT_PUSH-WITH-GIT-CLI: "false"
           CARGO_LOCKFILE_PATH: ${{ inputs.cargo-lockfile }}
           CARGO_MANIFEST_PATH: ${{ inputs.cargo-manifest }}
           CARGO_SYNC_SCRIPT: ${{ steps.cargo-sync.outputs.script }}
