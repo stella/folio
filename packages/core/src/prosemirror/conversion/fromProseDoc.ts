@@ -3056,7 +3056,19 @@ function extractParagraphContent(
     if (currentHyperlink) {
       flushCurrentInline();
     }
-    const marksKey = getMarksKey(node.marks);
+    const marksKey = getMarksKey(
+      node.marks.filter((mark) => {
+        if (mark.type.name !== RUN_IDENTITY_MARK_NAME) return true;
+        const { emptyFormatting, preservedAttributes, preserved } =
+          expectRunIdentityMarkAttrs(mark);
+        // Empty-property presence belongs to the modeled formatting, not a run boundary.
+        return (
+          emptyFormatting !== true ||
+          (preservedAttributes?.length ?? 0) > 0 ||
+          (preserved?.children?.length ?? 0) > 0
+        );
+      }),
+    );
     const ownerId = runIdentityId(node);
     const currentOwnerId = currentRun ? sourceRunOwners.get(currentRun) : undefined;
     const currentRunIsPlainText = currentRun?.content.every(
@@ -3069,8 +3081,8 @@ function extractParagraphContent(
       runsShareProperties(currentRun, run);
     const joinsOrdinaryText =
       coalescePlainText &&
-      ownerId === undefined &&
-      currentOwnerId === undefined &&
+      currentRun !== null &&
+      runsShareProperties(currentRun, run) &&
       currentRunIsPlainText === true &&
       currentMarksKey === marksKey;
 

@@ -1336,20 +1336,27 @@ test.each([undefined, {}, { italic: true }] satisfies (TextFormatting | undefine
       );
       expect(result.skipped).toEqual([]);
       expect(result.applied).toHaveLength(replace ? 2 : 1);
-      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
-      for (const decision of ["accept", "reject"] as const) {
-        const live = await parseDocx(await createDocx(reviewer.toResolvedDocument(decision)), {
-          preloadFonts: false,
-        });
-        const saved = await parseDocx(await createDocx(reopened.toResolvedDocument(decision)), {
-          preloadFonts: false,
-        });
-        expect(saved.package.document.content).toEqual(live.package.document.content);
-        if (decision === "reject") {
-          const paragraph = saved.package.document.content.at(0);
-          if (paragraph?.type !== "paragraph") throw new Error("Expected resolved paragraph");
-          for (const run of paragraph.content) {
-            if (run.type === "run") expect(run.formatting).toEqual(formatting);
+      for (const phase of ["pending", ...(replace ? ["restored-deletion"] : [])]) {
+        if (phase === "restored-deletion") {
+          const deletion = reviewer.getChanges().find(({ type }) => type === "deletion");
+          if (!deletion) throw new Error("Expected replacement deletion");
+          expect(reviewer.rejectChange(deletion.id)).toBe(true);
+        }
+        const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+        for (const decision of ["accept", "reject"] as const) {
+          const live = await parseDocx(await createDocx(reviewer.toResolvedDocument(decision)), {
+            preloadFonts: false,
+          });
+          const saved = await parseDocx(await createDocx(reopened.toResolvedDocument(decision)), {
+            preloadFonts: false,
+          });
+          expect(saved.package.document.content).toEqual(live.package.document.content);
+          if (decision === "reject") {
+            const paragraph = saved.package.document.content.at(0);
+            if (paragraph?.type !== "paragraph") throw new Error("Expected resolved paragraph");
+            for (const run of paragraph.content) {
+              if (run.type === "run") expect(run.formatting).toEqual(formatting);
+            }
           }
         }
       }
