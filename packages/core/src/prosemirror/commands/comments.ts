@@ -194,6 +194,21 @@ function resolveChange(
         mode === "accept"
           ? resolvedCommentPoints({
               doc: state.doc,
+              retiresStructure: (node, position) => {
+                if (node.type.name === "paragraph")
+                  return (
+                    collectPPrMarkOp(node, position, from, to, mode, revisionSet)?.action === "join"
+                  );
+                if (!rangeCoversNode(from, to, position, node)) return false;
+                if (node.type.name === "tableRow")
+                  return (
+                    collectTableRowStructuralOp(node, position, mode, revisionSet)?.action ===
+                    "remove"
+                  );
+                return collectTableCellStructuralOps(node, position, mode, revisionSet).some(
+                  (op) => op.type === "membership" && op.action === "remove",
+                );
+              },
               removes: (node, position) =>
                 position >= from &&
                 position + node.nodeSize <= to &&

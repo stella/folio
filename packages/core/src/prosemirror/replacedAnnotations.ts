@@ -108,12 +108,14 @@ export const commentPoint = (schema: Schema, id: number): PMNode =>
 type ResolvedCommentPointsOptions = {
   doc: PMNode;
   removes: (node: PMNode, position: number) => boolean;
+  retiresStructure: (node: PMNode, position: number) => boolean;
 };
 
 /** The same collector serves standalone commands and the existing bulk walk. */
-export const createResolvedCommentPointCollector = (
-  removes: ResolvedCommentPointsOptions["removes"],
-) => {
+export const createResolvedCommentPointCollector = ({
+  removes,
+  retiresStructure,
+}: Omit<ResolvedCommentPointsOptions, "doc">) => {
   const points = new Map<number, number>();
   const retained = new Set<number>();
   const visit = (node: PMNode, position: number, previous?: PMNode): boolean => {
@@ -123,10 +125,10 @@ export const createResolvedCommentPointCollector = (
       const precedingMark =
         previous?.type.name === "paragraph" ? expectParagraphAttrs(previous).pPrMark : null;
       const retiredBoundary =
-        mark?.kind === "del" ||
-        mark?.kind === "moveFrom" ||
-        precedingMark?.kind === "del" ||
-        precedingMark?.kind === "moveFrom";
+        ((mark?.kind === "del" || mark?.kind === "moveFrom") && retiresStructure(node, position)) ||
+        ((precedingMark?.kind === "del" || precedingMark?.kind === "moveFrom") &&
+          previous !== undefined &&
+          retiresStructure(previous, position - previous.nodeSize));
       if (retiredBoundary) {
         let survivingContent = false;
         node.descendants((inline, offset) => {
@@ -141,10 +143,16 @@ export const createResolvedCommentPointCollector = (
         if (!survivingContent) return false;
       }
     }
-    if (node.type.name === "tableRow" && expectTableRowAttrs(node).trDel) return false;
+    if (
+      node.type.name === "tableRow" &&
+      expectTableRowAttrs(node).trDel &&
+      retiresStructure(node, position)
+    )
+      return false;
     if (
       (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
-      expectTableCellAttrs(node).cellMarker?.kind === "del"
+      expectTableCellAttrs(node).cellMarker?.kind === "del" &&
+      retiresStructure(node, position)
     )
       return false;
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
@@ -172,8 +180,9 @@ export const createResolvedCommentPointCollector = (
 export const resolvedCommentPoints = ({
   doc,
   removes,
+  retiresStructure,
 }: ResolvedCommentPointsOptions): Map<number, number> => {
-  const collector = createResolvedCommentPointCollector(removes);
+  const collector = createResolvedCommentPointCollector({ removes, retiresStructure });
   doc.descendants((node, position, parent, index) =>
     collector.visit(
       node,

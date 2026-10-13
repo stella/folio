@@ -45,10 +45,11 @@ const resolveProperties = ({
   steps,
   changedRanges,
 }: ResolvePropertiesOptions) => {
-  const collector = createResolvedCommentPointCollector(
-    (node) =>
+  const collector = createResolvedCommentPointCollector({
+    removes: (node) =>
       mode === "accept" && doc.type.schema.marks["deletion"]?.isInSet(node.marks) !== undefined,
-  );
+    retiresStructure: () => mode === "accept",
+  });
   let structural = false;
   // Noted on this walk so a story without one needs no separate scan.
   let runsIntoTable = false;
