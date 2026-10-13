@@ -51,32 +51,6 @@
       ]
     },
     {
-      "action": "suggest_changes",
-      "seed": 4093505661,
-      "operations": [
-        {
-          "type": "commentOnBlock",
-          "blockId": "483CD5EB",
-          "quote": "copies",
-          "comment": {
-            "text": "Buyer agreement goods delivery buyer written goods payment."
-          }
-        },
-        {
-          "type": "deleteBlock",
-          "blockId": "483CD5EB"
-        },
-        {
-          "type": "insertTable",
-          "blockId": "5E88C024",
-          "rows": [
-            ["Term", "Value"],
-            ["Period", "12 months"]
-          ]
-        }
-      ]
-    },
-    {
       "action": "story batch",
       "seed": 2006175060,
       "operations": [
@@ -104,5 +78,5 @@
       ]
     }
   ],
-  "origin": "random flow seed 118244350"
+  "origin": "Minimized comment replacement flow"
 }
