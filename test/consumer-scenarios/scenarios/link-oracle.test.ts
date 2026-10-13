@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { comparePreservedLinks } from "./link-oracle.ts";
+import { comparePreservedLinks } from "../support/link-oracle.ts";
 
 test("missing saved projection is a failure only when reader text is unchanged", () => {
   const id = "7A1B2C3D";
