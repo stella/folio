@@ -1,4 +1,5 @@
-import { reconcileCommentRelationships } from "@stll/docx-core/ops";
+import { reconcileDocumentPartRelationships } from "@stll/docx-core/ops";
+import { normalizeListModelRendering } from "../docx/listModelNormalization";
 import { commentTextParagraph } from "../docx/commentTextParagraph";
 import { buildSections } from "../docx/documentParser";
 import { getHeaderFooterText, getEndnoteText, getFootnoteText } from "../docx/storyPlainText";
@@ -2933,7 +2934,7 @@ export class FolioDocxReviewer {
         snapshot.resolvedOverrides,
       );
     }
-    return reconcileCommentRelationships(document);
+    return normalizeListModelRendering(reconcileDocumentPartRelationships(document)).document;
   }
 
   private captureSaveSnapshot(): FolioSaveSnapshot {

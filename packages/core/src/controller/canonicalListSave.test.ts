@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { FolioDocxReviewer } from "../ai-edits/headless";
+import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
 import { panic } from "better-result";
 import { storyRevisionIds } from "../../../../test/reviewProjection";
 import { Fragment, Slice } from "prosemirror-model";
@@ -723,4 +725,77 @@ test(
     );
   },
   propertyTestTimeout(5_000),
+);
+
+// Reader parity also covers a style introduced after the initial parse.
+test(
+  "generated headless style changes keep resolved list models stable before saving",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 9 }),
+        fc.integer({ min: 1, max: 4 }),
+        async (start, count) => {
+          const minted = mintListInstance(undefined, { kind: "numbered", start });
+          const buffer = await createDocx({
+            package: {
+              numbering: minted.definitions,
+              styles: {
+                styles: [
+                  {
+                    type: "paragraph",
+                    styleId: "Numbered",
+                    name: "Numbered",
+                    pPr: { numPr: { kind: "reference", numId: minted.numId, ilvl: 0 } },
+                  },
+                ],
+              },
+              document: {
+                content: Array.from({ length: count + 1 }, (_, index) => ({
+                  type: "paragraph",
+                  paraId: (index + 1).toString(16).padStart(8, "0"),
+                  ...(index === 0 ? {} : { formatting: { styleId: "Numbered" } }),
+                  content: [{ type: "run", content: [{ type: "text", text: "Item" }] }],
+                })),
+              },
+            },
+          });
+          for (const mode of ["direct", "tracked-changes"] as const) {
+            const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+            const block = reviewer.snapshot().blocks.at(0);
+            if (!block) panic("Expected list fixture block");
+            const result = reviewer.applyDocumentOperations(
+              {
+                version: 1,
+                mode,
+                operations: [
+                  {
+                    id: "style",
+                    type: "setBlockParagraphProperties",
+                    blockId: block.id,
+                    properties: { styleId: "Numbered" },
+                  },
+                ],
+              },
+              { undefinedReferences: "refuse" },
+            );
+            expect(result.skipped).toEqual([]);
+            expect(result.applied).toHaveLength(1);
+            const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+            for (const decision of ["accept", "reject"] as const) {
+              expect(canonicalReviewModel(reopened.toResolvedDocument(decision))).toEqual(
+                canonicalReviewModel(reviewer.toResolvedDocument(decision)),
+              );
+            }
+          }
+        },
+      ),
+      {
+        numRuns: 12,
+        seed: 1683007,
+        id: "generated headless style changes keep resolved list models stable before saving",
+      },
+    );
+  },
+  propertyTestTimeout(10_000),
 );

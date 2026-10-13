@@ -4,6 +4,7 @@ import type { Document, Paragraph, Table, TableRow } from "../../model/document"
 import { captureSectionView, captureSectionViewState } from "../blocks";
 import { packageResourcesOpOf } from "../packageResources";
 import { applyDocumentOp } from "../apply";
+import { cloneModel } from "../modelClone";
 import { captureStoryParts } from "../storyLifecycle";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -241,8 +242,8 @@ const OPS: readonly DocumentOp[] = [
 
 export const envelopes = (): DocumentOpEnvelope[] => {
   const out: DocumentOpEnvelope[] = [];
-  let current = document;
-  for (const op of OPS) {
+  let current = cloneModel(document);
+  for (const op of cloneModel(OPS)) {
     const result = applyDocumentOp(current, op);
     if (result.isErr()) throw result.error;
     out.push(toOpEnvelope(op));

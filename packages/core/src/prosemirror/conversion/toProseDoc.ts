@@ -268,14 +268,10 @@ const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): M
   const payload = {
     preservedAttributes: run.preservedAttributes,
     preserved: run.formatting?.preserved,
-    // A `w:rPr` holding only a `w:rPrChange` is not an empty one: the change
-    // writes it, and rejecting the change fills it.
+    // The parser distinguishes authored empty properties from a revision-only
+    // carrier; pending review does not erase the authored current presence.
     emptyFormatting:
-      run.formatting !== undefined &&
-      Object.keys(run.formatting).length === 0 &&
-      (run.propertyChanges?.length ?? 0) === 0
-        ? true
-        : undefined,
+      run.formatting !== undefined && Object.keys(run.formatting).length === 0 ? true : undefined,
   };
   if (!runHasPageBreakContent(run) && !runHasMixedContent(run) && !hasRunIdentityPayload(payload)) {
     return null;

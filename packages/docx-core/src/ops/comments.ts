@@ -278,7 +278,7 @@ const isCommentRelationship = (type: string): boolean =>
   Object.values(COMMENT_PART_RELATIONSHIPS).some((part) => part.type === type);
 
 /** Keep the same part ids as the packager: numeric rId maximum plus one. */
-export const reconcileCommentRelationships = (document: Document): Document => {
+export const reconcileDocumentPartRelationships = (document: Document): Document => {
   const comments = document.package.document.comments ?? [];
   const relationships = new Map(document.package.relationships ?? []);
   let next =
@@ -289,8 +289,18 @@ export const reconcileCommentRelationships = (document: Document): Document => {
   const extended = comments.some(
     (comment) => comment.parentId !== undefined || comment.done !== undefined,
   );
-  for (const [kind, part] of Object.entries(COMMENT_PART_RELATIONSHIPS)) {
-    const needed = kind === "comments" ? comments.length > 0 : extended;
+  const numbering = document.package.numbering;
+  const parts = {
+    numbering: {
+      type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+      target: "numbering.xml",
+      needed: (numbering?.abstractNums.length ?? 0) > 0 || (numbering?.nums.length ?? 0) > 0,
+    },
+    comments: { ...COMMENT_PART_RELATIONSHIPS.comments, needed: comments.length > 0 },
+    commentsExtended: { ...COMMENT_PART_RELATIONSHIPS.commentsExtended, needed: extended },
+  };
+  for (const [kind, part] of Object.entries(parts)) {
+    const { needed } = part;
     const matching = [...relationships].filter(
       ([, relationship]) => relationship.type === part.type,
     );
@@ -313,7 +323,7 @@ const edited = (
   ids: ReadonlySet<number>,
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   if (op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
-    after = reconcileCommentRelationships(after);
+    after = reconcileDocumentPartRelationships(after);
   const invalid = contractViolation(after);
   if (invalid) return fail(op, invalid.message, invalid.reason);
   // An edit may keep a loaded orphan, never strand another comment.
