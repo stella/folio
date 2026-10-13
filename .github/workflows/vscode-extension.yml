@@ -1,16 +1,42 @@
 name: VS Code extension
 
-# Builds once, then exercises the extension on its minimum editor and stable.
-# CI calls this workflow only when the vscode area is selected.
+# Builds, tests, and packages extension changes before merge.
 
 on:
-  workflow_call:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/vscode-extension.yml"
+      - ".node-version"
+      - "LICENSE"
+      - "bun.lock"
+      - "bunfig.toml"
+      - "package.json"
+      - "packages/agents/**"
+      - "packages/cli/**"
+      - "packages/core/**"
+      - "packages/docx-core/**"
+      - "packages/editor-web/**"
+      - "packages/react/**"
+      - "packages/playground/public/folio-showcase.docx"
+      - "parity/fixtures/layout-kitchen-sink.docx"
+      - "plugins/vscode/**"
+      - "scripts/ci-plan.test.ts"
+      - "scripts/sync-plugin-cli-version.ts"
+      - "tsconfig.base.json"
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: vscode-extension-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   package:
+    if: github.event_name == 'merge_group' || github.event.pull_request.draft != true
     name: Build and package the .vsix
     runs-on: ubuntu-latest
     timeout-minutes: 30

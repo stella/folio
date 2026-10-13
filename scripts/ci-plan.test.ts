@@ -4,7 +4,7 @@
 // no job reads, an output no area feeds, or a job that runs without asking the
 // plan would each drift in silence, so all three are checked here.
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import editorWebPlaywright from "../packages/editor-web/playwright.config";
@@ -629,12 +629,138 @@ describe("CI plan", () => {
     );
   });
 
+  const vscodePackagingPaths = (workflow: Record<string, unknown>): string[] => {
+    const build = readFileSync(path.join(REPO_ROOT, "plugins/vscode/scripts/build.ts"), "utf8");
+    const roots = [...build.matchAll(/path\.join\(repoRoot,\s*"packages",\s*"([^"]+)"/gu)].map(
+      (match) => match.at(1),
+    );
+    expect(roots.length).toBeGreaterThan(0);
+    const packages = new Map<string, { slug: string; manifest: Record<string, unknown> }>();
+    for (const directory of readdirSync(path.join(REPO_ROOT, "packages"), {
+      withFileTypes: true,
+    })) {
+      if (!directory.isDirectory()) continue;
+      const manifest: unknown = JSON.parse(
+        readFileSync(path.join(REPO_ROOT, "packages", directory.name, "package.json"), "utf8"),
+      );
+      if (!isRecord(manifest) || typeof manifest["name"] !== "string")
+        throw new Error("Workspace manifest unavailable");
+      packages.set(manifest["name"], { slug: directory.name, manifest });
+    }
+    const selected = new Set<string>();
+    const queue = roots.map((slug) => {
+      const workspace = [...packages.values()].find((entry) => entry.slug === slug);
+      if (!workspace) throw new Error(`Unknown build workspace ${slug}`);
+      return workspace;
+    });
+    for (const workspace of queue) {
+      if (selected.has(workspace.slug)) continue;
+      selected.add(workspace.slug);
+      for (const field of ["dependencies", "peerDependencies"]) {
+        const dependencies = workspace.manifest[field];
+        if (!isRecord(dependencies)) continue;
+        for (const [name, version] of Object.entries(dependencies)) {
+          const dependency = packages.get(name);
+          if (dependency) queue.push(dependency);
+          else if (typeof version === "string" && version.startsWith("workspace:"))
+            throw new Error(`Unknown workspace dependency ${name}`);
+        }
+      }
+    }
+    const paths = new Set([
+      "plugins/vscode/**",
+      ".github/workflows/vscode-extension.yml",
+      "scripts/ci-plan.test.ts",
+    ]);
+    for (const slug of selected) paths.add(`packages/${slug}/**`);
+    for (const match of build.matchAll(/path\.join\(repoRoot,\s*"([^"]+)"\)/gu)) {
+      const file = match.at(1);
+      if (!file) throw new Error("Missing build input path");
+      paths.add(file);
+    }
+    const smoke = readFileSync(path.join(REPO_ROOT, "plugins/vscode/test/smoke/run.ts"), "utf8");
+    for (const match of smoke.matchAll(/path\.join\(repoRoot,\s*((?:"[^"]+"\s*,?\s*)+)\)/gu)) {
+      const argumentsText = match.at(1);
+      if (!argumentsText) throw new Error("Missing smoke fixture arguments");
+      const parts = [...argumentsText.matchAll(/"([^"]+)"/gu)].map((part) => {
+        const value = part.at(1);
+        if (!value) throw new Error("Missing smoke fixture path");
+        return value;
+      });
+      paths.add(path.posix.join(...parts));
+    }
+    const packagingJobs = workflow["jobs"];
+    if (
+      !isRecord(packagingJobs) ||
+      !isRecord(packagingJobs["package"]) ||
+      !Array.isArray(packagingJobs["package"]["steps"])
+    )
+      throw new Error("Missing packaging steps");
+    for (const step of packagingJobs["package"]["steps"]) {
+      if (!isRecord(step)) throw new Error("Invalid packaging step");
+      if (isRecord(step["with"])) {
+        for (const key of ["node-version-file", "bun-version-file"]) {
+          const file = step["with"][key];
+          if (typeof file === "string") paths.add(file);
+        }
+      }
+      if (typeof step["run"] !== "string") continue;
+      for (const match of step["run"].matchAll(/\.\.\/\.\.\/([^\s"\\]+\.docx)/gu)) {
+        const file = match.at(1);
+        if (!file) throw new Error("Missing packaging fixture path");
+        paths.add(file);
+      }
+      if (step["working-directory"] !== undefined) continue;
+      if (step["run"].includes("bun install")) {
+        paths.add("bun.lock");
+        paths.add("bunfig.toml");
+      }
+      for (const match of step["run"].matchAll(/\bbun (scripts\/[\w./-]+\.ts)/gu)) {
+        const file = match.at(1);
+        if (!file) throw new Error("Missing workflow script path");
+        paths.add(file);
+      }
+    }
+    const config: unknown = JSON.parse(
+      readFileSync(path.join(REPO_ROOT, "plugins/vscode/tsconfig.json"), "utf8"),
+    );
+    if (!isRecord(config) || typeof config["extends"] !== "string")
+      throw new Error("Missing extension compiler base");
+    paths.add(
+      path.relative(REPO_ROOT, path.resolve(REPO_ROOT, "plugins/vscode", config["extends"])),
+    );
+    return [...paths].toSorted();
+  };
+
+  for (const file of ["vscode-extension.yml"]) {
+    test(`${file} packages plugin pull requests and all merge groups`, () => {
+      const workflow = readWorkflow(file);
+      const triggers = workflow["on"];
+      const heavyJobs = workflow["jobs"];
+      if (!isRecord(triggers) || !isRecord(heavyJobs)) {
+        throw new Error(`${file} is missing triggers or jobs`);
+      }
+      expect(Object.keys(triggers).toSorted()).toEqual(["merge_group", "pull_request"]);
+      expect(triggers["pull_request"]).toEqual({
+        types: ["opened", "synchronize", "reopened", "ready_for_review"],
+        paths: vscodePackagingPaths(workflow),
+      });
+      expect(triggers["merge_group"]).toEqual({ types: ["checks_requested"] });
+      expect(Object.keys(heavyJobs).length).toBeGreaterThan(0);
+      for (const job of Object.values(heavyJobs)) {
+        if (!isRecord(job)) throw new Error(`${file} contains an invalid job`);
+        expect(job["if"]).toBe(
+          "github.event_name == 'merge_group' || github.event.pull_request.draft != true",
+        );
+      }
+    });
+  }
+
   test("VS Code compatibility gates its selected area and exercises both API branches", () => {
     const workflow = readWorkflow("vscode-extension.yml");
     const triggers = workflow["on"];
     if (!isRecord(triggers)) throw new Error("Missing VS Code workflow triggers");
-    expect(Object.keys(triggers)).toEqual(["workflow_call"]);
-    expect(jobs["vscode-extension"]?.if).toBe("needs.ci-plan.outputs.vscode_required == 'true'");
+    expect(Object.keys(triggers).toSorted()).toEqual(["merge_group", "pull_request"]);
     if (!isRecord(workflow["jobs"]) || !isRecord(workflow["jobs"]["package"]))
       throw new Error("Missing VS Code package job");
     const steps = workflow["jobs"]["package"]["steps"];

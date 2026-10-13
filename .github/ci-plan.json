@@ -104,15 +104,6 @@
         "packages/editor-web/e2e/**",
         "!**/*.md"
       ]
-    },
-    "vscode": {
-      "paths": [
-        "plugins/vscode/**",
-        "packages/{cli,agents,core,docx-core,editor-web,react}/**",
-        "packages/playground/public/folio-showcase.docx",
-        "!**/*.md",
-        "scripts/sync-plugin-cli-version.ts"
-      ]
     }
   }
 }

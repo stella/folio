@@ -96,8 +96,8 @@ the server from the MCP server list to apply them.
   against 1.86 typings, and 1.85 lacks `workspace.save`.
 
 The minimum follows the [save API finalized in VS Code 1.86](https://code.visualstudio.com/updates/v1_86#_new-workspacesave-and-workspacesaveas-apis).
-CI runs the packaged editor checks when the extension or its bundled sources
-change, and includes them in the required `ci-result` check.
+CI runs the packaged editor checks when the extension, its manifests, or its
+bundled sources change.
 
 The version follows `@stll/folio-cli`: `scripts/sync-plugin-cli-version.ts`
 keeps them equal, and each release that changes the CLI's version publishes
