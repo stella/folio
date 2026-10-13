@@ -689,10 +689,10 @@ mod collision_tests {
             let first = abstract_definition(first_indent);
             let later = abstract_definition(later_indent);
             let xml = format!(r#"<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">{first}{}{num}{}</w:numbering>"#, later.repeat(repeats), num.repeat(repeats));
-            let catalog = parse_numbering(xml.as_bytes(), 128).unwrap();
+            let catalog = parse_numbering(xml.as_bytes(), 128).expect("synthetic collision fixture should retain valid projection facts");
             prop_assert_eq!(catalog.abstracts.len(), 1);
             prop_assert_eq!(catalog.instances.len(), 1);
-            prop_assert_eq!(catalog.indentation(id, 0).unwrap().left_twips, Some(first_indent));
+            prop_assert_eq!(catalog.indentation(id, 0).expect("synthetic collision fixture should retain valid projection facts").left_twips, Some(first_indent));
         }
     }
 }

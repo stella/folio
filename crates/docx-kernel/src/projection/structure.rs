@@ -1297,8 +1297,8 @@ mod collision_tests {
             // Completion order can differ from source start order for nested ranges.
             ranges.push(first.clone());
             let texts = ["First Later"];
-            let clean = materialize_references(std::slice::from_ref(&reference), &[first], &texts, &mut StructuralFactBudget::new(128)).unwrap();
-            let collision = materialize_references(&[reference], &ranges, &texts, &mut StructuralFactBudget::new(128)).unwrap();
+            let clean = materialize_references(std::slice::from_ref(&reference), &[first], &texts, &mut StructuralFactBudget::new(128)).expect("synthetic collision fixture should retain valid projection facts");
+            let collision = materialize_references(&[reference], &ranges, &texts, &mut StructuralFactBudget::new(128)).expect("synthetic collision fixture should retain valid projection facts");
             prop_assert_eq!(collision, clean);
         }
     }
