@@ -16,6 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
+import { panic } from "better-result";
 
 import {
   EXPECTED_CANCELLED_STYLE_TOGGLES,
@@ -519,6 +520,38 @@ describe("runLayoutPipeline", () => {
     restoreGlobals();
     resetCanvasContext();
     clearAllCaches();
+  });
+
+  test("comment visibility follows the review view and round-trips without editing authored marks", () => {
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("commented", [schema.marks["comment"]!.create({ commentId: 7 })]),
+        ]),
+      ]),
+    });
+    const authored = state.doc.toJSON();
+    const session = createLayoutSession();
+    for (const markupView of ["all-markup", "no-markup", "original", "all-markup"] as const) {
+      for (const showCommentHighlights of [true, false, true]) {
+        const outcome = runLayoutPipeline(
+          makeDeps(session, { markupView, showCommentHighlights }),
+          state,
+        );
+        expect(layoutErrors).toEqual([]);
+        const block = outcome.blocks?.at(0);
+        expect(block?.kind).toBe("paragraph");
+        if (block?.kind !== "paragraph") {
+          panic("Expected a paragraph block");
+        }
+        const run = block.runs.find((candidate) => candidate.kind === "text");
+        expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
+          markupView === "all-markup" && showCommentHighlights ? [7] : undefined,
+        );
+        expect(state.doc.toJSON()).toEqual(authored);
+      }
+    }
   });
 
   test("commits the session memory and returns a painted outcome on success", () => {

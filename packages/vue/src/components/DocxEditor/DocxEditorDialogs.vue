@@ -15,6 +15,8 @@
   <FindReplaceDialog
     :is-open="showFindReplace"
     :view="view"
+    :markup-view="markupView"
+    :read-only="readOnly"
     :scroll-visible-position-into-view="scrollVisiblePositionIntoView"
     @close="emit('update:showFindReplace', false)"
   />
@@ -71,6 +73,7 @@
 
 <script setup lang="ts">
 import type { EditorView } from "prosemirror-view";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import type { SectionProperties } from "@stll/folio-core/types/document";
@@ -97,23 +100,28 @@ type HyperlinkSubmitPayload = {
   tooltip: string;
 };
 
-defineProps<{
-  view: EditorView | null;
-  bookmarks: BookmarkOption[];
-  selectedImagePmPos: number | null;
-  sectionProperties: SectionProperties | null;
-  scrollVisiblePositionIntoView: (pmPos: number) => void;
-  showFindReplace: boolean;
-  showHyperlink: boolean;
-  showInsertSymbol: boolean;
-  showImageProperties: boolean;
-  showPageSetup: boolean;
-  showTableProperties: boolean;
-  showWatermark: boolean;
-  showNumberingValue: boolean;
-  currentWatermark: Watermark | undefined;
-  tableProperties: TablePropertiesCommand;
-}>();
+withDefaults(
+  defineProps<{
+    view: EditorView | null;
+    markupView?: DisplayMode;
+    readOnly?: boolean;
+    bookmarks: BookmarkOption[];
+    selectedImagePmPos: number | null;
+    sectionProperties: SectionProperties | null;
+    scrollVisiblePositionIntoView: (pmPos: number) => void;
+    showFindReplace: boolean;
+    showHyperlink: boolean;
+    showInsertSymbol: boolean;
+    showImageProperties: boolean;
+    showPageSetup: boolean;
+    showTableProperties: boolean;
+    showWatermark: boolean;
+    showNumberingValue: boolean;
+    currentWatermark: Watermark | undefined;
+    tableProperties: TablePropertiesCommand;
+  }>(),
+  { markupView: "all-markup", readOnly: false },
+);
 
 const emit = defineEmits<{
   (e: "update:showFindReplace", value: boolean): void;

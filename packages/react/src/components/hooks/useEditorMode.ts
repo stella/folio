@@ -8,6 +8,9 @@ import {
 } from "@stll/folio-core/managers/EditorModeManager";
 import type { DisplayMode, EditorMode } from "@stll/folio-core/managers/EditorModeManager";
 
+import { reviewDisplayModeToDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
+import type { ReviewDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
+
 export { DISPLAY_MODES } from "@stll/folio-core/managers/EditorModeManager";
 export type { DisplayMode, EditorMode } from "@stll/folio-core/managers/EditorModeManager";
 
@@ -18,6 +21,7 @@ export type UseEditorModeArgs = {
   onModeChange: ((mode: EditorMode) => void) | undefined;
   /** External read-only flag from the host. */
   readOnlyProp: boolean;
+  reviewDisplayMode?: ReviewDisplayMode;
 };
 
 export type UseEditorModeReturn = {
@@ -57,6 +61,7 @@ export function useEditorMode({
   modeProp,
   onModeChange,
   readOnlyProp,
+  reviewDisplayMode,
 }: UseEditorModeArgs): UseEditorModeReturn {
   const [manager] = useState(() => new EditorModeManager(modeProp ?? "editing"));
   const { editingMode: editingModeInternal, displayMode } = useSyncExternalStore(
@@ -95,7 +100,10 @@ export function useEditorMode({
     readOnly,
     trackChangesOn,
     toggleTrackChanges,
-    displayMode,
+    displayMode:
+      reviewDisplayMode === undefined
+        ? displayMode
+        : reviewDisplayModeToDisplayMode(reviewDisplayMode),
     setDisplayMode,
   };
 }

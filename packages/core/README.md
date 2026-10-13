@@ -33,6 +33,16 @@ bun add @stll/folio-core
 | `@stll/folio-core/redline`  | Compare two `.docx` buffers and generate a native Word redline                                                                                                     |
 | `@stll/folio-core/*`        | the source-mirrored module tree (e.g. `@stll/folio-core/types/document`, `@stll/folio-core/prosemirror/schema`) for adapters that need lower-level building blocks |
 
+## Review display configuration
+
+`ReviewDisplayMode` is `all-markup | final | original`.
+`reviewDisplayModeToDisplayMode` in `managers/reviewDisplayMode` maps it to the
+layout pipeline's `markupView` input. The shared projection reuses the
+accept-all/reject-all resolver without changing editor state. Layout and
+search consume that projection; saved DOCX always uses the authored state.
+`showCommentHighlights` on the layout pipeline defaults to `true`; final
+(`no-markup`) and original suppress comment highlights regardless of it.
+
 ## New documents and reusable style sets
 
 Create a legal-shaped blank document with the built-in preset:

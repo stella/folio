@@ -56,6 +56,10 @@ import {
 import type { FlowBlock, Run } from "../layout-engine/types";
 import { DISPLAY_MODES } from "../managers/EditorModeManager";
 import type { DisplayMode } from "../managers/EditorModeManager";
+import {
+  REVIEW_DISPLAY_MODES,
+  reviewDisplayModeToDisplayMode,
+} from "../managers/reviewDisplayMode";
 import { projectMarkupView, visibleCaretPosition } from "../prosemirror/markupViewProjection";
 import { schema } from "../prosemirror/schema";
 import type { Document } from "../types/document";
@@ -114,6 +118,8 @@ type ParagraphSpec = {
   mark: (typeof PARAGRAPH_MARKS)[number];
   justified: boolean;
   alignmentChange: boolean;
+  numberingChange: boolean;
+  commented: boolean;
 };
 
 type MoveSpec = { from: number; to: number; text: string };
@@ -137,6 +143,8 @@ const paragraphArb = fc.record({
   ),
   justified: fc.boolean(),
   alignmentChange: fc.boolean(),
+  numberingChange: fc.boolean(),
+  commented: fc.boolean(),
 });
 
 const cellArb = fc.array(segmentArb, { minLength: 1, maxLength: 3 });
@@ -216,13 +224,22 @@ const buildBody = ({ paragraphs, move, table }: DocumentSpec): string => {
         ? ""
         : `<w:rPr><w:${mark === "inserted" ? "ins" : "del"} ${revision()}/></w:rPr>`;
     const alignment = `<w:jc w:val="${paragraph.justified ? "both" : "left"}"/>`;
-    const alignmentChange = paragraph.alignmentChange
-      ? `<w:pPrChange ${revision()}><w:pPr><w:jc w:val="${paragraph.justified ? "left" : "both"}"/></w:pPr></w:pPrChange>`
+    const numbering = paragraph.numberingChange
+      ? `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>`
       : "";
+    const numberingBefore = paragraph.numberingChange
+      ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>'
+      : "";
+    const propertyChange =
+      paragraph.alignmentChange || paragraph.numberingChange
+        ? `<w:pPrChange ${revision()}><w:pPr>${paragraph.alignmentChange ? `<w:jc w:val="${paragraph.justified ? "left" : "both"}"/>` : alignment}${numberingBefore}</w:pPr></w:pPrChange>`
+        : "";
     let content = paragraph.segments.map(segmentXml).join("");
+    if (paragraph.commented)
+      content = `<w:commentRangeStart w:id="${index}"/>${content}<w:commentRangeEnd w:id="${index}"/><w:r><w:commentReference w:id="${index}"/></w:r>`;
     if (move && move.from === index) content += moveXml("From", move.text);
     if (move && move.to === index) content += moveXml("To", move.text);
-    return `<w:p><w:pPr>${alignment}${markXml}${alignmentChange}</w:pPr>${content}</w:p>`;
+    return `<w:p><w:pPr>${alignment}${numbering}${markXml}${propertyChange}</w:pPr>${content}</w:p>`;
   });
   if (table) {
     const rowXml = ({ kind, cells }: TableSpec["rows"][number]): string => {
@@ -255,7 +272,28 @@ const buildBody = ({ paragraphs, move, table }: DocumentSpec): string => {
 };
 
 const buildDocument = async (spec: DocumentSpec): Promise<Document> =>
-  parseShapeDocument(await buildRawPackage({ body: buildBody(spec), styles: WORD_STYLES }));
+  parseShapeDocument(
+    await buildRawPackage({
+      body: buildBody(spec),
+      styles: WORD_STYLES,
+      parts: [
+        {
+          path: "word/numbering.xml",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+          relationshipType: "numbering",
+          body: `<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="0"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="5"/></w:lvlOverride></w:num></w:numbering>`,
+        },
+        {
+          path: "word/comments.xml",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+          relationshipType: "comments",
+          body: `<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${spec.paragraphs.map((paragraph, index) => (paragraph.commented ? `<w:comment w:id="${index}" w:author="Reviewer" w:date="${FIXED_DATE}"><w:p><w:r><w:t>Review</w:t></w:r></w:p></w:comment>` : "")).join("")}</w:comments>`,
+        },
+      ],
+    }),
+  );
 
 // ============================================================================
 // EVENTS
@@ -269,13 +307,18 @@ type MarkupViewExt = { view: DisplayMode };
  * later render, so a pass an edit already scheduled can run under the new view
  * before the layout-input effect does.
  */
+const viewArb = fc.oneof(
+  fc.constantFrom(...DISPLAY_MODES),
+  fc.constantFrom(...REVIEW_DISPLAY_MODES).map(reviewDisplayModeToDisplayMode),
+);
+
 const markupViewEventKind = defineFreshRenderEventKind<
   { view: DisplayMode; layout: LoadLayout },
   MarkupViewExt
 >({
   kind: "markupView",
   arbitrary: fc.record({
-    view: fc.constantFrom(...DISPLAY_MODES),
+    view: viewArb,
     layout: fc.constantFrom(LOAD_LAYOUT.immediate, LOAD_LAYOUT.nextRender),
   }),
   apply: (rig, { view, layout }) => rig.updateExt(() => ({ view }), layout),
@@ -350,7 +393,7 @@ type MarkupViewScenario = {
 const scenarioArb: fc.Arbitrary<MarkupViewScenario> = fc.record({
   document: documentArb,
   mode: fc.constantFrom(...EDITOR_MODES),
-  initialView: fc.constantFrom(...DISPLAY_MODES),
+  initialView: viewArb,
   leadingFrame: fc.boolean(),
   events: fc.array(fc.oneof(...EVENT_KINDS), { minLength: 1, maxLength: 12 }),
 });
@@ -553,6 +596,8 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           mark: "plain",
           justified: false,
           alignmentChange: false,
+          numberingChange: false,
+          commented: false,
         },
         {
           segments: [
@@ -562,6 +607,8 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           mark: "plain",
           justified: false,
           alignmentChange: true,
+          numberingChange: false,
+          commented: false,
         },
         {
           segments: [
@@ -574,6 +621,8 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           mark: "deleted",
           justified: false,
           alignmentChange: false,
+          numberingChange: false,
+          commented: false,
         },
         {
           segments: [
@@ -585,12 +634,16 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           mark: "deleted",
           justified: false,
           alignmentChange: true,
+          numberingChange: false,
+          commented: false,
         },
         {
           segments: [{ kind: "insertion", text: "days ten shall notice business goods " }],
           mark: "inserted",
           justified: true,
           alignmentChange: false,
+          numberingChange: false,
+          commented: false,
         },
       ],
       move: null,
@@ -611,24 +664,32 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
           mark: "plain",
           justified: false,
           alignmentChange: false,
+          numberingChange: false,
+          commented: false,
         },
         {
           segments: [{ kind: "plain", text: "the " }],
           mark: "deleted",
           justified: false,
           alignmentChange: false,
+          numberingChange: false,
+          commented: false,
         },
         {
           segments: [{ kind: "deletion", text: "the " }],
           mark: "deleted",
           justified: false,
           alignmentChange: false,
+          numberingChange: false,
+          commented: false,
         },
         {
           segments: [{ kind: "plain", text: "the " }],
           mark: "deleted",
           justified: false,
           alignmentChange: false,
+          numberingChange: false,
+          commented: false,
         },
       ],
       move: null,

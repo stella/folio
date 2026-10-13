@@ -568,6 +568,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     keyboardShortcuts = "document",
     hostShortcuts: hostShortcutsProp,
     readOnly: readOnlyProp = false,
+    reviewDisplayMode,
+    showCommentHighlights = true,
     autoOpenReviewSidebar = true,
     components,
     toolbarExtra,
@@ -713,6 +715,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       modeProp,
       onModeChange,
       readOnlyProp,
+      ...(reviewDisplayMode === undefined ? {} : { reviewDisplayMode }),
     });
 
   useEffect(() => {
@@ -1831,7 +1834,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       return false;
     }
 
-    const range = resolveFindMatchRange(view.state.doc, match);
+    const range = match.authoredRange ?? resolveFindMatchRange(view.state.doc, match);
     if (!range) {
       return false;
     }
@@ -1842,6 +1845,25 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     });
     return true;
   }, []);
+
+  const replaceEditorMatches = useCallback(
+    (matches: readonly FindMatch[], replacement: string): boolean => {
+      const view = pagedEditorRef.current?.getView();
+      if (readOnly || !view) return false;
+      const ranges: { from: number; to: number }[] = [];
+      for (const match of matches) {
+        if (!match.authoredRange) return false;
+        ranges.push(match.authoredRange);
+      }
+      const transaction = view.state.tr;
+      for (const range of ranges.toSorted((left, right) => right.from - left.from)) {
+        transaction.insertText(replacement, range.from, range.to);
+      }
+      view.dispatch(transaction);
+      return true;
+    },
+    [readOnly],
+  );
 
   // Find/Replace handlers (depends on handleDocumentChange)
   const {
@@ -1854,10 +1876,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     handleReplaceAll,
   } = useFindReplace({
     getDocumentState: buildCurrentDocument,
+    getEditorState: () => pagedEditorRef.current?.getView()?.state ?? null,
+    markupView: displayMode,
     containerRef,
     handleDocumentChange,
     findReplace,
     selectMatch: selectFindMatch,
+    replaceEditorMatches,
   });
 
   useLayoutEffect(() => {
@@ -5287,6 +5312,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           documentIO={documentIO}
                           documentIdentity={loadedDocumentIdentity}
                           markupView={displayMode}
+                          showCommentHighlights={showCommentHighlights}
                           {...(fonts !== undefined ? { fonts } : {})}
                           theme={history.state.package.theme || theme || null}
                           sectionProperties={effectiveSectionProperties ?? null}

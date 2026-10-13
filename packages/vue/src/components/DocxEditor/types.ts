@@ -1,5 +1,6 @@
 import type { CSSProperties, VNodeChild } from "vue";
 
+import type { ReviewDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
@@ -223,6 +224,10 @@ export type DocxEditorProps = {
   hostShortcuts?: readonly HostShortcut[];
   /** Whether the editor is read-only. When true, hides toolbar and rulers */
   readOnly?: boolean;
+  /** Controlled review view. Defaults to all-markup; saving preserves all revisions. */
+  reviewDisplayMode?: ReviewDisplayMode;
+  /** Show comment highlights in all-markup (default: true); hidden in final/original. */
+  showCommentHighlights?: boolean;
   /** Whether comments/tracked changes should auto-open the review sidebar (default: true) */
   autoOpenReviewSidebar?: boolean;
   /**

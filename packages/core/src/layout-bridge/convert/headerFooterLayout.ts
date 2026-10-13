@@ -19,6 +19,13 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+import { EditorState } from "prosemirror-state";
+
+import type { DisplayMode } from "../../managers/EditorModeManager";
+import { projectMarkupView } from "../../prosemirror/markupViewProjection";
+import { createDocumentStyleContextPlugin } from "../../prosemirror/plugins/documentStyles";
+import { createDocumentNumberingPlugin } from "../../prosemirror/plugins/documentNumbering";
+import { remapMarkupViewBlocks } from "./markupViewFlow";
 
 import type {
   FlowBlock,
@@ -731,6 +738,10 @@ export function calculateHeaderFooterBodyTopClearance(
 // =============================================================================
 
 export type ConvertHeaderFooterOptions = {
+  /** Review projection applied before header/footer measurement. Defaults to All Markup. */
+  markupView?: DisplayMode;
+  /** Whether comment highlights are painted. Defaults to true. */
+  showCommentHighlights?: boolean;
   styles?: StyleDefinitions | null;
   numbering?: NumberingDefinitions;
   theme?: Theme | null;
@@ -789,41 +800,40 @@ export function convertHeaderFooterToContent(
     headerFooter.watermarkBlockIndex === undefined
       ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
       : headerFooterToProseDocWithDetachedWatermarkHost(headerFooter, proseDocOptions);
-  const flowOptions: ToFlowBlocksOptions = {};
-  if (options.defaultSize !== undefined) {
-    flowOptions.defaultSize = options.defaultSize;
-  }
-  if (options.styles) {
-    flowOptions.styles = options.styles;
-  }
-  if (options.theme !== undefined) {
-    flowOptions.theme = options.theme;
-  }
-  if (options.fontAlternates !== undefined) {
-    flowOptions.fontAlternates = options.fontAlternates;
-  }
-  if (options.defaultTabStopTwips !== undefined) {
-    flowOptions.defaultTabStopTwips = options.defaultTabStopTwips;
-  }
-  if (options.lineBreakRules) {
-    flowOptions.lineBreakRules = options.lineBreakRules;
-  }
-  if (options.justificationCompatibility) {
-    flowOptions.justificationCompatibility = options.justificationCompatibility;
-  }
-  if (options.tableIndentCompatibility) {
-    flowOptions.tableIndentCompatibility = options.tableIndentCompatibility;
-  }
-  if (options.automaticHyphenation) {
-    flowOptions.automaticHyphenation = options.automaticHyphenation;
-  }
-  const blocks = toFlowBlocks(pmDoc, flowOptions);
-  return finalizeHeaderFooterContent(blocks, contentWidth, metrics, options);
+  return convertHeaderFooterPmDocToContent(pmDoc, contentWidth, metrics, options);
 }
 
 // =============================================================================
 // 5. PM doc source (persistent hidden HF EditorView path)
 // =============================================================================
+
+type HeaderFooterProjectionState = {
+  styles: ConvertHeaderFooterOptions["styles"];
+  numbering: ConvertHeaderFooterOptions["numbering"];
+  state: EditorState;
+};
+
+const headerFooterProjectionStates = new WeakMap<PMNode, HeaderFooterProjectionState>();
+
+const headerFooterProjectionState = (pmDoc: PMNode, options: ConvertHeaderFooterOptions) => {
+  const cached = headerFooterProjectionStates.get(pmDoc);
+  if (cached && cached.styles === options.styles && cached.numbering === options.numbering) {
+    return cached.state;
+  }
+  const state = EditorState.create({
+    doc: pmDoc,
+    plugins: [
+      createDocumentStyleContextPlugin(options.styles),
+      createDocumentNumberingPlugin(options.numbering),
+    ],
+  });
+  headerFooterProjectionStates.set(pmDoc, {
+    styles: options.styles,
+    numbering: options.numbering,
+    state,
+  });
+  return state;
+};
 
 /**
  * Same as {@link convertHeaderFooterToContent}, but sourced from a live
@@ -845,7 +855,12 @@ export function convertHeaderFooterPmDocToContent(
   if (!pmDoc || pmDoc.content.size === 0) {
     return undefined;
   }
-  const flowOptions: ToFlowBlocksOptions = {};
+  const flowOptions: ToFlowBlocksOptions = {
+    showCommentHighlights:
+      options.showCommentHighlights !== false &&
+      options.markupView !== "no-markup" &&
+      options.markupView !== "original",
+  };
   if (options.defaultSize !== undefined) {
     flowOptions.defaultSize = options.defaultSize;
   }
@@ -873,7 +888,15 @@ export function convertHeaderFooterPmDocToContent(
   if (options.automaticHyphenation) {
     flowOptions.automaticHyphenation = options.automaticHyphenation;
   }
-  const blocks = toFlowBlocks(pmDoc, flowOptions);
+  const markupView = options.markupView ?? "all-markup";
+  const projection =
+    markupView === "all-markup"
+      ? undefined
+      : projectMarkupView(headerFooterProjectionState(pmDoc, options), markupView);
+  const viewDoc = projection?.type === "resolved" ? projection.doc : pmDoc;
+  const flowBlocks = toFlowBlocks(viewDoc, flowOptions);
+  const blocks =
+    projection?.type === "resolved" ? remapMarkupViewBlocks(flowBlocks, projection) : flowBlocks;
   return finalizeHeaderFooterContent(blocks, contentWidth, metrics, options);
 }
 

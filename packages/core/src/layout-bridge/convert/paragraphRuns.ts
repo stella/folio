@@ -137,7 +137,11 @@ export function paragraphToRuns(
       });
       return;
     }
-    const effectiveMarks = mergeProjectedInlineMarks(inheritedMarks, child.marks);
+    const projectedMarks = mergeProjectedInlineMarks(inheritedMarks, child.marks);
+    const effectiveMarks =
+      _options.showCommentHighlights === false
+        ? projectedMarks.filter((mark) => mark.type.name !== "comment")
+        : projectedMarks;
     if (child.type.name === "pageBreakRun") {
       const trackedChange = extractRunFormatting(effectiveMarks, theme, fontAlternates);
       if (trackedChange.isDeletion) {

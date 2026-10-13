@@ -49,6 +49,8 @@ const FOOTNOTE_FONT_SIZE = 8;
 export type MeasureBlocksFn = (blocks: FlowBlock[], contentWidth: number) => Measure[];
 
 export type ConvertFootnoteOptions = {
+  /** Whether comment highlights are painted. Defaults to true. */
+  showCommentHighlights?: boolean;
   styles?: StyleDefinitions | null;
   numbering?: NumberingDefinitions;
   theme?: Theme | null;
@@ -365,7 +367,9 @@ export function convertNoteStoryToFlowBlocks(
     proseOptions.numbering = options.numbering;
   }
   const pmDoc = footnoteToProseDoc(content, proseOptions);
-  const flowOptions: Parameters<typeof toFlowBlocks>[1] = {};
+  const flowOptions: Parameters<typeof toFlowBlocks>[1] = {
+    showCommentHighlights: options.showCommentHighlights ?? true,
+  };
   if (options.defaultSize !== undefined) {
     flowOptions.defaultSize = options.defaultSize;
   }

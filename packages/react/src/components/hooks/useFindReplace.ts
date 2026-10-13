@@ -12,13 +12,23 @@
  * operations (find, replace, scroll-to-match) on top.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { EditorState } from "prosemirror-state";
 
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import { findInMarkupView } from "@stll/folio-core/prosemirror/findReplaceSelection";
+import type { ProseMirrorFindMatch } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import type { Document } from "@stll/folio-core/types/document";
 import { findInDocument, scrollToMatch } from "../dialogs/findReplaceUtils";
 import type { FindMatch, FindOptions, FindResult } from "../dialogs/findReplaceUtils";
 import type { UseFindReplaceReturn as FindReplaceStateReturn } from "../dialogs/useFindReplace";
+
+const toEditorFindMatch = ({ from, to, ...match }: ProseMirrorFindMatch) => ({
+  ...match,
+  contentIndex: 0,
+  authoredRange: { from, to },
+});
 
 // ============================================================================
 // TYPES
@@ -29,6 +39,9 @@ type UseFindReplaceParams = {
   documentState?: Document | null;
   /** Returns the current live document state from the editor */
   getDocumentState?: () => Document | null;
+  /** Live editor state for searching the displayed review view. */
+  getEditorState?: () => EditorState | null;
+  markupView?: DisplayMode;
   /** Ref to the scrollable container for scrollToMatch */
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** Callback to push a new document state */
@@ -37,6 +50,8 @@ type UseFindReplaceParams = {
   findReplace: FindReplaceStateReturn;
   /** Select and reveal a match in the live editor */
   selectMatch?: (match: FindMatch) => boolean;
+  /** Replace projected matches through their authored editor ranges. */
+  replaceEditorMatches?: (matches: readonly FindMatch[], replaceText: string) => boolean;
 };
 
 export type UseFindReplaceReturn = {
@@ -63,16 +78,21 @@ export type UseFindReplaceReturn = {
 export function useFindReplace({
   documentState,
   getDocumentState,
+  getEditorState,
+  markupView = "all-markup",
   containerRef,
   handleDocumentChange,
   findReplace,
   selectMatch,
+  replaceEditorMatches,
 }: UseFindReplaceParams): UseFindReplaceReturn {
   const manager = useMemo(() => new FindReplaceManager<FindMatch>(), []);
   const [currentResult, setCurrentResult] = useState<FindResult | null>(null);
+  const activeSearch = useRef<{ searchText: string; options: FindOptions } | null>(null);
   const { setMatches, goToMatch } = findReplace;
 
   const resetFindResult = useCallback(() => {
+    activeSearch.current = null;
     manager.clear();
     setCurrentResult(null);
     setMatches([], 0);
@@ -100,7 +120,14 @@ export function useFindReplace({
         return null;
       }
 
-      const matches = findInDocument(currentDocument, searchText, options);
+      activeSearch.current = { searchText, options };
+      const editorState = getEditorState?.();
+      const matches =
+        editorState && markupView !== "all-markup"
+          ? findInMarkupView({ state: editorState, markupView, searchText, options }).map(
+              toEditorFindMatch,
+            )
+          : findInDocument(currentDocument, searchText, options);
       const result = manager.setMatches(matches);
       setCurrentResult(result);
       setMatches(matches, 0);
@@ -112,8 +139,24 @@ export function useFindReplace({
 
       return result;
     },
-    [readDocumentState, manager, setMatches, revealMatch, resetFindResult],
+    [
+      readDocumentState,
+      getEditorState,
+      markupView,
+      manager,
+      setMatches,
+      revealMatch,
+      resetFindResult,
+    ],
   );
+
+  const previousMarkupView = useRef(markupView);
+  useEffect(() => {
+    if (previousMarkupView.current === markupView) return;
+    previousMarkupView.current = markupView;
+    const search = activeSearch.current;
+    if (search) handleFind(search.searchText, search.options);
+  }, [markupView, handleFind]);
 
   const handleFindNext = useCallback((): FindMatch | null => {
     const stepped = manager.navigate("next");
@@ -144,6 +187,15 @@ export function useFindReplace({
         return false;
       }
 
+      const result = manager.getResult();
+      const match = result?.matches.at(result.currentIndex);
+      if (match?.authoredRange) {
+        if (!replaceEditorMatches?.([match], replaceText)) return false;
+        const search = activeSearch.current;
+        if (search) handleFind(search.searchText, search.options);
+        return true;
+      }
+
       const newDoc = manager.replaceCurrent(currentDocument, replaceText);
       if (!newDoc) {
         return false;
@@ -152,7 +204,7 @@ export function useFindReplace({
       handleDocumentChange(newDoc);
       return true;
     },
-    [readDocumentState, manager, handleDocumentChange],
+    [readDocumentState, manager, handleDocumentChange, replaceEditorMatches, handleFind],
   );
 
   const handleReplaceAll = useCallback(
@@ -162,6 +214,18 @@ export function useFindReplace({
         return 0;
       }
 
+      const editorState = getEditorState?.();
+      if (editorState && markupView !== "all-markup") {
+        const matches = findInMarkupView({
+          state: editorState,
+          markupView,
+          searchText,
+          options,
+        }).map(toEditorFindMatch);
+        if (matches.length === 0 || !replaceEditorMatches?.(matches, replaceText)) return 0;
+        resetFindResult();
+        return matches.length;
+      }
       const matches = findInDocument(currentDocument, searchText, options);
       const outcome = manager.replaceAll(currentDocument, matches, replaceText);
       if (!outcome) {
@@ -172,7 +236,15 @@ export function useFindReplace({
       resetFindResult();
       return outcome.replacedCount;
     },
-    [readDocumentState, manager, handleDocumentChange, resetFindResult],
+    [
+      readDocumentState,
+      getEditorState,
+      markupView,
+      manager,
+      handleDocumentChange,
+      resetFindResult,
+      replaceEditorMatches,
+    ],
   );
 
   return {

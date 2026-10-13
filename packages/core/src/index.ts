@@ -333,3 +333,5 @@ export {
   FolioYjsAttrSchemaVersionError,
   type FolioYjsAttrSchemaVersion,
 } from "./prosemirror/yjsDocumentMetadata";
+
+export type { ReviewDisplayMode } from "./managers/reviewDisplayMode";

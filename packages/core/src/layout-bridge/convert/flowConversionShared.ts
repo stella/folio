@@ -15,6 +15,8 @@ import type { Theme, StyleDefinitions } from "../../types/document";
  * Options for the conversion.
  */
 export type ToFlowBlocksOptions = {
+  /** Paint comment anchors and highlights; false leaves authored marks intact. */
+  showCommentHighlights?: boolean;
   /** Default font family. */
   defaultFont?: string;
   /** Default font size in points. */

@@ -357,6 +357,8 @@ export type UseDocxEditorOptions = {
    * other than All Markup lays out the text it shows. Reactive.
    */
   markupView?: MaybeRefOrGetter<DisplayMode>;
+  /** Paint comment highlights in All Markup. Defaults to true. Reactive. */
+  showCommentHighlights?: MaybeRefOrGetter<boolean>;
   showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
   /** CSS color used for margin guides. Reactive. */
   marginGuideColor?: MaybeRefOrGetter<string | undefined>;
@@ -510,6 +512,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     pageGap = DEFAULT_PAGE_GAP,
     pageRenderer,
     markupView = "all-markup",
+    showCommentHighlights = true,
     showMarginGuides,
     marginGuideColor,
     password,
@@ -832,6 +835,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
           hyphenationReadiness,
           markupView: toValue(markupView),
+          showCommentHighlights: toValue(showCommentHighlights),
         },
         state,
         runOptions,
@@ -1522,6 +1526,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       () => toValue(marginGuideColor),
       () => toValue(pageRenderer),
       () => toValue(markupView),
+      () => toValue(showCommentHighlights),
     ],
     () => reLayout(),
   );

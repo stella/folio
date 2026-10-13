@@ -107,6 +107,8 @@
     </div>
 
     <DocxEditorDialogs
+      :markup-view="displayMode"
+      :read-only="readOnly"
       v-model:show-find-replace="showFindReplace"
       v-model:show-hyperlink="showHyperlink"
       v-model:show-insert-symbol="showInsertSymbol"
@@ -555,6 +557,7 @@ import {
   isTrackChangesMode,
   toggledTrackChangesMode,
 } from "@stll/folio-core/managers/EditorModeManager";
+import { reviewDisplayModeToDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
 import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import ImageSelectionOverlay from "./ImageSelectionOverlay.vue";
 import HeaderFooterSelectionOverlay from "./HeaderFooterSelectionOverlay.vue";
@@ -602,6 +605,7 @@ const props = withDefaults(defineProps<DocxEditorProps>(), {
   showZoomControl: true,
   showReviewControls: true,
   readOnly: false,
+  showCommentHighlights: true,
   author: "User",
   mode: "editing",
   initialZoom: 1,
@@ -686,14 +690,19 @@ const readOnly = computed(() => props.readOnly || editorMode.value === "viewing"
 // rather than a `?? true` fallback (which the cast would pre-empt).
 const showReviewControls = computed(() => props.showReviewControls);
 const trackChangesOn = computed(() => isTrackChangesMode(editorMode.value));
-const displayMode = ref<DisplayMode>("all-markup");
+const internalDisplayMode = ref<DisplayMode>("all-markup");
+const displayMode = computed(() =>
+  props.reviewDisplayMode === undefined
+    ? internalDisplayMode.value
+    : reviewDisplayModeToDisplayMode(props.reviewDisplayMode),
+);
 
 function toggleTrackChanges(): void {
   setEditorMode(toggledTrackChangesMode(editorMode.value));
 }
 
 function setDisplayMode(mode: DisplayMode): void {
-  displayMode.value = mode;
+  internalDisplayMode.value = mode;
 }
 
 // Root modifier class driving the tracked-change display CSS (mirrors React's
@@ -864,6 +873,7 @@ const {
   password: () => props.password,
   pageRenderer: () => props.pageRenderer,
   markupView: displayMode,
+  showCommentHighlights: () => props.showCommentHighlights,
   showMarginGuides: () => props.showMarginGuides,
   marginGuideColor: () => props.marginGuideColor,
   externalPlugins,

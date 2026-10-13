@@ -42,6 +42,7 @@ export type LayoutMeasureInputs = {
   fontAlternates: FontAlternates;
   /** The review view: each lays out different text, so a measure is reusable only within one. */
   markupView: DisplayMode;
+  showCommentHighlights?: boolean;
 };
 
 // Controller-owned memory for the incremental layout loop: the previous run's

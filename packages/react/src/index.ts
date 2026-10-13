@@ -259,3 +259,5 @@ export {
   type MarkdownOptions,
   type MarkdownResult,
 } from "@stll/folio-core/markdown";
+
+export type { ReviewDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
