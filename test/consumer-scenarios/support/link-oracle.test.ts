@@ -26,3 +26,16 @@ test("missing saved projection is a failure only when reader text is unchanged",
     },
   );
 });
+
+test("empty paragraphs have no character link targets to preserve", () => {
+  const id = "21D02091";
+  const before = new Map([[id, { text: "", targets: [] }]]);
+  for (const after of [new Map(), new Map(before)]) {
+    for (const afterRows of [[], [{ id, text: "" }], [{ id, text: "Changed" }]]) {
+      assert.deepEqual(comparePreservedLinks({ before, after, afterRows }), {
+        problems: [],
+        checked: 0,
+      });
+    }
+  }
+});
