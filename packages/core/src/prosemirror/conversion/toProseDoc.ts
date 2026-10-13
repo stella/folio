@@ -160,7 +160,7 @@ import { planEmptyRanges } from "../emptyRangeAnchor";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
 import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
-import { continueRunIdentitiesAcrossRevisions } from "../runIdentityAcrossRevisions";
+import { continueSourceCarrierIdentitiesAcrossRevisions } from "../runIdentityAcrossRevisions";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { withEnclosingRevision } from "../contentControlRevisions";
 import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
@@ -1166,7 +1166,7 @@ function convertParagraph(
 
   return createProseParagraphWithPropertySource(schema.nodes["paragraph"], paragraph, {
     attrs,
-    content: continueRunIdentitiesAcrossRevisions(inlineNodes),
+    content: continueSourceCarrierIdentitiesAcrossRevisions(inlineNodes),
   });
 }
 
