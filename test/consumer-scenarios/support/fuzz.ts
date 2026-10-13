@@ -315,7 +315,7 @@ const suggestChecked = async (
   const expectedApplied = flow.planned?.expectedApplied;
   if (expectedApplied !== undefined && outcome.applied.length !== expectedApplied)
     throw new Error(
-      `step ${flow.log.length - 1}: expected ${expectedApplied} applied operations, got ${outcome.applied.length}; ${flow.log.at(-1)}`,
+      `step ${flow.log.length - 1}: expected ${expectedApplied} applied operations, got ${outcome.applied.length}; receipt ${JSON.stringify(receipt)}; ${flow.log.at(-1)}`,
     );
   await assertRequestedOutcome(flow.reviewer, pre, outcome, `step ${flow.log.length - 1}`);
   return outcome.applied.length;
