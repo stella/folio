@@ -7,6 +7,7 @@ import { FindReplaceManager } from "../managers/FindReplaceManager";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { findInProseMirrorDocument } from "../prosemirror/findReplaceSelection";
+import { resolveDocumentFindRanges } from "./findMatchView";
 import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
 import { expectFieldAttrs } from "../prosemirror/attrs";
 import {
@@ -52,6 +53,105 @@ const paragraph = (text: string): Paragraph => ({
 });
 
 const textRun = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+
+describe("note reference search offsets", () => {
+  const cases = (["footnoteRef", "endnoteRef"] as const).flatMap((type) =>
+    [1, 12, 123].map((id) => ({ type, id })),
+  );
+
+  test.each(cases)(
+    "$type id $id does not shift ordinary matches or selected glyphs",
+    ({ type, id }) => {
+      const source: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      { type, id },
+                      { type: "text", text: "hit hit" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      const pmDoc = toProseDoc(source);
+      const options = createDefaultFindOptions();
+      const matches = findInDocument(source, "hit", options);
+      const project = ({
+        startOffset,
+        endOffset,
+        text,
+      }: {
+        startOffset: number;
+        endOffset: number;
+        text: string;
+      }) => ({ startOffset, endOffset, text });
+      expect(matches.map(project)).toEqual([
+        { startOffset: 0, endOffset: 3, text: "hit" },
+        { startOffset: 4, endOffset: 7, text: "hit" },
+      ]);
+      expect(findInProseMirrorDocument(pmDoc, "hit", options).map(project)).toEqual(
+        matches.map(project),
+      );
+      const ranges = resolveDocumentFindRanges({ document: source, bodyDoc: pmDoc, matches });
+      expect(ranges).toHaveLength(2);
+      expect(ranges.map(({ from, to }) => pmDoc.textBetween(from, to))).toEqual(["hit", "hit"]);
+      expect(findInProseMirrorDocument(pmDoc, String(id), options)).toHaveLength(0);
+    },
+  );
+
+  test.each(["footnoteRef", "endnoteRef"] as const)(
+    "multiple %s anchors keep all later hits aligned",
+    (type) => {
+      const source: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      { type, id: 1 },
+                      { type: "text", text: " first hit " },
+                      { type, id: 12 },
+                      { type: "text", text: " second hit " },
+                      { type, id: 123 },
+                      { type: "text", text: " third hit" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      const pmDoc = toProseDoc(source);
+      const options = createDefaultFindOptions();
+      const matches = findInDocument(source, "hit", options);
+      expect(matches.map(({ startOffset }) => startOffset)).toEqual([7, 19, 30]);
+      expect(
+        findInProseMirrorDocument(pmDoc, "hit", options).map(({ startOffset }) => startOffset),
+      ).toEqual([7, 19, 30]);
+      const ranges = resolveDocumentFindRanges({ document: source, bodyDoc: pmDoc, matches });
+      expect(ranges).toHaveLength(3);
+      expect(ranges.map(({ from, to }) => pmDoc.textBetween(from, to))).toEqual([
+        "hit",
+        "hit",
+        "hit",
+      ]);
+    },
+  );
+});
 
 const fieldTokenRun: Run = {
   type: "run",

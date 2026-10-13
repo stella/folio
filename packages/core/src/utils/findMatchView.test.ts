@@ -271,6 +271,103 @@ const viewport = () => {
 };
 
 describe("view-only search geometry", () => {
+  test.each(["footnoteRef", "endnoteRef"] as const)(
+    "%s labels inside a combined painted span are excluded from search decoration",
+    (type) => {
+      const doc: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      { type: "text", text: "A" },
+                      { type, id: 12 },
+                      { type: "text", text: "B" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      const before = structuredClone(doc);
+      const bodyDoc = toProseDoc(doc);
+      expect(bodyDoc.textContent).toBe("A12B");
+      const matches = findInDocument(doc, "AB", createDefaultFindOptions());
+      expect(matches).toHaveLength(1);
+      expect(matches.at(0)).toMatchObject({
+        startOffset: 0,
+        endOffset: 2,
+        text: "AB",
+        replacement: { status: "blocked", reason: "atomic-content" },
+      });
+      expect(resolveDocumentFindRanges({ document: doc, bodyDoc, matches })).toEqual([
+        { from: 1, to: 5, index: 0, story: "main", excludedRanges: [{ from: 2, to: 4 }] },
+      ]);
+      const container = viewport();
+      const pageElement = document.createElement("div");
+      pageElement.className = "layout-page";
+      const span = document.createElement("span");
+      span.dataset["pmStart"] = "1";
+      span.dataset["pmEnd"] = "5";
+      span.textContent = "A12B";
+      span.getBoundingClientRect = () => new DOMRect(30, 200, 40, 18);
+      pageElement.append(span);
+      container.append(pageElement);
+      const intervals: { start: number; end: number; text: string }[] = [];
+      const createRange = document.createRange.bind(document);
+      const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
+        const range = createRange();
+        Object.defineProperty(range, "getClientRects", {
+          value: () => {
+            intervals.push({
+              start: range.startOffset,
+              end: range.endOffset,
+              text: range.toString(),
+            });
+            return [
+              new DOMRect(
+                30 + range.startOffset * 10,
+                200,
+                (range.endOffset - range.startOffset) * 10,
+                18,
+              ),
+            ];
+          },
+        });
+        return range;
+      });
+      const scroll = spyOn(container, "scrollTo").mockImplementation(() => {});
+      const view = createFindMatchView({ container, document: doc, bodyDoc, matches });
+      expect(intervals).toEqual([
+        { start: 0, end: 1, text: "A" },
+        { start: 3, end: 4, text: "B" },
+      ]);
+      const marks = [...container.querySelectorAll<HTMLElement>("[data-find-match-index]")];
+      expect(marks.map((mark) => ({ left: mark.style.left, width: mark.style.width }))).toEqual([
+        { left: "30px", width: "10px" },
+        { left: "60px", width: "10px" },
+      ]);
+      expect(marks.every((mark) => mark.dataset["current"] === "true")).toBe(true);
+      view.paint(-1);
+      expect(marks.every((mark) => mark.dataset["current"] === "false")).toBe(true);
+      view.paint(0);
+      expect(marks.every((mark) => mark.dataset["current"] === "true")).toBe(true);
+      expect(view.reveal(0)).toBe(true);
+      expect(scroll).toHaveBeenCalledWith({ top: 159, left: 0, behavior: "smooth" });
+      expect(doc).toEqual(before);
+      expect(span.textContent).toBe("A12B");
+      view.destroy();
+      rangeFactory.mockRestore();
+      scroll.mockRestore();
+    },
+  );
+
   test("cached field substrings and following text use separate painted coordinates", () => {
     const doc: Document = {
       package: {

@@ -6,6 +6,9 @@ import type { Document } from "../types/document";
 import type { ComplexField, Paragraph, Run, SimpleField } from "../types/content";
 import { panic } from "better-result";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { findInProseMirrorDocument } from "../prosemirror/findReplaceSelection";
+import { resolveDocumentFindRanges } from "../utils/findMatchView";
+import { EditorState } from "prosemirror-state";
 import { createDefaultFindOptions, findInDocument } from "../utils/findReplace";
 import type { ReplaceEligibility } from "../utils/findReplace";
 
@@ -99,6 +102,112 @@ const documentParagraph = (document: Document): Paragraph => {
 };
 
 describe("FindReplaceManager real search replacement eligibility", () => {
+  const noteCases = (["footnoteRef", "endnoteRef"] as const).flatMap((type) =>
+    [1, 12, 123].map((id) => ({ type, id })),
+  );
+
+  test.each(noteCases)(
+    "$type id $id blocks replacement across its anchor without changing source or PM",
+    ({ type, id }) => {
+      const source: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      { type: "text", text: "A" },
+                      { type, id },
+                      { type: "text", text: "B" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      const before = structuredClone(source);
+      const beforePm = toProseDoc(source).toJSON();
+      const matches = findInDocument(source, "AB", createDefaultFindOptions());
+      expect(matches).toHaveLength(1);
+      expect(matches.at(0)?.replacement).toEqual({ status: "blocked", reason: "atomic-content" });
+      const manager = new FindReplaceManager<(typeof matches)[number]>();
+      manager.setMatches(matches);
+      expect(manager.replaceCurrent(source, "value")).toBeNull();
+      expect(manager.replaceAll(source, matches, "value")).toEqual({
+        document: source,
+        replacedCount: 0,
+        skippedCount: 1,
+      });
+      expect(source).toEqual(before);
+      expect(toProseDoc(source).toJSON()).toEqual(beforePm);
+    },
+  );
+
+  test.each(noteCases)(
+    "ordinary text after $type id $id remains replaceable in model and PM",
+    ({ type, id }) => {
+      const source: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      { type, id },
+                      { type: "text", text: " hit" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      const options = createDefaultFindOptions();
+      const matches = findInDocument(source, "hit", options);
+      expect(matches).toHaveLength(1);
+      expect(matches.at(0)?.replacement).toEqual({ status: "allowed" });
+      const manager = new FindReplaceManager<(typeof matches)[number]>();
+      manager.setMatches(matches);
+      const replaced = manager.replaceCurrent(source, "value");
+      if (!replaced) panic("Ordinary text replacement after note anchor failed");
+      expect(findInDocument(replaced, "value", options)).toHaveLength(1);
+      expect(documentParagraph(replaced).content.at(0)).toMatchObject({
+        content: [
+          { type, id },
+          { type: "text", text: " " },
+          { type: "text", text: "value" },
+        ],
+      });
+      const pmDoc = toProseDoc(source);
+      const pmMatches = findInProseMirrorDocument(pmDoc, "hit", options);
+      expect(pmMatches).toHaveLength(1);
+      const range = resolveDocumentFindRanges({ document: source, bodyDoc: pmDoc, matches }).at(0);
+      if (!range) panic("Ordinary PM range after note anchor missing");
+      expect(pmDoc.textBetween(range.from, range.to)).toBe("hit");
+      expect(pmMatches.at(0)?.from).toBe(range.from);
+      expect(pmMatches.at(0)?.to).toBe(range.to);
+      const updatedPm = EditorState.create({ doc: pmDoc }).tr.insertText(
+        "value",
+        range.from,
+        range.to,
+      ).doc;
+      expect(updatedPm.child(0).child(0).toJSON()).toEqual(pmDoc.child(0).child(0).toJSON());
+      expect(findInProseMirrorDocument(updatedPm, "hit", options)).toHaveLength(0);
+      const updatedMatch = findInProseMirrorDocument(updatedPm, "value", options).at(0);
+      if (!updatedMatch) panic("PM replacement after note anchor missing");
+      expect(updatedPm.textBetween(updatedMatch.from, updatedMatch.to)).toBe("value");
+    },
+  );
+
   test.each(["simple", "complex"] as const)(
     "%s field substring hits are skipped and preserve the field and PM document",
     (kind) => {

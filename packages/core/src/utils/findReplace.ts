@@ -319,6 +319,7 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
   let text = "";
   let authoredOffset = 0;
   const offsets: number[] = [];
+  const replacementBarriers: number[] = [];
   const atomicContentRanges: { start: number; end: number }[] = [];
   const fieldTextRanges: { start: number; end: number }[] = [];
   const excludedTextRanges: { start: number; end: number }[] = [];
@@ -346,6 +347,8 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
         continue;
       }
       const part = getParagraphContentSearchProjection(item);
+      for (const offset of part.replacementBarriers ?? [])
+        replacementBarriers.push(text.length + offset);
       for (const range of part.atomicContentRanges ?? [])
         atomicContentRanges.push({
           start: text.length + range.start,
@@ -369,6 +372,7 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
     excludedTextRanges,
     fieldTextRanges,
     atomicContentRanges,
+    replacementBarriers,
   };
 };
 
@@ -420,6 +424,8 @@ const replacementForProjection = ({
   if (
     (projection.atomicContentRanges ?? []).some((range) => range.start < end && range.end > start)
   )
+    return { status: "blocked", reason: "atomic-content" };
+  if ((projection.replacementBarriers ?? []).some((offset) => offset > start && offset < end))
     return { status: "blocked", reason: "atomic-content" };
   for (let offset = start + 1; offset < end; offset++) {
     if (
@@ -516,17 +522,21 @@ type SearchProjection = {
   excludedTextRanges?: { start: number; end: number }[];
   fieldTextRanges?: { start: number; end: number }[];
   atomicContentRanges?: { start: number; end: number }[];
+  replacementBarriers?: number[];
 };
 
 const joinSearchProjections = (parts: readonly SearchProjection[]): SearchProjection => {
   let text = "";
   const pageBreakOffsets: number[] = [];
+  const replacementBarriers: number[] = [];
   const atomicContentRanges: { start: number; end: number }[] = [];
   const fieldTextRanges: { start: number; end: number }[] = [];
   const excludedTextRanges: { start: number; end: number }[] = [];
   for (const part of parts) {
     const baseOffset = text.length;
     text += part.text;
+    for (const offset of part.replacementBarriers ?? [])
+      replacementBarriers.push(baseOffset + offset);
     for (const range of part.atomicContentRanges ?? [])
       atomicContentRanges.push({ start: baseOffset + range.start, end: baseOffset + range.end });
     for (const range of part.fieldTextRanges ?? [])
@@ -537,12 +547,20 @@ const joinSearchProjections = (parts: readonly SearchProjection[]): SearchProjec
       pageBreakOffsets.push(baseOffset + offset);
     }
   }
-  return { text, pageBreakOffsets, excludedTextRanges, fieldTextRanges, atomicContentRanges };
+  return {
+    text,
+    pageBreakOffsets,
+    excludedTextRanges,
+    fieldTextRanges,
+    atomicContentRanges,
+    replacementBarriers,
+  };
 };
 
 const getRunSearchProjection = (run: Run): SearchProjection => {
   let text = "";
   const pageBreakOffsets: number[] = [];
+  const replacementBarriers: number[] = [];
   const atomicContentRanges: { start: number; end: number }[] = [];
   for (const item of run.content) {
     switch (item.type) {
@@ -569,12 +587,14 @@ const getRunSearchProjection = (run: Run): SearchProjection => {
         break;
       case "footnoteRef":
       case "endnoteRef":
+      case "drawing":
+      case "shape":
+        replacementBarriers.push(text.length);
+        break;
       case "noteMarker":
       case "fieldChar":
       case "instrText":
       case "renderedPageBreak":
-      case "drawing":
-      case "shape":
         break;
       default: {
         const unprojected: never = item;
@@ -582,7 +602,7 @@ const getRunSearchProjection = (run: Run): SearchProjection => {
       }
     }
   }
-  return { text, pageBreakOffsets, atomicContentRanges };
+  return { text, pageBreakOffsets, atomicContentRanges, replacementBarriers };
 };
 
 // A transparent wrapper inside the link is read through: the text it holds is

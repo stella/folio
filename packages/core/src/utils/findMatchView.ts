@@ -102,6 +102,12 @@ export const resolveDocumentFindRanges = ({
           resolved.push({
             from: range.from + source.offset,
             to: range.to + source.offset,
+            ...(range.excludedRanges && {
+              excludedRanges: range.excludedRanges.map((anchor) => ({
+                from: anchor.from + source.offset,
+                to: anchor.to + source.offset,
+              })),
+            }),
             ...(range.atomicTextRanges && {
               atomicTextRanges: range.atomicTextRanges.map((atom) => ({
                 from: atom.from + source.offset,
@@ -272,15 +278,28 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
               Math.min(span.textContent?.length ?? 0, atom.endOffset - textOffset),
             )
           : null;
-        const measured = atomRange
-          ? ({ type: "text", rects: [...atomRange.getClientRects()] } as const)
-          : measurePaintedSpanRange(span, range.from, range.to);
-        if (measured.type === "outside") continue;
-        const previousTarget = targets.get(range.index);
-        if (!previousTarget || (previousTarget.compareDocumentPosition(span) & 2) !== 0)
-          targets.set(range.index, span);
-        const rects = measured.type === "element" ? [measured.rect] : measured.rects;
-        appendRects({ index: range.index, rects, source: span, surface: overlay });
+        let intervals = [{ from: range.from, to: range.to }];
+        for (const anchor of range.excludedRanges ?? []) {
+          intervals = intervals.flatMap((interval) => {
+            if (anchor.to <= interval.from || anchor.from >= interval.to) return [interval];
+            const retained: { from: number; to: number }[] = [];
+            if (interval.from < anchor.from)
+              retained.push({ from: interval.from, to: anchor.from });
+            if (anchor.to < interval.to) retained.push({ from: anchor.to, to: interval.to });
+            return retained;
+          });
+        }
+        const measurements = atomRange
+          ? [{ type: "text", rects: [...atomRange.getClientRects()] } as const]
+          : intervals.map(({ from, to }) => measurePaintedSpanRange(span, from, to));
+        for (const measured of measurements) {
+          if (measured.type === "outside") continue;
+          const previousTarget = targets.get(range.index);
+          if (!previousTarget || (previousTarget.compareDocumentPosition(span) & 2) !== 0)
+            targets.set(range.index, span);
+          const rects = measured.type === "element" ? [measured.rect] : measured.rects;
+          appendRects({ index: range.index, rects, source: span, surface: overlay });
+        }
       }
     }
     const commentParagraphs = [

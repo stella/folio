@@ -1,7 +1,11 @@
 import type { Node as ProseMirrorNode } from "prosemirror-model";
-import { getInlineDisplayText } from "./inlineDisplayText";
+import {
+  getInlineDisplayText,
+  getInlineDisplayToken,
+  isNoteReferenceText,
+} from "./inlineDisplayText";
 
-import { expectFieldAttrs, expectPreservedXmlAttrs } from "./attrs";
+import { expectFieldAttrs } from "./attrs";
 
 import { findAllMatches, isPageDependentSearchField } from "../utils/findReplace";
 import type { FindOptions } from "../utils/findReplace";
@@ -26,6 +30,8 @@ export type FindMatchPosition = {
 export type FindMatchRange = {
   from: number;
   to: number;
+  /** Navigation anchors inside a logical match are excluded from decorations. */
+  excludedRanges?: { from: number; to: number }[];
   /** Character subranges inside source atoms, whose text exceeds their PM size. */
   atomicTextRanges?: { from: number; to: number; startOffset: number; endOffset: number }[];
 };
@@ -184,6 +190,7 @@ function resolveTextRangeInParagraph({
   const range = { from: null as number | null, to: null as number | null };
   const pageBreakOffsets: number[] = [];
   const excludedTextRanges: { start: number; end: number }[] = [];
+  const excludedRanges: { from: number; to: number }[] = [];
   const atomicTextRanges: NonNullable<FindMatchRange["atomicTextRanges"]> = [];
 
   paragraph.descendants((node, pos) => {
@@ -200,6 +207,10 @@ function resolveTextRangeInParagraph({
     if (node.type.name === "pageBreakRun") {
       pageBreakOffsets.push(textOffset);
       return false;
+    }
+    if (isNoteReferenceText(node)) {
+      const from = paragraphPos + 1 + pos;
+      excludedRanges.push({ from, to: from + node.nodeSize });
     }
     const tokenLength = getSearchTextTokenLength(node);
     if (tokenLength === 0) {
@@ -245,23 +256,18 @@ function resolveTextRangeInParagraph({
     return null;
   }
 
+  const from = range.from;
+  const to = range.to;
+  const visibleExcludedRanges = excludedRanges.filter(
+    (anchor) => anchor.from < to && anchor.to > from,
+  );
   return {
-    from: range.from,
-    to: range.to,
+    from,
+    to,
     ...(atomicTextRanges.length > 0 && { atomicTextRanges }),
+    ...(visibleExcludedRanges.length > 0 && { excludedRanges: visibleExcludedRanges }),
   };
 }
 
-function getSearchTextTokenLength(node: ProseMirrorNode): number {
-  if (node.type.name === "field") return expectFieldAttrs(node).displayText.length;
-  if (node.type.name === "preservedXml") return expectPreservedXmlAttrs(node).text.length;
-  if (node.isText) {
-    return node.text?.length ?? 0;
-  }
-
-  if (node.type.name === "tab" || node.type.name === "hardBreak" || node.type.name === "symbol") {
-    return 1;
-  }
-
-  return 0;
-}
+const getSearchTextTokenLength = (node: ProseMirrorNode): number =>
+  getInlineDisplayToken(node)?.length ?? 0;

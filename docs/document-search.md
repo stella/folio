@@ -38,7 +38,7 @@ inserted and moved-to text. Query input and document refreshes are debounced.
 
 Replacement remains a body editing operation. Each match exposes `replacement`:
 `{ status: "allowed" }` or `{ status: "blocked", reason }`. Reasons are
-`field-result`, `atomic-content` (opaque preserved content), `hidden-content` (visible characters have discontinuous authored
+`field-result`, `atomic-content` (opaque preserved content or a crossed reference anchor), `hidden-content` (visible characters have discontinuous authored
 offsets), and `non-body-story` (including shapes and comments). Field results are
 searchable, but this API does not edit fields. Replace is disabled for blocked
 matches; read-only mode rejects replacements. Replace All skips blocked matches
