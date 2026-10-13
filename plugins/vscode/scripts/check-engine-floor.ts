@@ -12,15 +12,11 @@ const floor = manifest.devDependencies["@types/vscode"];
 assert.equal(manifest.engines.vscode, `^${floor}`);
 const previous = "1.85.0";
 assert.equal(floor, "1.86.0", "Update the adjacent-version proof when changing the floor");
+assert.equal(manifest.devDependencies["vscode-previous-types"], `npm:@types/vscode@${previous}`);
 const directory = await mkdtemp(path.join(root, ".engine-floor-"));
 
 try {
-  const response = await fetch(
-    `https://raw.githubusercontent.com/microsoft/vscode/${previous}/src/vscode-dts/vscode.d.ts`,
-  );
-  assert.ok(response.ok, `Download ${previous} typings: ${response.status}`);
-  const previousTypes = path.join(directory, "previous.d.ts");
-  await writeFile(previousTypes, await response.text());
+  const previousTypes = path.join(root, "node_modules/vscode-previous-types/index.d.ts");
   for (const version of [floor, previous]) {
     const config = path.join(directory, `tsconfig-${version}.json`);
     await writeFile(
