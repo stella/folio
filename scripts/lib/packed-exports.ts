@@ -28,7 +28,7 @@ const hasCondition = (value: unknown, condition: string): boolean => {
   return Object.entries(value).some(
     ([key, entry]) =>
       key === condition ||
-      (key === "default" && condition === "import") ||
+      (key === "default" && (condition === "import" || condition === "require")) ||
       hasCondition(entry, condition),
   );
 };

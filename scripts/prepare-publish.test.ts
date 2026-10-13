@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 test("publish preparation maps source, asset and private exports to dist", async () => {
@@ -19,6 +20,7 @@ test("publish preparation maps source, asset and private exports to dist", async
         {
           name: "@stll/fixture",
           version: "1.0.0",
+          type: "module",
           exports: {
             ".": "./src/index.ts",
             "./document-clone": "./src/documentClone.ts",
@@ -43,11 +45,19 @@ test("publish preparation maps source, asset and private exports to dist", async
     expect(manifest.exports["./document-clone"]).toEqual({
       types: "./dist/documentClone.d.ts",
       import: "./dist/documentClone.js",
+      default: "./dist/documentClone.js",
     });
+    const require = createRequire(path.join(packageRoot, "consumer.cjs"));
+    // Self-resolution applies the require condition just like the Vue CJS consumer.
+    expect(require.resolve("@stll/fixture/document-clone")).toBe(
+      path.join(packageRoot, "dist/documentClone.js"),
+    );
+    expect(require.resolve("@stll/fixture/index")).toBe(path.join(packageRoot, "dist/index.js"));
     expect(manifest.exports["./artifact/wasm"]).toBe("./dist/generated/artifact_bg.wasm");
     expect(manifest.exports["./*"]).toEqual({
       types: "./dist/*.d.ts",
       import: "./dist/*.js",
+      default: "./dist/*.js",
     });
   } finally {
     await rm(packageRoot, { force: true, recursive: true });

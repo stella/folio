@@ -62,3 +62,16 @@ test("plain JavaScript exports remain public even without a types condition", ()
   expect(entries.every(({ asset }) => !asset)).toBe(true);
   expect(entries.find(({ specifier }) => specifier.endsWith("/commonjs"))?.cjs).toBe(true);
 });
+
+test("default ESM targets are exercised by both module loaders", () => {
+  const entries = publicEntries({
+    name: "example",
+    exports: {
+      ".": { types: "./dist/index.d.ts", import: "./dist/index.js", default: "./dist/index.js" },
+    },
+    files: ["dist/index.js", "dist/index.d.ts"],
+  });
+  expect(entries).toEqual([
+    { specifier: "example", esm: true, cjs: true, types: true, asset: false },
+  ]);
+});
