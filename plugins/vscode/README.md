@@ -22,6 +22,17 @@ Save writes back to the same file.
 - **Read-only when you want it.** **Folio: Open Read-Only** (command palette,
   or right-click a `.docx`) opens the same pages with editing off.
 
+## Offline or restricted network install
+
+Download `folio.vsix` from a [GitHub release](https://github.com/stella/folio/releases)
+or the [Open VSX extension page](https://open-vsx.org/extension/stll/stella-folio).
+In the Extensions view, open the **...** menu and choose **Install from VSIX...**,
+then select the downloaded file. You can also install it from a terminal:
+
+```sh
+code --install-extension folio.vsix
+```
+
 ## Try a build locally
 
 From the repository root:

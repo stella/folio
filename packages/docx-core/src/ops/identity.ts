@@ -153,8 +153,8 @@ const matchesSlots = (node: InlineNode, expected: RetainedIdentity["target"]): b
   );
 };
 
-/** Bind exact cut references after the source or right fragment identities change. */
-export const bindRetainedIdentities = (
+/** Bind the exact right fragment after its source identities were freshened. */
+const bindRetainedIdentities = (
   before: readonly InlineNode[],
   after: readonly InlineNode[],
 ): InlineNode[] => {
@@ -198,12 +198,10 @@ export const bindRetainedIdentities = (
     const retained = joins.retainedAfter;
     const oldRight = before.at(index + 1);
     const freshRight = after.at(index + 1);
+    if (oldRight === undefined || freshRight === undefined) return node;
     const oldOwner = before.at(index) ?? panic("Freshening preserves each source record position.");
     const bound = retained.map((entry) => {
-      const target =
-        oldRight === undefined || freshRight === undefined
-          ? undefined
-          : atDepth({ old: oldRight, fresh: freshRight, entry, depth: 0 });
+      const target = atDepth({ old: oldRight, fresh: freshRight, entry, depth: 0 });
       let source = entry.source;
       {
         const oldChildren = childNodes(oldOwner) ?? [];
@@ -234,14 +232,14 @@ export const bindRetainedIdentities = (
 type CutPair = { old: InlineNode; fresh: InlineNode };
 
 /** A cut shares the original hints object; independent wrappers never do. */
-type BindCutRetainedIdentitiesOptions = {
+type RebindRetainedIdentitiesOptions = {
   before: readonly Paragraph[];
   after: readonly Paragraph[];
 };
-const bindCutRetainedIdentities = ({
+export const rebindRetainedIdentities = ({
   before,
   after,
-}: BindCutRetainedIdentitiesOptions): Paragraph[] => {
+}: RebindRetainedIdentitiesOptions): Paragraph[] => {
   const groups = new Map<NonNullable<Deletion["resolutionJoins"]>, CutPair[]>();
   type PairedNodesOptions = { oldNodes: readonly InlineNode[]; freshNodes: readonly InlineNode[] };
   const collect = ({ oldNodes, freshNodes }: PairedNodesOptions): void => {
@@ -533,7 +531,7 @@ export const freshenIdentities = ({
         kind: "fresh",
         paragraphs: bindDeferredIdentities({
           before: after,
-          after: bindCutRetainedIdentities({ before: after, after: paragraphs }),
+          after: rebindRetainedIdentities({ before: after, after: paragraphs }),
         }),
       }
     : { kind: "invalidId", id: invalid };
