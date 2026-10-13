@@ -1,3 +1,5 @@
+import { reconcileCommentRelationships } from "@stll/docx-core/ops";
+import { commentTextParagraph } from "../docx/commentTextParagraph";
 import { buildSections } from "../docx/documentParser";
 import { getHeaderFooterText, getEndnoteText, getFootnoteText } from "../docx/storyPlainText";
 import JSZip from "jszip";
@@ -219,13 +221,7 @@ const createReviewerComment = ({
   id,
   author,
   date: date ?? new Date().toISOString(),
-  content: [
-    {
-      type: "paragraph",
-      formatting: {},
-      content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
-    },
-  ],
+  content: [commentTextParagraph(text)],
 });
 
 type FolioDocumentOperationUndoEntry = {
@@ -2937,7 +2933,7 @@ export class FolioDocxReviewer {
         snapshot.resolvedOverrides,
       );
     }
-    return document;
+    return reconcileCommentRelationships(document);
   }
 
   private captureSaveSnapshot(): FolioSaveSnapshot {

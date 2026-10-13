@@ -770,6 +770,9 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
 }>;
 
 // @public
+export const reconcileCommentRelationships: (document: Document_2) => Document_2;
+
+// @public
 export const registerParagraphPropertySnapshot: (input: RegisterParagraphPropertySnapshotOptions) => void;
 
 // @public (undocumented)

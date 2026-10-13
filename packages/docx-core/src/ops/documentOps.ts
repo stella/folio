@@ -1,3 +1,4 @@
+export { reconcileCommentRelationships } from "./comments";
 export { noteUsesCustomMark } from "./noteMarks";
 export { sectionPropertiesAt } from "./storyLifecycle";
 export { storyBody, findStoryBody, documentStories, sameStory } from "./stories";

@@ -278,7 +278,7 @@ const isCommentRelationship = (type: string): boolean =>
   Object.values(COMMENT_PART_RELATIONSHIPS).some((part) => part.type === type);
 
 /** Keep the same part ids as the packager: numeric rId maximum plus one. */
-const reconcileRelationships = (document: Document): Document => {
+export const reconcileCommentRelationships = (document: Document): Document => {
   const comments = document.package.document.comments ?? [];
   const relationships = new Map(document.package.relationships ?? []);
   let next =
@@ -312,7 +312,8 @@ const edited = (
   op: CommentOp,
   ids: ReadonlySet<number>,
 ): Result<DocumentEdit, DocumentOpRefusal> => {
-  if (op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) after = reconcileRelationships(after);
+  if (op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
+    after = reconcileCommentRelationships(after);
   const invalid = contractViolation(after);
   if (invalid) return fail(op, invalid.message, invalid.reason);
   // An edit may keep a loaded orphan, never strand another comment.
