@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { EditorState, Plugin, PluginKey } from "prosemirror-state";
 import ts from "typescript";
 import { schema } from "./schema";
@@ -38,6 +40,45 @@ import { ParaIdAllocatorExtension } from "./extensions/features/ParaIdAllocatorE
 import { createParagraphChangeTrackerPlugin } from "./extensions/features/ParagraphChangeTrackerExtension";
 import { RunIdentityExtension } from "./extensions/marks/RunIdentityExtension";
 import type { AnyExtension } from "./extensions/types";
+
+// Bun caches query-string imports by their source path. Give the real plugin
+// body a distinct file, while preserving the original imports and shared peers.
+const importRepeatedPlugin = async (name: string) => {
+  const filename = path.join(import.meta.dir, "plugins", `${name}.ts`);
+  const source = ts.createSourceFile(
+    filename,
+    readFileSync(filename, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const copiedSource = ts.factory.updateSourceFile(
+    source,
+    source.statements.map((statement) => {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+        return statement;
+      }
+      const specifier = statement.moduleSpecifier.text;
+      const resolved = specifier.startsWith(".")
+        ? path.resolve(path.dirname(filename), specifier)
+        : import.meta.resolve(specifier);
+      return ts.factory.updateImportDeclaration(
+        statement,
+        statement.modifiers,
+        statement.importClause,
+        ts.factory.createStringLiteral(resolved),
+        statement.attributes,
+      );
+    }),
+  );
+  const directory = mkdtempSync(path.join(tmpdir(), "folio-plugin-evaluation-"));
+  try {
+    const copy = path.join(directory, `${name}.ts`);
+    writeFileSync(copy, ts.createPrinter().printFile(copiedSource));
+    return await import(pathToFileURL(copy).href);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+};
 
 const extensionPlugin = (extension: AnyExtension): Plugin => {
   const plugin = extension.onSchemaReady({ schema }).plugins?.at(0);
@@ -217,12 +258,8 @@ test("independent evaluations of a family reject duplicate plugins in one state"
 });
 
 test("anonymization readers and metadata survive actual repeated module evaluation", async () => {
-  const repeatedUrl = new URL(
-    "./plugins/anonymizationDecorations.js?plugin-owner-regression",
-    import.meta.url,
-  );
-  const repeated: typeof import("./plugins/anonymizationDecorations") = await import(
-    repeatedUrl.href
+  const repeated: typeof import("./plugins/anonymizationDecorations") = await importRepeatedPlugin(
+    "anonymizationDecorations",
   );
   expect(repeated.anonymizationDecorationsKey).not.toBe(anonymizationDecorationsKey);
   const doc = schema.node("doc", null, [schema.node("paragraph", null, schema.text("Alice Bob"))]);
@@ -249,13 +286,8 @@ test("anonymization readers and metadata survive actual repeated module evaluati
 });
 
 test("autocomplete readers and commands survive actual repeated module evaluation", async () => {
-  const repeatedUrl = new URL(
-    "./plugins/autocompleteSuggestion.js?plugin-owner-regression",
-    import.meta.url,
-  );
-  const repeated: typeof import("./plugins/autocompleteSuggestion") = await import(
-    repeatedUrl.href
-  );
+  const repeated: typeof import("./plugins/autocompleteSuggestion") =
+    await importRepeatedPlugin("autocompleteSuggestion");
   expect(repeated.autocompleteSuggestionKey).not.toBe(autocomplete.autocompleteSuggestionKey);
   const firstPlugin = autocompleteSuggestionPlugin();
   const secondPlugin = repeated.autocompleteSuggestionPlugin();
@@ -288,11 +320,8 @@ test("autocomplete readers and commands survive actual repeated module evaluatio
 });
 
 test("slash-menu readers and commands survive actual repeated module evaluation", async () => {
-  const repeatedUrl = new URL(
-    "./plugins/templateSlashMenu.js?plugin-owner-regression",
-    import.meta.url,
-  );
-  const repeated: typeof import("./plugins/templateSlashMenu") = await import(repeatedUrl.href);
+  const repeated: typeof import("./plugins/templateSlashMenu") =
+    await importRepeatedPlugin("templateSlashMenu");
   expect(repeated.templateSlashMenuKey).not.toBe(slashMenu.templateSlashMenuKey);
   const firstPlugin = templateSlashMenuPlugin();
   const secondPlugin = repeated.templateSlashMenuPlugin();
@@ -320,11 +349,8 @@ test("slash-menu readers and commands survive actual repeated module evaluation"
 });
 
 test("directive readers survive actual repeated module evaluation", async () => {
-  const repeatedUrl = new URL(
-    "./plugins/templateDirectives.js?plugin-owner-regression",
-    import.meta.url,
-  );
-  const repeated: typeof import("./plugins/templateDirectives") = await import(repeatedUrl.href);
+  const repeated: typeof import("./plugins/templateDirectives") =
+    await importRepeatedPlugin("templateDirectives");
   expect(repeated.templateDirectivesKey).not.toBe(directives.templateDirectivesKey);
   const firstPlugin = createTemplateDirectivesPlugin();
   const secondPlugin = repeated.createTemplateDirectivesPlugin();
@@ -349,11 +375,8 @@ test("directive readers survive actual repeated module evaluation", async () => 
 });
 
 test("preview readers and metadata survive actual repeated module evaluation", async () => {
-  const repeatedUrl = new URL(
-    "./plugins/templatePreviewValues.js?plugin-owner-regression",
-    import.meta.url,
-  );
-  const repeated: typeof import("./plugins/templatePreviewValues") = await import(repeatedUrl.href);
+  const repeated: typeof import("./plugins/templatePreviewValues") =
+    await importRepeatedPlugin("templatePreviewValues");
   expect(repeated.templatePreviewValuesKey).not.toBe(previewValues.templatePreviewValuesKey);
   const firstPlugin = createTemplatePreviewValuesPlugin();
   const secondPlugin = repeated.createTemplatePreviewValuesPlugin();
