@@ -1,3 +1,4 @@
+import { resolvePendingRunFormatting } from "./runPropertyReviewOracle";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
@@ -446,12 +447,15 @@ test("generated later property rejection retains earlier cut provenance", () => 
       const direct = compile({ document: original, intent, mode: "editing", refusals });
       const first = compile({ document: original, intent, mode: "suggesting", refusals });
       expect(
-        resolve({
-          document: first.document,
-          revisionIds: first.revisions,
-          decision: REVISION_DECISIONS.ACCEPT,
-        }),
-      ).toStrictEqual(direct.document);
+        resolvePendingRunFormatting(
+          resolve({
+            document: first.document,
+            revisionIds: first.revisions,
+            decision: REVISION_DECISIONS.ACCEPT,
+          }),
+          "accept",
+        ),
+      ).toStrictEqual(resolvePendingRunFormatting(direct.document, "accept"));
       const second = compile({
         document: first.document,
         intent: {
@@ -476,12 +480,15 @@ test("generated later property rejection retains earlier cut provenance", () => 
         decision: REVISION_DECISIONS.REJECT,
       });
       expect(
-        resolve({
-          document: rejectedFirst,
-          revisionIds: second.revisions,
-          decision: REVISION_DECISIONS.REJECT,
-        }),
-      ).toStrictEqual(original);
+        resolvePendingRunFormatting(
+          resolve({
+            document: rejectedFirst,
+            revisionIds: second.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          }),
+          "reject",
+        ),
+      ).toStrictEqual(resolvePendingRunFormatting(original, "reject"));
     }),
     { numRuns: 50, id: "generated later property rejection retains earlier cut provenance" },
   );
@@ -552,24 +559,30 @@ test("generated retained source identities survive a later pending formatting ac
         decision: REVISION_DECISIONS.ACCEPT,
       });
       expect(
-        resolve({
-          document: acceptedDeletion,
-          revisionIds: tracked.revisions,
-          decision: REVISION_DECISIONS.ACCEPT,
-        }),
-      ).toStrictEqual(direct.document);
+        resolvePendingRunFormatting(
+          resolve({
+            document: acceptedDeletion,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.ACCEPT,
+          }),
+          "accept",
+        ),
+      ).toStrictEqual(resolvePendingRunFormatting(direct.document, "accept"));
       const rejectedFormatting = resolve({
         document: tracked.document,
         revisionIds: tracked.revisions,
         decision: REVISION_DECISIONS.REJECT,
       });
       expect(
-        resolve({
-          document: rejectedFormatting,
-          revisionIds: trackedDeleted.revisions,
-          decision: REVISION_DECISIONS.REJECT,
-        }),
-      ).toStrictEqual(original);
+        resolvePendingRunFormatting(
+          resolve({
+            document: rejectedFormatting,
+            revisionIds: trackedDeleted.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          }),
+          "reject",
+        ),
+      ).toStrictEqual(resolvePendingRunFormatting(original, "reject"));
     }),
     {
       numRuns: 25,
@@ -1527,33 +1540,44 @@ test("generated compound intents reserve source IDs before additional action sta
           refusals,
         });
         assertExactModel(
-          resolve({
-            document: tracked.document,
-            revisionIds: tracked.revisions,
-            decision: "accept",
-          }),
-          direct.document,
+          resolvePendingRunFormatting(
+            resolve({
+              document: tracked.document,
+              revisionIds: tracked.revisions,
+              decision: "accept",
+            }),
+            "accept",
+          ),
+          resolvePendingRunFormatting(direct.document, "accept"),
         );
         assertExactModel(
-          resolve({
-            document: tracked.document,
-            revisionIds: tracked.revisions,
-            decision: "reject",
-          }),
-          original,
+          resolvePendingRunFormatting(
+            resolve({
+              document: tracked.document,
+              revisionIds: tracked.revisions,
+              decision: "reject",
+            }),
+            "reject",
+          ),
+          resolvePendingRunFormatting(original, "reject"),
         );
         const before = structuredClone(original);
         const short = compileEditorIntent(original, {
           intent,
           mode: {
             type: "suggesting",
-            revision: { id: allocation.revisionId, author: "Editor" },
+            revision: { id: allocation.revisionId, author: "Editor", date: "2026-10-02T00:00:00Z" },
             newIds: { revision: [], control: allocation.newIds.control },
           },
         });
-        expect(short.isErr()).toBe(true);
-        if (short.isOk()) panic("This compound intent needs source-cut or additional action IDs.");
-        expect(short.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
+        expect(short.isOk()).toBe(!marker);
+        if (short.isErr())
+          expect(short.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
+        else
+          assertExactModel(
+            applyDocumentOps(original, short.value.ops).unwrap().document,
+            tracked.document,
+          );
         assertExactModel(original, before);
       },
     ),
