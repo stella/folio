@@ -153,8 +153,8 @@ const matchesSlots = (node: InlineNode, expected: RetainedIdentity["target"]): b
   );
 };
 
-/** Bind the exact right fragment after its source identities were freshened. */
-const bindRetainedIdentities = (
+/** Bind exact cut references after the source or right fragment identities change. */
+export const bindRetainedIdentities = (
   before: readonly InlineNode[],
   after: readonly InlineNode[],
 ): InlineNode[] => {
@@ -198,10 +198,12 @@ const bindRetainedIdentities = (
     const retained = joins.retainedAfter;
     const oldRight = before.at(index + 1);
     const freshRight = after.at(index + 1);
-    if (oldRight === undefined || freshRight === undefined) return node;
     const oldOwner = before.at(index) ?? panic("Freshening preserves each source record position.");
     const bound = retained.map((entry) => {
-      const target = atDepth({ old: oldRight, fresh: freshRight, entry, depth: 0 });
+      const target =
+        oldRight === undefined || freshRight === undefined
+          ? undefined
+          : atDepth({ old: oldRight, fresh: freshRight, entry, depth: 0 });
       let source = entry.source;
       {
         const oldChildren = childNodes(oldOwner) ?? [];

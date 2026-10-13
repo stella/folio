@@ -560,7 +560,7 @@ test("overlapping formatting rejection preserves authored runs in either resolut
 test("generated retained source identities survive a later pending formatting action", () => {
   const refusals = new Map<DocumentOpRefusalReason, number>();
   assertProperty(
-    fc.property(shapeArbitrary, (shape) => {
+    fc.property(shapeArbitrary, fc.boolean(), (shape, includeRetainedSource) => {
       const original = fixture(Object.assign({}, shape, { priorReview: true }));
       const deletion: EditorIntent = {
         type: "replaceText",
@@ -589,9 +589,12 @@ test("generated retained source identities survive a later pending formatting ac
         to: position({ offset: lengthOf(directDeleted.document) }),
         patch: { bold: true },
       };
+      // Cover the retained deletion source as well as its surviving target; replacing
+      // an existing property review must rebind both sides of the recorded cut.
+      const retainedTargetStart = shape.token === "😀" ? 2 : 1;
       const trackedFormatting: EditorIntent = {
         type: "formatRun",
-        from: position({ offset: shape.token === "😀" ? 2 : 1 }),
+        from: position({ offset: includeRetainedSource ? 0 : retainedTargetStart }),
         to: position({ offset: lengthOf(trackedDeleted.document) }),
         patch: { bold: true },
       };

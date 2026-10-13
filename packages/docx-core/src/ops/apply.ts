@@ -87,7 +87,7 @@ import {
 } from "./contract";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
-import { freshenIdentities } from "./identity";
+import { bindRetainedIdentities, freshenIdentities } from "./identity";
 import {
   collides,
   countIds,
@@ -1081,7 +1081,23 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
       fresh: readonly InlineNode[],
     ): InlineNode[] => {
       if (source.length !== fresh.length) panic("Freshening changed the run patch's structure.");
-      return fresh.map((node, index) => {
+      const priorRecords = (
+        originals: readonly InlineNode[],
+        records: readonly InlineNode[],
+      ): InlineNode[] =>
+        records.map((node, index) => {
+          const original = originals.at(index);
+          if (original === undefined) panic("Freshening preserves each run patch record.");
+          const options = original.type === "run" ? changes.get(original) : undefined;
+          if (options !== undefined)
+            return Object.assign({}, node, { propertyChanges: options.previous.propertyChanges });
+          const children = childNodes(node);
+          return children === undefined
+            ? node
+            : rebuildNode(node, priorRecords(childNodes(original) ?? [], children));
+        });
+      const prior = priorRecords(source, fresh);
+      const appended = fresh.map((node, index) => {
         const original = source.at(index);
         if (original === undefined || original.type !== node.type)
           panic("Freshening changed the run patch's node kind.");
@@ -1119,6 +1135,7 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           ? node
           : rebuildNode(node, next);
       });
+      return bindRetainedIdentities(prior, appended);
     };
     const sourceFresh = freshened.value.at(0);
     if (sourceFresh === undefined) panic("Freshening removed the run patch's paragraph.");
