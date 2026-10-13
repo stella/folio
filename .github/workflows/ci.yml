@@ -1113,6 +1113,15 @@ jobs:
       - name: Dependency smoke over every published tarball
         run: bun scripts/packaged-consumer-dependencies.ts --pack-dir test-results/package-tarballs
 
+      - name: Upload packed dependency artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packed-dependency-tarballs
+          path: test-results/package-tarballs/
+          retention-days: 1
+          if-no-files-found: warn
+
       - name: Validate published artifacts
         if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run validate-dist
