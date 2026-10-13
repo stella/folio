@@ -53,7 +53,10 @@ import {
   restoreParagraphIndentationProjection,
 } from "../docx/paragraphPropertySource";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
-import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
+import {
+  canonicalContentPosition,
+  canonicalSelectionRange,
+} from "../prosemirror/canonicalSelectionRange";
 import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import {
   toProseDoc,
@@ -239,6 +242,7 @@ class CanonicalProjection {
 
   addressAt(position: number): Result<TextPosition, CanonicalSessionError> {
     if (!Number.isInteger(position)) return refuse("The input position is not an integer.");
+    position = canonicalContentPosition(this.doc, position);
     const paragraph = this.paragraphs.find(
       ({ start, node }) => position >= start && position <= start + node.content.size,
     );
