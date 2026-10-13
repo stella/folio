@@ -1,4 +1,4 @@
-import { commentPoint, resolvedCommentPoints } from "../prosemirror/replacedAnnotations";
+import { commentPoint } from "../prosemirror/replacedAnnotations";
 import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
 import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
 import { panic } from "better-result";
@@ -414,6 +414,7 @@ const coalesceReplacementRanges = (
 };
 
 type ResolveInlineRevisionsOptions = {
+  pointComments: Set<number>;
   doc: PMNode;
   mode: RevisionResolutionMode;
   keepType: MarkType | undefined;
@@ -422,20 +423,13 @@ type ResolveInlineRevisionsOptions = {
 };
 
 export const resolveInlineRevisions = ({
+  pointComments,
   doc,
   mode,
   keepType,
   removeType,
   styleResolver,
 }: ResolveInlineRevisionsOptions) => {
-  const pointComments = new Set(
-    mode === "accept"
-      ? resolvedCommentPoints({
-          doc,
-          removes: (node) => removeType?.isInSet(node.marks) !== undefined,
-        }).keys()
-      : [],
-  );
   const context: RevisionInlineContext = {
     pointComments,
     mode,

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "direct",
+  "seed": 1785652737,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2353547210,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "3CEFFC83",
+          "quote": "apply",
+          "comment": {
+            "text": "Agreement period buyer supplier clause buyer invoice."
+          }
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "3CEFFC83",
+          "find": "apply",
+          "replace": "",
+          "precondition": {
+            "blockTextHash": "hnb08se"
+          }
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from random flow seed 1785652737"
+}

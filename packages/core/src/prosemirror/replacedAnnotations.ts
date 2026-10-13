@@ -110,17 +110,36 @@ type ResolvedCommentPointsOptions = {
   removes: (node: PMNode, position: number) => boolean;
 };
 
-/** Point fallback excludes comments belonging to retired blocks and table cells. */
-export const resolvedCommentPoints = ({
-  doc,
-  removes,
-}: ResolvedCommentPointsOptions): Map<number, number> => {
+/** The same collector serves standalone commands and the existing bulk walk. */
+export const createResolvedCommentPointCollector = (
+  removes: ResolvedCommentPointsOptions["removes"],
+) => {
   const points = new Map<number, number>();
   const retained = new Set<number>();
-  doc.descendants((node, position) => {
+  const visit = (node: PMNode, position: number, previous?: PMNode): boolean => {
     if (node.type.name === "paragraph") {
       const mark = expectParagraphAttrs(node).pPrMark;
-      if (mark?.kind === "del" || mark?.kind === "moveFrom") return false;
+      // A final block deletion retires the boundary on its preceding carrier.
+      const precedingMark =
+        previous?.type.name === "paragraph" ? expectParagraphAttrs(previous).pPrMark : null;
+      const retiredBoundary =
+        mark?.kind === "del" ||
+        mark?.kind === "moveFrom" ||
+        precedingMark?.kind === "del" ||
+        precedingMark?.kind === "moveFrom";
+      if (retiredBoundary) {
+        let survivingContent = false;
+        node.descendants((inline, offset) => {
+          if (
+            inline.isInline &&
+            !isZeroWidthAnchor(inline) &&
+            !removes(inline, position + 1 + offset)
+          )
+            survivingContent = true;
+          return !survivingContent;
+        });
+        if (!survivingContent) return false;
+      }
     }
     if (node.type.name === "tableRow" && expectTableRowAttrs(node).trDel) return false;
     if (
@@ -133,16 +152,36 @@ export const resolvedCommentPoints = ({
       if (attrs.ok && attrs.value.start.type === "commentRangeStart")
         retained.add(attrs.value.start.id);
     }
-    if (!node.isInline || isZeroWidthAnchor(node)) return;
+    if (!node.isInline || isZeroWidthAnchor(node)) return true;
     for (const mark of node.marks) {
       if (mark.type.name !== "comment") continue;
       const id = mark.attrs["commentId"];
       if (!removes(node, position)) retained.add(id);
       else if (!points.has(id)) points.set(id, position);
     }
-  });
-  for (const id of retained) points.delete(id);
-  return points;
+    return true;
+  };
+  const finish = (): Map<number, number> => {
+    for (const id of retained) points.delete(id);
+    return points;
+  };
+  return { visit, finish };
+};
+
+/** Point fallback excludes comments belonging to retired blocks and table cells. */
+export const resolvedCommentPoints = ({
+  doc,
+  removes,
+}: ResolvedCommentPointsOptions): Map<number, number> => {
+  const collector = createResolvedCommentPointCollector(removes);
+  doc.descendants((node, position, parent, index) =>
+    collector.visit(
+      node,
+      position,
+      index > 0 ? (parent?.maybeChild(index - 1) ?? undefined) : undefined,
+    ),
+  );
+  return collector.finish();
 };
 
 /** Anchors an edit must put back, and where relative to the replacement. */

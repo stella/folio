@@ -540,8 +540,8 @@ describe("a comment on words a tracked replacement removes", () => {
 
   test("stays one stretch: it reads the same before and after a save", async () => {
     const reviewer = await commentThenReplace("tracked-changes");
-    // The removed word, and the new one that takes its place.
-    expect(anchorsOf(reviewer)).toEqual(["goodpromptly"]);
+    // The removed word and its complete aligned replacement span.
+    expect(anchorsOf(reviewer)).toEqual(["good promptly."]);
     expect(anchorsOf(await reopen(reviewer))).toEqual(anchorsOf(reviewer));
   });
 

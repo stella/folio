@@ -15,6 +15,7 @@ import {
   hasReplacedAnnotations,
   nonInclusiveMarkNames,
   surveyReplacedAnnotations,
+  resolvedCommentPoints,
 } from "./replacedAnnotations";
 import { schema } from "./schema";
 
@@ -92,3 +93,34 @@ describe("surveyReplacedAnnotations", () => {
     expect(annotations.trailing.map((node) => node.attrs["marker"])).toEqual([end.attrs["marker"]]);
   });
 });
+
+// Boundary deletion can live on either adjacent physical paragraph carrier.
+test.each(["del", "moveFrom"] as const)(
+  "point comments distinguish retired %s boundaries from surviving text",
+  (kind) => {
+    const deletion = schema.marks["deletion"];
+    const comment = schema.marks["comment"];
+    if (!deletion || !comment) throw new Error("Expected revision and comment marks");
+    for (const owner of ["own", "previous", "none"] as const) {
+      for (const remaining of ["", "tail"]) {
+        const boundary = { pPrMark: { kind, info: { id: 12, author: "Reviewer" } } };
+        const previous = schema.node("paragraph", owner === "previous" ? boundary : null, [
+          schema.text("Prefix"),
+        ]);
+        const paragraph = schema.node("paragraph", owner === "own" ? boundary : null, [
+          schema.text("gone", [
+            deletion.create({ revisionId: 11, author: "Reviewer" }),
+            comment.create({ commentId: 3 }),
+          ]),
+          ...(remaining ? [schema.text(remaining)] : []),
+        ]);
+        const doc = schema.node("doc", null, [previous, paragraph]);
+        const points = resolvedCommentPoints({
+          doc,
+          removes: (node) => deletion.isInSet(node.marks) !== undefined,
+        });
+        expect([...points.keys()]).toEqual(owner === "none" || remaining ? [3] : []);
+      }
+    }
+  },
+);
