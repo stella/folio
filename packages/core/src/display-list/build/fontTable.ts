@@ -11,7 +11,7 @@ import type { EmbeddedFont } from "../../fonts/embeddedFonts";
 import { ptToPx } from "../../layout-engine/measure/measureHelpers";
 import { getFontMetrics } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
-import { resolveFontFamily } from "../../utils/fontResolver";
+import { parseFontFamilyList, resolveFontFamily } from "../../utils/fontResolver";
 import type { DisplayEmbeddedFont, DisplayFontFace, DisplayFontRef } from "../types";
 
 const CSS_NORMAL_WEIGHT = 400;
@@ -28,9 +28,6 @@ const GENERIC_FAMILIES = {
 } as const satisfies Record<GenericFamily, GenericFamily>;
 
 const DEFAULT_GENERIC: GenericFamily = "sans-serif";
-
-const splitFallbackStack = (cssFallback: string): string[] =>
-  cssFallback.split(",").map((entry) => entry.trim().replace(/^["']|["']$/gu, ""));
 
 /**
  * The category `resolveFontFamily` chose. It is the last CSS generic in the
@@ -110,7 +107,7 @@ export class FontTable {
     italic,
     measureStyle,
   }: FontFaceRequest): DisplayFontRef {
-    const stack = splitFallbackStack(
+    const stack = parseFontFamilyList(
       resolveFontFamily(fontFamily, {
         alternateFontName: alternateFontFamily,
         embeddedFontFamilyMap: measureStyle.embeddedFontFamilyMap,
