@@ -4,43 +4,247 @@
 
 ```ts
 
+import { ComponentOptionsMixin } from 'vue';
+import { ComponentProvideOptions } from 'vue';
+import { DefineComponent } from 'vue';
+import { EditorView } from 'prosemirror-view';
+import { EndnoteProperties } from '@stll/docx-core/model';
+import { FootnoteProperties } from '@stll/docx-core/model';
+import { PublicProps } from 'vue';
+import { SectionProperties } from '@stll/docx-core';
+import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
+import { Watermark } from '@stll/docx-core/model';
+
 // @public
-export const FindReplaceDialog: any;
+export const FindReplaceDialog: DefineComponent<    {
+isOpen: boolean;
+view: EditorView | null;
+scrollVisiblePositionIntoView?: (pmPos: number) => void;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+view: EditorView | null;
+scrollVisiblePositionIntoView?: (pmPos: number) => void;
+}> & Readonly<{
+onClose?: () => any;
+}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const FootnotePropertiesDialog: any;
+export const FootnotePropertiesDialog: DefineComponent<    {
+isOpen: boolean;
+footnotePr?: FootnoteProperties;
+endnotePr?: EndnoteProperties;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+apply: (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+footnotePr?: FootnoteProperties;
+endnotePr?: EndnoteProperties;
+}> & Readonly<{
+onClose?: () => any;
+onApply?: (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => any;
+}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const HyperlinkDialog: any;
+export const HyperlinkDialog: DefineComponent<    {
+isOpen: boolean;
+view: EditorView | null;
+bookmarks?: Array<{
+name: string;
+label?: string;
+}>;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+remove: () => any;
+submit: (data: {
+url?: string;
+bookmark?: string;
+displayText: string;
+tooltip: string;
+}) => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+view: EditorView | null;
+bookmarks?: Array<{
+name: string;
+label?: string;
+}>;
+}> & Readonly<{
+onClose?: () => any;
+onRemove?: () => any;
+onSubmit?: (data: {
+url?: string;
+bookmark?: string;
+displayText: string;
+tooltip: string;
+}) => any;
+}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const ImagePositionDialog: any;
+export const ImagePositionDialog: DefineComponent<    {
+isOpen: boolean;
+currentData?: ImagePositionData;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+apply: (data: ImagePositionData) => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+currentData?: ImagePositionData;
+}> & Readonly<{
+onClose?: () => any;
+onApply?: (data: ImagePositionData) => any;
+}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const ImagePropertiesDialog: any;
+export const ImagePropertiesDialog: DefineComponent<    {
+isOpen: boolean;
+view: EditorView | null;
+pmPos: number | null;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+view: EditorView | null;
+pmPos: number | null;
+}> & Readonly<{
+onClose?: () => any;
+}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const InsertImageDialog: any;
+export const InsertImageDialog: DefineComponent<    {
+isOpen: boolean;
+accept?: string;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+insert: (data: InsertImageDialogData) => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+accept?: string;
+}> & Readonly<{
+onClose?: () => any;
+onInsert?: (data: InsertImageDialogData) => any;
+}>, {
+accept: string;
+}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const InsertSymbolDialog: any;
+export const InsertSymbolDialog: DefineComponent<    {
+isOpen: boolean;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+insert: (symbol: string) => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+}> & Readonly<{
+onClose?: () => any;
+onInsert?: (symbol: string) => any;
+}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const InsertTableDialog: any;
+export const InsertTableDialog: DefineComponent<    {
+isOpen: boolean;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+insert: (config: {
+rows: number;
+cols: number;
+autofit: boolean;
+styleId: string | null;
+}) => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+}> & Readonly<{
+onClose?: () => any;
+onInsert?: (config: {
+rows: number;
+cols: number;
+autofit: boolean;
+styleId: string | null;
+}) => any;
+}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const PageSetupDialog: any;
+export const PageSetupDialog: DefineComponent<    {
+isOpen: boolean;
+sectionProperties?: SectionProperties | null;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+apply: (props: Partial<SectionProperties>) => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+sectionProperties?: SectionProperties | null;
+}> & Readonly<{
+onClose?: () => any;
+onApply?: (props: Partial<SectionProperties>) => any;
+}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const PasteSpecialDialog: any;
+export const PasteSpecialDialog: DefineComponent<    {
+isOpen: boolean;
+defaultMode?: PasteSpecialMode;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+paste: (mode: PasteSpecialMode) => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+defaultMode?: PasteSpecialMode;
+}> & Readonly<{
+onClose?: () => any;
+onPaste?: (mode: PasteSpecialMode) => any;
+}>, {
+defaultMode: PasteSpecialMode;
+}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const SplitCellDialog: any;
+export const SplitCellDialog: DefineComponent<    {
+isOpen: boolean;
+defaultRows?: number;
+defaultColumns?: number;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+split: (data: SplitCellDialogData) => any;
+close: () => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+defaultRows?: number;
+defaultColumns?: number;
+}> & Readonly<{
+onSplit?: (data: SplitCellDialogData) => any;
+onClose?: () => any;
+}>, {
+defaultRows: number;
+defaultColumns: number;
+}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const TablePropertiesDialog: any;
+export const TablePropertiesDialog: DefineComponent<    {
+isOpen: boolean;
+currentProps?: TableProperties;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+apply: (props: TablePropertiesCommand) => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+currentProps?: TableProperties;
+}> & Readonly<{
+onClose?: () => any;
+onApply?: (props: TablePropertiesCommand) => any;
+}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 // @public (undocumented)
-export const WatermarkDialog: any;
+export const WatermarkDialog: DefineComponent<    {
+isOpen: boolean;
+currentWatermark?: Watermark | undefined;
+}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
+close: () => any;
+apply: (watermark: Watermark | undefined) => any;
+}, string, PublicProps, Readonly<{
+isOpen: boolean;
+currentWatermark?: Watermark | undefined;
+}> & Readonly<{
+onClose?: () => any;
+onApply?: (watermark: Watermark | undefined) => any;
+}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
 
 ```

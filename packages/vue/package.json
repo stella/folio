@@ -87,6 +87,7 @@
     "@fontsource/noto-sans-arabic": "^5.2.7",
     "@fontsource/source-sans-3": "^5.2.9",
     "@fontsource/tinos": "^5.2.7",
+    "@stll/docx-core": "workspace:^",
     "@stll/folio-core": "workspace:^",
     "better-result": "3.0.1",
     "react": "^19.2.0",
