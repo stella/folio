@@ -16,7 +16,7 @@ import {
 } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
-import { canJoin, canSplit } from "prosemirror-transform";
+import { canSplit } from "prosemirror-transform";
 import { panic } from "better-result";
 import {
   claimRevisionIds,
@@ -129,6 +129,7 @@ import {
 } from "../prosemirror/anchoredTextBoxes";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
 import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/JoinedRunStyleExtension";
+import { paragraphJoinAfter } from "../prosemirror/commands/paragraphBookmarkJoin";
 import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
 import {
   carryParagraphProperties,
@@ -5562,6 +5563,19 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "mergeBlockWithNext": {
+        const mapped = tr.mapping.mapResult(item.blockFrom, 1);
+        const live = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
+        const paraId = item.blockNode.attrs["paraId"];
+        if (
+          !live ||
+          live.type !== item.blockNode.type ||
+          (typeof paraId === "string" && live.attrs["paraId"] !== paraId)
+        ) {
+          skipped.push({ id: item.operation.id, reason: "changedBlock" });
+          continue;
+        }
+        const blockFrom = mapped.pos;
+        const blockTo = blockFrom + live.nodeSize;
         // The block it names may be one this batch deletes, which has gone
         // (directly) or is marked deleted (tracked) by now: the batch runs
         // backwards. Directly, the merge joins whatever follows instead, as
@@ -5569,25 +5583,26 @@ const applyFolioAIEditOperationsInternal = ({
         // one at a time. Tracked, the deleted paragraphs stay until accepted,
         // but where they run to the story's end the join has nothing to put
         // a separator in front of.
-        if (mode === "direct" && !canJoin(tr.doc, item.blockTo)) {
+        const join = paragraphJoinAfter(tr.doc, blockTo);
+        if (!join) {
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
         }
-        const separator = followedOnlyByDeletedParagraphs(tr.doc, item.blockTo)
+        const separator = followedOnlyByDeletedParagraphs(tr.doc, blockTo)
           ? ""
           : (item.operation.separator ?? "");
-        const insertAt = item.blockTo - 1;
+        const insertAt = blockTo - 1;
         // The paragraph the merge leaves: the joined one, or while the merge
         // is pending, the one after the removed mark.
-        let mergedPropertiesAt = item.blockFrom;
+        let mergedPropertiesAt = blockFrom;
         // Set when a property change already records what the paragraph had.
         let mergedPropertiesRecorded = false;
-        const second = tr.doc.nodeAt(item.blockTo);
+        const second = join.next;
         // A comment running from one paragraph into the next runs across the
         // separator too, or it would cover two stretches.
-        const spanningComments = commentsAcrossBlockBoundary(tr.doc, item.blockTo);
+        const spanningComments = commentsAcrossBlockBoundary(tr.doc, blockTo);
         const withSeparator = (transaction: Transaction): Transaction => {
-          const paragraph = transaction.doc.nodeAt(item.blockFrom);
+          const paragraph = transaction.doc.nodeAt(blockFrom);
           const sourceMarks =
             paragraph?.lastChild?.marks.filter(({ type }) =>
               RUN_FORMATTING_MARK_NAMES.has(type.name),
@@ -5623,9 +5638,9 @@ const applyFolioAIEditOperationsInternal = ({
           if (separator.length > 0) {
             tr = withSeparator(tr);
           }
-          const nextPosition = item.blockTo + separator.length;
+          const nextPosition = join.nextPosition + separator.length;
           const next = tr.doc.nodeAt(nextPosition);
-          const paragraph = tr.doc.nodeAt(item.blockFrom);
+          const paragraph = tr.doc.nodeAt(blockFrom);
           if (next && paragraph) {
             tr = rebaseParagraphRuns({
               tr,
@@ -5637,7 +5652,15 @@ const applyFolioAIEditOperationsInternal = ({
           }
           // The joined runs were re-read in the first paragraph's style above.
           tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
-          tr = tr.join(item.blockTo + separator.length);
+          if (join.inlineBookmarks.length > 0) {
+            tr = tr.replaceWith(
+              blockTo + separator.length - 1,
+              nextPosition + 1,
+              join.inlineBookmarks,
+            );
+          } else {
+            tr = tr.join(blockTo + separator.length);
+          }
           // The merge removes the first paragraph's mark, and the joined
           // paragraph ends with the second one's. A section break lives on
           // the mark (ECMA-376 Part 1 §17.6.18), so the joined paragraph ends
@@ -5645,20 +5668,20 @@ const applyFolioAIEditOperationsInternal = ({
           // goes: its section runs on into the next, as accepting the same
           // merge tracked leaves it. `join` keeps the first node's attrs.
           const secondSection = second ? sectionPropertiesOf(second) : null;
-          const joined = tr.doc.nodeAt(item.blockFrom);
+          const joined = tr.doc.nodeAt(blockFrom);
           if (joined && second) {
             tr = tr.setNodeAttribute(
-              item.blockFrom,
+              blockFrom,
               "pPrMark",
               expectParagraphAttrs(second).pPrMark ?? null,
             );
           }
           if (joined && sectionPropertiesOf(joined) !== secondSection) {
-            tr = tr.setNodeAttribute(item.blockFrom, "_sectionProperties", secondSection);
+            tr = tr.setNodeAttribute(blockFrom, "_sectionProperties", secondSection);
           }
           const endingMark = second ? expectParagraphAttrs(second).pPrMark : null;
           if (joined && (endingMark?.kind === "del" || endingMark?.kind === "moveFrom")) {
-            const survivor = paragraphLeftAfter({ doc: tr.doc, paragraphPos: item.blockFrom });
+            const survivor = paragraphLeftAfter({ doc: tr.doc, paragraphPos: blockFrom });
             if (survivor !== null) {
               tr = carryParagraphProperties({
                 tr,
@@ -5688,9 +5711,9 @@ const applyFolioAIEditOperationsInternal = ({
             );
             appliedRevisionIds.push(revisionIdSeparator);
           }
-          const paragraph = tr.doc.nodeAt(item.blockFrom);
-          const joinPos = item.blockTo + separator.length;
-          const next = tr.doc.nodeAt(joinPos);
+          const paragraph = tr.doc.nodeAt(blockFrom);
+          const nextPosition = join.nextPosition + separator.length;
+          const next = tr.doc.nodeAt(nextPosition);
           if (!paragraph || !next) {
             panic("A resolved merge lost its paragraphs");
           }
@@ -5703,7 +5726,7 @@ const applyFolioAIEditOperationsInternal = ({
             // resolver joins a removed mark: the next paragraph is left.
             joinAtParagraphMark({
               tr,
-              paragraphPos: item.blockFrom,
+              paragraphPos: blockFrom,
               paragraph,
               next,
               styleResolver,
@@ -5717,19 +5740,19 @@ const applyFolioAIEditOperationsInternal = ({
             // as the first, as a chain of pending merges does. A break this
             // batch's final deletion will retire counts as pending already:
             // one at a time, that deletion has run before the merge.
-            const joinedMark: unknown = tr.doc.nodeAt(item.blockFrom)?.attrs["pPrMark"];
+            const joinedMark: unknown = tr.doc.nodeAt(blockFrom)?.attrs["pPrMark"];
             const removedBreakPositions = pendingRemovedFinalBreakPositions(
               tr,
               deletedFinalParagraphs,
             );
             const carryPos =
-              isDeletedPPrMark(joinedMark) || removedBreakPositions.has(item.blockFrom)
+              isDeletedPPrMark(joinedMark) || removedBreakPositions.has(blockFrom)
                 ? (paragraphLeftAfter({
                     doc: tr.doc,
-                    paragraphPos: item.blockFrom,
+                    paragraphPos: blockFrom,
                     removedBreakPositions,
-                  }) ?? item.blockFrom)
-                : item.blockFrom;
+                  }) ?? blockFrom)
+                : blockFrom;
             const carried = carryParagraphProperties({
               tr,
               position: carryPos,
@@ -5745,7 +5768,7 @@ const applyFolioAIEditOperationsInternal = ({
               appliedRevisionIds = appliedRevisionIds.filter((id) => id !== revisionIdMark);
             }
           } else {
-            tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
+            tr = tr.setNodeAttribute(blockFrom, "pPrMark", {
               kind: "del",
               info: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
             });
@@ -5757,12 +5780,12 @@ const applyFolioAIEditOperationsInternal = ({
             const survivorPos =
               paragraphLeftAfter({
                 doc: tr.doc,
-                paragraphPos: item.blockFrom,
+                paragraphPos: blockFrom,
                 removedBreakPositions: pendingRemovedFinalBreakPositions(
                   tr,
                   deletedFinalParagraphs,
                 ),
-              }) ?? joinPos;
+              }) ?? nextPosition;
             const carried = carryParagraphProperties({
               tr,
               position: survivorPos,
@@ -7834,7 +7857,7 @@ const resolveOperationTarget = ({
     // of a table cell, and off the last paragraph of the story: there is no
     // sibling to join with, so accepting the revision could not do what the
     // mark says it does.
-    if (!canJoin(doc, blockTo)) {
+    if (!paragraphJoinAfter(doc, blockTo)) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
     return {

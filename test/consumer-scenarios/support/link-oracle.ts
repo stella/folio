@@ -128,7 +128,9 @@ export const comparePreservedLinks = ({
   for (const [id, expected] of before) {
     // A real text edit changes this reader text. A missing model projection
     // must not look like a text edit when the reader still shows the old text.
-    if (readerText.get(id) !== expected.text) continue;
+    // An empty paragraph has no character targets, even when a deletion leaves
+    // a structural carrier whose model cannot project ordinary inline text.
+    if (expected.text.length === 0 || readerText.get(id) !== expected.text) continue;
     const actual = after.get(id);
     checked++;
     if (!actual || actual.text !== expected.text) {

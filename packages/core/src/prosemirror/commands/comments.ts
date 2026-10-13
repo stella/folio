@@ -21,10 +21,7 @@ import { resolveParagraphChangeAttrs } from "./resolveParagraphProperties";
 import { resolveNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
 
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
-import {
-  getProseParagraphPropertySourceToken,
-  markParagraphPropertySourceTransfers,
-} from "../../docx/paragraphPropertySource";
+import { markParagraphPropertySourceTransfers } from "../../docx/paragraphPropertySource";
 
 import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
 import type { RunPropertyChange } from "../../types/document";
@@ -61,7 +58,7 @@ import {
 } from "../contentControlRevisions";
 import { getDocumentNumbering } from "../plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../plugins/documentStyleState";
-import { paragraphRunStyleContext, paragraphRunStyleContextAt } from "../runStyleFormatting";
+import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import {
   reconstructRejectedRunFormattingMarks,
   restoreHistoricalRunFormatting,
@@ -78,10 +75,7 @@ import { runInCellPending, runParagraphIntoTable } from "../tableRunIn";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
-import {
-  rebaseParagraphRuns,
-  setParagraphAttrsWithRebasedRunFormatting,
-} from "../rebaseParagraphRunFormatting";
+import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import {
@@ -100,7 +94,6 @@ import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "./propertyChangeScope";
-import { inlineBookmarksForParagraphJoin } from "./paragraphBookmarkJoin";
 
 /**
  * Add a comment mark to the current selection.
@@ -657,41 +650,13 @@ function resolveChange(
         // away removes its section endpoint, so the joined paragraph keeps
         // only a section endpoint already owned by the following paragraph.
         try {
-          if (boundaries.length > 0) {
-            const leftToken = getProseParagraphPropertySourceToken(paragraph);
-            const rightToken = getProseParagraphPropertySourceToken(nextNode);
-            const inlineBookmarks = inlineBookmarksForParagraphJoin({
-              first: paragraph,
-              boundaries,
-              second: nextNode,
-            });
-            if (!inlineBookmarks) continue;
-            tr.replaceWith(joinPos - 1, nextPos + 1, inlineBookmarks);
-            tr.setNodeMarkup(mappedPos, undefined, nextNode.attrs);
-            markParagraphPropertySourceTransfers(tr, [
-              {
-                displacedToken: typeof leftToken === "string" ? leftToken : null,
-                selectedToken: typeof rightToken === "string" ? rightToken : null,
-              },
-            ]);
-            if (styleResolver && paragraph.content.size > 0) {
-              rebaseParagraphRuns({
-                previousContext: paragraphRunStyleContext(paragraph, styleResolver),
-                paragraphPosition: mappedPos,
-                range: { from: 0, to: paragraph.content.size },
-                styleResolver,
-                tr,
-              });
-            }
-          } else {
-            joinAtParagraphMark({
-              tr,
-              paragraphPos: mappedPos,
-              paragraph,
-              next: nextNode,
-              styleResolver,
-            });
-          }
+          joinAtParagraphMark({
+            tr,
+            paragraphPos: mappedPos,
+            paragraph,
+            next: nextNode,
+            styleResolver,
+          });
           joinSeams.push({
             position: mappedPos + 1 + paragraph.content.size,
             step: tr.steps.length,
