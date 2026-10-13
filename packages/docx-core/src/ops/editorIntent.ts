@@ -522,13 +522,17 @@ const intentRunFormatting = (
     : (applyFormattingPatch(authored, runPropsPatch) ?? {});
 };
 
-/** A new logical paragraph inherits the surviving paragraph mark's formatting. */
-const splitParagraphFields = (document: Document, at: TextPosition) => {
-  const survivor = editorParagraphGroups(document, at.story)
+/** The ending physical mark owns one logical paragraph's properties. */
+const paragraphMarkOwner = (document: Document, at: TextPosition) =>
+  editorParagraphGroups(document, at.story)
     .find(({ paragraphs }) =>
       paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(at.blockId)),
     )
     ?.paragraphs.at(-1);
+
+/** A new logical paragraph inherits the surviving paragraph mark's formatting. */
+const splitParagraphFields = (document: Document, at: TextPosition) => {
+  const survivor = paragraphMarkOwner(document, at);
   return survivor?.formatting === undefined ? {} : { formatting: survivor.formatting };
 };
 
@@ -1539,7 +1543,16 @@ export const compileEditorIntent = (
               } as const,
             ]
           : [];
-      const paragraphOps = intent.items.map(
+      const itemsByMark = new Map<string, (typeof intent.items)[number]>();
+      for (const { at, ilvl } of intent.items) {
+        const blockId = paragraphMarkOwner(document, at)?.paraId ?? at.blockId;
+        itemsByMark.set(`${JSON.stringify(at.story)}:${idKey(blockId)}`, {
+          at: Object.assign({}, at, { blockId }),
+          ilvl,
+        });
+      }
+      const paragraphOps = Array.from(
+        itemsByMark.values(),
         ({ at, ilvl }) =>
           ({
             type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
@@ -1577,7 +1590,7 @@ export const compileEditorIntent = (
         {
           type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
           story: intent.at.story,
-          blockId: intent.at.blockId,
+          blockId: paragraphMarkOwner(document, intent.at)?.paraId ?? intent.at.blockId,
           patch: intent.patch,
           ...(mode.type === "suggesting"
             ? { propertyReview: PROPERTY_REVIEW_POLICIES.APPEND }

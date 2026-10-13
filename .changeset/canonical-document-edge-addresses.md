@@ -3,4 +3,4 @@
 "@stll/docx-core": minor
 ---
 
-Resolve whole-document input boundaries and coalesce pending run formatting revisions.
+Resolve input boundaries and surviving paragraph properties, preserve prose formatting toggles, and coalesce pending run formatting revisions.

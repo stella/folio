@@ -14,6 +14,7 @@ test("successive typing follows the replacement caret across comment boundaries"
       fc.constantFrom("x", "é", "👍🏽"),
       fc.integer({ min: 0, max: 3 }),
       (first, references) => {
+        const coveredText = new Map<string, string>();
         for (const type of ["editing", "suggesting"] as const) {
           const atoms = Array.from(
             { length: references },
@@ -91,8 +92,21 @@ test("successive typing follows the replacement caret across comment boundaries"
             state = published.unwrap().state;
           }
           // Comment references retain their anchor but contribute no authored text.
-          expect(toProseDoc(session.document).textContent).toBe(typed.join(""));
+          const projected = toProseDoc(session.document);
+          expect(projected.textContent).toBe(typed.join(""));
+          const covered: string[] = [];
+          projected.descendants((node) => {
+            if (
+              node.isText &&
+              node.marks.some(
+                (mark) => mark.type.name === "comment" && mark.attrs["commentId"] === 0,
+              )
+            )
+              covered.push(node.text ?? "");
+          });
+          coveredText.set(type, covered.join(""));
         }
+        expect(coveredText.get("suggesting")).toBe(coveredText.get("editing"));
       },
     ),
     {
