@@ -5807,7 +5807,7 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
       }
     }
 
-    return result;
+    return Object.keys(result).length > 0 ? result : undefined;
   }
 
   // Fallback: reconstruct formatting from individual attrs

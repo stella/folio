@@ -2393,9 +2393,9 @@ function convertTableCell({
     attrs.margins = effectiveFormatting.margins;
     attrs._resolvedMargins = effectiveFormatting.margins;
   }
-  if (formatting) {
-    attrs._originalFormatting = formatting;
-  }
+  // An absent cell property set is still an authored baseline. Resolved
+  // table borders and margins must remain inherited on conversion back.
+  attrs._originalFormatting = formatting ?? {};
   // Carry `w:tcPrChange` opaquely through PM for round-trip + accept/reject.
   if (cell.propertyChanges && cell.propertyChanges.length > 0) {
     attrs.tcPrChange = [...cell.propertyChanges];
