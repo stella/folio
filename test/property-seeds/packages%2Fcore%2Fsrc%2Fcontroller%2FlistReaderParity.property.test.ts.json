@@ -4,6 +4,12 @@
       "seed": 1636002,
       "note": "Reader parity across source tiers, tracked boundaries, restarts, and original paragraphs.",
       "date": "2026-10-11"
+    },
+    {
+      "seed": 1636002,
+      "path": "0:0:0:0:1:0:1:3",
+      "note": "Sparse numbering levels preserve intermediate template punctuation and counter state.",
+      "date": "2026-10-13"
     }
   ]
 }

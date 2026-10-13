@@ -7,7 +7,7 @@ import {
   paragraphNumberingSourcesFromBoundary,
 } from "./numberingAttr";
 import type { ParagraphAttrs } from "./schema/nodes";
-import type { ListRenderingAttrKey } from "./listRenderingAttrs";
+import { hasListRendering, type ListRenderingAttrKey } from "./listRenderingAttrs";
 
 export type ListCounterState = {
   counters: Map<number, number[]>;
@@ -247,6 +247,7 @@ export function resolveListTemplateWithComponents({
     }
     const counter = counters[index];
     if (counter === undefined || Number.isNaN(counter)) {
+      value += match.groups?.["punct"] ?? "";
       continue;
     }
     const formatted = formatCounter(counter, forceDecimal ? "decimal" : levelFormats?.[index]);
@@ -281,6 +282,10 @@ function formatNumberedMarker(counters: number[], level: number): string {
 }
 
 export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState): string | null {
+  if (!hasListRendering(attrs)) {
+    state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
+    return null;
+  }
   const markerTemplate = attrs.listMarkerTemplate ?? attrs.listMarker;
   const foldedMarkerSuffix = attrs.listFoldedMarkerSuffix ?? undefined;
   const effectiveNumbering = effectiveParagraphNumbering(
