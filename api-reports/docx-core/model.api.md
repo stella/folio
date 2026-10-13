@@ -525,6 +525,9 @@ export type FootnoteProperties = {
 };
 
 // @public
+export const getSingularRunPropertyChange: (propertyChanges: readonly RunPropertyChange[] | undefined) => RunPropertyChange | undefined;
+
+// @public
 export type HeaderFooter = {
     type: "header" | "footer";
     hdrFtrType: HeaderFooterType;
