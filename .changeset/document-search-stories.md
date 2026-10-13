@@ -4,4 +4,4 @@
 "@stll/folio-vue": minor
 ---
 
-Highlight all document search matches across rendered stories and expose search navigation and counts.
+Highlight all document search matches across rendered stories and expose navigation, counts, and safe replacement eligibility.

@@ -4998,9 +4998,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       onReplace: handleReplace,
       onReplaceAll: handleReplaceAll,
       currentResult: currentFindResult,
+      readOnly,
     }),
     [
       currentFindResult,
+      readOnly,
       closeFindDialog,
       findReplace.state,
       handleFind,

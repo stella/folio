@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "Predchádzajúci výskyt",
       "previousShortcut": "Predchádzajúci výskyt (Shift+Enter)",
       "replaceAll": "Nahradiť všetko",
+      "replaceAllSummary": "Nahradené: {replacedCount}, preskočené: {skippedCount}",
       "replaceCurrent": "Nahradiť aktuálny výskyt",
       "replacePlaceholder": "Text náhrady...",
       "replaceText": "Text náhrady",

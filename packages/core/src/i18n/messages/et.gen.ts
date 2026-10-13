@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "Eelmine vaste",
       "previousShortcut": "Eelmine vaste (Shift+Enter)",
       "replaceAll": "Asenda kõik",
+      "replaceAllSummary": "Asendatud: {replacedCount}, vahele jäetud: {skippedCount}",
       "replaceCurrent": "Asenda praegune vaste",
       "replacePlaceholder": "Asendustekst…",
       "replaceText": "Asendustekst",

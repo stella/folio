@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "النتيجة السابقة",
       "previousShortcut": "النتيجة السابقة (Shift+Enter)",
       "replaceAll": "استبدال الكل",
+      "replaceAllSummary": "تم استبدال {replacedCount} وتخطي {skippedCount}",
       "replaceCurrent": "استبدال النتيجة الحالية",
       "replacePlaceholder": "نص الاستبدال...",
       "replaceText": "نص الاستبدال",

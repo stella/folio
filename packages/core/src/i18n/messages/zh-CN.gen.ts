@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "上一个匹配项",
       "previousShortcut": "上一个匹配项 (Shift+Enter)",
       "replaceAll": "全部替换",
+      "replaceAllSummary": "已替换 {replacedCount} 项，已跳过 {skippedCount} 项",
       "replaceCurrent": "替换当前匹配项",
       "replacePlaceholder": "替换为...",
       "replaceText": "替换文本",

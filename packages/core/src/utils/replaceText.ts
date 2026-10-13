@@ -9,11 +9,12 @@ import type {
   DocumentBody,
   Paragraph,
   Run,
-  TextContent,
   ParagraphContent,
   TextFormatting,
 } from "../types/document";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
+import { getFindParagraphText } from "./findReplace";
+import { panic } from "better-result";
 
 type ReplaceRange = {
   start: { paragraphIndex: number; offset: number };
@@ -37,17 +38,27 @@ export function replaceTextInDocument(
       return newDoc;
     }
 
-    paragraph.content = deleteTextInParagraph(paragraph, start.offset, end.offset);
-    paragraph.content = insertTextAtOffset(paragraph, start.offset, text, formatting);
+    replaceTextInParagraph({
+      paragraph,
+      startOffset: start.offset,
+      endOffset: end.offset,
+      text,
+      formatting,
+    });
   } else {
     const startParagraph = getParagraphByIndex(body, start.paragraphIndex);
     if (!startParagraph) {
       return newDoc;
     }
-    const startText = getParagraphText(startParagraph);
+    const startText = getFindParagraphText(startParagraph);
 
-    startParagraph.content = deleteTextInParagraph(startParagraph, start.offset, startText.length);
-    startParagraph.content = insertTextAtOffset(startParagraph, start.offset, text, formatting);
+    replaceTextInParagraph({
+      paragraph: startParagraph,
+      startOffset: start.offset,
+      endOffset: startText.length,
+      text,
+      formatting,
+    });
 
     const paragraphsToRemove: number[] = [];
     for (let i = start.paragraphIndex + 1; i <= end.paragraphIndex; i++) {
@@ -123,151 +134,123 @@ function getParagraphByIndex(body: DocumentBody, paragraphIndex: number): Paragr
   return walkBlocks(body.content);
 }
 
-function getParagraphText(paragraph: Paragraph): string {
-  let text = "";
-  for (const item of paragraph.content) {
-    if (item.type === "run") {
-      for (const c of item.content) {
-        if (c.type === "text") {
-          text += c.text;
-        }
-      }
-    } else if (item.type === "hyperlink") {
-      for (const child of item.children) {
-        if (child.type !== "run") {
-          continue;
-        }
-        for (const c of child.content) {
-          if (c.type === "text") {
-            text += c.text;
-          }
-        }
-      }
-    }
-  }
-  return text;
-}
+type ReplaceParagraphTextOptions = {
+  paragraph: Paragraph;
+  startOffset: number;
+  endOffset: number;
+  text: string;
+  formatting?: TextFormatting;
+};
 
-function deleteTextInParagraph(
-  paragraph: Paragraph,
-  startOffset: number,
-  endOffset: number,
-): ParagraphContent[] {
-  const result: ParagraphContent[] = [];
+const itemTextLength = (item: ParagraphContent): number =>
+  getFindParagraphText({ type: "paragraph", content: [item] }).length;
+
+/** Walk authored offsets once, preserving wrappers and opaque source units. */
+const replaceTextInParagraph = ({
+  paragraph,
+  startOffset,
+  endOffset,
+  text,
+  formatting,
+}: ReplaceParagraphTextOptions): void => {
   let currentOffset = 0;
-
-  for (const item of paragraph.content) {
-    if (item.type === "run") {
-      const newContent: Run["content"] = [];
-      for (const content of item.content) {
-        if (content.type === "text") {
-          const textStart = currentOffset;
-          const textEnd = currentOffset + content.text.length;
-
-          if (textEnd <= startOffset || textStart >= endOffset) {
-            newContent.push(content);
-          } else {
-            let newText = "";
-            if (textStart < startOffset) {
-              newText += content.text.slice(0, startOffset - textStart);
+  let inserted = false;
+  const visit = (items: ParagraphContent[]): void => {
+    for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+      const item = items.at(itemIndex);
+      if (!item) continue;
+      switch (item.type) {
+        case "run": {
+          const before: Run["content"] = [];
+          const after: Run["content"] = [];
+          let splitAtInsertion = false;
+          for (const unit of item.content) {
+            const unitStart = currentOffset;
+            const unitText = getFindParagraphText({
+              type: "paragraph",
+              content: [{ type: "run", content: [unit] }],
+            });
+            const unitLength = unitText.length;
+            const unitEnd = unitStart + unitLength;
+            currentOffset = unitEnd;
+            const output = splitAtInsertion ? after : before;
+            if (unit.type === "preservedXml" || unitLength === 0) {
+              output.push(unit);
+              continue;
             }
-            if (textEnd > endOffset) {
-              newText += content.text.slice(endOffset - textStart);
+            const overlaps = unitEnd > startOffset && unitStart < endOffset;
+            const insertionPoint =
+              !inserted &&
+              startOffset === endOffset &&
+              startOffset >= unitStart &&
+              startOffset <= unitEnd;
+            if (!overlaps && !insertionPoint) {
+              output.push(unit);
+              continue;
             }
-            if (newText) {
-              newContent.push({ ...content, text: newText });
+            const prefix = unitText.slice(0, Math.max(0, startOffset - unitStart));
+            const suffix = unitText.slice(Math.max(0, endOffset - unitStart));
+            if (prefix) output.push({ type: "text", text: prefix });
+            if (!inserted) {
+              inserted = true;
+              if (formatting) splitAtInsertion = true;
+              else if (text) output.push({ type: "text", text });
             }
+            if (suffix) (splitAtInsertion ? after : before).push({ type: "text", text: suffix });
           }
-          currentOffset = textEnd;
-        } else {
-          newContent.push(content);
+          if (!splitAtInsertion) {
+            item.content = before;
+            break;
+          }
+          const replacement: Run[] = [];
+          if (before.length > 0) replacement.push({ ...item, content: before });
+          if (text)
+            replacement.push({ type: "run", content: [{ type: "text", text }], formatting });
+          if (after.length > 0) replacement.push({ ...item, content: after });
+          items.splice(itemIndex, 1, ...replacement);
+          itemIndex += replacement.length - 1;
+          break;
         }
-      }
-      if (newContent.length > 0) {
-        result.push({ ...item, content: newContent });
-      }
-    } else {
-      result.push(item);
-    }
-  }
-
-  return result;
-}
-
-function insertTextAtOffset(
-  paragraph: Paragraph,
-  offset: number,
-  text: string,
-  formatting?: TextFormatting,
-): ParagraphContent[] {
-  if (!text) {
-    return paragraph.content;
-  }
-
-  let currentOffset = 0;
-
-  for (const item of paragraph.content) {
-    if (item.type === "run") {
-      for (let ci = 0; ci < item.content.length; ci++) {
-        // SAFETY: ci < item.content.length in for loop
-        const content = item.content[ci]!;
-        if (content.type === "text") {
-          const textStart = currentOffset;
-          const textEnd = currentOffset + content.text.length;
-
-          if (offset >= textStart && offset <= textEnd) {
-            const relOffset = offset - textStart;
-            if (formatting) {
-              const before = content.text.slice(0, relOffset);
-              const after = content.text.slice(relOffset);
-              const newContent: Run["content"] = [];
-              if (before) {
-                newContent.push({ type: "text", text: before });
-              }
-              const newRun: TextContent = { type: "text", text };
-              item.content.splice(ci, 1, ...newContent);
-              const insertRun: Run = {
-                type: "run",
-                content: [newRun],
-                formatting,
-              };
-              const afterItems: Run["content"] = [];
-              if (after) {
-                afterItems.push({ type: "text" as const, text: after });
-              }
-              const remaining = item.content.splice(ci + newContent.length);
-              const afterRun: Run = {
-                type: "run",
-                content: [...remaining, ...afterItems],
-                ...(item.formatting !== undefined ? { formatting: item.formatting } : {}),
-              };
-              const idx = paragraph.content.indexOf(item);
-              paragraph.content.splice(idx + 1, 0, insertRun);
-              if (afterItems.length > 0 || remaining.length > 0) {
-                paragraph.content.splice(idx + 2, 0, afterRun);
-              }
-              return paragraph.content;
-            }
-            content.text = content.text.slice(0, relOffset) + text + content.text.slice(relOffset);
-            return paragraph.content;
-          }
-          currentOffset = textEnd;
+        case "hyperlink":
+          visit(item.children);
+          break;
+        case "inlineWrapper":
+        case "inlineSdt":
+        case "insertion":
+        case "deletion":
+        case "moveFrom":
+        case "moveTo":
+          visit(item.content);
+          break;
+        case "simpleField":
+        case "complexField":
+        case "preservedInline":
+        case "mathEquation":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "commentReference":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          // Fields and visible atoms contribute offsets but remain opaque.
+          currentOffset += itemTextLength(item);
+          break;
+        default: {
+          const unsupported: never = item;
+          panic("Unsupported replacement paragraph content", { content: unsupported });
         }
       }
     }
-  }
-
-  // If we get here, insert at the end
-  const lastRun = paragraph.content.findLast((item): item is Run => item.type === "run");
-  if (lastRun) {
-    lastRun.content.push({ type: "text", text });
-  } else {
+  };
+  visit(paragraph.content);
+  if (!inserted && startOffset === endOffset && startOffset === currentOffset && text) {
     paragraph.content.push({
       type: "run",
       content: [{ type: "text", text }],
-      formatting: formatting ?? {},
+      ...(formatting ? { formatting } : {}),
     });
   }
-
-  return paragraph.content;
-}
+};

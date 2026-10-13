@@ -5,6 +5,7 @@ import type {
   FootnoteProperties,
   SectionProperties,
 } from "@stll/folio-core/types/document";
+import type { ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
 import type { FindMatch, FindOptions, FindResult } from "./dialogs/findReplaceUtils";
 import type { ImagePositionData } from "./dialogs/ImagePositionDialog";
 import type { ImagePropertiesData } from "./dialogs/ImagePropertiesDialog";
@@ -59,8 +60,13 @@ export type FindReplaceMount = {
   onFindNext: () => FindMatch | null;
   onFindPrevious: () => FindMatch | null;
   onReplace: (replaceText: string) => boolean;
-  onReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => number;
+  onReplaceAll: (
+    searchText: string,
+    replaceText: string,
+    options: FindOptions,
+  ) => ReplaceAllSummary;
   currentResult: FindResult | null;
+  readOnly: boolean;
 };
 
 export type TablePropertiesMount = {
@@ -144,6 +150,8 @@ export function DocxEditorDialogs({
           onReplaceAll={findReplace.onReplaceAll}
           initialSearchText={findReplace.state.searchText}
           currentResult={findReplace.currentResult}
+          readOnly={findReplace.readOnly}
+          replaceMode={findReplace.state.dialog.mode === "replace"}
         />
       )}
       {tableProperties.isOpen && (

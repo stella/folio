@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "ההתאמה הקודמת",
       "previousShortcut": "ההתאמה הקודמת (Shift+Enter)",
       "replaceAll": "החלף הכל",
+      "replaceAllSummary": "הוחלפו {replacedCount}, דולגו {skippedCount}",
       "replaceCurrent": "החלף את התוצאה הנוכחית",
       "replacePlaceholder": "טקסט חלופי...",
       "replaceText": "טקסט חלופי",

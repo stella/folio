@@ -109,6 +109,7 @@
         <FolioButton
           variant="ghost"
           size="xs"
+          :disabled="!canReplaceCurrent"
           data-testid="replace-current"
           :title="t('findReplace.replaceCurrent')"
           @mousedown.prevent="handleReplace"
@@ -125,6 +126,14 @@
           {{ t("findReplace.replaceAll") }}
         </FolioButton>
       </div>
+      <p
+        v-if="replacementSummary"
+        role="status"
+        aria-live="polite"
+        class="find-replace-dialog__summary"
+      >
+        {{ t("findReplace.replaceAllSummary", replacementSummary) }}
+      </p>
     </div>
   </div>
 </template>
@@ -133,6 +142,7 @@
 import { computed, nextTick, ref, toRef, watch } from "vue";
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
+import type { ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
 import type { UseFindReplaceReturn } from "../../composables/useFindReplace";
 
 const { t } = useTranslation();
@@ -153,20 +163,28 @@ const emit = defineEmits<{
 
 const searchInputRef = ref<HTMLInputElement | null>(null);
 const replaceMode = ref(false);
+const replacementSummary = ref<ReplaceAllSummary | null>(null);
 const {
   searchText,
   replaceText,
   options,
   matches,
   currentIndex,
+  canReplaceCurrent,
   performSearch,
   scheduleSearch,
   findNext,
   findPrevious,
   replaceCurrent: handleReplace,
-  replaceAll: handleReplaceAll,
+  replaceAll,
   clear: clearHighlights,
 } = props.search;
+const handleReplaceAll = () => {
+  replacementSummary.value = replaceAll();
+};
+watch([searchText, () => options.matchCase, () => options.matchWholeWord], () => {
+  replacementSummary.value = null;
+});
 const matchCase = toRef(options, "matchCase");
 const matchWholeWord = toRef(options, "matchWholeWord");
 
@@ -197,6 +215,7 @@ watch(
 );
 
 function close() {
+  replacementSummary.value = null;
   clearHighlights();
   emit("close");
 }

@@ -19,9 +19,19 @@ import type { Document } from "../types/document";
 import { decodeOoxmlSymbolCharacter } from "./ooxmlSymbol";
 import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
 
+export type ReplaceEligibility =
+  | { status: "allowed" }
+  | {
+      status: "blocked";
+      reason: "field-result" | "atomic-content" | "hidden-content" | "non-body-story";
+    };
+
+export type ReplaceAllSummary = { replacedCount: number; skippedCount: number };
+
 type ParagraphFindMatch = {
   paragraphIndex: number;
   contentIndex: number;
+  replacement: ReplaceEligibility;
   startOffset: number;
   endOffset: number;
   text: string;
@@ -52,6 +62,19 @@ export type FindMatch = ParagraphFindMatch &
         anchorParagraphIndex?: never;
       }
   );
+
+/** One replacement policy for every host; searchability does not imply editability. */
+export const replaceEligibility = (
+  match: Pick<FindMatch, "story" | "textBoxIndex" | "commentId" | "replacement">,
+): ReplaceEligibility => {
+  if (
+    (match.story !== undefined && match.story !== "main") ||
+    match.textBoxIndex !== undefined ||
+    match.commentId !== undefined
+  )
+    return { status: "blocked", reason: "non-body-story" };
+  return match.replacement;
+};
 
 export type FindOptions = {
   matchCase: boolean;
@@ -215,6 +238,7 @@ export const findInDocument = (
       });
     }
   }
+  for (const match of matches) match.replacement = replaceEligibility(match);
   return matches;
 };
 
@@ -295,6 +319,8 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
   let text = "";
   let authoredOffset = 0;
   const offsets: number[] = [];
+  const atomicContentRanges: { start: number; end: number }[] = [];
+  const fieldTextRanges: { start: number; end: number }[] = [];
   const excludedTextRanges: { start: number; end: number }[] = [];
   const pageBreakOffsets: number[] = [];
   const visit = (items: readonly ParagraphContent[]): void => {
@@ -310,6 +336,7 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
       if (item.type === "complexField" || item.type === "simpleField") {
         const start = text.length;
         visit(item.type === "complexField" ? item.fieldResult : item.content);
+        fieldTextRanges.push({ start, end: text.length });
         if (isPageDependentSearchField(item.instruction))
           excludedTextRanges.push({ start, end: text.length });
         continue;
@@ -319,6 +346,13 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
         continue;
       }
       const part = getParagraphContentSearchProjection(item);
+      for (const range of part.atomicContentRanges ?? [])
+        atomicContentRanges.push({
+          start: text.length + range.start,
+          end: text.length + range.end,
+        });
+      for (const range of part.fieldTextRanges ?? [])
+        fieldTextRanges.push({ start: text.length + range.start, end: text.length + range.end });
       for (const range of part.excludedTextRanges ?? [])
         excludedTextRanges.push({ start: text.length + range.start, end: text.length + range.end });
       for (const offset of part.pageBreakOffsets) pageBreakOffsets.push(text.length + offset);
@@ -328,7 +362,14 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
     }
   };
   visit(paragraph.content);
-  return { text, offsets, pageBreakOffsets, excludedTextRanges };
+  return {
+    text,
+    offsets,
+    pageBreakOffsets,
+    excludedTextRanges,
+    fieldTextRanges,
+    atomicContentRanges,
+  };
 };
 
 /** Authored paragraph text displayed by comment UI, using the search owner. */
@@ -356,11 +397,38 @@ export const findInParagraph = (
     )
     .map(({ start, end }) => ({
       paragraphIndex,
+      replacement: replacementForProjection({ projection, start, end }),
       contentIndex: findContentIndexAtOffset(paragraph, projection.offsets.at(start) ?? start),
       startOffset: projection.offsets.at(start) ?? start,
       endOffset: (projection.offsets.at(end - 1) ?? end - 1) + 1,
       text: projection.text.slice(start, end),
     }));
+};
+
+type ReplacementProjectionOptions = {
+  projection: SearchProjection & { offsets: number[] };
+  start: number;
+  end: number;
+};
+const replacementForProjection = ({
+  projection,
+  start,
+  end,
+}: ReplacementProjectionOptions): ReplaceEligibility => {
+  if ((projection.fieldTextRanges ?? []).some((range) => range.start < end && range.end > start))
+    return { status: "blocked", reason: "field-result" };
+  if (
+    (projection.atomicContentRanges ?? []).some((range) => range.start < end && range.end > start)
+  )
+    return { status: "blocked", reason: "atomic-content" };
+  for (let offset = start + 1; offset < end; offset++) {
+    if (
+      (projection.offsets.at(offset) ?? offset) !==
+      (projection.offsets.at(offset - 1) ?? offset - 1) + 1
+    )
+      return { status: "blocked", reason: "hidden-content" };
+  }
+  return { status: "allowed" };
 };
 
 type ParagraphVisitor = (paragraph: Paragraph, paragraphIndex: number, visible: boolean) => void;
@@ -446,31 +514,43 @@ type SearchProjection = {
   text: string;
   pageBreakOffsets: number[];
   excludedTextRanges?: { start: number; end: number }[];
+  fieldTextRanges?: { start: number; end: number }[];
+  atomicContentRanges?: { start: number; end: number }[];
 };
 
 const joinSearchProjections = (parts: readonly SearchProjection[]): SearchProjection => {
   let text = "";
   const pageBreakOffsets: number[] = [];
+  const atomicContentRanges: { start: number; end: number }[] = [];
+  const fieldTextRanges: { start: number; end: number }[] = [];
   const excludedTextRanges: { start: number; end: number }[] = [];
   for (const part of parts) {
     const baseOffset = text.length;
     text += part.text;
+    for (const range of part.atomicContentRanges ?? [])
+      atomicContentRanges.push({ start: baseOffset + range.start, end: baseOffset + range.end });
+    for (const range of part.fieldTextRanges ?? [])
+      fieldTextRanges.push({ start: baseOffset + range.start, end: baseOffset + range.end });
     for (const range of part.excludedTextRanges ?? [])
       excludedTextRanges.push({ start: baseOffset + range.start, end: baseOffset + range.end });
     for (const offset of part.pageBreakOffsets) {
       pageBreakOffsets.push(baseOffset + offset);
     }
   }
-  return { text, pageBreakOffsets, excludedTextRanges };
+  return { text, pageBreakOffsets, excludedTextRanges, fieldTextRanges, atomicContentRanges };
 };
 
 const getRunSearchProjection = (run: Run): SearchProjection => {
   let text = "";
   const pageBreakOffsets: number[] = [];
+  const atomicContentRanges: { start: number; end: number }[] = [];
   for (const item of run.content) {
     switch (item.type) {
-      case "text":
       case "preservedXml":
+        atomicContentRanges.push({ start: text.length, end: text.length + item.text.length });
+        text += item.text;
+        break;
+      case "text":
         text += item.text;
         break;
       case "symbol":
@@ -502,7 +582,7 @@ const getRunSearchProjection = (run: Run): SearchProjection => {
       }
     }
   }
-  return { text, pageBreakOffsets };
+  return { text, pageBreakOffsets, atomicContentRanges };
 };
 
 // A transparent wrapper inside the link is read through: the text it holds is
@@ -549,17 +629,24 @@ const getParagraphContentSearchProjection = (content: ParagraphContent): SearchP
       return joinSearchProjections(content.content.map(getParagraphContentSearchProjection));
     case "simpleField":
     case "complexField": {
-      const part = joinSearchProjections(
+      const projection = joinSearchProjections(
         content.type === "simpleField"
           ? content.content.map(getParagraphContentSearchProjection)
           : content.fieldResult.map(getRunSearchProjection),
       );
+      // Field results are searchable, but replacement cannot edit their source
+      // atom safely. Keep all field edits outside this search replacement API.
+      const part = { ...projection, fieldTextRanges: [{ start: 0, end: projection.text.length }] };
       return isPageDependentSearchField(content.instruction)
         ? { ...part, excludedTextRanges: [{ start: 0, end: part.text.length }] }
         : part;
     }
     case "preservedInline":
-      return { text: content.text, pageBreakOffsets: [] };
+      return {
+        text: content.text,
+        pageBreakOffsets: [],
+        atomicContentRanges: [{ start: 0, end: content.text.length }],
+      };
     case "bookmarkStart":
     case "bookmarkEnd":
     case "commentRangeStart":

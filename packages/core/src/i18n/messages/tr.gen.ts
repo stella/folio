@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "Önceki eşleşme",
       "previousShortcut": "Önceki eşleşme (Shift+Enter)",
       "replaceAll": "Tümünü değiştir",
+      "replaceAllSummary": "{replacedCount} değiştirildi, {skippedCount} atlandı",
       "replaceCurrent": "Mevcut eşleşmeyi değiştir",
       "replacePlaceholder": "Yeni metin...",
       "replaceText": "Yeni metin",

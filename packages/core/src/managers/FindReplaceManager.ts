@@ -14,6 +14,11 @@
 
 import type { FindMatchPosition } from "../prosemirror/findReplaceSelection";
 import type { OpStory } from "@stll/docx-core/ops";
+import {
+  replaceEligibility,
+  type ReplaceEligibility,
+  type ReplaceAllSummary,
+} from "../utils/findReplace";
 import type { Document } from "../types/document";
 import { replaceTextInDocument } from "../utils/replaceText";
 
@@ -25,10 +30,7 @@ export type FindReplaceResult<TMatch> = {
   currentIndex: number;
 };
 
-export type ReplaceAllOutcome = {
-  document: Document;
-  replacedCount: number;
-};
+export type ReplaceAllOutcome = ReplaceAllSummary & { document: Document };
 
 /**
  * The cursor index after stepping `direction` over `totalCount` matches,
@@ -59,12 +61,8 @@ type ReplaceableFindPosition = FindMatchPosition & {
   story?: OpStory;
   textBoxIndex?: number;
   commentId?: number;
+  replacement: ReplaceEligibility;
 };
-
-const isBodyMatch = (match: ReplaceableFindPosition): boolean =>
-  (match.story === undefined || match.story === "main") &&
-  match.textBoxIndex === undefined &&
-  match.commentId === undefined;
 
 export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
   private result: FindReplaceResult<TMatch> | null = null;
@@ -137,7 +135,7 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
     }
 
     const match = result.matches[result.currentIndex];
-    if (!match || !isBodyMatch(match)) {
+    if (!match || replaceEligibility(match).status === "blocked") {
       return null;
     }
 
@@ -150,8 +148,8 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
 
   /**
    * Replace every match. Matches are replaced from the end of the document
-   * backwards so earlier offsets stay valid as the text shifts. Clears the
-   * active result and returns the new document plus the match count, or null
+   * backwards so earlier offsets stay valid as the text shifts. Ineligible
+   * matches are skipped and counted. Clears the active result, or returns null
    * when there is nothing to replace.
    */
   replaceAll(
@@ -159,11 +157,16 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
     matches: readonly TMatch[],
     replaceText: string,
   ): ReplaceAllOutcome | null {
-    if (matches.length === 0 || matches.some((match) => !isBodyMatch(match))) {
+    if (matches.length === 0) {
       return null;
     }
 
-    const sortedMatches = [...matches].toSorted((a, b) => {
+    const eligibleMatches = matches.filter(
+      (match) => replaceEligibility(match).status === "allowed",
+    );
+    let skippedCount = matches.length - eligibleMatches.length;
+    let replacedCount = 0;
+    const sortedMatches = [...eligibleMatches].toSorted((a, b) => {
       if (a.paragraphIndex !== b.paragraphIndex) {
         return b.paragraphIndex - a.paragraphIndex;
       }
@@ -174,12 +177,13 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
     for (const match of sortedMatches) {
       try {
         nextDocument = replaceTextInDocument(nextDocument, toReplaceRange(match), replaceText);
+        replacedCount++;
       } catch {
-        continue;
+        skippedCount++;
       }
     }
 
-    this.result = null;
-    return { document: nextDocument, replacedCount: matches.length };
+    if (replacedCount > 0) this.result = null;
+    return { document: nextDocument, replacedCount, skippedCount };
   }
 }

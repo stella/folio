@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "Occurrence précédente",
       "previousShortcut": "Occurrence précédente (Maj+Entrée)",
       "replaceAll": "Tout remplacer",
+      "replaceAllSummary": "{replacedCount} remplacés, {skippedCount} ignorés",
       "replaceCurrent": "Remplacer l’occurrence actuelle",
       "replacePlaceholder": "Texte de remplacement...",
       "replaceText": "Texte de remplacement",

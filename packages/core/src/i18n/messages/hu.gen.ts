@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "Előző találat",
       "previousShortcut": "Előző találat (Shift+Enter)",
       "replaceAll": "Összes cseréje",
+      "replaceAllSummary": "Cserélve: {replacedCount}, kihagyva: {skippedCount}",
       "replaceCurrent": "Jelenlegi találat cseréje",
       "replacePlaceholder": "Csereszöveg…",
       "replaceText": "Csereszöveg",

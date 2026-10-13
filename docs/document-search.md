@@ -36,10 +36,15 @@ significant; search does not fold accents. Search respects the editor's display
 mode: final views omit deleted and moved-away text, and original view omits
 inserted and moved-to text. Query input and document refreshes are debounced.
 
-Replacement remains a body editing operation. A secondary-story, shape, or comment
-result cannot be replaced through the existing body replacement commands. Replace
-All refuses a mixed result set rather than applying story-local offsets to the
-body. Read-only mode rejects replacements.
+Replacement remains a body editing operation. Each match exposes `replacement`:
+`{ status: "allowed" }` or `{ status: "blocked", reason }`. Reasons are
+`field-result`, `atomic-content` (opaque preserved content), `hidden-content` (visible characters have discontinuous authored
+offsets), and `non-body-story` (including shapes and comments). Field results are
+searchable, but this API does not edit fields. Replace is disabled for blocked
+matches; read-only mode rejects replacements. Replace All skips blocked matches
+and returns `{ replacedCount, skippedCount }`. Changes made after search refresh
+the result and refuse that replacement invocation, so stale eligibility cannot
+apply to newly inserted content.
 
 Core consumers can call `findInDocument` from `@stll/folio-core/utils/findReplace`.
 Pass the active page-selected stories as `FindSearchContext.renderedStories` to

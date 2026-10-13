@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "Ankstesnis atitikmuo",
       "previousShortcut": "Ankstesnis atitikmuo (Shift+Enter)",
       "replaceAll": "Pakeisti viską",
+      "replaceAllSummary": "Pakeista: {replacedCount}, praleista: {skippedCount}",
       "replaceCurrent": "Pakeisti dabartinį atitikmenį",
       "replacePlaceholder": "Pakeičiantysis tekstas…",
       "replaceText": "Pakeičiantysis tekstas",

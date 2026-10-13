@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "पिछला मिलान",
       "previousShortcut": "पिछला मिलान (Shift+Enter)",
       "replaceAll": "सभी बदलें",
+      "replaceAllSummary": "{replacedCount} बदले गए, {skippedCount} छोड़े गए",
       "replaceCurrent": "वर्तमान मिलान को बदलें",
       "replacePlaceholder": "बदलने वाला पाठ...",
       "replaceText": "बदलने वाला पाठ",

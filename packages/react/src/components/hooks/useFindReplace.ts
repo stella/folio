@@ -16,6 +16,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Node as PMNode } from "prosemirror-model";
 
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
+import { replaceEligibility } from "@stll/folio-core/utils/findReplace";
+import type { ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
 import type { Document } from "@stll/folio-core/types/document";
 import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import {
@@ -65,7 +67,11 @@ export type UseFindReplaceReturn = {
   /** Replace the current match */
   handleReplace: (replaceText: string) => boolean;
   /** Replace all matches */
-  handleReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => number;
+  handleReplaceAll: (
+    searchText: string,
+    replaceText: string,
+    options: FindOptions,
+  ) => ReplaceAllSummary;
   getFindResult: () => FindResult | null;
   refreshFind: () => void;
 };
@@ -92,6 +98,11 @@ export function useFindReplace({
   const { setMatches, goToMatch } = findReplace;
   const matchView = useRef<ReturnType<typeof createFindMatchView> | null>(null);
   const query = useRef<{ text: string; options: FindOptions } | null>(null);
+  const searchSource = useRef<
+    | { type: "body"; doc: PMNode; displayMode: DisplayMode | undefined }
+    | { type: "document"; doc: Document; displayMode: DisplayMode | undefined }
+    | null
+  >(null);
   const resultCallback = useRef(onFindResultChange);
   useEffect(() => {
     resultCallback.current = onFindResultChange;
@@ -106,6 +117,7 @@ export function useFindReplace({
   const resetFindResult = useCallback(() => {
     manager.clear();
     query.current = null;
+    searchSource.current = null;
     matchView.current?.destroy();
     matchView.current = null;
     publish(null);
@@ -151,6 +163,10 @@ export function useFindReplace({
         previous.options.useRegex === options.useRegex;
       const currentIndex = refresh ? (manager.getResult()?.currentIndex ?? 0) : 0;
       query.current = { text: searchText, options };
+      const bodyDoc = getBodyDoc?.();
+      searchSource.current = bodyDoc
+        ? { type: "body", doc: bodyDoc, displayMode }
+        : { type: "document", doc: currentDocument, displayMode };
       const matches = findInDocument(
         currentDocument,
         searchText,
@@ -165,7 +181,7 @@ export function useFindReplace({
           ? createFindMatchView({
               container,
               document: currentDocument,
-              bodyDoc: getBodyDoc(),
+              bodyDoc,
               matches,
             })
           : null;
@@ -225,6 +241,21 @@ export function useFindReplace({
     return stepped.match;
   }, [manager, goToMatch, revealMatch, publish]);
 
+  const refreshChangedSource = useCallback(
+    (currentDocument: Document): boolean => {
+      const source = searchSource.current;
+      const active = query.current;
+      if (!source || !active) return false;
+      const changed =
+        source.displayMode !== displayMode ||
+        (source.type === "body" ? getBodyDoc?.() !== source.doc : currentDocument !== source.doc);
+      if (!changed) return false;
+      handleFind(active.text, active.options);
+      return true;
+    },
+    [getBodyDoc, handleFind, displayMode],
+  );
+
   const handleReplace = useCallback(
     (replaceText: string): boolean => {
       if (readOnly) return false;
@@ -232,6 +263,10 @@ export function useFindReplace({
       if (!currentDocument) {
         return false;
       }
+      if (refreshChangedSource(currentDocument)) return false;
+      const result = manager.getResult();
+      const match = result?.matches.at(result.currentIndex);
+      if (!match || replaceEligibility(match).status === "blocked") return false;
 
       const newDoc = manager.replaceCurrent(currentDocument, replaceText);
       if (!newDoc) {
@@ -241,16 +276,19 @@ export function useFindReplace({
       handleDocumentChange(newDoc);
       return true;
     },
-    [readDocumentState, manager, handleDocumentChange, readOnly],
+    [readDocumentState, manager, handleDocumentChange, readOnly, refreshChangedSource],
   );
 
   const handleReplaceAll = useCallback(
-    (searchText: string, replaceText: string, options: FindOptions): number => {
-      if (readOnly) return 0;
+    (searchText: string, replaceText: string, options: FindOptions): ReplaceAllSummary => {
+      if (readOnly) return { replacedCount: 0, skippedCount: manager.getResult()?.totalCount ?? 0 };
       const currentDocument = readDocumentState();
       if (!currentDocument || !searchText.trim()) {
-        return 0;
+        return { replacedCount: 0, skippedCount: 0 };
       }
+      const previousCount = manager.getResult()?.matches.length ?? 0;
+      if (refreshChangedSource(currentDocument))
+        return { replacedCount: 0, skippedCount: previousCount };
 
       const matches = findInDocument(
         currentDocument,
@@ -264,12 +302,14 @@ export function useFindReplace({
       );
       const outcome = manager.replaceAll(currentDocument, matches, replaceText);
       if (!outcome) {
-        return 0;
+        return { replacedCount: 0, skippedCount: 0 };
       }
 
-      handleDocumentChange(outcome.document);
-      resetFindResult();
-      return outcome.replacedCount;
+      if (outcome.replacedCount > 0) {
+        handleDocumentChange(outcome.document);
+        resetFindResult();
+      }
+      return { replacedCount: outcome.replacedCount, skippedCount: outcome.skippedCount };
     },
     [
       readDocumentState,
@@ -279,6 +319,7 @@ export function useFindReplace({
       readOnly,
       displayMode,
       getLayout,
+      refreshChangedSource,
     ],
   );
 

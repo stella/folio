@@ -559,7 +559,10 @@ describe("document-wide story search", () => {
       expect(manager.goTo(index)?.match).toEqual(match);
       expect(manager.replaceCurrent(doc, "changed")).toBeNull();
     }
-    expect(manager.replaceAll(doc, matches, "changed")).toBeNull();
+    expect(manager.replaceAll(doc, matches, "changed")).toMatchObject({
+      replacedCount: 2,
+      skippedCount: 9,
+    });
     expect(findInDocument(doc, "hit", createDefaultFindOptions())).toHaveLength(11);
   });
 
@@ -632,7 +635,11 @@ describe("document-wide story search", () => {
     const manager = new FindReplaceManager<(typeof matches)[number]>();
     manager.setMatches(matches);
     expect(manager.replaceCurrent(doc, "changed")).toBeNull();
-    expect(manager.replaceAll(doc, matches, "changed")).toBeNull();
+    expect(manager.replaceAll(doc, matches, "changed")).toEqual({
+      document: doc,
+      replacedCount: 0,
+      skippedCount: 1,
+    });
   });
 
   test.each(["all-markup", "simple-markup", "no-markup", "original"] as const)(

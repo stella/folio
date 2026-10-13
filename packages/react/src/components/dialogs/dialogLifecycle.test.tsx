@@ -8,6 +8,8 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { IntlProvider } from "use-intl";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+import { findInDocument } from "@stll/folio-core/utils/findReplace";
+import type { Document as FolioDocument } from "@stll/folio-core/types/document";
 import { FolioUIProvider, type FolioDialog, type FolioInputProps } from "../../ui/folio-ui";
 import { ImagePositionDialog } from "./ImagePositionDialog";
 import { ImagePropertiesDialog } from "./ImagePropertiesDialog";
@@ -60,6 +62,7 @@ const externalResult = {
   matches: [0, 10, 20].map((startOffset) => ({
     paragraphIndex: 0,
     contentIndex: 0,
+    replacement: { status: "allowed" } as const,
     startOffset,
     endOffset: startOffset + 8,
     text: "selected",
@@ -74,6 +77,7 @@ const popupData = (anchorEl: HTMLAnchorElement, name: string) => ({
   anchorEl,
 });
 const noop = () => {};
+const noMatch = () => null;
 const wrap = (children: ReactNode) => (
   <IntlProvider locale="en" timeZone="UTC" messages={messages}>
     <FolioUIProvider components={components}>{children}</FolioUIProvider>
@@ -178,6 +182,83 @@ test("source changes reset editable forms without retaining values from the prev
   await act(async () => root.unmount());
 });
 
+test.each([false, true])(
+  "replace controls respect field eligibility and readOnly=%s",
+  async (readOnly) => {
+    const fixture: FolioDocument = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "complexField",
+                  fieldType: "DOCVARIABLE",
+                  instruction: "DOCVARIABLE label",
+                  fieldCode: [],
+                  fieldResult: [{ type: "run", content: [{ type: "text", text: "hit hit" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const matches = findInDocument(fixture, "hit", { matchCase: false, matchWholeWord: false });
+    const onFind = mock(() => ({ matches, totalCount: matches.length, currentIndex: 0 }));
+    const result = onFind();
+    const onReplace = mock(() => false);
+    const onReplaceAll = mock(() => ({ replacedCount: 0, skippedCount: 2 }));
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    try {
+      await act(async () =>
+        root.render(
+          wrap(
+            <FindReplaceDialog
+              isOpen
+              replaceMode
+              readOnly={readOnly}
+              initialSearchText="hit"
+              currentResult={result}
+              onClose={noop}
+              onFind={onFind}
+              onFindNext={noMatch}
+              onFindPrevious={noMatch}
+              onReplace={onReplace}
+              onReplaceAll={onReplaceAll}
+            />,
+          ),
+        ),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 140));
+      });
+      const buttons = [...container.querySelectorAll<HTMLButtonElement>("button")];
+      const replaceCurrent = buttons.find(
+        (button) => button.textContent === "Replace current match",
+      );
+      const replaceAll = buttons.find((button) => button.textContent === "Replace all");
+      expect(replaceCurrent?.disabled).toBe(true);
+      expect(replaceAll?.disabled).toBe(readOnly);
+      if (!readOnly) {
+        await act(async () => {
+          replaceAll?.click();
+        });
+        expect(onReplaceAll).toHaveBeenCalledWith("hit", "", {
+          matchCase: false,
+          matchWholeWord: false,
+        });
+        expect(container.querySelector('[role="status"]')?.textContent).toContain("2 skipped");
+      }
+      expect(onReplace).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);
+
 test("find initializes selected text, searches, clears on close and refreshes external results", async () => {
   const container = document.createElement("div");
   const root = createRoot(container);
@@ -189,7 +270,7 @@ test("find initializes selected text, searches, clears on close and refreshes ex
     onFindNext: () => null,
     onFindPrevious: () => null,
     onReplace: () => false,
-    onReplaceAll: () => 0,
+    onReplaceAll: () => ({ replacedCount: 0, skippedCount: 0 }),
     onClearHighlights,
   };
   await act(async () =>
@@ -239,7 +320,7 @@ test("query edits invalidate unchanged host results and reopening an empty query
     onFindNext,
     onFindPrevious,
     onReplace: () => false,
-    onReplaceAll: () => 0,
+    onReplaceAll: () => ({ replacedCount: 0, skippedCount: 0 }),
     currentResult: externalResult,
   };
   const render = (isOpen: boolean, initialSearchText: string) =>

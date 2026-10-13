@@ -366,6 +366,7 @@ export const messages: FolioMessages = {
       "previous": "Iepriekšējā atbilstība",
       "previousShortcut": "Iepriekšējā atbilstība (Shift+Enter)",
       "replaceAll": "Aizstāt visu",
+      "replaceAllSummary": "Aizstāti: {replacedCount}, izlaisti: {skippedCount}",
       "replaceCurrent": "Aizstāt pašreizējo atbilstību",
       "replacePlaceholder": "Aizstājējteksts…",
       "replaceText": "Aizstājējteksts",
