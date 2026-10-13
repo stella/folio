@@ -68,19 +68,22 @@ test("round-trip comparison checks both full resolution documents", async () => 
   const reviewer = await openReviewer(new Uint8Array(await createDocx(model)));
   const block = reviewer.getContent().at(0);
   if (!block) throw new Error("Expected paragraph");
-  reviewer.applyDocumentOperations({
-    version: 1,
-    mode: "tracked-changes",
-    operations: [
-      {
-        id: "replace",
-        type: "replaceInBlock",
-        blockId: block.id,
-        find: "beta",
-        replace: "gamma",
-      },
-    ],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: 1,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: "beta",
+          replace: "gamma",
+        },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
   await assertReviewRoundTrip({ live: reviewer, reopened, context: "round trip" });
   const changed = reopened.toDocument();
@@ -131,13 +134,22 @@ test("round-trip comparison preserves table formatting in parsed resolution pack
   const reviewer = await openReviewer(new Uint8Array(await createDocx(model)));
   const block = reviewer.getContent().find(({ text }) => text.includes("beta"));
   if (!block) throw new Error("Expected table cell paragraph");
-  reviewer.applyDocumentOperations({
-    version: 1,
-    mode: "tracked-changes",
-    operations: [
-      { id: "replace", type: "replaceInBlock", blockId: block.id, find: "beta", replace: "gamma" },
-    ],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: 1,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: "beta",
+          replace: "gamma",
+        },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
   await assertReviewRoundTrip({ live: reviewer, reopened, context: "table round trip" });
   const changed = reopened.toDocument();

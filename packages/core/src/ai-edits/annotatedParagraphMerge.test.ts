@@ -19,20 +19,23 @@ test("paragraph merges use the boundary after batch annotations", async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(source));
       const first = reviewer.getContent().find(({ text }) => text === "First part end");
       if (!first) throw new Error("Expected first paragraph");
-      const result = reviewer.applyDocumentOperations({
-        version: 1,
-        mode,
-        operations: [
-          {
-            id: "annotate",
-            type: "commentOnBlock",
-            blockId: first.id,
-            quote,
-            comment: { text: "Comment" },
-          },
-          { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
-        ],
-      });
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode,
+          operations: [
+            {
+              id: "annotate",
+              type: "commentOnBlock",
+              blockId: first.id,
+              quote,
+              comment: { text: "Comment" },
+            },
+            { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
       expect(result.skipped).toEqual([]);
       expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["annotate", "merge"]);
       reviewer.acceptAll();

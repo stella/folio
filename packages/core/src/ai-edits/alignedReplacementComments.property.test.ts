@@ -64,13 +64,16 @@ test(
           ] as const) {
             const target = reviewer.getContent().at(0);
             if (!target) throw new Error("Expected paragraph");
-            const receipt = reviewer.applyDocumentOperations({
-              version: 1,
-              mode,
-              operations: [
-                { id: "replace", type: "replaceBlock", blockId: target.id, text: replacement },
-              ],
-            });
+            const receipt = reviewer.applyDocumentOperations(
+              {
+                version: 1,
+                mode,
+                operations: [
+                  { id: "replace", type: "replaceBlock", blockId: target.id, text: replacement },
+                ],
+              },
+              { undefinedReferences: "refuse" },
+            );
             expect(receipt.applied).toHaveLength(1);
           }
           const pending = await tracked.toBuffer();
