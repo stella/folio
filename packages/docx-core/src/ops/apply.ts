@@ -87,7 +87,7 @@ import {
 } from "./contract";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
-import { freshenIdentities } from "./identity";
+import { freshenIdentities, rebindRetainedIdentities } from "./identity";
 import {
   collides,
   countIds,
@@ -1076,6 +1076,7 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
       newIds: op.newIds,
     });
     if (freshened.isErr()) return Result.err(freshened.error);
+    const priorIdentities = new WeakMap<InlineNode, InlineNode>();
     const appendChanges = (
       source: readonly InlineNode[],
       fresh: readonly InlineNode[],
@@ -1108,6 +1109,10 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           }
           const changed = Object.assign({}, node);
           changed.propertyChanges = [change];
+          const prior = Object.assign({}, node);
+          if (options.previous.propertyChanges !== undefined)
+            prior.propertyChanges = options.previous.propertyChanges;
+          priorIdentities.set(changed, prior);
           return changed;
         }
         const children = childNodes(node);
@@ -1123,13 +1128,26 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     const sourceFresh = freshened.value.at(0);
     if (sourceFresh === undefined) panic("Freshening removed the run patch's paragraph.");
     const content = asParagraphContent(appendChanges(tracked.content, sourceFresh.content));
+    const restorePriorIdentities = (nodes: readonly InlineNode[]): InlineNode[] =>
+      nodes.map((node) => {
+        const prior = priorIdentities.get(node) ?? node;
+        const children = childNodes(prior);
+        return children === undefined
+          ? prior
+          : rebuildNode(prior, restorePriorIdentities(children));
+      });
+    const rebound =
+      rebindRetainedIdentities({
+        before: [withContent(paragraph, asParagraphContent(restorePriorIdentities(content)))],
+        after: [withContent(paragraph, content)],
+      }).at(0) ?? panic("A run patch preserves its paragraph during identity rebinding.");
     return editOne(
       {
         document,
         op,
         story,
         at: location,
-        paragraph: withContent(paragraph, content),
+        paragraph: rebound,
         newIds: op.newIds,
       },
       (result) => Result.ok([contentRestoring(story, result, paragraph)]),

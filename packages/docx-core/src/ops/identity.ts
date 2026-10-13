@@ -232,14 +232,14 @@ const bindRetainedIdentities = (
 type CutPair = { old: InlineNode; fresh: InlineNode };
 
 /** A cut shares the original hints object; independent wrappers never do. */
-type BindCutRetainedIdentitiesOptions = {
+type RebindRetainedIdentitiesOptions = {
   before: readonly Paragraph[];
   after: readonly Paragraph[];
 };
-const bindCutRetainedIdentities = ({
+export const rebindRetainedIdentities = ({
   before,
   after,
-}: BindCutRetainedIdentitiesOptions): Paragraph[] => {
+}: RebindRetainedIdentitiesOptions): Paragraph[] => {
   const groups = new Map<NonNullable<Deletion["resolutionJoins"]>, CutPair[]>();
   type PairedNodesOptions = { oldNodes: readonly InlineNode[]; freshNodes: readonly InlineNode[] };
   const collect = ({ oldNodes, freshNodes }: PairedNodesOptions): void => {
@@ -531,7 +531,7 @@ export const freshenIdentities = ({
         kind: "fresh",
         paragraphs: bindDeferredIdentities({
           before: after,
-          after: bindCutRetainedIdentities({ before: after, after: paragraphs }),
+          after: rebindRetainedIdentities({ before: after, after: paragraphs }),
         }),
       }
     : { kind: "invalidId", id: invalid };
