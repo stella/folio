@@ -3,7 +3,7 @@ import type { Node as ProseMirrorNode } from "prosemirror-model";
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { expectFieldAttrs, expectPreservedXmlAttrs, expectSymbolAttrs } from "./attrs";
 
-import { findAllMatches } from "../utils/findReplace";
+import { findAllMatches, isPageDependentSearchField } from "../utils/findReplace";
 import type { FindOptions } from "../utils/findReplace";
 
 /**
@@ -183,9 +183,20 @@ function resolveTextRangeInParagraph({
   let textOffset = 0;
   const range = { from: null as number | null, to: null as number | null };
   const pageBreakOffsets: number[] = [];
+  const excludedTextRanges: { start: number; end: number }[] = [];
   const atomicTextRanges: NonNullable<FindMatchRange["atomicTextRanges"]> = [];
 
   paragraph.descendants((node, pos) => {
+    if (
+      (node.type.name === "field" || node.type.name === "structuredField") &&
+      isPageDependentSearchField(expectFieldAttrs(node).instruction)
+    ) {
+      const length =
+        node.type.name === "field"
+          ? expectFieldAttrs(node).displayText.length
+          : getSearchableParagraphText(node).length;
+      excludedTextRanges.push({ start: textOffset, end: textOffset + length });
+    }
     if (node.type.name === "pageBreakRun") {
       pageBreakOffsets.push(textOffset);
       return false;
@@ -228,7 +239,8 @@ function resolveTextRangeInParagraph({
     range.from === null ||
     range.to === null ||
     range.from >= range.to ||
-    pageBreakOffsets.some((offset) => offset > startOffset && offset < endOffset)
+    pageBreakOffsets.some((offset) => offset > startOffset && offset < endOffset) ||
+    excludedTextRanges.some(({ start, end }) => start < endOffset && end > startOffset)
   ) {
     return null;
   }

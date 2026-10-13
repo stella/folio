@@ -27,7 +27,9 @@ first-page, and even-page variants ordered within that section. Only variants
 selected by an actual page are searched; a shared part is counted once and
 navigation reveals its first rendered occurrence. Note separators are excluded.
 Comments and replies are searched where the adapter exposes the comment sidebar;
-navigation opens the thread.
+navigation opens the thread. Cached field results are searched as displayed text.
+Page-dependent fields (`PAGE`, `NUMPAGES`, `SECTIONPAGES`, and `PAGEREF`) are
+excluded: their values depend on pagination, while shared parts are counted once.
 
 `matchCase`, `matchWholeWord`, and `useRegex` control matching. Diacritics remain
 significant; search does not fold accents. Search respects the editor's display

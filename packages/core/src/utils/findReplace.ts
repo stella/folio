@@ -1,3 +1,4 @@
+import { parseFieldType } from "../docx/fieldParser";
 import { panic } from "better-result";
 import { documentStories, sameStory, storyBody, type OpStory } from "@stll/docx-core/ops";
 import type { DisplayMode } from "../managers/EditorModeManager";
@@ -294,6 +295,7 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
   let text = "";
   let authoredOffset = 0;
   const offsets: number[] = [];
+  const excludedTextRanges: { start: number; end: number }[] = [];
   const pageBreakOffsets: number[] = [];
   const visit = (items: readonly ParagraphContent[]): void => {
     for (const item of items) {
@@ -305,8 +307,11 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
         visit(item.children);
         continue;
       }
-      if (item.type === "complexField") {
-        visit(item.fieldResult);
+      if (item.type === "complexField" || item.type === "simpleField") {
+        const start = text.length;
+        visit(item.type === "complexField" ? item.fieldResult : item.content);
+        if (isPageDependentSearchField(item.instruction))
+          excludedTextRanges.push({ start, end: text.length });
         continue;
       }
       if (item.type !== "run" && "content" in item) {
@@ -314,6 +319,8 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
         continue;
       }
       const part = getParagraphContentSearchProjection(item);
+      for (const range of part.excludedTextRanges ?? [])
+        excludedTextRanges.push({ start: text.length + range.start, end: text.length + range.end });
       for (const offset of part.pageBreakOffsets) pageBreakOffsets.push(text.length + offset);
       for (let index = 0; index < part.text.length; index++) offsets.push(authoredOffset + index);
       text += part.text;
@@ -321,7 +328,7 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
     }
   };
   visit(paragraph.content);
-  return { text, offsets, pageBreakOffsets };
+  return { text, offsets, pageBreakOffsets, excludedTextRanges };
 };
 
 /** Authored paragraph text displayed by comment UI, using the search owner. */
@@ -342,7 +349,10 @@ export const findInParagraph = (
   return findAllMatches(projection.text, searchText, options)
     .filter(
       ({ start, end }) =>
-        !projection.pageBreakOffsets.some((offset) => offset > start && offset < end),
+        !projection.pageBreakOffsets.some((offset) => offset > start && offset < end) &&
+        !(projection.excludedTextRanges ?? []).some(
+          (range) => range.start < end && range.end > start,
+        ),
     )
     .map(({ start, end }) => ({
       paragraphIndex,
@@ -425,22 +435,33 @@ const isVisibleStructure = (
   return isTableCellRetainedInReviewView(kind, mode === "original" ? "original" : "final");
 };
 
+// Pagination-derived results vary by rendered occurrence or become stale when
+// layout changes. They cannot participate in count-once search of shared parts.
+const PAGE_DEPENDENT_SEARCH_FIELDS = new Set(["PAGE", "NUMPAGES", "SECTIONPAGES", "PAGEREF"]);
+
+export const isPageDependentSearchField = (instruction: string): boolean =>
+  PAGE_DEPENDENT_SEARCH_FIELDS.has(parseFieldType(instruction));
+
 type SearchProjection = {
   text: string;
   pageBreakOffsets: number[];
+  excludedTextRanges?: { start: number; end: number }[];
 };
 
 const joinSearchProjections = (parts: readonly SearchProjection[]): SearchProjection => {
   let text = "";
   const pageBreakOffsets: number[] = [];
+  const excludedTextRanges: { start: number; end: number }[] = [];
   for (const part of parts) {
     const baseOffset = text.length;
     text += part.text;
+    for (const range of part.excludedTextRanges ?? [])
+      excludedTextRanges.push({ start: baseOffset + range.start, end: baseOffset + range.end });
     for (const offset of part.pageBreakOffsets) {
       pageBreakOffsets.push(baseOffset + offset);
     }
   }
-  return { text, pageBreakOffsets };
+  return { text, pageBreakOffsets, excludedTextRanges };
 };
 
 const getRunSearchProjection = (run: Run): SearchProjection => {
@@ -520,15 +541,23 @@ const getParagraphContentSearchProjection = (content: ParagraphContent): SearchP
     // it: a narrowing per type would be a mirror of the union that drifts the
     // next time the union grows.
     case "inlineSdt":
-    case "simpleField":
     case "inlineWrapper":
     case "insertion":
     case "deletion":
     case "moveFrom":
     case "moveTo":
       return joinSearchProjections(content.content.map(getParagraphContentSearchProjection));
-    case "complexField":
-      return joinSearchProjections(content.fieldResult.map(getRunSearchProjection));
+    case "simpleField":
+    case "complexField": {
+      const part = joinSearchProjections(
+        content.type === "simpleField"
+          ? content.content.map(getParagraphContentSearchProjection)
+          : content.fieldResult.map(getRunSearchProjection),
+      );
+      return isPageDependentSearchField(content.instruction)
+        ? { ...part, excludedTextRanges: [{ start: 0, end: part.text.length }] }
+        : part;
+    }
     case "preservedInline":
       return { text: content.text, pageBreakOffsets: [] };
     case "bookmarkStart":

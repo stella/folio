@@ -68,14 +68,14 @@ const fieldTokenRun: Run = {
 const fieldProjectionFixtures = {
   simpleDigit: {
     type: "simpleField",
-    fieldType: "PAGE",
-    instruction: "PAGE",
+    fieldType: "DOCVARIABLE",
+    instruction: "DOCVARIABLE digit",
     content: [textRun("42")],
   },
   complexDigit: {
     type: "complexField",
-    fieldType: "PAGE",
-    instruction: "PAGE",
+    fieldType: "DOCVARIABLE",
+    instruction: "DOCVARIABLE digit",
     fieldCode: [],
     fieldResult: [textRun("42")],
   },
@@ -190,6 +190,127 @@ const fieldProjectionFixtures = {
     ],
   },
 } as const satisfies Record<string, SimpleField | ComplexField>;
+
+describe("page-dependent field search exclusion", () => {
+  const pageFieldTypes = ["PAGE", "NUMPAGES", "SECTIONPAGES", "PAGEREF"] as const;
+  const fixtures = pageFieldTypes.flatMap((fieldType) =>
+    ["simpleField", "complexField"].flatMap((type) =>
+      (
+        [
+          {
+            name: "plain",
+            instruction: `${fieldType}${fieldType === "PAGEREF" ? " target" : ""}`,
+            parsedType: fieldType,
+          },
+          {
+            name: "switches",
+            instruction: `${fieldType}${fieldType === "PAGEREF" ? " target \\h" : ""} \\* MERGEFORMAT`,
+            parsedType: fieldType,
+          },
+          {
+            name: "lowercase",
+            instruction: `  ${fieldType.toLowerCase()}${fieldType === "PAGEREF" ? " target" : ""} \\* mergeformat  `,
+            parsedType: fieldType,
+          },
+          {
+            name: "unclassified",
+            instruction: `  ${fieldType.toLowerCase()}${fieldType === "PAGEREF" ? " target \\h" : ""} \\* MERGEFORMAT `,
+            parsedType: "UNKNOWN",
+          },
+        ] as const satisfies readonly {
+          name: string;
+          instruction: string;
+          parsedType: SimpleField["fieldType"];
+        }[]
+      ).map(({ name, instruction, parsedType }) => ({
+        name: `${type}/${fieldType}/${name}`,
+        type,
+        instruction,
+        parsedType,
+      })),
+    ),
+  );
+
+  test.each(fixtures)(
+    "$name excludes cached page digits without shifting later matches",
+    ({ type, instruction, parsedType }) => {
+      const makeField = (
+        fieldType: SimpleField["fieldType"],
+        fieldInstruction: string,
+      ): SimpleField | ComplexField => {
+        if (type === "simpleField")
+          return {
+            type: "simpleField",
+            fieldType,
+            instruction: fieldInstruction,
+            content: [textRun("3")],
+          };
+        return {
+          type: "complexField",
+          fieldType,
+          instruction: fieldInstruction,
+          fieldCode: [],
+          fieldResult: [textRun("3")],
+        };
+      };
+      const source: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  textRun("head "),
+                  makeField(parsedType, instruction),
+                  textRun(" "),
+                  makeField("DOCVARIABLE", "DOCVARIABLE value \\* MERGEFORMAT"),
+                  textRun(" tail 3"),
+                ],
+              },
+            ],
+          },
+        },
+      };
+      const pmDoc = toProseDoc(source);
+      for (const displayMode of [undefined, "all-markup", "no-markup"] as const) {
+        const options = {
+          ...createDefaultFindOptions(),
+          ...(displayMode === undefined ? {} : { displayMode }),
+        };
+        const project = ({
+          paragraphIndex,
+          startOffset,
+          endOffset,
+          text,
+        }: {
+          paragraphIndex: number;
+          startOffset: number;
+          endOffset: number;
+          text: string;
+        }) => ({ paragraphIndex, startOffset, endOffset, text });
+        const expected = [
+          { paragraphIndex: 0, startOffset: 7, endOffset: 8, text: "3" },
+          { paragraphIndex: 0, startOffset: 14, endOffset: 15, text: "3" },
+        ];
+        expect(findInDocument(source, "head 3", options)).toEqual([]);
+        expect(findInProseMirrorDocument(pmDoc, "head 3", options)).toEqual([]);
+        const onlyPageField: Document = {
+          package: {
+            document: {
+              content: [{ type: "paragraph", content: [makeField(parsedType, instruction)] }],
+            },
+          },
+        };
+        expect(findInDocument(onlyPageField, "3", options)).toEqual([]);
+        expect(findInDocument(source, "3", options).map(project)).toEqual(expected);
+        expect(findInProseMirrorDocument(pmDoc, "3", options).map(project)).toEqual(expected);
+        expect(findInDocument(source, "tail", options).map(project)).toEqual([
+          { paragraphIndex: 0, startOffset: 9, endOffset: 13, text: "tail" },
+        ]);
+      }
+    },
+  );
+});
 
 describe("field and native text search projection parity", () => {
   test.each(Object.entries(fieldProjectionFixtures))(
