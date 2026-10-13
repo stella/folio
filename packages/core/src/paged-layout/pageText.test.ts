@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
 import { EditorState } from "prosemirror-state";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { DISPLAY_MODES } from "../managers/EditorModeManager";
 import type { DisplayMode } from "../managers/EditorModeManager";
 import { projectMarkupView } from "../prosemirror/markupViewProjection";
@@ -114,75 +114,84 @@ describe("getPageTextFromLayout", () => {
   });
 });
 
-test("page text follows each review projection for every inline revision span", async () => {
-  await assertProperty(
-    fc.property(
-      fc.tuple(
-        fc.string({ maxLength: 40 }),
-        fc.string({ minLength: 1, maxLength: 40 }),
-        fc.string({ minLength: 1, maxLength: 40 }),
-        fc.string({ maxLength: 40 }),
+test(
+  "page text follows each review projection for every inline revision span",
+  async () => {
+    await assertProperty(
+      fc.property(
+        fc.tuple(
+          fc.string({ maxLength: 40 }),
+          fc.string({ minLength: 1, maxLength: 40 }),
+          fc.string({ minLength: 1, maxLength: 40 }),
+          fc.string({ maxLength: 40 }),
+        ),
+        (texts) => {
+          const kept = texts.at(0) ?? panic("Missing kept text");
+          const inserted = texts.at(1) ?? panic("Missing inserted text");
+          const deleted = texts.at(2) ?? panic("Missing deleted text");
+          const tail = texts.at(3) ?? panic("Missing tail text");
+          const insertion = (
+            reviewSchema.marks["insertion"] ?? panic("Missing insertion mark")
+          ).create({ revisionId: 1 });
+          const deletion = (
+            reviewSchema.marks["deletion"] ?? panic("Missing deletion mark")
+          ).create({
+            revisionId: 2,
+          });
+          const runs = [
+            reviewSchema.text(inserted, [insertion]),
+            reviewSchema.text(deleted, [deletion]),
+          ];
+          if (kept) runs.unshift(reviewSchema.text(kept));
+          if (tail) runs.push(reviewSchema.text(tail));
+          const authored = reviewSchema.node("doc", null, [
+            reviewSchema.node("paragraph", null, runs),
+          ]);
+          const state = EditorState.create({ doc: authored });
+          const fixturePage = layout.pages.at(0) ?? panic("Missing fixture page");
+          const projectedLayout = {
+            pages: [
+              {
+                ...fixturePage,
+                fragments: [
+                  {
+                    kind: "paragraph",
+                    blockId: "body",
+                    x: 72,
+                    y: 72,
+                    width: 672,
+                    height: 24,
+                    pmStart: 1,
+                    pmEnd: authored.content.size - 1,
+                  },
+                ],
+              },
+            ],
+          } satisfies Layout;
+          const expected = {
+            "all-markup": kept + inserted + deleted + tail,
+            "simple-markup": kept + inserted + tail,
+            "no-markup": kept + inserted + tail,
+            original: kept + deleted + tail,
+          } as const satisfies Record<DisplayMode, string>;
+          for (const mode of DISPLAY_MODES) {
+            expect(
+              getPageTextFromLayout({
+                layout: projectedLayout,
+                doc: authored,
+                page: 1,
+                projection: projectMarkupView(state, mode),
+              }),
+            ).toBe(expected[mode]);
+          }
+          expect(state.doc).toBe(authored);
+        },
       ),
-      (texts) => {
-        const kept = texts.at(0) ?? panic("Missing kept text");
-        const inserted = texts.at(1) ?? panic("Missing inserted text");
-        const deleted = texts.at(2) ?? panic("Missing deleted text");
-        const tail = texts.at(3) ?? panic("Missing tail text");
-        const insertion = (
-          reviewSchema.marks["insertion"] ?? panic("Missing insertion mark")
-        ).create({ revisionId: 1 });
-        const deletion = (reviewSchema.marks["deletion"] ?? panic("Missing deletion mark")).create({
-          revisionId: 2,
-        });
-        const runs = [
-          reviewSchema.text(inserted, [insertion]),
-          reviewSchema.text(deleted, [deletion]),
-        ];
-        if (kept) runs.unshift(reviewSchema.text(kept));
-        if (tail) runs.push(reviewSchema.text(tail));
-        const authored = reviewSchema.node("doc", null, [
-          reviewSchema.node("paragraph", null, runs),
-        ]);
-        const state = EditorState.create({ doc: authored });
-        const fixturePage = layout.pages.at(0) ?? panic("Missing fixture page");
-        const projectedLayout = {
-          pages: [
-            {
-              ...fixturePage,
-              fragments: [
-                {
-                  kind: "paragraph",
-                  blockId: "body",
-                  x: 72,
-                  y: 72,
-                  width: 672,
-                  height: 24,
-                  pmStart: 1,
-                  pmEnd: authored.content.size - 1,
-                },
-              ],
-            },
-          ],
-        } satisfies Layout;
-        const expected = {
-          "all-markup": kept + inserted + deleted + tail,
-          "simple-markup": kept + inserted + tail,
-          "no-markup": kept + inserted + tail,
-          original: kept + deleted + tail,
-        } as const satisfies Record<DisplayMode, string>;
-        for (const mode of DISPLAY_MODES) {
-          expect(
-            getPageTextFromLayout({
-              layout: projectedLayout,
-              doc: authored,
-              page: 1,
-              projection: projectMarkupView(state, mode),
-            }),
-          ).toBe(expected[mode]);
-        }
-        expect(state.doc).toBe(authored);
+      {
+        numRuns: 40,
+        id: "page text follows each review projection for every inline revision span",
       },
-    ),
-    { numRuns: 40, id: "page text follows each review projection for every inline revision span" },
-  );
-});
+    );
+  },
+  propertyTestTimeout(5_000),
+);

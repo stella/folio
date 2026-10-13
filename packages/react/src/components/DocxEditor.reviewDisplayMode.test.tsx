@@ -11,11 +11,13 @@ import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { installHeadlessMeasureProvider } from "@stll/folio-core/fonts/headlessMeasure";
+import { clearAllCaches } from "@stll/folio-core/layout-engine/measure/cache";
 import {
   getMeasureProvider,
   setMeasureProvider,
 } from "@stll/folio-core/layout-engine/measure/measureProvider";
+import { resetCanvasContext } from "@stll/folio-core/layout-engine/measure/measureContainer";
+import { sizeProportionalCharWidth } from "@stll/folio-core/layout-engine/measure/__tests__/fakeTextMeasure";
 
 import { buildRawPackage, SECTION, WORD_STYLES } from "@stll/folio-core/__tests__/documentShapes";
 import { DocxEditor } from "./DocxEditor";
@@ -114,19 +116,35 @@ test("host review display modes change visible layout without changing saved DOC
   const savedByMode: Uint8Array[] = [];
   let initialDoc: PMNode | null = null;
   const previousMeasureProvider = getMeasureProvider();
-  const relayoutAndWait = async () => {
+  const originalGetContext =
+    Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, "getContext") ??
+    panic("Expected the canvas context method");
+  const canvasContext = {
+    font: "",
+    fontKerning: "auto",
+    measureText(text: string) {
+      let width = 0;
+      for (const char of text) width += sizeProportionalCharWidth(char, this.font);
+      return { width, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 };
+    },
+  };
+  const relayout = () => {
     const controller = editor.current?.getEditor() ?? panic("Expected the editor controller");
-    const layoutComplete = new Promise<void>((resolve) => {
-      const unsubscribe = controller.on("layoutComplete", () => {
-        unsubscribe();
-        resolve();
-      });
+    let completed = false;
+    const unsubscribe = controller.on("layoutComplete", () => {
+      completed = true;
     });
     controller.relayout();
-    await layoutComplete;
+    unsubscribe();
+    expect(completed).toBe(true);
   };
   try {
-    installHeadlessMeasureProvider({ load: () => [] });
+    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+      configurable: true,
+      value: () => canvasContext,
+    });
+    resetCanvasContext();
+    clearAllCaches();
     for (const [index, { mode, showCommentHighlights }] of modes.entries()) {
       await act(async () => {
         root.render(
@@ -145,15 +163,15 @@ test("host review display modes change visible layout without changing saved DOC
       });
       if (index === 0) {
         await act(async () => {
-          await editor.current?.ensureEditorView({ focus: false });
-          await relayoutAndWait();
+          editor.current?.ensureEditorView({ focus: false });
         });
+        await act(async () => relayout());
         initialDoc =
           editor.current?.getEditor()?.getView()?.state.doc ??
           panic("Expected the loaded editor document");
       } else {
         expect(editor.current?.getEditor()?.getView()?.state.doc).toBe(initialDoc);
-        await act(async () => relayoutAndWait());
+        await act(async () => relayout());
       }
 
       const controller = editor.current?.getEditor() ?? panic("Expected the editor controller");
@@ -222,7 +240,10 @@ test("host review display modes change visible layout without changing saved DOC
     }
   } finally {
     await act(async () => root.unmount());
+    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", originalGetContext);
     setMeasureProvider(previousMeasureProvider);
+    resetCanvasContext();
+    clearAllCaches();
     container.remove();
   }
 });
