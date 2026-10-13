@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test";
+import { FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE } from "../document-operations";
 import { paragraph } from "../docx/server/build";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
 test("paragraph merges use the boundary after batch annotations", async () => {
-  for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+  for (const mode of FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE.mergeBlockWithNext.filter((candidate) =>
+    FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE.commentOnBlock.includes(candidate),
+  )) {
     for (const quote of ["First", "part", "end"] as const) {
       const source = createEmptyDocument();
       source.package.document.content = [

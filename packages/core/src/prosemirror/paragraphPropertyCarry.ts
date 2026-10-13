@@ -11,6 +11,7 @@
  * second's own.
  */
 
+import { paragraphJoinAfter } from "./commands/paragraphBookmarkJoin";
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
@@ -184,15 +185,14 @@ export const paragraphLeftAfter = ({
   if (!start) return null;
   let node: PMNode = start;
   for (;;) {
-    const nextPos: number = position + node.nodeSize;
-    const next: PMNode | null = doc.resolve(nextPos).nodeAfter;
-    if (!next || next.type !== node.type) return null;
+    const join = paragraphJoinAfter(doc, position + node.nodeSize);
+    if (!join) return null;
+    const { next, nextPosition: nextPos } = join;
     const mark = expectParagraphAttrs(next).pPrMark;
     const nextGoes =
       removedBreakPositions?.has(nextPos) ||
       (mark != null && (mark.kind === "del" || mark.kind === "moveFrom"));
-    const afterNext = doc.resolve(nextPos + next.nodeSize).nodeAfter;
-    if (!nextGoes || afterNext?.type !== node.type) return nextPos;
+    if (!nextGoes || !paragraphJoinAfter(doc, nextPos + next.nodeSize)) return nextPos;
     position = nextPos;
     node = next;
   }

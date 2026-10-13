@@ -17,7 +17,13 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
-import { joinProseParagraphsWithRightPropertySource } from "../docx/paragraphPropertySource";
+import {
+  getProseParagraphPropertySourceToken,
+  joinProseParagraphsWithRightPropertySource,
+  markParagraphPropertySourceTransfers,
+} from "../docx/paragraphPropertySource";
+import { paragraphJoinAfter } from "./commands/paragraphBookmarkJoin";
+import { panic } from "better-result";
 import { JOINED_RUNS_RESTYLED_META } from "./extensions/features/JoinedRunStyleExtension";
 import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
 import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
@@ -44,11 +50,27 @@ export const joinAtParagraphMark = ({
   next,
   styleResolver,
 }: JoinAtParagraphMarkOptions): void => {
-  joinProseParagraphsWithRightPropertySource({
-    attrs: next.attrs,
-    pos: paragraphPos + paragraph.nodeSize,
-    transaction: tr,
-  });
+  const boundary = paragraphPos + paragraph.nodeSize;
+  const join = paragraphJoinAfter(tr.doc, boundary);
+  if (!join || join.next !== next) panic("A paragraph-mark join lost its next paragraph");
+  if (join.inlineBookmarks.length > 0) {
+    const leftToken = getProseParagraphPropertySourceToken(paragraph);
+    const rightToken = getProseParagraphPropertySourceToken(next);
+    tr.replaceWith(boundary - 1, join.nextPosition + 1, join.inlineBookmarks);
+    tr.setNodeMarkup(paragraphPos, undefined, next.attrs);
+    markParagraphPropertySourceTransfers(tr, [
+      {
+        displacedToken: typeof leftToken === "string" ? leftToken : null,
+        selectedToken: typeof rightToken === "string" ? rightToken : null,
+      },
+    ]);
+  } else {
+    joinProseParagraphsWithRightPropertySource({
+      attrs: next.attrs,
+      pos: boundary,
+      transaction: tr,
+    });
+  }
   if (!styleResolver) return;
   if (paragraph.content.size > 0) {
     rebaseParagraphRuns({

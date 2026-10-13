@@ -9,7 +9,7 @@ import {
 } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
-import { canJoin, canSplit } from "prosemirror-transform";
+import { canSplit } from "prosemirror-transform";
 import { panic } from "better-result";
 import {
   claimRevisionIds,
@@ -126,6 +126,7 @@ import {
 } from "../prosemirror/anchoredTextBoxes";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
 import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/JoinedRunStyleExtension";
+import { paragraphJoinAfter } from "../prosemirror/commands/paragraphBookmarkJoin";
 import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
 import {
   carryParagraphProperties,
@@ -2602,16 +2603,6 @@ const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
     return false;
   });
   return whollyDeleted;
-};
-
-/** Only two paragraph siblings can transfer paragraph properties through a merge. */
-const canMergeParagraphWithNext = (doc: PMNode, position: number): boolean => {
-  const boundary = doc.resolve(position);
-  return (
-    boundary.nodeBefore?.type.name === "paragraph" &&
-    boundary.nodeAfter?.type === boundary.nodeBefore.type &&
-    canJoin(doc, position)
-  );
 };
 
 /**
@@ -5655,7 +5646,8 @@ const applyFolioAIEditOperationsInternal = ({
         // one at a time. Tracked, the deleted paragraphs stay until accepted,
         // but where they run to the story's end the join has nothing to put
         // a separator in front of.
-        if (!canMergeParagraphWithNext(tr.doc, blockTo)) {
+        const join = paragraphJoinAfter(tr.doc, blockTo);
+        if (!join) {
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
         }
@@ -5668,7 +5660,7 @@ const applyFolioAIEditOperationsInternal = ({
         let mergedPropertiesAt = blockFrom;
         // Set when a property change already records what the paragraph had.
         let mergedPropertiesRecorded = false;
-        const second = tr.doc.nodeAt(blockTo);
+        const second = join.next;
         // A comment running from one paragraph into the next runs across the
         // separator too, or it would cover two stretches.
         const spanningComments = commentsAcrossBlockBoundary(tr.doc, blockTo);
@@ -5709,7 +5701,7 @@ const applyFolioAIEditOperationsInternal = ({
           if (separator.length > 0) {
             tr = withSeparator(tr);
           }
-          const nextPosition = blockTo + separator.length;
+          const nextPosition = join.nextPosition + separator.length;
           const next = tr.doc.nodeAt(nextPosition);
           const paragraph = tr.doc.nodeAt(blockFrom);
           if (next && paragraph) {
@@ -5723,7 +5715,15 @@ const applyFolioAIEditOperationsInternal = ({
           }
           // The joined runs were re-read in the first paragraph's style above.
           tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
-          tr = tr.join(blockTo + separator.length);
+          if (join.inlineBookmarks.length > 0) {
+            tr = tr.replaceWith(
+              blockTo + separator.length - 1,
+              nextPosition + 1,
+              join.inlineBookmarks,
+            );
+          } else {
+            tr = tr.join(blockTo + separator.length);
+          }
           // The merge removes the first paragraph's mark, and the joined
           // paragraph ends with the second one's. A section break lives on
           // the mark (ECMA-376 Part 1 §17.6.18), so the joined paragraph ends
@@ -5754,8 +5754,8 @@ const applyFolioAIEditOperationsInternal = ({
             appliedRevisionIds.push(revisionIdSeparator);
           }
           const paragraph = tr.doc.nodeAt(blockFrom);
-          const joinPos = blockTo + separator.length;
-          const next = tr.doc.nodeAt(joinPos);
+          const nextPosition = join.nextPosition + separator.length;
+          const next = tr.doc.nodeAt(nextPosition);
           if (!paragraph || !next) {
             panic("A resolved merge lost its paragraphs");
           }
@@ -5827,7 +5827,7 @@ const applyFolioAIEditOperationsInternal = ({
                   tr,
                   deletedFinalParagraphs,
                 ),
-              }) ?? joinPos;
+              }) ?? nextPosition;
             const carried = carryParagraphProperties({
               tr,
               position: survivorPos,
@@ -7899,7 +7899,7 @@ const resolveOperationTarget = ({
     // of a table cell, and off the last paragraph of the story: there is no
     // sibling to join with, so accepting the revision could not do what the
     // mark says it does.
-    if (!canMergeParagraphWithNext(doc, blockTo)) {
+    if (!paragraphJoinAfter(doc, blockTo)) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
     return {
