@@ -5,9 +5,15 @@ import {
 import { BUILT_IN_STYLE_NAME, createBuiltInStyleIndex } from "../docx/builtInStyles";
 import { collectHeadings } from "../utils/headingCollector";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import { Result } from "better-result";
+import { Result, panic } from "better-result";
 import type { EditorState } from "prosemirror-state";
-import { OP_STORIES, type EditorIntent, type TextPosition } from "@stll/docx-core/ops";
+import {
+  OP_STORIES,
+  editorParagraphGroups,
+  editorPositionAtPhysicalPosition,
+  physicalPositionAtEditorOffset,
+  type EditorIntent,
+} from "@stll/docx-core/ops";
 import { headingOutlineLevel, paragraphNumberingReference } from "@stll/docx-core/model";
 import type { Paragraph, ListLevel } from "../types/document";
 import { getCachedNumberingMap, numberingLevelUsesBulletMarker } from "../docx/numberingParser";
@@ -360,15 +366,20 @@ export const prepareCanonicalAutoformat = (
   if (text !== " " || from !== to) return undefined;
   const at = session.projection.addressAt(from);
   if (at.isErr()) return undefined;
-  const address = session.projection.paragraph(at.value.blockId);
+  const logical = editorPositionAtPhysicalPosition(session.document, at.value);
+  const address = session.projection.paragraph(logical.blockId);
   if (address === undefined || effectiveNumbering(address.source)?.kind === "reference")
     return undefined;
+  const group = editorParagraphGroups(session.document, logical.story).find(
+    ({ blockId }) => blockId === logical.blockId,
+  );
+  if (group === undefined) panic("Autoformat lost its logical paragraph");
   const source = address.source;
-  const prefix = address.text.slice(0, at.value.offset) + text;
+  const prefix = group.text.slice(0, logical.offset) + text;
   const requests = listRequestsForMarker(prefix);
   const heading = /^(?<hashes>#{1,6}) $/u.exec(prefix)?.groups?.["hashes"];
   if (requests === null && heading === undefined) return undefined;
-  const start: TextPosition = { ...at.value, offset: 0 };
+  const start = physicalPositionAtEditorOffset(session.document, { ...logical, offset: 0 });
   const request = requests?.at(0);
   const styleId = `Heading${heading?.length ?? 1}`;
   if (request === undefined && !session.hasStyle(styleId)) return undefined;

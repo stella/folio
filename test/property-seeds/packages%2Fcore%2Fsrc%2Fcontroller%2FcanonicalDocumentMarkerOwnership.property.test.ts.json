@@ -1,0 +1,10 @@
+{
+  "document marker rules retain ending paragraph property ownership": [
+    {
+      "seed": 1404003,
+      "path": "0:0",
+      "note": "Autoformat reads a numeric marker through pending deleted source text.",
+      "date": "2026-10-13"
+    }
+  ]
+}

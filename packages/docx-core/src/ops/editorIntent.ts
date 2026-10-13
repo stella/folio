@@ -385,6 +385,18 @@ export const physicalOffsetAtVisibleOffset = (paragraph: Paragraph, offset: numb
   return offset === visible ? paragraphLength(paragraph) : paragraphLength(paragraph) + 1;
 };
 
+/** The visible offset corresponding to a physical source position. */
+const visibleOffsetAtPhysicalOffset = (paragraph: Paragraph, offset: number): number => {
+  if (!Number.isInteger(offset) || offset < 0 || offset > paragraphLength(paragraph)) return -1;
+  let visible = 0;
+  for (const span of leafSpans(paragraph.content)) {
+    if (span.before.offset >= offset) break;
+    if (span.ancestors.some(isRemovedRevisionNode)) continue;
+    visible += Math.min(offset, span.after.offset) - span.before.offset;
+  }
+  return visible;
+};
+
 /** Deleted paragraph marks concatenate physical paragraphs in the editing view. */
 export const editorParagraphGroups = (document: Document, story: OpStory) => {
   const groups: { blockId: string; paragraphs: Paragraph[]; text: string }[] = [];
@@ -421,6 +433,26 @@ export const editorParagraphGroups = (document: Document, story: OpStory) => {
       text: pending.map(paragraphVisibleText).join(""),
     });
   return groups;
+};
+
+/** One logical paragraph and visible offset for a physical canonical address. */
+export const editorPositionAtPhysicalPosition = (
+  document: Document,
+  at: TextPosition,
+): TextPosition => {
+  const group = editorParagraphGroups(document, at.story).find(({ paragraphs }) =>
+    paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(at.blockId)),
+  );
+  if (group === undefined) return at;
+  let offset = 0;
+  for (const paragraph of group.paragraphs) {
+    if (idKey(paragraph.paraId ?? "") === idKey(at.blockId)) {
+      const local = visibleOffsetAtPhysicalOffset(paragraph, at.offset);
+      return { story: at.story, blockId: group.blockId, offset: local < 0 ? -1 : offset + local };
+    }
+    offset += paragraphVisibleText(paragraph).length;
+  }
+  return panic("A logical paragraph lost its source position");
 };
 
 /** Translate an editing-view paragraph gap to its physical canonical address. */
