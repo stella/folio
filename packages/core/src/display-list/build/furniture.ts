@@ -33,6 +33,7 @@ import { paintWatermark } from "./watermarkPrimitives";
  * caller's `documentFeatures` shows the document had one.
  */
 export type PageFurnitureInputs = {
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   /**
    * `w:pgBorders` for the section. Absent: no border is painted, and the gap is
    * reported unless `documentFeatures` says the document has none.
@@ -233,6 +234,9 @@ export const paintPageFurniture = ({
       : paintWatermark({
           page,
           watermark: selected.watermark,
+          ...(furniture.embeddedFontFamilyMap
+            ? { embeddedFontFamilyMap: furniture.embeddedFontFamilyMap }
+            : {}),
           ...(furniture.watermarkImageSrc === undefined
             ? {}
             : { imageSrc: furniture.watermarkImageSrc }),

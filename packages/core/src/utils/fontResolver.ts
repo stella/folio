@@ -907,30 +907,17 @@ export const setGoogleFontsEnabled = (enabled: boolean): void => {
 
 export const getGoogleFontsEnabled = (): boolean => googleFontsEnabled;
 
-// The active document's embedded-font original→scoped family map (see
-// `fonts/embeddedFonts.ts`). Embedded faces are never registered under their
-// raw DOCX name (that would let an embedded "Arial" shadow the host page's
-// own Arial via the global `document.fonts`); they register under a scoped
-// `folio-embedded-{docNonce}-{name}` family instead. `resolveFontFamily`
-// substitutes that scoped family in place of the raw name so the document's
-// own runs still resolve to their embedded face.
-//
-// Module-level like `googleFontsEnabled` above: the React/Vue font-lifecycle
-// effects call `setEmbeddedFontFamilyMap` once per loaded document, in the
-// same breath as their resolved-font cache invalidation (`clearAllCaches`,
-// which clears `fontResolvedCache` — see measure/measureHelpers.ts). A known
-// gap of this module-singleton approach: two editor instances with embedded
-// fonts mounted at the same time share one active map, so one instance's
-// layout pass could transiently resolve using the other's map. That is a
-// correctness edge case scoped to folio's own rendering, not a security one —
-// `document.fonts` itself never carries a raw/unscoped name either way.
-let embeddedFontFamilyMap: ReadonlyMap<string, string> | null = null;
-
-export const setEmbeddedFontFamilyMap = (map: ReadonlyMap<string, string> | null): void => {
-  embeddedFontFamilyMap = map;
+type FontResolutionOptions = {
+  alternateFontName?: string | undefined;
+  embeddedFontFamilyMap?: ReadonlyMap<string, string> | undefined;
 };
 
-export function resolveFontFamily(docxFontName: string, alternateFontName?: string): ResolvedFont {
+/** Resolve against the calling editor's immutable embedded-font lookup. */
+export function resolveFontFamily(
+  docxFontName: string,
+  options: FontResolutionOptions = {},
+): ResolvedFont {
+  const { alternateFontName, embeddedFontFamilyMap } = options;
   const normalizedName = docxFontName.trim().toLowerCase();
   const scopedFamily = embeddedFontFamilyMap?.get(docxFontName) ?? null;
 
@@ -966,7 +953,7 @@ export function resolveFontFamily(docxFontName: string, alternateFontName?: stri
       };
     }
 
-    const alternate = resolveFontFamily(alternateFontName);
+    const alternate = resolveFontFamily(alternateFontName, { embeddedFontFamilyMap });
     const category = mapping.category;
     const concreteStack = dedupeFontFamilies([
       scopedFamily ?? docxFontName,
@@ -988,7 +975,7 @@ export function resolveFontFamily(docxFontName: string, alternateFontName?: stri
 
   const alternateName = alternateFontName?.trim();
   if (alternateName && alternateName.toLowerCase() !== normalizedName) {
-    const alternate = resolveFontFamily(alternateName);
+    const alternate = resolveFontFamily(alternateName, { embeddedFontFamilyMap });
     const category = detectFontCategory(docxFontName);
     const concreteStack = dedupeFontFamilies([
       scopedFamily ?? docxFontName,

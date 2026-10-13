@@ -72,7 +72,12 @@ import path from "node:path";
 
 import { installCleanRoomDependencies } from "./clean-room-install";
 import { scanDistUrlTargets } from "./dist-url-targets";
-import { REACT_PEER_FLOOR, reactPeerInstallArgs, buildAndPack } from "./packaged-consumer-lib";
+import {
+  REACT_PEER_FLOOR,
+  buildAndPack,
+  hostPeerInstallArgs,
+  reactPeerInstallArgs,
+} from "./packaged-consumer-lib";
 import { findUncoveredUtilities } from "./standalone-css-coverage";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
@@ -193,6 +198,7 @@ await writeFile(
 );
 
 const installArgs: string[] = [tarball];
+if (target !== "docx-core") installArgs.push(...hostPeerInstallArgs());
 if (docxCoreTarball) {
   installArgs.push(docxCoreTarball);
 }
@@ -212,30 +218,13 @@ if (target === "cli") {
 }
 if (target === "vue") {
   if (!coreTarball) panic("validate-dist: vue needs a @stll/folio-core tarball");
-  installArgs.push(
-    coreTarball,
-    "vue@^3",
-    "prosemirror-history@^1",
-    "prosemirror-model@^1",
-    "prosemirror-state@^1",
-    "prosemirror-tables@^1",
-    "prosemirror-view@^1",
-  );
+  installArgs.push(coreTarball, "vue@^3");
 }
 if (target === "nuxt") {
   if (!coreTarball || !vueTarball) {
     panic("validate-dist: nuxt needs @stll/folio-core and @stll/folio-vue tarballs");
   }
-  installArgs.push(
-    coreTarball,
-    vueTarball,
-    "vue@^3",
-    "prosemirror-history@^1",
-    "prosemirror-model@^1",
-    "prosemirror-state@^1",
-    "prosemirror-tables@^1",
-    "prosemirror-view@^1",
-  );
+  installArgs.push(coreTarball, vueTarball, "vue@^3");
 }
 await installCleanRoomDependencies({ consumerDir, dependencies: installArgs });
 

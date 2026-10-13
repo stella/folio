@@ -1,9 +1,10 @@
-import { PluginKey, type EditorState } from "prosemirror-state";
+import { createPluginKeyOwner } from "../pluginKeyOwner";
+import type { EditorState } from "prosemirror-state";
 import { type BuiltInStyleIndex, EMPTY_BUILT_IN_STYLE_INDEX } from "../../docx/builtInStyles";
 import type { Style } from "../../types/document";
 import type { StyleResolver } from "../styles/styleResolver";
 
-export const documentStylesKey = new PluginKey<StyleResolver | null>("documentStyles");
+export const documentStylesKey = createPluginKeyOwner<StyleResolver | null>("documentStyles");
 
 /** Read the document's StyleResolver, or null when the plugin isn't installed. */
 export function getDocumentStyleResolver(state: EditorState): StyleResolver | null {

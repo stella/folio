@@ -32,6 +32,9 @@ export const isPageRendererName = (value: unknown): value is PageRendererName =>
  * which header a page carries.
  */
 export const displayListFurnitureFrom = (options: RenderPageOptions): PageFurnitureInputs => ({
+  ...(options.embeddedFontFamilyMap
+    ? { embeddedFontFamilyMap: options.embeddedFontFamilyMap }
+    : {}),
   ...(options.pageBorders === undefined ? {} : { pageBorders: options.pageBorders }),
   ...(options.theme === undefined ? {} : { theme: options.theme }),
   ...(options.watermark === undefined ? {} : { watermark: options.watermark }),

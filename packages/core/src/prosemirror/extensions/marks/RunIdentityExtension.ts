@@ -20,8 +20,9 @@
  * supplies the session the format itself says such a run belongs to.
  */
 
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { isHistoryTransaction, undoDepth } from "prosemirror-history";
-import { Plugin, PluginKey, type Transaction } from "prosemirror-state";
+import { Plugin, type Transaction } from "prosemirror-state";
 
 import { expectRunIdentityMarkAttrs } from "../../attrs";
 import { nodesBetweenIndexed } from "../../indexedNodeLookup";
@@ -36,7 +37,7 @@ import type { ExtensionRuntime } from "../types";
 
 const CANONICAL_RUN_IDENTITY_ID = /^(?:0|[1-9]\d*)$/u;
 
-const runIdentityStripKey = new PluginKey("runIdentityStrip");
+const runIdentityStripKey = createPluginKeyOwner("runIdentityStrip");
 
 type InsertedRange = { from: number; to: number };
 
@@ -105,7 +106,7 @@ export const insertedRanges = (
  */
 const createRunIdentityStripPlugin = (): Plugin =>
   new Plugin({
-    key: runIdentityStripKey,
+    key: runIdentityStripKey.createKey(),
     appendTransaction(transactions, oldState, newState) {
       if (!transactions.some((transaction) => transaction.docChanged)) {
         return null;

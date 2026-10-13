@@ -19,6 +19,7 @@ const WATERMARK_CLASS = "layout-page-watermark";
 const PICTURE_WASHOUT_OPACITY = 0.18;
 
 export type RenderWatermarkOptions = {
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   /** Resolved image src for picture watermarks (`data:` / `blob:` only). */
   imageSrc?: string;
 };
@@ -59,7 +60,7 @@ export function renderWatermarkLayer(
   layer.style.justifyContent = "center";
 
   if (watermark.kind === "text") {
-    layer.append(renderTextWatermark(watermark, doc));
+    layer.append(renderTextWatermark({ watermark, doc, options }));
   } else {
     // Narrowed by the guard above.
     const imageSrc = options.imageSrc;
@@ -71,13 +72,16 @@ export function renderWatermarkLayer(
   return layer;
 }
 
-function renderTextWatermark(
-  watermark: Extract<Watermark, { kind: "text" }>,
-  doc: Document,
-): HTMLElement {
+type RenderTextWatermarkOptions = {
+  watermark: Extract<Watermark, { kind: "text" }>;
+  doc: Document;
+  options: RenderWatermarkOptions;
+};
+
+function renderTextWatermark({ watermark, doc, options }: RenderTextWatermarkOptions): HTMLElement {
   const el = doc.createElement("div");
   el.textContent = watermark.text;
-  el.style.fontFamily = resolveFontFamily(watermark.font ?? "Calibri").cssFallback;
+  el.style.fontFamily = resolveFontFamily(watermark.font ?? "Calibri", options).cssFallback;
   // Word's default text-watermark sizing: ~144pt at ~50% opacity. Matches
   // the visual weight of the VML shape's autoscaled WordArt path.
   el.style.fontSize = "144px";

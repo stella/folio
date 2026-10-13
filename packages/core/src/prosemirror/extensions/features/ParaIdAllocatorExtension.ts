@@ -35,9 +35,10 @@
  *   split therefore restores the same allocated id instead of minting
  *   another one.
  */
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { panic } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 
 import { deterministicHexId, generateHexId } from "../../../utils/hexId";
@@ -61,7 +62,8 @@ type ParagraphPropertySourceSeed = {
   tokens: ReadonlySet<string>;
 };
 
-export const paraIdAllocatorKey = new PluginKey<ParagraphPropertySourceSeed>("paraIdAllocator");
+export const paraIdAllocatorKey =
+  createPluginKeyOwner<ParagraphPropertySourceSeed>("paraIdAllocator");
 
 /**
  * Transaction meta asking this plugin to derive the ids it mints from a
@@ -73,7 +75,7 @@ export const paraIdAllocatorKey = new PluginKey<ParagraphPropertySourceSeed>("pa
  * be deterministic, so it says so on its own transaction rather than leaving
  * the plugin to guess.
  */
-export const deterministicParaIdSeedKey = new PluginKey<string>("deterministicParaIdSeed");
+export const deterministicParaIdSeedKey = "stll.folio.meta.deterministicParaIdSeed";
 
 /** Ask the allocator to mint reproducible ids for the paragraphs `tr` creates. */
 export const requestDeterministicParaIds = (tr: Transaction, seed: string): Transaction =>
@@ -479,7 +481,7 @@ export const ensureParaIdsInState = (state: EditorState): EditorState => {
 
 const createParaIdAllocatorPlugin = (): Plugin<ParagraphPropertySourceSeed> =>
   new Plugin({
-    key: paraIdAllocatorKey,
+    key: paraIdAllocatorKey.createKey(),
     state: {
       init: (_config, state) => collectParagraphPropertySourceSeed(state.doc),
       apply: (_transaction, seed) => seed,

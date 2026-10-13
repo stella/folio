@@ -201,7 +201,7 @@ export function getEmbeddedFontFaces(
 /**
  * Build the original DOCX font name → scoped registered family map for a set
  * of resolved embedded faces. Callers thread this into font resolution (see
- * `utils/fontResolver.ts`'s `setEmbeddedFontFamilyMap`) so the document's own
+ * the editor-owned layout session) so the document's own
  * runs — which still carry the original name — keep resolving to the scoped
  * face that was actually registered on `document.fonts`.
  */

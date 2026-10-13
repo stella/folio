@@ -22,7 +22,7 @@ export type LoadedEmbeddedFonts = {
    * Original DOCX font name (`w:font w:name`) → the per-document scoped
    * family it was registered under (never the raw name — see
    * `@stll/folio-core/fonts/embeddedFonts`). Callers activate this with
-   * `setEmbeddedFontFamilyMap` (`@stll/folio-core/utils/fontResolver`) so the
+   * the editor-owned layout session so the
    * document's own runs keep resolving to their embedded face.
    */
   familyMap: ReadonlyMap<string, string>;

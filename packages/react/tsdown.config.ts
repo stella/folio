@@ -79,11 +79,11 @@ const shared = {
       /^@stll\//u,
       /^@base-ui\/react(?:$|\/)/u,
       /^@fontsource\//u,
-      // Bare package names only: a `prosemirror-*/style/*.css` subpath must fall
-      // through to the strip plugin, not be externalized as a CSS import.
-      /^prosemirror-[a-z-]+$/u,
+      // Keep JS subpaths external; CSS still passes through the strip plugin.
+      /^prosemirror-[a-z-]+(?:$|\/(?!.*\.css$))/u,
       /^y-prosemirror(?:$|\/)/u,
-      "yjs",
+      /^y-protocols(?:$|\/)/u,
+      /^yjs(?:$|\/)/u,
       "lucide-react",
       "better-result",
     ],

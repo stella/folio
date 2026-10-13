@@ -15,6 +15,8 @@ import type { Theme, StyleDefinitions } from "../../types/document";
  * Options for the conversion.
  */
 export type ToFlowBlocksOptions = {
+  /** Embedded families owned by this editor, never ambient process state. */
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   /** Default font family. */
   defaultFont?: string;
   /** Default font size in points. */

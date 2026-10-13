@@ -1,7 +1,6 @@
 /** Owns browser font registration for one Vue editor instance. */
 
 import { watch, type Ref } from "vue";
-import { setEmbeddedFontFamilyMap } from "@stll/folio-core/utils/fontResolver";
 
 import type { FontDefinition } from "../components/DocxEditor/types";
 import { loadEmbeddedFontFaces, type LoadedEmbeddedFonts } from "../utils/embeddedFonts";
@@ -13,6 +12,7 @@ export type UseFontLifecycleOptions = {
   getDocument: () => { originalBuffer?: ArrayBuffer | null } | null;
   fonts: () => ReadonlyArray<FontDefinition> | undefined;
   remeasure: () => void;
+  setEmbeddedFontFamilies: (families: ReadonlyMap<string, string> | null) => void;
 };
 
 export type FontLifecycleDependencies = {
@@ -59,7 +59,7 @@ export function useFontLifecycle(
         // so every run that resolves after this point picks up the scoped
         // family instead of the raw DOCX name — which is never registered on
         // `document.fonts` (see `@stll/folio-core/fonts/embeddedFonts`).
-        setEmbeddedFontFamilyMap(familyMap.size > 0 ? familyMap : null);
+        options.setEmbeddedFontFamilies(new Map(familyMap));
         options.remeasure();
         return undefined;
       });
@@ -67,7 +67,7 @@ export function useFontLifecycle(
       onCleanup(() => {
         cancelled = true;
         dependencies.remove(registered);
-        setEmbeddedFontFamilyMap(null);
+        options.setEmbeddedFontFamilies(null);
       });
     },
     { immediate: true },

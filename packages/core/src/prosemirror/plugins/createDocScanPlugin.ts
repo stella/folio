@@ -18,7 +18,8 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
-import type { EditorState, PluginKey, PluginSpec } from "prosemirror-state";
+import type { EditorState, PluginSpec } from "prosemirror-state";
+import type { PluginKeyOwner } from "../pluginKeyOwner";
 
 const SET_META = "set";
 
@@ -28,7 +29,7 @@ export type DocScanState<TConfig, TRange> = {
 };
 
 export type DocScanPluginOptions<TConfig, TRange> = {
-  key: PluginKey<DocScanState<TConfig, TRange>>;
+  key: PluginKeyOwner<DocScanState<TConfig, TRange>>;
   initialConfig: TConfig;
   /** Recompute the ranges from the current doc + config. */
   scan: (doc: PMNode, config: TConfig) => TRange[];
@@ -48,7 +49,7 @@ export const createDocScanPlugin = <TConfig, TRange>({
   onRangesChange,
 }: DocScanPluginOptions<TConfig, TRange>): Plugin<DocScanState<TConfig, TRange>> => {
   const spec: PluginSpec<DocScanState<TConfig, TRange>> = {
-    key,
+    key: key.createKey(),
     state: {
       init(_config, instance): DocScanState<TConfig, TRange> {
         return {
@@ -104,14 +105,14 @@ export const createDocScanPlugin = <TConfig, TRange>({
 };
 
 export const setDocScanConfigMeta = <TConfig, TRange>(
-  key: PluginKey<DocScanState<TConfig, TRange>>,
+  key: PluginKeyOwner<DocScanState<TConfig, TRange>>,
   config: TConfig,
 ): {
-  key: PluginKey<DocScanState<TConfig, TRange>>;
+  key: PluginKeyOwner<DocScanState<TConfig, TRange>>;
   payload: { type: typeof SET_META; config: TConfig };
 } => ({ key, payload: { type: SET_META, config } });
 
 export const getDocScanRanges = <TConfig, TRange>(
-  key: PluginKey<DocScanState<TConfig, TRange>>,
+  key: PluginKeyOwner<DocScanState<TConfig, TRange>>,
   state: EditorState,
 ): readonly TRange[] => key.getState(state)?.ranges ?? [];

@@ -36,16 +36,22 @@ const TEXT_DIAGONAL_DEGREES = -45;
 const PICTURE_NATIVE_SCALE = 1;
 const PICTURE_WASHOUT_OPACITY = 0.18;
 
-const paintTextWatermark = (
-  watermark: Extract<Watermark, { kind: "text" }>,
-  page: Page,
-  context: BuildContext,
-): readonly DisplayPrimitive[] => {
+type PaintTextWatermarkOptions = Omit<WatermarkPaintOptions, "watermark"> & {
+  watermark: Extract<Watermark, { kind: "text" }>;
+};
+
+const paintTextWatermark = ({
+  watermark,
+  page,
+  context,
+  embeddedFontFamilyMap,
+}: PaintTextWatermarkOptions): readonly DisplayPrimitive[] => {
   if (watermark.text.length === 0) {
     return [];
   }
 
   const style: FontStyle = {
+    ...(embeddedFontFamilyMap ? { embeddedFontFamilyMap } : {}),
     fontFamily: watermark.font ?? TEXT_DEFAULT_FONT,
     fontSize: pxToPt(TEXT_FONT_SIZE_PX),
     bold: true,
@@ -202,6 +208,7 @@ const paintPictureWatermark = (
 };
 
 export type WatermarkPaintOptions = {
+  embeddedFontFamilyMap?: ReadonlyMap<string, string> | undefined;
   readonly page: Page;
   readonly watermark: Watermark;
   /** Resolved `data:` source for a picture watermark; absent means unresolved. */
@@ -214,10 +221,11 @@ export const paintWatermark = ({
   watermark,
   imageSrc,
   context,
+  embeddedFontFamilyMap,
 }: WatermarkPaintOptions): readonly DisplayPrimitive[] => {
   switch (watermark.kind) {
     case "text":
-      return paintTextWatermark(watermark, page, context);
+      return paintTextWatermark({ watermark, page, context, embeddedFontFamilyMap });
     case "picture":
       return paintPictureWatermark(watermark, page, imageSrc, context);
     default:

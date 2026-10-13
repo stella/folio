@@ -191,9 +191,9 @@ export type DocxEditorProps = {
    * body are unaffected, and so are the zoom keys, which the editor leaves to
    * the browser (`useWheelZoom` takes the same scope for a host that binds
    * them itself).
-   *  - `"document"`: every press on the page. Default; for a page whose only
+   *  - `"document"`: every press on the page; for a page whose only
    *    surface is the editor.
-   *  - `"editor"`: only a press whose target is inside this editor (its root
+   *  - `"editor"` (default): only a press whose target is inside this editor (its root
    *    element, which contains the find/replace dialog), so a host that docks
    *    the editor beside other panes keeps its own bindings elsewhere.
    *  - `"none"`: no page-level listener. The host dispatches shortcuts itself

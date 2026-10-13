@@ -11,13 +11,13 @@
  * `setActiveCitationMeta` helpers below.
  */
 
+import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
-export const aiCitationDecorationsKey = new PluginKey<AICitationDecorationState>(
-  "aiCitationDecorations",
-);
+export const aiCitationDecorationsKey =
+  createPluginKeyOwner<AICitationDecorationState>("aiCitationDecorations");
 
 const SET_META = "set";
 const ACTIVE_META = "active";
@@ -77,7 +77,7 @@ function buildDecorationSet(
  */
 export function createAICitationDecorationsPlugin(): Plugin<AICitationDecorationState> {
   return new Plugin<AICitationDecorationState>({
-    key: aiCitationDecorationsKey,
+    key: aiCitationDecorationsKey.createKey(),
     state: {
       init(_, state): AICitationDecorationState {
         return {
@@ -129,7 +129,7 @@ export function createAICitationDecorationsPlugin(): Plugin<AICitationDecoration
 }
 
 export function setAICitationsMeta(citations: AICitationRange[]): {
-  key: PluginKey<AICitationDecorationState>;
+  key: PluginKeyOwner<AICitationDecorationState>;
   payload: { type: typeof SET_META; citations: AICitationRange[] };
 } {
   return {
@@ -139,7 +139,7 @@ export function setAICitationsMeta(citations: AICitationRange[]): {
 }
 
 export function setActiveCitationMeta(activeId: string | null): {
-  key: PluginKey<AICitationDecorationState>;
+  key: PluginKeyOwner<AICitationDecorationState>;
   payload: { type: typeof ACTIVE_META; activeId: string | null };
 } {
   return {

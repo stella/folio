@@ -100,10 +100,7 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
   const bold = style.bold ?? false;
   const italic = style.italic ?? false;
   const fontVariant = style.fontVariant;
-  const alternateFontFamily = style.alternateFontFamily;
-  const fontCacheFamily = alternateFontFamily
-    ? `${fontFamily}\u0000${alternateFontFamily}`
-    : fontFamily;
+  const fontCacheFamily = getResolvedData(fontFamily, style).cssFallback;
 
   const cached = getCachedFontMetrics(fontCacheFamily, fontSize, bold, italic, fontVariant);
   if (cached !== undefined) {
@@ -174,7 +171,7 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
   lineHeight = Math.max(lineHeight, ascent + descent);
 
   // Look up OS/2 single-line ratio for OOXML line spacing
-  const singleLineRatio = getResolvedData(fontFamily, alternateFontFamily).singleLineRatio;
+  const singleLineRatio = getResolvedData(fontFamily, style).singleLineRatio;
 
   const result = {
     fontSize, // Keep in points for reference
@@ -292,7 +289,9 @@ function canvasMeasureTextWidth(text: string, sourceStyle: FontStyle): number {
  * takes the single-font path (no double-counting, no recursion).
  */
 function glyphAdvanceStyle(style: FontStyle): FontStyle {
-  const result: FontStyle = {};
+  const result: FontStyle = {
+    ...(style.embeddedFontFamilyMap ? { embeddedFontFamilyMap: style.embeddedFontFamilyMap } : {}),
+  };
   if (style.fontFamily !== undefined) {
     result.fontFamily = style.fontFamily;
   }

@@ -106,6 +106,11 @@ const renderEditor = async (hostShortcuts: readonly HostShortcut[] | undefined) 
       });
       return event ?? panic("The key press did not run");
     },
+    pressInEditor: async (key: string) => {
+      await act(async () => {
+        modPress({ target: view.dom, key, mac: isMacPlatform() });
+      });
+    },
     unmount: async () => {
       await act(async () => root.unmount());
       container.remove();
@@ -113,13 +118,15 @@ const renderEditor = async (hostShortcuts: readonly HostShortcut[] | undefined) 
   };
 };
 
-test("the editor answers undo and print by default", async () => {
+test("default shortcuts belong to the editor and leave the host page alone", async () => {
   const harness = await renderEditor(undefined);
   try {
     await harness.type(" world");
     await harness.pressInBody("z");
     expect(harness.view.state.doc.textContent).toBe("Hello");
-    expect((await harness.pressOnPage("p")).defaultPrevented).toBe(true);
+    expect((await harness.pressOnPage("p")).defaultPrevented).toBe(false);
+    expect(harness.prints()).toBe(0);
+    await harness.pressInEditor("p");
     expect(harness.prints()).toBe(1);
   } finally {
     await harness.unmount();
@@ -147,5 +154,21 @@ test("host-owned shortcuts leave their keys to the host and keep the ref command
     expect(harness.view.state.doc.textContent).toBe("Hello world");
   } finally {
     await harness.unmount();
+  }
+});
+
+test("default shortcuts affect only the editor that receives the press", async () => {
+  const first = await renderEditor(undefined);
+  const second = await renderEditor(undefined);
+  try {
+    await first.pressInEditor("p");
+    expect(first.prints()).toBe(1);
+    expect(second.prints()).toBe(0);
+    await second.pressInEditor("p");
+    expect(first.prints()).toBe(1);
+    expect(second.prints()).toBe(1);
+  } finally {
+    await first.unmount();
+    await second.unmount();
   }
 });

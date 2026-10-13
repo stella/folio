@@ -33,8 +33,9 @@
  * Mirrors the appendTransaction + ensure-in-state pattern of
  * `ParaIdAllocatorExtension`.
  */
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 
 import type { DirtyRange } from "../../../paged-layout/incrementalMeasure";
@@ -47,7 +48,7 @@ import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
 
-export const autoBidiDetectionKey = new PluginKey("autoBidiDetection");
+export const autoBidiDetectionKey = createPluginKeyOwner("autoBidiDetection");
 
 type BidiUpdate = {
   pos: number;
@@ -185,7 +186,7 @@ export const ensureBaseDirectionInState = (state: EditorState): EditorState => {
 
 const createAutoBidiDetectionPlugin = (): Plugin =>
   new Plugin({
-    key: autoBidiDetectionKey,
+    key: autoBidiDetectionKey.createKey(),
     appendTransaction(transactions, _oldState, newState) {
       // Selection-only / mark-only transactions can't have changed paragraph text.
       if (!transactions.some((t) => t.docChanged)) {

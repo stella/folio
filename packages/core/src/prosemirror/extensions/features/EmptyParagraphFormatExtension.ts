@@ -19,14 +19,15 @@
  * untouched so ordinary typed text stays mark-free and serializes cleanly.
  */
 
-import { Plugin, PluginKey } from "prosemirror-state";
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
+import { Plugin } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
 import { createExtension } from "../create";
 import { textFormattingToMarks } from "../marks/markUtils";
 import type { ExtensionRuntime } from "../types";
 
-export const emptyParagraphFormatKey = new PluginKey("emptyParagraphFormat");
+export const emptyParagraphFormatKey = createPluginKeyOwner("emptyParagraphFormat");
 
 /**
  * Run-formatting properties the painter does NOT reproduce from
@@ -46,7 +47,7 @@ function hasNonFontDefaults(dtf: TextFormatting): boolean {
 
 function createEmptyParagraphFormatPlugin(): Plugin {
   return new Plugin({
-    key: emptyParagraphFormatKey,
+    key: emptyParagraphFormatKey.createKey(),
     appendTransaction(transactions, _oldState, newState) {
       // Only react when the caret may have moved into an empty paragraph.
       if (!transactions.some((t) => t.selectionSet || t.docChanged)) {

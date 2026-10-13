@@ -10,7 +10,6 @@
  */
 
 @import "./fonts.css";
-@import "./font-aliases.css";
 @import "./autocomplete.css";
 
 /* ============================================================================
@@ -161,7 +160,7 @@
  * CURSOR / CARET
  * ============================================================================ */
 
-[contenteditable="true"] {
+:where(.folio-root) [contenteditable="true"] {
   caret-color: var(--doc-canvas-text, var(--doc-text));
   outline: none;
   caret-shape: bar;
@@ -169,8 +168,8 @@
 
 /* Force white caret in dark mode — browser ignores CSS vars for caret
  * in some engines, so we use an explicit value */
-.dark [contenteditable="true"],
-.dark .ProseMirror {
+:where(.dark .folio-root, .folio-root.dark) [contenteditable="true"],
+:where(.dark .folio-root, .folio-root.dark) .ProseMirror {
   caret-color: var(--doc-canvas-text) !important;
 }
 
@@ -225,8 +224,8 @@
 .docx-run-editable *::selection,
 .docx-run::selection,
 .docx-run *::selection,
-[contenteditable="true"]::selection,
-[contenteditable="true"] *::selection,
+:where(.folio-root) [contenteditable="true"]::selection,
+:where(.folio-root) [contenteditable="true"] *::selection,
 .docx-paragraph::selection,
 .docx-paragraph *::selection,
 .docx-paragraph-editable::selection,
@@ -242,8 +241,8 @@
 .docx-run-editable *::-moz-selection,
 .docx-run::-moz-selection,
 .docx-run *::-moz-selection,
-[contenteditable="true"]::-moz-selection,
-[contenteditable="true"] *::-moz-selection,
+:where(.folio-root) [contenteditable="true"]::-moz-selection,
+:where(.folio-root) [contenteditable="true"] *::-moz-selection,
 .docx-paragraph::-moz-selection,
 .docx-paragraph *::-moz-selection,
 .docx-paragraph-editable::-moz-selection,
@@ -334,7 +333,7 @@
 .dark .docx-paragraph,
 .dark .docx-run,
 .dark .docx-run-editable,
-.dark .ProseMirror {
+:where(.dark .folio-root, .folio-root.dark) .ProseMirror {
   color: var(--doc-canvas-text) !important;
 }
 /* Dark mode: invert the LIGHTNESS of explicit run colors while preserving hue
@@ -1054,12 +1053,12 @@
 /* ============================================================================
    prosemirror-gapcursor — caret slots before/between/after isolating blocks
    ============================================================================ */
-.ProseMirror-gapcursor {
+:where(.folio-root) .ProseMirror-gapcursor {
   display: none;
   pointer-events: none;
   position: absolute;
 }
-.ProseMirror-gapcursor::after {
+:where(.folio-root) .ProseMirror-gapcursor::after {
   content: "";
   display: block;
   position: absolute;
@@ -1073,7 +1072,7 @@
     visibility: hidden;
   }
 }
-.ProseMirror-focused .ProseMirror-gapcursor {
+:where(.folio-root) .ProseMirror-focused .ProseMirror-gapcursor {
   display: block;
 }
 
