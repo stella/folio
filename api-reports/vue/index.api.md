@@ -74,7 +74,7 @@ import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { EndnoteProperties } from '@stll/docx-core/model';
+import { EndnoteProperties } from '@stll/folio-core/types/content';
 import { extractDocumentStyleSet } from '@stll/folio-core/style-sets/extract';
 import { extractDocumentStyleSetFromDocx } from '@stll/folio-core/style-sets/extract';
 import { ExtractDocumentStyleSetOptions } from '@stll/folio-core/style-sets/extract';
@@ -109,7 +109,7 @@ import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
 import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
-import { FootnoteProperties } from '@stll/docx-core/model';
+import { FootnoteProperties } from '@stll/folio-core/types/content';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getAnonymizationMatches } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { getAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -155,7 +155,7 @@ import { scanDirectives } from '@stll/folio-core/prosemirror/plugins/templateDir
 import { scrollFolioPositionIntoView } from '@stll/folio-core/paged-layout/scrollToPmPosition';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
 import { SdtProperties } from '@stll/folio-core/types/document';
-import { SectionProperties } from '@stll/docx-core';
+import { SectionProperties } from '@stll/folio-core/types/document';
 import { SelectionState } from '@stll/folio-core/prosemirror';
 import { setActiveCitationMeta } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
 import { setAICitationsMeta } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
@@ -188,7 +188,6 @@ import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
 import { VNode } from 'vue';
 import { VNodeChild } from 'vue';
 import { Watermark } from '@stll/folio-core/watermark';
-import { Watermark as Watermark_2 } from '@stll/docx-core/model';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
 import { XmlFragment } from 'yjs';
 
@@ -560,20 +559,8 @@ export { extractDocumentStyleSetFromDocx }
 
 export { ExtractDocumentStyleSetOptions }
 
-// @public
-export const FindReplaceDialog: DefineComponent<    {
-isOpen: boolean;
-view: EditorView | null;
-scrollVisiblePositionIntoView?: (pmPos: number) => void;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-view: EditorView | null;
-scrollVisiblePositionIntoView?: (pmPos: number) => void;
-}> & Readonly<{
-onClose?: () => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+// @public (undocumented)
+export const FindReplaceDialog: typeof __VLS_export_4;
 
 export { finishAutocompleteSuggestion }
 
@@ -665,21 +652,7 @@ export type FontOption = {
 };
 
 // @public (undocumented)
-export const FootnotePropertiesDialog: DefineComponent<    {
-isOpen: boolean;
-footnotePr?: FootnoteProperties;
-endnotePr?: EndnoteProperties;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-apply: (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-footnotePr?: FootnoteProperties;
-endnotePr?: EndnoteProperties;
-}> & Readonly<{
-onClose?: () => any;
-onApply?: (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const FootnotePropertiesDialog: typeof __VLS_export_5;
 
 // @public (undocumented)
 export const FormattingBar: typeof __VLS_export_3;
@@ -730,39 +703,7 @@ export type HighlightPassageOptions = {
 export type HighlightPassageResult = "passage" | "block" | "none";
 
 // @public (undocumented)
-export const HyperlinkDialog: DefineComponent<    {
-isOpen: boolean;
-view: EditorView | null;
-bookmarks?: Array<{
-name: string;
-label?: string;
-}>;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-remove: () => any;
-submit: (data: {
-url?: string;
-bookmark?: string;
-displayText: string;
-tooltip: string;
-}) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-view: EditorView | null;
-bookmarks?: Array<{
-name: string;
-label?: string;
-}>;
-}> & Readonly<{
-onClose?: () => any;
-onRemove?: () => any;
-onSubmit?: (data: {
-url?: string;
-bookmark?: string;
-displayText: string;
-tooltip: string;
-}) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const HyperlinkDialog: typeof __VLS_export_6;
 
 // @public
 export const i18nPlugin: {
@@ -772,93 +713,25 @@ export const i18nPlugin: {
 export { ImageMeta }
 
 // @public (undocumented)
-export const ImagePositionDialog: DefineComponent<    {
-isOpen: boolean;
-currentData?: ImagePositionData;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-apply: (data: ImagePositionData) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-currentData?: ImagePositionData;
-}> & Readonly<{
-onClose?: () => any;
-onApply?: (data: ImagePositionData) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const ImagePositionDialog: typeof __VLS_export_7;
 
 // @public (undocumented)
-export const ImagePropertiesDialog: DefineComponent<    {
-isOpen: boolean;
-view: EditorView | null;
-pmPos: number | null;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-view: EditorView | null;
-pmPos: number | null;
-}> & Readonly<{
-onClose?: () => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const ImagePropertiesDialog: typeof __VLS_export_8;
 
 export { ImageRef }
 
 // @public (undocumented)
-export const InsertImageDialog: DefineComponent<    {
-isOpen: boolean;
-accept?: string;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-insert: (data: InsertImageDialogData) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-accept?: string;
-}> & Readonly<{
-onClose?: () => any;
-onInsert?: (data: InsertImageDialogData) => any;
-}>, {
-accept: string;
-}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const InsertImageDialog: typeof __VLS_export_9;
 
 export { insertImageFromFile }
 
 export { insertPageBreakInView }
 
 // @public (undocumented)
-export const InsertSymbolDialog: DefineComponent<    {
-isOpen: boolean;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-insert: (symbol: string) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-}> & Readonly<{
-onClose?: () => any;
-onInsert?: (symbol: string) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const InsertSymbolDialog: typeof __VLS_export_10;
 
 // @public (undocumented)
-export const InsertTableDialog: DefineComponent<    {
-isOpen: boolean;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-insert: (config: {
-rows: number;
-cols: number;
-autofit: boolean;
-styleId: string | null;
-}) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-}> & Readonly<{
-onClose?: () => any;
-onInsert?: (config: {
-rows: number;
-cols: number;
-autofit: boolean;
-styleId: string | null;
-}) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const InsertTableDialog: typeof __VLS_export_11;
 
 export { insertTableInView }
 
@@ -894,36 +767,10 @@ export type OutlineItem = {
 };
 
 // @public (undocumented)
-export const PageSetupDialog: DefineComponent<    {
-isOpen: boolean;
-sectionProperties?: SectionProperties | null;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-apply: (props: Partial<SectionProperties>) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-sectionProperties?: SectionProperties | null;
-}> & Readonly<{
-onClose?: () => any;
-onApply?: (props: Partial<SectionProperties>) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const PageSetupDialog: typeof __VLS_export_12;
 
 // @public (undocumented)
-export const PasteSpecialDialog: DefineComponent<    {
-isOpen: boolean;
-defaultMode?: PasteSpecialMode;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-paste: (mode: PasteSpecialMode) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-defaultMode?: PasteSpecialMode;
-}> & Readonly<{
-onClose?: () => any;
-onPaste?: (mode: PasteSpecialMode) => any;
-}>, {
-defaultMode: PasteSpecialMode;
-}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const PasteSpecialDialog: typeof __VLS_export_13;
 
 export { PictureWatermark }
 
@@ -973,24 +820,7 @@ export { setTemplatePreviewValues }
 export { shouldTriggerAutocomplete }
 
 // @public (undocumented)
-export const SplitCellDialog: DefineComponent<    {
-isOpen: boolean;
-defaultRows?: number;
-defaultColumns?: number;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-split: (data: SplitCellDialogData) => any;
-close: () => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-defaultRows?: number;
-defaultColumns?: number;
-}> & Readonly<{
-onSplit?: (data: SplitCellDialogData) => any;
-onClose?: () => any;
-}>, {
-defaultRows: number;
-defaultColumns: number;
-}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const SplitCellDialog: typeof __VLS_export_14;
 
 export { startAutocompleteSuggestion }
 
@@ -1001,19 +831,7 @@ export { SuggestionAppliedAs }
 export { SuggestionKind }
 
 // @public (undocumented)
-export const TablePropertiesDialog: DefineComponent<    {
-isOpen: boolean;
-currentProps?: TableProperties;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-apply: (props: TablePropertiesCommand) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-currentProps?: TableProperties;
-}> & Readonly<{
-onClose?: () => any;
-onApply?: (props: TablePropertiesCommand) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const TablePropertiesDialog: typeof __VLS_export_15;
 
 export { TemplatePreviewHiddenRange }
 
@@ -1049,24 +867,12 @@ export function useWheelZoom(initialZoom?: number): UseZoomReturn;
 export { Watermark }
 
 // @public (undocumented)
-export const WatermarkDialog: DefineComponent<    {
-isOpen: boolean;
-currentWatermark?: Watermark_2 | undefined;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-apply: (watermark: Watermark_2 | undefined) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-currentWatermark?: Watermark_2 | undefined;
-}> & Readonly<{
-onClose?: () => any;
-onApply?: (watermark: Watermark_2 | undefined) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const WatermarkDialog: typeof __VLS_export_16;
 
 export { WordDiffSegment }
 
 // @public (undocumented)
-export const ZoomControl: typeof __VLS_export_4;
+export const ZoomControl: typeof __VLS_export_17;
 
 // @public (undocumented)
 export type ZoomControlProps = {

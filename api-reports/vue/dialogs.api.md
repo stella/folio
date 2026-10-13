@@ -8,243 +8,50 @@ import { ComponentOptionsMixin } from 'vue';
 import { ComponentProvideOptions } from 'vue';
 import { DefineComponent } from 'vue';
 import { EditorView } from 'prosemirror-view';
-import { EndnoteProperties } from '@stll/docx-core/model';
-import { FootnoteProperties } from '@stll/docx-core/model';
+import { EndnoteProperties } from '@stll/folio-core/types/content';
+import { FootnoteProperties } from '@stll/folio-core/types/content';
 import { PublicProps } from 'vue';
-import { SectionProperties } from '@stll/docx-core';
+import { SectionProperties } from '@stll/folio-core/types/document';
 import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
-import { Watermark } from '@stll/docx-core/model';
-
-// @public
-export const FindReplaceDialog: DefineComponent<    {
-isOpen: boolean;
-view: EditorView | null;
-scrollVisiblePositionIntoView?: (pmPos: number) => void;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-view: EditorView | null;
-scrollVisiblePositionIntoView?: (pmPos: number) => void;
-}> & Readonly<{
-onClose?: () => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+import { Watermark } from '@stll/folio-core/watermark';
 
 // @public (undocumented)
-export const FootnotePropertiesDialog: DefineComponent<    {
-isOpen: boolean;
-footnotePr?: FootnoteProperties;
-endnotePr?: EndnoteProperties;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-apply: (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-footnotePr?: FootnoteProperties;
-endnotePr?: EndnoteProperties;
-}> & Readonly<{
-onClose?: () => any;
-onApply?: (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const FindReplaceDialog: typeof __VLS_export;
 
 // @public (undocumented)
-export const HyperlinkDialog: DefineComponent<    {
-isOpen: boolean;
-view: EditorView | null;
-bookmarks?: Array<{
-name: string;
-label?: string;
-}>;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-remove: () => any;
-submit: (data: {
-url?: string;
-bookmark?: string;
-displayText: string;
-tooltip: string;
-}) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-view: EditorView | null;
-bookmarks?: Array<{
-name: string;
-label?: string;
-}>;
-}> & Readonly<{
-onClose?: () => any;
-onRemove?: () => any;
-onSubmit?: (data: {
-url?: string;
-bookmark?: string;
-displayText: string;
-tooltip: string;
-}) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const FootnotePropertiesDialog: typeof __VLS_export_2;
 
 // @public (undocumented)
-export const ImagePositionDialog: DefineComponent<    {
-isOpen: boolean;
-currentData?: ImagePositionData;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-apply: (data: ImagePositionData) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-currentData?: ImagePositionData;
-}> & Readonly<{
-onClose?: () => any;
-onApply?: (data: ImagePositionData) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const HyperlinkDialog: typeof __VLS_export_3;
 
 // @public (undocumented)
-export const ImagePropertiesDialog: DefineComponent<    {
-isOpen: boolean;
-view: EditorView | null;
-pmPos: number | null;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-view: EditorView | null;
-pmPos: number | null;
-}> & Readonly<{
-onClose?: () => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const ImagePositionDialog: typeof __VLS_export_4;
 
 // @public (undocumented)
-export const InsertImageDialog: DefineComponent<    {
-isOpen: boolean;
-accept?: string;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-insert: (data: InsertImageDialogData) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-accept?: string;
-}> & Readonly<{
-onClose?: () => any;
-onInsert?: (data: InsertImageDialogData) => any;
-}>, {
-accept: string;
-}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const ImagePropertiesDialog: typeof __VLS_export_5;
 
 // @public (undocumented)
-export const InsertSymbolDialog: DefineComponent<    {
-isOpen: boolean;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-insert: (symbol: string) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-}> & Readonly<{
-onClose?: () => any;
-onInsert?: (symbol: string) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const InsertImageDialog: typeof __VLS_export_6;
 
 // @public (undocumented)
-export const InsertTableDialog: DefineComponent<    {
-isOpen: boolean;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-insert: (config: {
-rows: number;
-cols: number;
-autofit: boolean;
-styleId: string | null;
-}) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-}> & Readonly<{
-onClose?: () => any;
-onInsert?: (config: {
-rows: number;
-cols: number;
-autofit: boolean;
-styleId: string | null;
-}) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const InsertSymbolDialog: typeof __VLS_export_7;
 
 // @public (undocumented)
-export const PageSetupDialog: DefineComponent<    {
-isOpen: boolean;
-sectionProperties?: SectionProperties | null;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-apply: (props: Partial<SectionProperties>) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-sectionProperties?: SectionProperties | null;
-}> & Readonly<{
-onClose?: () => any;
-onApply?: (props: Partial<SectionProperties>) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const InsertTableDialog: typeof __VLS_export_8;
 
 // @public (undocumented)
-export const PasteSpecialDialog: DefineComponent<    {
-isOpen: boolean;
-defaultMode?: PasteSpecialMode;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-paste: (mode: PasteSpecialMode) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-defaultMode?: PasteSpecialMode;
-}> & Readonly<{
-onClose?: () => any;
-onPaste?: (mode: PasteSpecialMode) => any;
-}>, {
-defaultMode: PasteSpecialMode;
-}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const PageSetupDialog: typeof __VLS_export_9;
 
 // @public (undocumented)
-export const SplitCellDialog: DefineComponent<    {
-isOpen: boolean;
-defaultRows?: number;
-defaultColumns?: number;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-split: (data: SplitCellDialogData) => any;
-close: () => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-defaultRows?: number;
-defaultColumns?: number;
-}> & Readonly<{
-onSplit?: (data: SplitCellDialogData) => any;
-onClose?: () => any;
-}>, {
-defaultRows: number;
-defaultColumns: number;
-}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const PasteSpecialDialog: typeof __VLS_export_10;
 
 // @public (undocumented)
-export const TablePropertiesDialog: DefineComponent<    {
-isOpen: boolean;
-currentProps?: TableProperties;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-apply: (props: TablePropertiesCommand) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-currentProps?: TableProperties;
-}> & Readonly<{
-onClose?: () => any;
-onApply?: (props: TablePropertiesCommand) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const SplitCellDialog: typeof __VLS_export_11;
 
 // @public (undocumented)
-export const WatermarkDialog: DefineComponent<    {
-isOpen: boolean;
-currentWatermark?: Watermark | undefined;
-}, {}, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {} & {
-close: () => any;
-apply: (watermark: Watermark | undefined) => any;
-}, string, PublicProps, Readonly<{
-isOpen: boolean;
-currentWatermark?: Watermark | undefined;
-}> & Readonly<{
-onClose?: () => any;
-onApply?: (watermark: Watermark | undefined) => any;
-}>, {}, {}, {}, {}, string, ComponentProvideOptions, false, {}, any>;
+export const TablePropertiesDialog: typeof __VLS_export_12;
+
+// @public (undocumented)
+export const WatermarkDialog: typeof __VLS_export_13;
 
 ```
