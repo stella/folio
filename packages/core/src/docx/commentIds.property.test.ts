@@ -117,10 +117,24 @@ describe("duplicate comment ids (property)", () => {
             const xml = await zip.file("word/comments.xml")?.async("string");
             expect(xml).toBeDefined();
             if (xml !== undefined) assertValidOoxmlNumericIds(xml, "word/comments.xml");
+            const bodyXml = await zip.file("word/document.xml")?.async("string");
+            expect(bodyXml).toBeDefined();
+            if (bodyXml !== undefined) assertValidOoxmlNumericIds(bodyXml, "word/document.xml");
             const reopened = await parseDocx(saved, { preloadFonts: false });
             expect(
               reopened.package.document.comments?.map((comment) => comment.content.map(plainText)),
             ).toEqual(firstContents);
+            const referenceIds = reopened.package.document.content.flatMap((block) =>
+              block.type === "paragraph"
+                ? block.content.flatMap((item) =>
+                    item.type === "commentReference" ? [item.id] : [],
+                  )
+                : [],
+            );
+            expect(referenceIds).toHaveLength(new Set(ids).size);
+            expect(new Set(referenceIds)).toEqual(
+              new Set(reopened.package.document.comments?.map((comment) => comment.id)),
+            );
           },
         ),
         propertyConfig({ numRuns: 20 }),
