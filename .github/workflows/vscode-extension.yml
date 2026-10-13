@@ -1,10 +1,14 @@
 name: VS Code extension
 
-# Builds, tests, and packages the extension for merge groups.
+# Builds, tests, and packages extension changes before merge.
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "plugins/vscode/**"
+      - ".github/workflows/vscode-extension.yml"
+      - "scripts/ci-plan.test.ts"
   merge_group:
     types: [checks_requested]
 
@@ -17,7 +21,7 @@ permissions:
 
 jobs:
   package:
-    if: github.event_name == 'merge_group'
+    if: github.event_name == 'merge_group' || github.event.pull_request.draft != true
     name: Build and package the .vsix
     runs-on: ubuntu-latest
     timeout-minutes: 30

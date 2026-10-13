@@ -629,8 +629,47 @@ describe("CI plan", () => {
     );
   });
 
+  test("VS Code typings and dependency policy follow the minimum supported editor", () => {
+    const manifest: unknown = JSON.parse(
+      readFileSync(path.join(REPO_ROOT, "plugins/vscode/package.json"), "utf8"),
+    );
+    if (
+      !isRecord(manifest) ||
+      !isRecord(manifest["engines"]) ||
+      !isRecord(manifest["devDependencies"])
+    )
+      throw new Error("VS Code engine contract unavailable");
+    const engine = manifest["engines"]["vscode"];
+    if (typeof engine !== "string") throw new Error("VS Code engine range unavailable");
+    const minimum = /^\^(\d+)\.(\d+)\.(\d+)$/u.exec(engine);
+    const major = minimum?.at(1);
+    const minor = minimum?.at(2);
+    if (major === undefined || minor === undefined)
+      throw new Error("Declare a caret editor minimum");
+    expect(manifest["devDependencies"]["@types/vscode"]).toBe(`~${engine.slice(1)}`);
+    const policy: unknown = Bun.YAML.parse(
+      readFileSync(path.join(REPO_ROOT, ".github/dependabot.yml"), "utf8"),
+    );
+    if (!isRecord(policy) || !Array.isArray(policy["updates"]))
+      throw new Error("Dependency policy unavailable");
+    const plugins = policy["updates"].find(
+      (update) =>
+        isRecord(update) &&
+        update["package-ecosystem"] === "bun" &&
+        Array.isArray(update["directories"]) &&
+        update["directories"].includes("/plugins/vscode"),
+    );
+    if (!isRecord(plugins) || !Array.isArray(plugins["ignore"]))
+      throw new Error("Plugin dependency policy unavailable");
+    const types = plugins["ignore"].find(
+      (entry) => isRecord(entry) && entry["dependency-name"] === "@types/vscode",
+    );
+    if (!isRecord(types)) throw new Error("Editor typings policy unavailable");
+    expect(types["versions"]).toEqual([`>=${major}.${Number(minor) + 1}.0`]);
+  });
+
   for (const file of ["vscode-extension.yml"]) {
-    test(`${file} runs heavy jobs only for merge groups`, () => {
+    test(`${file} packages plugin pull requests and all merge groups`, () => {
       const workflow = readWorkflow(file);
       const triggers = workflow["on"];
       const heavyJobs = workflow["jobs"];
@@ -640,12 +679,19 @@ describe("CI plan", () => {
       expect(Object.keys(triggers).toSorted()).toEqual(["merge_group", "pull_request"]);
       expect(triggers["pull_request"]).toEqual({
         types: ["opened", "synchronize", "reopened", "ready_for_review"],
+        paths: [
+          "plugins/vscode/**",
+          ".github/workflows/vscode-extension.yml",
+          "scripts/ci-plan.test.ts",
+        ],
       });
       expect(triggers["merge_group"]).toEqual({ types: ["checks_requested"] });
       expect(Object.keys(heavyJobs).length).toBeGreaterThan(0);
       for (const job of Object.values(heavyJobs)) {
         if (!isRecord(job)) throw new Error(`${file} contains an invalid job`);
-        expect(job["if"]).toBe("github.event_name == 'merge_group'");
+        expect(job["if"]).toBe(
+          "github.event_name == 'merge_group' || github.event.pull_request.draft != true",
+        );
       }
     });
   }

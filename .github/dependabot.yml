@@ -27,6 +27,9 @@ updates:
       - dependency-name: "@typescript/native"
       - dependency-name: "typescript-compat"
       - dependency-name: "bun-types"
+      # Typings must match the minimum editor API declared by engines.vscode.
+      - dependency-name: "@types/vscode"
+        versions: [">=1.102.0"]
   - package-ecosystem: cargo
     directories:
       - "/"
