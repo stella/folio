@@ -125,7 +125,7 @@ await Promise.all([
     bundle: true,
     platform: "node",
     format: "cjs",
-    target: "node22",
+    target: "node18",
     external: ["vscode"],
     logLevel: "warning",
   }),
@@ -135,7 +135,7 @@ await Promise.all([
     bundle: true,
     platform: "node",
     format: "esm",
-    target: "node22",
+    target: "node18",
     // PNG output only: an optional peer the CLI imports on demand.
     external: ["playwright-core"],
     // CommonJS dependencies call `require` for Node.js built-ins.

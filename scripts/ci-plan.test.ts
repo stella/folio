@@ -629,26 +629,27 @@ describe("CI plan", () => {
     );
   });
 
-  for (const file of ["vscode-extension.yml"]) {
-    test(`${file} runs heavy jobs only for merge groups`, () => {
-      const workflow = readWorkflow(file);
-      const triggers = workflow["on"];
-      const heavyJobs = workflow["jobs"];
-      if (!isRecord(triggers) || !isRecord(heavyJobs)) {
-        throw new Error(`${file} is missing triggers or jobs`);
-      }
-      expect(Object.keys(triggers).toSorted()).toEqual(["merge_group", "pull_request"]);
-      expect(triggers["pull_request"]).toEqual({
-        types: ["opened", "synchronize", "reopened", "ready_for_review"],
-      });
-      expect(triggers["merge_group"]).toEqual({ types: ["checks_requested"] });
-      expect(Object.keys(heavyJobs).length).toBeGreaterThan(0);
-      for (const job of Object.values(heavyJobs)) {
-        if (!isRecord(job)) throw new Error(`${file} contains an invalid job`);
-        expect(job["if"]).toBe("github.event_name == 'merge_group'");
-      }
-    });
-  }
+  test("VS Code compatibility gates its selected area and exercises both API branches", () => {
+    const workflow = readWorkflow("vscode-extension.yml");
+    const triggers = workflow["on"];
+    if (!isRecord(triggers)) throw new Error("Missing VS Code workflow triggers");
+    expect(Object.keys(triggers)).toEqual(["workflow_call"]);
+    expect(jobs["vscode-extension"]?.if).toBe("needs.ci-plan.outputs.vscode_required == 'true'");
+    if (!isRecord(workflow["jobs"]) || !isRecord(workflow["jobs"]["package"]))
+      throw new Error("Missing VS Code package job");
+    const steps = workflow["jobs"]["package"]["steps"];
+    if (!Array.isArray(steps)) throw new Error("Missing VS Code test steps");
+    const smoke = steps.filter(
+      (step) => isRecord(step) && step["run"] === "xvfb-run -a bun run test:smoke",
+    );
+    expect(smoke.map((step) => step["env"])).toEqual([
+      { FOLIO_SMOKE_VSCODE_VERSION: "1.86.0", FOLIO_SMOKE_MCP: "unavailable" },
+      { FOLIO_SMOKE_VSCODE_VERSION: "stable", FOLIO_SMOKE_MCP: "registered" },
+    ]);
+    expect(
+      steps.filter((step) => isRecord(step) && step["run"] === "bun run package"),
+    ).toHaveLength(1);
+  });
 
   test("published API preflight is selected before queue entry and evaluated by CI result", () => {
     expect(planOutputs["api_required"]).toBe(

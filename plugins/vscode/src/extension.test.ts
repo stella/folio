@@ -1,7 +1,7 @@
 // Activation against a stand-in `vscode` module: what the extension registers,
 // and the MCP server definition it hands the editor.
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 type Listener = () => void;
 
@@ -46,6 +46,7 @@ type Provider = {
 };
 
 const state = {
+  mcpApi: "available" as "available" | "missing-namespace" | "missing-method",
   trusted: true,
   folders: [] as { uri: { scheme: string; fsPath: string } }[],
   author: "" as string | undefined,
@@ -60,7 +61,7 @@ const state = {
 
 const disposable = { dispose: () => undefined };
 
-void mock.module("vscode", () => ({
+const mockVscode = () => ({
   EventEmitter,
   McpStdioServerDefinition,
   Disposable: { from: () => disposable },
@@ -70,11 +71,15 @@ void mock.module("vscode", () => ({
       path: [base.path, ...parts].join("/"),
     }),
   },
-  lm: {
-    registerMcpServerDefinitionProvider: (id: string, provider: Provider) => {
-      state.providers.set(id, provider);
-      return disposable;
-    },
+  get lm() {
+    if (state.mcpApi === "missing-namespace") return undefined;
+    if (state.mcpApi === "missing-method") return {};
+    return {
+      registerMcpServerDefinitionProvider: (id: string, provider: Provider) => {
+        state.providers.set(id, provider);
+        return disposable;
+      },
+    };
   },
   window: {
     showWarningMessage: () => {
@@ -107,7 +112,8 @@ void mock.module("vscode", () => ({
     onDidGrantWorkspaceTrust: () => disposable,
     onDidChangeConfiguration: () => disposable,
   },
-}));
+});
+void mock.module("vscode", mockVscode);
 
 const actualSettings = await import("./editor-settings");
 void mock.module("./editor-settings", () => ({
@@ -129,6 +135,7 @@ const inheritedAuthor = process.env["FOLIO_AUTHOR"];
 
 beforeEach(() => {
   delete process.env["FOLIO_AUTHOR"];
+  state.mcpApi = "available";
   state.trusted = true;
   state.folders = [{ uri: { scheme: "file", fsPath: "/work/contracts" } }];
   state.author = "Ada Lovelace";
@@ -139,6 +146,7 @@ beforeEach(() => {
   state.editors.clear();
   state.commands.clear();
   state.onFolders = [];
+  void mock.module("vscode", mockVscode);
   activate(context as never);
 });
 
@@ -161,11 +169,40 @@ describe("activate", () => {
     expect(activate(context as never)).toBeUndefined();
     process.env["FOLIO_VSCODE_TEST"] = "1";
     try {
-      expect(activate(context as never)).toBeDefined();
+      expect(activate(context as never)?.mcpRegistration).toBe("registered");
     } finally {
       delete process.env["FOLIO_VSCODE_TEST"];
     }
   });
+
+  for (const mcpApi of ["missing-namespace", "missing-method"] as const) {
+    test(`activates the editor without MCP when ${mcpApi}`, () => {
+      state.mcpApi = mcpApi;
+      void mock.module("vscode", mockVscode);
+      state.providers.clear();
+      state.editors.clear();
+      state.commands.clear();
+      state.onFolders = [];
+      context.subscriptions = [];
+      process.env["FOLIO_VSCODE_TEST"] = "1";
+      const logged = spyOn(console, "log").mockImplementation(() => undefined);
+      try {
+        const hooks = activate(context as never);
+        expect(hooks?.mcpRegistration).toBe("unavailable");
+        expect([...state.editors.keys()]).toEqual(["folio.docxEditor"]);
+        expect([...state.commands]).toEqual(["folio.openReadOnly"]);
+        expect(state.providers.size).toBe(0);
+        expect(state.onFolders).toEqual([]);
+        expect(context.subscriptions).toHaveLength(1);
+        expect(state.warnings).toBe(0);
+        expect(logged).toHaveBeenCalledTimes(1);
+        expect(logged.mock.calls.at(0)?.at(0)).toContain("MCP registration skipped");
+      } finally {
+        logged.mockRestore();
+        delete process.env["FOLIO_VSCODE_TEST"];
+      }
+    });
+  }
 
   test("keeps one editor per document, alive while hidden", () => {
     expect(state.editors.get("folio.docxEditor")?.options).toEqual({

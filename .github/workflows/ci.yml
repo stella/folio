@@ -116,6 +116,7 @@ jobs:
       interactions_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions) }}
       differential_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).differential) }}
       consumer_scenarios_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).consumer_scenarios) }}
+      vscode_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).vscode) }}
       packaged_consumer_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer) }}
     steps:
       - name: Find successful merge-group coverage
@@ -1152,6 +1153,12 @@ jobs:
       - name: Runtime smoke over packed tarballs
         run: bun run test:packaged-consumer-smoke
 
+  vscode-extension:
+    name: VS Code extension
+    needs: ci-plan
+    if: needs.ci-plan.outputs.vscode_required == 'true'
+    uses: ./.github/workflows/vscode-extension.yml
+
   # The ruleset requires this single check. It evaluates every planned job,
   # including jobs GitHub skipped or cancelled before their first step.
   ci-result:
@@ -1180,6 +1187,7 @@ jobs:
       - consumer-scenarios
       - consumer-scenarios-minimum
       - packaged-consumer
+      - vscode-extension
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -1202,6 +1210,7 @@ jobs:
             "warm-main-caches":{"event":"push","reuse":"required","warm":"required"},
             "typecheck":{"area":"code_required"},
             "build-api":{"area":"api_required"},
+            "vscode-extension":{"area":"vscode_required"},
             "validate-dist":{"area":"code_required","depth":"full"},
             "tests-1":{"area":"code_required"},
             "tests-2":{"area":"code_required"},

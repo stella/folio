@@ -10,7 +10,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import * as vscode from "vscode";
 
-import type { EditorTestHooks } from "../../src/editor";
+import type { ExtensionTestHooks } from "../../src/extension";
 
 const EXTENSION_ID = "stll.stella-folio";
 const EDITOR_VIEW_TYPE = "folio.docxEditor";
@@ -88,7 +88,7 @@ export const run = async (): Promise<void> => {
   const directory = path.dirname(documentPath);
   const name = path.basename(documentPath);
   const lockPath = path.join(directory, `.${name}.folio-lock`);
-  const extension = vscode.extensions.getExtension<EditorTestHooks | undefined>(EXTENSION_ID);
+  const extension = vscode.extensions.getExtension<ExtensionTestHooks | undefined>(EXTENSION_ID);
   assert.ok(extension !== undefined, `${EXTENSION_ID} is loaded`);
   const cliEntry = path.join(extension.extensionPath, "dist", "cli", "folio.mjs");
   // A modal would hang the test; this test's edits are text-only anyway.
@@ -96,12 +96,28 @@ export const run = async (): Promise<void> => {
     .getConfiguration()
     .update("folio.editor.confirmRewrite", false, vscode.ConfigurationTarget.Global);
 
+  const hooks = await extension.activate();
+  assert.ok(hooks !== undefined, "the extension exports its test hooks");
+  const expectedMcp = process.env["FOLIO_SMOKE_MCP"];
+  assert.ok(
+    expectedMcp === "registered" || expectedMcp === "unavailable",
+    "explicit MCP expectation",
+  );
+  assert.equal(
+    hooks.mcpRegistration,
+    expectedMcp,
+    "MCP registration matches the editor capability",
+  );
+  assert.equal(
+    typeof vscode.lm?.registerMcpServerDefinitionProvider === "function",
+    expectedMcp === "registered",
+  );
+  log(`MCP ${expectedMcp}`);
+
   // Opening a .docx lands in folio's editor, and the webview loads it.
   await vscode.commands.executeCommand("vscode.open", uri);
   await waitFor("the document opens in folio's editor", () => editorTab(uri) !== undefined);
   const activeTab = () => editorTab(uri);
-  const hooks = extension.exports;
-  assert.ok(hooks !== undefined, "the extension exports its test hooks");
   describeReceived = () =>
     JSON.stringify(
       hooks.received(uri).map((message) => {

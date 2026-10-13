@@ -1,29 +1,19 @@
 name: VS Code extension
 
-# Builds, tests, and packages the extension for merge groups.
+# Builds once, then exercises the extension on its minimum editor and stable.
+# CI calls this workflow only when the vscode area is selected.
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  merge_group:
-    types: [checks_requested]
-
-concurrency:
-  group: vscode-extension-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
   package:
-    if: github.event_name == 'merge_group'
     name: Build and package the .vsix
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # The VS Code the smoke test runs; bump it to test a newer release.
-      FOLIO_SMOKE_VSCODE_VERSION: "1.139.1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,6 +39,10 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
+        working-directory: plugins/vscode
+
+      - name: Confirm the editor API floor without MCP
+        run: bun scripts/check-engine-floor.ts
         working-directory: plugins/vscode
 
       - name: Test
@@ -78,12 +72,23 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: plugins/vscode/.vscode-test
-          key: vscode-test-${{ runner.os }}-${{ env.FOLIO_SMOKE_VSCODE_VERSION }}
+          key: vscode-test-${{ runner.os }}-1.86.0-stable-${{ github.run_id }}
+          restore-keys: vscode-test-${{ runner.os }}-1.86.0-stable-
 
       # Opens a .docx in a real VS Code with the built extension, types, saves,
       # and reverts (test/smoke).
-      - name: Smoke test in VS Code
+      - name: Smoke test in VS Code 1.86.0 (no MCP)
         working-directory: plugins/vscode
+        env:
+          FOLIO_SMOKE_VSCODE_VERSION: "1.86.0"
+          FOLIO_SMOKE_MCP: unavailable
+        run: xvfb-run -a bun run test:smoke
+
+      - name: Smoke test in current stable VS Code (MCP)
+        working-directory: plugins/vscode
+        env:
+          FOLIO_SMOKE_VSCODE_VERSION: stable
+          FOLIO_SMOKE_MCP: registered
         run: xvfb-run -a bun run test:smoke
 
       - name: Upload the .vsix
