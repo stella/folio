@@ -69,6 +69,8 @@
     "./text-shaping/wasm": "./src/generated/text_shaper_bg.wasm",
     "./docx/paragraphPropertySource": null,
     "./internal/*": null,
+    "./_virtual/*": null,
+    "./generated/*": null,
     "./*": "./src/*.ts"
   },
   "publishConfig": {
