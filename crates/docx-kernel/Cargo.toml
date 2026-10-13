@@ -21,7 +21,7 @@ wasm = ["dep:js-sys", "dep:wasm-bindgen"]
 [dependencies]
 js-sys = { version = "0.3.103", optional = true }
 miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
-quick-xml = { version = "0.41", default-features = false }
+quick-xml = { version = "0.42", default-features = false }
 rawzip = { version = "0.5.1", default-features = false, features = ["alloc"] }
 thiserror = "2"
 unicode-script = "0.5.8"

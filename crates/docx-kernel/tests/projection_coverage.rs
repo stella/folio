@@ -1453,14 +1453,13 @@ struct ObservedFrame {
 }
 
 fn local_name(element: &BytesStart<'_>) -> String {
-    String::from_utf8(element.local_name().as_ref().to_vec()).unwrap()
+    element.local_name().as_ref().to_owned()
 }
 
 fn attribute_value(element: &BytesStart<'_>, name: &str) -> Option<String> {
     element.attributes().find_map(|attribute| {
         let attribute = attribute.unwrap();
-        (attribute.key.local_name().as_ref() == name.as_bytes())
-            .then(|| String::from_utf8(attribute.value.to_vec()).unwrap())
+        (attribute.key.local_name().as_ref() == name).then(|| attribute.value.into_owned())
     })
 }
 

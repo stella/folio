@@ -23,7 +23,7 @@ impl OoxmlNamespace {
         let ResolveResult::Bound(namespace) = resolved else {
             return Self::Other;
         };
-        match namespace.as_ref() {
+        match namespace.as_ref().as_bytes() {
             WORDPROCESSINGML_TRANSITIONAL | WORDPROCESSINGML_STRICT => Self::Wordprocessing,
             WORDPROCESSINGML_2010 => Self::Wordprocessing2010,
             MARKUP_COMPATIBILITY => Self::MarkupCompatibility,

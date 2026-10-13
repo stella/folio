@@ -175,7 +175,7 @@ fn inspect_document_relationship_element(
     let (namespace, local_name) = reader.resolver().resolve_element(element.name());
     if depth == 0 {
         if *root_seen
-            || local_name.as_ref() != b"Relationships"
+            || local_name.as_ref().as_bytes() != b"Relationships"
             || !is_relationships_namespace(&namespace)
         {
             return Err(ProjectionError::InvalidPackageRelationships);
@@ -184,7 +184,7 @@ fn inspect_document_relationship_element(
         return Ok(());
     }
     if depth != 1
-        || local_name.as_ref() != b"Relationship"
+        || local_name.as_ref().as_bytes() != b"Relationship"
         || !is_relationships_namespace(&namespace)
     {
         return Ok(());
@@ -273,7 +273,7 @@ fn inspect_element(
     let (namespace, local_name) = reader.resolver().resolve_element(element.name());
     if depth == 0 {
         if *root_seen
-            || local_name.as_ref() != b"Relationships"
+            || local_name.as_ref().as_bytes() != b"Relationships"
             || !is_relationships_namespace(&namespace)
         {
             return Err(ProjectionError::InvalidPackageRelationships);
@@ -282,7 +282,7 @@ fn inspect_element(
         return Ok(());
     }
     if depth != 1
-        || local_name.as_ref() != b"Relationship"
+        || local_name.as_ref().as_bytes() != b"Relationship"
         || !is_relationships_namespace(&namespace)
     {
         return Ok(());
@@ -313,7 +313,7 @@ fn is_relationships_namespace(namespace: &ResolveResult<'_>) -> bool {
         namespace,
         ResolveResult::Bound(value)
             if matches!(
-                value.as_ref(),
+                value.as_ref().as_bytes(),
                 PACKAGE_RELATIONSHIPS_TRANSITIONAL | PACKAGE_RELATIONSHIPS_STRICT
             )
     )
@@ -328,13 +328,13 @@ fn unqualified_attribute(
     for attribute in element.attributes() {
         let attribute = attribute.map_err(|_| ProjectionError::InvalidPackageRelationships)?;
         let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
-        if namespace == ResolveResult::Unbound && local_name.as_ref() == name {
+        if namespace == ResolveResult::Unbound && local_name.as_ref().as_bytes() == name {
             if value.is_some() {
                 return Err(ProjectionError::InvalidPackageRelationships);
             }
             value = Some(
                 attribute
-                    .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                    .normalized_value(XmlVersion::Implicit1_0)
                     .map_err(|_| ProjectionError::InvalidPackageRelationships)?
                     .into_owned(),
             );

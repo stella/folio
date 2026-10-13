@@ -158,15 +158,18 @@ const fn namespace_kind(namespace: &ResolveResult<'_>) -> NamespaceKind {
     let ResolveResult::Bound(Namespace(value)) = namespace else {
         return NamespaceKind::Other;
     };
-    if matches!(*value, WORDPROCESSING_TRANSITIONAL | WORDPROCESSING_STRICT) {
+    if matches!(
+        value.as_bytes(),
+        WORDPROCESSING_TRANSITIONAL | WORDPROCESSING_STRICT
+    ) {
         NamespaceKind::Wordprocessing
     } else if matches!(
-        *value,
+        value.as_bytes(),
         OFFICE_RELATIONSHIPS_TRANSITIONAL | OFFICE_RELATIONSHIPS_STRICT
     ) {
         NamespaceKind::OfficeRelationships
     } else if matches!(
-        *value,
+        value.as_bytes(),
         MARKUP_COMPATIBILITY_TRANSITIONAL | MARKUP_COMPATIBILITY_STRICT
     ) {
         NamespaceKind::MarkupCompatibility
@@ -184,9 +187,9 @@ fn attribute(
     for item in element.attributes() {
         let item = item.map_err(|_| ScanError::InvalidXml)?;
         let (resolved, name) = reader.resolver().resolve_attribute(item.key);
-        if namespace_kind(&resolved) == namespace && name.as_ref() == local_name {
+        if namespace_kind(&resolved) == namespace && name.as_ref().as_bytes() == local_name {
             return item
-                .decoded_and_normalized_value(XmlVersion::default(), reader.decoder())
+                .normalized_value(XmlVersion::default())
                 .map(|value| Some(value.into_owned()))
                 .map_err(|_| ScanError::InvalidXml);
         }
@@ -202,9 +205,9 @@ fn unqualified_attribute(
     for item in element.attributes() {
         let item = item.map_err(|_| ScanError::InvalidXml)?;
         let (resolved, name) = reader.resolver().resolve_attribute(item.key);
-        if matches!(resolved, ResolveResult::Unbound) && name.as_ref() == local_name {
+        if matches!(resolved, ResolveResult::Unbound) && name.as_ref().as_bytes() == local_name {
             return item
-                .decoded_and_normalized_value(XmlVersion::default(), reader.decoder())
+                .normalized_value(XmlVersion::default())
                 .map(|value| Some(value.into_owned()))
                 .map_err(|_| ScanError::InvalidXml);
         }
@@ -470,7 +473,7 @@ where
         }
         Ok(prefixes.all(|required_prefix| {
             reader.resolver().bindings().any(|(prefix, namespace)| {
-                matches!(prefix, PrefixDeclaration::Named(value) if value == required_prefix.as_bytes())
+                matches!(prefix, PrefixDeclaration::Named(value) if value == required_prefix)
                     && matches!(
                         namespace_kind(&ResolveResult::Bound(namespace)),
                         NamespaceKind::OfficeRelationships | NamespaceKind::Wordprocessing
@@ -551,7 +554,7 @@ where
         self.enter_element()?;
         let (resolved, local_name) = reader.resolver().resolve_element(element.name());
         let namespace = namespace_kind(&resolved);
-        let name = local_name.as_ref();
+        let name = local_name.as_ref().as_bytes();
         self.record_coverage(namespace, name)?;
 
         let parent_suppressed = self
@@ -806,11 +809,11 @@ pub fn scan_wordprocessing_part_with(
                 scanner.end()?;
             }
             Event::Text(text) => {
-                let decoded = text.xml10_content().map_err(|_| ScanError::InvalidXml)?;
+                let decoded = text.xml_content(XmlVersion::Implicit1_0);
                 scanner.append_text(&decoded);
             }
             Event::CData(text) => {
-                let decoded = text.xml10_content().map_err(|_| ScanError::InvalidXml)?;
+                let decoded = text.xml_content(XmlVersion::Implicit1_0);
                 scanner.append_text(&decoded);
             }
             Event::GeneralRef(reference) => {
@@ -820,8 +823,8 @@ pub fn scan_wordprocessing_part_with(
                 {
                     character.to_string()
                 } else {
-                    let name = reference.decode().map_err(|_| ScanError::InvalidXml)?;
-                    resolve_predefined_entity(&name)
+                    let name = reference.as_ref();
+                    resolve_predefined_entity(name)
                         .ok_or(ScanError::InvalidXml)?
                         .to_owned()
                 };

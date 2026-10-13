@@ -111,7 +111,7 @@ pub(super) fn parse_styles(
                 let (namespace, local_name) = reader.resolver().resolve_element(element.name());
                 if compatibility.end(
                     OoxmlNamespace::from_resolved(&namespace),
-                    local_name.as_ref(),
+                    local_name.as_ref().as_bytes(),
                 )? == CompatibilityAction::Process
                 {
                     end(&mut state)?;
@@ -141,7 +141,7 @@ fn start(
 ) -> Result<(), ProjectionError> {
     let local_name = element.local_name();
     let name = if namespace == OoxmlNamespace::Wordprocessing {
-        local_name.as_ref()
+        local_name.as_ref().as_bytes()
     } else {
         b""
     };
@@ -659,10 +659,10 @@ fn attribute(
         let attribute = attribute.map_err(|_| ProjectionError::InvalidStylesXml)?;
         let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
         if OoxmlNamespace::from_resolved(&namespace) == OoxmlNamespace::Wordprocessing
-            && local_name.as_ref() == name
+            && local_name.as_ref().as_bytes() == name
         {
             return attribute
-                .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                .normalized_value(XmlVersion::Implicit1_0)
                 .map(|value| Some(value.into_owned()))
                 .map_err(|_| ProjectionError::InvalidStylesXml);
         }
