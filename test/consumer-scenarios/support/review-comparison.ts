@@ -8,30 +8,25 @@ type ReviewSource = Pick<Reviewer, "getContent" | "getChanges" | "toDocument">;
 type Change = ReturnType<Reviewer["getChanges"]>[number];
 type Coverage = Pick<Change, "type" | "author" | "date" | "text" | "blockId">;
 
-/** Only adjacent entries with identical provenance may change their run grouping. */
+/** Adjacent fragments in each provenance stream keep lossless character order. */
 export const revisionCoverage = (
   changes: readonly Change[],
   aliases: ReadonlyMap<string, string> = new Map(),
 ): Coverage[] => {
-  const coverage: Coverage[] = [];
+  const streams = new Map<string, Coverage[]>();
   for (const { type, author, date, text, blockId } of changes) {
     const block = blockId === null ? null : (aliases.get(blockId) ?? blockId);
-    const previous = coverage.at(-1);
-    if (
-      text.length > 0 &&
-      previous &&
-      previous.text.length > 0 &&
-      previous.type === type &&
-      previous.author === author &&
-      previous.date === date &&
-      previous.blockId === block
-    ) {
+    const key = JSON.stringify([type, author, date, block]);
+    const stream = streams.get(key) ?? [];
+    const previous = stream.at(-1);
+    if (text.length > 0 && previous && previous.text.length > 0) {
       previous.text += text;
     } else {
-      coverage.push({ type, author, date, text, blockId: block });
+      stream.push({ type, author, date, text, blockId: block });
     }
+    streams.set(key, stream);
   }
-  return coverage;
+  return [...streams.keys()].sort().flatMap((key) => streams.get(key) ?? []);
 };
 
 export const assertRevisionCoverage = (left: readonly Change[], right: readonly Change[]) =>
@@ -48,13 +43,15 @@ const resolved = async (reviewer: ReviewSource, decision: "accept" | "reject") =
       .filter(({ idStability }) => idStability === "positional")
       .map(({ id }) => id),
   );
-  const packageModel = copy.toDocument().package;
+  // Compare persisted resolved documents, rather than editor capture metadata.
+  const persisted = await openReviewer(new Uint8Array(await copy.toBuffer()));
+  const packageModel = persisted.toDocument().package;
   const properties = { ...packageModel.properties };
   // Package save time is bookkeeping; revision authorship dates stay strict above.
   delete properties.modified;
   return {
     package: { ...packageModel, properties },
-    rows: copy
+    rows: persisted
       .getContent()
       .map((row) =>
         positional.has(row.id)

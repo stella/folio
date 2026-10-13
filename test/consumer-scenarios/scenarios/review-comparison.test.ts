@@ -24,6 +24,11 @@ test("revision comparison preserves character order across adjacent run groups",
     Object.assign({}, revision, { id: index + 10, text }),
   );
   assertRevisionCoverage([revision], fragments);
+  const formatting = { ...revision, type: "formatting" as const };
+  assertRevisionCoverage(
+    [revision, formatting],
+    fragments.flatMap((entry) => [entry, { ...entry, type: "formatting" as const }]),
+  );
   for (const changed of [
     fragments.slice(1),
     [...fragments].reverse(),
