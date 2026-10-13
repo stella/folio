@@ -1,10 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 const repo = path.resolve(import.meta.dir, "..");
 const workflow = Bun.YAML.parse(readFileSync(path.join(repo, ".github/workflows/ci.yml"), "utf8"));
+const proofs = Bun.YAML.parse(
+  readFileSync(path.join(repo, ".github/workflows/typecheck-proofs.yml"), "utf8"),
+);
 const detector = workflow.jobs["ci-plan"].steps.find((step) => step.id === "toolchain");
 const runDetector = ({ result, base = "event-base" }) => {
   const directory = mkdtempSync(path.join(tmpdir(), "folio-toolchain-plan-"));
@@ -38,15 +49,90 @@ describe("shared toolchain CI selection", () => {
       );
       expect(checkout.with["fetch-depth"]).toBe(0);
     }
-    expect(
-      workflow.jobs.typecheck.steps.some(
-        (step) =>
-          step.run === 'bun run typecheck:compiler-parity --changed-since "$TOOLCHAIN_BASE"',
-      ),
-    ).toBe(true);
   });
 
-  test("parity selects exactly the native TS7 projects declared by repository scripts", () => {
+  test("compiler proofs run only through the manual workflow", () => {
+    expect(proofs.on).toEqual({ workflow_dispatch: null });
+    expect(proofs.permissions).toEqual({ contents: "read" });
+    expect(proofs.env.TOOLCHAIN_BASE).toBe("unavailable-toolchain-base");
+    const proofCommands = proofs.jobs["typecheck-proofs"].steps
+      .filter((step) => /stll-typecheck-probe|typecheck:compiler-parity/.test(step.run ?? ""))
+      .map((step) => step.run);
+    expect(proofCommands).toEqual([
+      "bunx --no-install stll-typecheck-probe --project packages/core/tsconfig.build.json --seed-dir packages/core/src -- bun check -p packages/core/tsconfig.build.json",
+      'bun run typecheck:compiler-parity --changed-since "$TOOLCHAIN_BASE"',
+    ]);
+    for (const file of readdirSync(path.join(repo, ".github/workflows"))) {
+      if (!/\.ya?ml$/.test(file) || file === "typecheck-proofs.yml") continue;
+      const automatic = Bun.YAML.parse(
+        readFileSync(path.join(repo, ".github/workflows", file), "utf8"),
+      );
+      for (const job of Object.values(automatic.jobs ?? {})) {
+        for (const step of job.steps ?? []) {
+          expect(step.run ?? "").not.toMatch(/stll-typecheck-probe|typecheck:compiler-parity/);
+        }
+        expect(job.uses ?? "").not.toContain("typecheck-proofs.yml");
+      }
+    }
+    expect(workflow.jobs.typecheck.steps.filter((step) => step.run)).toEqual([
+      { run: "bun install --frozen-lockfile" },
+      { name: "Typecheck", run: "bun run typecheck" },
+    ]);
+  });
+
+  test("compiler-work counters run only as a manual proof after parity", () => {
+    expect(workflow.jobs["typecheck-budget"]).toBeUndefined();
+    expect(workflow.jobs["ci-plan"].outputs.typecheck_budget_required).toBeUndefined();
+    const budgetJob = proofs.jobs["typecheck-budget"];
+    expect(budgetJob.needs).toBe("typecheck-proofs");
+    expect(budgetJob.if).toBe("always()");
+    expect(budgetJob.steps.filter((step) => step.run)).toEqual([
+      { run: "bun scripts/ci-scoped-install.ts typecheck-budget" },
+      {
+        name: "Guard deterministic compiler workload",
+        run: "bun scripts/typecheck-budget.ts --self-test\nbun run typecheck:budget\n",
+      },
+    ]);
+    for (const file of readdirSync(path.join(repo, ".github/workflows"))) {
+      if (!/\.ya?ml$/.test(file) || file === "typecheck-proofs.yml") continue;
+      const automatic = Bun.YAML.parse(
+        readFileSync(path.join(repo, ".github/workflows", file), "utf8"),
+      );
+      for (const job of Object.values(automatic.jobs ?? {})) {
+        for (const step of job.steps ?? []) {
+          expect(step.run ?? "").not.toMatch(/typecheck-budget\.ts|typecheck:budget/);
+        }
+      }
+    }
+  });
+
+  test("ordinary typecheck commands use Bun and preserve Vue SFC checkers", () => {
+    const rootManifest = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
+    const projects = Bun.spawnSync(["git", "ls-files", "**/package.json"], { cwd: repo });
+    expect(projects.exitCode).toBe(0);
+    const vueProjects = new Set([
+      "packages/vue/package.json",
+      "packages/playground-vue/package.json",
+    ]);
+    const retained = new Set();
+    for (const file of projects.stdout.toString().trim().split("\n")) {
+      const manifest = JSON.parse(readFileSync(path.join(repo, file), "utf8"));
+      const command = manifest.scripts?.typecheck;
+      if (command === undefined) continue;
+      if (vueProjects.has(file)) {
+        expect(command).toMatch(/^vue-tsc --noEmit(?: -p \S+)?$/);
+        retained.add(file);
+        continue;
+      }
+      expect(command).toMatch(/^bun check --no-pretty --all --project=\S+$/);
+    }
+    expect([...retained].toSorted()).toEqual([...vueProjects].toSorted());
+    for (const [, name] of rootManifest.scripts.typecheck.matchAll(/bun run (\S+)/g)) {
+      expect(rootManifest.scripts[name]).toMatch(/^bun check --no-pretty --all --project=\S+$/);
+    }
+  });
+
+  test("parity selects exactly the Bun projects declared by repository scripts", () => {
     const tracked = Bun.spawnSync(["git", "ls-files", "package.json", "**/package.json"], {
       cwd: repo,
     });
@@ -56,17 +142,9 @@ describe("shared toolchain CI selection", () => {
       const manifest = JSON.parse(readFileSync(path.join(repo, file), "utf8"));
       for (const command of Object.values(manifest.scripts ?? {})) {
         if (typeof command !== "string") continue;
-        const native = /^bun (?:\.\.\/)*scripts\/tsc-native\.ts(?: (.*))?$/.exec(command);
-        if (!native) continue;
-        const args = (native[1] ?? "").split(/\s+/).filter(Boolean);
-        let project = "tsconfig.json";
-        for (let index = 0; index < args.length; index += 1) {
-          if (args[index] === "--noEmit") continue;
-          if (args[index] !== "-p" || !args[index + 1])
-            throw new Error(`Unsupported native compiler arguments in ${file}`);
-          project = args[index + 1];
-          index += 1;
-        }
+        const checked = /^bun check --no-pretty --all --project=(\S+)$/.exec(command);
+        if (!checked) continue;
+        const project = checked[1];
         projects.add(
           path
             .relative(repo, path.resolve(repo, path.dirname(file), project))
@@ -80,13 +158,13 @@ describe("shared toolchain CI selection", () => {
     ].map((match) => match[1]);
     expect(selected.toSorted()).toEqual([...projects].toSorted());
     expect(selected.length).toBe(new Set(selected).size);
-    const probe = workflow.jobs.typecheck.steps.find((step) =>
+    const probe = proofs.jobs["typecheck-proofs"].steps.find((step) =>
       step.run?.includes("stll-typecheck-probe"),
     );
     expect(projects.has(/--project (\S+)/.exec(probe.run)?.[1])).toBe(true);
   });
 
-  test("every native project install root is installed before compiler comparison", () => {
+  test("every Bun project install root is installed before compiler comparison", () => {
     const manifest = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8"));
     const roots = new Set();
     for (const [, project] of manifest.scripts["typecheck:compiler-parity"].matchAll(
@@ -99,7 +177,7 @@ describe("shared toolchain CI selection", () => {
       }
       roots.add(directory);
     }
-    const steps = workflow.jobs.typecheck.steps;
+    const steps = proofs.jobs["typecheck-proofs"].steps;
     const comparison = steps.findIndex((step) => step.run?.includes("typecheck:compiler-parity"));
     expect(comparison).toBeGreaterThan(0);
     const installed = new Set(
@@ -192,13 +270,13 @@ describe("required shared toolchain policy", () => {
     (step) => step.name === "Evaluate CI outcome",
   );
 
-  test("the existing lint job always runs the policy without error tolerance", () => {
+  test("the existing lint job runs the policy without error tolerance unless CI is reused", () => {
     expect(lint.needs).toBe("ci-plan");
-    expect(lint.if).toBeUndefined();
+    expect(lint.if).toBe("needs.ci-plan.outputs.reused_run == ''");
     expect(lint["continue-on-error"]).toBeUndefined();
     const guards = lint.steps.filter((step) => step.run === "bun run check:toolchain");
     expect(guards).toEqual([{ name: "Shared toolchain policy", run: "bun run check:toolchain" }]);
-    expect(JSON.parse(evaluation.env.JOB_SCOPES).lint).toEqual({});
+    expect(JSON.parse(evaluation.env.JOB_SCOPES).lint).toEqual({ reuse: "forbidden" });
   });
 
   test("the required outcome rejects unsuccessful lint even for scoped PRs", () => {

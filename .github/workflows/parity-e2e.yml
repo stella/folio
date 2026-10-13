@@ -1,0 +1,54 @@
+name: Adapter parity proofs
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  parity-e2e:
+    name: Cross-adapter parity e2e (React vs Vue)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      # persist-credentials: false — this job can be manually dispatched on any
+      # branch ref, so the checkout token must not linger in the git config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: |
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
+          bunx playwright install --with-deps chromium
+
+      # The `parity` Playwright project boots both the React (4200) and Vue
+      # (4201) playground dev servers via the config's webServer array and runs
+      # each cross-adapter spec against both, asserting the two adapters behave
+      # identically through the shared `window.__folioParity` bridge. Kept on a
+      # manual cadence because it boots two dev servers
+      # and the static React<->Vue parity gates (check:parity-contract,
+      # check:export-parity) already guard the API surface on every PR.
+      - name: Parity e2e specs
+        run: bun run test:e2e:parity --workers=1 --output=fuzz-playwright/parity
+
+      - name: Upload parity proof artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: adapter-parity-proofs
+          path: fuzz-playwright/parity
+          retention-days: 14

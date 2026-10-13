@@ -46,7 +46,7 @@
     "build": "rm -rf dist && tsdown",
     "pack:dry-run": "bun pm pack --dry-run",
     "test": "bun test src",
-    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
+    "typecheck": "bun check --no-pretty --all --project=tsconfig.build.json",
     "wasm:check": "bun ../../scripts/build-docx-kernel-wasm.ts --check",
     "wasm:generate": "bun ../../scripts/build-docx-kernel-wasm.ts --write",
     "format": "oxfmt .",

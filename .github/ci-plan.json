@@ -22,17 +22,6 @@
         "specifications/**"
       ]
     },
-    "typecheck_budget": {
-      "paths": [
-        "packages/**",
-        "parity/**",
-        "specifications/**",
-        "!**/*.md",
-        "tsconfig*.json",
-        "scripts/tsc-native.ts",
-        "scripts/typecheck-budget.*"
-      ]
-    },
     "container_contract": {
       "paths": [
         "packages/core/src/**",

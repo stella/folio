@@ -1,6 +1,6 @@
 import { seedFileFor } from "../test/seed-registry";
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
@@ -66,9 +66,14 @@ const actualPropertyDrivers = (): string[] => {
 
 describe("property areas", () => {
   test("the workflow matrix exercises every selected file and collects every failure", () => {
-    const workflow = Bun.YAML.parse(
-      readFileSync(path.resolve(import.meta.dir, "../.github/workflows/ci.yml"), "utf8"),
-    );
+    const directory = path.resolve(import.meta.dir, "../.github/workflows");
+    const workflows = readdirSync(directory)
+      .filter((file) => /\.ya?ml$/u.test(file))
+      .map((file) => Bun.YAML.parse(readFileSync(path.join(directory, file), "utf8")))
+      .filter((workflow) => workflow.jobs?.["property-areas"]);
+    expect(workflows).toHaveLength(1);
+    const workflow = workflows.at(0);
+    expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
     const job = workflow.jobs["property-areas"];
     const files = propertyFiles();
     const exercised = [...job.strategy.matrix.shard].flatMap((index: number) =>

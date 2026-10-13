@@ -1,4 +1,4 @@
-name: Nightly Parity E2E
+name: Nightly Cross-host Fuzz
 
 on:
   schedule:
@@ -20,7 +20,7 @@ permissions: {}
 
 jobs:
   parity-e2e:
-    name: Cross-adapter parity e2e (React vs Vue)
+    name: Generated cross-host fuzz
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -50,16 +50,6 @@ jobs:
             /etc/apt/sources.list.d/microsoft-prod.list \
             /etc/apt/sources.list.d/microsoft-prod.sources
           bunx playwright install --with-deps chromium
-
-      # The `parity` Playwright project boots both the React (4200) and Vue
-      # (4201) playground dev servers via the config's webServer array and runs
-      # each cross-adapter spec against both, asserting the two adapters behave
-      # identically through the shared `window.__folioParity` bridge. Kept on a
-      # nightly cadence (not the PR `ci` job) because it boots two dev servers
-      # and the static React<->Vue parity gates (check:parity-contract,
-      # check:export-parity) already guard the API surface on every PR.
-      - name: Parity e2e specs
-        run: bun run test:e2e:parity --workers=1 --output=fuzz-playwright/parity
 
       - name: Generated four-host differential
         if: always()

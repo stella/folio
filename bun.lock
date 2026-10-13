@@ -39,7 +39,7 @@
         "oxfmt": "0.72.0",
         "oxlint": "1.87.0",
         "oxlint-tsgolint": "7.0.2003",
-        "pixelmatch": "7.2.0",
+        "pixelmatch": "8.0.0",
         "pngjs": "7.0.0",
         "prosemirror-state": "^1.4.4",
         "react": "^19.2.7",
@@ -282,14 +282,12 @@
         "yjs": "^13.6.31",
       },
       "devDependencies": {
-        "@tailwindcss/cli": "4.3.3",
         "@vitejs/plugin-vue": "^6.0.7",
         "prosemirror-history": "^1.5.0",
         "prosemirror-model": "^1.25.10",
         "prosemirror-state": "^1.4.4",
         "prosemirror-tables": "^1.8.5",
         "prosemirror-view": "^1.42.6",
-        "tailwindcss": "4.3.3",
         "vite": "8.1.5",
         "vite-plugin-dts": "^5.0.3",
         "vue": "^3.5.43",
@@ -1870,7 +1868,7 @@
 
     "picomatch": ["picomatch@4.0.5", "", {}, "sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A=="],
 
-    "pixelmatch": ["pixelmatch@7.2.0", "", { "dependencies": { "pngjs": "^7.0.0" }, "bin": { "pixelmatch": "bin/pixelmatch" } }, "sha512-xhcb4yHu9sM/G7foGzoLtXYcC0zHEaOXXjRKhGup0fw78Nf2Tkiapv4EQyMzrbcmQPsllAI7DbFY2UT7PlI9Pg=="],
+    "pixelmatch": ["pixelmatch@8.0.0", "", { "dependencies": { "pngjs": "^7.0.0" }, "bin": { "pixelmatch": "bin/pixelmatch" } }, "sha512-cIqOLfh5k52us715qf3B3+kTOxZv+WDv77HN7xokLScYQGYQHi4m/ynoDIPpvF2LvCyUJGyvzY64i0QCXtzu1g=="],
 
     "pkce-challenge": ["pkce-challenge@5.0.1", "", {}, "sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ=="],
 
