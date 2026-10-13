@@ -719,7 +719,7 @@ describe("CI plan", () => {
       `${PROPERTY_AREAS_CONDITION}needs.ci-plan.outputs.browser_discovery_required == 'true'`,
     );
     expect(steps.filter((step) => isRecord(step) && typeof step["run"] === "string")).toEqual([
-      { run: "bun install --frozen-lockfile" },
+      { run: "bun scripts/ci-scoped-install.ts browser-discovery" },
       {
         name: "Discover every Node Playwright project without browsers",
         run: "bun scripts/ci-browser-discovery.ts",

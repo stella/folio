@@ -142,7 +142,7 @@
     "test:visual:update": "bunx playwright test --update-snapshots",
     "test:visual:report": "bunx playwright show-report",
     "bench:compare": "bun benchmarks/compare/run.ts",
-    "test:source-guards": "bun test scripts/shared-docx-fixtures.test.ts scripts/browser-preview-imports.test.ts scripts/workflow-cache-policy.test.ts scripts/canonical-timer-owner.test.ts scripts/canonical-cutover.test.ts scripts/canonical-command-census.test.ts scripts/canonical-range-producers.test.ts scripts/property-test-budgets.test.ts scripts/property-timeout.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/zip-part-writer.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts scripts/ci-toolchain-plan.test.mjs"
+    "test:source-guards": "bun test scripts/ci-scoped-install.test.ts scripts/shared-docx-fixtures.test.ts scripts/browser-preview-imports.test.ts scripts/workflow-cache-policy.test.ts scripts/canonical-timer-owner.test.ts scripts/canonical-cutover.test.ts scripts/canonical-command-census.test.ts scripts/canonical-range-producers.test.ts scripts/property-test-budgets.test.ts scripts/property-timeout.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/zip-part-writer.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts scripts/ci-toolchain-plan.test.mjs"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
@@ -167,7 +167,7 @@
     "@vue/compiler-sfc": "3.5.43",
     "babel-plugin-react-compiler": "^1.0.0",
     "better-result": "3.0.1",
-    "binaryen": "131.0.0",
+    "binaryen": "132.0.0",
     "bun-types": "1.4.3",
     "dependency-cruiser": "18.2.0",
     "fast-check": "^4.9.0",
@@ -179,7 +179,7 @@
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2003",
-    "pixelmatch": "7.2.0",
+    "pixelmatch": "8.0.0",
     "pngjs": "7.0.0",
     "prosemirror-state": "^1.4.4",
     "react": "^19.2.7",

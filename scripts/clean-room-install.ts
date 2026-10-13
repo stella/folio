@@ -1,5 +1,5 @@
-import { panic } from "better-result";
 import { $ } from "bun";
+import { readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -8,6 +8,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 /** Copy only the registry release policy; workspace linker settings stay in the repo. */
 export const writeCleanRoomInstallConfig = async (consumerDir: string): Promise<void> => {
+  const { panic } = await import("better-result");
   const config: unknown = Bun.TOML.parse(
     await readFile(new URL("../bunfig.toml", import.meta.url), "utf8"),
   );
@@ -28,6 +29,25 @@ export const writeCleanRoomInstallConfig = async (consumerDir: string): Promise<
     path.join(consumerDir, "bunfig.toml"),
     `[install]\nminimumReleaseAge = ${minimumReleaseAge}\nminimumReleaseAgeExcludes = ${JSON.stringify(minimumReleaseAgeExcludes)}\n`,
   );
+};
+
+/** Bootstrap a locked repository environment using its complete install policy. */
+export const installFrozenRepositoryDependencies = (repoRoot: string): void => {
+  const config: unknown = Bun.TOML.parse(readFileSync(path.join(repoRoot, "bunfig.toml"), "utf8"));
+  if (
+    !isRecord(config) ||
+    !isRecord(config["install"]) ||
+    typeof config["install"]["minimumReleaseAge"] !== "number" ||
+    !Number.isSafeInteger(config["install"]["minimumReleaseAge"]) ||
+    config["install"]["minimumReleaseAge"] <= 0
+  )
+    throw new TypeError("Frozen repository installs require the release-age policy");
+  const result = Bun.spawnSync([process.execPath, "install", "--frozen-lockfile"], {
+    cwd: repoRoot,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  if (result.exitCode !== 0) throw new TypeError("Frozen repository install failed");
 };
 
 type CleanRoomInstallOptions = { consumerDir: string; dependencies: readonly string[] };

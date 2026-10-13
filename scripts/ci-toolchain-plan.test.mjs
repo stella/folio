@@ -87,7 +87,7 @@ describe("shared toolchain CI selection", () => {
     expect(budgetJob.needs).toBe("typecheck-proofs");
     expect(budgetJob.if).toBe("always()");
     expect(budgetJob.steps.filter((step) => step.run)).toEqual([
-      { run: "bun install --frozen-lockfile" },
+      { run: "bun scripts/ci-scoped-install.ts typecheck-budget" },
       {
         name: "Guard deterministic compiler workload",
         run: "bun scripts/typecheck-budget.ts --self-test\nbun run typecheck:budget\n",
