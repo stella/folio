@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { paragraphLogicalText } from "@stll/docx-core/ops";
 import type { Document, ParagraphContent, Comment } from "../types/document";
-import { getTrackedChangesFromDoc } from "../ai-edits/read";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
 import { assertProperty } from "../../../../test/property-testing";
 import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
 
@@ -19,8 +19,8 @@ test("successive typing follows the replacement caret across comment boundaries"
             { length: references },
             (_, id) =>
               ({
-                type: "run",
-                content: [{ type: "commentReference", id }],
+                type: "commentReference",
+                id,
               }) satisfies ParagraphContent,
           );
           const source = {
@@ -78,7 +78,7 @@ test("successive typing follows the replacement caret across comment boundaries"
             expect(published.isErr() ? published.error : undefined).toBeUndefined();
             state = published.unwrap().state;
           }
-          const revisionIds = [...new Set(getTrackedChangesFromDoc(state.doc).map(({ id }) => id))];
+          const { ids: revisionIds } = getTrackedChangeStatsFromDoc(toProseDoc(session.document));
           if (revisionIds.length > 0) {
             const prepared = session.prepareResolve(state, { revisionIds, resolution: "accept" });
             expect(prepared.isErr() ? prepared.error : undefined).toBeUndefined();
@@ -90,9 +90,8 @@ test("successive typing follows the replacement caret across comment boundaries"
             expect(published.isErr() ? published.error : undefined).toBeUndefined();
             state = published.unwrap().state;
           }
-          const paragraph = session.document.package.document.content.at(0);
-          if (paragraph?.type !== "paragraph") throw new Error("Expected paragraph");
-          expect(paragraphLogicalText(paragraph)).toBe(typed.join(""));
+          // Comment references retain their anchor but contribute no authored text.
+          expect(toProseDoc(session.document).textContent).toBe(typed.join(""));
         }
       },
     ),

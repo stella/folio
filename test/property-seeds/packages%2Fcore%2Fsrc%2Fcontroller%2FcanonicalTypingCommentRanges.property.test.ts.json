@@ -5,6 +5,12 @@
       "path": "0:0",
       "note": "Successive typing follows the replacement caret across comment boundaries.",
       "date": "2026-10-13"
+    },
+    {
+      "seed": 1404001,
+      "path": "1:0:1",
+      "note": "Replacement typing follows the caret across a comment reference atom.",
+      "date": "2026-10-13"
     }
   ]
 }
