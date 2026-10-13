@@ -4,6 +4,7 @@ import { createDocx, paragraph } from "@stll/folio-core/server";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { openReviewer } from "../support/documents.ts";
 import {
+  canonicalReviewModel,
   assertRevisionCoverage,
   assertReviewRoundTrip,
   revisionCoverage,
@@ -131,7 +132,7 @@ test("round-trip comparison checks both full resolution documents", async () => 
   );
 });
 
-test("round-trip comparison preserves table formatting in parsed resolution packages", async () => {
+test("round-trip comparison preserves table formatting in resolved models", async () => {
   const model = fromMarkdown("| First | Second |\n| --- | --- |\n| Alpha beta | Body |");
   const reviewer = await openReviewer(new Uint8Array(await createDocx(model)));
   const block = reviewer.getContent().find(({ text }) => text.includes("beta"));
@@ -214,4 +215,70 @@ test("round-trip comparison detects lossy revision formatting with unchanged cov
     /reject-all document differs/,
   );
   assert.deepEqual(structuredClone(reviewer.toDocument()), original);
+});
+
+test("model projection classifies capture metadata and recurses through collections", () => {
+  const text = { content: [{ type: "text", text: "Header" }] };
+  const captured = {
+    ...text,
+    verbatimXml: "<w:p/>",
+    namespaceDeclarations: { w: "uri" },
+    [Symbol("paragraphPropertyCapture")]: {},
+  };
+  assert.deepEqual(
+    canonicalReviewModel(new Map([["header", new Set([captured])]])),
+    new Map([["header", new Set([text])]]),
+  );
+  assert.throws(
+    () => canonicalReviewModel({ sourceCaptureNew: {} }),
+    /Unclassified model capture field/,
+  );
+  assert.throws(
+    () => canonicalReviewModel({ [Symbol("newCapture")]: {} }),
+    /Unclassified model capture symbol/,
+  );
+  assert.notDeepEqual(
+    canonicalReviewModel({ sourceXml: "<w:unknown/>" }),
+    canonicalReviewModel({}),
+  );
+});
+
+test("round-trip comparison detects changed header text with unchanged revision coverage", async () => {
+  const model = fromMarkdown("Alpha");
+  const body = model.package.document.content.at(0);
+  const run = body?.type === "paragraph" ? body.content.at(0) : undefined;
+  if (run?.type !== "run") throw new Error("Expected run");
+  run.formatting = { bold: true };
+  run.propertyChanges = [
+    {
+      type: "runPropertyChange",
+      info: { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+      previousFormatting: { italic: true },
+    },
+  ];
+  const reviewer = await openReviewer(new Uint8Array(await createDocx(model)));
+  const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+  const withHeader = (decision: "accept" | "reject", text: string) => {
+    const document = reviewer.toResolvedDocument(decision);
+    document.package.headers = new Map([
+      ["rId8", { type: "header", hdrFtrType: "default", content: [paragraph(text)] }],
+    ]);
+    return document;
+  };
+  await assert.rejects(
+    assertReviewRoundTrip({
+      live: {
+        getContent: () => reviewer.getContent(),
+        getChanges: () => reviewer.getChanges(),
+        toResolvedDocument: (decision) => withHeader(decision, "Header"),
+      },
+      reopened: {
+        getContent: () => reopened.getContent(),
+        getChanges: () => reopened.getChanges(),
+        toResolvedDocument: (decision) => withHeader(decision, "Changed"),
+      },
+      context: "changed header",
+    }),
+    /accept-all document differs/,
+  );
 });

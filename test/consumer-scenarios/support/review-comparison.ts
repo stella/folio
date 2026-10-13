@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createDocx, parseDocx } from "@stll/folio-core/server";
 import { openReviewer } from "./documents.ts";
 import { projectContentPair } from "./identity.ts";
 
@@ -32,79 +31,143 @@ export const revisionCoverage = (
 export const assertRevisionCoverage = (left: readonly Change[], right: readonly Change[]) =>
   assert.deepEqual(revisionCoverage(right), revisionCoverage(left));
 
-const resolved = async (reviewer: ReviewSource, decision: "accept" | "reject") => {
-  // Resolve before any serialization, so a lossy revision save cannot alter both baselines.
-  const document = reviewer.toResolvedDocument(decision);
-  const positional = new Set(
-    reviewer
-      .getContent()
-      .filter(({ idStability }) => idStability === "positional")
-      .map(({ id }) => id),
+// Source replay hints are not authored document properties. Every such field
+// needs an explicit disposition; unknown capture fields or symbols fail closed.
+const SOURCE_FIELDS = new Map(
+  Object.entries({
+    requiredFonts: { disposition: "exclude", reason: "Derived font-loading inventory" },
+    templateVariables: {
+      disposition: "exclude",
+      reason: "Derived template-token inventory; authored text stays strict",
+    },
+    warnings: { disposition: "exclude", reason: "Source parse diagnostics" },
+    parseWarnings: { disposition: "exclude", reason: "Source parse diagnostics" },
+    originalBuffer: { disposition: "exclude", reason: "Original ZIP replay source" },
+    verbatimXml: { disposition: "exclude", reason: "Replay bytes for a modeled carrier" },
+    verbatimFingerprint: { disposition: "exclude", reason: "Replay cache validity" },
+    namespaceDeclarations: { disposition: "exclude", reason: "Lexical namespace spelling" },
+    namespaceBindings: { disposition: "exclude", reason: "Lexical namespace spelling" },
+    sourceXml: { disposition: "keep", reason: "May carry unmodeled authored formatting" },
+    gridSourceXml: { disposition: "keep", reason: "May carry unmodeled authored grid properties" },
+    rawWatermarkXml: { disposition: "keep", reason: "Watermark content not fully modeled" },
+    rawImageXml: { disposition: "keep", reason: "Drawing content not fully modeled" },
+    rawImageFingerprint: { disposition: "exclude", reason: "Drawing replay cache validity" },
+  } as const),
+);
+const SOURCE_SYMBOLS = {
+  paragraphPropertyCapture: "Source paragraph property replay handle",
+  paragraphPropertySourceBinding: "Source package replay binding",
+  paragraphPropertySourceBindingBrand: "Source binding type brand",
+  paragraphPropertySourceEmissionFingerprint: "Source emission cache validity",
+  paragraphPropertySourceIndentationBaseline: "Source indentation capture",
+  paragraphIndentationProjection: "Source indentation projection cache",
+  "package-source-baseline": "Source header/footer replay handle",
+} as const;
+
+const EMPTY_PART_RELATIONSHIPS = new Map([
+  [
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
+    "Empty comment part has no modeled comments",
+  ],
+  [
+    "http://schemas.microsoft.com/office/2011/relationships/commentsExtended",
+    "Empty comment thread part has no modeled comments",
+  ],
+]);
+const hasModeledComments = (value: object): boolean => {
+  if (!("document" in value) || typeof value.document !== "object" || value.document === null)
+    return true;
+  return (
+    "comments" in value.document &&
+    Array.isArray(value.document.comments) &&
+    value.document.comments.length > 0
   );
-  // Compare persisted resolved documents, rather than editor capture metadata.
-  const bytes = await createDocx(document);
-  const persisted = await openReviewer(new Uint8Array(bytes));
-  // Parse the saved package directly: editor capture retains base section
-  // mirrors and resolves inherited cell formatting into display attributes.
-  const packageModel = (await parseDocx(bytes, { preloadFonts: false })).package;
-  const properties = { ...packageModel.properties };
-  // Package save time is bookkeeping; revision authorship dates stay strict above.
-  delete properties.modified;
-  return {
-    package: { ...packageModel, properties },
-    rows: persisted
-      .getContent()
-      .map((row) =>
-        positional.has(row.id)
-          ? Object.assign({}, row, { idStability: "positional" as const })
-          : row,
-      ),
-  };
 };
 
-/** Change only paragraph identities that the shared identity comparator explicitly pairs. */
-const packageWithIdentities = (value: unknown, aliases: ReadonlyMap<string, string>): unknown => {
-  if (Array.isArray(value)) return value.map((entry) => packageWithIdentities(entry, aliases));
+/** One strict modeled-document projection, including nested part collections. */
+export const canonicalReviewModel = (
+  value: unknown,
+  aliases: ReadonlyMap<string, string> = new Map(),
+): unknown => {
+  if (Array.isArray(value)) return value.map((entry) => canonicalReviewModel(entry, aliases));
+  if (value instanceof Map)
+    return new Map([...value].map(([key, entry]) => [key, canonicalReviewModel(entry, aliases)]));
+  if (value instanceof Set)
+    return new Set([...value].map((entry) => canonicalReviewModel(entry, aliases)));
   if (value === null || typeof value !== "object") return value;
   if (Object.getPrototypeOf(value) !== Object.prototype) return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [
+  for (const symbol of Object.getOwnPropertySymbols(value))
+    assert.ok(
+      symbol.description && Object.hasOwn(SOURCE_SYMBOLS, symbol.description),
+      `Unclassified model capture symbol: ${String(symbol)}`,
+    );
+  const entries: [string, unknown][] = [];
+  for (const [key, entry] of Object.entries(value)) {
+    const field = SOURCE_FIELDS.get(key);
+    if (field) {
+      if (field.disposition === "exclude") continue;
+    } else {
+      assert.ok(
+        !/capture|verbatim|namespace(?:Declarations|Bindings)|source.*(?:Xml|Token|Fingerprint)|fingerprint/i.test(
+          key,
+        ),
+        `Unclassified model capture field: ${key}`,
+      );
+    }
+    if (entry === undefined) continue;
+    if (key === "relationships" && entry instanceof Map && !hasModeledComments(value)) {
+      const meaningful = new Map(
+        [...entry].filter(
+          ([, relationship]) =>
+            typeof relationship !== "object" ||
+            relationship === null ||
+            !("type" in relationship) ||
+            typeof relationship.type !== "string" ||
+            !EMPTY_PART_RELATIONSHIPS.has(relationship.type),
+        ),
+      );
+      entries.push([key, canonicalReviewModel(meaningful, aliases)]);
+      continue;
+    }
+    entries.push([
       key,
       key === "paraId" && typeof entry === "string"
         ? (aliases.get(entry) ?? entry)
-        : packageWithIdentities(entry, aliases),
-    ]),
-  );
+        : canonicalReviewModel(entry, aliases),
+    ]);
+  }
+  return Object.fromEntries(entries);
 };
 
 type ReviewRoundTripOptions = { live: ReviewSource; reopened: ReviewSource; context: string };
 
 /** The save invariant and reader stability share coverage and both resolution outcomes. */
-export const assertReviewRoundTrip = async ({
+export const assertReviewRoundTrip = ({
   live,
   reopened,
   context,
-}: ReviewRoundTripOptions): Promise<void> => {
-  const identities = projectContentPair({
-    leftRows: live.getContent(),
-    rightRows: reopened.getContent(),
-  });
-  const leftChanges = live.getChanges();
-  const rightChanges = reopened.getChanges();
-  assert.deepEqual(
-    revisionCoverage(rightChanges, identities.rightAliases),
-    revisionCoverage(leftChanges, identities.leftAliases),
-    `${context}: revision coverage differs after save`,
-  );
-  if (leftChanges.length === 0 && rightChanges.length === 0) return;
-  for (const decision of ["accept", "reject"] as const) {
-    const left = await resolved(live, decision);
-    const right = await resolved(reopened, decision);
-    const pair = projectContentPair({ leftRows: left.rows, rightRows: right.rows });
+}: ReviewRoundTripOptions): Promise<void> =>
+  Promise.resolve().then(() => {
+    const identities = projectContentPair({
+      leftRows: live.getContent(),
+      rightRows: reopened.getContent(),
+    });
+    const leftChanges = live.getChanges();
+    const rightChanges = reopened.getChanges();
     assert.deepEqual(
-      packageWithIdentities(right.package, pair.rightAliases),
-      packageWithIdentities(left.package, pair.leftAliases),
-      `${context}: ${decision}-all document differs after save`,
+      revisionCoverage(rightChanges, identities.rightAliases),
+      revisionCoverage(leftChanges, identities.leftAliases),
+      `${context}: revision coverage differs after save`,
     );
-  }
-};
+    if (leftChanges.length === 0 && rightChanges.length === 0) return undefined;
+    for (const decision of ["accept", "reject"] as const) {
+      const left = live.toResolvedDocument(decision);
+      const right = reopened.toResolvedDocument(decision);
+      assert.deepEqual(
+        canonicalReviewModel(right, identities.rightAliases),
+        canonicalReviewModel(left, identities.leftAliases),
+        `${context}: ${decision}-all document differs after save`,
+      );
+    }
+    return undefined;
+  });

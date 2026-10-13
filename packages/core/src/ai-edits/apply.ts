@@ -72,6 +72,7 @@ import {
 import { resolveNewListOperations } from "./newListNumbering";
 import {
   readAuthoredRunFormatting,
+  readAuthoredRunPropertySnapshot,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
@@ -1664,7 +1665,7 @@ const applyTrackedInlineFormattingToRanges = ({
     formattingMarks: readonly Mark[];
     representation: SelectedRunFormattingCarrierRepresentation;
     includedProperties: string[];
-    previousFormatting: TextFormatting;
+    previousFormatting: TextFormatting | undefined;
   }[] = [];
   let hasPendingRunPropertyChange = false;
   const representations = ranges.flatMap(({ from, to }) =>
@@ -1677,13 +1678,13 @@ const applyTrackedInlineFormattingToRanges = ({
       pos: representation.from,
       ...(styleResolver !== undefined ? { styleResolver } : {}),
     });
-    const previousFormatting = readAuthoredRunFormatting({
+    const previousFormatting = readAuthoredRunPropertySnapshot({
       context: styleContext,
       marks: node.marks,
       ...(styleResolver !== undefined ? { styleResolver } : {}),
     });
     const includedProperties = formattingChangesForAuthoredFormatting(
-      previousFormatting,
+      previousFormatting ?? {},
       formatting,
     );
     if (includedProperties.length === 0) {
@@ -1698,7 +1699,7 @@ const applyTrackedInlineFormattingToRanges = ({
       continue;
     }
     const nextAuthoredFormatting = patchAuthoredRunFormatting({
-      authoredFormatting: previousFormatting,
+      authoredFormatting: previousFormatting ?? {},
       formatting,
       includedProperties,
     });
@@ -1740,7 +1741,7 @@ const applyTrackedInlineFormattingToRanges = ({
     const change: RunPropertyChange = {
       type: "runPropertyChange",
       info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
-      ...(Object.keys(segment.previousFormatting).length > 0
+      ...(segment.previousFormatting !== undefined
         ? { previousFormatting: segment.previousFormatting }
         : {}),
     };
