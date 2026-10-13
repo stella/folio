@@ -77,7 +77,9 @@ export const rejectedListRenderingPatch = ({
 }: RejectedListRenderingOptions): Record<string, unknown> => {
   const record = previousFormatting ?? {};
   if (recordsListRendering(record)) {
-    return {};
+    const patch: Record<string, unknown> = {};
+    for (const key of LIST_RENDERING_ATTR_KEYS) patch[key] = record[key] ?? null;
+    return patch;
   }
   const restored = restoredNumbering ?? undefined;
   const sameEffectiveNumbering = sameStatedParagraphNumbering(

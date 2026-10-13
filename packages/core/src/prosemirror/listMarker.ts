@@ -207,7 +207,13 @@ export function advanceVisibleListMarker(
   const original =
     attrs.pPrMark?.kind === "ins" ? undefined : advance(previous ?? attrs, "original");
   const visible =
-    final.marker === null && original && original.marker !== null && previous ? original : final;
+    attrs.numPr?.kind !== "none" &&
+    final.marker === null &&
+    original &&
+    original.marker !== null &&
+    previous?.numPr?.kind === "reference"
+      ? original
+      : final;
   return { ...visible, advances };
 }
 

@@ -497,7 +497,9 @@ test(
                   });
                   const expected = resolvedCounterProjection(resolved.doc);
                   const stream = decision === "accept" ? "final" : "original";
-                  expect(pending[stream]).toEqual(expected.markers);
+                  expect(pending[stream], `${authored}/${transition}/${decision}`).toEqual(
+                    expected.markers,
+                  );
                   expect(pending.streams[stream]).toEqual(expected.counters);
                 }
               }

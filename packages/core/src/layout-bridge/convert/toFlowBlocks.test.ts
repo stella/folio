@@ -3441,7 +3441,7 @@ describe("toFlowBlocks list numbering", () => {
     expect(blocks.at(27)?.attrs?.listMarker).toBe("bb.bb");
   });
 
-  test("drops unresolved child placeholders with their following punctuation", () => {
+  test("preserves template punctuation around unresolved child placeholders", () => {
     const doc = schema.node("doc", null, [
       schema.node(
         "paragraph",
@@ -3457,7 +3457,7 @@ describe("toFlowBlocks list numbering", () => {
     const blocks = toFlowBlocks(doc);
 
     expect(blocks.at(0)?.kind).toBe("paragraph");
-    expect(blocks.at(0)?.attrs?.listMarker).toBe("1.");
+    expect(blocks.at(0)?.attrs?.listMarker).toBe("1..");
   });
 
   test("formats each level in a multi-level marker with its own number format", () => {
@@ -3492,9 +3492,15 @@ describe("toFlowBlocks list numbering", () => {
 
   test("restarts a child counter after returning to its parent level", () => {
     const paragraph = (level: number, text: string) =>
-      schema.node("paragraph", { numPr: { kind: "reference", numId: 3, ilvl: level } }, [
-        schema.text(text),
-      ]);
+      schema.node(
+        "paragraph",
+        {
+          numPr: { kind: "reference", numId: 3, ilvl: level },
+          listNumFmt: "decimal",
+          listMarkerTemplate: level === 0 ? "%1." : "%1.%2.",
+        },
+        [schema.text(text)],
+      );
     const doc = schema.node("doc", null, [
       paragraph(0, "First parent"),
       paragraph(1, "First child"),
@@ -3517,6 +3523,8 @@ describe("toFlowBlocks list numbering", () => {
           "paragraph",
           {
             numPr: { kind: "reference", numId: index + 10, ilvl: 0 },
+            listNumFmt: "decimal",
+            listMarkerTemplate: "%1.",
             listLevelStarts: [4],
             listStartOverride,
           },
