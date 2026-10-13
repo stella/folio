@@ -75,3 +75,16 @@ test("default ESM targets are exercised by both module loaders", () => {
     { specifier: "example", esm: true, cjs: true, types: true, asset: false },
   ]);
 });
+
+test("type-only public exports are resolved by tsc without runtime imports", () => {
+  const entries = publicEntries({
+    name: "example",
+    exports: {
+      "./model": { types: "./dist/model.d.ts" },
+    },
+    files: ["dist/model.d.ts"],
+  });
+  expect(entries).toEqual([
+    { specifier: "example/model", esm: false, cjs: false, types: true, asset: false },
+  ]);
+});

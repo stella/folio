@@ -21,16 +21,20 @@ const patternMatch = (pattern: string, value: string) => {
 };
 
 const hasCondition = (value: unknown, condition: string): boolean => {
-  if (typeof value === "string")
+  if (typeof value === "string") {
+    if (condition === "types") return /\.d\.[cm]?ts$/u.test(value);
     return condition === "import" || (condition === "require" && value.endsWith(".cjs"));
+  }
   if (!value || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some((entry) => hasCondition(entry, condition));
-  return Object.entries(value).some(
-    ([key, entry]) =>
-      key === condition ||
-      (key === "default" && (condition === "import" || condition === "require")) ||
-      hasCondition(entry, condition),
-  );
+  return Object.entries(value).some(([key, entry]) => {
+    if (key === condition) return targets(entry).length > 0;
+    if (key === "default" && (condition === "import" || condition === "require"))
+      return targets(entry).length > 0;
+    // Loader-specific conditions cannot activate another loader or type-only branch.
+    if (["types", "import", "require", "default"].includes(key)) return false;
+    return hasCondition(entry, condition);
+  });
 };
 
 type PublicEntriesOptions = {
