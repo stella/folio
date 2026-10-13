@@ -27,6 +27,7 @@ import type { ConsoleMessage } from "@playwright/test";
 
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import type { DocxProjectionWire } from "@stll/docx-core/projection";
+import type { mountHostEditor } from "./src/host-editor";
 
 declare global {
   var __folioSmoke:
@@ -35,6 +36,7 @@ declare global {
         measureRoundTrip: () => Promise<{ width: number; alive: boolean }>;
         projectFixture: () => Promise<DocxProjectionWire>;
         projectionSchemaVersion: () => Promise<number>;
+        hostEditor: ReturnType<typeof mountHostEditor>;
       }
     | undefined;
 }
@@ -110,6 +112,62 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
     undefined,
     { timeout: 10_000 },
   );
+
+  const identities = await page.evaluate(async () => {
+    const smoke = globalThis.__folioSmoke;
+    const view = smoke?.getEditorRef()?.getEditorRef()?.getView();
+    if (!smoke || !view) throw new Error("Folio view is unavailable");
+    return smoke.hostEditor.identities(view);
+  });
+  expect(identities).toEqual({
+    schema: true,
+    node: true,
+    state: true,
+    view: true,
+    transform: true,
+    yjs: true,
+    yProseMirror: true,
+  });
+
+  // The host remains editable and owns shortcuts outside the Folio root.
+  const host = page.locator("#host-editor .ProseMirror");
+  await host.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" works");
+  await expect(host).toHaveText("Host text works");
+  const hostIsolation = await page.evaluate(() => {
+    const smoke = globalThis.__folioSmoke;
+    if (!smoke) throw new Error("Smoke hook is unavailable");
+    const hostView = smoke.hostEditor.view;
+    const event = new KeyboardEvent("keydown", {
+      key: "f",
+      ctrlKey: true,
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    hostView.dom.dispatchEvent(event);
+    const folioView = smoke.getEditorRef()?.getEditorRef()?.getView();
+    if (!folioView) throw new Error("Folio view is unavailable");
+    const before = folioView.state.doc.textContent;
+    folioView.dispatch(folioView.state.tr.insertText("Folio edit ", 1));
+    return {
+      intercepted: event.defaultPrevented,
+      hostText: smoke.hostEditor.text(),
+      yjsText: smoke.hostEditor.yjsText(),
+      folioEdited: folioView.state.doc.textContent !== before,
+      hostCaret: getComputedStyle(hostView.dom).caretColor,
+      hostColor: getComputedStyle(hostView.dom).color,
+      hostOutline: getComputedStyle(hostView.dom).outlineWidth,
+    };
+  });
+  expect(hostIsolation.intercepted).toBe(false);
+  expect(hostIsolation.hostText).toBe("Host text works");
+  expect(hostIsolation.yjsText).toBe("Host Yjs");
+  expect(hostIsolation.folioEdited).toBe(true);
+  expect(hostIsolation.hostCaret).toBe("rgb(12, 34, 56)");
+  expect(hostIsolation.hostColor).toBe("rgb(12, 34, 56)");
+  expect(hostIsolation.hostOutline).toBe("3px");
 
   const paragraph = page.locator(".layout-paragraph").first();
   await paragraph.scrollIntoViewIfNeeded();

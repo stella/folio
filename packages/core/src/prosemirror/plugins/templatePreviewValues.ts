@@ -22,8 +22,9 @@
  * this to its fill inputs.
  */
 
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
@@ -138,17 +139,8 @@ const ORIGINAL_CLASS = "folio-template-preview-original";
 /** Hides a conditional block the host reported as not applying. */
 const HIDDEN_CLASS = "folio-template-preview-hidden";
 
-// Pin the PluginKey to a process-wide symbol so every module
-// evaluation (Vite dev double-serve, @stll/folio re-export) resolves
-// to the same key instance — otherwise host key-based lookups break.
-const KEY_HOLDER_SYMBOL = Symbol.for("stll.folio.templatePreviewValuesKey");
-type KeyHolder = {
-  [KEY_HOLDER_SYMBOL]?: PluginKey<TemplatePreviewState>;
-};
-const keyHolder = globalThis as unknown as KeyHolder;
-export const templatePreviewValuesKey: PluginKey<TemplatePreviewState> =
-  keyHolder[KEY_HOLDER_SYMBOL] ??
-  (keyHolder[KEY_HOLDER_SYMBOL] = new PluginKey<TemplatePreviewState>("templatePreviewValues"));
+export const templatePreviewValuesKey =
+  createPluginKeyOwner<TemplatePreviewState>("templatePreviewValues");
 
 /** A rich span as DOM: text wrapped in `<em>` / `<strong>` per its flags. */
 function buildSpanNode(span: TemplatePreviewSpan): Node {
@@ -481,7 +473,7 @@ function buildDecorationSet(
 
 export function createTemplatePreviewValuesPlugin(): Plugin<TemplatePreviewState> {
   return new Plugin<TemplatePreviewState>({
-    key: templatePreviewValuesKey,
+    key: templatePreviewValuesKey.createKey(),
     state: {
       init(): TemplatePreviewState {
         return {

@@ -359,10 +359,10 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   if (run.fontFamily) {
     // Use the font resolver for category-appropriate fallback stacks,
     // matching the same stacks used in measureContainer.ts
-    element.style.fontFamily = resolveFontFamily(
-      run.fontFamily,
-      run.alternateFontFamily,
-    ).cssFallback;
+    element.style.fontFamily = resolveFontFamily(run.fontFamily, {
+      alternateFontName: run.alternateFontFamily,
+      embeddedFontFamilyMap: run.embeddedFontFamilyMap,
+    }).cssFallback;
   }
   if (run.fontSize) {
     // fontSize is in points - convert to pixels to match Canvas measurement
@@ -1934,6 +1934,7 @@ function runVisualSpaceContraction({
  */
 function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
   return {
+    ...(run.embeddedFontFamilyMap ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap } : {}),
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),
     ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
@@ -2143,6 +2144,7 @@ function getTextAfterTab(runs: Run[], tabRunIndex: number, context?: RenderConte
  * Uses the same font fallback chain as measureContainer.ts
  */
 type TextMeasureStyle = {
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   bold?: boolean;
   italic?: boolean;
   letterSpacing?: number;
@@ -2212,7 +2214,7 @@ function createTextMeasurer(
         fontPrefixParts.push(DOCX_BOLD_FONT_WEIGHT);
       }
       fontPrefixParts.push(`${(size * 96) / 72}px`);
-      return `${fontPrefixParts.join(" ")} ${resolveFontFamily(family, alternateFamily).cssFallback}`;
+      return `${fontPrefixParts.join(" ")} ${resolveFontFamily(family, { alternateFontName: alternateFamily, embeddedFontFamilyMap: style.embeddedFontFamilyMap }).cssFallback}`;
     };
     const baseFont = fontString(
       fontFamily,
@@ -3470,10 +3472,10 @@ function renderListMarker({
 
   // Per ECMA-376 §17.9, marker formatting comes from level rPr over the
   // paragraph mark, then paragraph defaults, then document defaults.
-  span.style.fontFamily = resolveFontFamily(
-    formatting.fontFamily,
-    formatting.alternateFontFamily,
-  ).cssFallback;
+  span.style.fontFamily = resolveFontFamily(formatting.fontFamily, {
+    alternateFontName: formatting.alternateFontFamily,
+    embeddedFontFamilyMap: formatting.embeddedFontFamilyMap,
+  }).cssFallback;
   if (formatting.fontSize) {
     // 1pt = 96/72 px
     span.style.fontSize = `${(formatting.fontSize * 96) / 72}px`;

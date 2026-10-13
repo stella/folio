@@ -161,6 +161,7 @@ export function calculateEmptyParagraphMetrics(
   attrs?: ParagraphAttrs,
 ): LineTypography {
   const metrics = getFontMetrics({
+    ...(attrs?.embeddedFontFamilyMap ? { embeddedFontFamilyMap: attrs.embeddedFontFamilyMap } : {}),
     fontSize,
     fontFamily: fontFamily ?? DEFAULT_FONT_FAMILY,
     ...(attrs?.defaultAlternateFontFamily !== undefined

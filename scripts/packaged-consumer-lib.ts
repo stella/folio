@@ -14,9 +14,11 @@
 
 import { panic } from "better-result";
 import reactManifest from "../packages/react/package.json";
+import coreManifest from "../packages/core/package.json";
 import { $ } from "bun";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { assertHostPeersExternal } from "./host-peer-policy";
 
 export const repoRoot = path.resolve(import.meta.dir, "..");
 export const prepareScript = path.join(repoRoot, "scripts", "prepare-publish.ts");
@@ -52,6 +54,10 @@ export const reactPeerInstallArgs = () => [
   `@types/react-dom@^${REACT_PEER_FLOOR.major}`,
 ];
 
+// The host installs the runtime peers itself; no singleton override or alias.
+export const hostPeerInstallArgs = () =>
+  Object.entries(coreManifest.peerDependencies).map(([name, range]) => `${name}@${range}`);
+
 // Build a package, transform its package.json to the published dist shape
 // (reversibly), pack a tarball into destDir, and return the tarball path.
 export const buildAndPack = async (pkgDir: string, destDir: string): Promise<string> => {
@@ -61,6 +67,7 @@ export const buildAndPack = async (pkgDir: string, destDir: string): Promise<str
   };
   console.log(`→ building ${packageJson.name}`);
   await $`bun run build`.cwd(pkgDir).quiet();
+  assertHostPeersExternal(pkgDir);
 
   const pkgJsonPath = path.join(pkgDir, "package.json");
   const original = await readFile(pkgJsonPath, "utf-8");

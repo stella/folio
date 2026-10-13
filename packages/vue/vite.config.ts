@@ -49,7 +49,14 @@ export default defineConfig({
       cssFileName: "folio-vue",
     },
     rollupOptions: {
-      external: ["vue", /^@stll\/folio-core(\/.*)?$/, /^prosemirror-/],
+      external: [
+        /^vue(?:$|\/)/u,
+        /^@stll\/folio-core(?:$|\/)/u,
+        /^prosemirror-[a-z-]+(?:$|\/)/u,
+        /^yjs(?:$|\/)/u,
+        /^y-prosemirror(?:$|\/)/u,
+        /^y-protocols(?:$|\/)/u,
+      ],
     },
     emptyOutDir: true,
   },

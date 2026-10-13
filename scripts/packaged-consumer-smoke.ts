@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { installCleanRoomDependencies } from "./clean-room-install";
+import { assertHostPeerResolution } from "./host-peer-policy";
 import {
   REACT_PEER_FLOOR,
   buildAndPack,
@@ -29,6 +30,7 @@ import {
   coreDir,
   docxCoreDir,
   isDocxKernelWasmAsset,
+  hostPeerInstallArgs,
   reactPeerInstallArgs,
   reactDir,
   repoRoot,
@@ -123,12 +125,14 @@ try {
           coreTarball,
           docxCoreTarball,
           ...reactPeerInstallArgs(),
+          ...hostPeerInstallArgs(),
           "use-intl@^4",
           "vite@^8",
           "@vitejs/plugin-react@^6",
         ],
       });
 
+      assertHostPeerResolution(consumerDir);
       console.log(`→ production SPA build over the packed tarballs (React ${reactVersion})`);
       const build = await $`bun x vite build --config vite.runtime.config.ts`
         .cwd(consumerDir)

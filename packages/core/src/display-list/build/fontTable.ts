@@ -55,8 +55,8 @@ const faceKey = (family: string, weight: number, italic: boolean): string =>
  * Package faces keyed by every family name a run can resolve to.
  *
  * `resolveFontFamily` substitutes the scoped `folio-embedded-{nonce}-{name}`
- * family only while the document's embedded-family map is installed; a build
- * that never installed it resolves the same run to the authored name. Both
+ * family when the run carries its document-owned embedded-family map; a build
+ * without that context resolves the same run to the authored name. Both
  * names therefore key the same face, and the bytes are interned by id so one
  * face's binary appears once however many names reach it.
  */
@@ -111,7 +111,10 @@ export class FontTable {
     measureStyle,
   }: FontFaceRequest): DisplayFontRef {
     const stack = splitFallbackStack(
-      resolveFontFamily(fontFamily, alternateFontFamily).cssFallback,
+      resolveFontFamily(fontFamily, {
+        alternateFontName: alternateFontFamily,
+        embeddedFontFamilyMap: measureStyle.embeddedFontFamilyMap,
+      }).cssFallback,
     );
     // The leading entry is the concrete face the canvas measured with, and the
     // only one a backend can embed; the trailing generic is the fallback.

@@ -17,6 +17,7 @@ import { $ } from "bun";
 import { bundleAsync, transform } from "lightningcss";
 import { rm } from "node:fs/promises";
 import path from "node:path";
+import { scopeEditorCss } from "../../../scripts/lib/scoped-editor-css";
 
 const pkgDir = path.resolve(import.meta.dir, "..");
 const srcDir = path.join(pkgDir, "src");
@@ -31,7 +32,7 @@ const prosemirrorViewCss = Bun.resolveSync("prosemirror-view/style/prosemirror.c
 
 // Virtual entry: the consumer-facing cascade order. ProseMirror base first,
 // then folio's prosemirror layer, then the editor chrome, then AI decorations.
-// `editor.css` pulls in fonts.css / font-aliases.css / autocomplete.css via its
+// `editor.css` pulls in fonts.css / autocomplete.css via its
 // own relative `@import`s.
 const ENTRY = path.join(stylesDir, "__folio_bundle_entry__.css");
 const entrySource = [
@@ -68,7 +69,7 @@ const bundled = await bundleAsync({
       if (file === ENTRY) {
         return entrySource;
       }
-      const css = await Bun.file(file).text();
+      const css = scopeEditorCss(await Bun.file(file).text());
       if (path.resolve(file) !== fontsCss) {
         return css;
       }

@@ -53,20 +53,25 @@
   },
   "dependencies": {
     "@nuxt/kit": "^3.14.0 || ^4.0.0",
-    "@stll/folio-vue": "workspace:^",
-    "prosemirror-history": "^1.4.0",
-    "prosemirror-model": "^1.19.4",
-    "prosemirror-state": "^1.4.3",
-    "prosemirror-tables": "^1.8.5",
-    "prosemirror-view": "^1.42.6"
+    "@stll/folio-vue": "workspace:^"
   },
   "devDependencies": {
     "@nuxt/module-builder": "^1.0.0",
     "@nuxt/schema": "^4.5.1",
     "nuxt": "^4.5.1",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-model": "^1.25.9",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-tables": "^1.8.5",
+    "prosemirror-view": "^1.42.6",
     "vue": "^3.5.43"
   },
   "peerDependencies": {
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-model": "^1.25.9",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-tables": "^1.8.5",
+    "prosemirror-view": "^1.42.6",
     "vue": "^3.3.0"
   }
 }

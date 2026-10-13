@@ -12,6 +12,60 @@ function createFontFace(): FontFace {
 }
 
 describe("useFontLifecycle", () => {
+  test("loading, replacing and unmounting one editor leaves the other map intact", async () => {
+    const firstResult = deferred<{ faces: FontFace[]; familyMap: Map<string, string> }>();
+    const secondResult = deferred<{ faces: FontFace[]; familyMap: Map<string, string> }>();
+    let firstMap: ReadonlyMap<string, string> | null = null;
+    let secondMap: ReadonlyMap<string, string> | null = null;
+    const firstScope = effectScope();
+    const secondScope = effectScope();
+    const mount = (
+      scope: ReturnType<typeof effectScope>,
+      result: typeof firstResult,
+      setEmbeddedFontFamilies: (map: ReadonlyMap<string, string> | null) => void,
+    ) => {
+      scope.run(() =>
+        useFontLifecycle(
+          {
+            isReady: ref(true),
+            getDocument: () => ({ originalBuffer: new ArrayBuffer(1) }),
+            fonts: () => undefined,
+            remeasure: () => {},
+            setEmbeddedFontFamilies,
+          },
+          {
+            loadEmbedded: () => result.promise,
+            loadHost: () => Promise.resolve([]),
+            remove: () => {},
+          },
+        ),
+      );
+    };
+    mount(firstScope, firstResult, (map) => {
+      firstMap = map;
+    });
+    mount(secondScope, secondResult, (map) => {
+      secondMap = map;
+    });
+    firstResult.resolve({
+      faces: [],
+      familyMap: new Map([["Calibri", "folio-embedded-first-Calibri"]]),
+    });
+    await Promise.resolve();
+    secondResult.resolve({
+      faces: [],
+      familyMap: new Map([["Calibri", "folio-embedded-second-Calibri"]]),
+    });
+    await Promise.resolve();
+    expect(firstMap).toEqual(new Map([["Calibri", "folio-embedded-first-Calibri"]]));
+    expect(secondMap).toEqual(new Map([["Calibri", "folio-embedded-second-Calibri"]]));
+    firstScope.stop();
+    expect(firstMap).toBeNull();
+    expect(secondMap).toEqual(new Map([["Calibri", "folio-embedded-second-Calibri"]]));
+    secondScope.stop();
+    expect(secondMap).toBeNull();
+  });
+
   test("remeasures after embedded fonts load and removes them on document cleanup", async () => {
     const originalFontFace = Reflect.get(globalThis, "FontFace");
     const hadFontFace = "FontFace" in globalThis;
@@ -47,6 +101,7 @@ describe("useFontLifecycle", () => {
             getDocument: () => document,
             fonts: () => undefined,
             remeasure,
+            setEmbeddedFontFamilies: mock(() => {}),
           },
           dependencies,
         );
@@ -99,6 +154,7 @@ describe("useFontLifecycle", () => {
             getDocument: () => document,
             fonts: () => undefined,
             remeasure,
+            setEmbeddedFontFamilies: mock(() => {}),
           },
           {
             loadEmbedded: () => pending.promise,
@@ -154,6 +210,7 @@ describe("useFontLifecycle", () => {
             getDocument: () => null,
             fonts: () => fonts.value,
             remeasure,
+            setEmbeddedFontFamilies: mock(() => {}),
           },
           {
             loadEmbedded: () => Promise.resolve({ faces: [], familyMap: new Map() }),
