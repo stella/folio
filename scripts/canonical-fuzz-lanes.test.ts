@@ -68,17 +68,64 @@ const stepsOf = (job: unknown): Record<string, unknown>[] => {
   return job["steps"].filter(record);
 };
 
-test("required CI never invokes either random canonical harness", () => {
-  const jobs = workflow("ci.yml")["jobs"];
-  if (!record(jobs)) throw new Error("Missing CI jobs");
-  for (const job of Object.values(jobs)) {
-    for (const step of stepsOf(job)) {
-      expect(String(step["run"] ?? "")).not.toMatch(/canonical-session|--project=browser-fuzzer/);
+const requiredCiSteps = (readWorkflow: (name: string) => Record<string, unknown>) => {
+  const pending = ["ci.yml"];
+  const visited = new Set<string>();
+  const steps: Record<string, unknown>[] = [];
+  while (pending.length > 0) {
+    const name = pending.pop();
+    if (name === undefined || visited.has(name)) continue;
+    visited.add(name);
+    const jobs = readWorkflow(name)["jobs"];
+    if (!record(jobs)) throw new Error(`Missing jobs in ${name}`);
+    for (const job of Object.values(jobs)) {
+      if (!record(job)) throw new Error(`Invalid job in ${name}`);
+      if (typeof job["uses"] !== "string") {
+        steps.push(...stepsOf(job));
+        continue;
+      }
+      const prefix = "./.github/workflows/";
+      const file = job["uses"].slice(prefix.length);
+      if (!job["uses"].startsWith(prefix) || file === "" || path.posix.basename(file) !== file)
+        throw new Error(`Cannot inspect reusable workflow ${job["uses"]}`);
+      pending.push(file);
     }
   }
+  return steps;
+};
+
+const canonicalHarnessCalls = (steps: Record<string, unknown>[]) =>
+  steps.flatMap((step) => {
+    const run = String(step["run"] ?? "");
+    return /canonical-session|--project=browser-fuzzer/u.test(run) ? [run] : [];
+  });
+
+test("required CI never invokes either random canonical harness", () => {
+  expect(canonicalHarnessCalls(requiredCiSteps(workflow))).toEqual([]);
   // Bun and the property-area collector discover .test/.spec, not .fuzz files.
   expect(PROPERTY_FILE).not.toMatch(/(?:\.test|_test_|\.spec|_spec_)/);
   expect(readFileSync(path.join(ROOT, PROPERTY_FILE), "utf8")).toContain("assertProperty(");
+});
+
+test("the required CI guard inspects nested reusable workflows", () => {
+  for (const run of [
+    "bun test test/canonical-session.fuzz.ts",
+    "bunx playwright test --project=browser-fuzzer",
+  ]) {
+    const fixtures: Record<string, Record<string, unknown>> = {
+      "ci.yml": { jobs: { first: { uses: "./.github/workflows/first.yml" } } },
+      "first.yml": { jobs: { nested: { uses: "./.github/workflows/second.yml" } } },
+      "second.yml": { jobs: { runner: { steps: [{ run }] } } },
+    };
+    const readFixture = (name: string) => {
+      const fixture = fixtures[name];
+      if (fixture === undefined) throw new Error(`Missing fixture ${name}`);
+      return fixture;
+    };
+    expect(canonicalHarnessCalls(requiredCiSteps(readFixture))).toEqual([run]);
+    fixtures["second.yml"] = { jobs: { runner: { steps: [{ run: "bun run test:smoke" }] } } };
+    expect(canonicalHarnessCalls(requiredCiSteps(readFixture))).toEqual([]);
+  }
 });
 
 test("nightly explicitly executes both lanes and keeps logs for issue filing", () => {

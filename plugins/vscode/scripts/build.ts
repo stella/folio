@@ -140,7 +140,9 @@ await Promise.all([
     external: ["playwright-core"],
     // CommonJS dependencies call `require` for Node.js built-ins.
     banner: {
-      js: "import { createRequire as __folioCreateRequire } from 'node:module'; const require = __folioCreateRequire(import.meta.url);",
+      // Electron 27 exposes Web Crypto through node:crypto, without the global
+      // used by the browser-native document model. Initialize only this CLI process.
+      js: "import { createRequire as __folioCreateRequire } from 'node:module'; import { webcrypto as __folioWebCrypto } from 'node:crypto'; const require = __folioCreateRequire(import.meta.url); globalThis.crypto ??= __folioWebCrypto;",
     },
     plugins: [shaperFromDisk],
     logLevel: "warning",
