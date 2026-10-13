@@ -2384,7 +2384,7 @@ impl ProjectionState {
             self.bookmarks_complete = false;
             return Ok(());
         };
-        queue.cursor += 1;
+        queue.cursor = queue.cursor.checked_add(1).ok_or(())?;
         if queue.cursor == queue.starts.len() {
             self.open_bookmarks.remove(&id);
         }
