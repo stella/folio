@@ -555,16 +555,27 @@ const intentRunFormatting = (
 };
 
 /** The ending physical mark owns one logical paragraph's properties. */
-const paragraphMarkOwner = (document: Document, at: TextPosition) =>
-  editorParagraphGroups(document, at.story)
-    .find(({ paragraphs }) =>
-      paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(at.blockId)),
-    )
-    ?.paragraphs.at(-1);
+const createParagraphMarkOwnerLookup = (document: Document) => {
+  const stories = new Map<string, Map<string, Paragraph>>();
+  return (at: TextPosition) => {
+    const key = JSON.stringify(at.story);
+    let owners = stories.get(key);
+    if (owners === undefined) {
+      owners = new Map();
+      for (const { paragraphs } of editorParagraphGroups(document, at.story)) {
+        const owner = paragraphs.at(-1);
+        if (owner === undefined) panic("A logical paragraph has no property owner");
+        for (const paragraph of paragraphs) owners.set(idKey(paragraph.paraId ?? ""), owner);
+      }
+      stories.set(key, owners);
+    }
+    return owners.get(idKey(at.blockId));
+  };
+};
 
 /** A new logical paragraph inherits the surviving paragraph mark's formatting. */
 const splitParagraphFields = (document: Document, at: TextPosition) => {
-  const survivor = paragraphMarkOwner(document, at);
+  const survivor = createParagraphMarkOwnerLookup(document)(at);
   return survivor?.formatting === undefined ? {} : { formatting: survivor.formatting };
 };
 
@@ -1576,8 +1587,9 @@ export const compileEditorIntent = (
             ]
           : [];
       const itemsByMark = new Map<string, (typeof intent.items)[number]>();
+      const paragraphMarkOwner = createParagraphMarkOwnerLookup(document);
       for (const { at, ilvl } of intent.items) {
-        const blockId = paragraphMarkOwner(document, at)?.paraId ?? at.blockId;
+        const blockId = paragraphMarkOwner(at)?.paraId ?? at.blockId;
         itemsByMark.set(`${JSON.stringify(at.story)}:${idKey(blockId)}`, {
           at: Object.assign({}, at, { blockId }),
           ilvl,
@@ -1622,7 +1634,7 @@ export const compileEditorIntent = (
         {
           type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
           story: intent.at.story,
-          blockId: paragraphMarkOwner(document, intent.at)?.paraId ?? intent.at.blockId,
+          blockId: createParagraphMarkOwnerLookup(document)(intent.at)?.paraId ?? intent.at.blockId,
           patch: intent.patch,
           ...(mode.type === "suggesting"
             ? { propertyReview: PROPERTY_REVIEW_POLICIES.APPEND }
