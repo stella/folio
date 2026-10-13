@@ -825,9 +825,7 @@ pub(super) fn project_document_xml(
                 if !compatibility.is_suppressed()
                     && matches!(state.frames.last(), Some(Frame::PseudoText(_)))
                 {
-                    let decoded = text
-                        .xml10_content()
-                        .map_err(|_| ProjectionError::InvalidDocumentXml)?;
+                    let decoded = text.xml_content(XmlVersion::Implicit1_0);
                     state.append_pseudo_content(&decoded)?;
                 }
             }
@@ -835,9 +833,7 @@ pub(super) fn project_document_xml(
                 if !compatibility.is_suppressed()
                     && matches!(state.frames.last(), Some(Frame::PseudoText(_)))
                 {
-                    let decoded = text
-                        .xml10_content()
-                        .map_err(|_| ProjectionError::InvalidDocumentXml)?;
+                    let decoded = text.xml_content(XmlVersion::Implicit1_0);
                     state.append_pseudo_content(&decoded)?;
                 }
             }
@@ -851,10 +847,8 @@ pub(super) fn project_document_xml(
                     let resolved = if let Some(character) = resolved_character {
                         character.to_string()
                     } else {
-                        let name = reference
-                            .decode()
-                            .map_err(|_| ProjectionError::InvalidDocumentXml)?;
-                        resolve_predefined_entity(&name)
+                        let name = reference.as_ref();
+                        resolve_predefined_entity(name)
                             .ok_or(ProjectionError::InvalidDocumentXml)?
                             .to_owned()
                     };
@@ -865,7 +859,7 @@ pub(super) fn project_document_xml(
                 let (namespace, local_name) = reader.resolver().resolve_element(element.name());
                 if compatibility.end(
                     OoxmlNamespace::from_resolved(&namespace),
-                    local_name.as_ref(),
+                    local_name.as_ref().as_bytes(),
                 )? == CompatibilityAction::Process
                 {
                     state.end(styles)?;
@@ -993,7 +987,7 @@ impl ProjectionState {
     ) -> Result<(), ProjectionError> {
         let local_name = element.local_name();
         let name = if namespace == OoxmlNamespace::Wordprocessing {
-            local_name.as_ref()
+            local_name.as_ref().as_bytes()
         } else {
             b""
         };
@@ -1089,7 +1083,7 @@ impl ProjectionState {
             return Ok(());
         }
         if namespace == OoxmlNamespace::OfficeMath {
-            let frame = match local_name.as_ref() {
+            let frame = match local_name.as_ref().as_bytes() {
                 b"oMath" | b"oMathPara" if self.current_paragraph.is_some() => {
                     // Math text participates in paragraph offsets, but OMML run
                     // properties form a separate formatting hierarchy.
@@ -2767,10 +2761,10 @@ fn attribute(
         let attribute = attribute.map_err(|_| ProjectionError::InvalidDocumentXml)?;
         let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
         if OoxmlNamespace::from_resolved(&namespace) == OoxmlNamespace::Wordprocessing
-            && local_name.as_ref() == name
+            && local_name.as_ref().as_bytes() == name
         {
             return attribute
-                .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                .normalized_value(XmlVersion::Implicit1_0)
                 .map(|value| Some(value.into_owned()))
                 .map_err(|_| ProjectionError::InvalidDocumentXml);
         }
@@ -2790,11 +2784,11 @@ fn preserves_xml_space(
         if matches!(
             namespace,
             quick_xml::name::ResolveResult::Bound(namespace)
-                if namespace.as_ref() == XML_NAMESPACE
-        ) && local_name.as_ref() == b"space"
+                if namespace.as_ref().as_bytes() == XML_NAMESPACE
+        ) && local_name.as_ref().as_bytes() == b"space"
         {
             let value = attribute
-                .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                .normalized_value(XmlVersion::Implicit1_0)
                 .map_err(|_| ProjectionError::InvalidDocumentXml)?;
             return match value.as_ref() {
                 "default" => Ok(false),
@@ -2827,10 +2821,10 @@ fn attribute_2010(
         let attribute = attribute.map_err(|_| ProjectionError::InvalidDocumentXml)?;
         let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
         if OoxmlNamespace::from_resolved(&namespace) == OoxmlNamespace::Wordprocessing2010
-            && local_name.as_ref() == name
+            && local_name.as_ref().as_bytes() == name
         {
             return attribute
-                .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                .normalized_value(XmlVersion::Implicit1_0)
                 .map(|value| Some(value.into_owned()))
                 .map_err(|_| ProjectionError::InvalidDocumentXml);
         }

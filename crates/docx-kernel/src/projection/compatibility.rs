@@ -84,7 +84,7 @@ impl MarkupCompatibility {
             return Ok(CompatibilityAction::Process);
         }
 
-        match element.local_name().as_ref() {
+        match element.local_name().as_ref().as_bytes() {
             b"AlternateContent" => {
                 if self
                     .alternate_content
@@ -128,7 +128,7 @@ impl MarkupCompatibility {
             );
         }
 
-        match element.local_name().as_ref() {
+        match element.local_name().as_ref().as_bytes() {
             b"AlternateContent" => {
                 if self
                     .alternate_content
@@ -260,13 +260,13 @@ fn choice_is_supported(
     for attribute in element.attributes() {
         let attribute = attribute.map_err(|_| invalid.clone())?;
         let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
-        if namespace == ResolveResult::Unbound && local_name.as_ref() == b"Requires" {
+        if namespace == ResolveResult::Unbound && local_name.as_ref().as_bytes() == b"Requires" {
             if requires.is_some() {
                 return Err(invalid);
             }
             requires = Some(
                 attribute
-                    .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                    .normalized_value(XmlVersion::Implicit1_0)
                     .map_err(|_| invalid.clone())?
                     .into_owned(),
             );
@@ -279,8 +279,8 @@ fn choice_is_supported(
     }
     Ok(prefixes.all(|required| {
         reader.resolver().bindings().any(|(prefix, namespace)| {
-            matches!(prefix, PrefixDeclaration::Named(name) if name == required.as_bytes())
-                && is_fully_supported_namespace(namespace.as_ref())
+            matches!(prefix, PrefixDeclaration::Named(name) if name == required)
+                && is_fully_supported_namespace(namespace.as_ref().as_bytes())
         })
     }))
 }

@@ -210,7 +210,7 @@ impl NumberingParser {
     ) -> Result<(), ProjectionError> {
         let local_name = element.local_name();
         let name = if namespace == OoxmlNamespace::Wordprocessing {
-            local_name.as_ref()
+            local_name.as_ref().as_bytes()
         } else {
             b""
         };
@@ -576,14 +576,14 @@ fn attribute(
         let attribute = attribute.map_err(|_| ProjectionError::InvalidNumberingXml)?;
         let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
         if OoxmlNamespace::from_resolved(&namespace) == OoxmlNamespace::Wordprocessing
-            && local_name.as_ref() == name
+            && local_name.as_ref().as_bytes() == name
         {
             if value.is_some() {
                 return Err(ProjectionError::InvalidNumberingXml);
             }
             value = Some(
                 attribute
-                    .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                    .normalized_value(XmlVersion::Implicit1_0)
                     .map_err(|_| ProjectionError::InvalidNumberingXml)?
                     .into_owned(),
             );

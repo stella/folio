@@ -533,3 +533,27 @@ fn empty_payloads_do_not_permit_invalid_package_structure() {
         );
     }
 }
+
+#[test]
+fn utf8_prefixes_and_text_preserve_flat_opc_and_zip_parity() {
+    for prefix in ["w", "文", "právní"] {
+        let main = format!(
+            r#"<{prefix}:document xmlns:{prefix}="{WORD_NAMESPACE}"><{prefix}:body><{prefix}:p><{prefix}:r><{prefix}:t>Žluťoučký 😀 &amp; 漢字</{prefix}:t></{prefix}:r></{prefix}:p></{prefix}:body></{prefix}:document>"#
+        );
+        let rels = relationships("/word/document.xml");
+        let parts = [
+            ("/word/document.xml", main.as_str()),
+            ("/_rels/.rels", rels.as_str()),
+        ];
+        let zip = project_docx(&zip_package(&parts), DocxLimits::default(), allocate)
+            .expect("UTF-8 ZIP document should project");
+        let flat =
+            project_main_document_xml(flat_opc(&parts).as_bytes(), DocxLimits::default(), allocate)
+                .expect("UTF-8 Flat OPC document should project");
+        assert_eq!(flat, zip);
+        assert_eq!(
+            flat.paragraphs.first().expect("UTF-8 paragraph").text,
+            "Žluťoučký 😀 & 漢字"
+        );
+    }
+}

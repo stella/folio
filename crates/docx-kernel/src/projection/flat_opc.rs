@@ -29,20 +29,20 @@ pub(super) fn input_kind(xml: &[u8]) -> Result<XmlInputKind, ProjectionError> {
         {
             Event::Start(root) | Event::Empty(root) => {
                 let (namespace, local) = reader.resolver().resolve_element(root.name());
-                if local.as_ref() == b"document"
+                if local.as_ref().as_bytes() == b"document"
                     && super::namespaces::OoxmlNamespace::from_resolved(&namespace)
                         == super::namespaces::OoxmlNamespace::Wordprocessing
                 {
                     return Ok(XmlInputKind::Document);
                 }
-                if local.as_ref() == b"package"
-                    && matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref() == PACKAGE_NAMESPACE)
+                if local.as_ref().as_bytes() == b"package"
+                    && matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref().as_bytes() == PACKAGE_NAMESPACE)
                 {
                     return Ok(XmlInputKind::Package);
                 }
                 return Err(ProjectionError::InvalidDocumentXml);
             }
-            Event::Text(text) if text.as_ref().iter().all(u8::is_ascii_whitespace) => {}
+            Event::Text(text) if text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) => {}
             Event::Decl(_) | Event::Comment(_) | Event::PI(_) => {}
             _ => return Err(ProjectionError::InvalidDocumentXml),
         }
@@ -51,7 +51,7 @@ pub(super) fn input_kind(xml: &[u8]) -> Result<XmlInputKind, ProjectionError> {
 
 struct XmlPart {
     range: Range<usize>,
-    namespaces: Vec<(Vec<u8>, Vec<u8>)>,
+    namespaces: Vec<(String, String)>,
 }
 
 pub(super) fn extract_parts(
@@ -165,10 +165,11 @@ impl PartIndex {
         limits: DocxLimits,
     ) -> Result<(), ProjectionError> {
         let (namespace, local) = reader.resolver().resolve_element(element.name());
-        if !matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref() == PACKAGE_NAMESPACE) {
+        if !matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref().as_bytes() == PACKAGE_NAMESPACE)
+        {
             return Err(ProjectionError::InvalidFlatOpcPackage);
         }
-        match (self.depth, local.as_ref()) {
+        match (self.depth, local.as_ref().as_bytes()) {
             (0, b"package") if !self.root_seen => {
                 self.root_seen = true;
                 self.depth = 1;
@@ -207,12 +208,12 @@ impl PartIndex {
                     .bindings()
                     .map(|(prefix, bound_namespace)| {
                         let name = match prefix {
-                            PrefixDeclaration::Default => b"xmlns".to_vec(),
+                            PrefixDeclaration::Default => "xmlns".to_owned(),
                             PrefixDeclaration::Named(prefix) => {
-                                [b"xmlns:".as_slice(), prefix].concat()
+                                format!("xmlns:{prefix}")
                             }
                         };
-                        (name, bound_namespace.as_ref().to_vec())
+                        (name, bound_namespace.as_ref().to_owned())
                     })
                     .collect::<Vec<_>>();
                 for (name, value) in &namespaces {
@@ -225,7 +226,7 @@ impl PartIndex {
                 if self.index_bytes > limits.maximum_archive_bytes {
                     return Err(ProjectionError::ArchiveTooLarge);
                 }
-                let is_xml = local.as_ref() == b"xmlData";
+                let is_xml = local.as_ref().as_bytes() == b"xmlData";
                 let span = reader
                     .read_to_end(element.name())
                     .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?;
@@ -250,14 +251,15 @@ impl PartIndex {
         element: &BytesStart<'_>,
     ) -> Result<(), ProjectionError> {
         let (namespace, local) = reader.resolver().resolve_element(element.name());
-        if !matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref() == PACKAGE_NAMESPACE) {
+        if !matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref().as_bytes() == PACKAGE_NAMESPACE)
+        {
             return Err(ProjectionError::InvalidFlatOpcPackage);
         }
-        match (self.depth, local.as_ref()) {
+        match (self.depth, local.as_ref().as_bytes()) {
             (0, b"package") if !self.root_seen => self.root_seen = true,
             (2, b"xmlData" | b"binaryData") if !self.payload_seen => {
                 self.payload_seen = true;
-                if local.as_ref() == b"xmlData" {
+                if local.as_ref().as_bytes() == b"xmlData" {
                     let position = usize::try_from(reader.buffer_position())
                         .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?;
                     self.current_xml = Some(XmlPart {
@@ -304,7 +306,7 @@ fn index_parts(xml: &[u8], limits: DocxLimits) -> Result<Vec<(String, XmlPart)>,
             Event::Start(element) => state.start(&mut reader, &element, limits)?,
             Event::Empty(element) => state.empty(&reader, &element)?,
             Event::End(_) => state.end()?,
-            Event::Text(text) if text.as_ref().iter().all(u8::is_ascii_whitespace) => {}
+            Event::Text(text) if text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) => {}
             Event::Decl(_) | Event::Comment(_) | Event::PI(_) => {}
             Event::Eof if state.root_seen && state.depth == 0 => return Ok(state.parts),
             _ => return Err(ProjectionError::InvalidFlatOpcPackage),
@@ -321,12 +323,12 @@ fn package_attribute(
     for attribute in element.attributes() {
         let attribute = attribute.map_err(|_| ProjectionError::InvalidFlatOpcPackage)?;
         let (namespace, local) = reader.resolver().resolve_attribute(attribute.key);
-        if local.as_ref() == key
-            && matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref() == PACKAGE_NAMESPACE)
+        if local.as_ref().as_bytes() == key
+            && matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref().as_bytes() == PACKAGE_NAMESPACE)
         {
             value = Some(
                 attribute
-                    .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                    .normalized_value(XmlVersion::Implicit1_0)
                     .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?
                     .into_owned(),
             );
@@ -360,12 +362,12 @@ fn extract(
             Event::Start(mut root) | Event::Empty(mut root) => {
                 let declared = root
                     .attributes()
-                    .map(|attribute| attribute.map(|value| value.key.as_ref().to_vec()))
+                    .map(|attribute| attribute.map(|value| value.key.as_ref().to_owned()))
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(|_| ProjectionError::InvalidFlatOpcPackage)?;
                 for (name, namespace) in &part.namespaces {
                     if !declared.contains(name) {
-                        root.push_attribute((name.as_slice(), namespace.as_slice()));
+                        root.push_attribute((name.as_str(), namespace.as_str()));
                     }
                 }
                 let offset = usize::try_from(reader.buffer_position())
@@ -387,12 +389,12 @@ fn extract(
                     .ok_or(too_large)?;
                 let mut output = Vec::with_capacity(size);
                 output.push(b'<');
-                output.extend_from_slice(root.as_ref());
+                output.extend_from_slice(root.as_ref().as_bytes());
                 output.extend_from_slice(closing);
                 output.extend_from_slice(tail);
                 return Ok(output);
             }
-            Event::Text(text) if text.as_ref().iter().all(u8::is_ascii_whitespace) => {}
+            Event::Text(text) if text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) => {}
             Event::Comment(_) | Event::PI(_) => {}
             _ => return Err(ProjectionError::InvalidFlatOpcPackage),
         }

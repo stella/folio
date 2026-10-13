@@ -256,7 +256,7 @@ const fn namespace_kind(namespace: &ResolveResult<'_>) -> NamespaceKind {
     let ResolveResult::Bound(Namespace(value)) = namespace else {
         return NamespaceKind::Other;
     };
-    match *value {
+    match value.as_bytes() {
         WORDPROCESSING_TRANSITIONAL | WORDPROCESSING_STRICT => NamespaceKind::Wordprocessing,
         WORDPROCESSING_2010 => NamespaceKind::Wordprocessing2010,
         WORDPROCESSING_2012 => NamespaceKind::Wordprocessing2012,
@@ -273,9 +273,9 @@ fn attribute(
     for item in element.attributes() {
         let item = item.map_err(|_| ReviewFactUnknownReason::InvalidDocument)?;
         let (resolved, name) = reader.resolver().resolve_attribute(item.key);
-        if namespace_kind(&resolved) == namespace && name.as_ref() == local_name {
+        if namespace_kind(&resolved) == namespace && name.as_ref().as_bytes() == local_name {
             return item
-                .decoded_and_normalized_value(XmlVersion::default(), reader.decoder())
+                .normalized_value(XmlVersion::default())
                 .map(|value| Some(value.into_owned()))
                 .map_err(|_| ReviewFactUnknownReason::InvalidDocument);
         }
@@ -547,14 +547,14 @@ fn parse_comment_rows(
                 if depth == 0 {
                     if root_seen
                         || kind != NamespaceKind::Wordprocessing
-                        || element.local_name().as_ref() != b"comments"
+                        || element.local_name().as_ref().as_bytes() != b"comments"
                     {
                         return Err(invalid);
                     }
                     root_seen = true;
                 } else if depth == 1
                     && kind == NamespaceKind::Wordprocessing
-                    && element.local_name().as_ref() == b"comment"
+                    && element.local_name().as_ref().as_bytes() == b"comment"
                 {
                     if current.is_some() || output.len() >= maximum_facts {
                         return Err(if output.len() >= maximum_facts {
@@ -601,7 +601,7 @@ fn parse_comment_rows(
                         },
                     ));
                 } else if kind == NamespaceKind::Wordprocessing
-                    && element.local_name().as_ref() == b"p"
+                    && element.local_name().as_ref().as_bytes() == b"p"
                     && let Some((comment_depth, comment)) = current.as_mut()
                     && depth == comment_depth.saturating_add(1)
                 {
@@ -615,13 +615,13 @@ fn parse_comment_rows(
                     }
                     comment.paragraph_seen = true;
                 } else if kind == NamespaceKind::Wordprocessing
-                    && matches!(element.local_name().as_ref(), b"pPr" | b"rPr")
+                    && matches!(element.local_name().as_ref().as_bytes(), b"pPr" | b"rPr")
                     && current.is_some()
                     && property_depth.is_none()
                 {
                     property_depth = Some(depth);
                 } else if kind == NamespaceKind::Wordprocessing
-                    && matches!(element.local_name().as_ref(), b"t" | b"delText")
+                    && matches!(element.local_name().as_ref().as_bytes(), b"t" | b"delText")
                     && current.is_some()
                     && property_depth.is_none()
                 {
@@ -632,7 +632,7 @@ fn parse_comment_rows(
                     && let Some((_, comment)) = current.as_mut()
                     && property_depth.is_none()
                 {
-                    let control = match element.local_name().as_ref() {
+                    let control = match element.local_name().as_ref().as_bytes() {
                         b"tab" | b"ptab" => Some(TextControl::Tab),
                         b"br" => Some(
                             match comment_attribute(
@@ -663,7 +663,7 @@ fn parse_comment_rows(
             }
             Ok((_, Event::DocType(_))) | Err(_) => return Err(invalid),
             Ok((_, Event::Text(text))) if text_depth.is_some() => {
-                let decoded = text.xml10_content().map_err(|_| invalid)?;
+                let decoded = text.xml_content(XmlVersion::Implicit1_0);
                 current
                     .as_mut()
                     .ok_or(invalid)?
@@ -672,7 +672,7 @@ fn parse_comment_rows(
                     .push_str(&decoded);
             }
             Ok((_, Event::CData(text))) if text_depth.is_some() => {
-                let decoded = text.xml10_content().map_err(|_| invalid)?;
+                let decoded = text.xml_content(XmlVersion::Implicit1_0);
                 current
                     .as_mut()
                     .ok_or(invalid)?
@@ -685,8 +685,8 @@ fn parse_comment_rows(
                 let resolved = if let Some(character) = resolved_character {
                     character.to_string()
                 } else {
-                    let name = reference.decode().map_err(|_| invalid)?;
-                    resolve_predefined_entity(&name).ok_or(invalid)?.to_owned()
+                    let name = reference.as_ref();
+                    resolve_predefined_entity(name).ok_or(invalid)?.to_owned()
                 };
                 current
                     .as_mut()
@@ -704,7 +704,7 @@ fn parse_comment_rows(
                     property_depth = None;
                 }
                 if namespace_kind(&namespace) == NamespaceKind::Wordprocessing
-                    && element.local_name().as_ref() == b"comment"
+                    && element.local_name().as_ref().as_bytes() == b"comment"
                 {
                     let (comment_depth, comment) = current.take().ok_or(invalid)?;
                     if depth != comment_depth || text_depth.is_some() || property_depth.is_some() {
@@ -747,14 +747,14 @@ fn parse_comment_extensions(
                 if depth == 0 {
                     if root_seen
                         || kind != NamespaceKind::Wordprocessing2012
-                        || element.local_name().as_ref() != b"commentsEx"
+                        || element.local_name().as_ref().as_bytes() != b"commentsEx"
                     {
                         return Err(invalid);
                     }
                     root_seen = true;
                 } else if depth == 1
                     && kind == NamespaceKind::Wordprocessing2012
-                    && element.local_name().as_ref() == b"commentEx"
+                    && element.local_name().as_ref().as_bytes() == b"commentEx"
                 {
                     if output.len() >= maximum_facts {
                         return Err(ReviewFactUnknownReason::ResourceLimit);
