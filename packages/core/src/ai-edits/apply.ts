@@ -2604,6 +2604,16 @@ const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
   return whollyDeleted;
 };
 
+/** Only two paragraph siblings can transfer paragraph properties through a merge. */
+const canMergeParagraphWithNext = (doc: PMNode, position: number): boolean => {
+  const boundary = doc.resolve(position);
+  return (
+    boundary.nodeBefore?.type.name === "paragraph" &&
+    boundary.nodeAfter?.type === boundary.nodeBefore.type &&
+    canJoin(doc, position)
+  );
+};
+
 /**
  * Whether everything after `position` in its container is paragraphs pending
  * deletion: a join there, once accepted, has no words after it.
@@ -5632,7 +5642,7 @@ const applyFolioAIEditOperationsInternal = ({
         // one at a time. Tracked, the deleted paragraphs stay until accepted,
         // but where they run to the story's end the join has nothing to put
         // a separator in front of.
-        if (mode === "direct" && !canJoin(tr.doc, item.blockTo)) {
+        if (!canMergeParagraphWithNext(tr.doc, item.blockTo)) {
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
         }
@@ -7876,7 +7886,7 @@ const resolveOperationTarget = ({
     // of a table cell, and off the last paragraph of the story: there is no
     // sibling to join with, so accepting the revision could not do what the
     // mark says it does.
-    if (!canJoin(doc, blockTo)) {
+    if (!canMergeParagraphWithNext(doc, blockTo)) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
     return {
