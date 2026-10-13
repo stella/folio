@@ -1,4 +1,4 @@
-# Unknown facts across 66 committed DOCX packages; see tests/unknown_fact_ratchet.rs.
+# Unknown facts across 78 committed DOCX packages; see tests/unknown_fact_ratchet.rs.
 # view	family	reason	count
 Current	bookmarks	IncompleteBookmarkRanges	1
 Current	comment	UnsupportedLocation	8
