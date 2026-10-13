@@ -9,6 +9,7 @@
  * code runs under both Bun and Node.
  */
 import type { Bench } from "tinybench";
+import { toBenchmarkRow } from "./report";
 
 import { editorTransactionBench } from "./editor-transaction.bench";
 import { lineBreakBench } from "./line-break.bench";
@@ -38,25 +39,5 @@ for (const group of GROUPS) {
   const bench = await group.make();
   await bench.run();
   console.log(`\n=== ${group.name} ===`);
-  console.table(
-    bench.tasks.map((task) => {
-      const { result } = task;
-      if (result === undefined || result.error !== undefined) {
-        return { benchmark: task.name, state: result === undefined ? "pending" : "error" };
-      }
-      const samples = result.latency.samples;
-      const p95Index = Math.max(0, Math.ceil(samples.length * 0.95) - 1);
-      return {
-        benchmark: task.name,
-        "median ms": round(result.latency.p50 ?? result.latency.mean),
-        "p95 ms": round(samples.at(p95Index) ?? result.latency.p99 ?? result.latency.max),
-        samples: samples.length,
-        state: result.aborted ? "aborted" : "completed",
-      };
-    }),
-  );
-}
-
-function round(value: number): number {
-  return Number(value.toFixed(3));
+  console.table(bench.tasks.map(toBenchmarkRow));
 }

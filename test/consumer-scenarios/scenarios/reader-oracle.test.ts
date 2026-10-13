@@ -13,6 +13,7 @@ import {
   openReviewer,
   packDocument,
 } from "../support/documents.ts";
+import { htmlTableViews } from "../support/html-table-views.ts";
 import { contentView, markdownViews, readAll } from "../support/readers.ts";
 import { createRandom } from "../support/random.ts";
 
@@ -34,6 +35,16 @@ test("loose list whitespace preserves empty nested items and rejects heading rec
     () => markdownViews("- Parent\n\n  - Child", [expected[0], { ...expected[1], text: "Child" }]),
     /Unsupported list item Markdown token: space/u,
   );
+});
+
+test("Markdown HTML tables use the literal-text oracle", () => {
+  const html = "<table><tr><td>0007</td><td><strong>true</strong></td></tr></table>";
+  const expected = htmlTableViews(html);
+  assert.deepEqual(expected, [
+    { text: "0007", kind: "paragraph" },
+    { text: "true", kind: "paragraph" },
+  ]);
+  assert.deepEqual(markdownViews(html, expected), expected);
 });
 
 type Document = ReturnType<typeof fromMarkdown>;
