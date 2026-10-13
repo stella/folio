@@ -1,10 +1,29 @@
 name: VS Code extension
 
-# Builds, tests, and packages the extension for merge groups.
+# Builds, tests, and packages extension changes before merge.
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/vscode-extension.yml"
+      - ".node-version"
+      - "LICENSE"
+      - "bun.lock"
+      - "bunfig.toml"
+      - "package.json"
+      - "packages/agents/**"
+      - "packages/cli/**"
+      - "packages/core/**"
+      - "packages/docx-core/**"
+      - "packages/editor-web/**"
+      - "packages/playground/public/folio-showcase.docx"
+      - "packages/react/**"
+      - "parity/fixtures/layout-kitchen-sink.docx"
+      - "plugins/vscode/**"
+      - "scripts/ci-plan.test.ts"
+      - "scripts/sync-plugin-cli-version.ts"
+      - "tsconfig.base.json"
   merge_group:
     types: [checks_requested]
 
@@ -17,13 +36,10 @@ permissions:
 
 jobs:
   package:
-    if: github.event_name == 'merge_group'
+    if: github.event_name == 'merge_group' || github.event.pull_request.draft != true
     name: Build and package the .vsix
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # The VS Code the smoke test runs; bump it to test a newer release.
-      FOLIO_SMOKE_VSCODE_VERSION: "1.139.1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,6 +67,10 @@ jobs:
         run: bun run typecheck
         working-directory: plugins/vscode
 
+      - name: Confirm the editor API floor without MCP
+        run: bun scripts/check-engine-floor.ts
+        working-directory: plugins/vscode
+
       - name: Test
         run: bun run test
         working-directory: plugins/vscode
@@ -74,16 +94,33 @@ jobs:
           grep -q 'extension/dist/editor/editor\.css$' "$RUNNER_TEMP/vsix.txt"
           grep -q 'extension/dist/editor/fonts/.*\.woff2$' "$RUNNER_TEMP/vsix.txt"
 
+      - name: Resolve current stable VS Code for the cache
+        id: editor-version
+        run: |
+          version=$(curl -fsSL https://update.code.visualstudio.com/api/releases/stable | jq -er '.[0]')
+          echo "stable=$version" >> "$GITHUB_OUTPUT"
+
       - name: Cache VS Code for the smoke test
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: plugins/vscode/.vscode-test
-          key: vscode-test-${{ runner.os }}-${{ env.FOLIO_SMOKE_VSCODE_VERSION }}
+          key: vscode-test-${{ runner.os }}-1.86.0-${{ steps.editor-version.outputs.stable }}
+          restore-keys: vscode-test-${{ runner.os }}-1.86.0-
 
       # Opens a .docx in a real VS Code with the built extension, types, saves,
       # and reverts (test/smoke).
-      - name: Smoke test in VS Code
+      - name: Smoke test in VS Code 1.86.0 (no MCP)
         working-directory: plugins/vscode
+        env:
+          FOLIO_SMOKE_VSCODE_VERSION: "1.86.0"
+          FOLIO_SMOKE_MCP: unavailable
+        run: xvfb-run -a bun run test:smoke
+
+      - name: Smoke test in current stable VS Code (MCP)
+        working-directory: plugins/vscode
+        env:
+          FOLIO_SMOKE_VSCODE_VERSION: stable
+          FOLIO_SMOKE_MCP: registered
         run: xvfb-run -a bun run test:smoke
 
       - name: Upload the .vsix

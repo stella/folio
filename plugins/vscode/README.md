@@ -22,6 +22,17 @@ Save writes back to the same file.
 - **Read-only when you want it.** **Folio: Open Read-Only** (command palette,
   or right-click a `.docx`) opens the same pages with editing off.
 
+## Offline or restricted network install
+
+Download `folio.vsix` from a [GitHub release](https://github.com/stella/folio/releases)
+or the [Open VSX extension page](https://open-vsx.org/extension/stll/stella-folio).
+In the Extensions view, open the **...** menu and choose **Install from VSIX...**,
+then select the downloaded file. You can also install it from a terminal:
+
+```sh
+code --install-extension folio.vsix
+```
+
 ## Try a build locally
 
 From the repository root:
@@ -37,9 +48,10 @@ code --install-extension folio.vsix
 Every pull request that touches the extension also uploads the `.vsix` as the
 `folio-vscode-vsix` artifact of its **VS Code extension** check.
 
-Requires VS Code 1.101 or later. Nothing else needs to be installed: the
-extension ships the folio CLI and runs it with VS Code's own Node.js, so it
-works offline.
+Requires VS Code 1.86 or later. MCP integration requires VS Code 1.101 or
+later and is omitted on editors without the MCP provider API. Nothing else
+needs to be installed: the extension ships the folio CLI and runs it with
+VS Code's own Node.js, so it works offline.
 
 ## How saving works
 
@@ -88,8 +100,15 @@ the server from the MCP server list to apply them.
   protocol, and the MCP launch
 - `bun run test:smoke`: after a build, download VS Code into `.vscode-test/`,
   open a `.docx` in it with this extension, type, save, and revert (CI runs it
-  under `xvfb-run`)
+  under `xvfb-run` on 1.86.0 and current stable; set
+  `FOLIO_SMOKE_VSCODE_VERSION=1.86.0 FOLIO_SMOKE_MCP=unavailable` for the minimum)
 - `bun run typecheck`
+- `bun scripts/check-engine-floor.ts`: verify the editor without MCP compiles
+  against 1.86 typings, and 1.85 lacks `workspace.save`.
+
+The minimum follows the [save API finalized in VS Code 1.86](https://code.visualstudio.com/updates/v1_86#_new-workspacesave-and-workspacesaveas-apis).
+CI runs the packaged editor checks when the extension, its manifests, or its
+bundled sources change.
 
 The version follows `@stll/folio-cli`: `scripts/sync-plugin-cli-version.ts`
 keeps them equal, and each release that changes the CLI's version publishes
