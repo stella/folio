@@ -72,28 +72,40 @@ const blockTextHashOf = (text: string): string =>
   hashFolioAIBlockText(normalizeFolioAIBlockText(text));
 
 /**
- * A snapshot block as a `read_document` / `read_section` row: the number or
- * label a reader sees beside it and its heading and list levels ride along,
- * so the model is given the numbers the document shows. Absent fields stay
- * absent to keep the rows compact.
+ * A snapshot block as a `read_document` / `read_section` row. The authored
+ * numbering state and effective list reference stay separate; the display
+ * label carries the number the reader sees. Absent references stay omitted.
  */
 const toAgentBlock = (block: FolioAIBlock): FolioAgentBlock => {
-  const row: FolioAgentBlock = {
+  const fields = {
     blockId: block.id,
-    kind: block.kind,
     text: block.text,
     blockTextHash: blockTextHashOf(block.text),
   };
-  if (block.displayLabel !== undefined) {
-    row.displayLabel = block.displayLabel;
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return {
+        ...fields,
+        kind: block.kind,
+        ...(block.displayLabel !== undefined && { displayLabel: block.displayLabel }),
+        ...(block.headingLevel !== undefined && { headingLevel: block.headingLevel }),
+        statedNumbering: block.statedNumbering,
+        ...(block.listReference !== undefined && { listReference: block.listReference }),
+      };
+    case "diagnostic":
+      return {
+        ...fields,
+        kind: block.kind,
+        ...(block.displayLabel !== undefined && { displayLabel: block.displayLabel }),
+        ...(block.headingLevel !== undefined && { headingLevel: block.headingLevel }),
+      };
+    default: {
+      const unreachable: never = block;
+      return panic("Unhandled agent snapshot block kind", { block: unreachable });
+    }
   }
-  if (block.headingLevel !== undefined) {
-    row.headingLevel = block.headingLevel;
-  }
-  if (block.listLevel !== undefined) {
-    row.listLevel = block.listLevel;
-  }
-  return row;
 };
 
 /** `find_text` requires a short `query` and caps how much of a large match set it returns in one call. */
@@ -270,14 +282,26 @@ const CONTEXT_RADIUS = 40;
 const WORD_CHARACTER_AT_END = /[\p{L}\p{M}\p{N}_]$/u;
 
 /** Whether `[start, end)` of a block's text starts or ends inside a note reference's marker. */
-const cutsIntoNoteReference = (block: FolioAIBlock, start: number, end: number): boolean =>
-  (block.structuralBoundaries ?? []).some(
-    (boundary) =>
-      boundary.type === "noteReference" &&
-      [start, end].some(
-        (offset) => offset > boundary.offset && offset < boundary.offset + boundary.length,
-      ),
-  );
+const cutsIntoNoteReference = (block: FolioAIBlock, start: number, end: number): boolean => {
+  switch (block.kind) {
+    case "diagnostic":
+      return false;
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return (block.structuralBoundaries ?? []).some(
+        (boundary) =>
+          boundary.type === "noteReference" &&
+          [start, end].some(
+            (offset) => offset > boundary.offset && offset < boundary.offset + boundary.length,
+          ),
+      );
+    default: {
+      const unreachable: never = block;
+      return panic("Unhandled agent snapshot block kind", { block: unreachable });
+    }
+  }
+};
 const WORD_CHARACTER_AT_START = /^[\p{L}\p{M}\p{N}_]/u;
 /**
  * Window (UTF-16 code units) sliced on each side of a match for the
@@ -598,7 +622,7 @@ const explainSkipReason = (reason: string): string => {
     return "this paragraph's mark is pending tracked deletion; resolve that change before editing its properties separately, or provide mergedParagraphProperties on the merge operation.";
   }
   if (reason === "missingNumbering") {
-    return "`numbering.numId` names a numbering instance this document does not define; nothing was applied. Re-read the document and use a `numId` it defines (the one a neighbouring list item carries), or omit `numbering`.";
+    return '`numbering` names a numbering instance this document does not define; nothing was applied. Re-read the document and use a `{ kind: "reference", numId, ilvl? }` the document defines (the one a neighbouring list item carries), or choose another numbering state.';
   }
   if (reason === "invalidResult") {
     return "applying this operation would have left a document that cannot be saved, so nothing from it was applied. Do not retry it as written; re-read the document and express the change differently.";

@@ -63,11 +63,14 @@ const apply = (
   mode: FolioAIEditApplyMode,
   operations: FolioDocumentOperation[],
 ) =>
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations,
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations,
+    },
+    { undefinedReferences: "refuse" },
+  );
 
 const textsOf = (reviewer: FolioDocxReviewer) => reviewer.getContent().map(({ text }) => text);
 

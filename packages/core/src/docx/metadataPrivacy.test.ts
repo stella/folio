@@ -159,7 +159,7 @@ describe("rewriteDocxMetadataPrivacy", () => {
     }
     selectiveReviewer.applyOperations(
       [{ id: "replace", type: "replaceBlock", blockId: target.id, text: "Updated body." }],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     const selectivelySaved = await selectiveReviewer.toBuffer();
     await expectPrivateMetadataAbsent(selectivelySaved);
@@ -178,7 +178,7 @@ describe("rewriteDocxMetadataPrivacy", () => {
           text: "Additional body.",
         },
       ],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     await expectPrivateMetadataAbsent(await structuralReviewer.toBuffer());
   });

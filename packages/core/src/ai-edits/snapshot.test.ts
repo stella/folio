@@ -12,6 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { type Node as PMNode, Schema } from "prosemirror-model";
 
 import { compareContent } from "../compare/content";
@@ -582,24 +583,33 @@ describe("createFolioAIEditSnapshot", () => {
       numberedParagraph({ numPr: numbered, listMarker: "4." }, "Item"),
     ]);
 
-    const blocks = createFolioAIEditSnapshot(doc).blocks.map(
-      ({ text, kind, headingLevel, displayLabel, listLevel }) => ({
+    const blocks = createFolioAIEditSnapshot(doc)
+      .blocks.map(expectParagraphBlock)
+      .map(({ text, kind, headingLevel, displayLabel, listReference, statedNumbering }) => ({
         text,
         kind,
         headingLevel,
         displayLabel,
-        listLevel,
-      }),
-    );
+        listReference: listReference ?? null,
+        statedNumbering,
+      }));
 
     expect(blocks).toEqual([
-      { text: "Numbered", kind: "heading", headingLevel: 2, displayLabel: "1.", listLevel: 0 },
+      {
+        text: "Numbered",
+        kind: "heading",
+        headingLevel: 2,
+        displayLabel: "1.",
+        listReference: { numId: 5, level: 0 },
+        statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
+      },
       {
         text: "Hidden marker heading",
         kind: "heading",
         headingLevel: 2,
         displayLabel: undefined,
-        listLevel: 0,
+        listReference: { numId: 5, level: 0 },
+        statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
       // Numbered in the package, no number on the page: prose that keeps its level.
       {
@@ -607,16 +617,41 @@ describe("createFolioAIEditSnapshot", () => {
         kind: "paragraph",
         headingLevel: undefined,
         displayLabel: undefined,
-        listLevel: 0,
+        listReference: { numId: 5, level: 0 },
+        statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
       },
       {
         text: "Cancelled",
         kind: "paragraph",
         headingLevel: undefined,
         displayLabel: undefined,
-        listLevel: undefined,
+        listReference: null,
+        statedNumbering: { kind: "none" },
       },
-      { text: "Item", kind: "listItem", headingLevel: undefined, displayLabel: "4.", listLevel: 0 },
+      {
+        text: "Item",
+        kind: "listItem",
+        headingLevel: undefined,
+        displayLabel: "4.",
+        listReference: { numId: 5, level: 0 },
+        statedNumbering: { kind: "reference", numId: 5, ilvl: 0 },
+      },
     ]);
   });
+});
+
+test("opaque diagnostic blocks expose no paragraph numbering", () => {
+  const doc = folioSchema.node("doc", null, [
+    folioSchema.node("paragraph", { paraId: "12345678" }, folioSchema.text("Plain")),
+    folioSchema.node("preservedBlock", {
+      xml: '<w:altChunk xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>',
+    }),
+  ]);
+  const blocks = createFolioAIEditSnapshot(doc).blocks;
+  const diagnostic = blocks.find((block) => block.kind === "diagnostic");
+  expect(diagnostic).toBeDefined();
+  expect(diagnostic).not.toHaveProperty("statedNumbering");
+  expect(diagnostic).not.toHaveProperty("listReference");
+  const plainBlock = expectParagraphBlock(blocks.find((block) => block.kind === "paragraph"));
+  expect(plainBlock.statedNumbering).toEqual({ kind: "inherit" });
 });

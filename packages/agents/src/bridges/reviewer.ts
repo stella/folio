@@ -62,10 +62,10 @@ export const createReviewerBridge = (
     snapshot: () => reviewer.snapshot(),
     documentOperationMode: mode,
     applyDocumentOperations: (batch) =>
-      reviewer.applyDocumentOperations(
-        batch.mode === undefined ? { ...batch, mode } : batch,
-        applyOptions,
-      ),
+      reviewer.applyDocumentOperations(batch.mode === undefined ? { ...batch, mode } : batch, {
+        ...applyOptions,
+        undefinedReferences: "refuse",
+      }),
     undoDocumentOperations: (undoHandle) => reviewer.undoDocumentOperations(undoHandle),
     getComments: () => reviewer.getComments().map(toAgentComment),
     getChanges: () => reviewer.getChanges().map(toAgentChange),

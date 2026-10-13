@@ -40,6 +40,7 @@ const run = async ({ paragraphs, operation, mode, blockIndex, inTableCell }: Run
   const snapshot = reviewer.snapshot();
   const blockId = snapshot.blocks[blockIndex]?.id ?? "";
   const { applied, skipped } = reviewer.applyOperations([{ ...operation, blockId }], {
+    undefinedReferences: "refuse",
     mode: mode ?? "tracked-changes",
     snapshot,
     revisionStamp: STAMP,

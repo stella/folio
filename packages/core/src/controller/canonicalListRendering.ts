@@ -12,10 +12,9 @@ import { panic } from "better-result";
 import type { Document, DocumentBody, Footnote, Endnote } from "../types/document";
 import { computeListRendering, getCachedNumberingMap } from "../docx/numberingParser";
 import {
-  mergeParagraphNumbering,
-  paragraphNumberingReferenceId,
-  sameStatedParagraphNumbering,
-} from "../docx/numberingReference";
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumberingReference,
+} from "../prosemirror/numberingAttr";
 import { computeListMarker, type ComputeListMarkerOptions } from "../docx/listMarkerComputation";
 import {
   cloneParagraphWithPropertySource,
@@ -58,7 +57,29 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
         snapshot: paragraphFormattingWithAuthoredIndentation(paragraph),
       });
       const formatting = paragraph.formatting;
-      const numPr = mergeParagraphNumbering(formatting?.numPrFromStyle, formatting?.numPr);
+      const next = cloneParagraphWithPropertySource(paragraph, {});
+      if (
+        formatting?.numPrFromStyle !== undefined &&
+        (formatting.numPr?.kind === "reference" || formatting.numPr?.kind === "none")
+      ) {
+        next.formatting = { ...formatting };
+        delete next.formatting.numPrFromStyle;
+        // Provenance participates in exact formatting history; rendering is recomputed.
+        inverse.push({
+          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+          story,
+          blockId:
+            paragraph.paraId ??
+            panic("Canonical numbering normalization requires paragraph identities."),
+          patch: { numPrFromStyle: formatting.numPrFromStyle },
+        });
+      }
+      const numPr = effectiveParagraphNumberingReference(
+        paragraphNumberingSourcesFromBoundary({
+          numPr: next.formatting?.numPr,
+          numPrFromStyle: next.formatting?.numPrFromStyle,
+        }),
+      );
       if (
         paragraph.listRendering === undefined &&
         formatting?.numPrFromStyle === undefined &&
@@ -78,46 +99,16 @@ export const normalizeCanonicalListRendering = (document: Document): CanonicalLi
         listRenderingDefinitionsMatch(cached, definition)
           ? { ...cached }
           : definition;
-      const next = cloneParagraphWithPropertySource(paragraph, {});
-      if (
-        formatting?.numPrFromStyle !== undefined &&
-        formatting.numPr !== undefined &&
-        paragraphNumberingReferenceId(numPr) !==
-          paragraphNumberingReferenceId(formatting.numPrFromStyle)
-      ) {
-        next.formatting = { ...formatting };
-        delete next.formatting.numPrFromStyle;
-        // Provenance participates in exact formatting history; rendering is recomputed.
-        inverse.push({
-          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-          story,
-          blockId:
-            paragraph.paraId ??
-            panic("Canonical numbering normalization requires paragraph identities."),
-          patch: { numPrFromStyle: formatting.numPrFromStyle },
-        });
-      }
-      if (
-        formatting?.numPrFromStyle !== undefined &&
-        numPr?.kind === "reference" &&
-        !sameStatedParagraphNumbering(formatting.numPr, numPr)
-      ) {
-        next.formatting = { ...next.formatting, numPr };
-        inverse.push({
-          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-          story,
-          blockId:
-            paragraph.paraId ??
-            panic("Canonical numbering normalization requires paragraph identities."),
-          patch: { numPr: formatting.numPr ?? null },
-        });
-      }
       const authoredFormatting = paragraphFormattingWithAuthoredIndentation(next);
       const authored = paragraphIndentationFromFormatting(authoredFormatting);
       const inheritance = listIndentationProvenancePatch({
         direct: authored,
         styleFormatting: styles.resolveParagraphStyle(next.formatting?.styleId).paragraphFormatting,
-        numberingSource: next.formatting?.numPrFromStyle === undefined ? "paragraph" : "style",
+        numberingSource:
+          next.formatting?.numPr?.kind === "reference" ||
+          next.formatting?.numPrFromStyle === undefined
+            ? "paragraph"
+            : "style",
         numPr:
           numPr?.kind === "reference" ? { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 } : undefined,
         numbering,

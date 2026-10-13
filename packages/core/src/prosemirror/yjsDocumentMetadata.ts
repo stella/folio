@@ -629,7 +629,7 @@ const renamePageBreakRunOwnerMarkAttr: AttrSchemaMigrationStep = (fragment) => {
 };
 
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
-const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
 
 /** An attr-schema version this build can read. */
 export type FolioYjsAttrSchemaVersion = (typeof FOLIO_YJS_ATTR_SCHEMA_VERSIONS)[number];
@@ -658,7 +658,9 @@ const ATTR_SCHEMA_MIGRATIONS = {
   10: renamePageBreakRunOwnerMarkAttr,
   // Note occurrence attribution is a cutover: the preflight below never backfills it.
   11: stampMarkerOnly,
-  12: "current",
+  // Inherited numbering ownership is a cutover, never inferred from values.
+  12: stampMarkerOnly,
+  13: "current",
 } as const satisfies Record<FolioYjsAttrSchemaVersion, AttrSchemaMigrationStep | "current">;
 
 type CurrentAttrSchemaVersion = {
@@ -671,7 +673,7 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 12 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 13 satisfies CurrentAttrSchemaVersion;
 
 export class FolioYjsNoteReferenceSchemaError extends TaggedError(
   "FolioYjsNoteReferenceSchemaError",
@@ -680,6 +682,54 @@ export class FolioYjsNoteReferenceSchemaError extends TaggedError(
   schemaVersion: FolioYjsAttrSchemaVersion;
   requiredSchemaVersion: FolioYjsAttrSchemaVersion;
 }> {}
+
+export class FolioYjsNumberingSourceSchemaError extends TaggedError(
+  "FolioYjsNumberingSourceSchemaError",
+)<{
+  message: string;
+  schemaVersion: FolioYjsAttrSchemaVersion;
+  requiredSchemaVersion: FolioYjsAttrSchemaVersion;
+}> {}
+
+/** Older snapshots can hold a resolved style reference where a stated override belongs. */
+const requireStatedNumberingSources = (
+  fragment: Y.XmlFragment,
+  schemaVersion: FolioYjsAttrSchemaVersion,
+): void => {
+  if (schemaVersion === FOLIO_YJS_ATTR_SCHEMA_VERSION) return;
+  const pending: unknown[] = [];
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("getAttributes" in node) pending.push(node.getAttributes());
+    for (const child of node.toArray()) {
+      if (typeof child !== "string" && !isXmlText(child) && "toArray" in child) visit(child);
+    }
+  };
+  visit(fragment);
+  const seen = new WeakSet<object>();
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (typeof value !== "object" || value === null || seen.has(value)) continue;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      for (const entry of value) pending.push(entry);
+      continue;
+    }
+    if (!isRecord(value)) continue;
+    const numbering = value["numPr"];
+    if (
+      isRecord(value["numPrFromStyle"]) &&
+      isRecord(numbering) &&
+      (numbering["kind"] === "reference" || "numId" in numbering)
+    ) {
+      throw new FolioYjsNumberingSourceSchemaError({
+        schemaVersion,
+        requiredSchemaVersion: FOLIO_YJS_ATTR_SCHEMA_VERSION,
+        message: `Yjs schema ${schemaVersion} has ambiguous numbering ownership; schema ${FOLIO_YJS_ATTR_SCHEMA_VERSION} requires stated numbering overrides. Rebuild the collaboration state from the saved DOCX.`,
+      });
+    }
+    for (const entry of Object.values(value)) pending.push(entry);
+  }
+};
 
 /** Check before any migration mutates the snapshot or any PM builder can drop text. */
 const requireNoteOccurrenceAttribution = (
@@ -743,6 +793,7 @@ export const applyAttrSchemaMigrations = (
   fromVersion: FolioYjsAttrSchemaVersion,
 ): number => {
   requireNoteOccurrenceAttribution(fragment, fromVersion);
+  requireStatedNumberingSources(fragment, fromVersion);
   if (fromVersion === FOLIO_YJS_ATTR_SCHEMA_VERSION) {
     return 0;
   }

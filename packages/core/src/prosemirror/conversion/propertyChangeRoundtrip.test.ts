@@ -1,4 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
+import {
+  NO_PARAGRAPH_NUMBERING,
+  paragraphNumberingReference,
+  type ParagraphNumberingOverride,
+} from "@stll/docx-core/model";
+import { createEmptyDocument } from "../../utils/createDocument";
+import { LIST_RENDERING_ATTR_KEYS, type ListRenderingAttrKey } from "../listRenderingAttrs";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
+import { paragraphNumberingAttr } from "../numberingAttr";
+import type { ParagraphAttrs } from "../schema/nodes";
 
 import type {
   Paragraph,
@@ -8,6 +19,40 @@ import type {
 } from "../../types/content";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
+
+const recordedRendering = {
+  listMarker: "1.",
+  listMarkerTemplate: "%1.",
+  listFoldedMarkerSuffix: "(a)",
+  listIsBullet: false,
+  listIsLegal: true,
+  listNumFmt: "decimal",
+  listMarkerHidden: false,
+  listMarkerFormatting: { bold: true },
+  listMarkerAlignment: "right",
+  listMarkerAllCaps: true,
+  listMarkerSuffix: "space",
+  listLevelTabs: [],
+  listLevelNumFmts: ["decimal"],
+  listLevelStarts: [1],
+  listAbstractNumId: 7,
+  listStartOverride: 3,
+  listImplicitChildLevelAdvances: 2,
+  listMarkerSecondSlotOffsetTwips: 720,
+} satisfies { [K in ListRenderingAttrKey]-?: NonNullable<ParagraphAttrs[K]> };
+
+const authoredNumberingStates = [
+  undefined,
+  { kind: "levelOnly", ilvl: 2 } satisfies ParagraphNumberingOverride,
+  paragraphNumberingReference({ numId: 42 }),
+  NO_PARAGRAPH_NUMBERING,
+];
+
+const historicalRenderingStates = [
+  { state: "absent", attrs: {}, model: {} },
+  { state: "cleared", attrs: CLEARED_LIST_RENDERING_ATTRS, model: {} },
+  { state: "rendered", attrs: recordedRendering, model: recordedRendering },
+];
 
 const samplePropertyChange: ParagraphPropertyChange = {
   type: "paragraphPropertyChange",
@@ -64,7 +109,15 @@ describe("paragraph propertyChanges PM round-trip", () => {
     // editor code never reads it; it exists purely so fromProseDoc can
     // restore them after an edit.
     const paragraphNode = pmDoc.firstChild!;
-    expect(paragraphNode.attrs["_propertyChanges"]).toEqual([samplePropertyChange]);
+    expect(paragraphNode.attrs["_propertyChanges"]).toEqual([
+      {
+        ...samplePropertyChange,
+        previousFormatting: {
+          ...samplePropertyChange.previousFormatting,
+          numPrFromStyle: null,
+        },
+      },
+    ]);
   });
 
   test("fromProseDoc restores propertyChanges back onto the Folio Paragraph", () => {
@@ -87,6 +140,57 @@ describe("paragraph propertyChanges PM round-trip", () => {
 
     expect(roundtripped?.propertyChanges).toEqual([samplePropertyChange]);
   });
+
+  test.each(historicalRenderingStates)(
+    "keeps historical rendering state $state separate from numbering source tiers",
+    ({ attrs: renderingAttrs, model: modelRendering }) => {
+      for (const inherited of [undefined, paragraphNumberingReference({ numId: 41, ilvl: 2 })]) {
+        for (const authored of authoredNumberingStates) {
+          const source = createEmptyDocument();
+          source.package.document.content = [paragraphWithPropertyChange()];
+          const pmDoc = toProseDoc(source);
+          const paragraph = pmDoc.firstChild;
+          if (!paragraph) panic("expected a paragraph");
+          const previousFormatting = {
+            ...samplePropertyChange.previousFormatting,
+            ...renderingAttrs,
+            numPr: authored === undefined ? null : paragraphNumberingAttr(authored),
+            numPrFromStyle: inherited === undefined ? null : paragraphNumberingAttr(inherited),
+          };
+          const changed = pmDoc.type.create(
+            pmDoc.attrs,
+            paragraph.type.create(
+              {
+                ...paragraph.attrs,
+                _propertyChanges: [{ ...samplePropertyChange, previousFormatting }],
+              },
+              paragraph.content,
+            ),
+          );
+          const restored = fromProseDoc(changed, undefined, {
+            stylesheetSource: { type: "package" },
+          }).package.document.content.at(0);
+          if (restored?.type !== "paragraph") panic("expected a restored paragraph");
+          expect(restored.propertyChanges).toEqual([
+            {
+              ...samplePropertyChange,
+              previousFormatting: {
+                ...samplePropertyChange.previousFormatting,
+                ...modelRendering,
+                ...(authored === undefined ? {} : { numPr: authored }),
+                ...(inherited === undefined ? {} : { numPrFromStyle: inherited }),
+              },
+            },
+          ]);
+          for (const key of LIST_RENDERING_ATTR_KEYS) {
+            expect(
+              Object.hasOwn(restored.propertyChanges?.at(0)?.previousFormatting ?? {}, key),
+            ).toBe(Object.hasOwn(modelRendering, key));
+          }
+        }
+      }
+    },
+  );
 
   test("keeps nested property-change formatting fixed across repeated PM decoding", () => {
     const original = paragraphWithPropertyChange();

@@ -1,0 +1,10 @@
+{
+  "is a fixed point and leaves content alone": [
+    {
+      "seed": 544928880,
+      "path": "0:0:0",
+      "note": "Numbering preflight traverses stored XML structurally while migration remains a fixed point.",
+      "date": "2026-10-10"
+    }
+  ]
+}

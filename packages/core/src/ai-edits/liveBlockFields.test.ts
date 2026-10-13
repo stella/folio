@@ -28,21 +28,24 @@ test.each(["direct", "tracked-changes"] as const)(
   "inserted table cells resolve default run styles before save (%s)",
   async (mode) => {
     const reviewer = await open("# Heading\n\nBody clause.");
-    reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations: [
-        {
-          id: "table",
-          type: "insertTable",
-          blockId: blockId(reviewer, "Body clause."),
-          rows: [
-            ["Term", "Value"],
-            ["Period", "12 months"],
-          ],
-        },
-      ],
-    });
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [
+          {
+            id: "table",
+            type: "insertTable",
+            blockId: blockId(reviewer, "Body clause."),
+            rows: [
+              ["Term", "Value"],
+              ["Period", "12 months"],
+            ],
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     const saved = await reopen(reviewer);
     for (const cellText of ["Term", "Value", "Period", "12 months"]) {
       expect(previewOf(reviewer, cellText)).toEqual(previewOf(saved, cellText));
@@ -61,39 +64,53 @@ test("a tracked merge separator uses its owning paragraph's run style", async ()
   const first = blockId(reviewer, "First body.");
   const second = blockId(reviewer, "Second body.");
   const bold = blockId(reviewer, "Bold tail");
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "tracked-changes",
-    operations: [{ id: "delete-heading", type: "deleteBlock", blockId: heading }],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete-heading", type: "deleteBlock", blockId: heading }],
+    },
+    { undefinedReferences: "refuse" },
+  );
   reviewer.acceptAll();
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "tracked-changes",
-    operations: [{ id: "merge-first", type: "mergeBlockWithNext", blockId: first, separator: " " }],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        { id: "merge-first", type: "mergeBlockWithNext", blockId: first, separator: " " },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   reviewer.acceptAll();
   // The accepted merge removed the first paragraph's mark: the paragraph
   // left is the second, whose mark ends the joined text.
   expect(reviewer.getContent().some((block) => block.id === first)).toBe(false);
-  const secondMerge = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "tracked-changes",
-    operations: [
-      { id: "merge-second", type: "mergeBlockWithNext", blockId: second, separator: " " },
-    ],
-  });
+  const secondMerge = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        { id: "merge-second", type: "mergeBlockWithNext", blockId: second, separator: " " },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(secondMerge.applied).toHaveLength(1);
   const merged = reviewer.getContent().find((block) => block.id === second);
   expect(merged?.previewRuns).toBeDefined();
   expect(merged?.previewRuns).toEqual(
     (await reopen(reviewer)).getContent().find((block) => block.id === second)?.previewRuns,
   );
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "tracked-changes",
-    operations: [{ id: "merge-bold", type: "mergeBlockWithNext", blockId: bold, separator: " " }],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "merge-bold", type: "mergeBlockWithNext", blockId: bold, separator: " " }],
+    },
+    { undefinedReferences: "refuse" },
+  );
   const boldPreview = reviewer.getContent().find((block) => block.id === bold)?.previewRuns;
   expect(boldPreview?.at(-1)).toEqual(expect.objectContaining({ bold: true, fontSizePt: 11 }));
   expect(boldPreview?.at(-1)?.text.endsWith(" ")).toBe(true);
@@ -105,18 +122,24 @@ test("a tracked merge separator uses its owning paragraph's run style", async ()
 test("a direct merge after a tracked replacement reads the same run formatting after save", async () => {
   const reviewer = await open("# Price Schedule\n\nThe prices below apply.\n\nTaxes are extra.");
   const heading = blockId(reviewer, "Price Schedule");
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "tracked-changes",
-    operations: [
-      { id: "replace-heading", type: "replaceBlock", blockId: heading, text: "Delivery notice." },
-    ],
-  });
-  const merged = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "direct",
-    operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: heading, separator: " " }],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        { id: "replace-heading", type: "replaceBlock", blockId: heading, text: "Delivery notice." },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  const merged = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: heading, separator: " " }],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(merged.applied).toHaveLength(1);
   expect(reviewer.getContent()).toEqual((await reopen(reviewer)).getContent());
 });
@@ -131,11 +154,14 @@ test("a later tracked merge does not borrow formatting from a resolved heading",
     mode: "suggested" | "tracked-changes",
     operations: Parameters<FolioDocxReviewer["applyDocumentOperations"]>[0]["operations"],
   ) =>
-    reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations,
-    });
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations,
+      },
+      { undefinedReferences: "refuse" },
+    );
   apply("suggested", [
     { id: "suggest-delete", type: "deleteBlock", blockId: heading },
     {
@@ -201,13 +227,16 @@ test.each([1, 2, 3, 4, 5, 6])(
           ["tracked-changes", tracked],
         ] as const) {
           expect(
-            reviewer.applyDocumentOperations({
-              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode,
-              operations: [
-                { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
-              ],
-            }).applied,
+            reviewer.applyDocumentOperations(
+              {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode,
+                operations: [
+                  { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
+                ],
+              },
+              { undefinedReferences: "refuse" },
+            ).applied,
           ).toHaveLength(1);
         }
         if (resolution === "all") {

@@ -286,7 +286,7 @@ describe("style-attached numbering and indentation (#765)", () => {
       styles,
       numbering,
     );
-    expect(para.formatting?.numPr).toEqual({ kind: "reference", numId: 2 });
+    expect(para.formatting?.numPr).toBeUndefined();
     expect(para.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 2 });
   });
 
@@ -373,7 +373,7 @@ describe("w:numId and w:ilvl inherit independently", () => {
       numbering,
     );
 
-    expect(para.formatting?.numPr).toEqual({ kind: "reference", numId: 3, ilvl: 1 });
+    expect(para.formatting?.numPr).toEqual({ kind: "levelOnly", ilvl: 1 });
     // The style tier, not the merged value: the serializer drops only a numPr
     // the paragraph never stated.
     expect(para.formatting?.numPrFromStyle).toEqual({ kind: "reference", numId: 3, ilvl: 0 });

@@ -306,11 +306,14 @@ const run = async (
   const reviewer = await open(base);
   const blocks = reviewer.getContent();
   const planned = plans.map((plan, index) => buildOperation(spec, plan, blocks, `op${index}`));
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: planned.map(({ operation }) => operation),
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: planned.map(({ operation }) => operation),
+    },
+    { undefinedReferences: "refuse" },
+  );
   return { planned, reviewer, result };
 };
 
@@ -492,11 +495,14 @@ const checkCase = async (spec: TableSpec, plans: readonly OperationPlan[]): Prom
   const sharedOperations = direct.planned
     .filter(({ operation }) => trackedApplied.has(operation.id))
     .map(({ operation }) => operation);
-  const sharedResult = shared.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "direct",
-    operations: sharedOperations,
-  });
+  const sharedResult = shared.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: sharedOperations,
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(new Set(sharedResult.applied.map(({ id }) => id))).toEqual(trackedApplied);
   const sharedReading = await readTablesAt("direct shared", shared);
   expect(tableReadingProblems(sharedReading)).toEqual([]);

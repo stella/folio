@@ -4,6 +4,7 @@ import {
   alignFolioContentStructure,
   createFolioContentAlignmentWorkSession,
 } from "./content-alignment";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock, FolioContentIdStability } from "./content-types";
 
 type TableBlockOptions = {
@@ -27,6 +28,7 @@ const tableBlock = ({
 }: TableBlockOptions): FolioContentBlock => ({
   id,
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text,
   idStability,
   table: {
@@ -290,6 +292,7 @@ describe("bounded table sequence alignment", () => {
     const body = (id: string, text: string): FolioContentBlock => ({
       id,
       kind: "paragraph",
+      statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
       text,
     });
     const baseTable = tableBlock({ id: "base", text: "Payment schedule", outerTableIndex: 0 });
@@ -323,6 +326,7 @@ describe("bounded table sequence alignment", () => {
     const body = (id: string): FolioContentBlock => ({
       id,
       kind: "paragraph",
+      statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
       text: "Preserved body anchor",
     });
     const table = tableBlock({
@@ -358,9 +362,19 @@ describe("bounded table sequence alignment", () => {
     "keeps a table paired across $label",
     ({ baseOrder, revisedOrder, unmatchedType }) => {
       const blocks = {
-        leading: { id: "leading", kind: "paragraph", text: "Leading body paragraph" },
+        leading: {
+          id: "leading",
+          kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+          text: "Leading body paragraph",
+        },
         table: tableBlock({ id: "table", text: "Preserved schedule", outerTableIndex: 0 }),
-        trailing: { id: "trailing", kind: "paragraph", text: "Trailing body paragraph" },
+        trailing: {
+          id: "trailing",
+          kind: "paragraph",
+          statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+          text: "Trailing body paragraph",
+        },
       } satisfies Record<string, FolioContentBlock>;
       const materialize = (
         order: readonly ("leading" | "table" | "trailing")[],
@@ -383,6 +397,7 @@ describe("bounded table sequence alignment", () => {
     const body = (id: string): FolioContentBlock => ({
       id,
       kind: "paragraph",
+      statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
       text: "Preserved body anchor",
     });
     const first = tableBlock({ id: "table-one", text: "First schedule", outerTableIndex: 0 });

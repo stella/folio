@@ -21,8 +21,8 @@
           "blockId": "412DDC7F",
           "text": "A new bullet.",
           "numbering": {
-            "start": "new",
-            "kind": "bullet"
+            "kind": "newList",
+            "format": "bullet"
           }
         }
       ]

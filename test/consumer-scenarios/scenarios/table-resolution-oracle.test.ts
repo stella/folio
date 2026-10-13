@@ -47,6 +47,7 @@ describe("table operation source coordinates", () => {
       const pre = await capture(reviewer, "tracked-changes");
       const result = reviewer.applyDocumentOperations(
         coreBatch([{ ...operation, id: `op-${type}` }], "tracked-changes") as never,
+        { undefinedReferences: "refuse" },
       );
       if (type !== "deleteTable") continue;
       assert.equal(result.applied.length, 1);

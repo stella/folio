@@ -152,7 +152,7 @@ describe("block ids resolve against the live document", () => {
               blockId: block.id,
               properties: { styleId: styleFor(index) },
             })),
-            { mode: "direct" },
+            { undefinedReferences: "refuse", mode: "direct" },
           );
           expect(skipped).toEqual([]);
 

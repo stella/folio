@@ -1,3 +1,7 @@
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumbering,
+} from "./numberingAttr";
 /**
  * The list rendering (marker, indentation bookkeeping) a paragraph's
  * numbering gives it, as a paragraph-property change records and restores it.
@@ -11,10 +15,17 @@ import {
   sameStatedParagraphNumbering,
 } from "../docx/numberingReference";
 import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "./listMarker";
+import type { ListRenderingAttrKey } from "./listRenderingAttrs";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "./schema/nodes";
 import { listAttrsFromNumbering } from "./styles/resolvedStyleAttrs";
 
 type PreviousFormatting = NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]>;
+
+/** These attrs come from inline content, not the numbering definition. */
+const CONTENT_DERIVED_LIST_RENDERING_ATTRS = new Set<ListRenderingAttrKey>([
+  "listImplicitChildLevelAdvances",
+  "listMarkerSecondSlotOffsetTwips",
+]);
 
 /** Whether a `w:pPrChange` record states the list rendering it had (a list command's does). */
 export const recordsListRendering = (record: PreviousFormatting): boolean =>
@@ -46,12 +57,12 @@ export const listRenderingFor = (
  * the scope it restores wholesale, so a record that does not state them (one
  * written by an operation, or read from a file) would leave the rendering of
  * the numbering it undoes: a paragraph restored to no numbering still showed
- * the marker it was given. When the reject changes the numbering, the
- * rendering is recomputed from the restored numbering; otherwise it stays.
+ * the marker it was given. Reconcile the rendering attrs with the restored
+ * numbering even when the effective reference itself did not change.
  */
 export type RejectedListRenderingOptions = {
   /** The paragraph's attrs before the reject. */
-  current: Pick<ParagraphAttrs, "numPr">;
+  current: Pick<ParagraphAttrs, "numPr" | "numPrFromStyle" | ListRenderingAttrKey>;
   /** The previous state the rejected record restores. */
   previousFormatting: PreviousFormatting | null | undefined;
   numbering: NumberingMap | null;
@@ -66,11 +77,31 @@ export const rejectedListRenderingPatch = ({
 }: RejectedListRenderingOptions): Record<string, unknown> => {
   const record = previousFormatting ?? {};
   if (recordsListRendering(record)) {
-    return {};
+    const patch: Record<string, unknown> = {};
+    for (const key of LIST_RENDERING_ATTR_KEYS) patch[key] = record[key] ?? null;
+    return patch;
   }
   const restored = restoredNumbering ?? undefined;
-  if (sameStatedParagraphNumbering(restored, current.numPr ?? undefined)) {
-    return {};
+  const sameEffectiveNumbering = sameStatedParagraphNumbering(
+    restored,
+    effectiveParagraphNumbering(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: current.numPr,
+        numPrFromStyle: current.numPrFromStyle,
+      }),
+    ),
+  );
+  if (!sameEffectiveNumbering) return listRenderingFor(restored, numbering);
+
+  const expected = listRenderingFor(restored, numbering);
+  const patch: Record<string, unknown> = {};
+  for (const key of LIST_RENDERING_ATTR_KEYS) {
+    if (CONTENT_DERIVED_LIST_RENDERING_ATTRS.has(key)) continue;
+    const currentValue = current[key] ?? null;
+    const expectedValue = expected[key] ?? null;
+    if (JSON.stringify(currentValue) !== JSON.stringify(expectedValue)) {
+      patch[key] = expectedValue;
+    }
   }
-  return listRenderingFor(restored, numbering);
+  return Object.keys(patch).length === 0 ? {} : patch;
 };

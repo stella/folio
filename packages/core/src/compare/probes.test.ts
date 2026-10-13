@@ -37,6 +37,7 @@ import {
 import { compareDocx } from "./compare";
 import { applyEditScript, type EditScript } from "./scenario";
 import type { CompareChange } from "./types";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus");
 
@@ -847,10 +848,8 @@ describe("single-mutation probes", () => {
   });
 
   test("change_list_level: a demoted list item is one paragraph-format change", async () => {
-    // Demoting an item changes `w:ilvl` and nothing a text diff can see. It
-    // used to reach the comparison as no change at all, so the redline said
-    // the two documents agreed; it is now a `w:pPrChange`, which is what Word
-    // writes for the same edit.
+    // The target states a complete reference: preserve its id as well as its
+    // changed level, independently of the unchanged visible text.
     const demoted = await buildNumberedListDocx(withItemDemoted(NUMBERED_LIST_ITEMS, 3));
     const result = await compareDocx(LIST_BASE, demoted, OPTIONS);
     if (result.isErr()) {
@@ -858,7 +857,9 @@ describe("single-mutation probes", () => {
     }
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
     const [change] = result.value.changes;
-    expect(change?.kind === "paragraph-format" && change.properties).toEqual({ listLevel: 1 });
+    expect(change?.kind === "paragraph-format" && change.properties).toEqual({
+      numbering: { kind: "reference", numId: 1, ilvl: 1 },
+    });
 
     expect(await projectView(result.value.buffer, "final")).toEqual(
       await projectView(demoted, "final"),
@@ -882,8 +883,7 @@ describe("single-mutation probes", () => {
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
     const [change] = result.value.changes;
     expect(change?.kind === "paragraph-format" && change.properties).toEqual({
-      listLevel: null,
-      numbering: null,
+      numbering: { kind: "inherit" },
     });
 
     expect(await projectView(result.value.buffer, "final")).toEqual(
@@ -914,9 +914,12 @@ describe("single-mutation probes", () => {
 
     const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     reviewer.resolveReviewedStory({ view: "final" });
-    expect(reviewer.getContent().map(({ listLevel }) => listLevel ?? null)).toEqual(
-      withParagraph.map(({ level }) => level),
-    );
+    expect(
+      reviewer
+        .getContent()
+        .map(expectParagraphBlock)
+        .map(({ listReference }) => listReference?.level ?? null),
+    ).toEqual(withParagraph.map(({ level }) => level));
   });
 
   test("delete_paragraph: the paragraph MARK is deleted with the words", async () => {

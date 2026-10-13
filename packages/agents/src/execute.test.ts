@@ -726,7 +726,7 @@ describe("find_text edge cases", () => {
     }
     reviewer.applyOperations(
       [{ id: "r1", type: "replaceBlock", blockId: target.id, text: "repeat repeat REPEAT" }],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
 
     const findTextResult = expectOk(
@@ -792,7 +792,7 @@ describe("find_text edge cases", () => {
     // 250 occurrences of "x" in one block, over the 200-match cap.
     reviewer.applyOperations(
       [{ id: "r1", type: "replaceBlock", blockId: target.id, text: "x ".repeat(250) }],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
 
     const result = expectOk(
@@ -819,7 +819,7 @@ describe("find_text edge cases", () => {
           text: "žaloba předžaloba ŽALOBA",
         },
       ],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
 
     const result = expectOk(
@@ -851,7 +851,7 @@ describe("find_text edge cases", () => {
     const text = `${filler} TARGET ${filler} prefixedTARGET ${filler}`;
     reviewer.applyOperations(
       [{ id: "large-block", type: "replaceBlock", blockId: target.id, text }],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
 
     const result = expectOk(

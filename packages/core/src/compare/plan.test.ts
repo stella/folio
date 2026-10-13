@@ -9,23 +9,33 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 
-import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
+import type { FolioAIBlock, FolioAIEditSnapshot, FolioAIParagraphBlock } from "../ai-edits/types";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
+import type { FolioContentStatedNumbering } from "./content-types";
 import { planStoryCompare } from "./plan";
 
 const MAIN_STORY = { type: "main" } as const;
 
-const block = (id: string, text: string): FolioAIBlock => ({
+const block = (id: string, text: string): FolioAIParagraphBlock => ({
   id,
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text,
   idStability: "positional",
 });
 
 /** One single-cell row of a table, as the snapshot would project it. */
-const cell = (id: string, text: string, rowIndex: number, tableIndex = 0): FolioAIBlock => ({
+const cell = (
+  id: string,
+  text: string,
+  rowIndex: number,
+  tableIndex = 0,
+): FolioAIParagraphBlock => ({
   id,
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text,
   idStability: "positional",
   table: {
@@ -60,9 +70,10 @@ const gridCell = (
     rowSpan = 1,
     paragraphIndex = 0,
   }: GridCellGeometry,
-): FolioAIBlock => ({
+): FolioAIParagraphBlock => ({
   id,
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text,
   idStability: "positional",
   table: {
@@ -124,6 +135,60 @@ test("reports an unalignable formatting projection for round-trip verification",
       detail: "supported inline formatting could not be aligned (revised)",
     },
   ]);
+});
+
+test("numbering source and effective list projection round-trip across style sources", () => {
+  const styleCases = [
+    { styleId: "Normal", inheritedReference: undefined },
+    { styleId: "Numbered", inheritedReference: { numId: 5, level: 0 } },
+  ] as const;
+  const statedCases: readonly FolioContentStatedNumbering[] = [
+    INHERITED_PARAGRAPH_NUMBERING,
+    { kind: "none" },
+    { kind: "levelOnly", ilvl: 1 },
+    paragraphNumberingReference({ numId: 6 }),
+    paragraphNumberingReference({ numId: 6, ilvl: 0 }),
+  ];
+  const baseReference = paragraphNumberingReference({ numId: 9, ilvl: 0 });
+
+  for (const styleCase of styleCases) {
+    for (const statedNumbering of statedCases) {
+      let targetLevel = styleCase.inheritedReference?.level ?? 0;
+      if (statedNumbering.kind === "levelOnly") targetLevel = statedNumbering.ilvl;
+      if (statedNumbering.kind === "reference") targetLevel = statedNumbering.ilvl ?? 0;
+
+      let effectiveReference: FolioAIParagraphBlock["listReference"] = undefined;
+      if (statedNumbering.kind === "reference") {
+        effectiveReference = { numId: statedNumbering.numId, level: targetLevel };
+      } else if (statedNumbering.kind !== "none" && styleCase.inheritedReference !== undefined) {
+        effectiveReference = {
+          numId: styleCase.inheritedReference.numId,
+          level: targetLevel,
+        };
+      }
+      const target: FolioAIParagraphBlock = {
+        ...block("paragraph", "Same words"),
+        styleId: styleCase.styleId,
+        statedNumbering,
+        ...(effectiveReference && { listReference: effectiveReference }),
+      };
+      const base: FolioAIParagraphBlock = {
+        ...block("paragraph", "Same words"),
+        statedNumbering: baseReference,
+        listReference: { numId: baseReference.numId, level: baseReference.ilvl ?? 0 },
+      };
+      const plan = planOf([base], [target]);
+      const propertyOperation = plan.operations.find(
+        (operation) => operation.type === "setBlockParagraphProperties",
+      );
+
+      expect(
+        propertyOperation?.type === "setBlockParagraphProperties" &&
+          propertyOperation.properties.numbering,
+      ).toEqual(statedNumbering);
+      expect(plan.verificationFailures).toEqual([]);
+    }
+  }
 });
 
 test("plans a standalone authored page break as a hard-break carrier", () => {
@@ -374,9 +439,17 @@ describe("document-terminal paragraph carrier", () => {
         properties: { styleId: "Heading2" },
       },
       {
-        base: { ...block("base-list", ""), kind: "listItem" as const, listLevel: 0 },
-        target: { ...block("target-list", ""), kind: "listItem" as const, listLevel: 1 },
-        properties: { listLevel: 1 },
+        base: {
+          ...block("base-list", ""),
+          kind: "listItem" as const,
+          statedNumbering: { kind: "levelOnly", ilvl: 0 },
+        },
+        target: {
+          ...block("target-list", ""),
+          kind: "listItem" as const,
+          statedNumbering: { kind: "levelOnly", ilvl: 1 },
+        },
+        properties: { numbering: { kind: "levelOnly", ilvl: 1 } },
       },
     ];
 

@@ -187,10 +187,13 @@ const blockIdOf = (reviewer: Reviewer, text: string): string => {
 };
 
 const applyOrThrow = (reviewer: Reviewer, batch: Omit<OperationBatch, "version">): void => {
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    ...batch,
-  } as OperationBatch);
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      ...batch,
+    } as OperationBatch,
+    { undefinedReferences: "refuse" },
+  );
   if (result.skipped.length > 0 || result.issues.length > 0) {
     throw new Error(`fixture operations were refused: ${JSON.stringify(result.issues)}`);
   }

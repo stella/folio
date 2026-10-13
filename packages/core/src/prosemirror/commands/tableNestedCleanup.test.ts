@@ -160,6 +160,7 @@ for (const mode of ["revision", "batch"] as const) {
         const block = snapshot.blocks.find(({ text }) => text === "Remove");
         if (!block) throw new Error("Missing column target");
         const result = applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view,
           snapshot,
           mode: "direct",

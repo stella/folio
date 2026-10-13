@@ -7,6 +7,7 @@ import type { XmlFragment } from "yjs";
 
 import type {
   FolioAIEditApplyMode,
+  FolioUndefinedReferencePolicy,
   FolioAIEditApplyResult,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
@@ -394,6 +395,7 @@ export type DocxEditorCollaboration = {
 };
 
 export type DocxEditorApplyDocumentOperationsOptions = {
+  undefinedReferences: FolioUndefinedReferencePolicy;
   snapshot: FolioAIEditSnapshot;
   batch: FolioDocumentOperationBatch;
   author?: string;
@@ -486,6 +488,7 @@ export type DocxEditorRef = {
   ) => FolioDocumentOperationUndoResult;
   /** Apply AI-authored operations against a previously created block snapshot. */
   applyAIEditOperations: (options: {
+    undefinedReferences: FolioUndefinedReferencePolicy;
     snapshot: FolioAIEditSnapshot;
     operations: FolioAIEditOperation[];
     mode?: FolioAIEditApplyMode;

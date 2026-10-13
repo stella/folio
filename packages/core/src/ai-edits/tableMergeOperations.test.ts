@@ -50,11 +50,14 @@ const apply = async (
   build: (reviewer: FolioDocxReviewer) => Omit<FolioDocumentOperation, "id">,
 ) => {
   const reviewer = await open(base);
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: [{ id: "op", ...build(reviewer) } as FolioDocumentOperation],
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [{ id: "op", ...build(reviewer) } as FolioDocumentOperation],
+    },
+    { undefinedReferences: "refuse" },
+  );
   return { reviewer, result };
 };
 
@@ -102,24 +105,27 @@ test("a row-removing merge cannot shift another merge's original row coordinates
   };
   const base = await buildTableDocx(spec);
   const direct = await open(base);
-  const result = direct.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "direct",
-    operations: [
-      {
-        id: "tall",
-        type: "mergeTableCells",
-        blockId: blockId(direct, "left-4-1"),
-        endBlockId: blockId(direct, "left-0-0"),
-      },
-      {
-        id: "short",
-        type: "mergeTableCells",
-        blockId: blockId(direct, "right-middle"),
-        rowCount: 2,
-      },
-    ],
-  });
+  const result = direct.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: [
+        {
+          id: "tall",
+          type: "mergeTableCells",
+          blockId: blockId(direct, "left-4-1"),
+          endBlockId: blockId(direct, "left-0-0"),
+        },
+        {
+          id: "short",
+          type: "mergeTableCells",
+          blockId: blockId(direct, "right-middle"),
+          rowCount: 2,
+        },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.applied.map(({ id }) => id)).toEqual(["tall"]);
   expect(result.skipped).toEqual([{ id: "short", reason: "unsupportedBlock" }]);
   const reading = await readReviewerTables(direct);
@@ -279,19 +285,22 @@ describe("a column deletion in a nested table the same batch moves", () => {
     if (!firstCell) {
       throw new Error("no block starts the first cell");
     }
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        {
-          id: "merge",
-          type: "mergeTableCells",
-          blockId: blockId(reviewer, "c4"),
-          endBlockId: firstCell.id,
-        },
-        { id: "column", type: "deleteTableColumn", blockId: blockId(reviewer, "n1") },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "merge",
+            type: "mergeTableCells",
+            blockId: blockId(reviewer, "c4"),
+            endBlockId: firstCell.id,
+          },
+          { id: "column", type: "deleteTableColumn", blockId: blockId(reviewer, "n1") },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["column", "merge"]);
 
     const reading = await readReviewerTables(reviewer);
@@ -320,11 +329,14 @@ describe("a merge or split the batch requests before a row insertion in the same
     build: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
   ) => {
     const reviewer = await open(await buildTableDocx(spec));
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations: build(reviewer),
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: build(reviewer),
+      },
+      { undefinedReferences: "refuse" },
+    );
     return { reviewer, result };
   };
 
@@ -439,11 +451,14 @@ describe("an edit inside a cell the same batch merges away", () => {
     build: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
   ) => {
     const reviewer = await open(await buildTableDocx(BLANK_RIGHT));
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations: build(reviewer),
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: build(reviewer),
+      },
+      { undefinedReferences: "refuse" },
+    );
     const reading =
       mode === "direct"
         ? await readReviewerTables(reviewer)

@@ -15,8 +15,8 @@
           "blockId": "412DDC7F",
           "properties": {
             "numbering": {
-              "start": "new",
-              "kind": "bullet"
+              "kind": "newList",
+              "format": "bullet"
             }
           }
         }

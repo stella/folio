@@ -53,6 +53,7 @@ import {
   paragraphSpacingAttrPatch,
   paragraphSpacingFromFormatting,
 } from "../paragraphSpacing";
+import { LIST_RENDERING_ATTR_KEYS, hasListRendering } from "../listRenderingAttrs";
 import { readParagraphNumberingAttr } from "../numberingAttr";
 import { directionFromBidi } from "../paragraphDirection";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "../schema/nodes";
@@ -242,6 +243,15 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
   const directAlignment = directParagraphAlignment(attrs);
   if (directAlignment !== undefined) {
     snapshot["alignment"] = directAlignment;
+  }
+  snapshot["numPrFromStyle"] = attrs.numPrFromStyle ?? null;
+  // Every history producer carries the rendering of its recorded numbering.
+  // Otherwise the original counter stream changes when parsing the saved history.
+  if (hasListRendering(attrs)) {
+    for (const key of LIST_RENDERING_ATTR_KEYS) {
+      const value = attrs[key];
+      if (value != null) snapshot[key] = value;
+    }
   }
   Object.assign(snapshot, directParagraphSpacing(attrs), directParagraphIndentation(attrs));
   return snapshot;

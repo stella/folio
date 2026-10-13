@@ -469,6 +469,7 @@ describe("ListExtension Enter numbering", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -476,7 +477,7 @@ describe("ListExtension Enter numbering", () => {
           id: "synthetic-level-change",
           type: "setBlockParagraphProperties",
           blockId: "seq-0001",
-          properties: { listLevel: 1 },
+          properties: { numbering: { kind: "reference", numId: 23, ilvl: 1 } },
         },
       ],
       mode: "direct",
@@ -513,6 +514,7 @@ describe("ListExtension Enter numbering", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -520,14 +522,14 @@ describe("ListExtension Enter numbering", () => {
           id: "synthetic-list-removal",
           type: "setBlockParagraphProperties",
           blockId: "seq-0001",
-          properties: { listLevel: null },
+          properties: { numbering: { kind: "none" } },
         },
       ],
       mode: "direct",
     });
 
     expect(result.skipped).toEqual([]);
-    expect(view.state.doc.firstChild?.attrs["numPr"]).toBeNull();
+    expect(view.state.doc.firstChild?.attrs["numPr"]).toEqual({ kind: "none" });
     for (const key of LIST_RENDERING_ATTR_KEYS) {
       expect(view.state.doc.firstChild?.attrs[key]).toBeNull();
     }
@@ -555,6 +557,7 @@ describe("ListExtension Enter numbering", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -562,7 +565,7 @@ describe("ListExtension Enter numbering", () => {
           id: "synthetic-list-canonicalization",
           type: "setBlockParagraphProperties",
           blockId: "seq-0001",
-          properties: { listLevel: 0 },
+          properties: { numbering: { kind: "reference", numId: 23, ilvl: 0 } },
         },
       ],
       mode: "direct",
@@ -588,6 +591,7 @@ describe("ListExtension Enter numbering", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -597,7 +601,7 @@ describe("ListExtension Enter numbering", () => {
           blockId: "seq-0001",
           text: "Synthetic nested item",
           inheritFormatting: true,
-          listLevel: 1,
+          numbering: { kind: "reference", numId: 23, ilvl: 1 },
         },
       ],
       mode: "direct",

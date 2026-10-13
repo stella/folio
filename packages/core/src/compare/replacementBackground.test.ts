@@ -121,6 +121,7 @@ test("an authoring replacement still clears the background it types over", () =>
   }
 
   applyFolioAIEditOperations({
+    undefinedReferences: "refuse",
     view,
     snapshot,
     operations: [

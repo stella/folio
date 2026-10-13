@@ -13,6 +13,7 @@ import {
   docxToMarkdown,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
 } from "@stll/folio-core/server";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { toMarkdown } from "@stll/folio-core/markdown";
 
 import {
@@ -46,8 +47,8 @@ const applyTo = (reviewer: Reviewer, story: Story, operation: Operation, mode: M
   const batch = coreBatch([operation], mode) as never;
   const result =
     story.type === "main"
-      ? reviewer.applyDocumentOperations(batch)
-      : reviewer.applyDocumentOperationsToStory({ story, batch });
+      ? reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" })
+      : reviewer.applyDocumentOperationsToStory({ undefinedReferences: "refuse", story, batch });
   assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
 };
 
@@ -174,25 +175,31 @@ test("a paragraph inserted inside a comment spanning a table reads the same befo
 describe("fixed findings", () => {
   test("renumbering a mark pending terminal deletion refuses without mutation (seed 1785653011)", async () => {
     const reviewer = await openReviewer(await directNumberedDocument());
-    const deleted = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [{ id: "delete", type: "deleteBlock", blockId: "5E88C024" }],
-    });
+    const deleted = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [{ id: "delete", type: "deleteBlock", blockId: "5E88C024" }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.equal(deleted.applied.length, 1);
     const before = documentSnapshot(reviewer);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "numbering",
-          type: "setBlockParagraphProperties",
-          blockId: "31617F9A",
-          properties: { numbering: { numId: 7, level: 0 } },
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "numbering",
+            type: "setBlockParagraphProperties",
+            blockId: "31617F9A",
+            properties: { numbering: paragraphNumberingReference({ numId: 7, ilvl: 0 }) },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     assert.deepEqual(result.applied, []);
     assert.deepEqual(
       result.skipped.map(({ id, reason }) => ({ id, reason })),
@@ -206,16 +213,19 @@ describe("fixed findings", () => {
     test(`delete/split overlap and a separate merge respect atomic=${atomic} (seed 118244301)`, async () => {
       const reviewer = await openReviewer(await directNumberedDocument());
       const before = documentSnapshot(reviewer);
-      const result = reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        atomic,
-        operations: [
-          { id: "delete", type: "deleteBlock", blockId: "3CEFFC83" },
-          { id: "split", type: "splitBlock", blockId: "3CEFFC83", offset: 9 },
-          { id: "merge", type: "mergeBlockWithNext", blockId: "412DDC7F", separator: " " },
-        ],
-      });
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          atomic,
+          operations: [
+            { id: "delete", type: "deleteBlock", blockId: "3CEFFC83" },
+            { id: "split", type: "splitBlock", blockId: "3CEFFC83", offset: 9 },
+            { id: "merge", type: "mergeBlockWithNext", blockId: "412DDC7F", separator: " " },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
       if (atomic) {
         assert.deepEqual(result.applied, []);
         assert.ok(
@@ -257,11 +267,14 @@ describe("fixed findings", () => {
     for (const saved of [false, true]) {
       let reviewer = await openReviewer(await commentDocument());
       const blockId = "412DDC7F";
-      const deletion = reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [{ id: "delete", type: "deleteBlock", blockId }],
-      });
+      const deletion = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [{ id: "delete", type: "deleteBlock", blockId }],
+        },
+        { undefinedReferences: "refuse" },
+      );
       assert.equal(deletion.applied.length, 1);
       if (saved) reviewer = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
       const before = documentSnapshot(reviewer);
@@ -271,11 +284,14 @@ describe("fixed findings", () => {
         blockId,
         properties: { styleId: null },
       } as const satisfies FolioDocumentOperation;
-      const result = reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [operation],
-      });
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [operation],
+        },
+        { undefinedReferences: "refuse" },
+      );
       assert.deepEqual(result.applied, []);
       assert.deepEqual(
         result.skipped.map(({ id, reason }) => ({ id, reason })),
@@ -317,11 +333,14 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     mode: (typeof MODES)[number],
     operations: Record<string, unknown>[],
   ) =>
-    reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations: operations.map((operation, index) => ({ id: `op-${index + 1}`, ...operation })),
-    } as never);
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: operations.map((operation, index) => ({ id: `op-${index + 1}`, ...operation })),
+      } as never,
+      { undefinedReferences: "refuse" },
+    );
   const blockId = (reviewer: Reviewer, text: string): string => {
     const block = reviewer.getContent().find((candidate) => candidate.text === text);
     assert.ok(block, `no block "${text}"`);
@@ -335,8 +354,13 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     text: string,
     field: "previewRuns" | "directIndentation",
   ): Promise<void> => {
-    const pick = (from: Reviewer) =>
-      from.getContent().find((block) => block.text === text)?.[field];
+    const pick = (from: Reviewer) => {
+      const block = from.getContent().find((candidate) => candidate.text === text);
+      assert.ok(block, "Expected the paragraph under comparison");
+      if (block.kind === "diagnostic")
+        assert.fail("Expected paragraph fields, got a diagnostic block");
+      return block[field];
+    };
     assert.deepEqual(
       pick(await reopen(reviewer)),
       pick(reviewer),

@@ -63,11 +63,14 @@ const idOf = (reviewer: FolioDocxReviewer, prefix: string): string => {
 const applier =
   (reviewer: FolioDocxReviewer, mode: FolioDocumentOperationMode = "tracked-changes") =>
   (operation: Record<string, unknown>): void => {
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations: [{ id: "1", ...operation }],
-    } as never);
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [{ id: "1", ...operation }],
+      } as never,
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied).toHaveLength(1);
   };
 
@@ -201,33 +204,39 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
       // in the same batch, whose break is added too.
       const reviewer = await open();
       const signed = idOf(reviewer, "Signed");
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode,
-        operations: [
-          {
-            id: "1",
-            type: "insertAfterBlock",
-            blockId: signed,
-            text: "Inserted.",
-            styleId: "Heading2",
-          },
-        ],
-      });
-      const result = reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode,
-        operations: [
-          { id: "2", type: "deleteBlock", blockId: signed },
-          {
-            id: "3",
-            type: "insertAfterBlock",
-            blockId: signed,
-            text: "Added.",
-            styleId: "Heading2",
-          },
-        ],
-      });
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            {
+              id: "1",
+              type: "insertAfterBlock",
+              blockId: signed,
+              text: "Inserted.",
+              styleId: "Heading2",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            { id: "2", type: "deleteBlock", blockId: signed },
+            {
+              id: "3",
+              type: "insertAfterBlock",
+              blockId: signed,
+              text: "Added.",
+              styleId: "Heading2",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
       expect(result.applied).toHaveLength(2);
       const styles = (current: FolioDocxReviewer) =>
         current.getContent().map(({ text, styleId }) => [text, styleId ?? null]);
@@ -249,37 +258,49 @@ test("a blank final paragraph deletes like a direct edit and rejects to the blan
   };
   const source = await open();
   const lastId = idOf(source, "Signed");
-  const blanked = source.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "direct",
-    operations: [{ id: "blank", type: "replaceBlock", blockId: lastId, text: "" }],
-  });
+  const blanked = source.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: [{ id: "blank", type: "replaceBlock", blockId: lastId, text: "" }],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(blanked.applied).toHaveLength(1);
   const blankSource = await source.toBuffer();
 
   const direct = await open(blankSource);
   const tracked = await open(blankSource);
-  const directResult = direct.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "direct",
-    operations: [{ id: "delete", type: "deleteBlock", blockId: lastBlockId(direct) }],
-  });
-  const trackedResult = tracked.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "tracked-changes",
-    operations: [{ id: "delete", type: "deleteBlock", blockId: lastBlockId(tracked) }],
-  });
+  const directResult = direct.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: lastBlockId(direct) }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  const trackedResult = tracked.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: lastBlockId(tracked) }],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(directResult.applied).toHaveLength(1);
   expect(trackedResult.applied).toHaveLength(1);
   tracked.acceptAll();
   expect(texts(await reopen(tracked))).toEqual(texts(await reopen(direct)));
 
   const rejecting = await open(blankSource);
-  const rejected = rejecting.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "tracked-changes",
-    operations: [{ id: "delete", type: "deleteBlock", blockId: lastBlockId(rejecting) }],
-  });
+  const rejected = rejecting.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: lastBlockId(rejecting) }],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(rejected.applied).toHaveLength(1);
   rejecting.rejectAll();
   expect(texts(await reopen(rejecting))).toEqual(texts(await open(blankSource)));
@@ -319,23 +340,26 @@ describe("inserting after a deleted final paragraph", () => {
       const results: string[][] = [];
       for (const mode of ["direct", "tracked-changes"] as const) {
         const reviewer = await open();
-        const result = reviewer.applyDocumentOperations({
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode,
-          operations: [
-            ...deleted.map((target, index) => ({
-              id: `delete-${index}`,
-              type: "deleteBlock" as const,
-              blockId: idOf(reviewer, target),
-            })),
-            {
-              id: "table",
-              type: "insertTable",
-              blockId: idOf(reviewer, anchor),
-              rows: [["Term", "Value"]],
-            },
-          ],
-        });
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: [
+              ...deleted.map((target, index) => ({
+                id: `delete-${index}`,
+                type: "deleteBlock" as const,
+                blockId: idOf(reviewer, target),
+              })),
+              {
+                id: "table",
+                type: "insertTable",
+                blockId: idOf(reviewer, anchor),
+                rows: [["Term", "Value"]],
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
         expect(result.applied).toHaveLength(deleted.length + 1);
         if (mode === "tracked-changes") {
           expect(result.applied.find(({ id }) => id === "delete-0")?.revisionIds).toHaveLength(2);
@@ -414,18 +438,21 @@ describe("successive trailing paragraph deletions", () => {
               apply({ type: "deleteBlock", blockId: idOf(reviewer, text) });
             }
           } else {
-            const result = reviewer.applyDocumentOperations({
-              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode,
-              operations: targets.map(
-                (text, index) =>
-                  ({
-                    id: String(index),
-                    type: "deleteBlock",
-                    blockId: idOf(reviewer, text),
-                  }) as const,
-              ),
-            });
+            const result = reviewer.applyDocumentOperations(
+              {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode,
+                operations: targets.map(
+                  (text, index) =>
+                    ({
+                      id: String(index),
+                      type: "deleteBlock",
+                      blockId: idOf(reviewer, text),
+                    }) as const,
+                ),
+              },
+              { undefinedReferences: "refuse" },
+            );
             expect(result.applied).toHaveLength(count);
           }
           return reviewer;
@@ -474,14 +501,17 @@ test("accepting a split paragraph deletion before a table matches direct editing
       offset: 20,
     });
     const blockId = idOf(reviewer, "The Supplier");
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations: [
-        { id: "delete", type: "deleteBlock", blockId },
-        { id: "table", type: "insertTable", blockId, rows: [["Term", "Value"]] },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [
+          { id: "delete", type: "deleteBlock", blockId },
+          { id: "table", type: "insertTable", blockId, rows: [["Term", "Value"]] },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied).toHaveLength(2);
     expect(result.skipped).toEqual([]);
     const saved = await reopen(reviewer);

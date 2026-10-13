@@ -28,13 +28,16 @@ const replace = (reviewer: FolioDocxReviewer, find: string, replacement: string)
   if (!block) {
     throw new Error("the fixture paragraph is missing");
   }
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "tracked-changes",
-    operations: [
-      { id: find, type: "replaceInBlock", blockId: block.id, find, replace: replacement },
-    ],
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        { id: find, type: "replaceInBlock", blockId: block.id, find, replace: replacement },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.applied).toHaveLength(1);
 };
 
@@ -85,11 +88,14 @@ describe("revision wrapper enumeration", () => {
     replace(reviewer, "two", "three");
     const block = reviewer.getContent().at(0);
     if (!block) throw new Error("the fixture paragraph is missing");
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied).toHaveLength(1);
     const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
     const sorted = (target: FolioDocxReviewer) =>

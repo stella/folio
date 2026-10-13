@@ -508,8 +508,8 @@ describe("parseSuggestChangesInput", () => {
       offset: 3,
       separator: " ",
       moveId: "move-1",
-      listLevel: 1,
-      properties: { listLevel: 1 },
+      numbering: { kind: "levelOnly", ilvl: 1 },
+      properties: { numbering: { kind: "levelOnly", ilvl: 1 } },
       rows: [["a"]],
       range: {
         type: "textRange",

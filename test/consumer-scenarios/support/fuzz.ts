@@ -117,7 +117,7 @@ const processFeatureWeights = (): FeatureCoverage | undefined => {
     : undefined;
 };
 
-const blocksOf = (flow: Flow): Block[] => flow.reviewer.getContent() as Block[];
+const blocksOf = (flow: Flow): Block[] => flow.reviewer.getContent();
 
 /** The picker a targeted flow aims with, over `story`'s blocks as they are now. */
 const pickerFor = (
@@ -337,8 +337,12 @@ const coreBatchStep = async (
   const pre = await capture(flow.reviewer, flow.mode, { story, step: flow.session });
   const result =
     story.type === "main"
-      ? flow.reviewer.applyDocumentOperations(batch as never)
-      : flow.reviewer.applyDocumentOperationsToStory({ story, batch: batch as never });
+      ? flow.reviewer.applyDocumentOperations(batch as never, { undefinedReferences: "refuse" })
+      : flow.reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
+          story,
+          batch: batch as never,
+        });
   done(`applied ${result.applied.length}, skipped ${result.skipped.length}`);
   touch(flow, operations);
   const outcome = appliedOf(batch.operations, result);
@@ -392,7 +396,7 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<StepEffect> => {
         return { type: "batch", applied };
       }
       const story = random.pick(stories);
-      const blocks = blocksOfStory(flow.reviewer, story) as Block[];
+      const blocks = blocksOfStory(flow.reviewer, story);
       const operations = randomOperations(flow, blocks, pickerFor(flow, story));
       const applied = await coreBatchStep(
         flow,
@@ -681,7 +685,7 @@ const structureOf = (reviewer: Reviewer): string => {
   for (const found of featureIndex(reviewer).features.values()) {
     for (const feature of found) features.add(feature);
   }
-  const kinds = new Set((reviewer.getContent() as Block[]).map((block) => String(block.kind)));
+  const kinds = new Set(reviewer.getContent().map((block) => String(block.kind)));
   const changes = reviewer.getChanges();
   const changeTypes = new Set(changes.map((change) => String(change.type)));
   return [

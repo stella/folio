@@ -98,8 +98,8 @@ const CASES = [
     mutate: (formatting) => {
       formatting.numPrFromStyle = NUM_PR;
     },
-    preservesCapture: false,
-    emitsDirectNumbering: false,
+    preservesCapture: true,
+    emitsDirectNumbering: true,
   },
   {
     name: "style-sourced numbering plus spacing provenance",
@@ -114,6 +114,7 @@ const CASES = [
     name: "style-sourced numbering made direct",
     sourceNumbering: "style-sourced",
     mutate: (formatting) => {
+      formatting.numPr = NUM_PR;
       delete formatting.numPrFromStyle;
     },
     preservesCapture: false,
@@ -459,9 +460,9 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
       fromProseDoc(toProseDoc(parsed), parsed, { stylesheetSource: { type: "package" } }),
     );
 
-    expect(sourceParagraph.formatting?.numPr).toEqual(NUM_PR);
+    expect(sourceParagraph.formatting?.numPr).toBeUndefined();
     expect(sourceParagraph.formatting?.numPrFromStyle).toEqual(NUM_PR);
-    expect(restored.formatting?.numPr).toEqual(NUM_PR);
+    expect(restored.formatting?.numPr).toBeUndefined();
     expect(restored.formatting?.numPrFromStyle).toEqual(NUM_PR);
     expect(modelParagraphFormattingEmission(restored.formatting)).toEqual(
       modelParagraphFormattingEmission(sourceParagraph.formatting),

@@ -6,6 +6,7 @@
 // skills bridge fixtures.
 
 import { describe, expect, test } from "bun:test";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
@@ -37,7 +38,21 @@ const para = (
 ): Paragraph => ({
   type: "paragraph",
   content,
-  ...(extra?.styleId ? { formatting: { styleId: extra.styleId } } : {}),
+  ...(extra?.styleId || extra?.listRendering
+    ? {
+        formatting: {
+          ...(extra.styleId ? { styleId: extra.styleId } : {}),
+          ...(extra.listRendering
+            ? {
+                numPr: paragraphNumberingReference({
+                  numId: extra.listRendering.numId,
+                  ilvl: extra.listRendering.level,
+                }),
+              }
+            : {}),
+        },
+      }
+    : {}),
   ...(extra?.listRendering ? { listRendering: extra.listRendering } : {}),
   ...(extra?.paraId ? { paraId: extra.paraId } : {}),
 });

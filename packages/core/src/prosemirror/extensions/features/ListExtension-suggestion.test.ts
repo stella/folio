@@ -86,6 +86,7 @@ describe("ListExtension suggestion mode integration", () => {
     expect(propChange.info.author).toBe("Jane");
     expect(propChange.previousFormatting).toEqual({
       numPr: null,
+      numPrFromStyle: null,
       listIsBullet: null,
       listIsLegal: null,
       listNumFmt: null,

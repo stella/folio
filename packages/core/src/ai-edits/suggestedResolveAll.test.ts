@@ -29,14 +29,23 @@ const suggest = async (): Promise<FolioDocxReviewer> => {
   if (!anchor) {
     throw new Error("the fixture paragraph is missing");
   }
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode: "suggested",
-    operations: [
-      { id: "insert", type: "insertAfterBlock", blockId: anchor.id, text: "Suggested clause." },
-      { id: "replace", type: "replaceInBlock", blockId: anchor.id, find: "two", replace: "three" },
-    ],
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "suggested",
+      operations: [
+        { id: "insert", type: "insertAfterBlock", blockId: anchor.id, text: "Suggested clause." },
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId: anchor.id,
+          find: "two",
+          replace: "three",
+        },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.applied).toHaveLength(2);
   return reviewer;
 };
@@ -57,11 +66,14 @@ describe("resolving every suggestion headlessly", () => {
     if (!target) {
       throw new Error("the fixture paragraph is missing");
     }
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "suggested",
-      operations: [{ id: "delete", type: "deleteBlock", blockId: target.id }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [{ id: "delete", type: "deleteBlock", blockId: target.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied).toHaveLength(1);
     const saved = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
     expect(saved.getChanges()).toEqual([]);
@@ -79,19 +91,25 @@ describe("resolving every suggestion headlessly", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
     const target = reviewer.getContent().find(({ text }) => text === "Signed in two copies.");
     if (!target) throw new Error("fixture paragraph missing");
-    const split = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [{ id: "split", type: "splitBlock", blockId: target.id, offset: 10 }],
-    });
+    const split = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [{ id: "split", type: "splitBlock", blockId: target.id, offset: 10 }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(split.applied).toHaveLength(1);
     const firstHalf = reviewer.getContent().find(({ text }) => text === "Signed in ");
     if (!firstHalf) throw new Error("split paragraph missing");
-    const deletion = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "suggested",
-      operations: [{ id: "delete", type: "deleteBlock", blockId: firstHalf.id }],
-    });
+    const deletion = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [{ id: "delete", type: "deleteBlock", blockId: firstHalf.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(deletion.applied).toEqual([]);
     expect(deletion.skipped).toEqual([{ id: "delete", reason: "unsupportedMode" }]);
     expect(await savedTexts(reviewer)).toEqual(["First clause.", "Signed in ", "two copies."]);
@@ -127,27 +145,39 @@ describe("resolving every suggestion headlessly", () => {
     const first = reviewer.getContent().find(({ text }) => text === "First clause.");
     const last = reviewer.getContent().find(({ text }) => text === "Signed in two copies.");
     if (!first || !last) throw new Error("the fixture paragraphs are missing");
-    const tracked = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "tracked",
-          type: "replaceInBlock",
-          blockId: first.id,
-          find: "First",
-          replace: "Opening",
-        },
-      ],
-    });
+    const tracked = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "tracked",
+            type: "replaceInBlock",
+            blockId: first.id,
+            find: "First",
+            replace: "Opening",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(tracked.applied).toHaveLength(1);
-    const suggested = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "suggested",
-      operations: [
-        { id: "pending", type: "replaceInBlock", blockId: last.id, find: "two", replace: "three" },
-      ],
-    });
+    const suggested = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [
+          {
+            id: "pending",
+            type: "replaceInBlock",
+            blockId: last.id,
+            find: "two",
+            replace: "three",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(suggested.applied).toHaveLength(1);
 
     expect(reviewer.acceptAll()).toBe(2);
@@ -176,34 +206,40 @@ describe("resolving every suggestion headlessly", () => {
     const [first, last] = reviewer.getContent();
     if (!first || !last) throw new Error("fixture paragraphs missing");
     expect(
-      reviewer.applyDocumentOperations({
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "tracked",
+              type: "replaceInBlock",
+              blockId: last.id,
+              find: "every",
+              replace: "each",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).applied,
+    ).toHaveLength(1);
+    const result = reviewer.applyDocumentOperations(
+      {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
+        mode: "suggested",
         operations: [
           {
-            id: "tracked",
+            id: "pending",
             type: "replaceInBlock",
-            blockId: last.id,
-            find: "every",
-            replace: "each",
+            blockId: first.id,
+            find: "Delivery",
+            replace: "revised",
           },
+          { id: "delete", type: "deleteBlock", blockId: last.id },
         ],
-      }).applied,
-    ).toHaveLength(1);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "suggested",
-      operations: [
-        {
-          id: "pending",
-          type: "replaceInBlock",
-          blockId: first.id,
-          find: "Delivery",
-          replace: "revised",
-        },
-        { id: "delete", type: "deleteBlock", blockId: last.id },
-      ],
-    });
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied.map(({ id }) => id)).toEqual(["pending"]);
     expect(result.skipped).toEqual([{ id: "delete", reason: "unsupportedMode" }]);
     reviewer.acceptAll();
@@ -218,34 +254,40 @@ describe("resolving every suggestion headlessly", () => {
     const [first, last] = reviewer.getContent();
     if (!first || !last) throw new Error("fixture paragraphs missing");
     expect(
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "tracked",
-            type: "replaceInBlock",
-            blockId: first.id,
-            find: "First",
-            replace: "Opening",
-          },
-        ],
-      }).applied,
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "tracked",
+              type: "replaceInBlock",
+              blockId: first.id,
+              find: "First",
+              replace: "Opening",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).applied,
     ).toHaveLength(1);
     expect(
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "suggested",
-        operations: [
-          {
-            id: "pending",
-            type: "replaceInBlock",
-            blockId: last.id,
-            find: "two",
-            replace: "three",
-          },
-        ],
-      }).applied,
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "suggested",
+          operations: [
+            {
+              id: "pending",
+              type: "replaceInBlock",
+              blockId: last.id,
+              find: "two",
+              replace: "three",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).applied,
     ).toHaveLength(1);
     const registry: unknown = Reflect.get(reviewer, "pendingSuggestions");
     if (
@@ -271,19 +313,22 @@ describe("resolving every suggestion headlessly", () => {
     const first = reviewer.getContent()[0];
     if (!first) throw new Error("fixture paragraph missing");
     expect(
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "tracked",
-            type: "replaceInBlock",
-            blockId: first.id,
-            find: "First",
-            replace: "Opening",
-          },
-        ],
-      }).applied,
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "tracked",
+              type: "replaceInBlock",
+              blockId: first.id,
+              find: "First",
+              replace: "Opening",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).applied,
     ).toHaveLength(1);
     expect(reviewer.acceptAll()).toBe(2);
     const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
@@ -307,34 +352,40 @@ describe("resolving every suggestion headlessly", () => {
     const [first, last] = reviewer.getContent();
     if (!first || !last) throw new Error("fixture paragraphs missing");
     expect(
-      reviewer.applyDocumentOperations({
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "tracked",
+              type: "replaceInBlock",
+              blockId: first.id,
+              find: "First",
+              replace: "Opening",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).applied,
+    ).toHaveLength(1);
+    const comment = reviewer.applyDocumentOperations(
+      {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
+        mode: "suggested",
         operations: [
           {
-            id: "tracked",
+            id: "pending-comment",
             type: "replaceInBlock",
-            blockId: first.id,
-            find: "First",
-            replace: "Opening",
+            blockId: last.id,
+            find: "two",
+            replace: "three",
+            comment: { text: "Review this." },
           },
         ],
-      }).applied,
-    ).toHaveLength(1);
-    const comment = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "suggested",
-      operations: [
-        {
-          id: "pending-comment",
-          type: "replaceInBlock",
-          blockId: last.id,
-          find: "two",
-          replace: "three",
-          comment: { text: "Review this." },
-        },
-      ],
-    });
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(comment.skipped).toEqual([]);
     expect(comment.applied).toHaveLength(1);
     const commentId = comment.applied.at(0)?.commentId;
@@ -357,26 +408,32 @@ describe("resolving every suggestion headlessly", () => {
     // Accepting the merge removes the first paragraph's mark, and the
     // paragraph left is the one whose mark stays: the first is gone.
     expect(
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "suggested",
-        operations: [
-          {
-            id: "pending",
-            type: "replaceInBlock",
-            blockId: first.id,
-            find: "First",
-            replace: "Opening",
-          },
-        ],
-      }).applied,
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "suggested",
+          operations: [
+            {
+              id: "pending",
+              type: "replaceInBlock",
+              blockId: first.id,
+              find: "First",
+              replace: "Opening",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).applied,
     ).toHaveLength(1);
     expect(
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: first.id }],
-      }).applied,
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: first.id }],
+        },
+        { undefinedReferences: "refuse" },
+      ).applied,
     ).toHaveLength(1);
     expect(reviewer.acceptAll()).toBeGreaterThan(0);
     expect(reviewer.exportPendingSuggestions()).toEqual([]);
@@ -387,21 +444,27 @@ describe("resolving every suggestion headlessly", () => {
     const first = reviewer.getContent()[0];
     if (!first) throw new Error("the fixture paragraph is missing");
     expect(
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          { id: "tracked", type: "insertAfterBlock", blockId: first.id, text: "Added." },
-        ],
-      }).applied,
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            { id: "tracked", type: "insertAfterBlock", blockId: first.id, text: "Added." },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).applied,
     ).toHaveLength(1);
     const added = reviewer.getContent().find(({ text }) => text === "Added.");
     if (!added) throw new Error("the tracked insertion is missing");
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "suggested",
-      operations: [{ id: "pending", type: "deleteBlock", blockId: added.id }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [{ id: "pending", type: "deleteBlock", blockId: added.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied).toEqual([]);
     expect(result.skipped).toEqual([{ id: "pending", reason: "unsupportedMode" }]);
     reviewer.acceptAll();
@@ -417,11 +480,14 @@ describe("resolving every suggestion headlessly", () => {
     const first = writer.getContent()[0];
     if (!first) throw new Error("fixture paragraph missing");
     expect(
-      writer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [{ id: "tracked", type: "deleteBlock", blockId: first.id }],
-      }).applied,
+      writer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [{ id: "tracked", type: "deleteBlock", blockId: first.id }],
+        },
+        { undefinedReferences: "refuse" },
+      ).applied,
     ).toHaveLength(1);
     const bytes = await writer.toBuffer();
     for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const) {
@@ -429,11 +495,14 @@ describe("resolving every suggestion headlessly", () => {
       const staged = await FolioDocxReviewer.fromBuffer(bytes, { author: "AI" });
       const blank = staged.getContent().find(({ text }) => text === "");
       if (!blank) throw new Error("deleted paragraph missing");
-      const result = staged.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "suggested",
-        operations: [{ id: "pending", type, blockId: blank.id, text: "Added." }],
-      });
+      const result = staged.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "suggested",
+          operations: [{ id: "pending", type, blockId: blank.id, text: "Added." }],
+        },
+        { undefinedReferences: "refuse" },
+      );
       expect(result.applied).toEqual([]);
       expect(result.skipped).toEqual([{ id: "pending", reason: "pendingDeletion" }]);
       const beforeBulk = await FolioDocxReviewer.fromBuffer(await staged.toBuffer());
@@ -461,20 +530,23 @@ describe("resolving every suggestion headlessly", () => {
     const payment = block("Payment happens");
     const insured = block("Goods are insured");
     if (!opening || !payment || !insured) throw new Error("fixture block missing");
-    const tracked = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        { id: "t1", type: "replaceInBlock", blockId: opening.id, find: "every", replace: "each" },
-        {
-          id: "t2",
-          type: "insertAfterBlock",
-          blockId: payment.id,
-          text: "Stages are invoiced separately.",
-        },
-        { id: "t3", type: "deleteBlock", blockId: insured.id },
-      ],
-    });
+    const tracked = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          { id: "t1", type: "replaceInBlock", blockId: opening.id, find: "every", replace: "each" },
+          {
+            id: "t2",
+            type: "insertAfterBlock",
+            blockId: payment.id,
+            text: "Stages are invoiced separately.",
+          },
+          { id: "t3", type: "deleteBlock", blockId: insured.id },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(tracked.applied).toHaveLength(3);
     const trackedReopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
       author: "AI",
@@ -488,20 +560,23 @@ describe("resolving every suggestion headlessly", () => {
     ).getContent();
     const heading = trackedReopened.getContent()[0];
     if (!heading) throw new Error("heading missing");
-    const result = trackedReopened.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "suggested",
-      operations: [
-        {
-          id: "replace",
-          type: "replaceInBlock",
-          blockId: heading.id,
-          find: "Delivery",
-          replace: "revised",
-        },
-        { id: "delete", type: "deleteBlock", blockId: heading.id },
-      ],
-    });
+    const result = trackedReopened.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [
+          {
+            id: "replace",
+            type: "replaceInBlock",
+            blockId: heading.id,
+            find: "Delivery",
+            replace: "revised",
+          },
+          { id: "delete", type: "deleteBlock", blockId: heading.id },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied.map(({ id }) => id)).toEqual(["replace"]);
     expect(result.skipped.map(({ id }) => id)).toEqual(["delete"]);
     trackedReopened.acceptAll();

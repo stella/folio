@@ -49,7 +49,7 @@ const stage = async (text: string, replacement: string) => {
         replace: replacement,
       },
     ],
-    { mode: "suggested" },
+    { undefinedReferences: "refuse", mode: "suggested" },
   );
   expect(result.applied).toHaveLength(1);
   const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
@@ -120,7 +120,7 @@ describe("host-persisted pending suggestions", () => {
     });
     const result = reviewer.applyOperations(
       [{ id: "range-proposal", type: "replaceRange", range, replace: "Revised" }],
-      { mode: "suggested" },
+      { undefinedReferences: "refuse", mode: "suggested" },
     );
     expect(result.applied).toHaveLength(1);
     const record = reviewer.exportPendingSuggestions().at(0);
@@ -145,7 +145,7 @@ describe("host-persisted pending suggestions", () => {
           replace: "Revised",
         },
       ],
-      { mode: "suggested" },
+      { undefinedReferences: "refuse", mode: "suggested" },
     );
     expect(result.applied).toHaveLength(1);
     const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
@@ -168,7 +168,7 @@ describe("host-persisted pending suggestions", () => {
     ]) {
       const result = reviewer.applyOperations(
         [{ id, type: "replaceInBlock", blockId: SECOND_ID, find, replace }],
-        { mode: "suggested" },
+        { undefinedReferences: "refuse", mode: "suggested" },
       );
       expect(result.applied).toHaveLength(1);
     }
@@ -205,7 +205,7 @@ describe("host-persisted pending suggestions", () => {
             comment: { text: "Review this edit." },
           },
         ],
-        { mode: "suggested" },
+        { undefinedReferences: "refuse", mode: "suggested" },
       ).applied,
     ).toHaveLength(1);
     const records = reviewer.exportPendingSuggestions();
@@ -250,7 +250,7 @@ describe("host-persisted pending suggestions", () => {
     expect(
       changed.applyOperations(
         [{ id: "direct-format", type: "formatRange", range, formatting: { bold: true } }],
-        { mode: "direct" },
+        { undefinedReferences: "refuse", mode: "direct" },
       ).applied,
     ).toHaveLength(1);
     expect(changed.loadPendingSuggestions(records)).toEqual([
@@ -269,7 +269,7 @@ describe("host-persisted pending suggestions", () => {
     expect(
       reviewer.applyOperations(
         [{ id: "baseline-format", type: "formatRange", range, formatting: { bold: true } }],
-        { mode: "direct" },
+        { undefinedReferences: "refuse", mode: "direct" },
       ).applied,
     ).toHaveLength(1);
     expect(
@@ -283,7 +283,7 @@ describe("host-persisted pending suggestions", () => {
             replace: "section",
           },
         ],
-        { mode: "suggested" },
+        { undefinedReferences: "refuse", mode: "suggested" },
       ).applied,
     ).toHaveLength(1);
     const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
@@ -306,7 +306,7 @@ describe("host-persisted pending suggestions", () => {
             replace: "Opening",
           },
         ],
-        { mode: "direct" },
+        { undefinedReferences: "refuse", mode: "direct" },
       ).applied,
     ).toHaveLength(1);
     const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
@@ -338,6 +338,7 @@ describe("host-persisted pending suggestions", () => {
     const snapshot = reviewer.snapshotStory(story);
     expect(snapshot).not.toBeNull();
     const result = reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,

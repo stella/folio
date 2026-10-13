@@ -24,6 +24,7 @@ const CHANGE_INFO = { id: 42, author: "Reviewer", date: "2026-09-01T00:00:00Z" }
 const SCENARIOS = [
   { type: "style-numbering-full" },
   { type: "style-numbering-partial" },
+  { type: "style-numbering-level-only" },
   { type: "direct-numbering-full" },
   { type: "direct-numbering-zero-left" },
   { type: "direct-numbering-direct-first-line" },
@@ -52,6 +53,8 @@ const currentNumberingForScenario = ({ type }: Scenario) => {
       return reference(2);
     case "resolver-free-style-numbering":
       return { kind: "levelOnly", ilvl: 0 } as const;
+    case "style-numbering-level-only":
+      return reference(2);
     default:
       return undefined;
   }
@@ -61,6 +64,7 @@ const makeDocument = (scenario: Scenario, indents: Indents): Document => {
   const styleOwnsNumbering =
     scenario.type === "style-numbering-full" ||
     scenario.type === "style-numbering-partial" ||
+    scenario.type === "style-numbering-level-only" ||
     scenario.type === "resolver-free-style-numbering";
   const styleFormatting: ParagraphFormatting = {
     indentLeft:
@@ -75,7 +79,8 @@ const makeDocument = (scenario: Scenario, indents: Indents): Document => {
   const currentStyle =
     scenario.type === "resolver-free-remove-numbering" ||
     scenario.type === "resolver-free-change-numbering" ||
-    scenario.type === "resolver-free-style-numbering"
+    scenario.type === "resolver-free-style-numbering" ||
+    scenario.type === "style-numbering-level-only"
       ? "Styled"
       : "Current";
 
@@ -98,6 +103,9 @@ const makeDocument = (scenario: Scenario, indents: Indents): Document => {
         numPr: reference(1),
         indentFirstLine: indents.styleFirstLine,
       };
+      break;
+    case "style-numbering-level-only":
+      previousFormatting = { styleId: "Styled", numPr: { kind: "levelOnly", ilvl: 0 } };
       break;
     case "resolver-free-remove-numbering":
       previousFormatting = { styleId: "Styled" };
@@ -217,6 +225,14 @@ const resolveAndRoundtrip = async (scenario: Scenario, indents: Indents): Promis
 
   switch (scenario.type) {
     case "style-numbering-full":
+      expect(reopenedAttrs.indentLeft).toBe(indents.styleLeft);
+      expect(reopenedAttrs.indentFirstLine).toBe(indents.styleFirstLine);
+      break;
+    case "style-numbering-level-only":
+      expect(restoredAttrs.numPr).toEqual({ kind: "levelOnly", ilvl: 0 });
+      expect(restoredAttrs.numPrFromStyle).toEqual(reference(1));
+      expect(reopenedParagraph.formatting?.numPr).toEqual({ kind: "levelOnly", ilvl: 0 });
+      expect(reopenedParagraph.formatting?.numPrFromStyle).toEqual(reference(1));
       expect(reopenedAttrs.indentLeft).toBe(indents.styleLeft);
       expect(reopenedAttrs.indentFirstLine).toBe(indents.styleFirstLine);
       break;

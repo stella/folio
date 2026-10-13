@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 1026397197,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1338526882,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Agreement party supplier invoice term.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "accept all",
+      "seed": 1714597764
+    },
+    {
+      "action": "story batch",
+      "seed": 4114059415,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "title": "accepted list insertion preserves paragraph mark revisions through a merge"
+}

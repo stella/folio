@@ -38,6 +38,7 @@ import { FolioPendingSuggestionRecord } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
+import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
 import { ForwardRefExoticComponent } from 'react';
 import { HostShortcut } from '@stll/folio-core/managers/editorShortcuts';
 import { JSX } from 'react';
@@ -144,6 +145,7 @@ export type DocxEditorRef = {
     applyDocumentOperations: (options: DocxEditorApplyDocumentOperationsOptions) => FolioDocumentOperationResult;
     undoDocumentOperations: (undoHandle: FolioDocumentOperationUndoHandle) => FolioDocumentOperationUndoResult;
     applyAIEditOperations: (options: {
+        undefinedReferences: FolioUndefinedReferencePolicy;
         snapshot: FolioAIEditSnapshot;
         operations: FolioAIEditOperation[];
         mode?: FolioAIEditApplyMode;

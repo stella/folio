@@ -455,11 +455,13 @@ describe("document operation contract", () => {
           id: "numbering",
           type: "setBlockParagraphProperties",
           blockId: "paragraph-2",
-          properties: { numbering: { numId: 5, level: 0 } },
+          properties: { numbering: { kind: "reference", numId: 5, ilvl: 0 } },
         },
       ],
     });
-    expect(batch.operations).toMatchObject([{ properties: { numbering: { numId: 5, level: 0 } } }]);
+    expect(batch.operations).toMatchObject([
+      { properties: { numbering: { kind: "reference", numId: 5, ilvl: 0 } } },
+    ]);
   });
 
   test("preserves inline line breaks only when explicitly requested", () => {
@@ -646,7 +648,7 @@ describe("document operation contract", () => {
     ).toThrow(`$.operations[0].properties.${suffix}`);
   });
 
-  test("rejects unsafe integers through the shared non-negative integer boundary", () => {
+  test("rejects the removed listLevel patch field", () => {
     expect(() =>
       parseFolioDocumentOperationBatch({
         version: 1,

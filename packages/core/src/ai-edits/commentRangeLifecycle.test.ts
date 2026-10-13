@@ -102,7 +102,7 @@ const commentOnTrackedInsertion = async (): Promise<FolioDocxReviewer> => {
   const [original] = reviewer.snapshot().blocks;
   const inserted = reviewer.applyOperations(
     [{ id: "insert", type: "insertAfterBlock", blockId: original!.id, text: "Temporary." }],
-    { mode: "tracked-changes" },
+    { undefinedReferences: "refuse", mode: "tracked-changes" },
   );
   expect(inserted.applied).toHaveLength(1);
   const target = reviewer.snapshot().blocks.find((block) => block.text === "Temporary.");
@@ -115,7 +115,7 @@ const commentOnTrackedInsertion = async (): Promise<FolioDocxReviewer> => {
         comment: { text: "On temporary text." },
       },
     ],
-    { mode: "direct" },
+    { undefinedReferences: "refuse", mode: "direct" },
   );
   expect(commented.applied).toHaveLength(1);
   expect(threads(reviewer.getComments()).map(({ anchoredText }) => anchoredText)).toEqual([
@@ -196,6 +196,7 @@ describe("a comment whose anchored content is removed goes with it", () => {
     const reviewer = await twoParagraphs();
     const kept = reviewer.snapshot().blocks.find((block) => block.text === "Keep.");
     reviewer.applyOperations([{ id: "delete", type: "deleteBlock", blockId: kept!.id }], {
+      undefinedReferences: "refuse",
       mode: "direct",
     });
     expect(reviewer.getComments()).toEqual([]);
@@ -208,6 +209,7 @@ describe("a comment whose anchored content is removed goes with it", () => {
     const reviewer = await twoParagraphs();
     const kept = reviewer.snapshot().blocks.find((block) => block.text === "Keep.");
     reviewer.applyOperations([{ id: "delete", type: "deleteBlock", blockId: kept!.id }], {
+      undefinedReferences: "refuse",
       mode: "tracked-changes",
     });
     expect(threads(reviewer.getComments())).toEqual([SURVIVOR]);
@@ -231,7 +233,7 @@ describe("a comment whose anchored content is removed goes with it", () => {
     const [first] = reviewer.snapshot().blocks;
     reviewer.applyOperations(
       [{ id: "insert", type: "insertAfterBlock", blockId: first!.id, text: "More." }],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     const expected = [{ id: 4, text: "Anchored nowhere.", anchoredText: "", replies: [] }];
     expect(threads(reviewer.getComments())).toEqual(expected);
@@ -278,7 +280,7 @@ describe("a comment spanning a paragraph and a table", () => {
         const target = reviewer.snapshot().blocks.find((block) => block.text === after);
         const receipt = reviewer.applyOperations(
           [{ id: "insert", type: "insertAfterBlock", blockId: target!.id, text: "Inserted." }],
-          { mode },
+          { undefinedReferences: "refuse", mode },
         );
         expect(receipt.applied).toHaveLength(1);
 

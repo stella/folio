@@ -312,7 +312,7 @@ export class CanonicalPublicOperations {
         skip(operation.id, "unsupportedMode", "Canonical pending suggestions are unavailable.");
         continue;
       }
-      if (options.tableTemplates !== undefined || options.undefinedStyles === "keep") {
+      if (options.tableTemplates !== undefined || options.undefinedReferences === "keep") {
         refusals.set(operation.id, {
           gap: CANONICAL_GAP.publicUnsupportedInline,
         });

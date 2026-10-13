@@ -291,15 +291,18 @@ describe("referenced comparison style resources", () => {
     );
     const block = reviewer.snapshot().blocks.at(0);
     if (!block) throw new Error("Expected a source block");
-    const result = reviewer.applyOperations([
-      {
-        id: "style-context",
-        type: "replaceBlock",
-        blockId: block.id,
-        text: "Replacement",
-        styleId: "Target",
-      },
-    ]);
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: "style-context",
+          type: "replaceBlock",
+          blockId: block.id,
+          text: "Replacement",
+          styleId: "Target",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     expect(result.skipped).toEqual([]);
     const pending = await reviewer.toBuffer();
     expect(await documentXml(pending)).toContain("<w:rPrChange");

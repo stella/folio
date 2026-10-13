@@ -47,7 +47,9 @@ const edited = async (bytes: Uint8Array, seed: number): Promise<Uint8Array> => {
       types,
     });
     if (operation) {
-      reviewer.applyDocumentOperations(coreBatch([operation], "direct") as never);
+      reviewer.applyDocumentOperations(coreBatch([operation], "direct") as never, {
+        undefinedReferences: "refuse",
+      });
     }
   }
   return new Uint8Array(await reviewer.toBuffer());

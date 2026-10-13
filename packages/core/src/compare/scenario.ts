@@ -24,7 +24,11 @@ import { panic, Result } from "better-result";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAITextRangeHandle } from "../ai-edits/snapshot";
-import type { FolioAIBlock, FolioAIEditOperation } from "../ai-edits/types";
+import type {
+  FolioAIBlock,
+  FolioAIBlockParagraphProperties,
+  FolioAIEditOperation,
+} from "../ai-edits/types";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import type { FolioContentFormatRange } from "./content-types";
 import {
@@ -107,6 +111,21 @@ type StepPlan =
 const blockAt = (blocks: readonly FolioAIBlock[], index: number): FolioAIBlock | undefined =>
   Number.isInteger(index) && index >= 0 ? blocks.at(index) : undefined;
 
+const statedNumberingOf = (block: FolioAIBlock): FolioAIBlockParagraphProperties["numbering"] => {
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return block.statedNumbering;
+    case "diagnostic":
+      return undefined;
+    default: {
+      const unreachable: never = block;
+      return panic("Unhandled scenario block kind", { block: unreachable });
+    }
+  }
+};
+
 type PlanStepOptions = {
   step: EditScriptStep;
   blocks: readonly FolioAIBlock[];
@@ -152,6 +171,7 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
       if (!destination || destination.id === block.id) {
         return { status: "unresolved", reason: "block-out-of-range" };
       }
+      const statedNumbering = statedNumberingOf(block);
       return {
         status: "planned",
         operations: [
@@ -162,7 +182,7 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
             blockId: destination.id,
             text: block.text,
             styleId: block.styleId ?? null,
-            listLevel: block.listLevel ?? null,
+            ...(statedNumbering !== undefined && { numbering: statedNumbering }),
           },
         ],
       };
@@ -311,7 +331,7 @@ export const applyEditScript = async (
     // gave it, and a base may name one it never defines (a dangling
     // `w:pStyle`). Refusing it would drop the insertion while the paired
     // deletion lands, leaving a target the script no longer describes.
-    undefinedStyles: "keep",
+    undefinedReferences: "keep",
   });
   const skippedIds = new Set(skipped.map(({ id }) => id));
   const applied: EditScriptStep[] = [];

@@ -70,7 +70,11 @@ test("comparison stages a new story's inherited formatting from another package"
   const destination = await FolioDocxReviewer.fromBuffer(await createDocx(createEmptyDocument()));
   const access = getFolioDocxComparisonAccess(destination);
   expect(await access.createComparisonHeaderFooter(source, sourceHandle)).not.toBeNull();
-  const result = access.stageTargetStyles(source, [], [source.snapshotStory(sourceHandle)]);
+  const result = access.stageTargetStyles({
+    source,
+    snapshots: [],
+    importedHeaderFooterSnapshots: [source.snapshotStory(sourceHandle)],
+  });
   expect(result.status).toBe("imported");
   expect(destination.listStories()).toHaveLength(2);
 });

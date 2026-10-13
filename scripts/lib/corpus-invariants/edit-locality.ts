@@ -282,7 +282,10 @@ export const runEditLocalityInvariant = async ({
 
   const application = await timeStage(timings, "apply", () =>
     Result.try(() =>
-      reviewer.applyOperations([insertOneCharacterOperation(target)], { mode: "direct" }),
+      reviewer.applyOperations([insertOneCharacterOperation(target)], {
+        undefinedReferences: "refuse",
+        mode: "direct",
+      }),
     ),
   );
   if (application.isErr()) {

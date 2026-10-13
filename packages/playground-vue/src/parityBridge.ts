@@ -28,7 +28,7 @@ export function buildParityBridge(
       const results = batches.map((batch) => {
         const snapshot = ref.createAIEditSnapshot();
         if (!snapshot) throw new Error("Generated flow requires a snapshot");
-        return ref.applyDocumentOperations({ snapshot, batch });
+        return ref.applyDocumentOperations({ undefinedReferences: "refuse", snapshot, batch });
       });
       const saved = await ref.save();
       if (!saved) throw new Error("Generated flow did not save");
@@ -258,6 +258,7 @@ export function buildParityBridge(
         return { exported: 0, restaged: 0, stale: 0, active: 0, version: null };
       }
       const result = ref.applyAIEditOperations({
+        undefinedReferences: "refuse",
         snapshot,
         mode: "suggested",
         operations: [
@@ -338,6 +339,7 @@ export function buildParityBridge(
         return false;
       }
       const first = ref.applyDocumentOperations({
+        undefinedReferences: "refuse",
         snapshot: firstSnapshot,
         batch: {
           version: 1,
@@ -358,6 +360,7 @@ export function buildParityBridge(
         return false;
       }
       const second = ref.applyDocumentOperations({
+        undefinedReferences: "refuse",
         snapshot: secondSnapshot,
         batch: {
           version: 1,

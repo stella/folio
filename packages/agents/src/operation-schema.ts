@@ -166,12 +166,6 @@ export const FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA = {
     "skips with `missingStyle`. null clears the direct style.",
 } as const satisfies FolioJsonSchema;
 
-export const FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA = {
-  oneOf: [{ type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER }, { type: "null" }],
-  description:
-    "`w:numPr/w:ilvl`, zero-based; a number retains the paragraph or anchor's numbering instance (`numId`), while null removes paragraph numbering unless a concrete numbering instance is supplied, in which case it omits the direct level.",
-} as const satisfies FolioJsonSchema;
-
 /** Direct `w:outlineLvl`, or null to restore style inheritance. */
 export const FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA: FolioJsonSchema = {
   oneOf: [
@@ -238,36 +232,59 @@ export const FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA = {
     "`allParagraphs` formats every paragraph alike, for several list items in one operation.",
 } as const satisfies FolioJsonSchema;
 
-export const FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA = {
+export const FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA = {
   oneOf: [
     {
       type: "object",
       properties: {
-        numId: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
-        level: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+        kind: { type: "string", enum: ["none"] },
       },
-      required: ["numId", "level"],
+      required: ["kind"],
       additionalProperties: false,
     },
     {
       type: "object",
       properties: {
-        start: { type: "string", enum: ["new"] },
-        kind: { type: "string", enum: ["numbered", "bullet"] },
-        level: { type: "integer", minimum: 0, maximum: 8 },
+        kind: { type: "string", enum: ["inherit"] },
       },
-      required: ["start", "kind"],
+      required: ["kind"],
       additionalProperties: false,
     },
-    { type: "null" },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["levelOnly"] },
+        ilvl: { type: "integer", minimum: 0, maximum: 8 },
+      },
+      required: ["kind", "ilvl"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["reference"] },
+        numId: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+        ilvl: { type: "integer", minimum: 0, maximum: 8 },
+      },
+      required: ["kind", "numId"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["newList"] },
+        format: { type: "string", enum: ["bullet", "numbered"] },
+        level: { type: "integer", minimum: 0, maximum: 8 },
+      },
+      required: ["kind", "format"],
+      additionalProperties: false,
+    },
   ],
   description:
-    "An existing numbering instance and level (`numId` from a prior read; it must name an " +
-    "instance the document defines, one a list block read from it carries, or the operation " +
-    "skips with `missingNumbering`); or " +
-    '`{ start: "new", kind: "numbered" | "bullet", level? }` to start a new list, numbered from ' +
-    "the first item, with every paragraph this operation numbers in it (separate operations " +
-    "start separate lists; works in a document with no lists); null removes paragraph numbering.",
+    "A paragraph numbering request: `none` cancels numbering, `inherit` removes the direct " +
+    "numbering reference, `levelOnly` sets only `w:ilvl`, `reference` selects a defined " +
+    "numbering instance with an optional level override, and `newList` starts a list with " +
+    "the requested format.",
 } as const satisfies FolioJsonSchema;
 
 export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA = {
@@ -347,8 +364,7 @@ export const FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA = {
   properties: {
     styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
     outlineLevel: FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
-    listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
-    numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+    numbering: FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA,
     indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
     alignment: {
       oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
@@ -453,7 +469,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description:
             "The paragraph text to insert. A line break splits this into consecutive " +
             "paragraphs at the same anchor instead of one paragraph with embedded newlines. " +
-            "By default only the first paragraph gets `styleId` / `listLevel` / `numbering` / " +
+            "By default only the first paragraph gets `styleId` / `numbering` / " +
             "`alignment` / `spacing` / `inheritFormatting` and later ones use body formatting; " +
             'set `formattingScope: "allParagraphs"` to format every paragraph alike, for ' +
             "example several list items. Prefer one paragraph per operation otherwise.",
@@ -468,7 +484,6 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         },
         styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
         outlineLevel: FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
-        listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
         alignment: {
           oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
           description: "Direct paragraph alignment; null restores style inheritance.",
@@ -477,7 +492,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
         lineBreakMode: { type: "string", enum: ["paragraph", "inline"] },
         formattingScope: FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA,
-        numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+        numbering: FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA,
         hardPageBreak: FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
         moveId: {
           type: "string",
@@ -505,7 +520,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description:
             "The paragraph text to insert. A line break splits this into consecutive " +
             "paragraphs at the same anchor instead of one paragraph with embedded newlines. " +
-            "By default only the first paragraph gets `styleId` / `listLevel` / `numbering` / " +
+            "By default only the first paragraph gets `styleId` / `numbering` / " +
             "`alignment` / `spacing` / `inheritFormatting` and later ones use body formatting; " +
             'set `formattingScope: "allParagraphs"` to format every paragraph alike, for ' +
             "example several list items. Prefer one paragraph per operation otherwise.",
@@ -520,7 +535,6 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         },
         styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
         outlineLevel: FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
-        listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
         alignment: {
           oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
           description: "Direct paragraph alignment; null restores style inheritance.",
@@ -529,7 +543,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
         lineBreakMode: { type: "string", enum: ["paragraph", "inline"] },
         formattingScope: FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA,
-        numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+        numbering: FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA,
         hardPageBreak: FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
         moveId: {
           type: "string",

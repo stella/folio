@@ -1,0 +1,10 @@
+{
+  "accept and reject preserve style-only numbering across colliding definitions": [
+    {
+      "seed": 1256362001,
+      "path": "0",
+      "note": "Inherited style numbering must consume the numbering collision map before style import; ordering ablation loses the target reference.",
+      "date": "2026-10-10"
+    }
+  ]
+}

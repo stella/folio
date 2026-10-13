@@ -15,8 +15,9 @@
           "blockId": "5E88C024",
           "text": "Supplier notice delivery.",
           "numbering": {
+            "kind": "reference",
             "numId": 5,
-            "level": 1
+            "ilvl": 1
           }
         }
       ]

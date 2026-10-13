@@ -28,11 +28,14 @@ const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
 };
 
 const deleteBlock = (reviewer: FolioDocxReviewer, text: string, mode: FolioAIEditApplyMode) =>
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: [{ id: "delete", type: "deleteBlock", blockId: blockId(reviewer, text) }],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [{ id: "delete", type: "deleteBlock", blockId: blockId(reviewer, text) }],
+    },
+    { undefinedReferences: "refuse" },
+  );
 
 const documentXml = async (bytes: ArrayBuffer): Promise<string> => {
   const xml = await (await JSZip.loadAsync(bytes)).file("word/document.xml")?.async("string");
@@ -108,18 +111,21 @@ describe("deleting the paragraph that ends a section", () => {
     const reviewer = await open(await buildSectionsDocx());
     deleteBlock(reviewer, SECTIONS_FIXTURE_TEXT.oneCloses, "direct");
 
-    const later = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        {
-          id: "insert",
-          type: "insertBeforeBlock",
-          blockId: blockId(reviewer, SECTIONS_FIXTURE_TEXT.oneOpens),
-          text: "Lead.",
-        },
-      ],
-    });
+    const later = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "insert",
+            type: "insertBeforeBlock",
+            blockId: blockId(reviewer, SECTIONS_FIXTURE_TEXT.oneOpens),
+            text: "Lead.",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(later.applied).toHaveLength(1);
 
     const reopened = await open(await reviewer.toBuffer());
@@ -142,11 +148,14 @@ describe("deleting the paragraph that ends a section", () => {
 describe("merging across the paragraph that ends a section", () => {
   const merge = async (text: string) => {
     const reviewer = await open(await buildSectionsDocx());
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: blockId(reviewer, text) }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: blockId(reviewer, text) }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied).toHaveLength(1);
     return sectionsOf(await open(await reviewer.toBuffer()));
   };

@@ -16,7 +16,7 @@ import * as Y from "yjs";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
-import type { FolioAIBlock } from "../../ai-edits/types";
+import type { FolioAIBlock, FolioAIParagraphBlock } from "../../ai-edits/types";
 import { parseDocx } from "../../docx/parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../../docx/rezip";
 import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
@@ -53,7 +53,11 @@ const AUTHOR = "Reviewer";
 const DATE = "2026-09-09T00:00:00.000Z";
 const HEADER_RELATIONSHIP_ID = "rIdBulkResolutionHeader";
 
-const persistedBlockProjection = (block: FolioAIBlock): Omit<FolioAIBlock, "idStability"> => {
+type PersistedBlock =
+  | Omit<FolioAIParagraphBlock, "idStability">
+  | Omit<Extract<FolioAIBlock, { kind: "diagnostic" }>, "idStability">;
+
+const persistedBlockProjection = (block: FolioAIBlock): PersistedBlock => {
   const persisted = { ...block };
   delete persisted.idStability;
   return persisted;

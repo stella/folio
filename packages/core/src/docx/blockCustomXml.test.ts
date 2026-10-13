@@ -157,7 +157,7 @@ describe("block-level custom XML", () => {
           replace: "Revised",
         },
       ],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     expect(applied.skipped).toEqual([]);
 

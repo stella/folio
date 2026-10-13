@@ -53,11 +53,14 @@ const handle = (
 });
 
 const applyOne = (reviewer: FolioDocxReviewer, mode: Mode, operation: FolioDocumentOperation) =>
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: [operation],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [operation],
+    },
+    { undefinedReferences: "refuse" },
+  );
 
 const settled = (reviewer: FolioDocxReviewer, mode: Mode) =>
   mode === "direct" ? reopened(reviewer) : reopenedAccepted(reviewer);

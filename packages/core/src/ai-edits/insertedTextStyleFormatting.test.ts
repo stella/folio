@@ -31,13 +31,16 @@ const insertedRuns = async (
     { author: "AI" },
   );
   const blockId = reviewer.getContent().find((block) => block.text === "Agreement")?.id;
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: [
-      { id: "op", type: "insertAfterBlock", blockId, text, ...(styleId && { styleId }) } as never,
-    ],
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [
+        { id: "op", type: "insertAfterBlock", blockId, text, ...(styleId && { styleId }) } as never,
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
   expect(result.skipped).toEqual([]);
   if (mode !== "direct") reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());

@@ -42,7 +42,7 @@ describe("selective save with an aliased markup-compatibility prefix", () => {
       if (!target) throw new Error("Target paragraph missing");
       const result = reviewer.applyOperations(
         [{ id: "edit", type: "replaceInBlock", blockId: target.id, find: "Beta", replace: "Beto" }],
-        { mode: "direct" },
+        { undefinedReferences: "refuse", mode: "direct" },
       );
       expect(result.applied).toHaveLength(1);
 

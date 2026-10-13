@@ -68,7 +68,7 @@ describe("comparison paragraph restyles", () => {
           properties: { styleId: "Heading1" },
         },
       ],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     expect(applied.skipped).toEqual([]);
     await expectVerifiedRestyle(base, await reviewer.toBuffer());

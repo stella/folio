@@ -33,19 +33,22 @@ describe("a batch that removes a block and then formats it", () => {
     if (!second) {
       throw new Error("the fixture paragraph is missing");
     }
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        { id: "delete", type: "deleteBlock", blockId: second.id },
-        {
-          id: "center",
-          type: "setBlockParagraphProperties",
-          blockId: second.id,
-          properties: { alignment: "center" },
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          { id: "delete", type: "deleteBlock", blockId: second.id },
+          {
+            id: "center",
+            type: "setBlockParagraphProperties",
+            blockId: second.id,
+            properties: { alignment: "center" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.applied.map(({ id }) => id)).toEqual(["delete"]);
     expect(result.skipped).toEqual([
@@ -59,9 +62,22 @@ describe("a batch that removes a block and then formats it", () => {
       "First clause.",
       "Third clause.",
     ]);
-    expect(reviewer.getContent().some(({ directAlignment }) => directAlignment !== undefined)).toBe(
-      false,
-    );
+    expect(
+      reviewer.getContent().some((block) => {
+        switch (block.kind) {
+          case "paragraph":
+          case "heading":
+          case "listItem":
+            return block.directAlignment !== undefined;
+          case "diagnostic":
+            return false;
+          default: {
+            const unreachable: never = block;
+            return unreachable;
+          }
+        }
+      }),
+    ).toBe(false);
     await reviewer.toBuffer();
   });
 });

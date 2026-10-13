@@ -20,6 +20,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import {
@@ -31,7 +32,7 @@ import type { Paragraph, Table } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer, type FolioEditableDocumentStoryHandle } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
-import type { FolioAIBlock } from "./types";
+import type { FolioAIBlock, FolioAIParagraphBlock } from "./types";
 
 const HEADER_ID = "rIdStoryHeader";
 const FOOTER_ID = "rIdStoryFooter";
@@ -132,7 +133,7 @@ const seed = async (): Promise<ArrayBuffer> => (await (seedPromise ??= buildSeed
  */
 type StoryShape = { paragraphs: string[]; tables: string[][][] };
 
-const paragraphLabel = (block: FolioAIBlock): string => {
+const paragraphLabel = (block: FolioAIParagraphBlock): string => {
   const runs = block.previewRuns;
   const text =
     runs === undefined
@@ -146,7 +147,7 @@ const shapeOf = (blocks: readonly FolioAIBlock[]): StoryShape => {
   const tables: string[][][] = [];
   for (const block of blocks) {
     if (block.table === undefined) {
-      paragraphs.push(paragraphLabel(block));
+      paragraphs.push(paragraphLabel(expectParagraphBlock(block)));
       continue;
     }
     const { tableIndex, rowIndex, cellIndex } = block.table;
@@ -170,12 +171,12 @@ const blockWithText = (
   reviewer: FolioDocxReviewer,
   story: FolioEditableDocumentStoryHandle,
   text: string,
-): FolioAIBlock => {
+): FolioAIParagraphBlock => {
   const block = reviewer.snapshotStory(story)?.blocks.find((candidate) => candidate.text === text);
   if (!block) {
     throw new Error(`no block reads ${JSON.stringify(text)} in ${JSON.stringify(story)}`);
   }
-  return block;
+  return expectParagraphBlock(block);
 };
 
 type Mode = "direct" | "tracked-changes";
@@ -195,6 +196,7 @@ const apply = (
   operation: FolioDocumentOperation,
 ) =>
   reviewer.applyDocumentOperationsToStory({
+    undefinedReferences: "refuse",
     story,
     batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, mode, operations: [operation] },
   });

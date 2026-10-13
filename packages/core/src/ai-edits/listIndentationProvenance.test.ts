@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
@@ -79,38 +80,44 @@ test.each(CASES)(
     const inserts = operation === "insert" || operation === "insert-removed";
     const properties = {
       ...(withStyle && { styleId: "IndentBaseline" }),
-      numbering: removesNumbering ? null : { numId: numPr.numId, level: 1 },
+      numbering: removesNumbering
+        ? { kind: "none" as const }
+        : { kind: "reference" as const, numId: numPr.numId, ilvl: 1 },
       ...(explicitIndentation !== undefined && { indentation: explicitIndentation }),
     };
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode,
-      operations: [
-        !inserts
-          ? {
-              id: "change",
-              type: "setBlockParagraphProperties",
-              blockId: anchor.id,
-              properties,
-            }
-          : {
-              id: "change",
-              type: "insertAfterBlock",
-              blockId: anchor.id,
-              text: "Inserted",
-              ...properties,
-            },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode,
+        operations: [
+          !inserts
+            ? {
+                id: "change",
+                type: "setBlockParagraphProperties",
+                blockId: anchor.id,
+                properties,
+              }
+            : {
+                id: "change",
+                type: "insertAfterBlock",
+                blockId: anchor.id,
+                text: "Inserted",
+                ...properties,
+              },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.status).toBe("committed");
     expect(result.issues).toEqual([]);
     const text = inserts ? "Inserted" : "Anchor";
     const assertContent = (current: FolioDocxReviewer) => {
-      const block = current
+      const observedBlock = current
         .getContent()
         .filter(isFolioAIContentBlock)
         .find((entry) => entry.text === text);
-      if (!block) throw new TypeError("Combined list operation lost its target.");
+      if (!observedBlock) throw new TypeError("Combined list operation lost its target.");
+      const block = expectParagraphBlock(observedBlock);
       expect(block.styleId).toBe(withStyle ? "IndentBaseline" : anchor.styleId);
       expect(block.listReference).toEqual(
         removesNumbering ? undefined : { numId: numPr.numId, level: 1 },

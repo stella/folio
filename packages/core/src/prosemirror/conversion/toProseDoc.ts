@@ -1,3 +1,7 @@
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumbering,
+} from "../numberingAttr";
 /**
  * Document to ProseMirror Conversion
  *
@@ -12,12 +16,14 @@
  * - Inline properties (highest priority)
  */
 
+import { listRenderingFor } from "../listRendering";
+
 import { fieldRequiresStructuredContent } from "../fieldRepresentation";
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 import { HYPHEN_TEXT_CARRIERS } from "./hyphenTextCarriers";
-import { mergeParagraphNumbering, PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { ParseContext } from "../../docx/parseContext";
 import { createStyleEngine } from "../../style-engine";
@@ -759,15 +765,16 @@ function convertParagraph(
   );
   if (directFormatting === undefined) Reflect.deleteProperty(attrs, "_originalFormatting");
   else attrs._originalFormatting = directFormatting;
-  const numPr = mergeParagraphNumbering(
-    attrs.numPrFromStyle ?? undefined,
-    attrs.numPr ?? undefined,
+  const numPr = effectiveParagraphNumbering(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
   );
   if (
-    numPr?.kind === "none" ||
-    (paragraph.listRendering !== undefined &&
-      context.numbering !== undefined &&
-      numPr === undefined)
+    numPr.kind === "none" &&
+    (paragraph.formatting?.numPr?.kind === "none" ||
+      (paragraph.listRendering !== undefined && context.numbering !== undefined))
   )
     Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   else if (context.numbering !== undefined && numPr?.kind === "reference") {
@@ -796,6 +803,34 @@ function convertParagraph(
       if (!cacheMatches)
         Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS, listRenderingAttrPatch(rendering));
     } else Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+  }
+  if (attrs._propertyChanges) {
+    attrs._propertyChanges = attrs._propertyChanges.map((change) => {
+      const previous = change.previousFormatting;
+      if (!previous) return change;
+      const inherited = styleResolver?.resolveParagraphStyle(previous.styleId ?? undefined)
+        .paragraphFormatting?.numPr;
+      const sources = paragraphNumberingSourcesFromBoundary({
+        numPr: previous.numPr,
+        numPrFromStyle: inherited ?? previous.numPrFromStyle,
+      });
+      const originalNumbering = effectiveParagraphNumbering(sources);
+      const originalRendering =
+        originalNumbering.kind === "reference"
+          ? listRenderingFor(originalNumbering, context.numbering ?? null)
+          : {};
+      return {
+        ...change,
+        previousFormatting: {
+          ...originalRendering,
+          ...previous,
+          numPrFromStyle:
+            sources.numPrFromStyle === undefined
+              ? null
+              : paragraphNumberingAttr(sources.numPrFromStyle),
+        },
+      };
+    });
   }
   reportParagraphPageBreakProjection({
     paragraph,
@@ -1469,11 +1504,16 @@ function paragraphFormattingToAttrs(
       if (previousFormatting === undefined) {
         return change;
       }
-      const { numPr, ...rest } = previousFormatting;
+      const { numPr, numPrFromStyle, ...rest } = previousFormatting;
       return {
         ...change,
-        previousFormatting:
-          numPr === undefined ? rest : { ...rest, numPr: paragraphNumberingAttr(numPr) },
+        previousFormatting: {
+          ...rest,
+          ...(numPr === undefined ? {} : { numPr: paragraphNumberingAttr(numPr) }),
+          ...(numPrFromStyle === undefined
+            ? {}
+            : { numPrFromStyle: paragraphNumberingAttr(numPrFromStyle) }),
+        },
       };
     });
   }

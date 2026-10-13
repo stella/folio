@@ -8,12 +8,20 @@ describe("serializeParagraphFormatting style-sourced numPr (#765)", () => {
   test("a style-sourced numPr serializes no direct <w:numPr>", () => {
     const formatting: ParagraphFormatting = {
       styleId: "AppBody-Claim",
-      numPr: { kind: "reference" as const, numId: 2 },
       numPrFromStyle: { kind: "reference", numId: 2 },
     };
     const xml = serializeParagraphFormatting(formatting);
     expect(xml).not.toContain("<w:numPr>");
     expect(xml).toContain('<w:pStyle w:val="AppBody-Claim"/>');
+  });
+
+  test("an authored reference equal to the style remains direct", () => {
+    const xml = serializeParagraphFormatting({
+      styleId: "AppBody-Claim",
+      numPr: { kind: "reference", numId: 2 },
+      numPrFromStyle: { kind: "reference", numId: 2 },
+    });
+    expect(xml).toContain('<w:numId w:val="2"/>');
   });
 
   test("a diverged numPr (user changed numbering) still serializes <w:numPr>", () => {
@@ -114,8 +122,8 @@ describe("style vs direct w:ind merge in toProseDoc (#765)", () => {
     expect(attrs["indentLeft"]).toBe(357);
     expect(attrs["indentFirstLine"]).toBe(-357);
     expect(attrs["hangingIndent"]).toBe(true);
-    // The style-sourced numPr is projected with provenance.
-    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 1 });
+    // Inherited membership stays separate from the absent stated source.
+    expect(attrs["numPr"]).toBeNull();
     expect(attrs["numPrFromStyle"]).toEqual({ kind: "reference", numId: 1 });
   });
 });

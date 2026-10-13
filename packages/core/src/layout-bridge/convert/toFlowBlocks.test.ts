@@ -13,6 +13,7 @@ import {
   TAB_STOP_ALIGNMENT_VALUES,
 } from "../../types/documentEnumValues";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
+import { expectParagraphBlock } from "../../../../../test/paragraphBlock";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
@@ -738,9 +739,9 @@ describe("toFlowBlocks paragraph formatting", () => {
       ]),
     ]);
 
-    expect(createFolioAIEditSnapshot(doc).blocks.at(0)?.structuralBoundaries).toEqual([
-      { type: "pageBreak", offset: 1 },
-    ]);
+    expect(
+      expectParagraphBlock(createFolioAIEditSnapshot(doc).blocks.at(0)).structuralBoundaries,
+    ).toEqual([{ type: "pageBreak", offset: 1 }]);
     expect(toFlowBlocks(doc).map(({ kind }) => kind)).toEqual([
       "paragraph",
       "pageBreak",
@@ -3440,25 +3441,6 @@ describe("toFlowBlocks list numbering", () => {
     expect(blocks.at(27)?.attrs?.listMarker).toBe("bb.bb");
   });
 
-  test("drops unresolved child placeholders with their following punctuation", () => {
-    const doc = schema.node("doc", null, [
-      schema.node(
-        "paragraph",
-        {
-          numPr: { kind: "reference", numId: 2, ilvl: 0 },
-          listMarker: "%1.%2.",
-          listNumFmt: "decimal",
-        },
-        [schema.text("Parent")],
-      ),
-    ]);
-
-    const blocks = toFlowBlocks(doc);
-
-    expect(blocks.at(0)?.kind).toBe("paragraph");
-    expect(blocks.at(0)?.attrs?.listMarker).toBe("1.");
-  });
-
   test("formats each level in a multi-level marker with its own number format", () => {
     const doc = schema.node("doc", null, [
       schema.node(
@@ -3491,9 +3473,15 @@ describe("toFlowBlocks list numbering", () => {
 
   test("restarts a child counter after returning to its parent level", () => {
     const paragraph = (level: number, text: string) =>
-      schema.node("paragraph", { numPr: { kind: "reference", numId: 3, ilvl: level } }, [
-        schema.text(text),
-      ]);
+      schema.node(
+        "paragraph",
+        {
+          numPr: { kind: "reference", numId: 3, ilvl: level },
+          listNumFmt: "decimal",
+          listMarkerTemplate: level === 0 ? "%1." : "%1.%2.",
+        },
+        [schema.text(text)],
+      );
     const doc = schema.node("doc", null, [
       paragraph(0, "First parent"),
       paragraph(1, "First child"),
@@ -3516,6 +3504,8 @@ describe("toFlowBlocks list numbering", () => {
           "paragraph",
           {
             numPr: { kind: "reference", numId: index + 10, ilvl: 0 },
+            listNumFmt: "decimal",
+            listMarkerTemplate: "%1.",
             listLevelStarts: [4],
             listStartOverride,
           },

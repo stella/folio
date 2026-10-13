@@ -51,8 +51,9 @@ type ConformanceSurface = {
 const createEditorRef = (reviewer: FolioDocxReviewer): FolioAgentEditorRefLike => ({
   createAIEditSnapshot: () => reviewer.snapshot(),
   applyAIEditOperations: ({ operations, mode, author }) =>
-    reviewer.applyOperations(operations, { mode, author }),
-  applyDocumentOperations: ({ batch }) => reviewer.applyDocumentOperations(batch),
+    reviewer.applyOperations(operations, { undefinedReferences: "refuse", mode, author }),
+  applyDocumentOperations: ({ batch }) =>
+    reviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
   scrollToBlock: () => false,
   getTotalPages: () => 1,
   getTrackedChanges: () => reviewer.getChanges(),
@@ -75,7 +76,8 @@ const createSurfaces = async (): Promise<ConformanceSurface[]> => {
     {
       name: "headless",
       reviewer: headlessReviewer,
-      apply: (batch) => headlessReviewer.applyDocumentOperations(batch),
+      apply: (batch) =>
+        headlessReviewer.applyDocumentOperations(batch, { undefinedReferences: "refuse" }),
     },
     {
       name: "reviewer bridge",
@@ -377,7 +379,7 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     inheritFormatting: true,
     alignment: "both",
     spacing: { spaceBefore: 0, lineSpacing: -240, beforeAutospacing: false },
-    listLevel: 1,
+    numbering: { kind: "levelOnly", ilvl: 1 },
     moveId: "move-1",
     pageBreakBefore: true,
     styleId: "Heading1",
@@ -387,7 +389,7 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     type: "insertBeforeBlock",
     blockId: "0304003A",
     text: "New paragraph.",
-    numbering: { start: "new", kind: "bullet", level: 1 },
+    numbering: { kind: "newList", format: "bullet", level: 1 },
   },
   replaceBlock: {
     id: "op-replace-block",
@@ -410,7 +412,7 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     blockId: "0304003A",
     properties: {
       styleId: "ClauseHeading1",
-      listLevel: 1,
+      numbering: { kind: "levelOnly", ilvl: 1 },
       alignment: "both",
       spacing: { spaceAfter: 360, lineSpacingRule: "atLeast", afterAutospacing: true },
     },
@@ -524,8 +526,9 @@ describe("document operation contract JSON schema conformance", () => {
         { text: "text", hardPageBreak: {} },
         { text: "", hardPageBreak: {}, pageBreakBefore: false },
         { text: "", hardPageBreak: {}, lineBreakMode: "inline" },
-        { text: "text", numbering: { numId: 0, level: 0 } },
-        { text: "text", numbering: { numId: 1, level: 0 } },
+        { text: "text", numbering: { kind: "reference", numId: 0, ilvl: 0 } },
+        { text: "text", numbering: { kind: "reference", numId: 1, ilvl: 0 } },
+        { text: "text", numbering: { kind: "inherit" } },
         { text: "text", numbering: null },
       ]) {
         const operation = { id: "insert", type, blockId: "0304003A", ...options };
@@ -540,6 +543,22 @@ describe("document operation contract JSON schema conformance", () => {
         expect(admits(OPERATION_SCHEMA, operation)).toBe(result.issues === undefined);
       }
     }
+  });
+
+  test.each([
+    { label: "legacy listLevel", properties: { listLevel: 0 } },
+    { label: "null numbering", properties: { numbering: null } },
+  ])("rejects $label in both the parser and schema", ({ properties }) => {
+    const operation = {
+      id: "removed-numbering-shape",
+      type: "setBlockParagraphProperties",
+      blockId: "0304003A",
+      properties,
+    };
+    expect(() => parseFolioDocumentOperationBatch({ version: 1, operations: [operation] })).toThrow(
+      InvalidFolioDocumentOperationBatchError,
+    );
+    expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
   });
 
   test("the schema union covers exactly the contract's operation types", () => {
@@ -584,7 +603,7 @@ describe("document operation contract JSON schema conformance", () => {
         blockId: "0304003A",
         text: "Ordinary paragraph",
         styleId: null,
-        listLevel: null,
+        numbering: { kind: "none" },
       },
     },
     {
@@ -595,7 +614,7 @@ describe("document operation contract JSON schema conformance", () => {
         blockId: "0304003A",
         text: "Ordinary paragraph",
         styleId: null,
-        listLevel: null,
+        numbering: { kind: "none" },
       },
     },
     {
@@ -604,7 +623,7 @@ describe("document operation contract JSON schema conformance", () => {
         id: "clear-properties",
         type: "setBlockParagraphProperties",
         blockId: "0304003A",
-        properties: { styleId: null, listLevel: null },
+        properties: { styleId: null, numbering: { kind: "none" } },
       },
     },
     {
@@ -692,14 +711,13 @@ describe("document operation contract JSON schema conformance", () => {
   );
 
   test.each([
-    { label: "an unknown list kind", numbering: { start: "new", kind: "roman" } },
-    { label: "a level past the ninth", numbering: { start: "new", kind: "bullet", level: 9 } },
+    { label: "an unknown list format", numbering: { kind: "newList", format: "roman" } },
+    { label: "a level past the ninth", numbering: { kind: "newList", format: "bullet", level: 9 } },
     {
       label: "a new list naming an instance",
-      numbering: { start: "new", kind: "bullet", numId: 3 },
+      numbering: { kind: "newList", format: "bullet", numId: 3 },
     },
-    { label: "another start", numbering: { start: "old", kind: "bullet" } },
-    { label: "a new list without a kind", numbering: { start: "new" } },
+    { label: "a new list without a format", numbering: { kind: "newList" } },
   ] as const)("rejects $label in both the parser and schema", ({ numbering }) => {
     const operation = {
       id: "invalid-new-list",
@@ -718,7 +736,7 @@ describe("document operation contract JSON schema conformance", () => {
       id: "new-list",
       type: "setBlockParagraphProperties",
       blockId: "0304003A",
-      properties: { numbering: { start: "new", kind: "numbered" } },
+      properties: { numbering: { kind: "newList", format: "numbered" } },
     };
     const batch = { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations: [operation] };
     expect(parseFolioDocumentOperationBatch(batch).operations).toEqual([operation]);
@@ -748,7 +766,7 @@ describe("document operation contract JSON schema conformance", () => {
         id: "unsafe-list-level",
         type: "setBlockParagraphProperties",
         blockId: "0304003A",
-        properties: { listLevel: 1e100 },
+        properties: { numbering: { kind: "levelOnly", ilvl: 1e100 } },
       },
     },
     {

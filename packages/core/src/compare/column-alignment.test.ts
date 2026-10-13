@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { alignTableColumns } from "./column-alignment";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock } from "./content-types";
 
 type TableBlockOptions = {
@@ -24,6 +25,7 @@ const countedTableBlock = ({
   const block = {
     id,
     kind: "paragraph",
+    statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
     get text() {
       textReads++;
       return text;
@@ -94,6 +96,7 @@ describe("bounded table-column alignment", () => {
     const block = {
       id: "unsafe-row-end",
       kind: "paragraph",
+      statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
       text: "Unsafe row boundary",
       table: {
         outerTableIndex: 0,

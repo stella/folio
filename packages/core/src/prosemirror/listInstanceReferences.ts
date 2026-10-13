@@ -7,7 +7,10 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { completeListNumbering, type ListInstanceReference } from "../docx/listNumberingInstances";
-import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "../docx/numberingReference";
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumberingReference,
+} from "./numberingAttr";
 import type { NumberingDefinitions } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import {
@@ -29,17 +32,22 @@ type ReferenceSink = {
  * define an instance from.
  */
 const collectReference = (attrs: ListRenderingSourceAttrs, sink: ReferenceSink): void => {
-  const numId = paragraphNumberingReferenceId(attrs.numPr);
-  if (numId === undefined || sink.isDefined(numId)) {
+  const numbering = effectiveParagraphNumberingReference(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
+  );
+  if (numbering === undefined || sink.isDefined(numbering.numId)) {
     return;
   }
   if (!hasListRendering(attrs)) {
     return;
   }
   sink.references.push({
-    numId,
-    ilvl: paragraphNumberingLevel(attrs.numPr) ?? 0,
-    rendering: listRenderingFromAttrs({ attrs, numId }),
+    numId: numbering.numId,
+    ilvl: numbering.ilvl,
+    rendering: listRenderingFromAttrs({ attrs, numId: numbering.numId }),
   });
 };
 
@@ -61,8 +69,8 @@ const undefinedListInstanceReferences = (
     collectReference(attrs, sink);
     for (const change of attrs._propertyChanges ?? []) {
       const previous = change.previousFormatting;
-      if (previous?.numPr) {
-        collectReference({ ...previous, numPr: previous.numPr }, sink);
+      if (previous) {
+        collectReference(previous, sink);
       }
     }
     return false;
@@ -77,15 +85,19 @@ export const paragraphListReferences = (node: PMNode): number[] => {
   }
   const attrs = expectParagraphAttrs(node);
   const numIds: number[] = [];
-  const add = (numPr: ListRenderingSourceAttrs["numPr"] | null | undefined): void => {
-    const numId = paragraphNumberingReferenceId(numPr ?? undefined);
-    if (numId !== undefined) {
-      numIds.push(numId);
-    }
+  const add = (source: ListRenderingSourceAttrs): void => {
+    const numbering = effectiveParagraphNumberingReference(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: source.numPr,
+        numPrFromStyle: source.numPrFromStyle,
+      }),
+    );
+    if (numbering !== undefined) numIds.push(numbering.numId);
   };
-  add(attrs.numPr);
+  add(attrs);
   for (const change of attrs._propertyChanges ?? []) {
-    add(change.previousFormatting?.numPr);
+    const previous = change.previousFormatting;
+    if (previous) add(previous);
   }
   return numIds;
 };

@@ -166,7 +166,7 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
     // Preserve the original matrix's pre-operation accepted/rejected copies;
     // revision allocation influences the inserted identities later steps name.
     await capture(reviewer, "tracked-changes");
-    const result = reviewer.applyDocumentOperations(rebound);
+    const result = reviewer.applyDocumentOperations(rebound, { undefinedReferences: "refuse" });
     assert.deepEqual(
       result.applied.map(({ id }) => id),
       index === NOOP_PROPERTIES_STEP ? [] : batch.operations.map(({ id }) => id),
@@ -238,15 +238,18 @@ test("clean readers equal accept-all over paragraph deletion and join positions 
           const reviewer = await openReviewer(fixture);
           const block = reviewer.getContent().at(position);
           assert.ok(block);
-          const result = reviewer.applyDocumentOperations({
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode: "tracked-changes",
-            operations: [
-              type === "deleteBlock"
-                ? { id: "change", type, blockId: block.id }
-                : { id: "change", type, blockId: block.id, separator: " " },
-            ],
-          });
+          const result = reviewer.applyDocumentOperations(
+            {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode: "tracked-changes",
+              operations: [
+                type === "deleteBlock"
+                  ? { id: "change", type, blockId: block.id }
+                  : { id: "change", type, blockId: block.id, separator: " " },
+              ],
+            },
+            { undefinedReferences: "refuse" },
+          );
           assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
           await assertAcceptedReaders(
             new Uint8Array(await reviewer.toBuffer()),
@@ -297,11 +300,14 @@ test("clean readers resolve table, row, and column deletions in every source pos
       assert.equal(anchors.length, expectedAnchorCounts[type]);
       for (const anchor of anchors) {
         const reviewer = await openReviewer(fixture);
-        const result = reviewer.applyDocumentOperations({
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: [{ id: "delete", type, blockId: anchor.id }],
-        });
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            operations: [{ id: "delete", type, blockId: anchor.id }],
+          },
+          { undefinedReferences: "refuse" },
+        );
         assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
         await assertAcceptedReaders(
           new Uint8Array(await reviewer.toBuffer()),
@@ -329,11 +335,14 @@ test("clean readers resolve table, row, and column deletions in every source pos
           ? [paragraphDeletion, tableDeletion]
           : [tableDeletion, paragraphDeletion];
       for (const operation of operations) {
-        const result = reviewer.applyDocumentOperations({
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: [operation],
-        });
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            operations: [operation],
+          },
+          { undefinedReferences: "refuse" },
+        );
         assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
       }
       await assertAcceptedReaders(
@@ -354,15 +363,18 @@ test("clean Markdown keeps referenced footnote and endnote trailers through body
       assert.ok(position > 0);
       const block = blocks.at(type === "mergeBlockWithNext" ? position - 1 : position);
       assert.ok(block);
-      const result = reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          type === "deleteBlock"
-            ? { id: "change", type, blockId: block.id }
-            : { id: "change", type, blockId: block.id, separator: " " },
-        ],
-      });
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            type === "deleteBlock"
+              ? { id: "change", type, blockId: block.id }
+              : { id: "change", type, blockId: block.id, separator: " " },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
       assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
       await assertAcceptedReaders(
         new Uint8Array(await reviewer.toBuffer()),
@@ -397,6 +409,7 @@ test("referenced footnote and endnote trailers resolve paragraph joins and table
           : snapshot.blocks.at(0);
       assert.ok(block);
       const result = reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
         story,
         batch: {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -437,6 +450,7 @@ test("referenced footnote and endnote trailers resolve paragraph joins and table
           : [tableDeletion, paragraphDeletion];
       for (const operation of operations) {
         const result = reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
           story,
           batch: {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,

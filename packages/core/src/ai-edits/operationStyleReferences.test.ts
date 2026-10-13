@@ -143,11 +143,14 @@ const applyOne = (
   operation: FolioDocumentOperation,
   mode: FolioDocumentOperationMode,
 ) =>
-  reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: [operation],
-  });
+  reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [operation],
+    },
+    { undefinedReferences: "refuse" },
+  );
 
 const texts = (reviewer: FolioDocxReviewer) => reviewer.getContent().map((block) => block.text);
 
@@ -200,14 +203,17 @@ describe("a paragraph style the document does not define is skipped before anyth
 
   test("a batch keeps its other operations", async () => {
     const { reviewer, ids } = await openReviewer();
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        STYLE_OPERATIONS["setBlockParagraphProperties"]!(ids, "NoSuchStyle"),
-        { id: "tail", type: "replaceBlock", blockId: ids.tail, text: "New tail." },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          STYLE_OPERATIONS["setBlockParagraphProperties"]!(ids, "NoSuchStyle"),
+          { id: "tail", type: "replaceBlock", blockId: ids.tail, text: "New tail." },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied.map(({ id }) => id)).toEqual(["tail"]);
     expect(result.skipped.map(({ reason }) => reason)).toEqual(["missingStyle"]);
   });
@@ -215,15 +221,18 @@ describe("a paragraph style the document does not define is skipped before anyth
   test("an atomic batch applies none of its operations", async () => {
     const { reviewer, ids } = await openReviewer();
     const before = texts(reviewer);
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      atomic: true,
-      operations: [
-        { id: "tail", type: "replaceBlock", blockId: ids.tail, text: "New tail." },
-        STYLE_OPERATIONS["insertAfterBlock"]!(ids, "TableGrid"),
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        atomic: true,
+        operations: [
+          { id: "tail", type: "replaceBlock", blockId: ids.tail, text: "New tail." },
+          STYLE_OPERATIONS["insertAfterBlock"]!(ids, "TableGrid"),
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied).toEqual([]);
     expect(result.skipped).toContainEqual(expect.objectContaining({ reason: "missingStyle" }));
     expect(texts(reviewer)).toEqual(before);
@@ -280,7 +289,7 @@ describe("a defined paragraph style still applies", () => {
 });
 
 describe("a caller copying another document's references keeps them", () => {
-  test("undefinedStyles: keep writes the reference as given", async () => {
+  test("undefinedReferences: keep writes the reference as given", async () => {
     const { reviewer, ids } = await openReviewer();
     const result = reviewer.applyDocumentOperationsToStory({
       story: { type: "main" },
@@ -289,7 +298,7 @@ describe("a caller copying another document's references keeps them", () => {
         mode: "tracked-changes",
         operations: [STYLE_OPERATIONS["insertAfterBlock"]!(ids, "NoSuchStyle")],
       },
-      undefinedStyles: "keep",
+      undefinedReferences: "keep",
     });
     expect(result.applied.map(({ id }) => id)).toEqual(["op"]);
     expect(await documentXml(await reviewer.toBuffer())).toContain(

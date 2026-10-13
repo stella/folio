@@ -11,6 +11,12 @@
  * reach, because a package's `typecheck` never reads a test file.
  */
 
+import {
+  effectiveParagraphNumbering,
+  effectiveParagraphNumberingReference,
+  paragraphNumberingSourcesFromBoundary,
+} from "../../src/prosemirror/numberingAttr";
+
 import { paragraphRejectOriginalFormatting } from "../../src/prosemirror/commands/propertyChangeScope";
 
 const REJECTS_THE_PRE_UNION_SLOT_PAIR = paragraphRejectOriginalFormatting(
@@ -22,3 +28,28 @@ const REJECTS_THE_PRE_UNION_SLOT_PAIR = paragraphRejectOriginalFormatting(
 );
 
 export type ParagraphSnapshotNumberingProof = typeof REJECTS_THE_PRE_UNION_SLOT_PAIR;
+
+// Both tiers must be stated even when absent; null belongs only to the attrs boundary.
+const COMPLETE_SOURCES = { numPr: undefined, numPrFromStyle: undefined };
+effectiveParagraphNumbering(COMPLETE_SOURCES);
+effectiveParagraphNumberingReference(COMPLETE_SOURCES);
+effectiveParagraphNumbering(
+  paragraphNumberingSourcesFromBoundary({
+    numPr: null,
+    numPrFromStyle: null,
+  }),
+);
+// @ts-expect-error the authored source tier is required
+effectiveParagraphNumbering({ numPrFromStyle: undefined });
+// @ts-expect-error the style source tier is required
+effectiveParagraphNumbering({ numPr: undefined });
+// @ts-expect-error a reference consumer must also state both tiers
+effectiveParagraphNumberingReference({ numPr: undefined });
+// @ts-expect-error null cannot carry absence after the boundary
+effectiveParagraphNumbering({ numPr: null, numPrFromStyle: undefined });
+// @ts-expect-error null cannot carry style absence after the boundary
+effectiveParagraphNumbering({ numPr: undefined, numPrFromStyle: null });
+// @ts-expect-error the attrs boundary cannot silently omit the authored tier
+paragraphNumberingSourcesFromBoundary({ numPrFromStyle: undefined });
+// @ts-expect-error the attrs boundary cannot silently omit the style tier
+paragraphNumberingSourcesFromBoundary({ numPr: undefined });

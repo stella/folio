@@ -248,6 +248,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
             return;
           }
           reviewer.applyOperations([operationFor(generated.edit, target.id)], {
+            undefinedReferences: "refuse",
             mode: generated.edit.mode,
           });
 

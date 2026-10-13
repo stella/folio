@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { Schema, type MarkSpec } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
@@ -358,6 +359,7 @@ describe("Folio AI edit operations", () => {
     }
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [{ id: "range-1", type: "replaceRange", range, replace: "done" }],
@@ -382,6 +384,7 @@ describe("Folio AI edit operations", () => {
     }
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [{ id: "left", type: "replaceRange", range, replace: "X" }],
@@ -410,6 +413,7 @@ describe("Folio AI edit operations", () => {
     }
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -458,6 +462,7 @@ describe("Folio AI edit operations", () => {
     }
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -499,6 +504,7 @@ describe("Folio AI edit operations", () => {
         throw new Error("expected a range");
       }
       const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [{ id: "format", type: "formatRange", range, formatting: { italic: true } }],
@@ -558,6 +564,7 @@ describe("Folio AI edit operations", () => {
       throw new Error("expected a range");
     }
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [{ id: "format", type: "formatRange", range, formatting: { italic: true } }],
@@ -582,6 +589,7 @@ describe("Folio AI edit operations", () => {
         throw new Error("expected a range");
       }
       const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -624,6 +632,7 @@ describe("Folio AI edit operations", () => {
     }
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [{ id: "range-1", type: "replaceRange", range, replace: "done" }],
@@ -643,12 +652,14 @@ describe("Folio AI edit operations", () => {
       {
         id: "seq-0001",
         kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
         text: "Opening paragraph.",
       },
       {
         id: "seq-0002",
         kind: "listItem",
         displayLabel: "7.5.1",
+        statedNumbering: { kind: "inherit" },
         text: "Payment one.",
       },
     ]);
@@ -690,7 +701,7 @@ describe("Folio AI edit operations", () => {
       throw new Error("Expected text range handle");
     }
 
-    expect(snapshot.blocks.at(0)?.structuralBoundaries).toBeUndefined();
+    expect(expectParagraphBlock(snapshot.blocks.at(0)).structuralBoundaries).toBeUndefined();
     expect(resolveFolioAITextRange({ range, doc, snapshot })).toBeNull();
   });
 
@@ -700,6 +711,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(makeState([{ paraId: "AAAA0001", text: "AB" }]));
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -728,7 +740,14 @@ describe("Folio AI edit operations", () => {
     // block like any other: an operation can address it and replace it. The
     // blank sequence numbers it, so `seq-NNNN` keeps counting only the
     // paragraphs that carry text.
-    expect(snapshot.blocks).toEqual([{ id: "blank-0001", kind: "paragraph", text: "" }]);
+    expect(snapshot.blocks).toEqual([
+      {
+        id: "blank-0001",
+        kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
+        text: "",
+      },
+    ]);
     expect(snapshot.anchors["blank-0001"]).toMatchObject({
       id: "blank-0001",
       text: "",
@@ -754,6 +773,7 @@ describe("Folio AI edit operations", () => {
       {
         id: "blank-0001",
         kind: "paragraph",
+        statedNumbering: { kind: "inherit" },
         text: "",
         table: {
           outerTableIndex: 0,
@@ -818,6 +838,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "replace", type: "replaceBlock", blockId: "AAAA0001", text: "Rewritten" }],
@@ -989,6 +1010,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1029,6 +1051,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(makeState(["The buyer must pay."]));
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1055,6 +1078,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1085,6 +1109,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(makeState(["Payment.", "Tweaked.", "Other text."]));
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1120,6 +1145,7 @@ describe("Folio AI edit operations", () => {
     );
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1164,6 +1190,7 @@ describe("Folio AI edit operations", () => {
     );
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1192,6 +1219,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(makeState([{ text: "Payment changed.", paraId: "AAAA0001" }]));
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1225,6 +1253,7 @@ describe("Folio AI edit operations", () => {
     }
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: currentSnapshot,
       operations: [
@@ -1254,6 +1283,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(makeState([{ text: "Payment.", paraId: "BBBB0002" }]));
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1286,6 +1316,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1333,7 +1364,13 @@ describe("Folio AI edit operations", () => {
         text: `Inserted ${String(index)}.`,
       }));
 
-      const result = applyFolioAIEditOperations({ view, snapshot, operations, mode: "direct" });
+      const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
+        view,
+        snapshot,
+        operations,
+        mode: "direct",
+      });
 
       expect(result.skipped).toEqual([]);
       expect(result.applied).toHaveLength(operationCount);
@@ -1353,6 +1390,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1398,6 +1436,7 @@ describe("Folio AI edit operations", () => {
       const view = makeView(makeState([{ text: "Anchor block.", styleId: "Anchor" }]));
       const snapshot = createFolioAIEditSnapshot(view.state.doc);
       const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 100 },
@@ -1455,6 +1494,7 @@ describe("Folio AI edit operations", () => {
     let nextCommentId = 40;
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1564,6 +1604,7 @@ describe("Folio AI edit operations", () => {
       }
       let allocations = 0;
       const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [operation(block.id)],
@@ -1594,6 +1635,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1628,6 +1670,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1659,6 +1702,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1683,6 +1727,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1710,6 +1755,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1739,6 +1785,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1770,6 +1817,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1800,6 +1848,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1843,6 +1892,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1874,6 +1924,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1898,6 +1949,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1926,6 +1978,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -1952,6 +2005,7 @@ describe("Folio AI edit operations", () => {
       const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
       const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -1980,6 +2034,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2044,6 +2099,7 @@ describe("Folio AI edit operations", () => {
               };
         });
         const result = applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view,
           snapshot,
           operations,
@@ -2101,6 +2157,7 @@ describe("Folio AI edit operations", () => {
       const view = makeView(makeState([before, before, before]));
       const snapshot = createFolioAIEditSnapshot(view.state.doc);
       const result = applyFolioDocumentOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         batch: {
@@ -2151,6 +2208,7 @@ describe("Folio AI edit operations", () => {
     const before = view.state.doc.toJSON();
 
     const result = applyFolioDocumentOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       batch: {
@@ -2206,6 +2264,7 @@ describe("Folio AI edit operations", () => {
     expect(snapshot.blocks[0]?.text).toBe("The buyer must pay.");
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2249,6 +2308,7 @@ describe("Folio AI edit operations", () => {
     expect(snapshot.blocks[0]?.text).toBe("shall pay.");
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2280,6 +2340,7 @@ describe("Folio AI edit operations", () => {
     expect(snapshot.blocks[0]?.text).toBe("Pay promptly.");
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2317,6 +2378,7 @@ describe("Folio AI edit operations", () => {
     expect(snapshot.blocks[0]?.text).toBe("The buyer must pay.");
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2361,6 +2423,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2412,6 +2475,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2438,6 +2502,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2480,6 +2545,7 @@ describe("Folio AI edit operations", () => {
     // First op: insert a new paragraph after Section 1. This
     // structurally shifts Section 2 and Section 3 down.
     const r1 = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: originalSnapshot,
       operations: [
@@ -2501,6 +2567,7 @@ describe("Folio AI edit operations", () => {
     // original. The textHash lookup must find Section 2 at its
     // shifted position.
     const r2 = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: originalSnapshot,
       operations: [
@@ -2519,6 +2586,7 @@ describe("Folio AI edit operations", () => {
 
     // Third op: also against original snapshot, targets Section 3.
     const r3 = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: originalSnapshot,
       operations: [
@@ -2563,6 +2631,7 @@ describe("Folio AI edit operations", () => {
     // shifts Charlie's PM offset but leaves its text (and thus
     // hash) untouched.
     applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: originalSnapshot,
       operations: [
@@ -2582,6 +2651,7 @@ describe("Folio AI edit operations", () => {
     // referencing the original id — must succeed against the
     // mutated doc.
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: originalSnapshot,
       operations: [
@@ -2621,6 +2691,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2676,6 +2747,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2729,6 +2801,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2756,6 +2829,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2794,6 +2868,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2821,6 +2896,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2859,6 +2935,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2887,6 +2964,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -2926,6 +3004,7 @@ describe("Folio AI edit operations", () => {
       const view = makeView(makeState(["Anchor block."]));
       const snapshot = createFolioAIEditSnapshot(view.state.doc);
       const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -2965,6 +3044,7 @@ describe("Folio AI edit operations", () => {
       const view = makeView(makeState(["Anchor block."]));
       const snapshot = createFolioAIEditSnapshot(view.state.doc);
       const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -3002,6 +3082,7 @@ describe("Folio AI edit operations", () => {
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -3042,6 +3123,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -3087,6 +3169,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -3143,6 +3226,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -3188,6 +3272,7 @@ describe("Folio AI edit operations", () => {
     const originState = makeMergedTableState();
     const originView = makeView(originState);
     const originResult = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: originView,
       snapshot: createFolioAIEditSnapshot(originState.doc),
       operations: [{ id: "delete-origin", type: "deleteTableRow", blockId: "delete-a" }],
@@ -3205,6 +3290,7 @@ describe("Folio AI edit operations", () => {
     const continuationState = makeMergedTableState();
     const continuationView = makeView(continuationState);
     const continuationResult = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: continuationView,
       snapshot: createFolioAIEditSnapshot(continuationState.doc),
       operations: [{ id: "delete-continuation", type: "deleteTableRow", blockId: "delete-c" }],
@@ -3240,6 +3326,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "delete-inner-row", type: "deleteTableRow", blockId: "delete-inner" }],
@@ -3265,6 +3352,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "delete-only-row", type: "deleteTableRow", blockId: "delete-only" }],
@@ -3298,6 +3386,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3328,6 +3417,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3363,6 +3453,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3404,6 +3495,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3448,6 +3540,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3478,6 +3571,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3523,6 +3617,7 @@ describe("Folio AI edit operations", () => {
     const sameBoundaryState = makeTableState();
     const sameBoundaryView = makeView(sameBoundaryState);
     const sameBoundaryResult = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: sameBoundaryView,
       snapshot: createFolioAIEditSnapshot(sameBoundaryState.doc),
       operations: [
@@ -3551,6 +3646,7 @@ describe("Folio AI edit operations", () => {
     const distinctState = makeTableState();
     const distinctView = makeView(distinctState);
     const distinctResult = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: distinctView,
       snapshot: createFolioAIEditSnapshot(distinctState.doc),
       operations: [
@@ -3597,6 +3693,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3654,6 +3751,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3700,6 +3798,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3732,6 +3831,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3776,6 +3876,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3825,6 +3926,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3888,6 +3990,7 @@ describe("Folio AI edit operations", () => {
       const view = makeView(state);
 
       const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot: createFolioAIEditSnapshot(state.doc),
         operations: [
@@ -3930,6 +4033,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -3972,6 +4076,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4032,6 +4137,7 @@ describe("Folio AI edit operations", () => {
 
     const accepting = makeView(makeTrackedColumnDeletionState());
     const acceptedResult = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: accepting,
       snapshot: createFolioAIEditSnapshot(accepting.state.doc),
       operations: [
@@ -4086,6 +4192,7 @@ describe("Folio AI edit operations", () => {
 
     const rejecting = makeView(makeTrackedColumnDeletionState());
     const rejectedResult = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: rejecting,
       snapshot: createFolioAIEditSnapshot(rejecting.state.doc),
       operations: [
@@ -4131,6 +4238,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4175,6 +4283,7 @@ describe("Folio AI edit operations", () => {
 
     const accepting = makeView(makeTrackedColumnState());
     const acceptedResult = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: accepting,
       snapshot: createFolioAIEditSnapshot(accepting.state.doc),
       operations: [
@@ -4230,6 +4339,7 @@ describe("Folio AI edit operations", () => {
 
     const rejecting = makeView(makeTrackedColumnState());
     const rejectedResult = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: rejecting,
       snapshot: createFolioAIEditSnapshot(rejecting.state.doc),
       operations: [
@@ -4276,6 +4386,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4318,6 +4429,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4368,6 +4480,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4415,6 +4528,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4451,6 +4565,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4506,6 +4621,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4554,6 +4670,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4612,6 +4729,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4666,6 +4784,7 @@ describe("Folio AI edit operations", () => {
 
     const rejectingView = makeView(state);
     const rejectingResult = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: rejectingView,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -4782,6 +4901,7 @@ describe("Folio AI edit operations", () => {
       const view = makeView(state);
       expect(
         applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view,
           snapshot: createFolioAIEditSnapshot(state.doc),
           operations: [operation],
@@ -4810,6 +4930,7 @@ describe("Folio AI edit operations", () => {
     const directView = makeView(state);
     expect(
       applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view: directView,
         snapshot: createFolioAIEditSnapshot(state.doc),
         operations: [
@@ -4831,6 +4952,7 @@ describe("Folio AI edit operations", () => {
     const trackedView = makeView(state);
     expect(
       applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view: trackedView,
         snapshot: createFolioAIEditSnapshot(state.doc),
         operations: [
@@ -4863,6 +4985,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "split-cell", type: "splitTableCell", blockId: "split-all" }],
@@ -4951,6 +5074,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "split-cell", type: "splitTableCell", blockId: "tracked-split" }],
@@ -5000,6 +5124,7 @@ describe("Folio AI edit operations", () => {
 
     const rejectingView = makeView(state);
     const rejectingResult = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: rejectingView,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "split-cell", type: "splitTableCell", blockId: "tracked-split" }],
@@ -5067,6 +5192,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -5096,6 +5222,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -5128,6 +5255,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -5172,6 +5300,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -5208,6 +5337,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "split-inner", type: "splitTableCell", blockId: "inner-split" }],
@@ -5237,6 +5367,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -5272,6 +5403,7 @@ describe("Folio AI edit operations", () => {
     const directView = makeView(state);
     expect(
       applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view: directView,
         snapshot: createFolioAIEditSnapshot(state.doc),
         operations: [{ id: "plain", type: "splitTableCell", blockId: "plain-cell" }],
@@ -5286,6 +5418,7 @@ describe("Folio AI edit operations", () => {
     const trackedView = makeView(state);
     expect(
       applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view: trackedView,
         snapshot: createFolioAIEditSnapshot(state.doc),
         operations: [{ id: "tracked", type: "splitTableCell", blockId: "plain-cell" }],
@@ -5315,6 +5448,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "delete-row", type: "deleteTableRow", blockId: "tracked-delete" }],
@@ -5358,6 +5492,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "delete-row", type: "deleteTableRow", blockId: "pending-row" }],
@@ -5392,6 +5527,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [
@@ -5430,6 +5566,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [{ id: "insert-row", type: "insertTableRow", blockId: "tracked-cell" }],
@@ -5477,6 +5614,7 @@ describe("Folio AI edit operations", () => {
       });
       const view = makeView(state);
       const result = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot: createFolioAIEditSnapshot(state.doc),
         operations: [
@@ -5544,6 +5682,7 @@ describe("Folio AI edit operations", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "insert-row", type: "insertTableRow", blockId: "spanned-cell" }],
@@ -5571,6 +5710,7 @@ describe("deleteBlock over inline content that is not text", () => {
     const state = EditorState.create({ schema, doc });
     const view = makeView(state);
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "delete", type: "deleteBlock", blockId: "gone" }],
@@ -5610,6 +5750,7 @@ describe("deleteBlock over inline content that is not text", () => {
 
     const applyDeletion = (targetView: ReturnType<typeof makeView>) =>
       applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view: targetView,
         snapshot: createFolioAIEditSnapshot(state.doc),
         operations: [{ id: "delete", type: "deleteBlock", blockId: "gone" }],
@@ -5666,6 +5807,7 @@ describe("deleteBlock over inline content that is not text", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "insert", type: "insertAfterBlock", blockId: "target", text: "new" }],
@@ -5685,6 +5827,7 @@ describe("deleteBlock over inline content that is not text", () => {
     const view = makeView(state);
 
     const result = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
       operations: [{ id: "delete", type: "deleteBlock", blockId: "gone" }],

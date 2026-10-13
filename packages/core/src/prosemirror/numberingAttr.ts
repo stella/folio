@@ -1,10 +1,43 @@
 import { panic } from "better-result";
 import {
   NO_PARAGRAPH_NUMBERING,
+  mergeParagraphNumbering,
+  resolveParagraphNumbering,
   type ParagraphNumberingOverride,
   paragraphNumberingFromSlots,
   paragraphNumberingReference,
 } from "@stll/docx-core/model";
+
+export type ParagraphNumberingSources = {
+  numPr: ParagraphNumberingOverride | undefined;
+  numPrFromStyle: ParagraphNumberingOverride | undefined;
+};
+
+export type ParagraphNumberingBoundarySources = {
+  numPr: ParagraphNumberingOverride | null | undefined;
+  numPrFromStyle: ParagraphNumberingOverride | null | undefined;
+};
+
+/** Normalize attr absence at the boundary, while requiring both source tiers. */
+export const paragraphNumberingSourcesFromBoundary = ({
+  numPr,
+  numPrFromStyle,
+}: ParagraphNumberingBoundarySources): ParagraphNumberingSources => ({
+  numPr: numPr ?? undefined,
+  numPrFromStyle: numPrFromStyle ?? undefined,
+});
+
+/** Effective membership is derived; neither source slot becomes an authored override. */
+export const effectiveParagraphNumbering = ({ numPr, numPrFromStyle }: ParagraphNumberingSources) =>
+  resolveParagraphNumbering(mergeParagraphNumbering(numPrFromStyle, numPr));
+
+/** A list reference for membership consumers; cancellation and absence are not lists.
+ * OOXML defaults an omitted ilvl to zero only within an existing numbering reference.
+ */
+export const effectiveParagraphNumberingReference = (sources: ParagraphNumberingSources) => {
+  const numbering = effectiveParagraphNumbering(sources);
+  return numbering.kind === "reference" ? numbering : undefined;
+};
 
 declare const PARAGRAPH_NUMBERING_ATTR: unique symbol;
 

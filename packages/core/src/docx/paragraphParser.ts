@@ -2240,13 +2240,8 @@ export function parseParagraph(
   let effectiveNumPr = directNumPr;
   if (paragraphFormatting && numPrFromStyle) {
     effectiveNumPr = mergeParagraphNumbering(styleNumPr, directNumPr);
-    // Store it on the paragraph formatting so downstream code sees it, and
-    // record the style tier so the serializer can drop a numPr the paragraph
-    // never stated — materializing style numbering as direct <w:numPr> flips
-    // Word's level-indent precedence on the saved file.
-    if (effectiveNumPr !== undefined) {
-      paragraphFormatting.numPr = effectiveNumPr;
-    }
+    // Keep the stated override: absent and level-only numbering inherit the
+    // style's reference without turning it into an authored paragraph id.
     paragraphFormatting.numPrFromStyle = styleNumPr;
   }
 
@@ -2605,7 +2600,11 @@ export function isEmptyParagraph(paragraph: Paragraph): boolean {
  * @returns true if paragraph has numbering properties
  */
 export function isListItem(paragraph: Paragraph): boolean {
-  return paragraphNumberingReferenceId(paragraph.formatting?.numPr) !== undefined;
+  return (
+    paragraphNumberingReferenceId(
+      mergeParagraphNumbering(paragraph.formatting?.numPrFromStyle, paragraph.formatting?.numPr),
+    ) !== undefined
+  );
 }
 
 /**
@@ -2615,7 +2614,9 @@ export function isListItem(paragraph: Paragraph): boolean {
  * @returns List level or undefined if not a list item
  */
 export function getListLevel(paragraph: Paragraph): number | undefined {
-  const resolved = resolveParagraphNumbering(paragraph.formatting?.numPr);
+  const resolved = resolveParagraphNumbering(
+    mergeParagraphNumbering(paragraph.formatting?.numPrFromStyle, paragraph.formatting?.numPr),
+  );
   return resolved.kind === "reference" ? resolved.ilvl : undefined;
 }
 

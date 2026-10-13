@@ -79,6 +79,7 @@ test("suggestion scroll oracle measures the inserted block instead of its source
     },
   };
   const result = applyFolioAIEditOperations({
+    undefinedReferences: "refuse",
     view,
     snapshot,
     mode: "suggested",

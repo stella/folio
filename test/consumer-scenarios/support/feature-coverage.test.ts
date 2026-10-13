@@ -20,7 +20,7 @@ test("feature signature distinguishes structure at the touched target", () => {
     targetFeatureSignature(
       {
         kind: "listItem",
-        listLevel: 2,
+        listReference: { numId: 1, level: 2 },
         displayLabel: "3.2",
         table: { outerTableIndex: 0, tableIndex: 1, columnSpan: 2, rowSpan: 1 },
       },

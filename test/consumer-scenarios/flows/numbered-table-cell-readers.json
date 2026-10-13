@@ -43,8 +43,9 @@
           "blockId": "@10",
           "properties": {
             "numbering": {
+              "kind": "reference",
               "numId": 5,
-              "level": 0
+              "ilvl": 0
             }
           }
         }

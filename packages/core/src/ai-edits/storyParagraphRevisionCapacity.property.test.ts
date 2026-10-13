@@ -4,6 +4,7 @@ import fc from "fast-check";
 import JSZip from "jszip";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationBatch,
@@ -108,6 +109,7 @@ type ApplyOptions = {
 
 const apply = ({ reviewer, story, operation }: ApplyOptions) =>
   reviewer.applyDocumentOperationsToStory({
+    undefinedReferences: "refuse",
     story,
     batch: {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -238,7 +240,10 @@ const checkCapacity = async ({ kind, attempts, length, pendingAt, merge }: Capac
     reopenedRejected
       .snapshotStory(story)
       ?.blocks.slice(0, length)
-      .map(({ text, directAlignment }) => ({ text, directAlignment })),
+      .map((snapshotBlock) => {
+        const paragraph = expectParagraphBlock(snapshotBlock);
+        return { text: paragraph.text, directAlignment: paragraph.directAlignment };
+      }),
   ).toEqual(
     Array.from({ length }, (_, index) => ({ text: `Clause ${index}.`, directAlignment: "left" })),
   );
@@ -254,7 +259,7 @@ const checkCapacity = async ({ kind, attempts, length, pendingAt, merge }: Capac
   let mergedAlignment = "left";
   if (merge === "explicit") mergedAlignment = "both";
   if (attempts > 0 && pendingAt === "first") mergedAlignment = "center";
-  expect(aligned?.directAlignment).toBe(refused ? "center" : mergedAlignment);
+  expect(expectParagraphBlock(aligned).directAlignment).toBe(refused ? "center" : mergedAlignment);
 };
 
 // The old merge guard inspected only the first paragraph; its formatting writer
@@ -313,6 +318,7 @@ test.each(Object.values(STORIES))(
     const survivor = block({ reviewer, story, index: 1 });
     expect(
       reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
         story,
         batch: {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -423,17 +429,19 @@ test.each(Object.values(STORIES))(
     const saved = await reviewer.toBuffer();
     const accepting = await FolioDocxReviewer.fromBuffer(saved);
     accepting.acceptAll();
-    expect(accepting.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe("center");
+    expect(expectParagraphBlock(accepting.snapshotStory(story)?.blocks.at(0)).directAlignment).toBe(
+      "center",
+    );
     const rejecting = await FolioDocxReviewer.fromBuffer(saved);
     rejecting.rejectAll();
     expect(
       rejecting
         .snapshotStory(story)
         ?.blocks.slice(0, 2)
-        .map(({ text, directAlignment }) => ({
-          text,
-          directAlignment,
-        })),
+        .map((snapshotBlock) => {
+          const paragraph = expectParagraphBlock(snapshotBlock);
+          return { text: paragraph.text, directAlignment: paragraph.directAlignment };
+        }),
     ).toEqual([
       { text: "Clause 0.", directAlignment: "left" },
       { text: "Clause 1.", directAlignment: "left" },
@@ -466,6 +474,7 @@ test.each(Object.values(STORIES))(
       const carrier = block({ reviewer, story, index: sourceIndex + 1 });
       expect(
         reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
           story,
           batch: {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -514,6 +523,7 @@ test.each(Object.values(STORIES))(
     ).toEqual([{ id: "explicit-merge", reason: "pendingParagraphPropertyChange" }]);
     expect(sequential.reviewer.snapshotStory(story)).toEqual(before);
     const result = batch.reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -528,9 +538,10 @@ test.each(Object.values(STORIES))(
     batch.reviewer.acceptAll();
     sequential.reviewer.acceptAll();
     const content = (reviewer: FolioDocxReviewer) =>
-      reviewer
-        .snapshotStory(story)
-        ?.blocks.map(({ text, directAlignment }) => ({ text, directAlignment }));
+      reviewer.snapshotStory(story)?.blocks.map((snapshotBlock) => {
+        const paragraph = expectParagraphBlock(snapshotBlock);
+        return { text: paragraph.text, directAlignment: paragraph.directAlignment };
+      });
     expect(content(batch.reviewer)).toEqual(content(sequential.reviewer));
   },
 );

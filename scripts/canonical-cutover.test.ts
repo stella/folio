@@ -232,7 +232,7 @@ describe("canonical cutover guard", () => {
         markers
           .split("\n")
           .filter((line) => line !== `// canonical-gap: ${removed}`)
-          .join("\n") + "\napplyFolioAIEditOperations({});";
+          .join("\n") + '\napplyFolioAIEditOperations({ undefinedReferences: "refuse" });';
       expect(
         failuresOf(fixture, "packages/core/src/document-operations.ts").some((failure) =>
           failure.includes(`${removed} source needs its ledger marker`),
@@ -241,7 +241,7 @@ describe("canonical cutover guard", () => {
     }
     expect(
       failuresOf(
-        `${markers}\napplyFolioAIEditOperations({});`,
+        `${markers}\napplyFolioAIEditOperations({ undefinedReferences: "refuse" });`,
         "packages/core/src/document-operations.ts",
       ),
     ).toEqual([]);

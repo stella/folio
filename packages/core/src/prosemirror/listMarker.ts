@@ -1,14 +1,17 @@
+import { resolveListTemplate } from "../docx/listTemplate";
+
+export { resolveListTemplate, resolveListTemplateWithComponents } from "../docx/listTemplate";
+export type { ResolvedListComponent, ResolvedListTemplate } from "../docx/listTemplate";
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
 import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
-import {
-  paragraphNumberingLevel,
-  paragraphNumberingReferenceId,
-  sameStatedParagraphNumbering,
-} from "../docx/numberingReference";
+import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "../docx/numberingReference";
 import type { CounterFormat } from "../types/document";
-import { isListNumPr } from "../layout-engine/types";
+import {
+  effectiveParagraphNumbering,
+  paragraphNumberingSourcesFromBoundary,
+} from "./numberingAttr";
 import type { ParagraphAttrs } from "./schema/nodes";
-import type { ListRenderingAttrKey } from "./listRenderingAttrs";
+import { hasListRendering, type ListRenderingAttrKey } from "./listRenderingAttrs";
 
 export type ListCounterState = {
   counters: Map<number, number[]>;
@@ -43,18 +46,6 @@ export type VisibleListMarker = {
   counterState: ListCounterState;
   stream: ListCounterStream;
   advances: readonly AdvancedListMarker[];
-};
-
-export type ResolvedListComponent = {
-  level: number;
-  relativeStart: number;
-  start: number;
-  end: number;
-};
-
-export type ResolvedListTemplate = {
-  value: string;
-  components: readonly ResolvedListComponent[];
 };
 
 export const MAX_LIST_LEVEL = 8;
@@ -124,19 +115,12 @@ export function cloneListCounterState(state: ListCounterState): ListCounterState
 }
 
 function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
-  const change = attrs._propertyChanges?.find(({ previousFormatting }) => {
-    const previousNumPr = previousFormatting?.numPr;
-    return (
-      isListNumPr(previousNumPr) &&
-      (!attrs.numPr || !sameStatedParagraphNumbering(previousNumPr, attrs.numPr))
-    );
-  });
-  const previous = change?.previousFormatting;
-  if (!previous || !isListNumPr(previous.numPr)) {
-    return null;
-  }
+  const change = attrs._propertyChanges?.at(0);
+  if (!change) return null;
+  const previous = change.previousFormatting ?? {};
   return {
-    numPr: previous.numPr,
+    ...(previous.numPr == null ? {} : { numPr: previous.numPr }),
+    ...(previous.numPrFromStyle == null ? {} : { numPrFromStyle: previous.numPrFromStyle }),
     ...(previous.listIsBullet !== undefined ? { listIsBullet: previous.listIsBullet } : {}),
     ...(previous.listIsLegal !== undefined ? { listIsLegal: previous.listIsLegal } : {}),
     ...(previous.listNumFmt !== undefined ? { listNumFmt: previous.listNumFmt } : {}),
@@ -206,83 +190,26 @@ export function advanceVisibleListMarker(
     return advanced;
   };
   const previous = previousListAttrs(attrs);
-  if (!attrs.numPr) {
-    const counterAttrs = previous ?? attrs;
-    const visible = advance(counterAttrs, previous ? "original" : "final");
-    return { ...visible, advances };
-  }
-
   if (attrs.pPrMark?.kind === "del") {
-    const visible = advance(attrs, "original");
+    const visible = advance(previous ?? attrs, "original");
     return { ...visible, advances };
   }
-
-  const numberingWasAdded = attrs._propertyChanges?.some(
-    ({ previousFormatting }) =>
-      previousFormatting &&
-      Object.hasOwn(previousFormatting, "numPr") &&
-      previousFormatting.numPr == null,
-  );
-  const numberingChanged =
-    previous?.numPr !== undefined && !sameStatedParagraphNumbering(previous.numPr, attrs.numPr);
-  const visible = advance(attrs, "final");
-  if (attrs.pPrMark?.kind !== "ins" && !numberingWasAdded && !numberingChanged) {
-    advance(attrs, "original");
-  } else if (numberingChanged && previous) {
-    advance(previous, "original");
-  }
+  const final = advance(attrs, "final");
+  const original =
+    attrs.pPrMark?.kind === "ins" ? undefined : advance(previous ?? attrs, "original");
+  const visible =
+    attrs.numPr?.kind !== "none" &&
+    final.marker === null &&
+    original &&
+    original.marker !== null &&
+    previous?.numPr?.kind === "reference"
+      ? original
+      : final;
   return { ...visible, advances };
 }
 
 export function formatCounter(value: number, format: CounterFormat | undefined): string {
   return formatOoxmlCounter(value, format);
-}
-
-type ResolveListTemplateOptions = {
-  template: string;
-  counters: number[];
-  levelFormats?: CounterFormat[] | undefined;
-  forceDecimal?: boolean | undefined;
-};
-
-export function resolveListTemplate(options: ResolveListTemplateOptions): string {
-  return resolveListTemplateWithComponents(options).value;
-}
-
-export function resolveListTemplateWithComponents({
-  template,
-  counters,
-  levelFormats,
-  forceDecimal = false,
-}: ResolveListTemplateOptions): ResolvedListTemplate {
-  const components: ResolvedListComponent[] = [];
-  let value = "";
-  let sourceEnd = 0;
-  for (const match of template.matchAll(/%(?<digit>\d)(?<punct>[.):\]])?/gu)) {
-    const sourceStart = match.index;
-    const relativeStart = value.length;
-    value += template.slice(sourceEnd, sourceStart);
-    sourceEnd = sourceStart + match[0].length;
-
-    const index = Number.parseInt(match.groups?.["digit"] ?? "", 10) - 1;
-    if (index < 0) {
-      continue;
-    }
-    const counter = counters[index];
-    if (counter === undefined || Number.isNaN(counter)) {
-      continue;
-    }
-    const formatted = formatCounter(counter, forceDecimal ? "decimal" : levelFormats?.[index]);
-    if (!formatted) {
-      continue;
-    }
-    const start = value.length;
-    value += formatted;
-    components.push({ level: index, relativeStart, start, end: value.length });
-    value += match.groups?.["punct"] ?? "";
-  }
-  value += template.slice(sourceEnd);
-  return { value, components };
 }
 
 function getLastListCounters(state: ListCounterState): number[] | undefined {
@@ -304,13 +231,23 @@ function formatNumberedMarker(counters: number[], level: number): string {
 }
 
 export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState): string | null {
+  if (!hasListRendering(attrs)) {
+    state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
+    return null;
+  }
   const markerTemplate = attrs.listMarkerTemplate ?? attrs.listMarker;
   const foldedMarkerSuffix = attrs.listFoldedMarkerSuffix ?? undefined;
-  const level = paragraphNumberingLevel(attrs.numPr) ?? 0;
+  const effectiveNumbering = effectiveParagraphNumbering(
+    paragraphNumberingSourcesFromBoundary({
+      numPr: attrs.numPr,
+      numPrFromStyle: attrs.numPrFromStyle,
+    }),
+  );
+  const level = paragraphNumberingLevel(effectiveNumbering) ?? 0;
   if (!Number.isInteger(level) || level < 0 || level > MAX_LIST_LEVEL) {
     return null;
   }
-  const numId = paragraphNumberingReferenceId(attrs.numPr);
+  const numId = paragraphNumberingReferenceId(effectiveNumbering);
   if (numId === undefined) {
     let marker: string | null = null;
     if (markerTemplate?.includes("%") && !attrs.listIsBullet) {
@@ -351,7 +288,8 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   const restartedNumIds = (state.restartedNumIds ??= new Set());
   const latestAbstractCounters =
     abstractNumId === undefined ? undefined : state.abstractCounters.get(abstractNumId);
-  const styleNumbering = attrs.numPrFromStyle;
+  const styleNumbering =
+    attrs.numPr?.kind !== "reference" && attrs.numPrFromStyle?.kind === "reference";
   const resumesRestartedInstance =
     firstInstanceEncounter &&
     attrs.listStartOverride == null &&

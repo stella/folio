@@ -1,3 +1,7 @@
+import {
+  paragraphNumberingSourcesFromBoundary,
+  effectiveParagraphNumbering,
+} from "../numberingAttr";
 import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 /**
  * ProseMirror to Document Conversion
@@ -224,6 +228,7 @@ import type {
 import { assertValidProseMirrorDocument } from "../validation";
 import { completeNumberingForDoc } from "../listInstanceReferences";
 import {
+  LIST_RENDERING_ATTR_KEYS,
   hasListRendering,
   listRenderingFromAttrs as listRenderingFieldsFromAttrs,
 } from "../listRenderingAttrs";
@@ -452,7 +457,7 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
     }
   }
   const { numPr, numPrFromStyle } = baseFormatting;
-  if (!numPr || !numPrFromStyle || !isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)) {
+  if (numPrFromStyle == null || (numPr != null && numPr.kind !== "levelOnly")) {
     return;
   }
   if (
@@ -461,7 +466,11 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
   ) {
     return;
   }
-  paragraph.formatting = { ...paragraph.formatting, numPr, numPrFromStyle };
+  paragraph.formatting = {
+    ...paragraph.formatting,
+    ...(numPr === undefined ? {} : { numPr }),
+    numPrFromStyle,
+  };
 };
 
 const restoreParagraphPropertySources = (
@@ -1953,7 +1962,14 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
  * list markers on the way out of the editor.
  */
 function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering"] {
-  const numId = paragraphNumberingReferenceId(attrs.numPr);
+  const numId = paragraphNumberingReferenceId(
+    effectiveParagraphNumbering(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: attrs.numPr,
+        numPrFromStyle: attrs.numPrFromStyle,
+      }),
+    ),
+  );
   if (numId === undefined) {
     return undefined;
   }
@@ -2052,7 +2068,14 @@ function convertPMParagraph(
   if (pFormatting) {
     paragraph.formatting = pFormatting;
   }
-  if (attrs.numPr?.kind === "reference") {
+  if (
+    effectiveParagraphNumbering(
+      paragraphNumberingSourcesFromBoundary({
+        numPr: attrs.numPr,
+        numPrFromStyle: attrs.numPrFromStyle,
+      }),
+    )?.kind === "reference"
+  ) {
     const inheritedIndentation = paragraphIndentationFromFormatting(attrs._resolvedFormatting);
     if (inheritedIndentation) {
       assignParagraphIndentationProjection({
@@ -2113,14 +2136,20 @@ const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): Paragrap
       ? normalizedChangeInfo
       : { ...normalizedChangeInfo, currentFormatting };
   }
-  // `null` is the attr's tombstone — the paragraph carried no numbering before
-  // the change — and the model spells that as the field being absent.
-  const { numPr, ...previousWithoutNumPr } = previousFormatting;
+  // Attr null encodes an absent source slot; style inheritance remains separate.
+  const { numPr, numPrFromStyle, ...previousWithoutNumPr } = previousFormatting;
   const normalizedPrevious =
     numPr == null ? previousWithoutNumPr : { ...previousWithoutNumPr, numPr };
+  // Clearing a rendered list is editor bookkeeping, not a DOCX formatting property.
+  for (const key of LIST_RENDERING_ATTR_KEYS) {
+    if (normalizedPrevious[key] == null) Reflect.deleteProperty(normalizedPrevious, key);
+  }
   return {
     ...normalizedChangeInfo,
-    previousFormatting: normalizedPrevious,
+    previousFormatting: {
+      ...normalizedPrevious,
+      ...(numPrFromStyle == null ? {} : { numPrFromStyle }),
+    },
     ...(currentFormatting !== undefined && { currentFormatting }),
   };
 };
@@ -2433,7 +2462,15 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   const snapToGrid = authored("snapToGrid", attrs.snapToGrid);
   // A zero left or first-line indent is stated only where a numbering level
   // could supply another value; elsewhere it reads as the absent default.
-  const numbered = paragraphNumberingReferenceId(attrs.numPr ?? undefined) !== undefined;
+  const numbered =
+    paragraphNumberingReferenceId(
+      effectiveParagraphNumbering(
+        paragraphNumberingSourcesFromBoundary({
+          numPr: attrs.numPr,
+          numPrFromStyle: attrs.numPrFromStyle,
+        }),
+      ),
+    ) !== undefined;
   const statedIndent = (value: number | undefined): number | undefined =>
     value === 0 && !numbered ? undefined : value;
   const indentLeft = statedIndent(authored("indentLeft", attrs.indentLeft));

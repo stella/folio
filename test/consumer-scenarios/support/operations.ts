@@ -11,21 +11,24 @@ import {
   hashFolioAIBlockText,
   isFolioDocumentOperationModeSupported,
 } from "@stll/folio-core/server";
+import type { FolioAIBlock, FolioAIParagraphBlock } from "@stll/folio-core/ai-edits";
 
-import { type Random, sentence } from "./random.ts";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
+
+import { createRandom, type Random, sentence } from "./random.ts";
 import { gapWeight, weightedChoice } from "./feature-coverage.ts";
 import { type Picker, uniformPicker, wordsOf } from "./targets.ts";
 
 export type Mode = "direct" | "tracked-changes" | "suggested";
 export const MODES: readonly Mode[] = ["direct", "tracked-changes", "suggested"];
 
-export type Block = {
-  id: string;
-  kind: string;
-  text: string;
-  listReference?: { numId: number; level: number };
-  table?: unknown;
-};
+type BlockFields = Pick<FolioAIBlock, "id" | "text" | "table">;
+export type Block =
+  | (BlockFields & {
+      kind: FolioAIParagraphBlock["kind"];
+      listReference?: NonNullable<FolioAIParagraphBlock["listReference"]>;
+    })
+  | (BlockFields & { kind: "diagnostic" });
 
 export type Operation = { type: string } & Record<string, unknown>;
 
@@ -41,7 +44,26 @@ type Generator = (blocks: readonly Block[], random: Random, pick?: Picker) => Op
 const withText = (blocks: readonly Block[]) => blocks.filter((block) => wordsOf(block.text).length);
 
 const numberingRefs = (blocks: readonly Block[]) =>
-  blocks.flatMap((block) => (block.listReference ? [block.listReference] : []));
+  blocks.flatMap((block) => {
+    switch (block.kind) {
+      case "paragraph":
+      case "heading":
+      case "listItem":
+        return block.listReference === undefined ? [] : [block.listReference];
+      case "diagnostic":
+        return [];
+      default: {
+        const unreachable: never = block;
+        return unreachable;
+      }
+    }
+  });
+
+const referenceNumbering = ({ numId, level }: { numId: number; level: number }) => ({
+  kind: "reference" as const,
+  numId,
+  ilvl: level,
+});
 
 const range = (block: Block, pick: Picker) => {
   if (wordsOf(block.text).length === 0) return null;
@@ -56,14 +78,35 @@ const range = (block: Block, pick: Picker) => {
 
 const paragraphProperties = (blocks: readonly Block[], random: Random) => {
   const refs = numberingRefs(blocks);
-  return random.pick([
+  const properties = random.pick([
     { styleId: "Heading2" },
     { styleId: null },
     { alignment: "center" },
     { alignment: null },
     { spacing: { spaceBefore: 120, spaceAfter: 120 } },
-    { numbering: { start: "new", kind: random.pick(["numbered", "bullet"]) } },
-    ...(refs.length > 0 ? [{ numbering: random.pick(refs) }, { numbering: null }] : []),
+    { numbering: { kind: "newList", format: random.pick(["numbered", "bullet"]) } },
+    ...(refs.length > 0
+      ? [
+          { numbering: referenceNumbering(random.pick(refs)) },
+          { numbering: { kind: "none" as const } },
+        ]
+      : []),
+  ]);
+  if (!("styleId" in properties) || properties.styleId !== null) return properties;
+  // New dimensions must not shift the draws that pinned operation sequences use.
+  const numberingRandom = createRandom(random.state());
+  return numberingRandom.pick([
+    properties,
+    { styleId: null, numbering: { kind: "inherit" } },
+    { styleId: null, numbering: { kind: "levelOnly", ilvl: numberingRandom.int(2) } },
+    ...(refs.length > 0
+      ? [
+          {
+            styleId: null,
+            numbering: paragraphNumberingReference({ numId: numberingRandom.pick(refs).numId }),
+          },
+        ]
+      : []),
   ]);
 };
 
@@ -112,8 +155,8 @@ export const GENERATORS: Record<string, Generator> = {
       {},
       { styleId: "Heading2" },
       { alignment: "right" },
-      { numbering: { start: "new", kind: random.pick(["numbered", "bullet"]) } },
-      ...(refs.length > 0 ? [{ numbering: random.pick(refs) }] : []),
+      { numbering: { kind: "newList", format: random.pick(["numbered", "bullet"]) } },
+      ...(refs.length > 0 ? [{ numbering: referenceNumbering(random.pick(refs)) }] : []),
     ]);
     return {
       type: "insertAfterBlock",
@@ -322,7 +365,7 @@ export const MISTAKES: Record<
         type: "insertAfterBlock",
         blockId: blocks.length > 0 ? random.pick(blocks).id : "00000000",
         text: "x",
-        numbering: { numId: "1", level: "0" },
+        numbering: { kind: "reference", numId: "1", ilvl: "0" },
       },
     ],
   }),
@@ -368,7 +411,11 @@ export const MISTAKES: Record<
           type: "insertAfterBlock",
           blockId: blocks.length > 0 ? random.pick(blocks).id : "00000000",
           text: "x",
-          ...(refs.length > 0 ? { numbering: { numId: random.pick(refs).numId, level: 8 } } : {}),
+          ...(refs.length > 0
+            ? {
+                numbering: paragraphNumberingReference({ numId: random.pick(refs).numId, ilvl: 8 }),
+              }
+            : {}),
         },
       ],
     };
@@ -400,7 +447,7 @@ export const undefinedNumbering = (blocks: readonly Block[]) => {
   const used = new Set(numberingRefs(blocks).map((ref) => ref.numId));
   let numId = 1;
   while (used.has(numId)) numId += 1;
-  return { numId: numId + 40, level: 0 };
+  return paragraphNumberingReference({ numId: numId + 40, ilvl: 0 });
 };
 
 /** Give each operation an id and wrap them as a core batch. */
@@ -632,7 +679,7 @@ export const COLLISIONS: Record<string, Collision> = {
             type: "insertAfterBlock",
             blockId: block.id,
             text: "A new bullet.",
-            numbering: { start: "new", kind: "bullet" },
+            numbering: { kind: "newList", format: "bullet" },
           },
         ]
       : null;

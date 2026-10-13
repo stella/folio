@@ -137,18 +137,21 @@ test(
             .getContent()
             .find((candidate) => candidate.text === "Body clause.");
           if (!block) throw new Error("Body clause is missing");
-          reviewer.applyDocumentOperations({
-            version: 1,
-            mode,
-            operations: [
-              {
-                id: "style",
-                type: "setBlockParagraphProperties",
-                blockId: block.id,
-                properties: { styleId: "Heading2" },
-              },
-            ],
-          });
+          reviewer.applyDocumentOperations(
+            {
+              version: 1,
+              mode,
+              operations: [
+                {
+                  id: "style",
+                  type: "setBlockParagraphProperties",
+                  blockId: block.id,
+                  properties: { styleId: "Heading2" },
+                },
+              ],
+            },
+            { undefinedReferences: "refuse" },
+          );
           const live = reviewer.getContent().find((candidate) => candidate.text === "Body clause.");
           const saved = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
             author: "Test",

@@ -76,7 +76,7 @@ describe("completing a missing comment reference", () => {
           replace: "Superseded wording.",
         },
       ],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
 
     const saved = await documentXml(await reviewer.toBuffer());

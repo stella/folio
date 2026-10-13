@@ -5,5 +5,12 @@
       "note": "Style numbering provenance across tracked paragraph and list changes, resolution, and save/reopen.",
       "date": "2026-09-30"
     }
+  ],
+  "pending style-numbering counter streams equal resolved documents": [
+    {
+      "seed": 1636001,
+      "note": "Authored states and pending list or style transitions preserve both counter streams.",
+      "date": "2026-10-11"
+    }
   ]
 }

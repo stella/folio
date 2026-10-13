@@ -334,11 +334,14 @@ describe("an edit operation that deletes a note reference", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer((await packageOf(live)).slice().buffer);
     const block = reviewer.getContent().find(({ text }) => text.startsWith("Noted text"));
     if (!block) throw new Error("no noted paragraph");
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode,
-      operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode,
+        operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.skipped).toEqual([]);
     return { reviewer, undoHandle: result.undoHandle };
   };

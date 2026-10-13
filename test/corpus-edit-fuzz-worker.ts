@@ -179,7 +179,9 @@ const runSteps = async (
       const batch = coreBatch([operation], mode);
       let result: ReturnType<typeof reviewer.applyDocumentOperations>;
       try {
-        result = reviewer.applyDocumentOperations(batch as never);
+        result = reviewer.applyDocumentOperations(batch as never, {
+          undefinedReferences: "refuse",
+        });
       } catch (error) {
         return failure(
           "throw",
@@ -371,7 +373,9 @@ export const runEditWorker = async (
       steps.push({ mode, operation });
       attempts += 1;
       try {
-        reviewer.applyDocumentOperations(coreBatch([operation], mode) as never);
+        reviewer.applyDocumentOperations(coreBatch([operation], mode) as never, {
+          undefinedReferences: "refuse",
+        });
       } catch {
         break;
       }

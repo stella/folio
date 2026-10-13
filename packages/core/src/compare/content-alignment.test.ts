@@ -6,13 +6,20 @@ import {
   createFolioContentAlignmentWorkSession,
   longestIncreasingFolioContentPairs,
 } from "./content-alignment";
+import { INHERITED_PARAGRAPH_NUMBERING } from "./content-types";
 import type { FolioContentBlock } from "./content-types";
 
 const block = (
   id: string,
   text: string,
   options: Partial<FolioContentBlock> = {},
-): FolioContentBlock => ({ id, kind: "paragraph", text, ...options });
+): FolioContentBlock => ({
+  id,
+  kind: "paragraph",
+  text,
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
+  ...options,
+});
 
 type CellOptions = {
   rowIndex: number;
@@ -29,6 +36,7 @@ const cell = (
 ): FolioContentBlock => ({
   id,
   kind: "paragraph",
+  statedNumbering: INHERITED_PARAGRAPH_NUMBERING,
   text,
   ...options,
   table: {

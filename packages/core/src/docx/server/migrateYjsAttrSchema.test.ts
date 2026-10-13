@@ -606,30 +606,29 @@ const paragraphAttributes = (update: Uint8Array): Record<string, unknown>[] => {
   return attributes;
 };
 
-describe("migrateFolioYjsSnapshot carries version-7 numbering forward", () => {
-  test("maps the two slots onto the union, everywhere a version-7 build stored them", () => {
-    const migrated = migrateFolioYjsSnapshot(versionSevenNumberingSnapshot());
-    if (migrated.isErr()) {
-      throw migrated.error;
-    }
+describe("migrateFolioYjsSnapshot refuses ambiguous version-7 numbering", () => {
+  test("returns the typed refusal without changing the legacy snapshot", () => {
+    const update = versionSevenNumberingSnapshot();
+    const originalBytes = [...update];
+    const originalAttributes = paragraphAttributes(update);
+    const error = expectError(update);
 
-    expect(migrated.value.fromVersion).toBe(7);
-    expect(migrated.value.toVersion).toBe(FOLIO_YJS_ATTR_SCHEMA_VERSION);
-    expect(migrated.value.paragraphsRewritten).toBe(7);
-    expect(paragraphAttributes(migrated.value.update)).toEqual([
-      { numPr: { kind: "reference", numId: 3, ilvl: 2 } },
-      { numPr: { kind: "reference", numId: 3 } },
-      { numPr: { kind: "levelOnly", ilvl: 1 } },
-      // A cancellation names no id, so the level it sat beside goes with it.
-      { numPr: { kind: "none" } },
-      {},
-      {
-        numPr: { kind: "reference", numId: 7 },
-        numPrFromStyle: { kind: "reference", numId: 7 },
-      },
+    expect(error).toBeInstanceOf(FolioYjsSnapshotMigrationError);
+    expect(error.code).toBe("unsupported_version");
+    expect(error.message).toBe(
+      `Yjs schema 7 has ambiguous numbering ownership; schema ${FOLIO_YJS_ATTR_SCHEMA_VERSION} requires stated numbering overrides. Rebuild the collaboration state from the saved DOCX.`,
+    );
+    expect([...update]).toEqual(originalBytes);
+    expect(paragraphAttributes(update)).toEqual(originalAttributes);
+    expect(originalAttributes).toEqual([
+      { numPr: { numId: 3, ilvl: 2 } },
+      { numPr: { numId: 3 } },
+      { numPr: { ilvl: 1 } },
+      { numPr: { numId: 0, ilvl: 4 } },
+      { numPr: {} },
+      { numPr: { numId: 7 }, numPrFromStyle: { numId: 7 } },
       {
         _propertyChanges: [
-          // `null` is the tombstone for "carried no numbering", not a slot pair.
           {
             type: "paragraphPropertyChange",
             info: { id: 1, author: "Reviewer", date: "2026-01-01" },
@@ -638,12 +637,11 @@ describe("migrateFolioYjsSnapshot carries version-7 numbering forward", () => {
           {
             type: "paragraphPropertyChange",
             info: { id: 2, author: "Reviewer", date: "2026-01-01" },
-            previousFormatting: { numPr: { kind: "reference", numId: 9, ilvl: 0 } },
+            previousFormatting: { numPr: { numId: 9, ilvl: 0 } },
           },
         ],
-        // Already a union, and left exactly as it was found.
         _originalFormatting: { numPr: { kind: "reference", numId: 9 } },
-        numPr: { kind: "reference", numId: 9, ilvl: 0 },
+        numPr: { numId: 9, ilvl: 0 },
       },
       { styleId: "Normal" },
     ]);
@@ -670,24 +668,6 @@ describe("migrateFolioYjsSnapshot carries version-7 numbering forward", () => {
     expect(result.ok ? [] : result.issues.map((issue) => issue.path)).toEqual([
       "paragraph.attrs.numPr",
     ]);
-  });
-
-  test("a migrated version-7 paragraph reads", () => {
-    const migrated = migrateFolioYjsSnapshot(versionSevenNumberingSnapshot());
-    if (migrated.isErr()) {
-      throw migrated.error;
-    }
-    const ydoc = new Y.Doc();
-    Y.applyUpdate(ydoc, migrated.value.update);
-    const document = initProseMirrorDoc(
-      ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME),
-      schema,
-    ).doc;
-    ydoc.destroy();
-
-    for (let index = 0; index < document.childCount; index += 1) {
-      expect(readParagraphAttrs(document.child(index)).ok).toBe(true);
-    }
   });
 });
 

@@ -286,10 +286,13 @@ describe("the requested-outcome oracle", () => {
     assert.ok(block);
     const note = "Review this paragraph.";
     const apply = (batch: Omit<Parameters<Reviewer["applyDocumentOperations"]>[0], "version">) => {
-      const result = reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        ...batch,
-      });
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          ...batch,
+        },
+        { undefinedReferences: "refuse" },
+      );
       assert.equal(result.applied.length, batch.operations.length);
       assert.deepEqual(result.skipped, []);
     };

@@ -3,9 +3,9 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import { sanitizeXmlCharacters, type ValidateDocumentModelIssue } from "@stll/docx-core";
+import { isNumberingReference, paragraphNumberingReference } from "@stll/docx-core/model";
 
 import { LIST_KINDS, type ListKind } from "./docx/listNumberingInstances";
-import { isNumberingReference } from "./docx/numberingReference";
 import { outlineLevelFromAttrValue } from "./prosemirror/outlineLevelAttr";
 import type { FolioTableTemplates } from "./ai-edits/table-template";
 import {
@@ -13,7 +13,7 @@ import {
   type FolioAIEditApplyOutcome,
   type FolioAIEditView,
   type FolioReplacementBackground,
-  type FolioUndefinedStylePolicy,
+  type FolioUndefinedReferencePolicy,
   type FolioWordDiffOptions,
   type FolioRevisionStamp,
   previewFolioAIEditOperationsWithResult,
@@ -453,23 +453,6 @@ const readNonNegativeInteger = (
   return invalidBatch(`${path}.${key}`, "expected a non-negative safe integer");
 };
 
-/**
- * A non-negative integer that may also be cleared. `undefined` is "say
- * nothing"; `null` is "there is none", which is a different instruction and
- * the one absence alone cannot give.
- */
-const readClearableNonNegativeInteger = (
-  value: Record<string, unknown>,
-  key: string,
-  path: string,
-): number | null | undefined => {
-  const candidate = value[key];
-  if (candidate === undefined) {
-    return undefined;
-  }
-  return candidate === null ? null : readNonNegativeInteger(value, key, path);
-};
-
 type ReadClearableParagraphAlignmentParams = {
   value: Record<string, unknown>;
   key: string;
@@ -637,52 +620,68 @@ const LIST_KIND_SET: ReadonlySet<string> = new Set(LIST_KINDS);
 
 const isListKind = (value: string): value is ListKind => LIST_KIND_SET.has(value);
 
-/** `{ start: "new", kind, level? }`: a list the operation starts. */
+/** `{ kind: "newList", format, level? }`: a list the operation starts. */
 const readNewListReference = (
   candidate: Record<string, unknown>,
   numberingPath: string,
 ): FolioAINewListReference => {
-  assertAllowedKeys(candidate, numberingPath, ["start", "kind", "level"]);
-  const kind = candidate["kind"];
-  if (typeof kind !== "string" || !isListKind(kind)) {
-    return invalidBatch(`${numberingPath}.kind`, `expected one of ${LIST_KINDS.join(", ")}`);
+  assertAllowedKeys(candidate, numberingPath, ["kind", "format", "level"]);
+  const format = candidate["format"];
+  if (typeof format !== "string" || !isListKind(format)) {
+    return invalidBatch(`${numberingPath}.format`, `expected one of ${LIST_KINDS.join(", ")}`);
   }
   if (candidate["level"] === undefined) {
-    return { start: "new", kind };
+    return { kind: "newList", format };
   }
   const level = readNonNegativeInteger(candidate, "level", numberingPath);
   if (level > MAX_NEW_LIST_LEVEL) {
     return invalidBatch(`${numberingPath}.level`, `expected at most ${MAX_NEW_LIST_LEVEL}`);
   }
-  return { start: "new", kind, level };
+  return { kind: "newList", format, level };
 };
 
 const readClearableNumbering = ({
   value,
   key,
   path,
-}: ReadClearableParagraphIndentationParams): FolioAIListNumbering | null | undefined => {
+}: ReadClearableParagraphIndentationParams): FolioAIListNumbering | undefined => {
   const candidate = value[key];
-  if (candidate === undefined || candidate === null) return candidate;
+  if (candidate === undefined) return undefined;
   const numberingPath = `${path}.${key}`;
-  if (!isPlainObject(candidate))
-    return invalidBatch(numberingPath, "expected an object or null when provided");
-  if (candidate["start"] !== undefined) {
-    if (candidate["start"] !== "new") {
-      return invalidBatch(`${numberingPath}.start`, 'expected "new"');
+  if (!isPlainObject(candidate)) return invalidBatch(numberingPath, "expected a numbering object");
+  const kind = candidate["kind"];
+  if (kind === "none" || kind === "inherit") {
+    assertAllowedKeys(candidate, numberingPath, ["kind"]);
+    return { kind };
+  }
+  if (kind === "levelOnly") {
+    assertAllowedKeys(candidate, numberingPath, ["kind", "ilvl"]);
+    const ilvl = readNonNegativeInteger(candidate, "ilvl", numberingPath);
+    if (ilvl > MAX_NEW_LIST_LEVEL) {
+      return invalidBatch(`${numberingPath}.ilvl`, `expected at most ${MAX_NEW_LIST_LEVEL}`);
     }
+    return { kind, ilvl };
+  }
+  if (kind === "reference") {
+    assertAllowedKeys(candidate, numberingPath, ["kind", "numId", "ilvl"]);
+    const numId = readNonNegativeInteger(candidate, "numId", numberingPath);
+    if (!isNumberingReference(numId)) {
+      return invalidBatch(`${numberingPath}.numId`, "expected a positive integer");
+    }
+    if (candidate["ilvl"] === undefined) return paragraphNumberingReference({ numId });
+    const ilvl = readNonNegativeInteger(candidate, "ilvl", numberingPath);
+    if (ilvl > MAX_NEW_LIST_LEVEL) {
+      return invalidBatch(`${numberingPath}.ilvl`, `expected at most ${MAX_NEW_LIST_LEVEL}`);
+    }
+    return paragraphNumberingReference({ numId, ilvl });
+  }
+  if (kind === "newList") {
     return readNewListReference(candidate, numberingPath);
   }
-  assertAllowedKeys(candidate, numberingPath, ["numId", "level"]);
-  const numId = readNonNegativeInteger(candidate, "numId", numberingPath);
-  // The agent contract clears numbering with `null`, never with the reserved
-  // id, so `w:numId 0` is a malformed request rather than a cancellation.
-  if (!isNumberingReference(numId))
-    return invalidBatch(`${numberingPath}.numId`, "expected a positive integer");
-  return {
-    numId,
-    level: readNonNegativeInteger(candidate, "level", numberingPath),
-  };
+  return invalidBatch(
+    `${numberingPath}.kind`,
+    'expected "none", "inherit", "levelOnly", "reference", or "newList"',
+  );
 };
 
 /**
@@ -760,7 +759,6 @@ const readParagraphProperties = ({
   assertAllowedKeys(candidate, propertiesPath, [
     "styleId",
     "outlineLevel",
-    "listLevel",
     "numbering",
     "alignment",
     "spacing",
@@ -770,7 +768,6 @@ const readParagraphProperties = ({
   const styleId =
     rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
   const outlineLevel = readClearableOutlineLevel(candidate, propertiesPath);
-  const listLevel = readClearableNonNegativeInteger(candidate, "listLevel", propertiesPath);
   const numbering = readClearableNumbering({
     value: candidate,
     key: "numbering",
@@ -794,7 +791,6 @@ const readParagraphProperties = ({
   if (
     styleId === undefined &&
     outlineLevel === undefined &&
-    listLevel === undefined &&
     numbering === undefined &&
     alignment === undefined &&
     spacing === undefined &&
@@ -805,7 +801,6 @@ const readParagraphProperties = ({
   return {
     ...(styleId !== undefined && { styleId }),
     ...(outlineLevel !== undefined && { outlineLevel }),
-    ...(listLevel !== undefined && { listLevel }),
     ...(numbering !== undefined && { numbering }),
     ...(alignment !== undefined && { alignment }),
     ...(spacing !== undefined && { spacing }),
@@ -1010,7 +1005,6 @@ const OPERATION_KEY_DECISIONS = {
     indentation: true,
     lineBreakMode: true,
     formattingScope: true,
-    listLevel: true,
     numbering: true,
     moveId: true,
     pageBreakBefore: true,
@@ -1028,7 +1022,6 @@ const OPERATION_KEY_DECISIONS = {
     indentation: true,
     lineBreakMode: true,
     formattingScope: true,
-    listLevel: true,
     numbering: true,
     moveId: true,
     pageBreakBefore: true,
@@ -1300,7 +1293,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
     const outlineLevel = readClearableOutlineLevel(value, path);
     const moveId = readOptionalString(value, "moveId", path);
-    const listLevel = readClearableNonNegativeInteger(value, "listLevel", path);
     const numbering = readClearableNumbering({ value, key: "numbering", path });
     const alignment = readClearableParagraphAlignment({ value, key: "alignment", path });
     const spacing = readClearableParagraphSpacing({ value, key: "spacing", path });
@@ -1358,7 +1350,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       ...(indentation !== undefined && { indentation }),
       ...(lineBreakMode !== undefined && { lineBreakMode }),
       ...(formattingScope !== undefined && { formattingScope }),
-      ...(listLevel !== undefined && { listLevel }),
       ...(numbering !== undefined && { numbering }),
       ...(moveId !== undefined && { moveId }),
       ...(pageBreakBefore !== undefined && { pageBreakBefore }),
@@ -2009,13 +2000,8 @@ export type ApplyFolioDocumentOperationsOptions = {
    * revised document — keeps them instead.
    */
   replacementBackground?: FolioReplacementBackground;
-  /**
-   * What an operation naming a paragraph style the document does not define
-   * does. Refusing it (`missingStyle`) is the default; a caller copying the
-   * style references of another document — a comparison reproducing the
-   * revised one — keeps them instead.
-   */
-  undefinedStyles?: FolioUndefinedStylePolicy;
+  /** Required policy for undefined style and numbering references. */
+  undefinedReferences: FolioUndefinedReferencePolicy;
 };
 
 /** One run of the applier whose result has not reached the caller's view yet. */
@@ -2060,7 +2046,7 @@ export const applyFolioDocumentOperations = ({
   wordDiff,
   tableTemplates,
   replacementBackground,
-  undefinedStyles,
+  undefinedReferences,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
   const isAtomic = parsedBatch.atomic === true;
@@ -2084,7 +2070,7 @@ export const applyFolioDocumentOperations = ({
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
-      ...(undefinedStyles !== undefined && { undefinedStyles }),
+      undefinedReferences,
     } as const;
     if (preview) {
       const previewed = previewFolioAIEditOperationsWithResult({

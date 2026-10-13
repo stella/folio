@@ -61,21 +61,24 @@ describe("headless comment IDs", () => {
             const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
             const block = reviewer.snapshot().blocks.at(0) ?? panic("Expected a reviewable block");
             for (let batchIndex = 0; batchIndex < 2; batchIndex += 1) {
-              const result = reviewer.applyOperations([
-                {
-                  id: `comment-${batchIndex}`,
-                  type: "commentOnBlock",
-                  blockId: block.id,
-                  comment: { text: "New note" },
-                },
-                {
-                  id: `replace-${batchIndex}`,
-                  type: "replaceInBlock",
-                  blockId: block.id,
-                  find: batchIndex === 0 ? "Review" : "clause",
-                  replace: batchIndex === 0 ? "Inspect" : "provision",
-                },
-              ]);
+              const result = reviewer.applyOperations(
+                [
+                  {
+                    id: `comment-${batchIndex}`,
+                    type: "commentOnBlock",
+                    blockId: block.id,
+                    comment: { text: "New note" },
+                  },
+                  {
+                    id: `replace-${batchIndex}`,
+                    type: "replaceInBlock",
+                    blockId: block.id,
+                    find: batchIndex === 0 ? "Review" : "clause",
+                    replace: batchIndex === 0 ? "Inspect" : "provision",
+                  },
+                ],
+                { undefinedReferences: "refuse" },
+              );
               expect(result.skipped).toEqual([]);
               expect(result.applied).toHaveLength(2);
               const revisionIds =

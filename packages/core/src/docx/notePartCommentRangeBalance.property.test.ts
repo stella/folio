@@ -194,6 +194,7 @@ describe("a save leaves every note part's comment ranges balanced", () => {
           }
 
           reviewer.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
             story,
             batch: {
               version: 1,

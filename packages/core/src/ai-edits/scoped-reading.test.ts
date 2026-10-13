@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { hashFolioAIBlockText } from "./snapshot";
 import { getFolioDocumentOutline, readFolioDocumentSection } from "./scoped-reading";
-import type { FolioAIBlock, FolioAIEditSnapshot } from "./types";
+import type { FolioAIEditSnapshot, FolioAIParagraphBlock } from "./types";
 
-const makeSnapshot = (blocks: FolioAIBlock[]): FolioAIEditSnapshot => ({
-  blocks,
+const makeSnapshot = (
+  blocks: Omit<FolioAIParagraphBlock, "statedNumbering">[],
+): FolioAIEditSnapshot => ({
+  blocks: blocks.map((block) => ({ ...block, statedNumbering: { kind: "inherit" } })),
   anchors: Object.fromEntries(
     blocks.map((block, index) => [
       block.id,

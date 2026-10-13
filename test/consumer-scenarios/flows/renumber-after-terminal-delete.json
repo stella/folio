@@ -25,8 +25,9 @@
           "blockId": "31617F9A",
           "properties": {
             "numbering": {
+              "kind": "reference",
               "numId": 7,
-              "level": 0
+              "ilvl": 0
             }
           }
         }

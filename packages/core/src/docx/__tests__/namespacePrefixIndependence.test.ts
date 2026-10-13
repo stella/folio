@@ -341,19 +341,22 @@ describe("string-level XML patchers are prefix independent", () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(docx));
       const block = reviewer.getContent().find((candidate) => candidate.text.trim().length > 0);
       const issues = block
-        ? reviewer.applyDocumentOperations({
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode: "direct",
-            operations: [
-              {
-                id: "edit",
-                type: "replaceInBlock",
-                blockId: block.id,
-                find: block.text,
-                replace: `${block.text} [edited]`,
-              },
-            ],
-          }).issues
+        ? reviewer.applyDocumentOperations(
+            {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode: "direct",
+              operations: [
+                {
+                  id: "edit",
+                  type: "replaceInBlock",
+                  blockId: block.id,
+                  find: block.text,
+                  replace: `${block.text} [edited]`,
+                },
+              ],
+            },
+            { undefinedReferences: "refuse" },
+          ).issues
         : [];
       return { issues, saved: await reviewer.toBuffer() };
     };

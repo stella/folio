@@ -10,6 +10,7 @@ import { Node as Node_2 } from 'prosemirror-model';
 import { Paragraph } from '@stll/docx-core/model';
 import { ParagraphContent } from '@stll/docx-core/model';
 import { ParagraphFormatting } from '@stll/docx-core/model';
+import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { PropertyRevisionKind } from '@stll/docx-core/model';
 import { Result } from 'better-result';
 import { Run } from '@stll/docx-core/model';
@@ -492,7 +493,7 @@ export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS: readonly ["remove-attr
 export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "metadata"];
 
 // @public
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 12;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 13;
 
 // @public
 export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES: readonly ["empty_update", "invalid_update", "missing_document", "source_mismatch", "stale_attr_schema", "update_too_large"];
@@ -507,13 +508,7 @@ export const FOLIO_YJS_SNAPSHOT_MIGRATION_ERROR_CODES: readonly ["invalid_update
 export const FOLIO_YJS_UPDATE_MAX_BYTES: number;
 
 // @public (undocumented)
-export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
-    structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
-    diagnostic?: {
-        type: "opaqueCarrier";
-        carrier: string;
-    };
-};
+export type FolioAIBlock = FolioAIParagraphBlock | FolioAIDiagnosticBlock;
 
 // @public (undocumented)
 export type FolioAIBlockAnchor = {
@@ -548,6 +543,14 @@ export type FolioAIBlockStructuralBoundary = {
 // @public (undocumented)
 export type FolioAIComment = {
     text: string;
+};
+
+// @public (undocumented)
+export type FolioAIDiagnosticBlock = FolioContentBlockIdentity<"diagnostic"> & {
+    diagnostic: {
+        type: "opaqueCarrier";
+        carrier: string;
+    };
 };
 
 // @public
@@ -600,7 +603,7 @@ export type FolioAIEditNormalization =
 export type FolioAIEditNormalizationCode = FolioAIEditNormalization["code"];
 
 // @public (undocumented)
-export type FolioAIEditOperation = FolioAIEditReviewMeta & {
+export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEditReviewMeta & {
     precondition?: FolioAIEditPrecondition;
     suggestionId?: string;
 } & ({
@@ -641,8 +644,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     };
     styleId?: string | null;
     outlineLevel?: import__stll_docx_core_model.OutlineLevel | null;
-    listLevel?: number | null;
-    numbering?: FolioAIListNumbering | null;
+    numbering?: Numbering;
     alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
     spacing?: FolioAIParagraphSpacing | null;
     indentation?: FolioAIParagraphIndentation | null;
@@ -688,8 +690,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     offset: number;
     separator?: string;
     blockId: string;
-    firstParagraphProperties?: FolioAIBlockParagraphProperties;
-    secondParagraphProperties?: FolioAIBlockParagraphProperties;
+    firstParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
+    secondParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
 } |
 /**
 * Add a whole table next to the anchor block, its rows marked inserted in
@@ -722,7 +724,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     id: string;
     type: "setBlockParagraphProperties";
     blockId: string;
-    properties: FolioAIBlockParagraphProperties;
+    properties: FolioAIBlockParagraphProperties<Numbering>;
 } |
 /**
 * Join the block with the one after it, the mirror of `splitBlock`: in
@@ -739,7 +741,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     type: "mergeBlockWithNext";
     separator?: string;
     blockId: string;
-    mergedParagraphProperties?: FolioAIBlockParagraphProperties;
+    mergedParagraphProperties?: FolioAIBlockParagraphProperties<Numbering>;
 } | {
     id: string;
     type: "commentOnBlock";
@@ -808,6 +810,11 @@ export type FolioAIInlineFormatting = FolioContentInlineFormatting;
 // @public
 export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
 
+// @public (undocumented)
+export type FolioAIParagraphBlock = FolioContentBlock<FolioContentParagraphKind> & {
+    structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+};
+
 // @public
 export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
 
@@ -830,11 +837,11 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
     batch: FolioDocumentOperationBatch;
     tableTemplates?: FolioTableTemplates;
     replacementBackground?: FolioReplacementBackground;
-    undefinedStyles?: FolioUndefinedStylePolicy;
 };
 
 // @public
 export type FolioApplyOperationsOptions = {
+    undefinedReferences: FolioUndefinedReferencePolicy;
     mode?: FolioAIEditApplyMode;
     snapshot?: FolioAIEditSnapshot;
     revisionStamp?: FolioRevisionStamp;
@@ -1284,9 +1291,9 @@ export class FolioDocxReviewer {
     acceptSuggestion(suggestionId: string, options?: {
         author?: string;
     }): boolean;
-    applyDocumentOperations(batch: FolioDocumentOperationBatch, options?: FolioApplyDocumentOperationsOptions): FolioDocumentOperationResult;
+    applyDocumentOperations(batch: FolioDocumentOperationBatch, options: FolioApplyDocumentOperationsOptions): FolioDocumentOperationResult;
     applyDocumentOperationsToStory(input: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult;
-    applyOperations(operations: FolioAIEditOperation[], options?: FolioApplyOperationsOptions): FolioAIEditApplyResult;
+    applyOperations(operations: FolioAIEditOperation[], options: FolioApplyOperationsOptions): FolioAIEditApplyResult;
     readonly author: string;
     exportPendingSuggestions(): FolioPendingSuggestionRecord[];
     static fromBuffer(buffer: ArrayBuffer, options?: FolioDocxReviewerOptions): Promise<FolioDocxReviewer>;
@@ -1659,12 +1666,27 @@ export type GenerateRedlineDocxOptions = {
 };
 
 // @public
+export class GenerateRedlineDocxResourceImportError extends GenerateRedlineDocxResourceImportError_base<{
+    message: string;
+    detail: string;
+}> {}
+
+// @public
 export type GenerateRedlineDocxResult = {
     buffer: ArrayBuffer;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
+    referenceWarnings: GenerateRedlineReferenceWarning[];
     unprocessedStories: GenerateRedlineUnprocessedStory[];
     privacyReport: FolioDocumentPrivacyReport;
+};
+
+// @public
+export type GenerateRedlineReferenceWarning = {
+    paragraphPosition: number;
+    story: FolioDocumentStoryHandle;
+    kind: "style";
+    id: string;
 };
 
 // @public

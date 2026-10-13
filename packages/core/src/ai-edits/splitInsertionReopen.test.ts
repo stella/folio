@@ -32,11 +32,14 @@ const build = async ([, find, replace, styleId]: Case): Promise<FolioDocxReviewe
   );
   const apply = (operation: Record<string, unknown>) =>
     expect(
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [{ id: String(operation["type"]), ...operation }],
-      } as never).skipped,
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [{ id: String(operation["type"]), ...operation }],
+        } as never,
+        { undefinedReferences: "refuse" },
+      ).skipped,
     ).toEqual([]);
   const first = reviewer.getContent().find(({ text }) => text === "First clause.")?.id;
   apply({ type: "insertAfterBlock", blockId: first, text: INSERTED, ...(styleId && { styleId }) });

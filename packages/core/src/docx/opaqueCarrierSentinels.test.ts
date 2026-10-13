@@ -195,7 +195,7 @@ describe("content carrier sentinels", () => {
               replace: "Changed opaque content",
             },
           ],
-          { mode: "direct" },
+          { undefinedReferences: "refuse", mode: "direct" },
         );
         expect(edit.skipped).not.toEqual([]);
       }

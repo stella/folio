@@ -340,13 +340,32 @@ const blockView = ({ text, kind, headingLevel, number }: BlockViewOptions): Bloc
 };
 
 /** The `read_document` row fields that restate a snapshot block's. */
-const rowFields = (row: FolioAgentBlock) => ({
-  blockId: row.blockId,
-  kind: row.kind,
-  displayLabel: row.displayLabel,
-  headingLevel: row.headingLevel,
-  listLevel: row.listLevel,
-});
+const rowFields = (row: FolioAgentBlock) => {
+  switch (row.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return {
+        blockId: row.blockId,
+        kind: row.kind,
+        displayLabel: row.displayLabel,
+        headingLevel: row.headingLevel,
+        statedNumbering: row.statedNumbering,
+        listReference: row.listReference,
+      };
+    case "diagnostic":
+      return {
+        blockId: row.blockId,
+        kind: row.kind,
+        displayLabel: row.displayLabel,
+        headingLevel: row.headingLevel,
+      };
+    default: {
+      const unreachable: never = row;
+      return unreachable;
+    }
+  }
+};
 
 const MARKDOWN_OPTIONS = {
   annotations: "strip",
@@ -392,7 +411,50 @@ const readReviewer = (reviewer: FolioDocxReviewer, markdown: string) => {
 };
 
 type Block = ReturnType<FolioDocxReviewer["getContent"]>[number];
+type ParagraphBlock = Extract<Block, { kind: "paragraph" | "heading" | "listItem" }>;
 type Mode = "direct" | "tracked-changes";
+
+const isParagraphBlock = (block: Block): block is ParagraphBlock => {
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return true;
+    case "diagnostic":
+      return false;
+    default: {
+      const unreachable: never = block;
+      return unreachable;
+    }
+  }
+};
+
+const contentRowFields = (block: Block) => {
+  switch (block.kind) {
+    case "paragraph":
+    case "heading":
+    case "listItem":
+      return {
+        blockId: block.id,
+        kind: block.kind,
+        displayLabel: block.displayLabel,
+        headingLevel: block.headingLevel,
+        statedNumbering: block.statedNumbering,
+        listReference: block.listReference,
+      };
+    case "diagnostic":
+      return {
+        blockId: block.id,
+        kind: block.kind,
+        displayLabel: block.displayLabel,
+        headingLevel: block.headingLevel,
+      };
+    default: {
+      const unreachable: never = block;
+      return unreachable;
+    }
+  }
+};
 
 /** A small seeded generator (mulberry32), so a failing sequence replays from its seed. */
 const seeded = (seed: number) => {
@@ -417,8 +479,8 @@ type ListEdit = (
   step: number,
 ) => FolioDocumentOperation[] | null;
 
-const listed = (blocks: readonly Block[]): Block[] =>
-  blocks.filter((block) => block.listReference !== undefined);
+const listed = (blocks: readonly Block[]): ParagraphBlock[] =>
+  blocks.filter(isParagraphBlock).filter((block) => block.listReference !== undefined);
 
 /** The edits that change which items a list has, their levels, or where it restarts. */
 const LIST_EDITS: Record<string, ListEdit> = {
@@ -467,7 +529,7 @@ const LIST_EDITS: Record<string, ListEdit> = {
             type: "insertBeforeBlock",
             blockId: anchor.id,
             text: `Joined ${step}`,
-            numbering: { numId: member.numId, level: member.level },
+            numbering: { kind: "reference", numId: member.numId, ilvl: member.level },
           },
         ]
       : null;
@@ -489,7 +551,7 @@ const LIST_EDITS: Record<string, ListEdit> = {
             type: "insertAfterBlock",
             blockId: to.id,
             text: item.text,
-            numbering: { numId: reference.numId, level: reference.level },
+            numbering: { kind: "reference", numId: reference.numId, ilvl: reference.level },
           },
           { id: "remove", type: "deleteBlock", blockId: item.id },
         ]
@@ -506,7 +568,9 @@ const LIST_EDITS: Record<string, ListEdit> = {
         id: "e",
         type: "setBlockParagraphProperties",
         blockId: item.id,
-        properties: { numbering: { numId: reference.numId, level: nextLevel } },
+        properties: {
+          numbering: { kind: "reference", numId: reference.numId, ilvl: nextLevel },
+        },
       },
     ];
   },
@@ -518,7 +582,7 @@ const LIST_EDITS: Record<string, ListEdit> = {
             id: "e",
             type: "setBlockParagraphProperties",
             blockId: target.id,
-            properties: { numbering: { start: "new", kind: "numbered" } },
+            properties: { numbering: { kind: "newList", format: "numbered" } },
           },
         ]
       : null;
@@ -531,7 +595,7 @@ const LIST_EDITS: Record<string, ListEdit> = {
             id: "e",
             type: "setBlockParagraphProperties",
             blockId: item.id,
-            properties: { numbering: null },
+            properties: { numbering: { kind: "none" } },
           },
         ]
       : null;
@@ -559,15 +623,7 @@ const expectLiveAndSavedAgree = async (reviewer: FolioDocxReviewer): Promise<voi
   const withMarkdown = reviewer.getChanges().length === 0;
   const live = readLive(reviewer);
   expectReadersAgree(live.views, withMarkdown);
-  expect(live.rows.map(rowFields)).toEqual(
-    live.content.map((block) => ({
-      blockId: block.id,
-      kind: block.kind,
-      displayLabel: block.displayLabel,
-      headingLevel: block.headingLevel,
-      listLevel: block.listLevel,
-    })),
-  );
+  expect(live.rows.map(rowFields)).toEqual(live.content.map(contentRowFields));
 
   const saved = await readAll(new Uint8Array(await reviewer.toBuffer()));
   expect({ saved: saved.views.getContent }).toEqual({ saved: live.views.getContent });
@@ -620,11 +676,14 @@ const runListEdits = async (seed: number, mode: Mode, steps: number): Promise<vo
     const blocks = reviewer.getContent().filter(isFolioAIContentBlock);
     const operations = LIST_EDITS[name]?.(blocks, random, step);
     if (!operations) continue;
-    const result = reviewer.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations,
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations,
+      },
+      { undefinedReferences: "refuse" },
+    );
     log.push(`${name}:${result.status}`);
     await check(() => expectLiveAndSavedAgree(reviewer));
   }
@@ -681,26 +740,25 @@ describe("readers agree on numbered headings and lists", () => {
     }
   });
 
-  test("read_document rows restate the snapshot's label and levels", async () => {
+  test("read_document rows restate the snapshot's labels and numbering state", async () => {
     const { content, rows } = await readAll(await buildNumberedDocument());
 
-    expect(rows.map(rowFields)).toEqual(
-      content.map((block) => ({
-        blockId: block.id,
-        kind: block.kind,
-        displayLabel: block.displayLabel,
-        headingLevel: block.headingLevel,
-        listLevel: block.listLevel,
-      })),
-    );
+    expect(rows.map(rowFields)).toEqual(content.map(contentRowFields));
     // Rows stay compact: a field the block lacks is absent, not `undefined`.
     const body = rows.find(({ text }) => text === "The Supplier delivers the goods.");
-    expect(body && Object.keys(body).sort()).toEqual(["blockId", "blockTextHash", "kind", "text"]);
+    expect(body && Object.keys(body).sort()).toEqual([
+      "blockId",
+      "blockTextHash",
+      "kind",
+      "statedNumbering",
+      "text",
+    ]);
     expect(rows.find(({ text }) => text === "Definitions")).toMatchObject({
       kind: "heading",
       displayLabel: "1.1.",
       headingLevel: 3,
-      listLevel: 1,
+      statedNumbering: { kind: "inherit" },
+      listReference: { numId: expect.any(Number), level: 1 },
     });
   });
 });
@@ -770,7 +828,7 @@ const buildNotedDocument = async (): Promise<Uint8Array> => {
         comment: { text: "Check." },
       },
     ],
-    { mode: "direct" },
+    { undefinedReferences: "refuse", mode: "direct" },
   );
   if (commented.skipped.length > 0) {
     throw new Error(`fixture comment was refused: ${JSON.stringify(commented.skipped)}`);

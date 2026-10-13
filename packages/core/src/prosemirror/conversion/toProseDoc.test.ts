@@ -46,7 +46,7 @@ function firstTableCellAttrs(doc: Document): Record<string, unknown> {
 }
 
 describe("toProseDoc", () => {
-  test("merges a direct list level with the numbering identity from its style", () => {
+  test("preserves a direct list level and style numbering separately", () => {
     const document: Document = {
       package: {
         styles: {
@@ -73,11 +73,9 @@ describe("toProseDoc", () => {
       },
     };
 
-    expect(toProseDoc(document).firstChild?.attrs.numPr).toEqual({
-      kind: "reference",
-      numId: 23,
-      ilvl: 1,
-    });
+    const attrs = toProseDoc(document).firstChild?.attrs;
+    expect(attrs?.numPr).toEqual({ kind: "levelOnly", ilvl: 1 });
+    expect(attrs?.numPrFromStyle).toEqual({ kind: "reference", numId: 23, ilvl: 0 });
   });
 
   test("keeps a direct numbering identity ahead of the style identity", () => {

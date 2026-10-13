@@ -535,6 +535,7 @@ test("canonical public batches publish the saved document and share human undo",
     const view = manager.getView() ?? panic("Missing canonical view");
     const before = manager.api.getCanonicalDocument();
     const result = manager.api.applyCanonicalDocumentOperations({
+      undefinedReferences: "refuse",
       snapshot: createFolioAIEditSnapshot(view.state.doc),
       batch: {
         version: 1,
@@ -1649,6 +1650,7 @@ test.each([
             manager.api.getCanonicalStoryProjection(story) ??
             panic("Missing valid secondary projection");
           const result = manager.api.applyCanonicalDocumentOperations({
+            undefinedReferences: "refuse",
             story: publicStory,
             snapshot: createFolioAIEditSnapshot(projection),
             batch: {

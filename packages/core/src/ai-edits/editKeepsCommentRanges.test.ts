@@ -90,7 +90,7 @@ const replaceFirstParagraph = async (mode: "direct" | "tracked-changes"): Promis
         replace: "Wholly different wording.",
       },
     ],
-    { mode },
+    { undefinedReferences: "refuse", mode },
   );
   return documentXml(await reviewer.toBuffer());
 };
@@ -156,7 +156,7 @@ test("tracked replacement keeps every disjoint comment anchor after acceptance",
                 text: "New clause text.",
               },
             ],
-            { mode },
+            { undefinedReferences: "refuse", mode },
           );
           const saved = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
             author: "Editor",
@@ -220,7 +220,7 @@ describe("replaceInBlock over a block whose text is a hyperlink", () => {
             replace: REPLACED_LINK_TEXT,
           },
         ],
-        { mode },
+        { undefinedReferences: "refuse", mode },
       );
 
       const saved = await reviewer.toBuffer();

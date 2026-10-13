@@ -49,11 +49,14 @@ type Mode = "direct" | "tracked-changes";
 const markdownAfter = async (source: string, mode: Mode, find: string, replace: string) => {
   const reviewer = await openReviewer(await createDocx(fromMarkdown(source)));
   const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-  const result = reviewer.applyDocumentOperations({
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    mode,
-    operations: [{ id: "replace", type: "replaceInBlock", blockId, find, replace }],
-  });
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [{ id: "replace", type: "replaceInBlock", blockId, find, replace }],
+    },
+    { undefinedReferences: "refuse" },
+  );
   const final = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
   const markdown = await docxToMarkdown(await final.toBuffer(), {
     annotations: "strip",
@@ -106,13 +109,16 @@ describe("a replacement across a formatting boundary", () => {
     for (const mode of ["direct", "tracked-changes"] as const) {
       const reviewer = await openReviewer(buffer.slice(0));
       const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode,
-        operations: [
-          { id: "r", type: "replaceInBlock", blockId, find: "Supplier", replace: "Suppliers" },
-        ],
-      });
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            { id: "r", type: "replaceInBlock", blockId, find: "Supplier", replace: "Suppliers" },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
       const final = mode === "direct" ? await reopened(reviewer) : await reopenedAccepted(reviewer);
       presentations.push(await markdownOf(final));
     }
@@ -379,11 +385,14 @@ describe("an edit applied directly and the same edit accepted", () => {
       ["tracked-changes", tracked],
     ] as const) {
       expect(
-        reviewer.applyDocumentOperations({
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode,
-          operations: [operation],
-        }).skipped,
+        reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: [operation],
+          },
+          { undefinedReferences: "refuse" },
+        ).skipped,
       ).toEqual([]);
     }
     const pending = await reopened(tracked);

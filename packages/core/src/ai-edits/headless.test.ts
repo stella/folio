@@ -15,6 +15,7 @@ import { EditorState } from "prosemirror-state";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { buildTextBoxTableDocument, findTextBoxShape } from "../__tests__/textBoxTableDocument";
 import { parseDocx } from "../docx/parser";
 import { ensureParaIds } from "../docx/ensureParaIds";
@@ -396,12 +397,12 @@ const paragraphContaining = (documentXml: string, needle: string): string => {
 
 const blockText = (block: FolioAIBlock): string => block.text;
 
-const findBlock = (blocks: FolioAIBlock[], needle: string): FolioAIBlock => {
+const findBlock = (blocks: FolioAIBlock[], needle: string) => {
   const block = blocks.find((b) => b.text.includes(needle));
   if (!block) {
     throw new Error(`no block containing ${JSON.stringify(needle)}`);
   }
-  return block;
+  return expectParagraphBlock(block);
 };
 
 describe("headless docx review round-trip", () => {
@@ -422,7 +423,7 @@ describe("headless docx review round-trip", () => {
           replace: "Updated projection",
         },
       ],
-      { mode: "tracked-changes", snapshot: before },
+      { undefinedReferences: "refuse", mode: "tracked-changes", snapshot: before },
     );
     expect(result.skipped).toEqual([]);
 
@@ -459,7 +460,7 @@ describe("headless docx review round-trip", () => {
           replace: "Updated value",
         },
       ],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
 
     expect(result.applied.map(({ id }) => id)).toEqual(["replace-shape-table-cell"]);
@@ -504,37 +505,43 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const rejected = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      atomic: true,
-      operations: [
-        {
-          id: "insert-row",
-          type: "insertTableRow",
-          blockId: target.id,
-          cellTexts: ["Added value"],
-        },
-        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
-      ],
-    });
+    const rejected = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        atomic: true,
+        operations: [
+          {
+            id: "insert-row",
+            type: "insertTableRow",
+            blockId: target.id,
+            cellTexts: ["Added value"],
+          },
+          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(rejected.status).toBe("rejected");
     expect(rejected.applied).toEqual([]);
     expect(reviewer.getContentAsText()).not.toContain("Added value");
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "insert-row",
-          type: "insertTableRow",
-          blockId: target.id,
-          cellTexts: ["Added value"],
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "insert-row",
+            type: "insertTableRow",
+            blockId: target.id,
+            cellTexts: ["Added value"],
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied).toEqual([{ id: "insert-row" }]);
@@ -591,18 +598,21 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "insert-row",
-          type: "insertTableRow",
-          blockId: target.id,
-          cellTexts: ["Added value"],
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "insert-row",
+            type: "insertTableRow",
+            blockId: target.id,
+            cellTexts: ["Added value"],
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied).toHaveLength(1);
@@ -661,35 +671,41 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const rejected = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      atomic: true,
-      operations: [
-        {
-          id: "delete-row",
-          type: "deleteTableRow",
-          blockId: target.id,
-        },
-        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
-      ],
-    });
+    const rejected = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        atomic: true,
+        operations: [
+          {
+            id: "delete-row",
+            type: "deleteTableRow",
+            blockId: target.id,
+          },
+          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(rejected.status).toBe("rejected");
     expect(rejected.applied).toEqual([]);
     expect(reviewer.getContentAsText()).toContain("Cell value");
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "delete-row",
-          type: "deleteTableRow",
-          blockId: target.id,
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "delete-row",
+            type: "deleteTableRow",
+            blockId: target.id,
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied).toEqual([{ id: "delete-row" }]);
@@ -743,17 +759,20 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "delete-row",
-          type: "deleteTableRow",
-          blockId: target.id,
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "delete-row",
+            type: "deleteTableRow",
+            blockId: target.id,
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied).toHaveLength(1);
@@ -892,36 +911,42 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const rejectedBatch = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      atomic: true,
-      operations: [
-        {
-          id: "merge-cells",
-          type: "mergeTableCells",
-          blockId: target.id,
-          rowCount: 2,
-        },
-        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
-      ],
-    });
+    const rejectedBatch = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        atomic: true,
+        operations: [
+          {
+            id: "merge-cells",
+            type: "mergeTableCells",
+            blockId: target.id,
+            rowCount: 2,
+          },
+          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(rejectedBatch.status).toBe("rejected");
     expect(rejectedBatch.applied).toEqual([]);
     expect(reviewer.getChanges()).toEqual([]);
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "merge-cells",
-          type: "mergeTableCells",
-          blockId: target.id,
-          rowCount: 2,
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "merge-cells",
+            type: "mergeTableCells",
+            blockId: target.id,
+            rowCount: 2,
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.skipped).toEqual([]);
@@ -1026,11 +1051,14 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      operations: [{ id: "split-cell", type: "splitTableCell", blockId: target.id }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [{ id: "split-cell", type: "splitTableCell", blockId: target.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.skipped).toEqual([]);
@@ -1107,18 +1135,21 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "insert-column",
-          type: "insertTableColumn",
-          blockId: target.id,
-          cellTexts: ["Added value"],
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "insert-column",
+            type: "insertTableColumn",
+            blockId: target.id,
+            cellTexts: ["Added value"],
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied).toHaveLength(1);
@@ -1177,17 +1208,20 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "delete-column",
-          type: "deleteTableColumn",
-          blockId: target.id,
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "delete-column",
+            type: "deleteTableColumn",
+            blockId: target.id,
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied).toHaveLength(1);
@@ -1242,37 +1276,43 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const rejected = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      atomic: true,
-      operations: [
-        {
-          id: "insert-column",
-          type: "insertTableColumn",
-          blockId: target.id,
-          cellTexts: ["Added value"],
-        },
-        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
-      ],
-    });
+    const rejected = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        atomic: true,
+        operations: [
+          {
+            id: "insert-column",
+            type: "insertTableColumn",
+            blockId: target.id,
+            cellTexts: ["Added value"],
+          },
+          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(rejected.status).toBe("rejected");
     expect(rejected.applied).toEqual([]);
     expect(reviewer.getContentAsText()).not.toContain("Added value");
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "insert-column",
-          type: "insertTableColumn",
-          blockId: target.id,
-          cellTexts: ["Added value"],
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "insert-column",
+            type: "insertTableColumn",
+            blockId: target.id,
+            cellTexts: ["Added value"],
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied).toEqual([{ id: "insert-column" }]);
@@ -1327,37 +1367,43 @@ describe("headless docx review round-trip", () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
-    const insertion = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "insert-column",
-          type: "insertTableColumn",
-          blockId: initialTarget.id,
-          cellTexts: ["Added value"],
-        },
-      ],
-    });
+    const insertion = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "insert-column",
+            type: "insertTableColumn",
+            blockId: initialTarget.id,
+            cellTexts: ["Added value"],
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(insertion.status).toBe("committed");
 
     const snapshot = reviewer.snapshot();
     const startTarget = findBlock(snapshot.blocks, "Cell value");
     const endTarget = findBlock(snapshot.blocks, "Added value");
-    const rejected = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      atomic: true,
-      operations: [
-        {
-          id: "merge-cells",
-          type: "mergeTableCells",
-          blockId: startTarget.id,
-          endBlockId: endTarget.id,
-        },
-        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
-      ],
-    });
+    const rejected = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        atomic: true,
+        operations: [
+          {
+            id: "merge-cells",
+            type: "mergeTableCells",
+            blockId: startTarget.id,
+            endBlockId: endTarget.id,
+          },
+          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(rejected.status).toBe("rejected");
     expect(rejected.applied).toEqual([]);
@@ -1372,18 +1418,21 @@ describe("headless docx review round-trip", () => {
     }
     expect(rejectedTable.rows.at(0)?.cells).toHaveLength(2);
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "merge-cells",
-          type: "mergeTableCells",
-          blockId: startTarget.id,
-          endBlockId: endTarget.id,
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "merge-cells",
+            type: "mergeTableCells",
+            blockId: startTarget.id,
+            endBlockId: endTarget.id,
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied).toEqual([{ id: "merge-cells" }]);
@@ -1440,41 +1489,52 @@ describe("headless docx review round-trip", () => {
     // A second column, so the merged rows keep a cell of their own: a row of
     // nothing but continuations is removed with the merge.
     expect(
-      reviewer.applyDocumentOperations({
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "direct",
+          operations: [
+            { id: "insert-column", type: "insertTableColumn", blockId: initialTarget.id },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).status,
+    ).toBe("committed");
+    const insertion = reviewer.applyDocumentOperations(
+      {
         version: 1,
         mode: "direct",
-        operations: [{ id: "insert-column", type: "insertTableColumn", blockId: initialTarget.id }],
-      }).status,
-    ).toBe("committed");
-    const insertion = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "insert-row",
-          type: "insertTableRow",
-          blockId: initialTarget.id,
-          cellTexts: ["Added value"],
-        },
-      ],
-    });
+        operations: [
+          {
+            id: "insert-row",
+            type: "insertTableRow",
+            blockId: initialTarget.id,
+            cellTexts: ["Added value"],
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(insertion.status).toBe("committed");
 
     const snapshot = reviewer.snapshot();
     const startTarget = findBlock(snapshot.blocks, "Cell value");
     const endTarget = findBlock(snapshot.blocks, "Added value");
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "merge-cells",
-          type: "mergeTableCells",
-          blockId: startTarget.id,
-          endBlockId: endTarget.id,
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "merge-cells",
+            type: "mergeTableCells",
+            blockId: startTarget.id,
+            endBlockId: endTarget.id,
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     const saved = await parseDocx(await reviewer.toBuffer(), {
@@ -1512,55 +1572,67 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
     expect(
-      reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "direct",
-        operations: [
-          {
-            id: "insert-column",
-            type: "insertTableColumn",
-            blockId: initialTarget.id,
-            cellTexts: ["Added value"],
-          },
-        ],
-      }).status,
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "insert-column",
+              type: "insertTableColumn",
+              blockId: initialTarget.id,
+              cellTexts: ["Added value"],
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).status,
     ).toBe("committed");
     const mergeSnapshot = reviewer.snapshot();
     const mergeStart = findBlock(mergeSnapshot.blocks, "Cell value");
     const mergeEnd = findBlock(mergeSnapshot.blocks, "Added value");
     expect(
-      reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "direct",
-        operations: [
-          {
-            id: "merge",
-            type: "mergeTableCells",
-            blockId: mergeStart.id,
-            endBlockId: mergeEnd.id,
-          },
-        ],
-      }).status,
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "merge",
+              type: "mergeTableCells",
+              blockId: mergeStart.id,
+              endBlockId: mergeEnd.id,
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).status,
     ).toBe("committed");
 
     const splitTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
-    const rejected = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      atomic: true,
-      operations: [
-        { id: "split-cell", type: "splitTableCell", blockId: splitTarget.id },
-        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
-      ],
-    });
+    const rejected = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        atomic: true,
+        operations: [
+          { id: "split-cell", type: "splitTableCell", blockId: splitTarget.id },
+          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(rejected.status).toBe("rejected");
     expect(rejected.applied).toEqual([]);
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [{ id: "split-cell", type: "splitTableCell", blockId: splitTarget.id }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [{ id: "split-cell", type: "splitTableCell", blockId: splitTarget.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied).toEqual([{ id: "split-cell" }]);
@@ -1615,50 +1687,64 @@ describe("headless docx review round-trip", () => {
     // A second column, so the merged rows keep a cell of their own: a row of
     // nothing but continuations is removed with the merge.
     expect(
-      reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "direct",
-        operations: [{ id: "insert-column", type: "insertTableColumn", blockId: initialTarget.id }],
-      }).status,
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "direct",
+          operations: [
+            { id: "insert-column", type: "insertTableColumn", blockId: initialTarget.id },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).status,
     ).toBe("committed");
     expect(
-      reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "direct",
-        operations: [
-          {
-            id: "insert-row",
-            type: "insertTableRow",
-            blockId: initialTarget.id,
-            cellTexts: ["Added value"],
-          },
-        ],
-      }).status,
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "insert-row",
+              type: "insertTableRow",
+              blockId: initialTarget.id,
+              cellTexts: ["Added value"],
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).status,
     ).toBe("committed");
     const mergeSnapshot = reviewer.snapshot();
     const mergeStart = findBlock(mergeSnapshot.blocks, "Cell value");
     const mergeEnd = findBlock(mergeSnapshot.blocks, "Added value");
     expect(
-      reviewer.applyDocumentOperations({
-        version: 1,
-        mode: "direct",
-        operations: [
-          {
-            id: "merge",
-            type: "mergeTableCells",
-            blockId: mergeStart.id,
-            endBlockId: mergeEnd.id,
-          },
-        ],
-      }).status,
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "merge",
+              type: "mergeTableCells",
+              blockId: mergeStart.id,
+              endBlockId: mergeEnd.id,
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).status,
     ).toBe("committed");
 
     const splitTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [{ id: "split", type: "splitTableCell", blockId: splitTarget.id }],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [{ id: "split", type: "splitTableCell", blockId: splitTarget.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(result.status).toBe("committed");
 
     const saved = await parseDocx(await reviewer.toBuffer(), {
@@ -1680,35 +1766,41 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const rejected = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      atomic: true,
-      operations: [
-        {
-          id: "delete-column",
-          type: "deleteTableColumn",
-          blockId: target.id,
-        },
-        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
-      ],
-    });
+    const rejected = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        atomic: true,
+        operations: [
+          {
+            id: "delete-column",
+            type: "deleteTableColumn",
+            blockId: target.id,
+          },
+          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(rejected.status).toBe("rejected");
     expect(rejected.applied).toEqual([]);
     expect(reviewer.getContentAsText()).toContain("Cell value");
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "delete-column",
-          type: "deleteTableColumn",
-          blockId: target.id,
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "delete-column",
+            type: "deleteTableColumn",
+            blockId: target.id,
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied).toEqual([{ id: "delete-column" }]);
@@ -1768,6 +1860,7 @@ describe("headless docx review round-trip", () => {
     const target = findBlock(snapshot.blocks, "Header text");
 
     const result = reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       snapshot,
       batch: {
@@ -1824,6 +1917,7 @@ describe("headless docx review round-trip", () => {
     const target = findBlock(snapshot.blocks, "Footer text");
 
     const result = reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       snapshot,
       batch: {
@@ -1931,6 +2025,7 @@ describe("headless docx review round-trip", () => {
       expect(target.directAlignment).toBe(before);
 
       const result = reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
         story,
         snapshot: initial,
         batch: {
@@ -1948,7 +2043,9 @@ describe("headless docx review round-trip", () => {
       });
 
       expect(result.status).toBe("committed");
-      expect(reviewer.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(after);
+      expect(
+        expectParagraphBlock(reviewer.snapshotStory(story)?.blocks.at(0)).directAlignment,
+      ).toBe(after);
       expect(
         reviewer
           .readReviewedStory({ story, view: "current-markup" })
@@ -1964,25 +2061,33 @@ describe("headless docx review round-trip", () => {
 
       const accepting = await FolioDocxReviewer.fromBuffer(pending);
       expect(accepting.resolveReviewedStory({ story, view: "final" })).toBe(true);
-      expect(accepting.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(after);
+      expect(
+        expectParagraphBlock(accepting.snapshotStory(story)?.blocks.at(0)).directAlignment,
+      ).toBe(after);
       const accepted = await accepting.toBuffer();
       const acceptedXml = await partText(accepted, part);
       const acceptedParagraph = paragraphXmlContaining(acceptedXml, text);
       expect(acceptedParagraph).not.toContain("<w:pPrChange");
       expect(untrackedParagraphProperties(acceptedParagraph)).toBe(alignedStoryProperties(after));
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
-      expect(reopenedAccepted.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(after);
+      expect(
+        expectParagraphBlock(reopenedAccepted.snapshotStory(story)?.blocks.at(0)).directAlignment,
+      ).toBe(after);
 
       const rejecting = await FolioDocxReviewer.fromBuffer(pending);
       expect(rejecting.resolveReviewedStory({ story, view: "original" })).toBe(true);
-      expect(rejecting.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(before);
+      expect(
+        expectParagraphBlock(rejecting.snapshotStory(story)?.blocks.at(0)).directAlignment,
+      ).toBe(before);
       const rejected = await rejecting.toBuffer();
       const rejectedXml = await partText(rejected, part);
       const rejectedParagraph = paragraphXmlContaining(rejectedXml, text);
       expect(rejectedParagraph).not.toContain("<w:pPrChange");
       expect(untrackedParagraphProperties(rejectedParagraph)).toBe(alignedStoryProperties(before));
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
-      expect(reopenedRejected.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(before);
+      expect(
+        expectParagraphBlock(reopenedRejected.snapshotStory(story)?.blocks.at(0)).directAlignment,
+      ).toBe(before);
     },
   );
 
@@ -1992,6 +2097,7 @@ describe("headless docx review round-trip", () => {
     expect(reviewer.snapshotStory(story)).toBeNull();
     expect(() =>
       reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
         story,
         batch: { version: 1, operations: [] },
       }),
@@ -2005,7 +2111,7 @@ describe("headless docx review round-trip", () => {
 
     const result = reviewer.applyOperations(
       [{ id: "r1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" }],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     expect(result.applied.map((a) => a.id)).toEqual(["r1"]);
     expect(result.skipped).toEqual([]);
@@ -2028,9 +2134,10 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
 
-    const result = reviewer.applyOperations([
-      { id: "t1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" },
-    ]);
+    const result = reviewer.applyOperations(
+      [{ id: "t1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" }],
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied).toHaveLength(1);
     expect(result.applied[0]?.revisionIds?.length).toBe(2);
 
@@ -2068,6 +2175,7 @@ describe("headless docx review round-trip", () => {
         replace: "Hearing",
       };
       const options = {
+        undefinedReferences: "refuse" as const,
         wordDiff: { granularity: "character" as const },
         revisionStamp: { date: "2026-09-08T12:00:00.000Z", idSeed: 100 },
       };
@@ -2098,6 +2206,7 @@ describe("headless docx review round-trip", () => {
     const target = findBlock(snapshot.blocks, "Header text");
 
     const result = reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       snapshot,
       batch: {
@@ -2129,19 +2238,22 @@ describe("headless docx review round-trip", () => {
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     const contentBefore = reviewer.getContentAsText();
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      operations: [
-        {
-          id: "v1",
-          type: "replaceInBlock",
-          blockId: target.id,
-          find: "Heading",
-          replace: "Intro",
-        },
-      ],
-      mode: "tracked-changes",
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        operations: [
+          {
+            id: "v1",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Heading",
+            replace: "Intro",
+          },
+        ],
+        mode: "tracked-changes",
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.version).toBe(1);
     expect(result.status).toBe("committed");
@@ -2176,22 +2288,25 @@ describe("headless docx review round-trip", () => {
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     const contentBefore = reviewer.getContentAsText();
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      atomic: true,
-      mode: "direct",
-      operations: [
-        {
-          id: "valid",
-          type: "replaceInBlock",
-          blockId: target.id,
-          find: "Heading",
-          replace: "Intro",
-          comment: { text: "Review this change." },
-        },
-        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        atomic: true,
+        mode: "direct",
+        operations: [
+          {
+            id: "valid",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Heading",
+            replace: "Intro",
+            comment: { text: "Review this change." },
+          },
+          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result).toEqual({
       nextRevisionId: expect.any(Number),
@@ -2233,27 +2348,30 @@ describe("headless docx review round-trip", () => {
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     const contentBefore = reviewer.getContentAsText();
 
-    const result = reviewer.applyDocumentOperations({
-      version: 1,
-      atomic: true,
-      mode: "direct",
-      operations: [
-        {
-          id: "replace",
-          type: "replaceInBlock",
-          blockId: target.id,
-          find: "Heading",
-          replace: "Intro",
-          comment: { text: "Review this change." },
-        },
-        {
-          id: "insert",
-          type: "insertAfterBlock",
-          blockId: target.id,
-          text: "New clause.",
-        },
-      ],
-    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        atomic: true,
+        mode: "direct",
+        operations: [
+          {
+            id: "replace",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Heading",
+            replace: "Intro",
+            comment: { text: "Review this change." },
+          },
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: target.id,
+            text: "New clause.",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(result.status).toBe("committed");
     expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["insert", "replace"]);
@@ -2306,41 +2424,50 @@ describe("headless docx review round-trip", () => {
   test("undo handles reject unknown, out-of-order, and changed document state", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
-    const skipped = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [{ id: "missing", type: "deleteBlock", blockId: "missing" }],
-    });
+    const skipped = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [{ id: "missing", type: "deleteBlock", blockId: "missing" }],
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(skipped.status).toBe("committed");
     expect(skipped.undoHandle).toBeNull();
     const heading = findBlock(reviewer.snapshot().blocks, "Heading");
-    const first = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "first",
-          type: "replaceInBlock",
-          blockId: heading.id,
-          find: "Heading",
-          replace: "Intro",
-        },
-      ],
-    });
+    const first = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "first",
+            type: "replaceInBlock",
+            blockId: heading.id,
+            find: "Heading",
+            replace: "Intro",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     const trailing = findBlock(reviewer.snapshot().blocks, "Trailing");
-    const second = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "second",
-          type: "replaceInBlock",
-          blockId: trailing.id,
-          find: "Trailing",
-          replace: "Closing",
-        },
-      ],
-    });
+    const second = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "second",
+            type: "replaceInBlock",
+            blockId: trailing.id,
+            find: "Trailing",
+            replace: "Closing",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     if (!first.undoHandle || !second.undoHandle) {
       throw new Error("expected undo handles");
     }
@@ -2367,18 +2494,21 @@ describe("headless docx review round-trip", () => {
 
     const changedReviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const changedTarget = findBlock(changedReviewer.snapshot().blocks, "Heading");
-    const changed = changedReviewer.applyDocumentOperations({
-      version: 1,
-      operations: [
-        {
-          id: "changed",
-          type: "replaceInBlock",
-          blockId: changedTarget.id,
-          find: "Heading",
-          replace: "Intro",
-        },
-      ],
-    });
+    const changed = changedReviewer.applyDocumentOperations(
+      {
+        version: 1,
+        operations: [
+          {
+            id: "changed",
+            type: "replaceInBlock",
+            blockId: changedTarget.id,
+            find: "Heading",
+            replace: "Intro",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     if (!changed.undoHandle) {
       throw new Error("expected an undo handle");
     }
@@ -2390,18 +2520,21 @@ describe("headless docx review round-trip", () => {
 
     const commentReviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const commentTarget = findBlock(commentReviewer.snapshot().blocks, "Heading");
-    const commented = commentReviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "commented",
-          type: "commentOnBlock",
-          blockId: commentTarget.id,
-          comment: { text: "Review this." },
-        },
-      ],
-    });
+    const commented = commentReviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "commented",
+            type: "commentOnBlock",
+            blockId: commentTarget.id,
+            comment: { text: "Review this." },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
     const parentComment = commentReviewer.getComments().at(0);
     if (!commented.undoHandle || !parentComment) {
       throw new Error("expected an undo handle and comment");
@@ -2439,12 +2572,15 @@ describe("headless docx review round-trip", () => {
       { id: "missing", type: "deleteBlock" as const, blockId: "para-missing" },
     ];
 
-    const preview = reviewer.applyDocumentOperations({
-      version: 1,
-      dryRun: true,
-      mode: "direct",
-      operations,
-    });
+    const preview = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        dryRun: true,
+        mode: "direct",
+        operations,
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(preview).toEqual({
       nextRevisionId: expect.any(Number),
@@ -2474,11 +2610,14 @@ describe("headless docx review round-trip", () => {
     expect(reviewer.getContentAsText()).toBe(contentBefore);
     expect(reviewer.getComments()).toEqual([]);
 
-    const committed = reviewer.applyDocumentOperations({
-      version: 1,
-      mode: "direct",
-      operations,
-    });
+    const committed = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations,
+      },
+      { undefinedReferences: "refuse" },
+    );
     expect(committed.status).toBe("committed");
     expect(committed.applied.map(({ id }) => id)).toEqual(["valid"]);
     expect(committed.skipped).toEqual([{ id: "missing", reason: "missingBlock" }]);
@@ -2491,21 +2630,24 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
 
-    const preview = reviewer.applyDocumentOperations({
-      version: 1,
-      atomic: true,
-      dryRun: true,
-      operations: [
-        {
-          id: "valid",
-          type: "replaceInBlock",
-          blockId: target.id,
-          find: "Heading",
-          replace: "Intro",
-        },
-        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
-      ],
-    });
+    const preview = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        atomic: true,
+        dryRun: true,
+        operations: [
+          {
+            id: "valid",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Heading",
+            replace: "Intro",
+          },
+          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
 
     expect(preview).toEqual({
       nextRevisionId: expect.any(Number),
@@ -2555,7 +2697,7 @@ describe("headless docx review round-trip", () => {
           text: "Newly inserted clause.",
         },
       ],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     expect(result.applied.map((a) => a.id)).toEqual(["i1"]);
 
@@ -2578,14 +2720,17 @@ describe("headless docx review round-trip", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
 
-    const result = reviewer.applyOperations([
-      {
-        id: "i2",
-        type: "insertAfterBlock",
-        blockId: target.id,
-        text: "Newly inserted clause.",
-      },
-    ]);
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: "i2",
+          type: "insertAfterBlock",
+          blockId: target.id,
+          text: "Newly inserted clause.",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     expect(result.applied.map((a) => a.id)).toEqual(["i2"]);
     expect(result.applied[0]?.revisionId).toBeDefined();
 
@@ -2697,9 +2842,10 @@ describe("headless docx review discovery + resolve", () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
-    reviewer.applyOperations([
-      { id: "t1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" },
-    ]);
+    reviewer.applyOperations(
+      [{ id: "t1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" }],
+      { undefinedReferences: "refuse" },
+    );
 
     const changes = reviewer.getChanges();
     const insertion = changes.find((c) => c.type === "insertion");
@@ -2721,15 +2867,18 @@ describe("headless docx review discovery + resolve", () => {
 
     const accepting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
     const acceptTarget = findBlock(accepting.snapshot().blocks, "Heading");
-    accepting.applyOperations([
-      {
-        id: "a1",
-        type: "replaceInBlock",
-        blockId: acceptTarget.id,
-        find: "Heading",
-        replace: "Intro",
-      },
-    ]);
+    accepting.applyOperations(
+      [
+        {
+          id: "a1",
+          type: "replaceInBlock",
+          blockId: acceptTarget.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     expect(accepting.acceptChange(insertionChange(accepting))).toBe(true);
     const acceptedXml = await partText(await accepting.toBuffer(), "word/document.xml");
     expect(acceptedXml).toContain("Intro");
@@ -2739,15 +2888,18 @@ describe("headless docx review discovery + resolve", () => {
 
     const rejecting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
     const rejectTarget = findBlock(rejecting.snapshot().blocks, "Heading");
-    rejecting.applyOperations([
-      {
-        id: "r1",
-        type: "replaceInBlock",
-        blockId: rejectTarget.id,
-        find: "Heading",
-        replace: "Intro",
-      },
-    ]);
+    rejecting.applyOperations(
+      [
+        {
+          id: "r1",
+          type: "replaceInBlock",
+          blockId: rejectTarget.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     expect(rejecting.rejectChange(insertionChange(rejecting))).toBe(true);
     const rejectedXml = await partText(await rejecting.toBuffer(), "word/document.xml");
     expect(rejectedXml).not.toContain("Intro");
@@ -2759,22 +2911,25 @@ describe("headless docx review discovery + resolve", () => {
 
     const accepting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
     const acceptBlocks = accepting.snapshot().blocks;
-    accepting.applyOperations([
-      {
-        id: "m1",
-        type: "replaceInBlock",
-        blockId: findBlock(acceptBlocks, "Heading").id,
-        find: "Heading",
-        replace: "Intro",
-      },
-      {
-        id: "m2",
-        type: "replaceInBlock",
-        blockId: findBlock(acceptBlocks, "Trailing").id,
-        find: "Trailing",
-        replace: "Closing",
-      },
-    ]);
+    accepting.applyOperations(
+      [
+        {
+          id: "m1",
+          type: "replaceInBlock",
+          blockId: findBlock(acceptBlocks, "Heading").id,
+          find: "Heading",
+          replace: "Intro",
+        },
+        {
+          id: "m2",
+          type: "replaceInBlock",
+          blockId: findBlock(acceptBlocks, "Trailing").id,
+          find: "Trailing",
+          replace: "Closing",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     expect(accepting.getChanges().length).toBeGreaterThanOrEqual(4);
     expect(accepting.acceptAll()).toBeGreaterThanOrEqual(4);
     const acceptedXml = await partText(await accepting.toBuffer(), "word/document.xml");
@@ -2786,22 +2941,25 @@ describe("headless docx review discovery + resolve", () => {
 
     const rejecting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
     const rejectBlocks = rejecting.snapshot().blocks;
-    rejecting.applyOperations([
-      {
-        id: "m3",
-        type: "replaceInBlock",
-        blockId: findBlock(rejectBlocks, "Heading").id,
-        find: "Heading",
-        replace: "Intro",
-      },
-      {
-        id: "m4",
-        type: "replaceInBlock",
-        blockId: findBlock(rejectBlocks, "Trailing").id,
-        find: "Trailing",
-        replace: "Closing",
-      },
-    ]);
+    rejecting.applyOperations(
+      [
+        {
+          id: "m3",
+          type: "replaceInBlock",
+          blockId: findBlock(rejectBlocks, "Heading").id,
+          find: "Heading",
+          replace: "Intro",
+        },
+        {
+          id: "m4",
+          type: "replaceInBlock",
+          blockId: findBlock(rejectBlocks, "Trailing").id,
+          find: "Trailing",
+          replace: "Closing",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     expect(rejecting.rejectAll()).toBeGreaterThanOrEqual(4);
     const rejectedXml = await partText(await rejecting.toBuffer(), "word/document.xml");
     expect(rejectedXml).toContain("Heading paragraph.");
@@ -2816,14 +2974,17 @@ describe("headless docx review discovery + resolve", () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
-    reviewer.applyOperations([
-      {
-        id: "c1",
-        type: "commentOnBlock",
-        blockId: target.id,
-        comment: { text: "Clarify this clause." },
-      },
-    ]);
+    reviewer.applyOperations(
+      [
+        {
+          id: "c1",
+          type: "commentOnBlock",
+          blockId: target.id,
+          comment: { text: "Clarify this clause." },
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
 
     const comments = reviewer.getComments();
     expect(comments).toHaveLength(1);
@@ -2838,9 +2999,10 @@ describe("headless docx review discovery + resolve", () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
-    reviewer.applyOperations([
-      { id: "c1", type: "commentOnBlock", blockId: target.id, comment: { text: "Parent note." } },
-    ]);
+    reviewer.applyOperations(
+      [{ id: "c1", type: "commentOnBlock", blockId: target.id, comment: { text: "Parent note." } }],
+      { undefinedReferences: "refuse" },
+    );
     const parent = reviewer.getComments()[0];
     expect(parent).toBeDefined();
     if (!parent) {
@@ -2886,9 +3048,17 @@ describe("headless docx review discovery + resolve", () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
-    reviewer.applyOperations([
-      { id: "c1", type: "commentOnBlock", blockId: target.id, comment: { text: "Please check." } },
-    ]);
+    reviewer.applyOperations(
+      [
+        {
+          id: "c1",
+          type: "commentOnBlock",
+          blockId: target.id,
+          comment: { text: "Please check." },
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     const comment = reviewer.getComments()[0];
     expect(comment).toBeDefined();
     if (!comment) {
@@ -2941,7 +3111,7 @@ describe("headless docx review discovery + resolve", () => {
 
     const result = second.applyOperations(
       [{ id: "d1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" }],
-      { mode: "direct" },
+      { undefinedReferences: "refuse", mode: "direct" },
     );
     expect(result.skipped).toEqual([]);
     expect(result.applied.map((a) => a.id)).toEqual(["d1"]);
@@ -2956,15 +3126,18 @@ describe("headless docx review annotated read surface", () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
-    reviewer.applyOperations([
-      {
-        id: "reviewed-view-replace",
-        type: "replaceInBlock",
-        blockId: target.id,
-        find: "Heading",
-        replace: "Intro",
-      },
-    ]);
+    reviewer.applyOperations(
+      [
+        {
+          id: "reviewed-view-replace",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     const changesBefore = reviewer.getChanges();
 
     const original = reviewer.readReviewedStory({ view: "original" });
@@ -2989,15 +3162,18 @@ describe("headless docx review annotated read surface", () => {
       author: "Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
-    reviewer.applyOperations([
-      {
-        id: "final-main-replace",
-        type: "replaceInBlock",
-        blockId: target.id,
-        find: "Heading",
-        replace: "Intro",
-      },
-    ]);
+    reviewer.applyOperations(
+      [
+        {
+          id: "final-main-replace",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
 
     expect(reviewer.resolveReviewedStory({ view: "final" })).toBe(true);
     const saved = await reviewer.toBuffer();
@@ -3016,21 +3192,24 @@ describe("headless docx review annotated read surface", () => {
       author: "Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
-    reviewer.applyOperations([
-      {
-        id: "final-comment-replace",
-        type: "replaceInBlock",
-        blockId: target.id,
-        find: "Heading",
-        replace: "Intro",
-      },
-      {
-        id: "final-comment-anchor",
-        type: "commentOnBlock",
-        blockId: target.id,
-        comment: { text: "Keep this comment." },
-      },
-    ]);
+    reviewer.applyOperations(
+      [
+        {
+          id: "final-comment-replace",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+        {
+          id: "final-comment-anchor",
+          type: "commentOnBlock",
+          blockId: target.id,
+          comment: { text: "Keep this comment." },
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
 
     expect(reviewer.resolveReviewedStory({ view: "final" })).toBe(true);
     const saved = await reviewer.toBuffer();
@@ -3053,21 +3232,24 @@ describe("headless docx review annotated read surface", () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
     const blocks = reviewer.snapshot().blocks;
-    reviewer.applyOperations([
-      {
-        id: "t1",
-        type: "replaceInBlock",
-        blockId: findBlock(blocks, "Heading").id,
-        find: "Heading",
-        replace: "Intro",
-      },
-      {
-        id: "c1",
-        type: "commentOnBlock",
-        blockId: findBlock(blocks, "Trailing").id,
-        comment: { text: "Check this clause." },
-      },
-    ]);
+    reviewer.applyOperations(
+      [
+        {
+          id: "t1",
+          type: "replaceInBlock",
+          blockId: findBlock(blocks, "Heading").id,
+          find: "Heading",
+          replace: "Intro",
+        },
+        {
+          id: "c1",
+          type: "commentOnBlock",
+          blockId: findBlock(blocks, "Trailing").id,
+          comment: { text: "Check this clause." },
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
 
     const annotated = reviewer.getContentAsText({ annotated: true });
     // Tracked replace surfaces as a deletion of the old word and an insertion
@@ -3259,7 +3441,7 @@ test("preserves an id-less main paragraph source after a neighboring property ed
         },
       ],
     },
-    { snapshot },
+    { undefinedReferences: "refuse", snapshot },
   );
   expect(result.status).toBe("committed");
   expect(result.skipped).toEqual([]);
@@ -3298,6 +3480,7 @@ test.each(secondaryStoryPropertyIdentityCases)(
     }
     const target = findBlock(snapshot.blocks, originalText);
     const result = reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       snapshot,
       batch: {
@@ -3357,6 +3540,7 @@ test.each(secondaryStoryPropertyCases)(
     const target = findBlock(snapshot.blocks, originalText);
     const editedText = `${story.type} text edited`;
     const result = reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       snapshot,
       batch: {
@@ -3631,6 +3815,7 @@ describe("headless docx review notes read surface", () => {
     const target = findBlock(snapshot.blocks, "Injected footnote body text.");
 
     const result = reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       snapshot,
       batch: {
@@ -3682,6 +3867,7 @@ describe("headless docx review notes read surface", () => {
     const target = findBlock(snapshot.blocks, "Injected endnote body text.");
 
     const result = reviewer.applyDocumentOperationsToStory({
+      undefinedReferences: "refuse",
       story,
       snapshot,
       batch: {
@@ -3737,6 +3923,7 @@ describe("headless docx review notes read surface", () => {
     expect(reviewer.readReviewedStory({ story, view: "final" })).toBeNull();
     expect(() =>
       reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
         story,
         batch: { version: 1, operations: [] },
       }),

@@ -180,6 +180,7 @@ const sameAnchorTrackedInsertions = ({
     return panic("expected the same-anchor insertion target");
   }
   const outcome = applyFolioAIEditOperations({
+    undefinedReferences: "refuse",
     view,
     snapshot,
     operations: SAME_ANCHOR_INSERTIONS.map(({ id, text, alignment }) => ({
@@ -269,6 +270,7 @@ describe("unstamped revision id allocation", () => {
       }
 
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -334,6 +336,7 @@ describe("unstamped revision id allocation", () => {
               replace: `${firstBlock.text} replacement`,
             };
       const first = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [operation],
@@ -357,6 +360,7 @@ describe("unstamped revision id allocation", () => {
         panic("expected the following formatting range");
       }
       const following = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot: followingSnapshot,
         operations: [
@@ -416,6 +420,7 @@ describe("unstamped revision id allocation", () => {
     primaryView.dispatch = (transaction) => {
       commitPrimary(transaction);
       reentrantOutcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view: reentrantView,
         snapshot: reentrantSnapshot,
         operations: [
@@ -431,6 +436,7 @@ describe("unstamped revision id allocation", () => {
     };
 
     const primaryOutcome = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view: primaryView,
       snapshot: primarySnapshot,
       operations: [
@@ -464,6 +470,7 @@ describe("unstamped revision id allocation", () => {
         panic("expected the first insertion anchor");
       }
       const first = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot: firstSnapshot,
         operations: [
@@ -510,6 +517,7 @@ describe("unstamped revision id allocation", () => {
         panic("expected the second insertion anchor");
       }
       const second = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot: secondSnapshot,
         operations: [
@@ -543,6 +551,7 @@ describe("unstamped revision id allocation", () => {
         panic("expected the final insertion anchor");
       }
       const outcome = applyFolioAIEditOperations({
+        undefinedReferences: "refuse",
         view,
         snapshot,
         operations: [
@@ -609,6 +618,7 @@ describe("unstamped revision id allocation", () => {
       panic("expected both insertion anchors");
     }
     const outcome = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: [
@@ -888,6 +898,7 @@ describe("unstamped revision id allocation", () => {
       return panic("expected the same-anchor suggestion target");
     }
     const outcome = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: SAME_ANCHOR_INSERTIONS.map(({ id, text, alignment }) => ({
@@ -1029,6 +1040,7 @@ describe("revision ids sized to what an operation writes", () => {
   test("a stamped replacement over many highlighted runs takes contiguous ids from its seed", () => {
     const view = highlightedRunsView();
     const outcome = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       ...highlightedBatch(view),
       mode: "tracked-changes",
@@ -1047,6 +1059,7 @@ describe("revision ids sized to what an operation writes", () => {
     ).toEqual(ids);
 
     const following = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       ...followingReplacement(view),
       mode: "tracked-changes",
@@ -1064,6 +1077,7 @@ describe("revision ids sized to what an operation writes", () => {
     const view = highlightedRunsView();
     const { snapshot, operations } = highlightedBatch(view);
     const first = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       snapshot,
       operations: operations.filter(({ id }) => operationIds.includes(id)),
@@ -1075,6 +1089,7 @@ describe("revision ids sized to what an operation writes", () => {
     expect(first.nextRevisionId).toBe(firstStart + firstIds.length);
 
     const following = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       ...followingReplacement(view),
       mode: "tracked-changes",
@@ -1087,11 +1102,13 @@ describe("revision ids sized to what an operation writes", () => {
     const reentrantView = highlightedRunsView();
     let reentrant: ReturnType<typeof applyFolioAIEditOperations> | undefined;
     const outer = applyFolioAIEditOperations({
+      undefinedReferences: "refuse",
       view,
       ...highlightedBatch(view, "Appended."),
       mode: "tracked-changes",
       createCommentId: () => {
         reentrant = applyFolioAIEditOperations({
+          undefinedReferences: "refuse",
           view: reentrantView,
           ...followingReplacement(reentrantView),
           mode: "tracked-changes",

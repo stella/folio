@@ -31,56 +31,6 @@
       "firstSeen": "2026-10-01"
     },
     {
-      "fingerprint": "24e996d99fd086cb",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1350,
-        "primary": "de4ea4376e144f1e",
-        "title": "Fuzz failure [24e996d99fd086cb]: consumer flow trackedChanges / tracked-changes: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked):",
-        "flow": {
-          "version": 1,
-          "kind": "random",
-          "generation": "targeted",
-          "fixture": "trackedChanges",
-          "mode": "tracked-changes",
-          "seed": 774176527,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 1909965473,
-              "operations": [
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "5E88C024",
-                  "separator": " "
-                }
-              ]
-            }
-          ],
-          "swarm": [
-            "commentOnRange",
-            "insertBeforeBlock",
-            "deleteBlock",
-            "mergeBlockWithNext",
-            "setBlockParagraphProperties",
-            "commentOnBlock",
-            "insertTable",
-            "insertTableRow",
-            "insertTableColumn"
-          ],
-          "origin": "shrunk from dropOperation+swap+splice of 4f24093d375ec040"
-        },
-        "type": "consumer",
-        "reportSeed": 774176758
-      }
-    },
-    {
-      "fingerprint": "de4ea4376e144f1e",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02"
-    },
-    {
       "fingerprint": "4fd39893ffb61a7a",
       "issueOrPr": "#1351",
       "firstSeen": "2026-10-02",
@@ -364,45 +314,6 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "66dd1eb0d7e26bfc",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1380,
-        "primary": "9ee376a632ca2edc",
-        "title": "consumer flow trackedChanges / direct: tracked acceptance differs from direct editing",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "trackedChanges",
-          "mode": "direct",
-          "seed": 1576446606,
-          "steps": [
-            {
-              "action": "suggest_changes",
-              "seed": 1448564212,
-              "operations": [
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "5E88C024",
-                  "separator": " "
-                }
-              ]
-            }
-          ]
-        },
-        "type": "consumer",
-        "reportSeed": 1576446606,
-        "reportSeeds": [1576446606, 1785652249, 1785652364]
-      }
-    },
-    {
-      "fingerprint": "9ee376a632ca2edc",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02"
-    },
-    {
       "fingerprint": "ab6344ed76e83492",
       "issueOrPr": "#1350",
       "firstSeen": "2026-10-02"
@@ -530,8 +441,8 @@
                   "blockId": "412DDC7F",
                   "text": "Party written payment party invoice term party.",
                   "numbering": {
-                    "start": "new",
-                    "kind": "numbered"
+                    "kind": "newList",
+                    "format": "numbered"
                   }
                 }
               ]
@@ -711,8 +622,8 @@
                   "blockId": "5E88C024",
                   "text": "Delivery period schedule warranty schedule buyer invoice.",
                   "numbering": {
-                    "start": "new",
-                    "kind": "numbered"
+                    "kind": "newList",
+                    "format": "numbered"
                   }
                 }
               ]
@@ -1284,71 +1195,6 @@
     {
       "fingerprint": "3fd5801d7296db3e",
       "issueOrPr": "#1384",
-      "firstSeen": "2026-10-02"
-    },
-    {
-      "fingerprint": "549dda931aa1b431",
-      "issueOrPr": "#1466",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "type": "consumer",
-        "issue": 1466,
-        "primary": "3031f8841bda4736",
-        "reportSeed": 1026398924,
-        "title": "tracked bullet acceptance followed by merge leaves a missing numbering definition",
-        "causeMessage": "Cannot repack invalid DOCX document model:\nDOCX model error at package.document.content[3].formatting.numPr.numId: Numbering definition 3 is missing.",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "trackedChanges",
-          "mode": "tracked-changes",
-          "seed": 1026397197,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 1338526882,
-              "operations": [
-                {
-                  "type": "insertAfterBlock",
-                  "blockId": "5E88C024",
-                  "text": "Agreement party supplier invoice term.",
-                  "numbering": {
-                    "start": "new",
-                    "kind": "bullet"
-                  }
-                }
-              ]
-            },
-            {
-              "action": "accept all",
-              "seed": 1714597764
-            },
-            {
-              "action": "story batch",
-              "seed": 4114059415,
-              "operations": [
-                {
-                  "type": "mergeBlockWithNext",
-                  "blockId": "31617F9A",
-                  "separator": " "
-                }
-              ]
-            }
-          ],
-          "weights": {
-            "version": 1,
-            "cells": {},
-            "operations": []
-          },
-          "origin": "shrunk from unpin+splice+reseed of 716b1e669abc7a9b",
-          "title": "PINNED #1466, reported seed 1026398924: inserted bullet accepted before a tracked merge must remain saveable"
-        }
-      }
-    },
-    {
-      "fingerprint": "3031f8841bda4736",
-      "issueOrPr": "#1466",
       "firstSeen": "2026-10-02"
     },
     {

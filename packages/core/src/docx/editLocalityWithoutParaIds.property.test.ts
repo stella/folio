@@ -236,7 +236,10 @@ const saveEdited = async (
   const source = await buildPackage(texts, coverage);
   const reviewer = await FolioDocxReviewer.fromBuffer(source);
   const { operation, untouched } = planEdit(kind, reviewer.snapshot().blocks);
-  const applied = reviewer.applyOperations([operation], { mode: "direct" });
+  const applied = reviewer.applyOperations([operation], {
+    undefinedReferences: "refuse",
+    mode: "direct",
+  });
   expect(applied.applied.length).toBe(1);
   const buffer = await reviewer.toBuffer();
   // The control save pays the same package-wide id and version normalization

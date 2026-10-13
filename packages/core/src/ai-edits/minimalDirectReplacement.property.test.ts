@@ -469,6 +469,7 @@ describe("a direct replacement changes only the characters it changes", () => {
           const contract = editContract(cleanBefore, picked);
 
           const result = reviewer.applyOperations([editOperation(type, block, picked)], {
+            undefinedReferences: "refuse",
             mode: "direct",
           });
           if (contract.refusal !== null) {
@@ -755,6 +756,7 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             const contract = editContract(cleanBefore, picked);
 
             const result = reviewer.applyOperations([editOperation(type, block, picked)], {
+              undefinedReferences: "refuse",
               mode,
               wordDiff: { granularity },
             });
@@ -1025,6 +1027,7 @@ const replaceFirst = async (paragraphXml: string, options: ReplaceOptions) => {
           },
     ],
     {
+      undefinedReferences: "refuse",
       mode: options.mode ?? "direct",
       revisionStamp: { date: "2026-01-02T03:04:05Z", idSeed: 100 },
       ...(options.granularity === undefined

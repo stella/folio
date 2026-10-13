@@ -427,6 +427,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   }
 
   const applyAIEditOperations = ({
+    undefinedReferences,
     snapshot,
     operations,
     mode = "tracked-changes",
@@ -443,6 +444,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       };
     }
     const canonical = opts.editor.applyCanonicalDocumentOperations({
+      undefinedReferences,
       snapshot,
       batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
       author: operationAuthor,
@@ -456,6 +458,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       publishComments: opts.publishAIEditComments,
       apply: (createCommentId) =>
         applyFolioDocumentOperations({
+          undefinedReferences,
           view,
           snapshot,
           batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
@@ -530,7 +533,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           )
         : null;
     },
-    applyDocumentOperations: ({ snapshot, batch, author: operationAuthor = opts.author() }) => {
+    applyDocumentOperations: ({
+      undefinedReferences,
+      snapshot,
+      batch,
+      author: operationAuthor = opts.author(),
+    }) => {
       assertSupportedFolioDocumentOperationVersion(batch.version);
       const view = opts.editorView.value;
       if (!view) {
@@ -555,6 +563,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         };
       }
       const canonical = opts.editor.applyCanonicalDocumentOperations({
+        undefinedReferences,
         snapshot,
         batch,
         author: operationAuthor,
@@ -582,6 +591,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         publishComments: opts.publishAIEditComments,
         apply: (createCommentId) =>
           applyFolioDocumentOperations({
+            undefinedReferences,
             view: operationView,
             snapshot,
             batch,
@@ -804,6 +814,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         },
         apply: (record, snapshot) =>
           applyAIEditOperations({
+            undefinedReferences: "refuse",
             snapshot,
             operations: [record.operation],
             mode: "suggested",

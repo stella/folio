@@ -50,14 +50,17 @@ const firstBlockId = (reviewer: FolioDocxReviewer): string => {
 describe("FolioDocxReviewer.save", () => {
   test("a new reply has the same live and saved range", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(["Clause."]));
-    reviewer.applyOperations([
-      {
-        id: "note",
-        type: "commentOnBlock",
-        blockId: firstBlockId(reviewer),
-        comment: { text: "Check." },
-      },
-    ]);
+    reviewer.applyOperations(
+      [
+        {
+          id: "note",
+          type: "commentOnBlock",
+          blockId: firstBlockId(reviewer),
+          comment: { text: "Check." },
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
     const parent = reviewer.getComments().at(0);
     if (!parent) throw new Error("comment was not created");
     const reply = reviewer.replyTo(parent, { text: "Agreed." });
@@ -87,15 +90,18 @@ describe("FolioDocxReviewer.save", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(["Pay $50 now."]), {
       author: "Reviewer",
     });
-    reviewer.applyOperations([
-      {
-        id: "edit",
-        type: "replaceInBlock",
-        blockId: firstBlockId(reviewer),
-        find: "$50",
-        replace: "$500",
-      },
-    ]);
+    reviewer.applyOperations(
+      [
+        {
+          id: "edit",
+          type: "replaceInBlock",
+          blockId: firstBlockId(reviewer),
+          find: "$50",
+          replace: "$500",
+        },
+      ],
+      { undefinedReferences: "refuse" },
+    );
 
     const result = await reviewer.save({ repack: "refuse" });
 
@@ -106,9 +112,10 @@ describe("FolioDocxReviewer.save", () => {
     const source = await buildDocx(["First.", "Second."]);
     const insert = async (): Promise<FolioDocxReviewer> => {
       const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
-      reviewer.applyOperations([
-        { id: "insert", type: "insertAfterBlock", blockId: firstBlockId(reviewer), text: "New." },
-      ]);
+      reviewer.applyOperations(
+        [{ id: "insert", type: "insertAfterBlock", blockId: firstBlockId(reviewer), text: "New." }],
+        { undefinedReferences: "refuse" },
+      );
       return reviewer;
     };
 
@@ -140,7 +147,7 @@ describe("FolioDocxReviewer.save", () => {
           },
         ],
       },
-      { revisionStamp: { date, idSeed: 100 } },
+      { undefinedReferences: "refuse", revisionStamp: { date, idSeed: 100 } },
     );
     const thread = reviewer.getComments().at(0);
     if (!thread) throw new Error("comment was not created");

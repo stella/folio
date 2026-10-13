@@ -27,6 +27,7 @@ export const createInterleavingSuggest = (ref: InterleavingRef) => {
     // Preserve the previous agent bridge's tracked-change mode and text-hash
     // guard. Tool argument parsing remains covered by the agent package tests.
     const options = {
+      undefinedReferences: "refuse",
       snapshot,
       author: "Fuzz reviewer",
       batch: {

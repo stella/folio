@@ -17,7 +17,6 @@ import { mergeParagraphNumbering } from "../docx/numberingReference";
 import { getCachedNumberingMap } from "../docx/numberingParser";
 import { resolveCachedListRendering, resolveListRenderingDefinition } from "../docx/listRendering";
 import { listLabelAttrsFromRendering } from "../prosemirror/listLabels";
-import type { ParagraphAttrs } from "../prosemirror/schema/nodes";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
 import { renderParagraphInline } from "./renderRuns";
 import { inlineBreaksToHtml } from "./escape";
@@ -69,9 +68,51 @@ export function renderParagraphBlock(
         resolveListRenderingDefinition(numPr, getCachedNumberingMap(pkg.numbering)),
       ) ?? undefined;
   }
-  const label = ctx.nextListLabel(
-    list ? listLabelAttrsFromRendering(list, numPrFromStyle) : UNNUMBERED,
-  );
+  const counterAttrs = listLabelAttrsFromRendering(list, {
+    numPr: para.formatting?.numPr,
+    numPrFromStyle,
+  });
+  if (para.pPrMark) counterAttrs.pPrMark = para.pPrMark;
+  let originalList: ListRendering | undefined;
+  if (para.propertyChanges) {
+    counterAttrs._propertyChanges = para.propertyChanges.map(
+      ({ previousFormatting, ...change }) => {
+        if (!previousFormatting) return change;
+        const previousInherited =
+          ctx.paragraphNumbering(previousFormatting.styleId) ?? previousFormatting.numPrFromStyle;
+        const previousNumbering = mergeParagraphNumbering(
+          previousInherited,
+          previousFormatting.numPr,
+        );
+        const previousRendering =
+          pkg?.numbering !== undefined && previousNumbering?.kind === "reference"
+            ? (resolveListRenderingDefinition(
+                previousNumbering,
+                getCachedNumberingMap(pkg.numbering),
+              ).rendering ?? undefined)
+            : undefined;
+        originalList ??= previousRendering;
+        const previousAttrs = listLabelAttrsFromRendering(previousRendering, {
+          numPr: previousFormatting.numPr,
+          numPrFromStyle: previousInherited,
+        });
+        return {
+          ...change,
+          previousFormatting: {
+            ...previousFormatting,
+            ...previousAttrs,
+            ...(previousAttrs.numPr === undefined
+              ? { numPr: null }
+              : { numPr: previousAttrs.numPr }),
+            ...(previousAttrs.numPrFromStyle === undefined
+              ? { numPrFromStyle: null }
+              : { numPrFromStyle: previousAttrs.numPrFromStyle }),
+          },
+        };
+      },
+    );
+  }
+  const label = ctx.nextListLabel(counterAttrs);
   const inline = renderParagraphInline(ctx, pkg, para.content, para.paraId);
   const styleId = para.formatting?.styleId;
 
@@ -94,8 +135,9 @@ export function renderParagraphBlock(
     };
   }
 
-  if (list && label !== undefined) {
-    return renderListItem(ctx, list, label, inline);
+  const visibleList = list ?? originalList;
+  if (visibleList && label !== undefined) {
+    return renderListItem(ctx, visibleList, label, inline);
   }
 
   ctx.listIndentWidths = [];
@@ -120,8 +162,6 @@ function markdownHeadingLevel(ctx: RenderContext, para: Paragraph): number | und
     ctx.builtInStyles,
   );
 }
-
-const UNNUMBERED: ParagraphAttrs = Object.freeze({});
 
 /**
  * A plain paragraph whose visible text begins with markdown block syntax (e.g.

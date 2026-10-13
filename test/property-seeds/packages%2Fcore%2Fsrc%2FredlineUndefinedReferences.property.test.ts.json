@@ -1,0 +1,16 @@
+{
+  "undefined inserted references stay dangling or are cleared before binding base resources": [
+    {
+      "seed": 63422037,
+      "path": "0:0:0",
+      "note": "Out-of-range fixture paragraph IDs were normalized before source-anchor lookup; derive the anchor from the parsed block.",
+      "date": "2026-10-10"
+    },
+    {
+      "seed": 404507269,
+      "path": "0:0",
+      "note": "The full-suite replay also exposed the fixture lookup before any reference collision assertion ran.",
+      "date": "2026-10-10"
+    }
+  ]
+}
