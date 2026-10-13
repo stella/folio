@@ -319,6 +319,13 @@
       "kind": "collisions",
       "generation": "targeted",
       "title": "range deletions preserve saved revision ancestry"
+    },
+    {
+      "seed": 1045458947,
+      "steps": 16,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "commented marker atoms do not retain deleted comment ranges"
     }
   ]
 }

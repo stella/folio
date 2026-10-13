@@ -16,6 +16,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { schema } from "../../schema";
 import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
 import { planCommentReferenceRepairs } from "../../commentReferenceIntegrity";
+import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "../../trackedRunInlineAtoms";
 import { CommentReferenceExtension } from "./CommentReferenceExtension";
 
 const integrityPlugin = (): Plugin => {
@@ -107,3 +108,40 @@ describe("CommentReferenceExtension editing integrity", () => {
     expect(referenceIds(again.state.doc)).toEqual([9]);
   });
 });
+
+type TransparentAtom = {
+  [
+    Name in keyof typeof TRACKED_RUN_INLINE_ATOM_DISPOSITIONS
+  ]: (typeof TRACKED_RUN_INLINE_ATOM_DISPOSITIONS)[Name] extends "transparent" ? Name : never;
+}[keyof typeof TRACKED_RUN_INLINE_ATOM_DISPOSITIONS];
+const transparentAtoms = {
+  commentReference: () => reference(7),
+  rangeAnchor: () =>
+    schema.node("rangeAnchor", {
+      start: { type: "commentRangeStart", id: 7 },
+      end: { type: "commentRangeEnd", id: 7 },
+    }),
+  renderedPageBreak: () => schema.node("renderedPageBreak"),
+} satisfies Record<TransparentAtom, () => PMNode>;
+
+// Comment ranges over marker atoms were not part of the editing-integrity fixture.
+for (const [name, create] of Object.entries(transparentAtoms)) {
+  test(`transparent ${name} cannot keep another comment range alive`, () => {
+    const state = stateWith([
+      schema.text("alpha", [commentMark(7)]),
+      create(),
+      schema.text("tail"),
+    ]);
+    const edited = state.applyTransaction(state.tr.addMark(1, 7, commentMark(23))).state;
+    edited.doc.descendants((node) => {
+      if (node.type.name === name)
+        expect(node.marks.some(({ type }) => type.name === "comment")).toBe(false);
+    });
+    const deleted = edited.applyTransaction(edited.tr.delete(1, 6)).state;
+    expect(referenceIds(deleted.doc)).not.toContain(23);
+    const fixed = deleted.applyTransaction(
+      deleted.tr.insertText("!", deleted.doc.content.size - 1),
+    );
+    expect(fixed.transactions).toHaveLength(1);
+  });
+}
