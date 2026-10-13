@@ -1,3 +1,4 @@
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { evaluateCanonicalPage, observeCanonicalPageNavigation } from "./canonicalPageNavigation";
 import { expect } from "@playwright/test";
 import { test } from "./canonicalTimerProbe";
@@ -123,10 +124,7 @@ test("refused native IME commit ends composition before driver completion", asyn
   const source = await createDocx(createEmptyDocument({ initialText: "alpha" }));
   expect(
     await evaluateCanonicalPage(page, () =>
-      page.evaluate(
-        (bytes) => globalThis.__folioCanonical?.load(bytes),
-        [...new Uint8Array(source)],
-      ),
+      evaluateCanonicalLoad(page, [...new Uint8Array(source)]),
     ),
   ).toBe(true);
   expect(

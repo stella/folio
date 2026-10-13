@@ -114,7 +114,9 @@ export type ModeledParagraphFormattingEmission = Readonly<{
 }>;
 
 type MutableModeledParagraphFormattingEmission = {
-  -readonly [Field in keyof ModeledParagraphFormattingEmission]: ModeledParagraphFormattingEmission[Field];
+  -readonly [
+    Field in keyof ModeledParagraphFormattingEmission
+  ]: ModeledParagraphFormattingEmission[Field];
 };
 
 const serializeParagraphBorders = (borders: ExhaustiveParagraphBorders | undefined): string => {

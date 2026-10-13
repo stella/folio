@@ -10,7 +10,14 @@
  * - routing the optional `onUndo` / `onRedo` host callbacks.
  */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useLayoutEffect,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { HistoryManager, classifyHistoryShortcut } from "@stll/folio-core/managers/HistoryManager";
 import type { HistoryEntry } from "@stll/folio-core/managers/HistoryManager";
@@ -108,11 +115,17 @@ export function useHistory<T>(
   // Latest host callbacks + initial state, read by the stable api wrappers so
   // they never need to change identity across renders.
   const onUndoRef = useRef(onUndo);
-  onUndoRef.current = onUndo;
+  useLayoutEffect(() => {
+    onUndoRef.current = onUndo;
+  });
   const onRedoRef = useRef(onRedo);
-  onRedoRef.current = onRedo;
+  useLayoutEffect(() => {
+    onRedoRef.current = onRedo;
+  });
   const initialStateRef = useRef(initialState);
-  initialStateRef.current = initialState;
+  useLayoutEffect(() => {
+    initialStateRef.current = initialState;
+  });
 
   // Stable api: the manager is the single source of truth, so these wrappers
   // keep a constant identity. undo/redo layer in the render-cycle timing that
@@ -207,12 +220,12 @@ export function useAutoHistory<T>(
   options: UseHistoryOptions<T> = {},
 ): Omit<UseHistoryReturn<T>, "push"> {
   const history = useHistory(value, options);
+  const { push } = history;
 
   // Automatically push when value changes
   useEffect(() => {
-    history.push(value);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- push only on value change; history.push identity changes after each push, so depending on it would loop
-  }, [value]);
+    push(value);
+  }, [value, push]);
 
   return history;
 }

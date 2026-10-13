@@ -13,6 +13,7 @@
 // folio-react's transitive folio-core to the packed tarball) live in one place.
 
 import { panic } from "better-result";
+import reactManifest from "../packages/react/package.json";
 import { $ } from "bun";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -24,18 +25,31 @@ export const coreDir = path.join(repoRoot, "packages", "core");
 export const reactDir = path.join(repoRoot, "packages", "react");
 export const consumerSrc = path.join(repoRoot, "test", "packaged-consumer");
 
-export const REACT_PEER_MAJORS = ["18", "19"] as const;
-export type ReactPeerMajor = (typeof REACT_PEER_MAJORS)[number];
+type ReactPeers = { react: string; "react-dom": string };
+
+export const reactPeerFloor = (peers: ReactPeers) => {
+  if (peers.react !== peers["react-dom"]) {
+    panic("React and React DOM peer ranges must match");
+  }
+  const match = /^\^(\d+)\.\d+\.\d+$/u.exec(peers.react);
+  if (!match) panic("Consumer checks require one caret React peer range");
+  return {
+    version: peers.react.slice(1),
+    major: match.at(1) ?? panic("React peer range must include a major version"),
+  };
+};
+
+export const REACT_PEER_FLOOR = reactPeerFloor(reactManifest.peerDependencies);
 
 const DOCX_KERNEL_WASM_ASSET = /(?:^|\/)docx_kernel_bg(?:-[^/]+)?\.wasm$/u;
 
 export const isDocxKernelWasmAsset = (file: string): boolean => DOCX_KERNEL_WASM_ASSET.test(file);
 
-export const reactPeerInstallArgs = (major: ReactPeerMajor): string[] => [
-  `react@^${major}`,
-  `react-dom@^${major}`,
-  `@types/react@^${major}`,
-  `@types/react-dom@^${major}`,
+export const reactPeerInstallArgs = () => [
+  `react@${REACT_PEER_FLOOR.version}`,
+  `react-dom@${REACT_PEER_FLOOR.version}`,
+  `@types/react@^${REACT_PEER_FLOOR.major}`,
+  `@types/react-dom@^${REACT_PEER_FLOOR.major}`,
 ];
 
 // Build a package, transform its package.json to the published dist shape

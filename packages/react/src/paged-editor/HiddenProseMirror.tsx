@@ -55,6 +55,11 @@ export type {
 } from "@stll/folio-core/controller/hiddenEditorManager";
 export { createHiddenEditorState } from "@stll/folio-core/controller/hiddenEditorManager";
 
+type CollaborationLoad =
+  | { status: "disabled" | "loading" }
+  | { status: "ready"; modules: CollaborationModules }
+  | { status: "failed"; error: unknown };
+
 const EMPTY_EXTERNAL_PLUGINS: Plugin[] = [];
 
 // ============================================================================
@@ -191,16 +196,22 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
       precomputedInitialState,
     } = props;
 
-    const [collaborationModules, setCollaborationModules] = useState<CollaborationModules | null>(
-      null,
-    );
-    const [collaborationModulesError, setCollaborationModulesError] = useState<unknown>(null);
     const hasCollaboration = collaboration !== undefined;
+    const [collaborationLoad, setCollaborationLoad] = useState<CollaborationLoad>(() => ({
+      status: hasCollaboration ? "loading" : "disabled",
+    }));
+    if (hasCollaboration !== (collaborationLoad.status !== "disabled")) {
+      setCollaborationLoad({ status: hasCollaboration ? "loading" : "disabled" });
+    }
+    const collaborationModules =
+      hasCollaboration && collaborationLoad.status === "ready" ? collaborationLoad.modules : null;
+    const collaborationModulesError =
+      hasCollaboration && collaborationLoad.status === "failed" ? collaborationLoad.error : null;
 
     // Refs
     const hostRef = useRef<HTMLDivElement>(null);
     // Manager-input refs: the framework-agnostic view manager reads these via
-    // accessor functions, so it always sees the current render's value.
+    // accessor functions, so it always sees the latest committed value.
     const readOnlyRef = useRef(readOnly);
     const experimentalSessionRef = useRef(experimentalSession);
     const suggestionModeActiveRef = useRef(suggestionModeActive);
@@ -228,90 +239,98 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     const onReadOnlyEditAttemptRef = useRef(onReadOnlyEditAttempt);
     const onRemoteSelectionsChangeRef = useRef(onRemoteSelectionsChange);
 
-    // Keep refs in sync
-    readOnlyRef.current = readOnly;
-    experimentalSessionRef.current = experimentalSession;
-    suggestionModeActiveRef.current = suggestionModeActive;
-    suggestionAuthorRef.current = suggestionAuthor;
-    onSessionRefusalRef.current = onSessionRefusal;
-    stylesRef.current = styles;
-    extensionManagerRef.current = extensionManager;
-    externalPluginsRef.current = externalPlugins;
-    precomputedInitialStateRef.current = precomputedInitialState;
-    onTransactionRef.current = onTransaction;
-    onSelectionChangeRef.current = onSelectionChange;
-    onEditorViewReadyRef.current = onEditorViewReady;
-    onEditorViewDestroyRef.current = onEditorViewDestroy;
-    onKeyDownRef.current = onKeyDown;
-    onCopyRef.current = onCopy;
-    onCutRef.current = onCut;
-    onPasteRef.current = onPaste;
-    onReadOnlyEditAttemptRef.current = onReadOnlyEditAttempt;
-    onRemoteSelectionsChangeRef.current = onRemoteSelectionsChange;
-    collaborationRef.current = collaboration;
-    collaborationModulesRef.current = collaborationModules;
-
-    // Keep document ref in sync
-    documentRef.current = document;
-    documentIdentityRef.current = documentIdentity;
-
     // The off-screen EditorView lifecycle (create/destroy, editorProps, and the
     // external-document / editable sync) lives in the framework-agnostic manager;
     // this component keeps the input refs and its effects (which decide *when* to
     // act) and drives the manager through its methods. Created once, like the
     // layout scheduler in PagedEditor.
     const managerRef = useRef<HiddenEditorManager | null>(null);
-    if (managerRef.current === null) {
-      managerRef.current = createHiddenEditorManager({
-        getHost: () => hostRef.current,
-        getDocument: () => documentRef.current,
-        getStyles: () => stylesRef.current,
-        getExtensionManager: () => extensionManagerRef.current,
-        getExternalPlugins: () => externalPluginsRef.current,
-        getCollaboration: () => collaborationRef.current,
-        getCollaborationModules: () => collaborationModulesRef.current,
-        getPrecomputedInitialState: () => precomputedInitialStateRef.current,
-        getReadOnly: () => readOnlyRef.current,
-        getExperimentalSession: () => experimentalSessionRef.current,
-        getEditingMode: () => (suggestionModeActiveRef.current ? "suggesting" : "editing"),
-        getSuggestionAuthor: () => suggestionAuthorRef.current,
-        onSessionRefusal: (reason, gap, error) => onSessionRefusalRef.current?.(reason, gap, error),
-        getDocumentIdentity: () => documentIdentityRef.current,
-        getDocumentContext: () => documentRef.current,
-        onTransaction: (update) => onTransactionRef.current?.(update),
-        onSelectionChange: (state) => onSelectionChangeRef.current?.(state),
-        onKeyDown: (view, event) => onKeyDownRef.current?.(view, event) ?? false,
-        onCopy: () => onCopyRef.current?.(),
-        onCut: () => onCutRef.current?.(),
-        onPaste: () => onPasteRef.current?.(),
-        onReadOnlyEditAttempt: () => onReadOnlyEditAttemptRef.current?.(),
-        onEditorViewReady: (view) => onEditorViewReadyRef.current?.(view),
-        onEditorViewDestroy: () => onEditorViewDestroyRef.current?.(),
-        onRemoteSelectionsChange: (selections) => onRemoteSelectionsChangeRef.current?.(selections),
-      });
-    }
+    useLayoutEffect(() => {
+      // Keep refs in sync
+      readOnlyRef.current = readOnly;
+      experimentalSessionRef.current = experimentalSession;
+      suggestionModeActiveRef.current = suggestionModeActive;
+      suggestionAuthorRef.current = suggestionAuthor;
+      onSessionRefusalRef.current = onSessionRefusal;
+      stylesRef.current = styles;
+      extensionManagerRef.current = extensionManager;
+      externalPluginsRef.current = externalPlugins;
+      precomputedInitialStateRef.current = precomputedInitialState;
+      onTransactionRef.current = onTransaction;
+      onSelectionChangeRef.current = onSelectionChange;
+      onEditorViewReadyRef.current = onEditorViewReady;
+      onEditorViewDestroyRef.current = onEditorViewDestroy;
+      onKeyDownRef.current = onKeyDown;
+      onCopyRef.current = onCopy;
+      onCutRef.current = onCut;
+      onPasteRef.current = onPaste;
+      onReadOnlyEditAttemptRef.current = onReadOnlyEditAttempt;
+      onRemoteSelectionsChangeRef.current = onRemoteSelectionsChange;
+      collaborationRef.current = collaboration;
+      collaborationModulesRef.current = collaborationModules;
+
+      // Keep document ref in sync
+      documentRef.current = document;
+      documentIdentityRef.current = documentIdentity;
+      if (managerRef.current === null) {
+        managerRef.current = createHiddenEditorManager({
+          getHost: () => hostRef.current,
+          getDocument: () => documentRef.current,
+          getStyles: () => stylesRef.current,
+          getExtensionManager: () => extensionManagerRef.current,
+          getExternalPlugins: () => externalPluginsRef.current,
+          getCollaboration: () => collaborationRef.current,
+          getCollaborationModules: () => collaborationModulesRef.current,
+          getPrecomputedInitialState: () => precomputedInitialStateRef.current,
+          getReadOnly: () => readOnlyRef.current,
+          getExperimentalSession: () => experimentalSessionRef.current,
+          getEditingMode: () => (suggestionModeActiveRef.current ? "suggesting" : "editing"),
+          getSuggestionAuthor: () => suggestionAuthorRef.current,
+          onSessionRefusal: (reason, gap, error) =>
+            onSessionRefusalRef.current?.(reason, gap, error),
+          getDocumentIdentity: () => documentIdentityRef.current,
+          getDocumentContext: () => documentRef.current,
+          onTransaction: (update) => onTransactionRef.current?.(update),
+          onSelectionChange: (state) => onSelectionChangeRef.current?.(state),
+          onKeyDown: (view, event) => onKeyDownRef.current?.(view, event) ?? false,
+          onCopy: () => onCopyRef.current?.(),
+          onCut: () => onCutRef.current?.(),
+          onPaste: () => onPasteRef.current?.(),
+          onReadOnlyEditAttempt: () => onReadOnlyEditAttemptRef.current?.(),
+          onEditorViewReady: (view) => onEditorViewReadyRef.current?.(view),
+          onEditorViewDestroy: () => onEditorViewDestroyRef.current?.(),
+          onRemoteSelectionsChange: (selections) =>
+            onRemoteSelectionsChangeRef.current?.(selections),
+        });
+      }
+    });
+
+    // View creation and external state sync stay passive: ancestor layout
+    // effects publish committed callbacks before readiness/selection events.
+    // This runs before the awareness subscription below so it can see a view
+    // whose deferred collaboration-module load just completed.
+    useEffect(() => {
+      managerRef.current?.retryViewCreation();
+      managerRef.current?.syncExternalDocument();
+      managerRef.current?.syncEditable();
+    });
 
     useEffect(() => {
       if (!hasCollaboration) {
-        setCollaborationModules(null);
-        setCollaborationModulesError(null);
         return undefined;
       }
 
       let cancelled = false;
-      setCollaborationModulesError(null);
       void loadCollaborationModules().then(
         (modules) => {
           if (!cancelled) {
-            setCollaborationModules(modules);
-            setCollaborationModulesError(null);
+            setCollaborationLoad({ status: "ready", modules });
           }
           return undefined;
         },
         (error: unknown) => {
           if (!cancelled) {
-            setCollaborationModules(null);
-            setCollaborationModulesError(error);
+            setCollaborationLoad({ status: "failed", error });
           }
           return undefined;
         },
@@ -350,7 +369,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
         awareness.off("change", publishRemoteSelections);
         onRemoteSelectionsChangeRef.current?.([]);
       };
-    }, [collaboration?.awareness, collaborationModules]);
+    }, [collaboration, collaborationModules]);
 
     // Stable wrapper so the unmount effect keeps `destroyView` in its dependency
     // array; the teardown body lives in the manager.
@@ -358,40 +377,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
       managerRef.current?.destroyView();
     }, []);
 
-    // Completes a previously-requested-but-deferred creation once a gate clears:
-    // the async collaboration modules load, OR collaboration is cleared entirely
-    // (both unblock tryCreate). Idempotent and gated by `requested` inside the
-    // manager, so it never eagerly creates a view nobody asked for. Runs in the
-    // layout phase (like the former create trigger) so the view exists before the
-    // passive awareness effect above subscribes to remote selections.
-    useLayoutEffect(() => {
-      managerRef.current?.retryViewCreation();
-    }, [collaboration, collaborationModules, experimentalSession]);
-
     useEffect(() => () => destroyView(), [destroyView]);
-
-    // Update state when document changes externally (e.g., loading a new file).
-    // This should NOT run when the document prop changes due to internal edits
-    // being passed back through the parent component's state; the manager owns
-    // the external-vs-internal comparison.
-    useEffect(() => {
-      managerRef.current?.syncExternalDocument();
-    }, [
-      document,
-      documentIdentity,
-      experimentalSession,
-      suggestionModeActive,
-      styles,
-      extensionManager,
-      externalPlugins,
-      collaboration,
-      collaborationModules,
-    ]);
-
-    // Update editable state
-    useEffect(() => {
-      managerRef.current?.syncEditable();
-    }, [readOnly]);
 
     // ========================================================================
     // Imperative Handle

@@ -1,36 +1,13 @@
 name: Benchmarks
 
-# Continuous benchmark-regression checking via CodSpeed.
+# On-demand benchmark checking via CodSpeed.
 #
 # The job runs the tinybench suite under Node (CodSpeed instruments Node, not
 # Bun) in CPU-simulation mode, so the numbers are hardware-agnostic and stable
 # on shared GitHub runners. Authentication uses OpenID Connect, so no
 # long-lived token has to be stored in the repository.
 #
-# Pull requests and main pushes run the `fast` corpus; the nightly schedule runs
-# the `full` corpus, adding the large document. CodSpeed reports benchmarks a
-# run omits as skipped and carries their last result forward.
-
 on:
-  push:
-    branches: [main]
-  # Pull requests run only when measured code or its inputs change; every main
-  # push still runs so each commit has a baseline.
-  pull_request:
-    paths:
-      - ".github/workflows/benchmarks.yml"
-      - "benchmarks/**"
-      - "bun.lock"
-      - "crates/docx-kernel/**"
-      - "package.json"
-      - "packages/core/package.json"
-      - "packages/core/src/**"
-      - "packages/docx-core/package.json"
-      - "packages/docx-core/src/**"
-      - "tests/visual/fixtures/*.docx"
-  schedule:
-    - cron: "17 3 * * *"
-  # `workflow_dispatch` lets CodSpeed trigger backtest runs to seed baselines.
   workflow_dispatch:
     inputs:
       corpus:
@@ -40,9 +17,8 @@ on:
         default: fast
 
 concurrency:
-  # Each main commit is a CodSpeed baseline, so only superseded PR runs cancel.
-  group: benchmarks-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: benchmarks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   scale-complexity:
@@ -52,7 +28,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
@@ -60,7 +36,7 @@ jobs:
           bun-version-file: "package.json"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .node-version
       - run: bun install --frozen-lockfile
       - name: Check scale complexity
         run: node --expose-gc --import tsx benchmarks/scale/run.ts
@@ -80,11 +56,11 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: "package.json"
 
@@ -92,16 +68,20 @@ jobs:
       # only installs the dependency tree.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .node-version
 
       - run: bun install --frozen-lockfile
+
+      # The exact plugin pin includes the Node-API string conversion fix for Node 26.
+      - name: Verify CodSpeed native runtime
+        run: node --interpreted-frames-native-stack --allow-natives-syntax scripts/check-codspeed-runtime.mjs
 
       # tsx is a pinned dev dependency, so this runs the committed version and
       # never resolves a fresh one from the registry at benchmark time.
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
+        uses: CodSpeedHQ/action@c4fd08a3a159bd0cc208da1e0edf32b8c47d75e5 # v5.4.0
         env:
-          FOLIO_BENCH_CORPUS: ${{ github.event_name == 'schedule' && 'full' || inputs.corpus || 'fast' }}
+          FOLIO_BENCH_CORPUS: ${{ inputs.corpus || 'fast' }}
         with:
           mode: simulation
           run: node --import tsx benchmarks/index.ts

@@ -24,7 +24,7 @@
  * canonical in the sidebar re-trigger the scroll).
  */
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useMemo } from "react";
 
 import type { SelectionRect } from "@stll/folio-core/layout-bridge/engine/selectionRects";
 import { scrollEditorElementIntoView } from "@stll/folio-core/paged-layout/editorScrollRoot";
@@ -86,34 +86,38 @@ export const AnonymizationRectsOverlay = ({
   // wrapping at the end, so the user isn't stuck on the first
   // occurrence and can step through every hit.
   const spansByCanonical = useRef(new Map<string, HTMLSpanElement[]>());
-  spansByCanonical.current = new Map();
 
   // Last canonical scrolled to + index inside its span list.
   // Used to advance on repeat selections of the same canonical
   // and reset to 0 when the canonical changes.
   const cycleRef = useRef<{ canonical: string; index: number } | null>(null);
 
+  const scrollRequest = useMemo(
+    () => ({ canonical: selectedCanonical, sequence: selectionSeq }),
+    [selectedCanonical, selectionSeq],
+  );
   useEffect(() => {
-    if (!selectedCanonical) {
+    const canonical = scrollRequest.canonical;
+    if (!canonical) {
       cycleRef.current = null;
       return;
     }
-    const spans = spansByCanonical.current.get(selectedCanonical) ?? [];
+    const spans = spansByCanonical.current.get(canonical) ?? [];
     if (spans.length === 0) {
       return;
     }
     let nextIndex: number;
-    if (cycleRef.current?.canonical === selectedCanonical) {
+    if (cycleRef.current?.canonical === canonical) {
       nextIndex = (cycleRef.current.index + 1) % spans.length;
     } else {
       nextIndex = 0;
     }
-    cycleRef.current = { canonical: selectedCanonical, index: nextIndex };
+    cycleRef.current = { canonical: canonical, index: nextIndex };
     const el = spans[nextIndex];
     if (el) {
       scrollEditorElementIntoView(el);
     }
-  }, [selectedCanonical, selectionSeq]);
+  }, [scrollRequest]);
 
   // Track the overlay's root so we only hit-test our own
   // spans and ignore clicks elsewhere in the page.
@@ -185,7 +189,19 @@ export const AnonymizationRectsOverlay = ({
                 const list = spansByCanonical.current.get(group.canonical) ?? [];
                 list.push(node);
                 spansByCanonical.current.set(group.canonical, list);
+                return () => {
+                  const remaining =
+                    spansByCanonical.current
+                      .get(group.canonical)
+                      ?.filter((span) => span !== node) ?? [];
+                  if (remaining.length === 0) {
+                    spansByCanonical.current.delete(group.canonical);
+                  } else {
+                    spansByCanonical.current.set(group.canonical, remaining);
+                  }
+                };
               }
+              return undefined;
             }}
             className={`folio-anonymization-term folio-anonymization-term--${slugAnonymizationLabel(group.label)}`}
             data-folio-anonymization-label={group.label}

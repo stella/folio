@@ -68,23 +68,19 @@ const propertyEdits = ({ blockId, text, properties }: PropertyEditsOptions) => {
     (styleId) => styleId !== "Heading1",
   );
   return [
-    ...patches.map(
-      (patch): FolioDocumentOperation => ({
-        id: "properties",
-        type: "setBlockParagraphProperties",
-        blockId,
-        properties: patch,
-      }),
-    ),
-    ...restyles.map(
-      (restyle): FolioDocumentOperation => ({
-        id: "properties",
-        type: "replaceBlock",
-        blockId,
-        text,
-        styleId: restyle,
-      }),
-    ),
+    ...patches.map((patch): FolioDocumentOperation => ({
+      id: "properties",
+      type: "setBlockParagraphProperties",
+      blockId,
+      properties: patch,
+    })),
+    ...restyles.map((restyle): FolioDocumentOperation => ({
+      id: "properties",
+      type: "replaceBlock",
+      blockId,
+      text,
+      styleId: restyle,
+    })),
   ];
 };
 

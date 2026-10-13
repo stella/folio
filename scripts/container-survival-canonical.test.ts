@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import ts from "typescript";
 
 import { allSubjects } from "./container-survival-census";
 import {
@@ -104,16 +105,89 @@ describe("every canonical spelling is one a pair exercises", () => {
   });
 });
 
-describe("every canonical spelling cites the line that performs it", () => {
-  test("each cited line still reads what its entry claims", async () => {
+const codeTokens = (source: string): string => {
+  const parsed = ts.createSourceFile("citation.ts", source, ts.ScriptTarget.Latest, true);
+  const tokens: string[] = [];
+  const visit = (node: ts.Node): void => {
+    const children = node.getChildren(parsed);
+    if (children.length > 0) {
+      for (const child of children) visit(child);
+      return;
+    }
+    if (node.kind !== ts.SyntaxKind.EndOfFileToken && node.getWidth(parsed) > 0) {
+      tokens.push(node.getText(parsed));
+    }
+  };
+  visit(parsed);
+  return tokens.join("\0");
+};
+
+const citationMatches = (
+  source: string,
+  { declaration, writes }: { declaration: string; writes: string },
+): boolean => {
+  const parsed = ts.createSourceFile("serializer.ts", source, ts.ScriptTarget.Latest, true);
+  const declarations = parsed.statements.flatMap((statement) =>
+    ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : [],
+  );
+  const owner = declarations.find(
+    (node) => ts.isIdentifier(node.name) && node.name.text === declaration,
+  );
+  if (owner === undefined) return false;
+  return `\0${codeTokens(owner.getText(parsed))}\0`.includes(`\0${codeTokens(writes)}\0`);
+};
+
+describe("every canonical spelling cites the declaration that performs it", () => {
+  test("citations survive formatting and reject a different writer or commented-out write", () => {
+    const citation = {
+      declaration: "INDENT_LEFT",
+      writes: 'TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @start"]',
+    };
+    for (const prefix of ["", "\n\n", "// An unrelated declaration follows.\n"]) {
+      for (const spacing of ["", " ", "\n  ", "/* spacing */"]) {
+        const write = `TRANSITIONAL_NAME_BY_STRICT_NAME${spacing}[${spacing}"CT_Ind @start"${spacing}]`;
+        expect(citationMatches(`${prefix}const INDENT_LEFT = ${write};`, citation)).toBe(true);
+        expect(citationMatches(`${prefix}const INDENT_RIGHT = ${write};`, citation)).toBe(false);
+        expect(citationMatches(`${prefix}const INDENT_LEFT = "left"; // ${write}`, citation)).toBe(
+          false,
+        );
+        expect(
+          citationMatches(`${prefix}const INDENT_LEFT = /* ${write} */ "left";`, citation),
+        ).toBe(false);
+      }
+    }
+    expect(
+      citationMatches(
+        'const INDENT_LEFT = TRANSITIONAL_NAME_BY_STRICT_NAME["CT_Ind @end"];',
+        citation,
+      ),
+    ).toBe(false);
+    const templateCitation = {
+      declaration: "serializeOnOffElement",
+      writes: "return value ? `<w:${name}/>`",
+    };
+    expect(
+      citationMatches(
+        'const serializeOnOffElement = (value, name) => { return value ? `<w:${name}/>` : `<w:${name} w:val="0"/>`; };',
+        templateCitation,
+      ),
+    ).toBe(true);
+    expect(
+      citationMatches(
+        'const serializeOnOffElement = (value, name) => { return value ? `<w:${name} w:val="0"/>` : `<w:${name}/>`; };',
+        templateCitation,
+      ),
+    ).toBe(false);
+  });
+
+  test("each cited declaration still reads what its entry claims", async () => {
     const stale: string[] = [];
     for (const entry of CANONICAL_SPELLINGS) {
-      for (const { file, line, writes } of entry.writtenBy) {
+      for (const { file, declaration, writes } of entry.writtenBy) {
         // oxlint-disable-next-line no-await-in-loop -- nine small files, read once each
         const source = await Bun.file(new URL(`../${file}`, import.meta.url)).text();
-        const cited = source.split("\n")[line - 1] ?? "";
-        if (!cited.includes(writes)) {
-          stale.push(`${describeEntry(entry)}: ${file}:${line} reads ${cited.trim()}`);
+        if (!citationMatches(source, { declaration, writes })) {
+          stale.push(`${describeEntry(entry)}: ${file}:${declaration} does not write ${writes}`);
         }
       }
     }

@@ -139,9 +139,11 @@ export const runArbitrary: fc.Arbitrary<Run> = fc.record(
 
 const markerId = fc.integer({ min: 1, max: 40 });
 
-const bookmarkStartArbitrary = markerId.map(
-  (id): ParagraphContent => ({ type: "bookmarkStart", id, name: `_Ref${id}` }),
-);
+const bookmarkStartArbitrary = markerId.map((id): ParagraphContent => ({
+  type: "bookmarkStart",
+  id,
+  name: `_Ref${id}`,
+}));
 const bookmarkEndArbitrary = markerId.map((id): ParagraphContent => ({ type: "bookmarkEnd", id }));
 
 const markerArbitrary: fc.Arbitrary<ParagraphContent> = fc.oneof(
@@ -149,9 +151,12 @@ const markerArbitrary: fc.Arbitrary<ParagraphContent> = fc.oneof(
   bookmarkEndArbitrary,
   markerId.map((id): ParagraphContent => ({ type: "commentRangeStart", id })),
   markerId.map((id): ParagraphContent => ({ type: "commentRangeEnd", id })),
-  markerId.map(
-    (id): ParagraphContent => ({ type: "moveToRangeStart", id, name: `move${id}`, author: "A" }),
-  ),
+  markerId.map((id): ParagraphContent => ({
+    type: "moveToRangeStart",
+    id,
+    name: `move${id}`,
+    author: "A",
+  })),
   markerId.map((id): ParagraphContent => ({ type: "moveToRangeEnd", id })),
 );
 
@@ -307,27 +312,23 @@ const blockArbitrary: fc.Arbitrary<BlockContent> = fc.oneof(
         minLength: 1,
         maxLength: 2,
       })
-      .map(
-        (rows): BlockContent => ({
-          type: "table",
-          columnWidths: [2400, 2400],
-          rows: rows.map((cells) => ({
-            type: "tableRow",
-            cells: cells.map((content) => ({ type: "tableCell", content })),
-            preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
-          })),
-        }),
-      ),
+      .map((rows): BlockContent => ({
+        type: "table",
+        columnWidths: [2400, 2400],
+        rows: rows.map((cells) => ({
+          type: "tableRow",
+          cells: cells.map((content) => ({ type: "tableCell", content })),
+          preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
+        })),
+      })),
   },
   {
     weight: 1,
-    arbitrary: nestedParagraphs.map(
-      (content): BlockContent => ({
-        type: "blockSdt",
-        properties: { sdtType: "group", id: 9 },
-        content,
-      }),
-    ),
+    arbitrary: nestedParagraphs.map((content): BlockContent => ({
+      type: "blockSdt",
+      properties: { sdtType: "group", id: 9 },
+      content,
+    })),
   },
   {
     weight: 1,

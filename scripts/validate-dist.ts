@@ -72,11 +72,7 @@ import path from "node:path";
 
 import { installCleanRoomDependencies } from "./clean-room-install";
 import { scanDistUrlTargets } from "./dist-url-targets";
-import {
-  REACT_PEER_MAJORS,
-  reactPeerInstallArgs,
-  type ReactPeerMajor,
-} from "./packaged-consumer-lib";
+import { REACT_PEER_FLOOR, reactPeerInstallArgs } from "./packaged-consumer-lib";
 import { findUncoveredUtilities } from "./standalone-css-coverage";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
@@ -239,7 +235,7 @@ if (docxCoreTarball) {
 }
 if (target === "react") {
   if (!coreTarball) panic("validate-dist: react needs a @stll/folio-core tarball");
-  installArgs.push(coreTarball, ...reactPeerInstallArgs("19"), "use-intl@^4");
+  installArgs.push(coreTarball, ...reactPeerInstallArgs(), "use-intl@^4");
 }
 if (target === "agents") {
   if (!coreTarball) panic("validate-dist: agents needs a @stll/folio-core tarball");
@@ -593,19 +589,18 @@ const typeCheckModes =
   target === "vue"
     ? Object.entries(tsconfigs).filter(([mode]) => mode === "bundler")
     : Object.entries(tsconfigs);
-const typeCheckReactMajors: (ReactPeerMajor | null)[] =
-  target === "react" ? [...REACT_PEER_MAJORS] : [null];
-for (const reactMajor of typeCheckReactMajors) {
-  if (reactMajor !== null) {
+const typeCheckReactVersions = target === "react" ? [REACT_PEER_FLOOR.version] : [null];
+for (const reactVersion of typeCheckReactVersions) {
+  if (reactVersion !== null) {
     await installCleanRoomDependencies({
       consumerDir,
-      dependencies: reactPeerInstallArgs(reactMajor),
+      dependencies: reactPeerInstallArgs(),
     });
   }
 
   const typeChecks = await Promise.all(
     typeCheckModes.map(async ([mode, opts]) => {
-      const reactSuffix = reactMajor === null ? "" : `.react-${reactMajor}`;
+      const reactSuffix = reactVersion === null ? "" : `.react-${reactVersion}`;
       const file = path.join(consumerDir, `tsconfig.${mode}${reactSuffix}.json`);
       await writeFile(
         file,
@@ -623,7 +618,7 @@ for (const reactMajor of typeCheckReactMajors) {
     }),
   );
   for (const { mode, tc } of typeChecks) {
-    const reactLabel = reactMajor === null ? "" : `, React ${reactMajor} types`;
+    const reactLabel = reactVersion === null ? "" : `, React ${reactVersion} types`;
     record(
       `types: tsc --noEmit (moduleResolution: ${mode}${reactLabel})`,
       tc.exitCode === 0,

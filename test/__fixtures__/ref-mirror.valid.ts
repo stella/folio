@@ -2,16 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export function useMirroredList(onChange?: (next: string[]) => void) {
   const [items, setItems] = useState<string[]>([]);
-  const itemsRef = useRef(items);
-  itemsRef.current = items;
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
 
-  // Mutation goes through state; the mirror follows on the next render.
-  const replace = useCallback((next: string[]) => {
-    setItems(next);
-    onChangeRef.current?.(next);
-  }, []);
+  // Updates go through state; callbacks follow the committed render.
+  const replace = useCallback(
+    (next: string[]) => {
+      setItems(next);
+      onChange?.(next);
+    },
+    [onChange],
+  );
 
   // A ref that is not a render mirror may be written anywhere.
   const timerRef = useRef<number | null>(null);
@@ -21,19 +20,15 @@ export function useMirroredList(onChange?: (next: string[]) => void) {
     }, 0);
   }, []);
 
-  const read = useCallback(() => itemsRef.current, []);
+  const read = useCallback(() => items, [items]);
 
   return { items, replace, read };
 }
 
-export const Counter = () => {
+export const useCounter = () => {
   const [count, setCount] = useState(0);
-  const countRef = useRef(count);
-  countRef.current = count;
 
-  useEffect(() => {
-    setCount((current) => current + 1);
-  }, []);
+  const increment = () => setCount((current) => current + 1);
 
-  return null;
+  return { count, increment };
 };

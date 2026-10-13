@@ -23,7 +23,7 @@ import path from "node:path";
 
 import { installCleanRoomDependencies } from "./clean-room-install";
 import {
-  REACT_PEER_MAJORS,
+  REACT_PEER_FLOOR,
   buildAndPack,
   consumerSrc,
   coreDir,
@@ -32,13 +32,11 @@ import {
   reactPeerInstallArgs,
   reactDir,
   repoRoot,
-  type ReactPeerMajor,
   writeConsumerPackageJson,
 } from "./packaged-consumer-lib";
 
-const previewPortForReactMajor = (reactMajor: ReactPeerMajor): number => 4300 + Number(reactMajor);
-const previewUrlForReactMajor = (reactMajor: ReactPeerMajor): string =>
-  `http://localhost:${previewPortForReactMajor(reactMajor)}`;
+const previewPort = 4300 + Number(REACT_PEER_FLOOR.major);
+const previewUrl = `http://localhost:${previewPort}`;
 const runtimeDistDirectory = "dist-runtime";
 
 // Poll the preview server until it answers or the deadline passes.
@@ -91,23 +89,21 @@ try {
   const coreTarball = await buildAndPack(coreDir, corePackDir);
   const reactTarball = await buildAndPack(reactDir, reactPackDir);
 
-  const runSmoke = async (reactMajor: ReactPeerMajor): Promise<void> => {
+  const runSmoke = async (reactVersion: string): Promise<void> => {
     let succeeded = false;
     let previewStdoutPath = "";
     let previewStderrPath = "";
     let preview: ReturnType<typeof Bun.spawn> | null = null;
     const consumerDir = await mkdtemp(
-      path.join(tmpdir(), `folio-packaged-consumer-smoke-r${reactMajor}-`),
+      path.join(tmpdir(), `folio-packaged-consumer-smoke-r${reactVersion}-`),
     );
     consumerDirs.push(consumerDir);
-    const previewUrl = previewUrlForReactMajor(reactMajor);
-    const previewPort = previewPortForReactMajor(reactMajor);
 
     try {
       // Stage the checked-in consumer OUT of the monorepo so no workspace linkage
       // leaks in. The runtime build needs index.html, the runtime config, the app
       // source, and the served fixture.
-      console.log(`→ staging React ${reactMajor} runtime consumer in ${consumerDir}`);
+      console.log(`→ staging React ${reactVersion} runtime consumer in ${consumerDir}`);
       await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
       await cp(path.join(consumerSrc, "public"), path.join(consumerDir, "public"), {
         recursive: true,
@@ -119,28 +115,28 @@ try {
       );
       await writeConsumerPackageJson({ consumerDir, coreTarball, docxCoreTarball });
 
-      console.log(`→ installing tarballs + React ${reactMajor} peers`);
+      console.log(`→ installing tarballs + React ${reactVersion} peers`);
       await installCleanRoomDependencies({
         consumerDir,
         dependencies: [
           reactTarball,
           coreTarball,
           docxCoreTarball,
-          ...reactPeerInstallArgs(reactMajor),
+          ...reactPeerInstallArgs(),
           "use-intl@^4",
           "vite@^8",
           "@vitejs/plugin-react@^6",
         ],
       });
 
-      console.log(`→ production SPA build over the packed tarballs (React ${reactMajor})`);
+      console.log(`→ production SPA build over the packed tarballs (React ${reactVersion})`);
       const build = await $`bun x vite build --config vite.runtime.config.ts`
         .cwd(consumerDir)
         .nothrow();
       if (build.exitCode !== 0) {
         console.error(build.stderr.toString() || build.stdout.toString());
         throw new Error(
-          `packaged-consumer-smoke: React ${reactMajor} production vite build FAILED against the tarballs.`,
+          `packaged-consumer-smoke: React ${reactVersion} production vite build FAILED against the tarballs.`,
         );
       }
       const distFiles = await readdir(path.join(consumerDir, runtimeDistDirectory), {
@@ -148,11 +144,11 @@ try {
       });
       if (!distFiles.some(isDocxKernelWasmAsset)) {
         throw new Error(
-          `packaged-consumer-smoke: React ${reactMajor} production app emitted no lazy DOCX kernel WebAssembly asset.`,
+          `packaged-consumer-smoke: React ${reactVersion} production app emitted no lazy DOCX kernel WebAssembly asset.`,
         );
       }
 
-      console.log(`→ serving the React ${reactMajor} built app on ${previewUrl}`);
+      console.log(`→ serving the React ${reactVersion} built app on ${previewUrl}`);
       // Redirect the server's stdio to files rather than piping: an unread pipe
       // blocks the child once the OS buffer fills, and the files double as CI
       // debugging output; they are dumped below whenever the smoke fails.
@@ -177,11 +173,11 @@ try {
       );
       if (!(await waitForServer(previewUrl, 30_000))) {
         throw new Error(
-          `packaged-consumer-smoke: React ${reactMajor} preview server never came up on ${previewUrl}.`,
+          `packaged-consumer-smoke: React ${reactVersion} preview server never came up on ${previewUrl}.`,
         );
       }
 
-      console.log(`→ running the React ${reactMajor} runtime smoke (Playwright chromium)`);
+      console.log(`→ running the React ${reactVersion} runtime smoke (Playwright chromium)`);
       const smoke = await $`bun x playwright test --config playwright.smoke.config.ts`
         .cwd(repoRoot)
         .env({ ...process.env, PLAYWRIGHT_BASE_URL: previewUrl })
@@ -190,7 +186,7 @@ try {
         succeeded = true;
         return;
       }
-      failure = `\n✗ packaged-consumer-smoke: the React ${reactMajor} runtime smoke FAILED against the served tarballs.`;
+      failure = `\n✗ packaged-consumer-smoke: the React ${reactVersion} runtime smoke FAILED against the served tarballs.`;
     } finally {
       preview?.kill();
       // On any failure (assertion or thrown step), surface the preview server's
@@ -202,12 +198,7 @@ try {
     }
   };
 
-  for (const reactMajor of REACT_PEER_MAJORS) {
-    await runSmoke(reactMajor);
-    if (failure !== null) {
-      break;
-    }
-  }
+  await runSmoke(REACT_PEER_FLOOR.version);
 } finally {
   for (const dir of [docxCorePackDir, corePackDir, reactPackDir, ...consumerDirs]) {
     if (dir !== "") {
@@ -222,5 +213,5 @@ if (failure !== null) {
 }
 
 console.log(
-  "\n✓ packaged-consumer-smoke: React 18 and 19 served builds ran clean (worker + catalog verified).",
+  `\n✓ packaged-consumer-smoke: React ${REACT_PEER_FLOOR.version} served build ran clean (worker + catalog verified).`,
 );

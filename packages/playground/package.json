@@ -9,7 +9,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit",
+    "test": "bun test src",
+    "typecheck": "bun check --no-pretty --all --project=tsconfig.json",
     "format": "oxfmt ."
   },
   "dependencies": {

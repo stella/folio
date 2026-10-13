@@ -7,7 +7,7 @@
  * - Distance from text (top/bottom/left/right)
  */
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -45,7 +45,14 @@ export type ImagePositionDialogProps = {
 // COMPONENT
 // ============================================================================
 
-export function ImagePositionDialog({
+export function ImagePositionDialog(props: ImagePositionDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return <ImagePositionDialogForm key={JSON.stringify(props.currentData)} {...props} />;
+}
+
+function ImagePositionDialogForm({
   isOpen,
   onClose,
   onApply,
@@ -62,54 +69,28 @@ export function ImagePositionDialog({
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const t = useTranslations("folio");
   const id = useId();
-  const [hMode, setHMode] = useState<"align" | "offset">("align");
-  const [hAlign, setHAlign] = useState("center");
-  const [hRelativeTo, setHRelativeTo] = useState("column");
-  const [hOffset, setHOffset] = useState(0);
+  const [hMode, setHMode] = useState<"align" | "offset">(
+    currentData?.horizontal?.align || currentData?.horizontal?.posOffset === undefined
+      ? "align"
+      : "offset",
+  );
+  const [hAlign, setHAlign] = useState(currentData?.horizontal?.align ?? "center");
+  const [hRelativeTo, setHRelativeTo] = useState(currentData?.horizontal?.relativeTo ?? "column");
+  const [hOffset, setHOffset] = useState(currentData?.horizontal?.posOffset ?? 0);
 
-  const [vMode, setVMode] = useState<"align" | "offset">("align");
-  const [vAlign, setVAlign] = useState("top");
-  const [vRelativeTo, setVRelativeTo] = useState("paragraph");
-  const [vOffset, setVOffset] = useState(0);
+  const [vMode, setVMode] = useState<"align" | "offset">(
+    currentData?.vertical?.align || currentData?.vertical?.posOffset === undefined
+      ? "align"
+      : "offset",
+  );
+  const [vAlign, setVAlign] = useState(currentData?.vertical?.align ?? "top");
+  const [vRelativeTo, setVRelativeTo] = useState(currentData?.vertical?.relativeTo ?? "paragraph");
+  const [vOffset, setVOffset] = useState(currentData?.vertical?.posOffset ?? 0);
 
-  const [distTop, setDistTop] = useState(0);
-  const [distBottom, setDistBottom] = useState(0);
-  const [distLeft, setDistLeft] = useState(0);
-  const [distRight, setDistRight] = useState(0);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    const h = currentData?.horizontal;
-    const v = currentData?.vertical;
-    if (h?.align) {
-      setHMode("align");
-      setHAlign(h.align);
-    } else if (h?.posOffset !== undefined) {
-      setHMode("offset");
-      setHOffset(h.posOffset);
-    }
-    if (h?.relativeTo) {
-      setHRelativeTo(h.relativeTo);
-    }
-
-    if (v?.align) {
-      setVMode("align");
-      setVAlign(v.align);
-    } else if (v?.posOffset !== undefined) {
-      setVMode("offset");
-      setVOffset(v.posOffset);
-    }
-    if (v?.relativeTo) {
-      setVRelativeTo(v.relativeTo);
-    }
-
-    setDistTop(currentData?.distTop ?? 0);
-    setDistBottom(currentData?.distBottom ?? 0);
-    setDistLeft(currentData?.distLeft ?? 0);
-    setDistRight(currentData?.distRight ?? 0);
-  }, [isOpen, currentData]);
+  const [distTop, setDistTop] = useState(currentData?.distTop ?? 0);
+  const [distBottom, setDistBottom] = useState(currentData?.distBottom ?? 0);
+  const [distLeft, setDistLeft] = useState(currentData?.distLeft ?? 0);
+  const [distRight, setDistRight] = useState(currentData?.distRight ?? 0);
 
   const handleApply = () => {
     const data: ImagePositionData = {};

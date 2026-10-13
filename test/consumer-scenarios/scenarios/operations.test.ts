@@ -34,6 +34,7 @@ import { createRandom } from "../support/random.ts";
 import {
   expectedFailure,
   FINDING_SYMPTOMS,
+  matchesFailureSymptom,
   KNOWN_FAILING_OPERATION_RUNS,
 } from "../support/known-issues.ts";
 import { resolvedText, settledText } from "../support/review.ts";
@@ -66,8 +67,7 @@ describe("applyDocumentOperations", () => {
           try {
             await body();
           } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            if (known && FINDING_SYMPTOMS[known.finding].test(message)) throw error;
+            if (known && matchesFailureSymptom(FINDING_SYMPTOMS[known.finding], error)) throw error;
             reportScenarioFailure({
               test: `operation matrix ${name} / ${mode}`,
               seed,

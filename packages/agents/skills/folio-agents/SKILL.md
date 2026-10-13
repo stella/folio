@@ -214,7 +214,7 @@ Two different questions, two different tools:
   changes right now: use the `read_changes` tool on a capable bridge or call
   `reviewer.getChanges()` directly.
 - **Between two saved `.docx` versions** — `compareDocxVersions(previousBuffer,
-currentBuffer)` + `formatVersionDiffForLLM(diff)`. Both are plain async
+  currentBuffer)` + `formatVersionDiffForLLM(diff)`. Both are plain async
   functions, not tool definitions: a model can't attach two buffers to one
   tool call (they aren't JSON-serializable arguments). Wrap them in a
   host-side tool keyed by version identifiers instead — the model calls it

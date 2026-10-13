@@ -9,7 +9,15 @@
  * in this sidebar.
  */
 
-import React, { useEffect, useState, useRef, useCallback, useMemo, useLayoutEffect } from "react";
+import React, {
+  useEffect,
+  useEffectEvent,
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+  useLayoutEffect,
+} from "react";
 
 import { CheckIcon, MoreVerticalIcon } from "lucide-react";
 import { useLocale, useTranslations } from "use-intl";
@@ -219,13 +227,16 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyText, setReplyText] = useState("");
   const [newCommentText, setNewCommentText] = useState("");
-  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [expandedCard, setExpandedCard] = useState<string | null>(
+    activeCommentId === null ? null : `comment-${activeCommentId}`,
+  );
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
-  const [cardPositions, setCardPositions] = useState<Map<string, number>>(new Map());
+  const [{ positions: cardPositions, knownCards }, setCardGeometry] = useState(() => ({
+    positions: new Map<string, number>(),
+    knownCards: new Set<string>(),
+  }));
   const [measuredLeft, setMeasuredLeft] = useState<number | null>(null);
   const [initialPositionsDone, setInitialPositionsDone] = useState(false);
-  // Track which cards have had at least one positioned render (to avoid "fall from top" animation)
-  const knownCardsRef = useRef<Set<string>>(new Set());
   const lastKnownCardPositionsRef = useRef<Map<string, number>>(new Map());
   const sidebarRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -283,8 +294,17 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     setMeasuredLeft(Math.max(8, Math.min(rawLeft, maxVisibleLeft)));
   }, [editorContainerRef, isDrawer]);
 
+  const measureSidebarCommit = useEffectEvent(
+    (
+      _layout: { pageWidth: number; isAddingComment: boolean; commentCount: number },
+      measure: () => void,
+    ) => measure(),
+  );
   useLayoutEffect(() => {
-    updateSidebarLeft();
+    measureSidebarCommit(
+      { pageWidth, isAddingComment, commentCount: comments.length },
+      updateSidebarLeft,
+    );
   }, [updateSidebarLeft, pageWidth, isAddingComment, comments.length]);
 
   useEffect(() => {
@@ -432,9 +452,13 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       lastBottom = y + pos.height;
     }
 
-    setCardPositions((prev) =>
-      arePositionMapsEqual(prev, resolvedPositions) ? prev : resolvedPositions,
-    );
+    setCardGeometry((previous) => {
+      if (arePositionMapsEqual(previous.positions, resolvedPositions)) return previous;
+      // First positions fade in; later snapshots animate already positioned cards.
+      const nextKnownCards = new Set(previous.knownCards);
+      for (const cardId of previous.positions.keys()) nextKnownCards.add(cardId);
+      return { positions: resolvedPositions, knownCards: nextKnownCards };
+    });
 
     const visiblePositionIds = new Set(resolvedPositions.keys());
     for (const key of lastKnownCardPositionsRef.current.keys()) {
@@ -552,10 +576,16 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   }, [editorContainerRef, updateCardPositions]);
 
   // Recalculate positions after a card expand/collapse or add-comment toggle.
-  useEffect(() => {
-    const raf = requestAnimationFrame(updateCardPositions);
-    return () => cancelAnimationFrame(raf);
-  }, [expandedCard, isAddingComment, updateCardPositions]);
+  const measureCardsCommit = useEffectEvent(
+    (_layout: { expandedCard: string | null; isAddingComment: boolean }, measure: () => void) => {
+      const raf = requestAnimationFrame(measure);
+      return () => cancelAnimationFrame(raf);
+    },
+  );
+  useEffect(
+    () => measureCardsCommit({ expandedCard, isAddingComment }, updateCardPositions),
+    [expandedCard, isAddingComment, updateCardPositions],
+  );
 
   // Watch the expanded card for size changes (reply textarea appearing, text wrapping, etc.)
   // and the add-comment input for the same. Fires when their actual rendered size changes.
@@ -598,12 +628,11 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (activeCommentId === null) {
-      return;
-    }
-    setExpandedCard(`comment-${activeCommentId}`);
-  }, [activeCommentId]);
+  const [previousActiveCommentId, setPreviousActiveCommentId] = useState(activeCommentId);
+  if (previousActiveCommentId !== activeCommentId) {
+    setPreviousActiveCommentId(activeCommentId);
+    if (activeCommentId !== null) setExpandedCard(`comment-${activeCommentId}`);
+  }
 
   const handleCardClick = (cardId: string, commentId?: number) => {
     const nextExpandedCard = expandedCard === cardId ? null : cardId;
@@ -674,11 +703,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     isExpanded: boolean,
     yPos: number | undefined,
   ): React.CSSProperties => {
-    const isKnown = knownCardsRef.current.has(cardId);
-    // Mark card as known once it has a valid position
-    if (yPos !== undefined) {
-      knownCardsRef.current.add(cardId);
-    }
+    const isKnown = knownCards.has(cardId);
     // New cards (first render with position): fade in, no top transition
     // Known cards: transition top smoothly
     // Cards without position yet: hidden completely (no transition)
@@ -908,7 +933,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     const cardId = `comment-${comment.id}`;
     const isExpanded = expandedCard === cardId;
     const isActive = activeCommentId === comment.id;
-    const yPos = cardPositions.get(cardId) ?? lastKnownCardPositionsRef.current.get(cardId);
+    const yPos = cardPositions.get(cardId);
     return (
       // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- card is a clickable container with nested buttons/input; role="button" would be invalid, keyboard handler provides Enter/Space access
       <div
@@ -922,7 +947,9 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
         }}
         data-comment-id={comment.id}
         className="docx-comment-card"
-        onClick={containedHandler(() => handleCardClick(cardId, comment.id))}
+        onClick={(event) => {
+          containedHandler(() => handleCardClick(cardId, comment.id))(event);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             handleCardClick(cardId, comment.id);

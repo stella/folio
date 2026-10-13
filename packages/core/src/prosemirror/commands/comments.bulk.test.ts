@@ -414,28 +414,25 @@ const bulkRunPropertyFixture = (
   const currentFormatting: TextFormatting = styled
     ? { styleId: "BulkCharacter", color: { rgb: "800000" } }
     : { italic: true };
-  const paragraphs = Array.from(
-    { length: carrierCount },
-    (_, index): Paragraph => ({
-      type: "paragraph",
-      ...(styled ? { formatting: { styleId: "BulkParagraph" } } : {}),
-      content: [
-        {
-          type: "run",
-          formatting: currentFormatting,
-          propertyChanges: [
-            {
-              type: "runPropertyChange",
-              info: { id: index + 1, author: AUTHOR, date: DATE },
-              previousFormatting,
-              currentFormatting,
-            },
-          ],
-          content: [{ type: "text", text: `carrier-${index}` }],
-        },
-      ],
-    }),
-  );
+  const paragraphs = Array.from({ length: carrierCount }, (_, index): Paragraph => ({
+    type: "paragraph",
+    ...(styled ? { formatting: { styleId: "BulkParagraph" } } : {}),
+    content: [
+      {
+        type: "run",
+        formatting: currentFormatting,
+        propertyChanges: [
+          {
+            type: "runPropertyChange",
+            info: { id: index + 1, author: AUTHOR, date: DATE },
+            previousFormatting,
+            currentFormatting,
+          },
+        ],
+        content: [{ type: "text", text: `carrier-${index}` }],
+      },
+    ],
+  }));
   document.package.styles = styled ? BULK_RUN_PROPERTY_STYLES : { styles: [] };
   document.package.document.content = paragraphs;
   return {

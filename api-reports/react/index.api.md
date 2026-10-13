@@ -555,7 +555,7 @@ export { extractDocumentStyleSetFromDocx }
 export { ExtractDocumentStyleSetOptions }
 
 // @public
-export function FindReplaceDialog(input: FindReplaceDialogProps): React_2.ReactElement | null;
+export function FindReplaceDialog(props: FindReplaceDialogProps): React_2.ReactElement | null;
 
 // @public
 export type FindReplaceDialogProps = {
@@ -718,7 +718,7 @@ export type HyperlinkBookmarkOption = {
 };
 
 // @public (undocumented)
-export function HyperlinkDialog(input: HyperlinkDialogProps): JSX.Element;
+export function HyperlinkDialog(props: HyperlinkDialogProps): JSX.Element | null;
 
 // @public (undocumented)
 export type HyperlinkDialogData = {
@@ -759,7 +759,7 @@ export type ImagePositionData = {
 };
 
 // @public (undocumented)
-export function ImagePositionDialog(input: ImagePositionDialogProps): JSX.Element;
+export function ImagePositionDialog(props: ImagePositionDialogProps): JSX.Element | null;
 
 // @public (undocumented)
 export type ImagePositionDialogProps = {
@@ -778,7 +778,7 @@ export type ImagePropertiesData = {
 };
 
 // @public (undocumented)
-export function ImagePropertiesDialog(input: ImagePropertiesDialogProps): JSX.Element;
+export function ImagePropertiesDialog(props: ImagePropertiesDialogProps): JSX.Element | null;
 
 // @public (undocumented)
 export type ImagePropertiesDialogProps = {
@@ -791,7 +791,7 @@ export type ImagePropertiesDialogProps = {
 export { ImageRef }
 
 // @public (undocumented)
-export function InsertImageDialog(input: InsertImageDialogProps): JSX.Element;
+export function InsertImageDialog(props: InsertImageDialogProps): JSX.Element | null;
 
 // @public (undocumented)
 export type InsertImageDialogData = {
@@ -824,7 +824,7 @@ export type InsertSymbolDialogProps = {
 };
 
 // @public (undocumented)
-export function InsertTableDialog(input: InsertTableDialogProps): JSX.Element;
+export function InsertTableDialog(props: InsertTableDialogProps): JSX.Element | null;
 
 // @public (undocumented)
 export type InsertTableDialogData = {
@@ -884,7 +884,7 @@ export type OutlineItem = {
 };
 
 // @public (undocumented)
-export function PageSetupDialog(input: PageSetupDialogProps): JSX.Element;
+export function PageSetupDialog(props: PageSetupDialogProps): JSX.Element | null;
 
 // @public (undocumented)
 export type PageSetupDialogProps = {
@@ -898,7 +898,7 @@ export type PageSetupDialogProps = {
 export function parseZoom(zoomString: string): number | null;
 
 // @public (undocumented)
-export function PasteSpecialDialog(input: PasteSpecialDialogProps): JSX.Element;
+export function PasteSpecialDialog(props: PasteSpecialDialogProps): JSX.Element | null;
 
 // @public (undocumented)
 export type PasteSpecialDialogProps = {
@@ -952,7 +952,7 @@ export { setTemplatePreviewValues }
 export { shouldTriggerAutocomplete }
 
 // @public (undocumented)
-export function SplitCellDialog(input: SplitCellDialogProps): JSX.Element;
+export function SplitCellDialog(props: SplitCellDialogProps): JSX.Element | null;
 
 // @public (undocumented)
 export type SplitCellDialogData = {
@@ -982,7 +982,7 @@ export { SuggestionKind }
 export type TableProperties = TablePropertiesCommand;
 
 // @public (undocumented)
-export function TablePropertiesDialog(input: TablePropertiesDialogProps): JSX.Element;
+export function TablePropertiesDialog(props: TablePropertiesDialogProps): JSX.Element | null;
 
 // @public (undocumented)
 export type TablePropertiesDialogProps = {
@@ -1049,7 +1049,7 @@ export type UseWheelZoomReturn = {
 export { Watermark }
 
 // @public (undocumented)
-export function WatermarkDialog(input: WatermarkDialogProps): JSX.Element;
+export function WatermarkDialog(props: WatermarkDialogProps): JSX.Element | null;
 
 // @public (undocumented)
 export type WatermarkDialogProps = {

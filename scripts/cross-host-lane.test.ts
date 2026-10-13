@@ -63,8 +63,27 @@ test("cross-host random lane uses a bounded scheduled workflow with issue filing
   expect(random["run"]).toContain("--project=parity-fuzzer");
   expect(random["run"]).toContain("--output=fuzz-playwright/cross-host");
   expect(random["run"]).toContain("tee fuzz-artifacts/cross-host/cross-host.log");
-  const deterministic = steps.find((step) => step["name"] === "Parity e2e specs");
+  expect(steps.some((step) => step["name"] === "Parity e2e specs")).toBe(false);
+  const manual = requireRecord(
+    Bun.YAML.parse(readFileSync(".github/workflows/parity-e2e.yml", "utf8")),
+  );
+  expect(Object.keys(requireRecord(manual["on"]))).toEqual(["workflow_dispatch"]);
+  const manualJob = requireRecord(requireRecord(manual["jobs"])["parity-e2e"]);
+  const manualSteps = manualJob["steps"];
+  if (!Array.isArray(manualSteps)) throw new Error("Manual parity steps unavailable");
+  const deterministic = manualSteps
+    .map(requireRecord)
+    .find((step) => step["name"] === "Parity e2e specs");
   expect(deterministic?.["run"]).toContain("--output=fuzz-playwright/parity");
+  const parityUpload = manualSteps
+    .map(requireRecord)
+    .find(
+      (step) =>
+        typeof step["uses"] === "string" && step["uses"].startsWith("actions/upload-artifact@"),
+    );
+  if (!parityUpload) throw new Error("Parity proof artifact upload unavailable");
+  expect(parityUpload["if"]).toBe("always()");
+  expect(requireRecord(parityUpload["with"])["path"]).toBe("fuzz-playwright/parity");
   const spec = readFileSync(resolve("tests/parity", file), "utf8");
   const recordsPath = spec.match(/writeFailureRecord\(\s*"([^"]+)"/)?.at(1);
   expect(recordsPath).toBe("fuzz-artifacts/cross-host/findings");

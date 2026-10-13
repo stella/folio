@@ -1095,13 +1095,11 @@ describe("compareDocx", () => {
           const survivingRows = [0, 1, 2].filter((rowIndex) => rowIndex !== deletedRow);
           const script: EditScript = [
             ...survivingRows.flatMap((rowIndex) =>
-              [0, 1, 2].map(
-                (columnIndex): EditScriptStep => ({
-                  type: "editTableCell",
-                  blockIndex: 1 + rowIndex * 3 + columnIndex,
-                  text: rewrittenText,
-                }),
-              ),
+              [0, 1, 2].map((columnIndex): EditScriptStep => ({
+                type: "editTableCell",
+                blockIndex: 1 + rowIndex * 3 + columnIndex,
+                text: rewrittenText,
+              })),
             ),
             { type: "deleteTableRow", blockIndex: 1 + deletedRow * 3 },
           ];

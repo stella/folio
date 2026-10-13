@@ -398,14 +398,12 @@ const commentSet = fc
     });
     return {
       plans: layOutStory(comments, 1, gapCount, merge),
-      facts: comments.map(
-        (comment, index): CommentFacts => ({
-          id: index + 1,
-          author: comment.author,
-          text: comment.text,
-          parentId: comment.parent === null ? null : comment.parent + 1,
-        }),
-      ),
+      facts: comments.map((comment, index): CommentFacts => ({
+        id: index + 1,
+        author: comment.author,
+        text: comment.text,
+        parentId: comment.parent === null ? null : comment.parent + 1,
+      })),
     };
   });
 
@@ -480,14 +478,12 @@ const spanningCommentSet = fc
       gapCount,
       plans: layOutStory(comments, paragraphCount, gapCount, merge),
       comments,
-      facts: comments.map(
-        (comment, index): CommentFacts => ({
-          id: index + 1,
-          author: comment.author,
-          text: comment.text,
-          parentId: comment.parent === null ? null : comment.parent + 1,
-        }),
-      ),
+      facts: comments.map((comment, index): CommentFacts => ({
+        id: index + 1,
+        author: comment.author,
+        text: comment.text,
+        parentId: comment.parent === null ? null : comment.parent + 1,
+      })),
     };
   });
 

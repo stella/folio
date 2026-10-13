@@ -19,6 +19,7 @@ import {
   changedTestPaths,
   FAST_SIBLING_TEST_CAP,
   selectFastTestSuites,
+  selectFullTestSuites,
   discoverTestSuites,
   focusedTestFiles,
   TEST_SHARD_COUNT,
@@ -27,13 +28,13 @@ import {
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
 // The changeset gate runs beside the plan: it has its own pull-request-only
-// condition and nothing to scope.
-const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset", "ci-result"]);
+// condition and nothing to scope. Lint checks policy unless a push reuses CI.
+const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset", "lint", "warm-main-caches", "ci-result"]);
 const AREA_OUTPUT =
-  /^\$\{\{ github\.event_name == 'merge_group' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*) \}\}$/u;
+  /^\$\{\{ steps\.reuse\.outputs\.reused_run == '' && \(github\.event_name == 'merge_group' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*)\) \}\}$/u;
 const GATE =
   /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'(?: && needs\.ci-plan\.outputs\.suite_depth == 'full')?$/u;
-const PR_SCOPED_JOBS = new Set(["property-areas", "browser-discovery"]);
+const PR_SCOPED_JOBS = new Set(["browser-discovery"]);
 const PROPERTY_AREAS_CONDITION =
   "github.event_name == 'pull_request' && github.event.pull_request.draft != true && ";
 
@@ -117,7 +118,8 @@ describe("CI plan", () => {
   test("each split job retains its complete command list and step depth guards", () => {
     const splitJobs = Object.entries(jobs)
       .filter(
-        ([, job]) =>
+        ([id, job]) =>
+          id === "lint" ||
           job.if === "needs.ci-plan.outputs.code_required == 'true'" ||
           job.if ===
             "needs.ci-plan.outputs.code_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'" ||
@@ -171,7 +173,7 @@ describe("CI plan", () => {
     expect(guardSteps).toEqual([
       { name: "Static source guards", run: "bun run test:source-guards" },
     ]);
-    expect(jobs["lint"]?.if).toBe("needs.ci-plan.outputs.code_required == 'true'");
+    expect(jobs["lint"]?.if).toBe("needs.ci-plan.outputs.reused_run == ''");
   });
 
   test("discovery includes new nested test files under every command root", () => {
@@ -272,6 +274,25 @@ describe("CI plan", () => {
         .toSorted(),
     ).toEqual(selectedFiles.toSorted());
     expect(suites.at(0)?.files).toHaveLength(5);
+  });
+
+  test("full selection covers every discovered and focused file exactly once with owner preloads", () => {
+    const suites = discoverTestSuites();
+    const discovered = suites.flatMap(({ files }) => files);
+    const selected = selectFullTestSuites({ suites });
+    const full = selected.flatMap(({ files }) => files);
+    expect(full.toSorted()).toEqual([...new Set([...discovered, ...focusedTestFiles])].toSorted());
+    expect(new Set(full).size).toBe(full.length);
+    for (const suite of suites) {
+      expect(selected).toContain(suite);
+    }
+    for (const changedFiles of [[], discovered, focusedTestFiles]) {
+      const fast = selectFastTestSuites({ suites, changedFiles });
+      for (const file of fast.flatMap(({ files }) => files)) expect(full).toContain(file);
+    }
+    expect(selectFullTestSuites({ suites, focusedFiles: [...discovered, ...discovered] })).toBe(
+      suites,
+    );
   });
 
   test("only non-test source changes select sibling tests", () => {
@@ -431,6 +452,10 @@ describe("CI plan", () => {
       );
       if (!isRecord(fast) || !isRecord(fast["env"]))
         throw new Error(`Missing fast selection for ${id}`);
+      expect(fast["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'fast'");
+      const full = steps.find((step) => isRecord(step) && step["id"] === "full-suite");
+      if (!isRecord(full)) throw new Error(`Missing full selection for ${id}`);
+      expect(full["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'full'");
       expect(fast["env"]["CI_TEST_BASE"]).toBe(
         "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}",
       );
@@ -525,16 +550,86 @@ describe("CI plan", () => {
     expect(titles.length).toBeGreaterThan(0);
   }, 30_000);
 
-  // CodSpeed rejects merge_group events, so benchmarks keep their own
-  // pull-request, main-push and nightly triggers.
-  test("benchmarks never run on merge groups", () => {
-    const triggers = readWorkflow("benchmarks.yml")["on"];
-    if (!isRecord(triggers)) throw new Error("benchmarks.yml is missing triggers");
-    expect(Object.keys(triggers)).not.toContain("merge_group");
-    expect(Object.keys(triggers)).toContain("push");
+  test("benchmarks and extended proofs run only on demand", () => {
+    for (const file of [
+      "benchmarks.yml",
+      "oracle-mutation-check.yml",
+      "nightly-webkit-parity.yml",
+      "property-proofs.yml",
+      "parity-e2e.yml",
+      "corpus-proofs.yml",
+      "differential-proofs.yml",
+    ]) {
+      const workflow = readWorkflow(file);
+      const triggers = workflow["on"];
+      if (!isRecord(triggers)) throw new Error(`${file} is missing triggers`);
+      expect(Object.keys(triggers)).toEqual(["workflow_dispatch"]);
+      const proofJobs = workflow["jobs"];
+      if (!isRecord(proofJobs)) throw new Error(`${file} is missing jobs`);
+      for (const job of Object.values(proofJobs)) {
+        if (!isRecord(job)) throw new Error(`${file} contains an invalid job`);
+        expect(job["if"]).not.toBe("github.event_name == 'merge_group'");
+        const permissions = job["permissions"] ?? workflow["permissions"];
+        if (!isRecord(permissions)) throw new Error(`${file} lacks checkout permissions`);
+        expect(permissions["contents"]).toBe("read");
+      }
+    }
   });
 
-  for (const file of ["oracle-mutation-check.yml", "vscode-extension.yml"]) {
+  test("mixed workflows preserve scheduled fuzz and move every proof job", () => {
+    const lanes = [
+      {
+        scheduled: "nightly-property-test.yml",
+        fuzz: ["consumer-fuzz", "report-consumer-fuzz"],
+        manual: "property-proofs.yml",
+        proofs: [
+          "property-test",
+          "docx-kernel-property",
+          "conformance-full",
+          "report-property",
+          "report-conformance",
+          "property-areas",
+        ],
+      },
+      {
+        scheduled: "nightly-corpus-gate.yml",
+        fuzz: ["edit-fuzz", "edit-fuzz-ratchet"],
+        manual: "corpus-proofs.yml",
+        proofs: ["shard", "tier2", "ratchet"],
+      },
+    ];
+    for (const lane of lanes) {
+      const automatic = readWorkflow(lane.scheduled);
+      const manual = readWorkflow(lane.manual);
+      if (
+        !isRecord(automatic["jobs"]) ||
+        !isRecord(manual["jobs"]) ||
+        !isRecord(automatic["on"]) ||
+        !isRecord(manual["on"])
+      )
+        throw new Error("Mixed lane mappings unavailable");
+      expect(Object.keys(automatic["jobs"])).toEqual(lane.fuzz);
+      expect(Object.keys(manual["jobs"])).toEqual(lane.proofs);
+      expect(Object.keys(automatic["on"]).toSorted()).toEqual(["schedule", "workflow_dispatch"]);
+      expect(Object.keys(manual["on"])).toEqual(["workflow_dispatch"]);
+    }
+  });
+
+  test("full-corpus comparison and raised property runs stay outside correctness CI", () => {
+    expect(jobs).not.toHaveProperty("property-areas");
+    expect(JSON.stringify(readWorkflow("ci.yml"))).not.toContain("scripts/property-areas.ts");
+    expect(JSON.stringify(readWorkflow("ci.yml"))).not.toContain("bun run test:differential");
+    const property = readWorkflow("property-proofs.yml");
+    expect(JSON.stringify(property)).toContain("scripts/property-areas.ts --base");
+    const differential = readWorkflow("differential-proofs.yml");
+    expect(JSON.stringify(differential)).toContain("bun run test:differential");
+    expect(JSON.stringify(differential)).toContain('"DIFFERENTIAL_REQUIRED":"1"');
+    expect(JSON.stringify(jobs.differential)).toContain(
+      "bun test benchmarks/compare/documents.test.ts benchmarks/compare/generated-roundtrip.test.ts",
+    );
+  });
+
+  for (const file of ["vscode-extension.yml"]) {
     test(`${file} runs heavy jobs only for merge groups`, () => {
       const workflow = readWorkflow(file);
       const triggers = workflow["on"];
@@ -557,7 +652,7 @@ describe("CI plan", () => {
 
   test("published API preflight is selected before queue entry and evaluated by CI result", () => {
     expect(planOutputs["api_required"]).toBe(
-      "${{ github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true' }}",
+      "${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true') }}",
     );
     expect(jobs["build-api"]?.if).toBe("needs.ci-plan.outputs.api_required == 'true'");
     const steps = jobs[PLAN_JOB]?.steps;
@@ -624,7 +719,7 @@ describe("CI plan", () => {
       `${PROPERTY_AREAS_CONDITION}needs.ci-plan.outputs.browser_discovery_required == 'true'`,
     );
     expect(steps.filter((step) => isRecord(step) && typeof step["run"] === "string")).toEqual([
-      { run: "bun install --frozen-lockfile" },
+      { run: "bun scripts/ci-scoped-install.ts browser-discovery" },
       {
         name: "Discover every Node Playwright project without browsers",
         run: "bun scripts/ci-browser-discovery.ts",
@@ -672,7 +767,38 @@ describe("CI plan", () => {
       const areaGate = `needs.ci-plan.outputs.${scope["area"]} == '${scope["value"] ?? "true"}'${suffix}`;
       expect(condition.endsWith(areaGate)).toBe(true);
     }
+    expect(scopes["lint"]).toEqual({ reuse: "forbidden" });
+    expect(scopes["docs-format"]).toEqual({
+      area: "code_required",
+      value: "false",
+      reuse: "forbidden",
+    });
+    expect(scopes["warm-main-caches"]).toEqual({
+      event: "push",
+      reuse: "required",
+      warm: "required",
+    });
     expect(scopes["browser-input-pinned"]).toEqual({ area: "interactions_required" });
+  });
+
+  test("every required output disables fresh work when CI is reused", () => {
+    const required = Object.entries(planOutputs).filter(([output]) => output.endsWith("_required"));
+    expect(required.length).toBeGreaterThan(0);
+    for (const [output, value] of required) {
+      expect([
+        output,
+        typeof value === "string" &&
+          value.startsWith("${{ steps.reuse.outputs.reused_run == '' && (") &&
+          value.endsWith(") }}"),
+      ]).toEqual([output, true]);
+    }
+    expect(jobs["docs-format"]?.if).toBe(
+      "needs.ci-plan.outputs.reused_run == '' && needs.ci-plan.outputs.code_required == 'false'",
+    );
+    expect(jobs["warm-main-caches"]?.needs).toBe(PLAN_JOB);
+    expect(jobs["warm-main-caches"]?.if).toBe(
+      "github.event_name == 'push' && needs.ci-plan.outputs.reused_run != '' && needs.ci-plan.outputs.warm_caches == 'true'",
+    );
   });
 
   test("every area is a plan output named after it, and every area output is an area", () => {
@@ -688,17 +814,22 @@ describe("CI plan", () => {
     const gated = new Set<string>();
     for (const [id, job] of Object.entries(jobs)) {
       if (UNPLANNED_JOBS.has(id)) continue;
-      expect([id, job.needs]).toEqual([id, PLAN_JOB]);
+      expect([id, job.needs]).toEqual([
+        id,
+        id === "consumer-scenarios-minimum" ? [PLAN_JOB, "consumer-scenarios"] : PLAN_JOB,
+      ]);
       const condition = job.if;
       if (PR_SCOPED_JOBS.has(id)) {
         expect(
           typeof condition === "string" && condition.startsWith(PROPERTY_AREAS_CONDITION),
         ).toBe(true);
       }
-      const areaGate =
-        PR_SCOPED_JOBS.has(id) && typeof condition === "string"
-          ? condition.slice(PROPERTY_AREAS_CONDITION.length)
-          : condition;
+      let areaGate = condition;
+      if (typeof condition === "string") {
+        if (PR_SCOPED_JOBS.has(id)) areaGate = condition.slice(PROPERTY_AREAS_CONDITION.length);
+        else if (id === "docs-format")
+          areaGate = condition.slice("needs.ci-plan.outputs.reused_run == '' && ".length);
+      }
       const gate = typeof areaGate === "string" ? GATE.exec(areaGate) : null;
       expect([id, gate !== null]).toEqual([id, true]);
       const output = gate?.[1] ?? "";

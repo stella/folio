@@ -163,12 +163,10 @@ const packageParts = async (buffer: ArrayBuffer): Promise<Map<string, string>> =
   const entries = Object.entries(zip.files).filter(([, file]) => !file.dir);
   return new Map(
     await Promise.all(
-      entries.map(
-        async ([path, file]): Promise<readonly [string, string]> => [
-          path,
-          await file.async("base64"),
-        ],
-      ),
+      entries.map(async ([path, file]): Promise<readonly [string, string]> => [
+        path,
+        await file.async("base64"),
+      ]),
     ),
   );
 };

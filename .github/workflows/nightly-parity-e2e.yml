@@ -1,4 +1,4 @@
-name: Nightly Parity E2E
+name: Nightly Cross-host Fuzz
 
 on:
   schedule:
@@ -20,7 +20,7 @@ permissions: {}
 
 jobs:
   parity-e2e:
-    name: Cross-adapter parity e2e (React vs Vue)
+    name: Generated cross-host fuzz
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -32,7 +32,7 @@ jobs:
     steps:
       # persist-credentials: false — this job can be manually dispatched on any
       # branch ref, so the checkout token must not linger in the git config.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -50,16 +50,6 @@ jobs:
             /etc/apt/sources.list.d/microsoft-prod.list \
             /etc/apt/sources.list.d/microsoft-prod.sources
           bunx playwright install --with-deps chromium
-
-      # The `parity` Playwright project boots both the React (4200) and Vue
-      # (4201) playground dev servers via the config's webServer array and runs
-      # each cross-adapter spec against both, asserting the two adapters behave
-      # identically through the shared `window.__folioParity` bridge. Kept on a
-      # nightly cadence (not the PR `ci` job) because it boots two dev servers
-      # and the static React<->Vue parity gates (check:parity-contract,
-      # check:export-parity) already guard the API surface on every PR.
-      - name: Parity e2e specs
-        run: bun run test:e2e:parity --workers=1 --output=fuzz-playwright/parity
 
       - name: Generated four-host differential
         if: always()
@@ -99,13 +89,13 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
         with:
           bun-version-file: "package.json"
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: cross-host-differential-repro
           path: fuzz-results

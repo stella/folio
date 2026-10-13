@@ -1099,15 +1099,17 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlockIdentity>
     structuralScope: "document",
   });
 
-export type FolioContentAlignmentStep<Block extends FolioContentBlockIdentity = FolioContentBlock> =
-    | { type: "pair"; baseBlock: Block; revisedBlock: Block }
-    | { type: "baseOnly"; block: Block; moveScope: FolioContentMoveScope }
-    | { type: "revisedOnly"; block: Block; moveScope: FolioContentMoveScope }
-    | { type: "baseRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
-    | { type: "revisedRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
-    | { type: "baseTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
-    | { type: "revisedTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
-    | TableColumnAlignmentStep<Block>;
+export type FolioContentAlignmentStep<
+  Block extends FolioContentBlockIdentity = FolioContentBlock,
+> =
+  | { type: "pair"; baseBlock: Block; revisedBlock: Block }
+  | { type: "baseOnly"; block: Block; moveScope: FolioContentMoveScope }
+  | { type: "revisedOnly"; block: Block; moveScope: FolioContentMoveScope }
+  | { type: "baseRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
+  | { type: "revisedRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
+  | { type: "baseTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
+  | { type: "revisedTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
+  | TableColumnAlignmentStep<Block>;
 
 /** @internal Legal move bucket and alignment gap for one unpaired block. */
 export type FolioContentMoveScope = {
@@ -2819,12 +2821,10 @@ const trustedBodyPairs = <Block extends FolioContentBlockIdentity>(
 ): TrustedBodyPair<Block>[] => {
   const evidence = contentStructureEvidenceIndexes(base, revised);
   const stableCandidates = [...stableContentSequencePairs(base, revised)]
-    .map(
-      (pairIndex): FolioContentBlockPair => ({
-        baseIndex: Math.floor(pairIndex / revised.length),
-        revisedIndex: pairIndex % revised.length,
-      }),
-    )
+    .map((pairIndex): FolioContentBlockPair => ({
+      baseIndex: Math.floor(pairIndex / revised.length),
+      revisedIndex: pairIndex % revised.length,
+    }))
     .filter(
       ({ baseIndex, revisedIndex }) =>
         base[baseIndex]?.item.containerPathKey === revised[revisedIndex]?.item.containerPathKey,

@@ -2245,13 +2245,11 @@ export const applyFolioDocumentOperations = ({
             ...refused,
             ...reported.applied
               .filter(({ id }) => !refusedIds.has(id))
-              .map(
-                ({ id }): FolioAIEditSkippedOperation => ({
-                  id,
-                  reason: "invalidResult",
-                  message: describeModelError(second.error ?? firstError),
-                }),
-              ),
+              .map(({ id }): FolioAIEditSkippedOperation => ({
+                id,
+                reason: "invalidResult",
+                message: describeModelError(second.error ?? firstError),
+              })),
           ]),
         },
         commit: NO_COMMIT,

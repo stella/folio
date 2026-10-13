@@ -1,3 +1,4 @@
+import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { expect, test, type Page } from "@playwright/test";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { createDocx } from "../../packages/core/src/docx/rezip";
@@ -36,12 +37,7 @@ for (const { adapter, port } of [
     const source = await createDocx(document);
     await page.goto(`http://localhost:${port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
-    expect(
-      await page.evaluate(
-        (bytes) => globalThis.__folioCanonical?.load(bytes),
-        [...new Uint8Array(source)],
-      ),
-    ).toBe(true);
+    expect(await evaluateCanonicalLoad(page, [...new Uint8Array(source)])).toBe(true);
     expect(await page.evaluate(() => globalThis.__folioCanonical?.setMode("editing"))).toBe(true);
     expect(await page.evaluate(() => globalThis.__folioCanonical?.select(14, 17))).toBe(true);
     const insert = async () => {
@@ -94,9 +90,7 @@ for (const { adapter, port } of [
     expect(reopenedFields.map((field) => field.instruction)).toEqual(
       currentFields.map((field) => field.instruction),
     );
-    expect(await page.evaluate((saved) => globalThis.__folioCanonical?.load(saved), bytes)).toBe(
-      true,
-    );
+    expect(await evaluateCanonicalLoad(page, bytes)).toBe(true);
     expect(
       (await snapshot(page)).document.package.document.content.flatMap((paragraph) =>
         paragraph.type === "paragraph"

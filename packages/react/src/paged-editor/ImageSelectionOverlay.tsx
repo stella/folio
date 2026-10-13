@@ -9,7 +9,7 @@
  * - Dimension tooltip during resize
  */
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from "react";
 import type { CSSProperties } from "react";
 
 // =============================================================================
@@ -260,18 +260,19 @@ export function ImageSelectionOverlay({
   const onDragMoveRef = useRef(onDragMove);
   const onDragStartRef = useRef(onDragStart);
   const onDragEndRef = useRef(onDragEnd);
-  onResizeRef.current = onResize;
-  onResizeStartRef.current = onResizeStart;
-  onResizeEndRef.current = onResizeEnd;
-  onDragMoveRef.current = onDragMove;
-  onDragStartRef.current = onDragStart;
-  onDragEndRef.current = onDragEnd;
-
-  // Store imageInfo and zoom in refs for the imperative mousemove/mouseup handlers
   const imageInfoRef = useRef(imageInfo);
   const zoomRef = useRef(zoom);
-  imageInfoRef.current = imageInfo;
-  zoomRef.current = zoom;
+  useLayoutEffect(() => {
+    onResizeRef.current = onResize;
+    onResizeStartRef.current = onResizeStart;
+    onResizeEndRef.current = onResizeEnd;
+    onDragMoveRef.current = onDragMove;
+    onDragStartRef.current = onDragStart;
+    onDragEndRef.current = onDragEnd;
+
+    imageInfoRef.current = imageInfo;
+    zoomRef.current = zoom;
+  }, [onResize, onResizeStart, onResizeEnd, onDragMove, onDragStart, onDragEnd, imageInfo, zoom]);
 
   // Update overlay position when imageInfo or layout changes
   const updatePosition = useCallback(() => {

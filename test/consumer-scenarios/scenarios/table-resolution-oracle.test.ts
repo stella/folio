@@ -72,14 +72,11 @@ describe("table operation source coordinates", () => {
     for (let width = 2; width <= 4; width++) {
       for (let sourceCount = 0; sourceCount <= 3; sourceCount++) {
         for (const type of ["deleteTable", "deleteTableRow", "deleteTableColumn"] as const) {
-          const outside = Array.from(
-            { length: sourceCount },
-            (_, index): Row => ({
-              id: `outside-${index}`,
-              text: "Shared ",
-              kind: "paragraph",
-            }),
-          );
+          const outside = Array.from({ length: sourceCount }, (_, index): Row => ({
+            id: `outside-${index}`,
+            text: "Shared ",
+            kind: "paragraph",
+          }));
           const cells = Array.from({ length: width * 2 }, (_, index) =>
             row(
               `r${Math.floor(index / width)}c${index % width}`,
@@ -209,14 +206,11 @@ describe("table operation source coordinates", () => {
       for (let height = 3; height <= 5; height++) {
         for (let sourceCount = 1; sourceCount <= 3; sourceCount++) {
           for (const sequence of sequences) {
-            const sources = Array.from(
-              { length: sourceCount },
-              (_, index): Row => ({
-                id: `outside-${index}`,
-                text: `Source ${index}. `,
-                kind: "paragraph",
-              }),
-            );
+            const sources = Array.from({ length: sourceCount }, (_, index): Row => ({
+              id: `outside-${index}`,
+              text: `Source ${index}. `,
+              kind: "paragraph",
+            }));
             const outsideSource = sources.at(0);
             assert.ok(outsideSource);
             const prefix = sources.map(({ text }) => text).join("");
@@ -294,14 +288,11 @@ describe("table operation source coordinates", () => {
 
   test("removing a final table retains the outside paragraph when no later destination exists", () => {
     for (let sourceCount = 1; sourceCount <= 3; sourceCount++) {
-      const sources = Array.from(
-        { length: sourceCount },
-        (_, index): Row => ({
-          id: `outside-${index}`,
-          text: `Source ${index}. `,
-          kind: "paragraph",
-        }),
-      );
+      const sources = Array.from({ length: sourceCount }, (_, index): Row => ({
+        id: `outside-${index}`,
+        text: `Source ${index}. `,
+        kind: "paragraph",
+      }));
       const cell = row("cell", "Owned cell", { rowIndex: 0, column: 0 });
       const prefix = sources.map(({ text }) => text).join("");
       const model = modelOf([{ ...cell, text: prefix + cell.text }], [...sources, cell]);

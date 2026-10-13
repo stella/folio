@@ -45,14 +45,12 @@ const nestedCellArb: fc.Arbitrary<CellContent> = fc.oneof(
   { weight: 5, arbitrary: textArb },
   {
     weight: 1,
-    arbitrary: fc.array(textArb, { minLength: 1, maxLength: 2 }).map(
-      (texts): CellContent => [
-        { kind: "paragraph", text: texts[0] ?? "" },
-        // A table as a cell's last child is the container edge the fixture
-        // closes with the paragraph the format requires.
-        { kind: "table", rows: [[texts[1] ?? ""]] },
-      ],
-    ),
+    arbitrary: fc.array(textArb, { minLength: 1, maxLength: 2 }).map((texts): CellContent => [
+      { kind: "paragraph", text: texts[0] ?? "" },
+      // A table as a cell's last child is the container edge the fixture
+      // closes with the paragraph the format requires.
+      { kind: "table", rows: [[texts[1] ?? ""]] },
+    ]),
   },
 );
 

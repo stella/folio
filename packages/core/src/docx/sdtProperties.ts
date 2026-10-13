@@ -234,12 +234,10 @@ function rewriteOpenTagAttrPrefixes(raw: string, canonical: string, local: strin
     const isBoundary =
       afterOpener === undefined ||
       !(
-        (
-          (afterOpener >= 0x30 && afterOpener <= 0x39) || // 0-9
-          (afterOpener >= 0x41 && afterOpener <= 0x5a) || // A-Z
-          (afterOpener >= 0x61 && afterOpener <= 0x7a) || // a-z
-          afterOpener === 0x5f
-        ) // _
+        (afterOpener >= 0x30 && afterOpener <= 0x39) || // 0-9
+        (afterOpener >= 0x41 && afterOpener <= 0x5a) || // A-Z
+        (afterOpener >= 0x61 && afterOpener <= 0x7a) || // a-z
+        afterOpener === 0x5f // _
       );
     if (!isBoundary) {
       pieces.push(raw.slice(cursor, tagStart + opener.length));

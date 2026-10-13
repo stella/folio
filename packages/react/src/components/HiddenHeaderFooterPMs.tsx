@@ -1,7 +1,7 @@
 import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
 /** Thin React binding for core's persistent header/footer editor manager. */
 
-import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, memo, useEffect, useLayoutEffect, useImperativeHandle, useRef } from "react";
 import type { CSSProperties } from "react";
 
 import type { EditorView } from "prosemirror-view";
@@ -81,33 +81,41 @@ export const HiddenHeaderFooterPMs = memo(
     const canonicalApiRef = useRef(getCanonicalApi);
     const sessionRef = useRef(experimentalSession);
     const refusalRef = useRef(onSessionRefusal);
-    documentRef.current = document;
-    stylesRef.current = styles;
-    themeRef.current = theme;
-    onTransactionRef.current = onTransaction;
-    canonicalApiRef.current = getCanonicalApi;
-    sessionRef.current = experimentalSession;
-    refusalRef.current = onSessionRefusal;
 
     const managerRef = useRef<HeaderFooterEditorManager | null>(null);
-    managerRef.current ??= createHeaderFooterEditorManager({
-      getHost: () => hostRef.current,
-      getDocument: () => documentRef.current,
-      getStyles: () => stylesRef.current,
-      getTheme: () => themeRef.current,
-      getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
-      getExperimentalSession: () => sessionRef.current,
-      onSessionRefusal: (reason, gap, error) => refusalRef.current?.(reason, gap, error),
-      onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
-        onTransactionRef.current?.(rId, kind, view, docChanged, selectionChanged);
-      },
-    });
+    useLayoutEffect(() => {
+      documentRef.current = document;
+      stylesRef.current = styles;
+      themeRef.current = theme;
+      onTransactionRef.current = onTransaction;
+      canonicalApiRef.current = getCanonicalApi;
+      sessionRef.current = experimentalSession;
+      refusalRef.current = onSessionRefusal;
+      managerRef.current ??= createHeaderFooterEditorManager({
+        getHost: () => hostRef.current,
+        getDocument: () => documentRef.current,
+        getStyles: () => stylesRef.current,
+        getTheme: () => themeRef.current,
+        getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
+        getExperimentalSession: () => sessionRef.current,
+        onSessionRefusal: (reason, gap, error) => refusalRef.current?.(reason, gap, error),
+        onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
+          onTransactionRef.current?.(rId, kind, view, docChanged, selectionChanged);
+        },
+      });
+    }, [
+      document,
+      styles,
+      theme,
+      onTransaction,
+      getCanonicalApi,
+      experimentalSession,
+      onSessionRefusal,
+    ]);
 
-    const headers = document?.package.headers;
-    const footers = document?.package.footers;
     useEffect(() => {
       managerRef.current?.sync();
-    }, [headers, footers, styles, theme]);
+    });
 
     useEffect(
       () => () => {

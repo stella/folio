@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 
 import {
@@ -70,7 +70,9 @@ export function useKeyboardShortcuts({
   // change to `findReplace.state` (which updates on every search keystroke) or
   // on a fresh `roots` array identity.
   const callbacksRef = useRef({ findReplace, tableSelection, onDirectPrint, hostShortcuts, roots });
-  callbacksRef.current = { findReplace, tableSelection, onDirectPrint, hostShortcuts, roots };
+  useLayoutEffect(() => {
+    callbacksRef.current = { findReplace, tableSelection, onDirectPrint, hostShortcuts, roots };
+  });
 
   useEffect(() => {
     if (scope === "none") {

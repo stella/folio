@@ -102,10 +102,9 @@ type Validator = (value: unknown) => boolean;
 type Fields = Readonly<Record<string, Validator>>;
 type CommonOperationFields = Pick<DocumentOp, "undefinedFields">;
 type OperationFields<Type extends DocumentOpType> = {
-  [Key in Exclude<
-    keyof Extract<DocumentOp, { type: Type }>,
-    keyof CommonOperationFields
-  >]-?: Validator;
+  [
+    Key in Exclude<keyof Extract<DocumentOp, { type: Type }>, keyof CommonOperationFields>
+  ]-?: Validator;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

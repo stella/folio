@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -48,7 +48,19 @@ const DEFAULT_STYLE_OPTIONS: InsertTableStyleOption[] = [
   { id: "TableGridLight", name: "Grid Table Light" },
 ];
 
-export function InsertTableDialog({
+export function InsertTableDialog(props: InsertTableDialogProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+  return (
+    <InsertTableDialogForm
+      key={JSON.stringify([props.defaultRows, props.defaultColumns])}
+      {...props}
+    />
+  );
+}
+
+function InsertTableDialogForm({
   isOpen,
   onClose,
   onInsert,
@@ -73,18 +85,6 @@ export function InsertTableDialog({
   const [hoverColumns, setHoverColumns] = useState(0);
   const [autofit, setAutofit] = useState(false);
   const [styleId, setStyleId] = useState("");
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    setRows(defaultRows);
-    setColumns(defaultColumns);
-    setHoverRows(0);
-    setHoverColumns(0);
-    setAutofit(false);
-    setStyleId("");
-  }, [isOpen, defaultRows, defaultColumns]);
 
   const normalizedRows = clampInteger(rows, MIN_ROWS, MAX_ROWS);
   const normalizedColumns = clampInteger(columns, MIN_COLUMNS, MAX_COLUMNS);

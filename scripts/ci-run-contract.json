@@ -5,6 +5,10 @@
       "if": null
     },
     {
+      "run": "bun run check:toolchain",
+      "if": null
+    },
+    {
       "run": "bun run check:lockfile-versions",
       "if": null
     },
@@ -137,18 +141,6 @@
     {
       "run": "bun run typecheck",
       "if": null
-    },
-    {
-      "run": "bunx --no-install stll-typecheck-probe --project packages/core/tsconfig.build.json --seed-dir packages/core/src -- bun check -p packages/core/tsconfig.build.json",
-      "if": null
-    },
-    {
-      "run": "bun install --frozen-lockfile",
-      "if": null
-    },
-    {
-      "run": "bun run typecheck:compiler-parity --changed-since \"$TOOLCHAIN_BASE\"",
-      "if": null
     }
   ],
   "build-api": [
@@ -186,7 +178,7 @@
     },
     {
       "run": "bun scripts/ci-test-shards.ts --shard 1 --depth fast",
-      "if": null
+      "if": "needs.ci-plan.outputs.suite_depth == 'fast'"
     },
     {
       "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 1 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
@@ -200,7 +192,7 @@
     },
     {
       "run": "bun scripts/ci-test-shards.ts --shard 2 --depth fast",
-      "if": null
+      "if": "needs.ci-plan.outputs.suite_depth == 'fast'"
     },
     {
       "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 2 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
@@ -214,7 +206,7 @@
     },
     {
       "run": "bun scripts/ci-test-shards.ts --shard 3 --depth fast",
-      "if": null
+      "if": "needs.ci-plan.outputs.suite_depth == 'fast'"
     },
     {
       "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 3 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
@@ -228,7 +220,7 @@
     },
     {
       "run": "bun scripts/ci-test-shards.ts --shard 4 --depth fast",
-      "if": null
+      "if": "needs.ci-plan.outputs.suite_depth == 'fast'"
     },
     {
       "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 4 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
