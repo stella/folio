@@ -125,3 +125,37 @@ test("round-trip comparison checks both full resolution documents", async () => 
     /reject-all document differs/,
   );
 });
+
+test("round-trip comparison preserves table formatting in parsed resolution packages", async () => {
+  const model = fromMarkdown("| First | Second |\n| --- | --- |\n| Alpha beta | Body |");
+  const reviewer = await openReviewer(new Uint8Array(await createDocx(model)));
+  const block = reviewer.getContent().find(({ text }) => text.includes("beta"));
+  if (!block) throw new Error("Expected table cell paragraph");
+  reviewer.applyDocumentOperations({
+    version: 1,
+    mode: "tracked-changes",
+    operations: [
+      { id: "replace", type: "replaceInBlock", blockId: block.id, find: "beta", replace: "gamma" },
+    ],
+  });
+  const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+  await assertReviewRoundTrip({ live: reviewer, reopened, context: "table round trip" });
+  const changed = reopened.toDocument();
+  const table = changed.package.document.content.find(({ type }) => type === "table");
+  if (table?.type !== "table") throw new Error("Expected table");
+  const cell = table.rows.at(0)?.cells.at(0);
+  if (!cell) throw new Error("Expected table cell");
+  cell.formatting = { ...cell.formatting, textDirection: "tbRl" };
+  await assert.rejects(
+    assertReviewRoundTrip({
+      live: reviewer,
+      reopened: {
+        getContent: () => reopened.getContent(),
+        getChanges: () => reopened.getChanges(),
+        toDocument: () => changed,
+      },
+      context: "changed table formatting",
+    }),
+    /accept-all document differs/,
+  );
+});

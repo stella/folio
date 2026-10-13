@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1026398037,
+  "steps": [
+    {
+      "action": "add_comment",
+      "seed": 3929811599
+    },
+    {
+      "action": "new reviewer",
+      "seed": 3801929205
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3170093535,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "483CD5EB",
+          "text": "Period payment party."
+        }
+      ]
+    },
+    {
+      "action": "save and reopen",
+      "seed": 1146704131
+    },
+    {
+      "action": "story batch",
+      "seed": 514868461,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Written written goods written written written."
+        },
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "483CD5EB",
+            "startOffset": 7,
+            "endOffset": 14,
+            "selectedTextHash": "h7umevi"
+          },
+          "comment": {
+            "text": "Agreement supplier party warranty warranty clause goods."
+          }
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "revision round-trip regression",
+  "title": "Revision coverage and both resolution outcomes survive save"
+}

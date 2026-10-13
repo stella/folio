@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createDocx } from "@stll/folio-core/server";
+import { createDocx, parseDocx } from "@stll/folio-core/server";
 import { openReviewer } from "./documents.ts";
 import { projectContentPair } from "./identity.ts";
 
@@ -44,8 +44,11 @@ const resolved = async (reviewer: ReviewSource, decision: "accept" | "reject") =
       .map(({ id }) => id),
   );
   // Compare persisted resolved documents, rather than editor capture metadata.
-  const persisted = await openReviewer(new Uint8Array(await copy.toBuffer()));
-  const packageModel = persisted.toDocument().package;
+  const bytes = await copy.toBuffer();
+  const persisted = await openReviewer(new Uint8Array(bytes));
+  // Parse the saved package directly: editor capture retains base section
+  // mirrors and resolves inherited cell formatting into display attributes.
+  const packageModel = (await parseDocx(bytes, { preloadFonts: false })).package;
   const properties = { ...packageModel.properties };
   // Package save time is bookkeeping; revision authorship dates stay strict above.
   delete properties.modified;
