@@ -11,7 +11,7 @@
 
 import { commentTextParagraph } from "./commentTextParagraph";
 import { allocateCommentId, seedCommentIdAbove } from "../prosemirror/commentIdAllocator";
-import type { Comment, Document, Paragraph } from "../types/document";
+import type { Comment, Document } from "../types/document";
 import { generateHexId } from "../utils/hexId";
 
 export type CreateCommentReplyInput = {
@@ -85,10 +85,8 @@ export const createReply = (
     rootLastParagraph.paraId = freshParaId(used);
   }
 
-  const replyParagraph: Paragraph = {
-    ...commentTextParagraph(input.text),
-    paraId: freshParaId(used),
-  };
+  const replyParagraph = commentTextParagraph(input.text);
+  replyParagraph.paraId = freshParaId(used);
 
   return {
     id: allocateCommentId(),
