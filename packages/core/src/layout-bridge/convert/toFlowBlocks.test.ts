@@ -3441,25 +3441,6 @@ describe("toFlowBlocks list numbering", () => {
     expect(blocks.at(27)?.attrs?.listMarker).toBe("bb.bb");
   });
 
-  test("preserves template punctuation around unresolved child placeholders", () => {
-    const doc = schema.node("doc", null, [
-      schema.node(
-        "paragraph",
-        {
-          numPr: { kind: "reference", numId: 2, ilvl: 0 },
-          listMarker: "%1.%2.",
-          listNumFmt: "decimal",
-        },
-        [schema.text("Parent")],
-      ),
-    ]);
-
-    const blocks = toFlowBlocks(doc);
-
-    expect(blocks.at(0)?.kind).toBe("paragraph");
-    expect(blocks.at(0)?.attrs?.listMarker).toBe("1..");
-  });
-
   test("formats each level in a multi-level marker with its own number format", () => {
     const doc = schema.node("doc", null, [
       schema.node(

@@ -281,6 +281,7 @@ test(
             maxLength: 8,
           }),
           hiddenLevel: fc.integer({ min: 0, max: 8 }),
+          templateDepth: fc.integer({ min: 1, max: 9 }),
         }),
         async (options) => {
           const exercised = new Set<string>();
@@ -405,11 +406,13 @@ const assertSparseReaders = async ({
   abstractNumId,
   definedLevels,
   hiddenLevel,
+  templateDepth,
 }: {
   numId: number;
   abstractNumId: number;
   definedLevels: readonly number[];
   hiddenLevel: number;
+  templateDepth: number;
 }) => {
   const numberingDefinitions = {
     nums: [{ numId, abstractNumId }],
@@ -420,7 +423,8 @@ const assertSparseReaders = async ({
           ilvl,
           numFmt: "decimal" as const,
           start: 1,
-          lvlText: Array.from({ length: ilvl + 1 }, (_, index) => `%${index + 1}`).join(".") + ".",
+          lvlText:
+            Array.from({ length: templateDepth }, (_, index) => `%${index + 1}`).join(".") + ".",
           ...(ilvl === hiddenLevel ? { rPr: { hidden: true } } : {}),
         })),
       },
@@ -483,8 +487,72 @@ const assertSparseReaders = async ({
   expect(labels(parsed)).toEqual(expected);
   const pm = toProseDoc(parsed);
   expect(
+    toFlowBlocks(pm)
+      .filter((block) => block.kind === "paragraph")
+      .map((block) => block.attrs?.listMarker),
+  ).toEqual(expected);
+  const converted = fromProseDoc(pm, parsed, { stylesheetSource: { type: "package" } });
+  expect(labels(converted)).toEqual(expected);
+  const ctx = newContext({}, parsed.package.styles);
+  ctx.nextListLabel = createListLabelCounter();
+  converted.package.document.content.forEach((block, index) => {
+    if (block.type !== "paragraph") throw new Error("Expected paragraph");
+    const label = expected.at(index);
+    expect(renderParagraph(ctx, converted.package, block).trimStart()).toBe(
+      label === undefined ? "item" : `${label} item`,
+    );
+  });
+  expect(
     createFolioAIEditSnapshot(pm).blocks.map((block) =>
       block.kind === "diagnostic" ? undefined : block.displayLabel,
     ),
   ).toEqual(expected);
 };
+
+test("preserves template punctuation across readers for unresolved child placeholders", async () => {
+  const source = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "12345678",
+            formatting: { numPr: { kind: "reference", numId: 2, ilvl: 0 } },
+            content: [{ type: "run", content: [{ type: "text", text: "Parent" }] }],
+          },
+        ],
+      },
+      numbering: {
+        nums: [{ numId: 2, abstractNumId: 2 }],
+        abstractNums: [
+          {
+            abstractNumId: 2,
+            levels: [
+              {
+                ilvl: 0,
+                numFmt: "decimal",
+                start: 1,
+                lvlText: "%1.%2.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  } satisfies Document;
+  const parsed = await parseDocx(await createDocx(source), { preloadFonts: false });
+  const parsedParagraph = parsed.package.document.content.at(0);
+  expect(
+    parsedParagraph?.type === "paragraph" ? parsedParagraph.listRendering?.marker : undefined,
+  ).toBe("1..");
+  const canonical = normalizeCanonicalListRendering(parsed).document.package.document.content.at(0);
+  expect(canonical?.type === "paragraph" ? canonical.listRendering?.marker : undefined).toBe("1..");
+  const pm = toProseDoc(parsed);
+  const snapshot = createFolioAIEditSnapshot(pm).blocks.at(0);
+  expect(snapshot && snapshot.kind !== "diagnostic" ? snapshot.displayLabel : undefined).toBe(
+    "1..",
+  );
+  const blocks = toFlowBlocks(pm);
+  expect(blocks.at(0)?.kind).toBe("paragraph");
+  expect(blocks.at(0)?.attrs?.listMarker).toBe("1..");
+});

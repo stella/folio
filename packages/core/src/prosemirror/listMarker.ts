@@ -1,3 +1,7 @@
+import { resolveListTemplate } from "../docx/listTemplate";
+
+export { resolveListTemplate, resolveListTemplateWithComponents } from "../docx/listTemplate";
+export type { ResolvedListComponent, ResolvedListTemplate } from "../docx/listTemplate";
 import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
 import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
 import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "../docx/numberingReference";
@@ -42,18 +46,6 @@ export type VisibleListMarker = {
   counterState: ListCounterState;
   stream: ListCounterStream;
   advances: readonly AdvancedListMarker[];
-};
-
-export type ResolvedListComponent = {
-  level: number;
-  relativeStart: number;
-  start: number;
-  end: number;
-};
-
-export type ResolvedListTemplate = {
-  value: string;
-  components: readonly ResolvedListComponent[];
 };
 
 export const MAX_LIST_LEVEL = 8;
@@ -218,54 +210,6 @@ export function advanceVisibleListMarker(
 
 export function formatCounter(value: number, format: CounterFormat | undefined): string {
   return formatOoxmlCounter(value, format);
-}
-
-type ResolveListTemplateOptions = {
-  template: string;
-  counters: number[];
-  levelFormats?: CounterFormat[] | undefined;
-  forceDecimal?: boolean | undefined;
-};
-
-export function resolveListTemplate(options: ResolveListTemplateOptions): string {
-  return resolveListTemplateWithComponents(options).value;
-}
-
-export function resolveListTemplateWithComponents({
-  template,
-  counters,
-  levelFormats,
-  forceDecimal = false,
-}: ResolveListTemplateOptions): ResolvedListTemplate {
-  const components: ResolvedListComponent[] = [];
-  let value = "";
-  let sourceEnd = 0;
-  for (const match of template.matchAll(/%(?<digit>\d)(?<punct>[.):\]])?/gu)) {
-    const sourceStart = match.index;
-    const relativeStart = value.length;
-    value += template.slice(sourceEnd, sourceStart);
-    sourceEnd = sourceStart + match[0].length;
-
-    const index = Number.parseInt(match.groups?.["digit"] ?? "", 10) - 1;
-    if (index < 0) {
-      continue;
-    }
-    const counter = counters[index];
-    if (counter === undefined || Number.isNaN(counter)) {
-      value += match.groups?.["punct"] ?? "";
-      continue;
-    }
-    const formatted = formatCounter(counter, forceDecimal ? "decimal" : levelFormats?.[index]);
-    if (!formatted) {
-      continue;
-    }
-    const start = value.length;
-    value += formatted;
-    components.push({ level: index, relativeStart, start, end: value.length });
-    value += match.groups?.["punct"] ?? "";
-  }
-  value += template.slice(sourceEnd);
-  return { value, components };
 }
 
 function getLastListCounters(state: ListCounterState): number[] | undefined {

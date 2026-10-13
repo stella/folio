@@ -3,7 +3,7 @@ import type { Paragraph } from "../types/document";
 import type { NumberingMap } from "./numberingParser";
 import { isNumberingReference } from "./numberingReference";
 import { bulletMarkerFontName, convertBulletToUnicode } from "./bulletMarkers";
-import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
+import { resolveListTemplate } from "./listTemplate";
 
 export type PreviousListState = {
   abstractNumId: number | null;
@@ -151,22 +151,13 @@ export const computeListMarker = (
     return;
   }
 
-  let computedMarker = pattern;
   const currentLevelInfo = numbering.getLevel(numId, level);
-  const useLegalNumbering = currentLevelInfo?.isLgl === true || listRendering.isLegal === true;
-
-  for (let lvl = 0; lvl <= level; lvl += 1) {
-    const placeholder = `%${lvl + 1}`;
-    if (computedMarker.includes(placeholder)) {
-      const value = counters[lvl] ?? 0;
-      const levelInfo = numbering.getLevel(numId, lvl);
-      const formatted = formatOoxmlCounter(
-        value,
-        useLegalNumbering ? "decimal" : levelInfo?.numFmt || "decimal",
-      );
-      computedMarker = computedMarker.replaceAll(placeholder, formatted);
-    }
-  }
-
-  listRendering.marker = computedMarker;
+  listRendering.marker = resolveListTemplate({
+    template: pattern,
+    counters,
+    levelFormats:
+      listRendering.levelNumFmts ??
+      counters.map((_counter, ilvl) => numbering.getLevel(numId, ilvl)?.numFmt),
+    forceDecimal: currentLevelInfo?.isLgl === true || listRendering.isLegal === true,
+  });
 };
