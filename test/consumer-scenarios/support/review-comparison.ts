@@ -51,8 +51,14 @@ const SOURCE_FIELDS = new Map(
     verbatimFingerprint: { disposition: "exclude", reason: "Replay cache validity" },
     namespaceDeclarations: { disposition: "exclude", reason: "Lexical namespace spelling" },
     namespaceBindings: { disposition: "exclude", reason: "Lexical namespace spelling" },
-    sourceXml: { disposition: "keep", reason: "May carry unmodeled authored formatting" },
-    gridSourceXml: { disposition: "keep", reason: "May carry unmodeled authored grid properties" },
+    sourceXml: {
+      disposition: "exclude",
+      reason: "Source property XML replay; modeled properties stay strict",
+    },
+    gridSourceXml: {
+      disposition: "exclude",
+      reason: "Source grid XML replay; modeled grid columns stay strict",
+    },
     rawWatermarkXml: { disposition: "keep", reason: "Watermark content not fully modeled" },
     rawImageXml: { disposition: "keep", reason: "Drawing content not fully modeled" },
     rawImageFingerprint: { disposition: "exclude", reason: "Drawing replay cache validity" },
@@ -123,6 +129,24 @@ export const canonicalReviewModel = (
         );
       }
       if (entry === undefined) continue;
+      if (
+        (key === "formatting" || key === "previousFormatting" || key === "currentFormatting") &&
+        typeof entry === "object" &&
+        entry !== null &&
+        Object.getPrototypeOf(entry) === Object.prototype
+      ) {
+        const keys = Reflect.ownKeys(entry);
+        if (
+          keys.length > 0 &&
+          keys.every((fieldKey) =>
+            typeof fieldKey === "string"
+              ? SOURCE_FIELDS.get(fieldKey)?.disposition === "exclude"
+              : fieldKey.description !== undefined &&
+                Object.hasOwn(SOURCE_SYMBOLS, fieldKey.description),
+          )
+        )
+          continue;
+      }
       if (key === "relationships" && entry instanceof Map && !hasModeledComments(value)) {
         const meaningful = new Map(
           [...entry].filter(

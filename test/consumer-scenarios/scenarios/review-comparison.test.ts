@@ -238,7 +238,7 @@ test("model projection classifies capture metadata and recurses through collecti
     /Unclassified model capture symbol/,
   );
   assert.notDeepEqual(
-    canonicalReviewModel({ sourceXml: "<w:unknown/>" }),
+    canonicalReviewModel({ rawImageXml: "<w:unknown/>" }),
     canonicalReviewModel({}),
   );
 });
@@ -295,4 +295,26 @@ test("model projection keeps authored identities and revision dates strict", () 
     canonicalReviewModel({ info: { date: "2026-01-01" } }),
     canonicalReviewModel({ info: { date: "2026-01-02" } }),
   );
+});
+
+test("capture-only formatting holders disappear while authored properties stay strict", () => {
+  for (const key of ["formatting", "previousFormatting", "currentFormatting"]) {
+    const captures = { sourceXml: "<w:tcPr/>", gridSourceXml: "<w:tblGrid/>" };
+    assert.deepEqual(canonicalReviewModel({ [key]: captures }), canonicalReviewModel({}));
+    assert.throws(() =>
+      assert.deepEqual(
+        canonicalReviewModel({ [key]: { ...captures, bold: true } }),
+        canonicalReviewModel({ [key]: { ...captures, bold: false } }),
+      ),
+    );
+    assert.notDeepEqual(canonicalReviewModel({ [key]: {} }), canonicalReviewModel({}));
+    assert.notDeepEqual(
+      canonicalReviewModel({ [key]: { ...captures, bold: true } }),
+      canonicalReviewModel({}),
+    );
+    assert.throws(
+      () => canonicalReviewModel({ [key]: { sourceCaptureNew: {} } }),
+      /Unclassified model capture field/,
+    );
+  }
 });
