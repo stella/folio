@@ -60,11 +60,21 @@
           "quote": "copies",
           "comment": {
             "text": "Buyer agreement goods delivery buyer written goods payment."
-          }
-        },
+          },
+          "id": "comment-before-deletion"
+        }
+      ],
+      "operationTypes": ["commentOnBlock"],
+      "expectedApplied": 1
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 4093505661,
+      "operations": [
         {
           "type": "deleteBlock",
-          "blockId": "483CD5EB"
+          "blockId": "483CD5EB",
+          "id": "delete-commented-block"
         },
         {
           "type": "insertTable",
@@ -72,11 +82,12 @@
           "rows": [
             ["Term", "Value"],
             ["Period", "12 months"]
-          ]
+          ],
+          "id": "insert-table-after-deletion"
         }
       ],
-      "operationTypes": ["commentOnBlock", "deleteBlock", "insertTable"],
-      "expectedApplied": 3
+      "operationTypes": ["deleteBlock", "insertTable"],
+      "expectedApplied": 2
     },
     {
       "action": "story batch",
