@@ -694,7 +694,13 @@ export function isMarkActive(
 
   let hasMark = false;
   state.doc.nodesBetween(from, to, (node) => {
-    if (node.isText) {
+    if (
+      node.isText &&
+      !(
+        RUN_FORMATTING_MARK_NAMES.has(markType.name) &&
+        node.marks.some((mark) => mark.type.name === "footnoteRef")
+      )
+    ) {
       const mark = markType.isInSet(node.marks);
       if (mark) {
         if (!attrs) {

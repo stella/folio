@@ -404,8 +404,8 @@ export const PROPERTY_REVIEW_POLICIES = Object.freeze({ APPEND: "append" } as co
  * set before the patch. A run already carrying one keeps it, and with it the
  * formatting it started from. A tracked patch joins nothing, so `joinStart`
  * and `joinEnd` must be absent.
- * `propertyReview: "append"` records a separately rejectable action over
- * existing review, preserving the current formatting as that action's baseline.
+ * `propertyReview: "append"` coalesces an editor action into one pending review.
+ * It retains the first baseline and records the latest formatter's metadata.
  */
 export type SetRunPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS;

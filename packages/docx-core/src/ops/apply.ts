@@ -1,3 +1,4 @@
+import { getSingularRunPropertyChange } from "../model/runPropertyReview";
 import { applyCommentOp } from "./comments";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { cloneModel } from "./modelClone";
@@ -1040,19 +1041,19 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     );
   }
   if (revision !== undefined) {
-    // Editor actions append separately rejectable records; low-level patches
-    // retain the pending review's original formatting unless append is explicit.
+    // Editor actions update the pending review; low-level patches retain its authorship.
     const changes = new Map<Run, Parameters<RunDecoration>[0]>();
     const recordChange: RunDecoration = (options) => {
       const { patched: patchedRun, previous } = options;
-      if (
-        (previous.propertyChanges?.length ?? 0) > 0 &&
-        op.propertyReview !== PROPERTY_REVIEW_POLICIES.APPEND
-      ) {
+      const pending = getSingularRunPropertyChange(previous.propertyChanges);
+      if (pending !== undefined && op.propertyReview !== PROPERTY_REVIEW_POLICIES.APPEND) {
         return patchedRun;
       }
-      changes.set(patchedRun, options);
-      return patchedRun;
+      // The replaced record consumes no fresh identity before it is coalesced.
+      const next = Object.assign({}, patchedRun);
+      delete next.propertyChanges;
+      changes.set(next, options);
+      return next;
     };
     const tracked = patchRunsBetween(
       paragraph.content,
@@ -1065,8 +1066,8 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     if (tracked === undefined) {
       return unchanged(document);
     }
-    // Source records cut by the patch consume their identities before this
-    // action introduces any new property-change records.
+    // Retained source records cut by the patch consume their identities before
+    // this action introduces its coalesced property-change records.
     const freshened = withFreshIds({
       document,
       op,
@@ -1092,10 +1093,21 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
             info: stampInfo(revision),
             boundaryJoins: options.boundaryJoins,
           };
-          if (options.previous.formatting !== undefined)
-            change.previousFormatting = options.previous.formatting;
+          const pending = getSingularRunPropertyChange(options.previous.propertyChanges);
+          const previousFormatting =
+            pending === undefined ? options.previous.formatting : pending.previousFormatting;
+          if (previousFormatting !== undefined) change.previousFormatting = previousFormatting;
+          if (pending !== undefined) {
+            if (pending.boundaryJoins === undefined || change.boundaryJoins === undefined) {
+              delete change.boundaryJoins;
+            } else {
+              change.boundaryJoins = [
+                ...new Set([...pending.boundaryJoins, ...change.boundaryJoins]),
+              ];
+            }
+          }
           const changed = Object.assign({}, node);
-          changed.propertyChanges = (node.propertyChanges ?? []).concat(change);
+          changed.propertyChanges = [change];
           return changed;
         }
         const children = childNodes(node);

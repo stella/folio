@@ -1,0 +1,10 @@
+{
+  "overlapping formatter actions retain one earliest baseline and latest author": [
+    {
+      "seed": 1404002,
+      "path": "0:0:0",
+      "note": "Overlapping formatting preserves the original properties through save and rejection.",
+      "date": "2026-10-13"
+    }
+  ]
+}

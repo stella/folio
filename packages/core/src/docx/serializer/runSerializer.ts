@@ -10,6 +10,7 @@
  * - Text content: w:t
  */
 
+import { getSingularRunPropertyChange } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { serializeBoundaryJoins } from "../reviewResolutionProvenance";
 import type {
@@ -75,10 +76,7 @@ import { runHoldsPayload } from "../runPayload";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
 import { serializeTextFormatting } from "./textFormattingSerializer";
-import {
-  getSingularRunPropertyChange,
-  serializeTrackedChangeAttributes,
-} from "./trackedChangeAttributes";
+import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { intAttr } from "./xmlUtils";
 
 // ============================================================================

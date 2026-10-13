@@ -13,6 +13,7 @@
 
 import { INSERTION_SEAM_POLICIES } from "../model/content";
 import { runsMergeable } from "./runMerge";
+import { getSingularRunPropertyChange } from "../model/runPropertyReview";
 import { panic, Result } from "better-result";
 
 import { MAX_REVISION_ID } from "../model/document";
@@ -253,6 +254,56 @@ const foldAtSeam = (left: InlineNode, right: InlineNode, emptied: Emptied): Inli
   return [rebuildNode(left, [...leftChildren.slice(0, -1), ...inner, ...rightChildren.slice(1)])];
 };
 
+/** A pending formatting review retains a recorded seam until it can be joined. */
+type DeferredRunReviewSeamOptions = {
+  left: InlineNode;
+  right: InlineNode;
+  depth: number;
+};
+const deferRunReviewSeam = ({ left, right, depth }: DeferredRunReviewSeamOptions): InlineNode[] => {
+  if (depth === 0) return [left, right];
+  if (left.type !== "run" || right.type !== "run") {
+    const leftChildren = childNodes(left);
+    const rightChildren = childNodes(right);
+    const last = leftChildren?.at(-1);
+    const first = rightChildren?.at(0);
+    if (
+      leftChildren === undefined ||
+      rightChildren === undefined ||
+      last === undefined ||
+      first === undefined ||
+      !sameOwnFields(left, right)
+    )
+      return [left, right];
+    const deferred = deferRunReviewSeam({ left: last, right: first, depth: depth - 1 });
+    const deferredLeft = deferred.at(0) ?? panic("A deferred seam retains its left node.");
+    const deferredRight = deferred.at(1) ?? panic("A deferred seam retains its right node.");
+    return [
+      deferredLeft === last
+        ? left
+        : rebuildNode(left, [...leftChildren.slice(0, -1), deferredLeft]),
+      deferredRight === first
+        ? right
+        : rebuildNode(right, [deferredRight, ...rightChildren.slice(1)]),
+    ];
+  }
+  if (sameOwnFields(left, right)) return [left, right];
+  const retain = (run: Run, side: "before" | "after"): Run => {
+    const change = getSingularRunPropertyChange(run.propertyChanges);
+    if (
+      change === undefined ||
+      change.boundaryJoins === undefined ||
+      change.boundaryJoins.includes(side)
+    )
+      return run;
+    return {
+      ...run,
+      propertyChanges: [{ ...change, boundaryJoins: [...change.boundaryJoins, side] }],
+    };
+  };
+  return [retain(left, "after"), retain(right, "before")];
+};
+
 /**
  * Two records meeting where a change was resolved, merged as far as they are
  * alike. A piece of a cut container that resolution emptied (one `emptied`
@@ -274,7 +325,9 @@ export const mergeAtSeam = (
       : [rebuildNode(left, mergedAtSeam(leftChildren, rightChildren, emptied))];
   }
   const folded = foldedPiece(left, right, emptied);
-  return folded === undefined ? [left, right] : [folded];
+  return folded === undefined
+    ? deferRunReviewSeam({ left, right, depth: Number.POSITIVE_INFINITY })
+    : [folded];
 };
 
 /** Two lists end to end, merged at the seam as {@link mergeAtSeam} merges. */
@@ -755,11 +808,15 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       // Earlier inline resolution can empty an original cut fragment. Its
       // surviving identity folds back before measuring the remaining depth.
       const folded = foldAtSeam(left, right, resolution.emptied);
-      met =
-        folded.length === 1
-          ? folded
-          : (mergeLists([left], [right], exactDepth, { mode: "asFarAsAlike" }) ??
-            panic("An as-far-as-alike merge always returns its records."));
+      if (folded.length === 1) met = folded;
+      else {
+        const deferred = deferRunReviewSeam({ left, right, depth: exactDepth });
+        const deferredLeft = deferred.at(0) ?? panic("A recorded seam retains its left node.");
+        const deferredRight = deferred.at(1) ?? panic("A recorded seam retains its right node.");
+        met =
+          mergeLists([deferredLeft], [deferredRight], exactDepth, { mode: "asFarAsAlike" }) ??
+          panic("An as-far-as-alike merge always returns its records.");
+      }
     }
     if (met.length === 1) {
       const merged = met.at(0) ?? panic("A single merged record exists.");

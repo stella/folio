@@ -70,7 +70,7 @@
       "note": "Lossy JSON fixture cloning dropped own undefined fields in package resources and detached section content; preserve exact structural copies."
     }
   ],
-  "each formatting author gets a separately rejectable record over pending run review": [
+  "coalesced formatting keeps the first baseline and latest author": [
     {
       "seed": -1253336004,
       "path": "0:0:0",
@@ -366,6 +366,12 @@
     }
   ],
   "rejecting generated run formatting restores authored boundaries inside wrappers and pending review": [
+    {
+      "seed": -125299695,
+      "path": "0:0:0:0:1",
+      "date": "2026-10-13",
+      "note": "Pending formatting coalesces into the first baseline while inverse journals retain every edit-time record."
+    },
     {
       "seed": 1885693896,
       "path": "0:0:0:0",

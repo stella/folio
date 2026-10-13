@@ -1,3 +1,7 @@
+import {
+  assertOutsideRunReviewCoverage,
+  resolvePendingRunFormatting,
+} from "./runPropertyReviewOracle";
 /**
  * The laws every direct operation keeps, over synthetic documents built from
  * the model (tracked operations: `review.property.test.ts`).
@@ -416,6 +420,12 @@ describe("document operations", () => {
             },
           }).unwrap();
           const edit = applyDocumentOps(original, plan.ops).unwrap();
+          assertOutsideRunReviewCoverage({
+            before: original,
+            after: edit.document,
+            from: intent.from,
+            to: intent.to,
+          });
           expect(edit.revisions.length).toBeGreaterThan(0);
           const rejected = applyDocumentOp(edit.document, {
             type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -423,7 +433,10 @@ describe("document operations", () => {
             revisionIds: edit.revisions,
             decision: REVISION_DECISIONS.REJECT,
           }).unwrap();
-          assertExactModel(rejected.document, original);
+          assertExactModel(
+            resolvePendingRunFormatting(rejected.document, "reject"),
+            resolvePendingRunFormatting(original, "reject"),
+          );
           const undone = applyDocumentOps(edit.document, edit.inverse).unwrap();
           assertExactModel(undone.document, original);
           const redone = applyDocumentOps(undone.document, undone.inverse).unwrap();
@@ -452,6 +465,12 @@ describe("document operations", () => {
             },
           }).unwrap();
           const later = applyDocumentOps(edit.document, laterPlan.ops).unwrap();
+          assertOutsideRunReviewCoverage({
+            before: edit.document,
+            after: later.document,
+            from: laterIntent.from,
+            to: laterIntent.to,
+          });
           const rejectEarlier = applyDocumentOp(later.document, {
             type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
             story: OP_STORIES.MAIN,
@@ -464,7 +483,10 @@ describe("document operations", () => {
             revisionIds: later.revisions,
             decision: REVISION_DECISIONS.REJECT,
           }).unwrap();
-          assertExactModel(rejectLater.document, original);
+          assertExactModel(
+            resolvePendingRunFormatting(rejectLater.document, "reject"),
+            resolvePendingRunFormatting(original, "reject"),
+          );
         },
       ),
       {
@@ -474,7 +496,48 @@ describe("document operations", () => {
     );
   });
 
-  test("each formatting author gets a separately rejectable record over pending run review", () => {
+  test("run review coverage detects a lost unchanged formatting revision outside the edit", () => {
+    const before = normalizeForOps({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                { type: "run", content: [{ type: "text", text: "a" }] },
+                {
+                  type: "run",
+                  formatting: { bold: true },
+                  content: [{ type: "text", text: "b" }],
+                  propertyChanges: [
+                    {
+                      type: "runPropertyChange",
+                      info: { id: 1, author: "Earlier" },
+                      previousFormatting: { bold: true },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies Document);
+    const after = structuredClone(before);
+    const paragraph = after.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Expected paragraph");
+    const run = paragraph.content.at(1);
+    if (run?.type !== "run") panic("Expected reviewed run");
+    const from = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 };
+    const to = { ...from, offset: 1 };
+    assertOutsideRunReviewCoverage({ before, after, from, to });
+    delete run.propertyChanges;
+    expect(() => assertOutsideRunReviewCoverage({ before, after, from, to })).toThrow();
+  });
+
+  // Undo restores each edit-time record; rejection restores the first pending baseline.
+  test("coalesced formatting keeps the first baseline and latest author", () => {
     assertProperty(
       fc.property(
         fc.array(fc.constantFrom("Author A", "Author B", "Author C"), {
@@ -521,10 +584,12 @@ describe("document operations", () => {
             },
           } satisfies Document);
           const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 };
+          const baseline = resolvePendingRunFormatting(original, "reject");
           let document = original;
           const journal: AppliedDocumentOp[] = [];
           for (const [index, author] of authors.entries()) {
             const before = document;
+            const date = `2026-10-${String(index + 1).padStart(2, "0")}T00:00:00Z`;
             const intent = {
               type: "formatRun",
               from: at,
@@ -536,17 +601,21 @@ describe("document operations", () => {
               intent,
               mode: {
                 type: "suggesting",
-                revision: { id: ids.revisionId, author, date: "2026-10-02T00:00:00Z" },
+                revision: { id: ids.revisionId, author, date },
                 newIds: ids.newIds,
               },
             }).unwrap();
             const applied = applyDocumentOps(document, compiled.ops).unwrap();
             expect(applied.revisions).toHaveLength(2);
             for (const paragraph of storyParagraphs(applied.document.package.document)) {
-              for (const run of paragraph.paragraph.content) {
+              for (const [runIndex, run] of paragraph.paragraph.content.entries()) {
                 if (run.type !== "run") panic("Formatting changed the authored run structure.");
                 expect(run.propertyChanges?.at(-1)?.info.author).toBe(author);
-                expect(run.propertyChanges).toHaveLength(index + 2);
+                expect(run.propertyChanges).toHaveLength(1);
+                expect(run.propertyChanges?.at(0)?.info.date).toBe(date);
+                expect(run.propertyChanges?.at(0)?.previousFormatting).toEqual(
+                  runIndex === 0 ? { italic: true } : { bold: true },
+                );
               }
             }
             const rejected = applyDocumentOp(applied.document, {
@@ -555,7 +624,7 @@ describe("document operations", () => {
               revisionIds: applied.revisions,
               decision: REVISION_DECISIONS.REJECT,
             }).unwrap();
-            expect(rejected.document).toStrictEqual(before);
+            expect(rejected.document).toStrictEqual(baseline);
             expectRestores(applied, before);
             document = applied.document;
             journal.push(applied);
@@ -575,7 +644,7 @@ describe("document operations", () => {
       ),
       {
         numRuns: 30,
-        id: "each formatting author gets a separately rejectable record over pending run review",
+        id: "coalesced formatting keeps the first baseline and latest author",
       },
     );
   });
@@ -2506,6 +2575,20 @@ describe("document operations", () => {
           const trackedEdit = applyDocumentOps(document, tracked.value.ops);
           if (directEdit.isErr()) throw directEdit.error;
           if (trackedEdit.isErr()) throw trackedEdit.error;
+          if (intent.type === "formatRun") {
+            assertOutsideRunReviewCoverage({
+              before: document,
+              after: directEdit.value.document,
+              from: intent.from,
+              to: intent.to,
+            });
+            assertOutsideRunReviewCoverage({
+              before: document,
+              after: trackedEdit.value.document,
+              from: intent.from,
+              to: intent.to,
+            });
+          }
           const originalChanges = storyParagraphs(document.package.document).flatMap(
             ({ paragraph: sourceParagraph }) => sourceParagraph.propertyChanges ?? [],
           );
@@ -2528,15 +2611,16 @@ describe("document operations", () => {
           const resolveFolded = (
             source: Document,
             decision: (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS],
-          ) =>
-            foldedIds.length === 0
-              ? source
-              : applyDocumentOp(source, {
-                  type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-                  story: OP_STORIES.MAIN,
-                  revisionIds: foldedIds,
-                  decision,
-                }).unwrap().document;
+          ) => {
+            if (intent.type === "formatRun") return resolvePendingRunFormatting(source, decision);
+            if (foldedIds.length === 0) return source;
+            return applyDocumentOp(source, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: foldedIds,
+              decision,
+            }).unwrap().document;
+          };
           let acceptedDocument = trackedEdit.value.document;
           if (trackedEdit.value.revisions.length > 0 || foldedIds.length > 0) {
             const accepted = applyDocumentOp(acceptedDocument, {
@@ -2576,13 +2660,13 @@ describe("document operations", () => {
               }
             } else {
               assertExactModel(
-                rejected.value.document,
+                resolveFolded(rejected.value.document, REVISION_DECISIONS.REJECT),
                 resolveFolded(document, REVISION_DECISIONS.REJECT),
               );
             }
           }
           assertFreshIdentityEquivalent({
-            actual: acceptedDocument,
+            actual: resolveFolded(acceptedDocument, REVISION_DECISIONS.ACCEPT),
             expected: resolveFolded(directEdit.value.document, REVISION_DECISIONS.ACCEPT),
             original: document,
             allocated: allocation.newIds,

@@ -28,6 +28,8 @@ export {
   paragraphVisibleText,
   physicalOffsetAtVisibleOffset,
   editorParagraphGroups,
+  editorPositionAtPhysicalPosition,
+  physicalPositionAtEditorOffset,
   type EditorIntent,
   type TableIntentOperation,
   type EditorIntentMode,

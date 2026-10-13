@@ -5,6 +5,7 @@ import type { Command } from "prosemirror-state";
 
 import { schema } from "../../schema";
 import {
+  isMarkActive,
   marksToTextFormatting,
   setMark,
   textFormattingToMarks,
@@ -333,4 +334,34 @@ describe("mark commands", () => {
     expect(parseRule.getAttrs("underline")).toEqual({ style: "single" });
     expect(parseRule.getAttrs("underline dashed")).toEqual({ style: "dash" });
   });
+});
+
+test("reference-only formatting does not decide a text selection toggle", () => {
+  // Selected prose was unmarked, but the rendered reference supplied its mark.
+  for (const name of ["superscript", "subscript", "bold", "italic"] as const) {
+    for (const noteType of ["footnote", "endnote"] as const) {
+      const mark = schema.marks[name];
+      if (!mark) panic("Missing run formatting mark");
+      for (const proseMarked of [false, true]) {
+        const doc = schema.node("doc", null, [
+          schema.node("paragraph", null, [
+            schema.text("Prose", proseMarked ? [mark.create()] : []),
+            schema.text("1", [
+              schema.marks.footnoteRef.create({
+                id: "1",
+                occurrenceId: "note-reference-1",
+                noteType,
+              }),
+              mark.create(),
+            ]),
+          ]),
+        ]);
+        let state = EditorState.create({ schema, doc });
+        state = state.apply(
+          state.tr.setSelection(TextSelection.create(doc, 1, doc.content.size - 1)),
+        );
+        expect(isMarkActive(state, mark)).toBe(proseMarked);
+      }
+    }
+  }
 });

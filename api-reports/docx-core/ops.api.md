@@ -460,6 +460,9 @@ export const editorParagraphGroups: (document: Document_2, story: OpStory) => {
 }[];
 
 // @public
+export const editorPositionAtPhysicalPosition: (document: Document_2, at: TextPosition) => TextPosition;
+
+// @public
 export const EMPTY_PROPERTY_SETS: Readonly<{
     readonly OMIT: "omit";
     readonly KEEP: "keep";
@@ -731,6 +734,9 @@ export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRe
 
 // @public
 export const physicalOffsetAtVisibleOffset: (paragraph: Paragraph, offset: number) => number;
+
+// @public
+export const physicalPositionAtEditorOffset: (document: Document_2, at: TextPosition) => TextPosition;
 
 // @public
 export const planTrackedDeletion: (document: Document_2, options: PlanTrackedDeletionOptions) => Result<DocumentOp[], DocumentOpRefusal>;

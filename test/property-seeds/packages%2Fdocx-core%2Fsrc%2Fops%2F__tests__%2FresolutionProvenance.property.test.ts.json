@@ -240,6 +240,12 @@
       "path": "0:0:0:0:0:0",
       "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": -1418848560,
+      "path": "0:0:0:1:1",
+      "date": "2026-10-13",
+      "note": "Nested source cuts remain recorded while adjacent formatting reviews are pending."
     }
   ],
   "generated same-author insertion bursts preserve exact authored seams": [
@@ -260,6 +266,14 @@
       "path": "0:0:1:1:1:1:1:1:1",
       "note": "Replay the observed source-seam or revision allocation failure.",
       "date": "2026-10-03"
+    }
+  ],
+  "overlapping formatting rejection preserves authored runs in either resolution order": [
+    {
+      "seed": -495995329,
+      "path": "1:0:0:0:0",
+      "date": "2026-10-13",
+      "note": "A recorded run cut must survive an independently pending formatting review."
     }
   ]
 }

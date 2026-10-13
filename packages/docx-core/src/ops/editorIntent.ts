@@ -385,6 +385,18 @@ export const physicalOffsetAtVisibleOffset = (paragraph: Paragraph, offset: numb
   return offset === visible ? paragraphLength(paragraph) : paragraphLength(paragraph) + 1;
 };
 
+/** The visible offset corresponding to a physical source position. */
+const visibleOffsetAtPhysicalOffset = (paragraph: Paragraph, offset: number): number => {
+  if (!Number.isInteger(offset) || offset < 0 || offset > paragraphLength(paragraph)) return -1;
+  let visible = 0;
+  for (const span of leafSpans(paragraph.content)) {
+    if (span.before.offset >= offset) break;
+    if (span.ancestors.some(isRemovedRevisionNode)) continue;
+    visible += Math.min(offset, span.after.offset) - span.before.offset;
+  }
+  return visible;
+};
+
 /** Deleted paragraph marks concatenate physical paragraphs in the editing view. */
 export const editorParagraphGroups = (document: Document, story: OpStory) => {
   const groups: { blockId: string; paragraphs: Paragraph[]; text: string }[] = [];
@@ -423,6 +435,26 @@ export const editorParagraphGroups = (document: Document, story: OpStory) => {
   return groups;
 };
 
+/** One logical paragraph and visible offset for a physical canonical address. */
+export const editorPositionAtPhysicalPosition = (
+  document: Document,
+  at: TextPosition,
+): TextPosition => {
+  const group = editorParagraphGroups(document, at.story).find(({ paragraphs }) =>
+    paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(at.blockId)),
+  );
+  if (group === undefined) return at;
+  let offset = 0;
+  for (const paragraph of group.paragraphs) {
+    if (idKey(paragraph.paraId ?? "") === idKey(at.blockId)) {
+      const local = visibleOffsetAtPhysicalOffset(paragraph, at.offset);
+      return { story: at.story, blockId: group.blockId, offset: local < 0 ? -1 : offset + local };
+    }
+    offset += paragraphVisibleText(paragraph).length;
+  }
+  return panic("A logical paragraph lost its source position");
+};
+
 /** Translate an editing-view paragraph gap to its physical canonical address. */
 export const physicalPositionAtEditorOffset = (
   document: Document,
@@ -446,6 +478,17 @@ export const physicalPositionAtEditorOffset = (
   }
   return at;
 };
+
+// A zero-width ordinal belongs to one offset. At a new text offset, the
+// projection resolves the available gap instead of reusing the insertion gap.
+const replacementCaret = (at: TextPosition, text: string): TextPosition => ({
+  story: at.story,
+  blockId: at.blockId,
+  offset: at.offset + text.length,
+  ...(text.length === 0 && at.zeroWidthBefore !== undefined
+    ? { zeroWidthBefore: at.zeroWidthBefore }
+    : {}),
+});
 
 const paragraphAt = (document: Document, at: TextPosition) =>
   storyParagraphs(storyBody(document, at.story)).find(
@@ -511,13 +554,28 @@ const intentRunFormatting = (
     : (applyFormattingPatch(authored, runPropsPatch) ?? {});
 };
 
+/** The ending physical mark owns one logical paragraph's properties. */
+const createParagraphMarkOwnerLookup = (document: Document) => {
+  const stories = new Map<string, Map<string, Paragraph>>();
+  return (at: TextPosition) => {
+    const key = JSON.stringify(at.story);
+    let owners = stories.get(key);
+    if (owners === undefined) {
+      owners = new Map();
+      for (const { paragraphs } of editorParagraphGroups(document, at.story)) {
+        const owner = paragraphs.at(-1);
+        if (owner === undefined) panic("A logical paragraph has no property owner");
+        for (const paragraph of paragraphs) owners.set(idKey(paragraph.paraId ?? ""), owner);
+      }
+      stories.set(key, owners);
+    }
+    return owners.get(idKey(at.blockId));
+  };
+};
+
 /** A new logical paragraph inherits the surviving paragraph mark's formatting. */
 const splitParagraphFields = (document: Document, at: TextPosition) => {
-  const survivor = editorParagraphGroups(document, at.story)
-    .find(({ paragraphs }) =>
-      paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(at.blockId)),
-    )
-    ?.paragraphs.at(-1);
+  const survivor = createParagraphMarkOwnerLookup(document)(at);
   return survivor?.formatting === undefined ? {} : { formatting: survivor.formatting };
 };
 
@@ -1528,7 +1586,17 @@ export const compileEditorIntent = (
               } as const,
             ]
           : [];
-      const paragraphOps = intent.items.map(
+      const itemsByMark = new Map<string, (typeof intent.items)[number]>();
+      const paragraphMarkOwner = createParagraphMarkOwnerLookup(document);
+      for (const { at, ilvl } of intent.items) {
+        const blockId = paragraphMarkOwner(at)?.paraId ?? at.blockId;
+        itemsByMark.set(`${JSON.stringify(at.story)}:${idKey(blockId)}`, {
+          at: Object.assign({}, at, { blockId }),
+          ilvl,
+        });
+      }
+      const paragraphOps = Array.from(
+        itemsByMark.values(),
         ({ at, ilvl }) =>
           ({
             type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
@@ -1566,7 +1634,7 @@ export const compileEditorIntent = (
         {
           type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
           story: intent.at.story,
-          blockId: intent.at.blockId,
+          blockId: createParagraphMarkOwnerLookup(document)(intent.at)?.paraId ?? intent.at.blockId,
           patch: intent.patch,
           ...(mode.type === "suggesting"
             ? { propertyReview: PROPERTY_REVIEW_POLICIES.APPEND }
@@ -1739,13 +1807,7 @@ export const compileEditorIntent = (
           )
             selection = { ...selection, blockId: op.nextBlockId };
           if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT)
-            selection = {
-              ...op.at,
-              offset: op.at.offset + text.length,
-              ...(text.length > 0 && op.at.zeroWidthBefore !== undefined
-                ? { zeroWidthBefore: 0 }
-                : {}),
-            };
+            selection = replacementCaret(op.at, text);
         }
         break;
       }
@@ -1823,11 +1885,7 @@ export const compileEditorIntent = (
           slice: { openStart: 0, openEnd: 0, content },
           ...allocationFields,
         });
-      selection = {
-        ...at,
-        offset: from.offset + text.length,
-        ...(text.length > 0 && at.zeroWidthBefore !== undefined ? { zeroWidthBefore: 0 } : {}),
-      };
+      selection = replacementCaret(at, text);
       break;
     }
     case "splitParagraph": {

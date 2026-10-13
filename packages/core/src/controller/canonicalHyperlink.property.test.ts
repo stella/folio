@@ -1,7 +1,13 @@
 import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
-import { AllSelection, EditorState, TextSelection, type Command } from "prosemirror-state";
+import {
+  AllSelection,
+  EditorState,
+  Selection,
+  TextSelection,
+  type Command,
+} from "prosemirror-state";
 import type { Document, ParagraphContent } from "../types/document";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -148,24 +154,27 @@ test("every range intent handles AllSelection and restores exact undo redo", () 
           const beforeSelection = state.selection.toJSON();
           const intents =
             getCanonicalCommandIntents(factory(), state) ?? panic("Missing range descriptor.");
-          // Positive control: the old derivation addresses document edges, not paragraph gaps.
+          // Both document edges and normalized content gaps have one canonical owner.
           const rawRange = { from: state.selection.from, to: state.selection.to };
-          expect(session.projection.addressAt(rawRange.from).isErr()).toBe(true);
-          expect(session.projection.addressAt(rawRange.to).isErr()).toBe(true);
+          expect(session.projection.addressAt(rawRange.from).unwrap()).toEqual(
+            session.projection.addressAt(Selection.atStart(state.doc).from).unwrap(),
+          );
+          expect(session.projection.addressAt(rawRange.to).unwrap()).toEqual(
+            session.projection.addressAt(Selection.atEnd(state.doc).to).unwrap(),
+          );
           // Page breaks require a caret, so whole-document selection has no intent.
           if (name === "insertBreak") {
             expect(intents).toEqual([]);
             continue;
           }
           expect(intents.length).toBeGreaterThan(0);
-          const oldIntents = intents.map((intent) => ({ ...intent, ...rawRange }));
-          const oldPreparation = prepareCanonicalCommands(session, state, oldIntents);
-          expect(oldPreparation.isErr()).toBe(true);
-          if (oldPreparation.isOk()) panic("The old raw-selection derivation must refuse.");
-          expect(oldPreparation.error.reason).toBe("refused");
+          const rawIntents = intents.map((intent) => ({ ...intent, ...rawRange }));
+          const rawPreparation = prepareCanonicalCommands(session, state, rawIntents).unwrap();
           expect(session.document).toBe(before);
           expect(state.selection.toJSON()).toEqual(beforeSelection);
           const prepared = prepareCanonicalCommands(session, state, intents).unwrap();
+          expect(rawPreparation.document).toStrictEqual(prepared.document);
+          expect(rawPreparation.selection).toEqual(prepared.selection);
           state = publishCanonicalProjection({ session, state, commit: prepared }).unwrap().state;
           const after = session.document;
           const afterSelection = state.selection.toJSON();
