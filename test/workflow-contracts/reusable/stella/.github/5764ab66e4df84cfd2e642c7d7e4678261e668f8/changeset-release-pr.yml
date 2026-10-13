@@ -1,0 +1,243 @@
+name: Changeset release PR
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: "Runner labels as a JSON array"
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      bun-version-file:
+        description: package.json containing the Bun version used by the repository.
+        required: false
+        type: string
+        default: package.json
+      title:
+        description: Version PR title.
+        required: false
+        type: string
+        default: "chore: version packages"
+      commit:
+        description: Version PR commit message.
+        required: false
+        type: string
+        default: "chore: version packages"
+      auto-merge-command:
+        description: >-
+          Optional repository-owned merge gate. RELEASE_PR_NUMBER identifies the
+          current release PR. Must enforce required checks and pin the PR head.
+        required: false
+        type: string
+        default: ''
+      sync-cargo-inherited-lock:
+        description: >-
+          Validate and synchronize Cargo.lock entries for workspace packages
+          that inherit workspace.package.version.
+        required: false
+        type: boolean
+        default: false
+      cargo-manifest:
+        description: Repo-relative root Cargo workspace manifest.
+        required: false
+        type: string
+        default: Cargo.toml
+      cargo-lockfile:
+        description: Repo-relative Cargo lockfile.
+        required: false
+        type: string
+        default: Cargo.lock
+      prepare-rust-wasm:
+        description: >-
+          Install the wasm32-unknown-unknown target and the wasm-bindgen CLI
+          version resolved by the locked Cargo workspace before versioning.
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      CHANGELOG_APP_ID:
+        description: GitHub App ID used to maintain the version PR.
+        required: true
+      CHANGELOG_APP_PRIVATE_KEY:
+        description: GitHub App private key used to maintain the version PR.
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  version:
+    name: Maintain version packages PR
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.0
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: 15
+    concurrency:
+      group: changeset-release-pr-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Inspect release lifecycle
+        id: lifecycle
+        uses: stella/.github/.github/actions/changeset-release-lifecycle@636b7841096c8f0cc5a1572077b78768ef8fea42
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - if: steps.lifecycle.outputs.may-update == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: ${{ inputs.bun-version-file }}
+
+      - if: steps.lifecycle.outputs.may-update == 'true'
+        run: bun install --frozen-lockfile
+
+      - if: steps.lifecycle.outputs.may-update == 'true' && (inputs.sync-cargo-inherited-lock || inputs.prepare-rust-wasm)
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.99.0
+
+      # rust-toolchain only prepends the toolchain when it installs one. Keep
+      # Cargo available when the runner already has the requested toolchain.
+      - if: steps.lifecycle.outputs.may-update == 'true' && (inputs.sync-cargo-inherited-lock || inputs.prepare-rust-wasm)
+        name: Add Cargo to PATH
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - if: steps.lifecycle.outputs.may-update == 'true' && inputs.prepare-rust-wasm
+        name: Prepare locked Rust Wasm toolchain
+        shell: bash
+        env:
+          CARGO_MANIFEST_PATH: ${{ inputs.cargo-manifest }}
+        run: |
+          set -euo pipefail
+          rustup target add wasm32-unknown-unknown --toolchain 1.99.0
+
+          mapfile -t versions < <(
+            cargo metadata \
+              --locked \
+              --manifest-path "$CARGO_MANIFEST_PATH" \
+              --format-version 1 \
+              --all-features \
+              | jq -r '[.packages[] | select(.name == "wasm-bindgen") | .version] | unique | .[]'
+          )
+          if [[ "${#versions[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one locked wasm-bindgen version; found: ${versions[*]:-none}"
+            exit 1
+          fi
+          cargo install wasm-bindgen-cli --version "${versions[0]}" --locked
+
+      - if: steps.lifecycle.outputs.may-update == 'true' && inputs.sync-cargo-inherited-lock
+        name: Validate inherited Cargo lock versions
+        id: cargo-sync
+        uses: stella/.github/.github/actions/sync-cargo-workspace-lock@636b7841096c8f0cc5a1572077b78768ef8fea42
+        with:
+          mode: check
+          manifest: ${{ inputs.cargo-manifest }}
+          lockfile: ${{ inputs.cargo-lockfile }}
+
+      - if: steps.lifecycle.outputs.may-update == 'true'
+        name: Prepare version command
+        id: version-command
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_command="$RUNNER_TEMP/stella-changeset-version.sh"
+          cat > "$version_command" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          bun run changeset:version
+          if [[ "$SYNC_CARGO_INHERITED_LOCK" == "true" ]]; then
+            if [[ -z "$CARGO_SYNC_SCRIPT" ]]; then
+              echo "::error::Cargo synchronizer path is unavailable"
+              exit 1
+            fi
+            node "$CARGO_SYNC_SCRIPT" \
+              --mode write \
+              --manifest "$CARGO_MANIFEST_PATH" \
+              --lockfile "$CARGO_LOCKFILE_PATH"
+          fi
+          EOF
+          chmod 0700 "$version_command"
+          printf 'path=%s\n' "$version_command" >> "$GITHUB_OUTPUT"
+
+      # Install hooks run before a write-capable credential exists in the job.
+      - if: steps.lifecycle.outputs.may-update == 'true'
+        name: Mint version PR token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.CHANGELOG_APP_ID }}
+          private-key: ${{ secrets.CHANGELOG_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # Run the pinned upstream entrypoint under a wrapper so only GitHub's
+      # queue-lock rejection becomes a deferral. Other failures stay red.
+      - if: steps.lifecycle.outputs.may-update == 'true'
+        name: Fetch Changesets action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: changesets/action
+          ref: 8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+          path: .changesets-action
+          persist-credentials: false
+
+      - if: steps.lifecycle.outputs.may-update == 'true'
+        name: Isolate Changesets action from release contents
+        id: changesets-runtime
+        run: |
+          action_path="$RUNNER_TEMP/changesets-action-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mv .changesets-action "$action_path"
+          printf 'entrypoint=%s\n' "$action_path/dist/index.js" >> "$GITHUB_OUTPUT"
+
+      - if: steps.lifecycle.outputs.may-update == 'true'
+        name: Create or update version packages PR
+        id: changesets
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          LIFECYCLE_SCRIPT: ${{ steps.lifecycle.outputs.script }}
+          CHANGESETS_ENTRYPOINT: ${{ steps.changesets-runtime.outputs.entrypoint }}
+          INPUT_GITHUB-TOKEN: ${{ steps.app-token.outputs.token }}
+          INPUT_VERSION-SCRIPT: bash ${{ steps.version-command.outputs.path }}
+          INPUT_PR-TITLE: ${{ inputs.title }}
+          INPUT_COMMIT-MESSAGE: ${{ inputs.commit }}
+          INPUT_CREATE-GITHUB-RELEASES: 'true'
+          INPUT_PUSH-GIT-TAGS: 'true'
+          INPUT_PUSH-WITH-GIT-CLI: 'false'
+          CARGO_LOCKFILE_PATH: ${{ inputs.cargo-lockfile }}
+          CARGO_MANIFEST_PATH: ${{ inputs.cargo-manifest }}
+          CARGO_SYNC_SCRIPT: ${{ steps.cargo-sync.outputs.script }}
+          SYNC_CARGO_INHERITED_LOCK: ${{ inputs.sync-cargo-inherited-lock }}
+        run: node "$LIFECYCLE_SCRIPT" version
+
+      - if: >-
+          steps.changesets.outputs.may-update == 'true' &&
+          steps.changesets.outputs.pr-number == ''
+        name: Remove stale version packages PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          LIFECYCLE_SCRIPT: ${{ steps.lifecycle.outputs.script }}
+        run: node "$LIFECYCLE_SCRIPT" cleanup
+
+      - if: >-
+          steps.changesets.outputs.may-update == 'true' &&
+          steps.changesets.outputs.pr-number != '' && inputs.auto-merge-command != ''
+        name: Hand release PR to the repository merge gate
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_READ_TOKEN: ${{ github.token }}
+          LIFECYCLE_SCRIPT: ${{ steps.lifecycle.outputs.script }}
+          RELEASE_MERGE_COMMAND: ${{ inputs.auto-merge-command }}
+        run: node "$LIFECYCLE_SCRIPT" merge

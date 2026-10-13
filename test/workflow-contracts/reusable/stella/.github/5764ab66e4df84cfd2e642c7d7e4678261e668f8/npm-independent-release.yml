@@ -1,0 +1,143 @@
+name: Independent npm release
+
+on:
+  workflow_call:
+    inputs:
+      package-files:
+        description: Newline-separated public package.json files to release.
+        required: true
+        type: string
+      artifact-pattern:
+        description: Artifact name pattern containing one tarball per public package.
+        required: false
+        type: string
+        default: npm-tarball-*
+      artifact-run-id:
+        description: Optional caller run ID whose exact package artifacts should be resumed.
+        required: false
+        type: string
+        default: ""
+      dist-tag:
+        description: npm dist-tag used for newly published versions.
+        required: false
+        type: string
+        default: latest
+      github-latest-policy:
+        description: GitHub Latest policy; preserve, newest-published-stable, or canonical-package.
+        required: false
+        type: string
+        default: preserve
+      github-latest-package:
+        description: Canonical npm package promoted by the canonical-package policy.
+        required: false
+        type: string
+        default: ""
+      source-ref:
+        description: Optional caller commit or ref whose manifests and changelogs match the artifacts.
+        required: false
+        type: string
+        default: ""
+      npm-visibility-timeout-minutes:
+        description: Minutes to poll the npm registry for published versions before finalize fails. Capped at 45 by this job's fixed timeout-minutes budget.
+        required: false
+        type: number
+        default: 20
+      environment:
+        description: Optional caller environment holding the release App credentials; empty runs the job without one.
+        required: false
+        type: string
+        default: ""
+    outputs:
+      changed:
+        description: Whether the run created or completed release state.
+        value: ${{ jobs.release.outputs.changed }}
+    secrets:
+      RELEASE_APP_ID:
+        description: Optional GitHub App ID for protected tag and release writes.
+        required: false
+      RELEASE_APP_PRIVATE_KEY:
+        description: Optional GitHub App private key for protected tag and release writes.
+        required: false
+
+permissions: {}
+
+jobs:
+  release:
+    name: Publish packages
+    runs-on: ubuntu-latest
+    # Fixed budget: GitHub Actions cannot set this from an input. Keep it
+    # above the maximum accepted npm-visibility-timeout-minutes (45, see
+    # MAX_NPM_VISIBILITY_TIMEOUT_MINUTES in runtime.mjs) plus margin for
+    # checkout, staging, and the npm publish steps that run first.
+    timeout-minutes: 55
+    # Lets a caller keep RELEASE_APP_PRIVATE_KEY as an environment secret whose
+    # deployment policy limits the refs that can mint the token; an empty
+    # name runs without an environment.
+    environment: ${{ inputs.environment }}
+    permissions:
+      actions: read # Download exact artifacts from a verified recovery run.
+      contents: write # Create immutable package tags and GitHub releases.
+      id-token: write # Exchange a short-lived npm trusted-publishing credential.
+    outputs:
+      changed: ${{ steps.release.outputs.changed }}
+    env:
+      HAS_RELEASE_APP_CREDENTIALS: >-
+        ${{ secrets.RELEASE_APP_ID != ''
+            && secrets.RELEASE_APP_PRIVATE_KEY != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.source-ref || github.sha }}
+
+      - name: Resolve immutable release source
+        id: source
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # The job identity points at the called reusable workflow, unlike the
+      # top-level github context, which describes the caller. Check out the
+      # exact called-workflow commit so its action implementation cannot drift.
+      - name: Checkout release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .release-tooling
+          persist-credentials: false
+
+      - name: Verify recovery artifact source
+        if: inputs.artifact-run-id != ''
+        shell: bash
+        env:
+          ARTIFACT_RUN_ID: ${{ inputs.artifact-run-id }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: node .release-tooling/.github/actions/npm-independent-release/verify-artifact-run.mjs
+
+      - name: Mint release token
+        id: release-token
+        if: env.HAS_RELEASE_APP_CREDENTIALS == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      - name: Release independently versioned packages
+        id: release
+        uses: ./.release-tooling/.github/actions/npm-independent-release
+        with:
+          package-files: ${{ inputs.package-files }}
+          artifact-pattern: ${{ inputs.artifact-pattern }}
+          artifact-run-id: ${{ inputs.artifact-run-id }}
+          artifact-token: ${{ github.token }}
+          dist-tag: ${{ inputs.dist-tag }}
+          github-latest-package: ${{ inputs.github-latest-package }}
+          github-latest-policy: ${{ inputs.github-latest-policy }}
+          github-token: ${{ steps.release-token.outputs.token || github.token }}
+          npm-visibility-timeout-minutes: ${{ inputs.npm-visibility-timeout-minutes }}
+          source-sha: ${{ steps.source.outputs.sha }}
