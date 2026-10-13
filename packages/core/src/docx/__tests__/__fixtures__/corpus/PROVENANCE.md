@@ -34,61 +34,60 @@ its Apache-2.0 license.
 identity fixture registry in `packages/core/scripts/imported-id-collision-fixtures.ts`.
 Numbering and relationship duplicates deliberately carry conflicting definitions.
 
-
 `duplicate-bookmark-ids.docx` is synthetic OOXML from the fixture generator:
 two bookmark ranges reuse ID `7` and name `target`, followed by a `REF target`
 field with a stale cached result. It exercises deterministic duplicate repair
 and first-target field resolution without losing paragraph text.
 
-| File                                  | What it exercises                                                                                        |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `duplicate-imported-bookmark.docx` | Repeated bookmark source definitions; registry-derived import diagnostics and save fixed point |
-| `duplicate-imported-comment.docx` | Repeated comment source definitions; registry-derived import diagnostics and save fixed point |
-| `duplicate-imported-footnote.docx` | Repeated footnote source definitions; registry-derived import diagnostics and save fixed point |
-| `duplicate-imported-endnote.docx` | Repeated endnote source definitions; registry-derived import diagnostics and save fixed point |
-| `duplicate-imported-revision.docx` | Repeated revision source definitions; registry-derived import diagnostics and save fixed point |
-| `duplicate-imported-paraId.docx` | Repeated paraId source definitions; registry-derived import diagnostics and save fixed point |
-| `duplicate-imported-textId.docx` | Repeated textId source definitions; registry-derived import diagnostics and save fixed point |
-| `duplicate-imported-numId.docx` | Repeated numId source definitions; registry-derived import diagnostics and save fixed point |
-| `duplicate-imported-abstractNumId.docx` | Repeated abstractNumId source definitions; registry-derived import diagnostics and save fixed point |
-| `duplicate-imported-drawing.docx` | Repeated drawing source definitions; registry-derived import diagnostics and save fixed point |
-| `duplicate-imported-relationship.docx` | Repeated relationship source definitions; registry-derived import diagnostics and save fixed point |
-| `block-sdt-richtext.docx`             | Block-level `<w:sdt>` wrapping a paragraph; alias, tag, lock                                             |
-| `inline-sdt-dropdown.docx`            | Inline `<w:sdt>` with `<w:dropDownList>` (three `w:listItem`s)                                           |
-| `inline-sdt-checkbox.docx`            | Inline `<w:sdt>` with `<w14:checkbox>` in the checked state                                              |
-| `inline-sdt-mixed-rpr.docx`           | Nested inline SDTs whose content carries mixed `<w:rPr>` (bold/italic)                                   |
-| `alt-prefix-sdt.docx`                 | All `w:` elements rebound to an `x:` prefix; date SDT                                                    |
-| `nested-block-sdt.docx`               | Outer block SDT wrapping an inner block SDT wrapping a paragraph                                         |
-| `sdt-rpr-placeholder.docx`            | `<w:sdtPr>` containing a `<w:rPr>` (color + bold) and an alias/tag                                       |
-| `empty-sdt-content.docx`              | Inline SDT with an empty `<w:sdtContent/>`; tests round-trip idempotence                                 |
-| `authored-empty-paragraph.docx`       | Block SDT whose content is an authored `<w:p/>` empty paragraph                                          |
-| `date-fractional-seconds.docx`        | `w:fullDate="2026-06-02T00:00:00.000Z"` with millisecond precision                                       |
-| `dropdown-empty-value.docx`           | Dropdown whose first `w:listItem` has `w:value=""`                                                       |
-| `lock-sdt-locked.docx`                | `<w:lock w:val="sdtLocked"/>`                                                                            |
-| `lock-content-locked.docx`            | `<w:lock w:val="contentLocked"/>`                                                                        |
-| `lock-sdt-content-locked.docx`        | `<w:lock w:val="sdtContentLocked"/>`                                                                     |
-| `repeating-section.docx`              | `<w15:repeatingSection/>` marker inside `<w:sdtPr>`                                                      |
-| `checkbox-val-true.docx`              | `<w14:checked w14:val="true"/>` (boolean form of ST_OnOff)                                               |
-| `checkbox-val-false.docx`             | `<w14:checked w14:val="false"/>` (boolean form of ST_OnOff)                                              |
-| `placeholder-docpart.docx`            | `<w:placeholder><w:docPart w:val="DefaultText"/></w:placeholder>`                                        |
-| `datahash-sdt.docx`                   | `<w16sdtdh:dataHash w16sdtdh:val="..."/>` marker inside `<w:sdtPr>`                                      |
-| `extraspec-bookmark-sibling.docx`     | `<w:bookmarkStart/>` / `<w:bookmarkEnd/>` as direct siblings of `<w:sdtContent>` under `<w:sdt>`         |
-| `extraspec-commentrange-sibling.docx` | `<w:commentRangeStart/>` / `<w:commentRangeEnd/>` as direct siblings of `<w:sdtContent>` under `<w:sdt>` |
-| `opendope-encoded-ampersand-tag.docx` | OpenDoPE binding tag containing an encoded `&amp;`; round-trip must re-escape exactly once               |
-| `sdt-without-sdtpr.docx`              | `<w:sdt>` with no `<w:sdtPr>` child; default-property tolerance                                          |
-| `sdt-self-closing.docx`               | Self-closing `<w:sdt/>` with no `<w:sdtPr>` and no content                                               |
-| `placeholder-without-docpart.docx`    | `<w:placeholder/>` with no `<w:docPart>` child; spec-non-conformant tolerance                            |
-| `upstream-empty.docx`                 | Empty-document mutation and package-preservation baseline                                                |
-| `upstream-styled-content.docx`        | Mixed run formatting, font sizes, and paragraph alignment                                                |
-| `upstream-with-tables.docx`           | Body text and a three-by-three table                                                                     |
-| `upstream-complex-styles.docx`        | Paragraph styles, font families, colors, and highlighting                                                |
-| `diacritics-latin-ext.docx`           | Czech, Slovak, Polish and German diacritics beside ASCII in one run; two font subsets per face           |
-| `rtl-arabic-shaping.docx`             | Arabic with `w:bidi`, `w:rtl` and a `w:cs` face; joining forms, a required ligature, and a Latin run     |
-| `step3-footnotes.docx`                | Two footnote references, their notes, and Word's separator and continuation separator                    |
-| `step3-watermark-text.docx`           | VML WordArt watermark in a header that holds nothing else, rotated to the diagonal                       |
-| `step3-watermark-picture.docx`        | VML picture watermark with its own header relationship and a 16x16 PNG media part                        |
-| `step3-page-borders.docx`             | `w:pgBorders` on all four sides, two solid and two dashed, offset from the page edge                     |
-| `step3-header-footer-fields.docx`     | `PAGE` and `NUMPAGES` in a header and footer over three pages, with a `w:titlePg` first-page header      |
+| File                                    | What it exercises                                                                                        |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `duplicate-imported-bookmark.docx`      | Repeated bookmark source definitions; registry-derived import diagnostics and save fixed point           |
+| `duplicate-imported-comment.docx`       | Repeated comment source definitions; registry-derived import diagnostics and save fixed point            |
+| `duplicate-imported-footnote.docx`      | Repeated footnote source definitions; registry-derived import diagnostics and save fixed point           |
+| `duplicate-imported-endnote.docx`       | Repeated endnote source definitions; registry-derived import diagnostics and save fixed point            |
+| `duplicate-imported-revision.docx`      | Repeated revision source definitions; registry-derived import diagnostics and save fixed point           |
+| `duplicate-imported-paraId.docx`        | Repeated paraId source definitions; registry-derived import diagnostics and save fixed point             |
+| `duplicate-imported-textId.docx`        | Repeated textId source definitions; registry-derived import diagnostics and save fixed point             |
+| `duplicate-imported-numId.docx`         | Repeated numId source definitions; registry-derived import diagnostics and save fixed point              |
+| `duplicate-imported-abstractNumId.docx` | Repeated abstractNumId source definitions; registry-derived import diagnostics and save fixed point      |
+| `duplicate-imported-drawing.docx`       | Repeated drawing source definitions; registry-derived import diagnostics and save fixed point            |
+| `duplicate-imported-relationship.docx`  | Repeated relationship source definitions; registry-derived import diagnostics and save fixed point       |
+| `block-sdt-richtext.docx`               | Block-level `<w:sdt>` wrapping a paragraph; alias, tag, lock                                             |
+| `inline-sdt-dropdown.docx`              | Inline `<w:sdt>` with `<w:dropDownList>` (three `w:listItem`s)                                           |
+| `inline-sdt-checkbox.docx`              | Inline `<w:sdt>` with `<w14:checkbox>` in the checked state                                              |
+| `inline-sdt-mixed-rpr.docx`             | Nested inline SDTs whose content carries mixed `<w:rPr>` (bold/italic)                                   |
+| `alt-prefix-sdt.docx`                   | All `w:` elements rebound to an `x:` prefix; date SDT                                                    |
+| `nested-block-sdt.docx`                 | Outer block SDT wrapping an inner block SDT wrapping a paragraph                                         |
+| `sdt-rpr-placeholder.docx`              | `<w:sdtPr>` containing a `<w:rPr>` (color + bold) and an alias/tag                                       |
+| `empty-sdt-content.docx`                | Inline SDT with an empty `<w:sdtContent/>`; tests round-trip idempotence                                 |
+| `authored-empty-paragraph.docx`         | Block SDT whose content is an authored `<w:p/>` empty paragraph                                          |
+| `date-fractional-seconds.docx`          | `w:fullDate="2026-06-02T00:00:00.000Z"` with millisecond precision                                       |
+| `dropdown-empty-value.docx`             | Dropdown whose first `w:listItem` has `w:value=""`                                                       |
+| `lock-sdt-locked.docx`                  | `<w:lock w:val="sdtLocked"/>`                                                                            |
+| `lock-content-locked.docx`              | `<w:lock w:val="contentLocked"/>`                                                                        |
+| `lock-sdt-content-locked.docx`          | `<w:lock w:val="sdtContentLocked"/>`                                                                     |
+| `repeating-section.docx`                | `<w15:repeatingSection/>` marker inside `<w:sdtPr>`                                                      |
+| `checkbox-val-true.docx`                | `<w14:checked w14:val="true"/>` (boolean form of ST_OnOff)                                               |
+| `checkbox-val-false.docx`               | `<w14:checked w14:val="false"/>` (boolean form of ST_OnOff)                                              |
+| `placeholder-docpart.docx`              | `<w:placeholder><w:docPart w:val="DefaultText"/></w:placeholder>`                                        |
+| `datahash-sdt.docx`                     | `<w16sdtdh:dataHash w16sdtdh:val="..."/>` marker inside `<w:sdtPr>`                                      |
+| `extraspec-bookmark-sibling.docx`       | `<w:bookmarkStart/>` / `<w:bookmarkEnd/>` as direct siblings of `<w:sdtContent>` under `<w:sdt>`         |
+| `extraspec-commentrange-sibling.docx`   | `<w:commentRangeStart/>` / `<w:commentRangeEnd/>` as direct siblings of `<w:sdtContent>` under `<w:sdt>` |
+| `opendope-encoded-ampersand-tag.docx`   | OpenDoPE binding tag containing an encoded `&amp;`; round-trip must re-escape exactly once               |
+| `sdt-without-sdtpr.docx`                | `<w:sdt>` with no `<w:sdtPr>` child; default-property tolerance                                          |
+| `sdt-self-closing.docx`                 | Self-closing `<w:sdt/>` with no `<w:sdtPr>` and no content                                               |
+| `placeholder-without-docpart.docx`      | `<w:placeholder/>` with no `<w:docPart>` child; spec-non-conformant tolerance                            |
+| `upstream-empty.docx`                   | Empty-document mutation and package-preservation baseline                                                |
+| `upstream-styled-content.docx`          | Mixed run formatting, font sizes, and paragraph alignment                                                |
+| `upstream-with-tables.docx`             | Body text and a three-by-three table                                                                     |
+| `upstream-complex-styles.docx`          | Paragraph styles, font families, colors, and highlighting                                                |
+| `diacritics-latin-ext.docx`             | Czech, Slovak, Polish and German diacritics beside ASCII in one run; two font subsets per face           |
+| `rtl-arabic-shaping.docx`               | Arabic with `w:bidi`, `w:rtl` and a `w:cs` face; joining forms, a required ligature, and a Latin run     |
+| `step3-footnotes.docx`                  | Two footnote references, their notes, and Word's separator and continuation separator                    |
+| `step3-watermark-text.docx`             | VML WordArt watermark in a header that holds nothing else, rotated to the diagonal                       |
+| `step3-watermark-picture.docx`          | VML picture watermark with its own header relationship and a 16x16 PNG media part                        |
+| `step3-page-borders.docx`               | `w:pgBorders` on all four sides, two solid and two dashed, offset from the page edge                     |
+| `step3-header-footer-fields.docx`       | `PAGE` and `NUMPAGES` in a header and footer over three pages, with a `w:titlePg` first-page header      |
 
 All fixtures are under 30 KB.
 

@@ -386,7 +386,7 @@ async function serializeCommentsToZip(
   const comments = doc.package.document.comments ?? [];
   const sourceCommentsFile = findZipEntryCaseInsensitive(zip, "word/comments.xml");
   const sourceCommentsXml = sourceCommentsFile ? await sourceCommentsFile.async("text") : undefined;
-  if (sourceCommentsXml !== undefined && canReplayCommentsPart(doc)) return;
+  if (sourceCommentsXml !== undefined && canReplayCommentsPart(doc, sourceCommentsXml)) return;
   if (comments.length === 0) {
     // An empty source part is already a fixed point. Preserve it and its
     // packaging verbatim: adding a missing relationship or pruning an empty

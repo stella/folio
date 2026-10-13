@@ -15,12 +15,17 @@ import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespace
 import { serializeWithPreservedChildren } from "../containerChildren";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTextFormatting } from "./textFormattingSerializer";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { assertValidOoxmlNumericIds, escapeXmlAttribute } from "@stll/docx-core";
+import { Result } from "better-result";
 import { getDocumentSourceBaseline } from "../headerFooterVerbatim";
 import { canonicalJson } from "../../utils/canonicalJson";
 
 /** An unrelated body edit must retain unmodelled duplicate comment definitions. */
-export const canReplayCommentsPart = (document: Document): boolean => {
+export const canReplayCommentsPart = (document: Document, sourceXml: string): boolean => {
+  // A caller may supply the bytes from before import repaired their identities.
+  // In that case the model must serialize its valid ids instead of replaying them.
+  const validity = Result.try(() => assertValidOoxmlNumericIds(sourceXml, "word/comments.xml"));
+  if (validity.isErr()) return false;
   const baseline = getDocumentSourceBaseline(document);
   return (
     baseline.type === "captured" &&

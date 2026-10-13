@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use quick_xml::XmlVersion;
 use quick_xml::escape::resolve_predefined_entity;
@@ -952,6 +952,12 @@ pub(super) fn project_document_xml(
 }
 
 #[derive(Default)]
+struct BookmarkQueue {
+    starts: Vec<Option<(String, BookmarkPoint)>>,
+    cursor: usize,
+}
+
+#[derive(Default)]
 struct ProjectionState {
     frames: Vec<Frame>,
     paragraphs: Vec<RawProjectedParagraph>,
@@ -959,7 +965,7 @@ struct ProjectionState {
     body_seen: bool,
     next_table_ordinal: usize,
     maximum_paragraphs: usize,
-    open_bookmarks: HashMap<u32, VecDeque<(String, BookmarkPoint)>>,
+    open_bookmarks: HashMap<u32, BookmarkQueue>,
     bookmarks: Vec<PendingBookmarkRange>,
     references: Vec<RawInternalReference>,
     bookmarks_complete: bool,
@@ -2354,7 +2360,8 @@ impl ProjectionState {
         self.open_bookmarks
             .entry(id)
             .or_default()
-            .push_back((name, point));
+            .starts
+            .push(Some((name, point)));
         Ok(())
     }
 
@@ -2369,15 +2376,16 @@ impl ProjectionState {
             self.bookmarks_complete = false;
             return Ok(());
         };
-        let Some((name, start)) = self
-            .open_bookmarks
-            .get_mut(&id)
-            .and_then(VecDeque::pop_front)
-        else {
+        let Some(queue) = self.open_bookmarks.get_mut(&id) else {
             self.bookmarks_complete = false;
             return Ok(());
         };
-        if self.open_bookmarks.get(&id).is_some_and(VecDeque::is_empty) {
+        let Some((name, start)) = queue.starts.get_mut(queue.cursor).and_then(Option::take) else {
+            self.bookmarks_complete = false;
+            return Ok(());
+        };
+        queue.cursor += 1;
+        if queue.cursor == queue.starts.len() {
             self.open_bookmarks.remove(&id);
         }
         self.bookmarks.push(PendingBookmarkRange {
@@ -2908,7 +2916,7 @@ mod collision_tests {
         fn balanced_duplicate_ranges_retain_all_content(id in 0_u32..100_000, count in 1_usize..24, overlap in any::<bool>()) {
             let start = |index| format!(r#"<w:bookmarkStart w:id="{id}" w:name="target{index}"/>"#);
             let end = format!(r#"<w:bookmarkEnd w:id="{id}"/>"#);
-            let text = r#"<w:r><w:t>Content</w:t></w:r>"#;
+            let text = r"<w:r><w:t>Content</w:t></w:r>";
             let body = if overlap {
                 let starts = (0..count).map(start).collect::<String>();
                 format!("{starts}{text}{}", end.repeat(count))

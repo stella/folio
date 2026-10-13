@@ -16,6 +16,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { assertValidOoxmlNumericIds } from "@stll/docx-core";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
@@ -94,6 +95,40 @@ const plainText = (content: { content: { content: { text?: string }[] }[] }): st
   content.content.flatMap((run) => run.content.map((item) => item.text ?? "")).join("");
 
 describe("duplicate comment ids (property)", () => {
+  test(
+    "saving against pre-repair bytes serializes valid comment ids and preserves first definitions",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc
+            .tuple(fc.integer({ min: 2_147_483_648, max: 2_000_000_000_000 }), commentIdsArbitrary)
+            .map(([base, offsets]) => offsets.map((offset) => base + offset)),
+          async (ids) => {
+            const originalBuffer = await docxFor(ids);
+            const parsed = await parseDocx(originalBuffer, { preloadFonts: false });
+            const firstContents = parsed.package.document.comments?.map((comment) =>
+              comment.content.map(plainText),
+            );
+            const saved = await repackDocx(
+              { ...parsed, originalBuffer },
+              { updateModifiedDate: false },
+            );
+            const zip = await JSZip.loadAsync(saved);
+            const xml = await zip.file("word/comments.xml")?.async("string");
+            expect(xml).toBeDefined();
+            if (xml !== undefined) assertValidOoxmlNumericIds(xml, "word/comments.xml");
+            const reopened = await parseDocx(saved, { preloadFonts: false });
+            expect(
+              reopened.package.document.comments?.map((comment) => comment.content.map(plainText)),
+            ).toEqual(firstContents);
+          },
+        ),
+        propertyConfig({ numRuns: 20 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
   test(
     "parse keeps one comment per id and every unambiguous reference",
     async () => {

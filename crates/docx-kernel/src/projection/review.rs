@@ -856,7 +856,8 @@ mod collision_tests {
             prop_assert_eq!(actual[0].paragraph_id.as_deref(), Some(expected_id.as_str()));
             for (index, row) in actual.iter().enumerate() {
                 prop_assert_eq!(&row.comment_id, &index.to_string());
-                prop_assert!(row.content.contains(&format!("Content {index}")));
+                let expected_content = format!("Content {index}");
+                prop_assert!(row.content.contains(&expected_content));
             }
         }
 

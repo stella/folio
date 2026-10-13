@@ -553,11 +553,12 @@ export async function attemptSelectiveSave(
     // previous part as-is) and round-trip back as phantom threads.
     const sourceCommentsFile = findZipEntryCaseInsensitive(zip, "word/comments.xml");
     const commentsPartPath = sourceCommentsFile?.name ?? "word/comments.xml";
-    const commentsUnchanged = sourceCommentsFile !== null && canReplayCommentsPart(doc);
+    const sourceCommentsXml = sourceCommentsFile
+      ? await sourceCommentsFile.async("text")
+      : undefined;
+    const commentsUnchanged =
+      sourceCommentsXml !== undefined && canReplayCommentsPart(doc, sourceCommentsXml);
     if (!commentsUnchanged && (hasComments || ownsCommentsPart || sourceCommentsFile)) {
-      const sourceCommentsXml = sourceCommentsFile
-        ? await sourceCommentsFile.async("text")
-        : undefined;
       const commentsXml = serializeComments(
         commentPlan,
         sourceCommentsXml === undefined ? undefined : readRootNamespaceBindings(sourceCommentsXml),
