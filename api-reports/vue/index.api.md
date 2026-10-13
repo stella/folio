@@ -151,6 +151,8 @@ import { PublicProps } from 'vue';
 import { Ref } from 'vue';
 import { RendererElement } from 'vue';
 import { RendererNode } from 'vue';
+import { ReplaceAllSummary } from '@stll/folio-core/utils/findReplace';
+import { ReplaceEligibility } from '@stll/folio-core/utils/findReplace';
 import { resetTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ResolvedAnchor } from '@stll/folio-core/ai-suggestions/conflict';
 import { resolveSuggestionAnchor } from '@stll/folio-core/ai-suggestions/conflict';
@@ -801,6 +803,10 @@ export type RenderAsyncOptions = Omit<DocxEditorProps, "documentBuffer" | "docum
     locale?: string;
     colorMode?: MaybeRefOrGetter<ColorMode>;
 };
+
+export { ReplaceAllSummary }
+
+export { ReplaceEligibility }
 
 export { resetTemplateSlashQuery }
 

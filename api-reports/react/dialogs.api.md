@@ -12,6 +12,7 @@ import { FindResult } from '@stll/folio-core/utils/findReplace';
 import { FootnoteProperties } from '@stll/folio-core/types/document';
 import { JSX } from 'react';
 import { default as React_2 } from 'react';
+import { ReplaceAllSummary } from '@stll/folio-core/utils/findReplace';
 import { SectionProperties } from '@stll/folio-core/types/document';
 import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
 import { Watermark } from '@stll/folio-core/watermark';
@@ -27,7 +28,8 @@ export type FindReplaceDialogProps = {
     onFindNext: () => FindMatch | null;
     onFindPrevious: () => FindMatch | null;
     onReplace: (replaceText: string) => boolean;
-    onReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => number;
+    onReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => ReplaceAllSummary;
+    readOnly?: boolean;
     onHighlightMatches?: (matches: FindMatch[]) => void;
     onClearHighlights?: () => void;
     initialSearchText?: string;

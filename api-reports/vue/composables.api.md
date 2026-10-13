@@ -40,6 +40,7 @@ import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRende
 import { ParsedClipboardContent } from '@stll/folio-core/utils/clipboard';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Ref } from 'vue';
+import { ReplaceAllSummary } from '@stll/folio-core/utils/findReplace';
 import { runsToClipboardContent } from '@stll/folio-core/utils/clipboard';
 import { ShallowRef } from 'vue';
 import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
@@ -214,6 +215,7 @@ export function useFindReplace(input: UseFindReplaceOptions): {
     matches: ShallowRef<FindMatch[], FindMatch[]>;
     currentIndex: Ref<number, number>;
     currentMatch: ComputedRef<FindMatch | null>;
+    canReplaceCurrent: ComputedRef<boolean>;
     performSearch: (cause?: "query" | "refresh") => FindMatch[];
     scheduleSearch: () => void;
     find: (text: string, nextOptions?: Partial<FindOptions>) => FindResult | null;
@@ -222,7 +224,7 @@ export function useFindReplace(input: UseFindReplaceOptions): {
     findNext: () => FindMatch | null;
     findPrevious: () => FindMatch | null;
     replaceCurrent: () => boolean;
-    replaceAll: () => number;
+    replaceAll: () => ReplaceAllSummary;
     clear: () => void;
 };
 

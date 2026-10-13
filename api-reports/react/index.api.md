@@ -153,6 +153,8 @@ import { default as React_2 } from 'react';
 import { ReactNode } from 'react';
 import { RefAttributes } from 'react';
 import { RefObject } from 'react';
+import { ReplaceAllSummary } from '@stll/folio-core/utils/findReplace';
+import { ReplaceEligibility } from '@stll/folio-core/utils/findReplace';
 import { resetTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ResolvedAnchor } from '@stll/folio-core/ai-suggestions/conflict';
 import { resolveSuggestionAnchor } from '@stll/folio-core/ai-suggestions/conflict';
@@ -575,7 +577,8 @@ export type FindReplaceDialogProps = {
     onFindNext: () => FindMatch | null;
     onFindPrevious: () => FindMatch | null;
     onReplace: (replaceText: string) => boolean;
-    onReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => number;
+    onReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => ReplaceAllSummary;
+    readOnly?: boolean;
     onHighlightMatches?: (matches: FindMatch[]) => void;
     onClearHighlights?: () => void;
     initialSearchText?: string;
@@ -934,6 +937,10 @@ export const renderAsync: (input: DocxInput, container: HTMLElement, options?: R
 export type RenderAsyncOptions = Omit<DocxEditorProps, "documentBuffer" | "document"> & {
     locale?: string;
 };
+
+export { ReplaceAllSummary }
+
+export { ReplaceEligibility }
 
 export { resetTemplateSlashQuery }
 

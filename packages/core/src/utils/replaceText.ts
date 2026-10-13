@@ -43,7 +43,7 @@ export function replaceTextInDocument(
       startOffset: start.offset,
       endOffset: end.offset,
       text,
-      formatting,
+      ...(formatting && { formatting }),
     });
   } else {
     const startParagraph = getParagraphByIndex(body, start.paragraphIndex);
@@ -57,7 +57,7 @@ export function replaceTextInDocument(
       startOffset: start.offset,
       endOffset: startText.length,
       text,
-      formatting,
+      ...(formatting && { formatting }),
     });
 
     const paragraphsToRemove: number[] = [];
@@ -205,7 +205,11 @@ const replaceTextInParagraph = ({
           const replacement: Run[] = [];
           if (before.length > 0) replacement.push({ ...item, content: before });
           if (text)
-            replacement.push({ type: "run", content: [{ type: "text", text }], formatting });
+            replacement.push({
+              type: "run",
+              content: [{ type: "text", text }],
+              ...(formatting && { formatting }),
+            });
           if (after.length > 0) replacement.push({ ...item, content: after });
           items.splice(itemIndex, 1, ...replacement);
           itemIndex += replacement.length - 1;

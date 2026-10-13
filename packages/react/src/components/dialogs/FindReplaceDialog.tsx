@@ -520,7 +520,10 @@ function FindReplaceDialogForm({
               </div>
               {replacementSummary && (
                 <div role="status" aria-live="polite" className="text-muted-foreground text-xs">
-                  {t("findReplace.replaceAllSummary", replacementSummary)}
+                  {t("findReplace.replaceAllSummary", {
+                    replacedCount: String(replacementSummary.replacedCount),
+                    skippedCount: String(replacementSummary.skippedCount),
+                  })}
                 </div>
               )}
             </div>
