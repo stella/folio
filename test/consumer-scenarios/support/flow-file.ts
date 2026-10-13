@@ -69,6 +69,10 @@ export type FlowStep = {
   operations?: Record<string, unknown>[];
   /** The core batch's atomicity, pinned independently of generator draws. */
   atomic?: boolean;
+  /** Explicit tool operation types for a suggest_changes step. */
+  operationTypes?: string[];
+  /** Require every pinned operation to apply, rather than just a nonempty batch. */
+  expectedApplied?: number;
 };
 
 export type FlowFile = {
@@ -112,8 +116,37 @@ const parseStep = (value: unknown, index: number): FlowStep => {
   ) {
     throw new TypeError(`flow step ${index}: atomic needs a core or story batch and a boolean`);
   }
+  const operationTypes = value["operationTypes"];
+  if (
+    operationTypes !== undefined &&
+    (action !== "suggest_changes" ||
+      !Array.isArray(operationTypes) ||
+      operationTypes.length === 0 ||
+      !operationTypes.every(
+        (type): type is string => typeof type === "string" && type.length > 0,
+      ) ||
+      new Set(operationTypes).size !== operationTypes.length)
+  )
+    throw new TypeError(
+      `flow step ${index}: operationTypes needs suggest_changes and distinct operation names`,
+    );
+  const expectedApplied = value["expectedApplied"];
+  if (
+    expectedApplied !== undefined &&
+    (action !== "suggest_changes" ||
+      typeof expectedApplied !== "number" ||
+      !Number.isSafeInteger(expectedApplied) ||
+      expectedApplied < 1)
+  )
+    throw new TypeError(
+      `flow step ${index}: expectedApplied needs suggest_changes and a positive integer`,
+    );
   const operations = value["operations"];
-  const batchOptions = atomic === undefined ? {} : { atomic };
+  const batchOptions = {
+    ...(atomic === undefined ? {} : { atomic }),
+    ...(operationTypes === undefined ? {} : { operationTypes }),
+    ...(expectedApplied === undefined ? {} : { expectedApplied }),
+  };
   if (operations === undefined) return { action, seed, ...batchOptions };
   if (
     !BATCH_ACTIONS.has(action) ||
