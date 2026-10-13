@@ -1,5 +1,13 @@
 # @stll/docx-core
 
+## 0.36.3
+
+### Patch Changes
+
+- [#1661](https://github.com/stella/folio/pull/1661) [`93bb3b8`](https://github.com/stella/folio/commit/93bb3b8a1b85c014c0e02b6d40b5f1d8384e53ce) Thanks [@dependabot](https://github.com/apps/dependabot)! - Regenerate the document kernel and text shaper bindings for updated Rust dependencies.
+
+- [#1662](https://github.com/stella/folio/pull/1662) [`2c966a4`](https://github.com/stella/folio/commit/2c966a474bf865013a5342ef0460b65f766ab2af) Thanks [@dependabot](https://github.com/apps/dependabot)! - Use the UTF-8 Quick-XML API while preserving namespace, text normalization, and Flat OPC projection behavior.
+
 ## 0.36.2
 
 ### Patch Changes

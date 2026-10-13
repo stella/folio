@@ -1,5 +1,33 @@
 # @stll/folio-core
 
+## 0.59.0
+
+### Minor Changes
+
+- [#1636](https://github.com/stella/folio/pull/1636) [`f0681f8`](https://github.com/stella/folio/commit/f0681f8330158505379e5ed8cc7c7b4c2c7eea76) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Breaking: preserve stated numbering references separately from style inheritance. Collaboration attr schema 13 refuses older snapshots with ambiguous numbering ownership; rebuild those snapshots from the saved DOCX.
+
+  Numbering requests now use named inherit, none, levelOnly, reference, or newList variants. Replace null cancellation with { kind: "none" }, and listLevel patches with levelOnly numbering. Read statedNumbering for authored state and listReference for effective membership; listLevel readback is removed.
+
+  Paragraph blocks require statedNumbering; diagnostic blocks expose no paragraph numbering or formatting. Narrow on block.kind before reading those fields.
+
+  Redline insertions import their referenced style closure and numbering through collision-safe resource owners while preserving stated inheritance. An unimportable resource closure raises GenerateRedlineDocxResourceImportError before any body operation, preserving the base document.
+
+  Source-undefined style references stay verbatim when also undefined in the base. Styles that would bind to an unrelated base definition are cleared and reported in referenceWarnings with their revised story position. Dangling numbering remains normalized to none by the existing parser, so inserted paragraphs stay unnumbered through save/reopen.
+
+  Breaking: undefinedStyles is replaced by the required undefinedReferences option, with no default or alias. Every execution caller must pass { undefinedReferences: "refuse" } for editing or { undefinedReferences: "keep" } for comparison/redline. Both reviewer methods and React/Vue operation refs require an explicit policy, applying it to style and numbering references alike.
+
+### Patch Changes
+
+- [#1679](https://github.com/stella/folio/pull/1679) [`d36befd`](https://github.com/stella/folio/commit/d36befdbb45512df0d6d8ad5f3d7d010233c00d9) Thanks [@0xRezaa](https://github.com/0xRezaa)! - Declare `y-protocols`, the peer dependency `y-prosemirror` imports, as a dependency.
+
+- [#1681](https://github.com/stella/folio/pull/1681) [`5933062`](https://github.com/stella/folio/commit/5933062abf4b6d45a630031c8f8d9d04297164c2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Refuse paragraph merges across preserved block boundaries before applying paragraph properties.
+
+- [#1661](https://github.com/stella/folio/pull/1661) [`93bb3b8`](https://github.com/stella/folio/commit/93bb3b8a1b85c014c0e02b6d40b5f1d8384e53ce) Thanks [@dependabot](https://github.com/apps/dependabot)! - Regenerate the document kernel and text shaper bindings for updated Rust dependencies.
+
+- [#1662](https://github.com/stella/folio/pull/1662) [`2c966a4`](https://github.com/stella/folio/commit/2c966a474bf865013a5342ef0460b65f766ab2af) Thanks [@dependabot](https://github.com/apps/dependabot)! - Use the UTF-8 Quick-XML API while preserving namespace, text normalization, and Flat OPC projection behavior.
+- Updated dependencies [[`93bb3b8`](https://github.com/stella/folio/commit/93bb3b8a1b85c014c0e02b6d40b5f1d8384e53ce), [`2c966a4`](https://github.com/stella/folio/commit/2c966a474bf865013a5342ef0460b65f766ab2af)]:
+  - @stll/docx-core@0.36.3
+
 ## 0.58.5
 
 ### Patch Changes
