@@ -42,6 +42,10 @@ const SOURCE_FIELDS = new Map(
     },
     warnings: { disposition: "exclude", reason: "Source parse diagnostics" },
     parseWarnings: { disposition: "exclude", reason: "Source parse diagnostics" },
+    modified: {
+      disposition: "exclude",
+      reason: "Package save bookkeeping; revision dates remain strict",
+    },
     originalBuffer: { disposition: "exclude", reason: "Original ZIP replay source" },
     verbatimXml: { disposition: "exclude", reason: "Replay bytes for a modeled carrier" },
     verbatimFingerprint: { disposition: "exclude", reason: "Replay cache validity" },
@@ -86,57 +90,75 @@ const hasModeledComments = (value: object): boolean => {
 
 /** One strict modeled-document projection, including nested part collections. */
 export const canonicalReviewModel = (
-  value: unknown,
+  model: unknown,
   aliases: ReadonlyMap<string, string> = new Map(),
 ): unknown => {
-  if (Array.isArray(value)) return value.map((entry) => canonicalReviewModel(entry, aliases));
-  if (value instanceof Map)
-    return new Map([...value].map(([key, entry]) => [key, canonicalReviewModel(entry, aliases)]));
-  if (value instanceof Set)
-    return new Set([...value].map((entry) => canonicalReviewModel(entry, aliases)));
-  if (value === null || typeof value !== "object") return value;
-  if (Object.getPrototypeOf(value) !== Object.prototype) return value;
-  for (const symbol of Object.getOwnPropertySymbols(value))
-    assert.ok(
-      symbol.description && Object.hasOwn(SOURCE_SYMBOLS, symbol.description),
-      `Unclassified model capture symbol: ${String(symbol)}`,
-    );
-  const entries: [string, unknown][] = [];
-  for (const [key, entry] of Object.entries(value)) {
-    const field = SOURCE_FIELDS.get(key);
-    if (field) {
-      if (field.disposition === "exclude") continue;
-    } else {
+  const project = (current: unknown, modelPath: string): unknown => {
+    const value = current;
+    if (Array.isArray(value))
+      return value.map((entry, index) => project(entry, `${modelPath}/${index}`));
+    if (value instanceof Map)
+      return new Map(
+        [...value].map(([key, entry]) => [key, project(entry, `${modelPath}/${String(key)}`)]),
+      );
+    if (value instanceof Set) return new Set([...value].map((entry) => project(entry, modelPath)));
+    if (value === null || typeof value !== "object") return value;
+    if (Object.getPrototypeOf(value) !== Object.prototype) return value;
+    for (const symbol of Object.getOwnPropertySymbols(value))
       assert.ok(
-        !/capture|verbatim|namespace(?:Declarations|Bindings)|source.*(?:Xml|Token|Fingerprint)|fingerprint/i.test(
-          key,
-        ),
-        `Unclassified model capture field: ${key}`,
+        symbol.description && Object.hasOwn(SOURCE_SYMBOLS, symbol.description),
+        `Unclassified model capture symbol: ${String(symbol)}`,
       );
+    const entries: [string, unknown][] = [];
+    for (const [key, entry] of Object.entries(value)) {
+      const field = SOURCE_FIELDS.get(key);
+      if (field) {
+        if (field.disposition === "exclude") continue;
+      } else {
+        assert.ok(
+          !/capture|verbatim|namespace(?:Declarations|Bindings)|source.*(?:Xml|Token|Fingerprint)|fingerprint/i.test(
+            key,
+          ),
+          `Unclassified model capture field: ${key}`,
+        );
+      }
+      if (entry === undefined) continue;
+      if (key === "relationships" && entry instanceof Map && !hasModeledComments(value)) {
+        const meaningful = new Map(
+          [...entry].filter(
+            ([, relationship]) =>
+              typeof relationship !== "object" ||
+              relationship === null ||
+              !("type" in relationship) ||
+              typeof relationship.type !== "string" ||
+              !EMPTY_PART_RELATIONSHIPS.has(relationship.type),
+          ),
+        );
+        entries.push([key, project(meaningful, `${modelPath}/${key}`)]);
+        continue;
+      }
+      entries.push([
+        key,
+        key === "paraId" && typeof entry === "string"
+          ? (aliases.get(entry) ?? entry)
+          : project(entry, `${modelPath}/${key}`),
+      ]);
     }
-    if (entry === undefined) continue;
-    if (key === "relationships" && entry instanceof Map && !hasModeledComments(value)) {
-      const meaningful = new Map(
-        [...entry].filter(
-          ([, relationship]) =>
-            typeof relationship !== "object" ||
-            relationship === null ||
-            !("type" in relationship) ||
-            typeof relationship.type !== "string" ||
-            !EMPTY_PART_RELATIONSHIPS.has(relationship.type),
-        ),
-      );
-      entries.push([key, canonicalReviewModel(meaningful, aliases)]);
-      continue;
+    const projected = Object.fromEntries(entries);
+    if (
+      "type" in value &&
+      value.type === "paragraph" &&
+      (!("paraId" in value) ||
+        value.paraId === undefined ||
+        (typeof value.paraId === "string" && aliases.has(value.paraId)))
+    ) {
+      // Only identities explicitly declared positional by the shared row pairing
+      // may be regenerated. Authored paragraph ids remain unchanged and strict.
+      projected["paraId"] = `\u0000model:${modelPath}`;
     }
-    entries.push([
-      key,
-      key === "paraId" && typeof entry === "string"
-        ? (aliases.get(entry) ?? entry)
-        : canonicalReviewModel(entry, aliases),
-    ]);
-  }
-  return Object.fromEntries(entries);
+    return projected;
+  };
+  return project(model, "");
 };
 
 type ReviewRoundTripOptions = { live: ReviewSource; reopened: ReviewSource; context: string };

@@ -1,3 +1,4 @@
+import { buildSections } from "../docx/documentParser";
 import { getHeaderFooterText, getEndnoteText, getFootnoteText } from "../docx/storyPlainText";
 import JSZip from "jszip";
 import { classifyResourceReference } from "./referenceClassification";
@@ -2865,6 +2866,11 @@ export class FolioDocxReviewer {
     });
     if (snapshot.finalSectionPropertiesOverride !== undefined) {
       document.package.document.finalSectionProperties = snapshot.finalSectionPropertiesOverride;
+      if (document.package.document.sections !== undefined)
+        document.package.document.sections = buildSections(
+          document.package.document.content,
+          snapshot.finalSectionPropertiesOverride,
+        );
     }
     if (snapshot.importedStyles !== undefined) document.package.styles = snapshot.importedStyles;
     if (snapshot.importedMedia.size > 0)

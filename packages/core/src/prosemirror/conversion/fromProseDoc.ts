@@ -36,6 +36,7 @@ import {
   isStyleSourcedParagraphNumbering,
   modelParagraphFormattingEmission,
 } from "../../internal/paragraphFormattingSerialization";
+import { buildSections } from "../../docx/documentParser";
 import { getDocumentSourceStyles } from "../../docx/headerFooterVerbatim";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
@@ -930,7 +931,7 @@ export function fromProseDoc(
     documentBody.finalSectionProperties = baseDocument.package.document.finalSectionProperties;
   }
   if (baseDocument?.package.document.sections) {
-    documentBody.sections = baseDocument.package.document.sections;
+    documentBody.sections = buildSections(blocks, documentBody.finalSectionProperties);
   }
   if (baseDocument?.package.document.comments) {
     documentBody.comments = baseDocument.package.document.comments;

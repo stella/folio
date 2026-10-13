@@ -282,3 +282,17 @@ test("round-trip comparison detects changed header text with unchanged revision 
     /accept-all document differs/,
   );
 });
+
+test("model projection keeps authored identities and revision dates strict", () => {
+  const absent = [{ type: "paragraph", content: [] }];
+  const generated = [{ type: "paragraph", paraId: "412DDC7F", content: [] }];
+  assert.deepEqual(
+    canonicalReviewModel(absent),
+    canonicalReviewModel(generated, new Map([["412DDC7F", "\u0000position:0"]])),
+  );
+  assert.notDeepEqual(canonicalReviewModel(absent), canonicalReviewModel(generated));
+  assert.notDeepEqual(
+    canonicalReviewModel({ info: { date: "2026-01-01" } }),
+    canonicalReviewModel({ info: { date: "2026-01-02" } }),
+  );
+});
