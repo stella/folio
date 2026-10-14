@@ -142,6 +142,65 @@ const resolveAll = async (
 };
 
 describe("tracked run inline atom ownership", () => {
+  // The previous atom generator covered visible breaks/tabs only. Cached
+  // pagination marks also occupy a source run and must retain every revision
+  // kind through the editor-model fixed point.
+  test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(
+    "retains %s ownership of a zero-text cached pagination mark",
+    async (type) => {
+      const source = withMainContent([
+        {
+          type: "paragraph",
+          content: [
+            { type: "run", content: [{ type: "text", text: "A" }] },
+            {
+              type,
+              info: REVISION_INFO,
+              content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
+            },
+            { type: "run", content: [{ type: "text", text: "B" }] },
+          ],
+        },
+      ]);
+      const projected = toProseDoc(source);
+      const marks: string[] = [];
+      projected.descendants((node) => {
+        if (node.type.name === "renderedPageBreak") {
+          for (const mark of node.marks) marks.push(mark.type.name);
+        }
+      });
+      const markNames = {
+        insertion: "insertion",
+        deletion: "deletion",
+        moveFrom: "deletion",
+        moveTo: "insertion",
+      } as const satisfies Record<TrackedRunChange["type"], string>;
+      expect(marks).toContain(markNames[type]);
+      const roundTrip = fromProseDoc(projected, source, { stylesheetSource: { type: "package" } });
+      const paragraph = roundTrip.package.document.content.at(0);
+      expect(paragraph?.type).toBe("paragraph");
+      if (paragraph?.type !== "paragraph") throw new TypeError("Paragraph projection is missing");
+      expect(paragraph.content).toContainEqual({
+        type,
+        info: REVISION_INFO,
+        content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
+      });
+      const xml = await documentXml(await createDocx(roundTrip));
+      const tags = {
+        insertion: "ins",
+        deletion: "del",
+        moveFrom: "moveFrom",
+        moveTo: "moveTo",
+      } as const satisfies Record<TrackedRunChange["type"], string>;
+      const tag = tags[type];
+      expect(xml).toMatch(
+        new RegExp(
+          `<w:${tag}\\b[^>]*>[\\s\\S]*?<w:lastRenderedPageBreak\\s*/>[\\s\\S]*?</w:${tag}>`,
+          "u",
+        ),
+      );
+    },
+  );
   test("classifies every inline atom exposed by the editor schema", () => {
     const schemaAtoms = Object.values(schema.nodes)
       .filter((node) => node.isInline && node.isAtom)
