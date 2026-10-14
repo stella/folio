@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 1026397480,
+  "steps": [
+    {
+      "action": "add_comment",
+      "seed": 202738219
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1146703574,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 35,
+            "endOffset": 42,
+            "selectedTextHash": "h7ptyo8"
+          },
+          "comment": {
+            "text": "Agreement delivery term warranty agreement invoice payment schedule."
+          }
+        }
+      ]
+    },
+    {
+      "action": "save and reopen",
+      "seed": 2850386993
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1586715653,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "3CEFFC83",
+          "text": "Goods agreement goods buyer supplier agreement payment goods."
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "31617F9A",
+          "offset": 49
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from random flow seed 1026397480",
+  "title": "PINNED #1379 fa1357188a96bc51, reported seed 1026397480: reader projection survives save"
+}
