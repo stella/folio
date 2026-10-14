@@ -7,6 +7,7 @@ import { panic } from "better-result";
 import { act, createRef, useImperativeHandle, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { EditorState } from "prosemirror-state";
+import { DISPLAY_MODES } from "@stll/folio-core/managers/EditorModeManager";
 import type {
   DisplayMode,
   EditorReadOnlyReason,
@@ -34,6 +35,69 @@ type FindHarnessRef = {
   operations: ReturnType<typeof useFindReplace>;
   matches: FindMatch[];
 };
+
+test.each(DISPLAY_MODES.filter((mode) => mode !== "all-markup"))(
+  "initial %s searches defer until the lazy body editor has a state",
+  async (markupView) => {
+    const revisionAttrs = { revisionId: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
+    const insertion = (schema.marks["insertion"] ?? panic("Missing insertion mark")).create(
+      revisionAttrs,
+    );
+    const deletion = (schema.marks["deletion"] ?? panic("Missing deletion mark")).create(
+      revisionAttrs,
+    );
+    const state = EditorState.create({
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("inserted", [insertion]),
+          schema.text(" deleted", [deletion]),
+          schema.text(" kept"),
+        ]),
+      ]),
+    });
+    const fixture = createEmptyDocument({ initialText: "inserted deleted kept" });
+    const hiddenQueries = {
+      "all-markup": null,
+      "simple-markup": "deleted",
+      "no-markup": "deleted",
+      original: "inserted",
+    } as const satisfies Record<DisplayMode, string | null>;
+    const hiddenQuery = hiddenQueries[markupView];
+    let editorState: EditorState | null = null;
+    const ref = createRef<FindHarnessRef>();
+    const Harness = () => {
+      const findReplace = useFindDialogState();
+      const containerRef = useRef<HTMLDivElement>(null);
+      const operations = useFindReplace({
+        documentState: fixture,
+        getEditorState: () => editorState,
+        markupView,
+        containerRef,
+        handleDocumentChange: noop,
+        findReplace,
+      });
+      useImperativeHandle(ref, () => ({ operations, matches: findReplace.state.matches }));
+      return null;
+    };
+    const root = createRoot(document.createElement("div"));
+    const getOperations = () => ref.current?.operations ?? panic("Find hook handle missing");
+    try {
+      await act(async () => root.render(<Harness />));
+      await act(async () => {
+        expect(getOperations().handleFind(hiddenQuery, options)).toBeNull();
+      });
+      expect(ref.current?.matches).toEqual([]);
+      expect(getOperations().handleFindNext()).toBeNull();
+      editorState = state;
+      await act(async () => {
+        expect(getOperations().handleFind(hiddenQuery, options)?.totalCount).toBe(0);
+        expect(getOperations().handleFind("kept", options)?.totalCount).toBe(1);
+      });
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);
 
 test("query and document resets clear manager navigation, reactive result, and dialog matches together", async () => {
   const ref = createRef<FindHarnessRef>();

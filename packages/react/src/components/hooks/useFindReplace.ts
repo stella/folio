@@ -127,14 +127,20 @@ export function useFindReplace({
         return null;
       }
 
-      activeSearch.current = { searchText, options };
       const editorState = getEditorState?.();
-      const matches =
-        editorState && markupView !== "all-markup"
-          ? findInMarkupView({ state: editorState, markupView, searchText, options }).map(
-              toEditorFindMatch,
-            )
-          : findInDocument(currentDocument, searchText, options);
+      let matches: FindMatch[];
+      if (markupView === "all-markup") {
+        matches = findInDocument(currentDocument, searchText, options);
+      } else {
+        if (!editorState) {
+          resetFindResult();
+          return null;
+        }
+        matches = findInMarkupView({ state: editorState, markupView, searchText, options }).map(
+          toEditorFindMatch,
+        );
+      }
+      activeSearch.current = { searchText, options };
       const result = manager.setMatches(matches);
       setCurrentResult(result);
       setMatches(matches, 0);

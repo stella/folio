@@ -1,3 +1,4 @@
+import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 /**
  * Regression coverage for the layout pipeline's commit-vs-discard contract.
  *
@@ -694,6 +695,62 @@ describe("runLayoutPipeline", () => {
     expect(findStyleToggleRun(outcome.blocks ?? [])).toMatchObject(
       EXPECTED_CANCELLED_STYLE_TOGGLES,
     );
+    expect(layoutErrors).toHaveLength(0);
+  });
+
+  test.each(["no-markup", "original"] as const)("forwards %s to note measurement", (markupView) => {
+    const document = createEmptyDocument();
+    const noteDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("inserted", [schema.mark("insertion", { revisionId: 1 })]),
+        schema.text("deleted", [schema.mark("deletion", { revisionId: 2 })]),
+      ]),
+    ]);
+    document.package.footnotes = [
+      {
+        type: "footnote",
+        id: 1,
+        noteType: "normal",
+        content: proseDocToBlocks(noteDoc, []),
+      },
+    ];
+    const state = EditorState.create({
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("Body"),
+          schema.text("1", [
+            schema.mark("footnoteRef", {
+              occurrenceId: "fixture-note",
+              id: "1",
+              noteType: "footnote",
+            }),
+          ]),
+        ]),
+      ]),
+    });
+    let captured: Map<number, FootnoteContent> | undefined;
+    runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document,
+        markupView,
+        painter: new LayoutPainter(),
+        pagesContainer: asContainer(fakeDocument.createElement("div")),
+        buildFootnoteRenderItems: (_pageMap, contentMap) => {
+          captured = contentMap;
+          return new Map();
+        },
+      }),
+      state,
+    );
+    const text = captured
+      ?.get(1)
+      ?.blocks.flatMap((block) =>
+        block.kind === "paragraph"
+          ? block.runs.map((run) => (run.kind === "text" ? run.text : ""))
+          : [],
+      )
+      .join("");
+    expect(text).toBe(markupView === "original" ? "1 deleted" : "1 inserted");
     expect(layoutErrors).toHaveLength(0);
   });
 

@@ -947,7 +947,7 @@ function runLayoutPipelineMeasured<THfPMs>(
     } => {
       const noteOptions: Parameters<typeof buildFootnoteContentMap>[3] & {
         measureBlocks: MeasureBlocksFn;
-      } = { measureBlocks, showCommentHighlights: displayCommentHighlights };
+      } = { measureBlocks, showCommentHighlights: displayCommentHighlights, markupView };
       if (flowOpts.styles) {
         noteOptions.styles = flowOpts.styles;
       }

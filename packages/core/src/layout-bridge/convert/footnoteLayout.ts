@@ -26,6 +26,9 @@ import {
   FOOTNOTE_FALLBACK_LINE_HEIGHT,
   FOOTNOTE_SEPARATOR_HEIGHT,
 } from "../../layout-engine/types";
+import type { DisplayMode } from "../../managers/EditorModeManager";
+import { projectStoryMarkupView } from "../../prosemirror/markupViewProjection";
+import { remapMarkupViewBlocks } from "./markupViewFlow";
 import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type {
   Endnote,
@@ -51,6 +54,7 @@ export type MeasureBlocksFn = (blocks: FlowBlock[], contentWidth: number) => Mea
 export type ConvertFootnoteOptions = Pick<ToFlowBlocksOptions, "embeddedFontFamilyMap"> & {
   /** Whether comment highlights are painted. Defaults to true. */
   showCommentHighlights?: boolean;
+  markupView?: DisplayMode;
   styles?: StyleDefinitions | null;
   numbering?: NumberingDefinitions;
   theme?: Theme | null;
@@ -368,7 +372,10 @@ export function convertNoteStoryToFlowBlocks(
   }
   const pmDoc = footnoteToProseDoc(content, proseOptions);
   const flowOptions: Parameters<typeof toFlowBlocks>[1] = {
-    showCommentHighlights: options.showCommentHighlights ?? true,
+    showCommentHighlights:
+      options.showCommentHighlights !== false &&
+      options.markupView !== "no-markup" &&
+      options.markupView !== "original",
   };
   if (options.defaultSize !== undefined) {
     flowOptions.defaultSize = options.defaultSize;
@@ -402,11 +409,21 @@ export function convertNoteStoryToFlowBlocks(
   }
   // The story's own `w:footnoteRef` shows the number where it sits; only a
   // story without one gets a number put in front of its first paragraph.
-  const hasReferenceMark = containsNoteReferenceMark(pmDoc);
+  const projection = projectStoryMarkupView({
+    doc: pmDoc,
+    markupView: options.markupView ?? "all-markup",
+    styles: options.styles,
+    numbering: options.numbering,
+  });
+  const viewDoc = projection.type === "resolved" ? projection.doc : pmDoc;
+  const hasReferenceMark = containsNoteReferenceMark(viewDoc);
   if (hasReferenceMark && referenceMarkText !== undefined) {
     flowOptions.noteReferenceMarkText = referenceMarkText;
   }
-  const flowBlocks = preserveAuthoredFootnoteTerminalParagraph(toFlowBlocks(pmDoc, flowOptions));
+  const converted = toFlowBlocks(viewDoc, flowOptions);
+  const flowBlocks = preserveAuthoredFootnoteTerminalParagraph(
+    projection.type === "resolved" ? remapMarkupViewBlocks(converted, projection) : converted,
+  );
   return { flowBlocks, hasReferenceMark };
 }
 

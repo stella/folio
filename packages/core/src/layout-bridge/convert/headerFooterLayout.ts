@@ -19,12 +19,9 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
 
 import type { DisplayMode } from "../../managers/EditorModeManager";
-import { projectMarkupView } from "../../prosemirror/markupViewProjection";
-import { createDocumentStyleContextPlugin } from "../../prosemirror/plugins/documentStyles";
-import { createDocumentNumberingPlugin } from "../../prosemirror/plugins/documentNumbering";
+import { projectStoryMarkupView } from "../../prosemirror/markupViewProjection";
 import { remapMarkupViewBlocks } from "./markupViewFlow";
 
 import type {
@@ -808,34 +805,6 @@ export function convertHeaderFooterToContent(
 // 5. PM doc source (persistent hidden HF EditorView path)
 // =============================================================================
 
-type HeaderFooterProjectionState = {
-  styles: ConvertHeaderFooterOptions["styles"];
-  numbering: ConvertHeaderFooterOptions["numbering"];
-  state: EditorState;
-};
-
-const headerFooterProjectionStates = new WeakMap<PMNode, HeaderFooterProjectionState>();
-
-const headerFooterProjectionState = (pmDoc: PMNode, options: ConvertHeaderFooterOptions) => {
-  const cached = headerFooterProjectionStates.get(pmDoc);
-  if (cached && cached.styles === options.styles && cached.numbering === options.numbering) {
-    return cached.state;
-  }
-  const state = EditorState.create({
-    doc: pmDoc,
-    plugins: [
-      createDocumentStyleContextPlugin(options.styles),
-      createDocumentNumberingPlugin(options.numbering),
-    ],
-  });
-  headerFooterProjectionStates.set(pmDoc, {
-    styles: options.styles,
-    numbering: options.numbering,
-    state,
-  });
-  return state;
-};
-
 /**
  * Same as {@link convertHeaderFooterToContent}, but sourced from a live
  * ProseMirror document instead of `HeaderFooter.content`. Used by the
@@ -893,14 +862,16 @@ export function convertHeaderFooterPmDocToContent(
     flowOptions.automaticHyphenation = options.automaticHyphenation;
   }
   const markupView = options.markupView ?? "all-markup";
-  const projection =
-    markupView === "all-markup"
-      ? undefined
-      : projectMarkupView(headerFooterProjectionState(pmDoc, options), markupView);
-  const viewDoc = projection?.type === "resolved" ? projection.doc : pmDoc;
+  const projection = projectStoryMarkupView({
+    doc: pmDoc,
+    markupView,
+    styles: options.styles,
+    numbering: options.numbering,
+  });
+  const viewDoc = projection.type === "resolved" ? projection.doc : pmDoc;
   const flowBlocks = toFlowBlocks(viewDoc, flowOptions);
   const blocks =
-    projection?.type === "resolved" ? remapMarkupViewBlocks(flowBlocks, projection) : flowBlocks;
+    projection.type === "resolved" ? remapMarkupViewBlocks(flowBlocks, projection) : flowBlocks;
   return finalizeHeaderFooterContent(blocks, contentWidth, metrics, options);
 }
 
