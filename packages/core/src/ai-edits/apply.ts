@@ -3151,10 +3151,10 @@ const withRetiredFinalParagraphs = ({
 /**
  * Move an ADDED paragraph break off every paragraph its container ends with.
  *
- * A container's final mark carries no revision in either direction: nothing
- * follows it, so "join this paragraph with the one after it" and its mirror
- * both state an edit that cannot be carried out, and a reader is left with a
- * revision neither accepting nor rejecting everything can clear.
+ * Prefer a preceding carrier so rejection can join the inserted content back
+ * over its added boundary. When no carrier is free, the insertion keeps its
+ * own mark: the resolver can remove that whole paragraph when its text is
+ * rejected, while a markless empty paragraph would have no insertion owner.
  *
  * Appending at a container's end therefore rotates exactly as removing from it
  * does. The first inserted break moves onto the paragraph the run was appended
@@ -3287,9 +3287,9 @@ const withRotatedAddedFinalBreaks = ({
     const resolved = next.doc.resolve(finalPosition);
     const carrier = finalBreakCarrierBefore(resolved, final.type.name, batchRevisionIds);
     if (!carrier) {
-      // Nothing to hand the break to. Writing it would be worse than losing
-      // it: the redline would carry a revision no reader can resolve.
-      next = next.setNodeAttribute(finalPosition, "pPrMark", null);
+      // A deleted boundary or an existing table can block rotation. Keep the
+      // insertion's own mark: rejecting it removes the emptied final paragraph,
+      // while clearing it here would erase the fact that the paragraph was new.
       continue;
     }
 
@@ -3307,8 +3307,7 @@ const withRotatedAddedFinalBreaks = ({
       }
     }
     if (path.at(-1)?.position !== carrier.position) {
-      next = next.setNodeAttribute(finalPosition, "pPrMark", null);
-      continue;
+      panic("A final-mark rotation lost its carrier", { finalPosition, carrier: carrier.position });
     }
     if (
       path.slice(0, -1).some(({ node }) => {
