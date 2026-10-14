@@ -223,6 +223,7 @@ jobs:
     if: ${{ inputs.long_flows }}
     permissions:
       contents: read
+      issues: write
     uses: ./.github/workflows/nightly-long-fuzz.yml
 
   public-corpus-flows:

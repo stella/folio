@@ -1,5 +1,17 @@
 # @stll/docx-core
 
+## 0.37.0
+
+### Minor Changes
+
+- [#1684](https://github.com/stella/folio/pull/1684) [`19a80db`](https://github.com/stella/folio/commit/19a80db2fd8b3bc2e32f04586c12c63a36521d59) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve input boundaries and surviving paragraph properties, preserve prose formatting toggles, and coalesce pending run formatting revisions.
+
+### Patch Changes
+
+- [#1703](https://github.com/stella/folio/pull/1703) [`e03e0ec`](https://github.com/stella/folio/commit/e03e0ec4ff4185a8f15f7dc5aad513f7e6b72588) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep retained revision identities aligned when pending run formatting is replaced.
+
+- [#1697](https://github.com/stella/folio/pull/1697) [`73ec846`](https://github.com/stella/folio/commit/73ec846b9193c5d522b1d263f8813ed36fd099fa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Open documents with repeated bookmark IDs and report imported identity collisions.
+
 ## 0.36.3
 
 ### Patch Changes

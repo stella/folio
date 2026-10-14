@@ -104,22 +104,19 @@ test("nightly explicitly executes both lanes and keeps logs for issue filing", (
   if (!record(report)) throw new Error("Missing issue reporter");
   expect(report["permissions"]).toEqual({ contents: "read", issues: "write" });
   expect(report["if"]).toContain("github.ref == 'refs/heads/main'");
-  expect(report["concurrency"]).toEqual({
-    group: "fuzz-failure-issues",
-    "cancel-in-progress": false,
+  expect(report["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
+  expect(report["with"]).toEqual({
+    "artifact-pattern": "browser-input-fuzzer",
+    "log-pattern": "**/fuzz-artifacts/canonical/*.log",
   });
-  const filing = stepsOf(report).find((step) =>
-    String(step["run"] ?? "").includes("scripts/fuzz-failure-issues.ts"),
-  );
-  expect(filing?.["run"]).toContain("fuzz-results/fuzz-artifacts/canonical/canonical-fuzz.log");
   const browserReport = jobs["report"];
   if (!record(browserReport)) throw new Error("Missing browser issue reporter");
-  const browserFiling = stepsOf(browserReport).find((step) =>
-    String(step["run"] ?? "").includes("scripts/fuzz-failure-issues.ts"),
-  );
-  expect(browserFiling?.["run"]).toContain("fuzz-results/fuzz-artifacts/browser/browser-fuzz.log");
+  expect(browserReport["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
+  expect(browserReport["with"]).toEqual({
+    "artifact-pattern": "browser-input-fuzzer",
+    "log-pattern": "**/fuzz-artifacts/browser/*.log",
+  });
   expect(report["if"]).toContain("outputs.canonical_findings == 'true'");
-  expect(filing?.["run"]).toContain("--records fuzz-results/fuzz-artifacts/canonical/findings");
 });
 
 test("all nightly evidence survives Playwright output cleanup and is uploaded", () => {
