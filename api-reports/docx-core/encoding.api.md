@@ -36,6 +36,9 @@ export const encodeBinaryString: (text: string) => Uint8Array<ArrayBuffer>;
 export const encodeUtf16BE: (text: string) => Uint8Array<ArrayBuffer>;
 
 // @public
+export const encodeUtf16LE: (text: string) => Uint8Array<ArrayBuffer>;
+
+// @public
 export const encodeUtf8: (text: string) => Uint8Array<ArrayBuffer>;
 
 // @public

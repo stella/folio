@@ -547,7 +547,9 @@ const findTruncations = (input: string, file = "fixture.ts"): Violation[] => {
   };
   const isInspection = (node: ts.Node): boolean => {
     // Numeric and regexp predicates inspect units; they do not emit clipped text.
-    const parent = node.parent;
+    let parent = node.parent;
+    while (ts.isNonNullExpression(parent) || ts.isParenthesizedExpression(parent))
+      parent = parent.parent;
     if (!ts.isCallExpression(parent)) return false;
     if (numericCall(parent)) return true;
     if (ts.isIdentifier(parent.expression) && inspectors.has(bindingOf(parent.expression)))
@@ -834,6 +836,7 @@ describe("text truncation boundaries", () => {
       "text.slice(0, text.length - 2)",
       "if (text.endsWith('👩')) return text.slice(0, -1);",
       "const emit = { test: (text: string) => text }; emit.test(text.slice(0, 40));",
+      "const expand = (part: string) => part; expand(text[0]!);",
       "const Number = { parseInt: (text: string) => text }; Number.parseInt(text.slice(0, 2), 16);",
       "const { slice: cut } = text; const alias = cut; alias(0, LIMIT);",
       "const cut = text.slice.bind(text); cut(0, PREVIEW_LIMIT);",
@@ -884,6 +887,7 @@ describe("text truncation boundaries", () => {
       "const name = /x/u.exec(text); if (name) name[0];",
       "for (const name of text.matchAll(/x/gu)) name[0];",
       "const expand = (part: string): number => Number.parseInt(part.repeat(2), 16); expand(text[0]);",
+      "const expand = (part: string): number => Number.parseInt(part.repeat(2), 16); expand(text[0]!);",
       "Number.parseFloat(text.slice(0, -1));",
     ];
     for (const fixture of fixtures)
