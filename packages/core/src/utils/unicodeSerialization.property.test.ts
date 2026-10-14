@@ -218,32 +218,44 @@ const serializers = {
   },
 } satisfies Record<string, SerializerCase>;
 
-// Register directly from the census so each producer has its own timeout budget.
-// Keep the shared property ID: every producer replays the existing pinned inputs.
+// Bound each test's work without reducing the census, generated runs, or pinned replays.
+const MAX_BOUNDARY_CASES_PER_TEST = 5;
+const boundaryCaseCount = boundaryTextCases("", "").length;
+const caseStarts = Array.from({ length: boundaryCaseCount }, (_, index) => index).filter(
+  (index) => index % MAX_BOUNDARY_CASES_PER_TEST === 0,
+);
+
+// Keep the shared property ID: every producer and case group replays the pinned inputs.
 for (const [name, serializer] of Object.entries(serializers)) {
-  test(`${name} retains Unicode across byte and buffer boundaries`, async () => {
-    await assertProperty(
-      fc.asyncProperty(
-        astralText,
-        fc.array(astralText, { maxLength: 4 }),
-        async (astral, suffixPoints) => {
-          const suffix = suffixPoints.join("");
-          for (const { boundary, text } of boundaryTextCases(astral, suffix)) {
-            const paragraph: Paragraph = {
-              type: "paragraph",
-              paraId: "00000001",
-              content: [{ type: "run", content: [{ type: "text", text }] }],
-            };
-            const document: Document = { package: { document: { content: [paragraph] } } };
-            await assertTextRoundTrip({
-              text,
-              roundTrip: (value) => roundTripText(value, boundary),
-            });
-            await serializer(text, document, paragraph, boundary);
-          }
-        },
-      ),
-      { numRuns: 3, id: "document serializers retain Unicode across byte boundaries" },
-    );
-  });
+  for (const caseStart of caseStarts) {
+    test(`${name} retains Unicode across byte and buffer boundaries (cases ${caseStart})`, async () => {
+      await assertProperty(
+        fc.asyncProperty(
+          astralText,
+          fc.array(astralText, { maxLength: 4 }),
+          async (astral, suffixPoints) => {
+            const cases = boundaryTextCases(astral, suffixPoints.join(""));
+            expect(cases).toHaveLength(boundaryCaseCount);
+            for (const { boundary, text } of cases.slice(
+              caseStart,
+              caseStart + MAX_BOUNDARY_CASES_PER_TEST,
+            )) {
+              const paragraph: Paragraph = {
+                type: "paragraph",
+                paraId: "00000001",
+                content: [{ type: "run", content: [{ type: "text", text }] }],
+              };
+              const document: Document = { package: { document: { content: [paragraph] } } };
+              await assertTextRoundTrip({
+                text,
+                roundTrip: (value) => roundTripText(value, boundary),
+              });
+              await serializer(text, document, paragraph, boundary);
+            }
+          },
+        ),
+        { numRuns: 3, id: "document serializers retain Unicode across byte boundaries" },
+      );
+    });
+  }
 }
