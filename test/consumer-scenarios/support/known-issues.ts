@@ -60,6 +60,7 @@ export const KNOWN_FAILING_FLOWS: readonly {
   seed: number;
   steps: number;
   finding: Finding;
+  reason: string;
   /** The flow kind (support/fuzz.ts); `"random"` when absent. */
   kind?: "random" | "collisions";
   /** The generation (support/fuzz.ts); `"targeted"` when absent. */
@@ -67,13 +68,20 @@ export const KNOWN_FAILING_FLOWS: readonly {
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
 }[] = [
-  { seed: 18568230, steps: 16, finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES" },
+  {
+    seed: 18568230,
+    steps: 16,
+    finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
+    reason: "a tracked merge targets the block another operation in the batch deletes",
+  },
   {
     seed: 1775378339,
     steps: 16,
     kind: "collisions",
     relation: "rejectAll",
     finding: "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",
+    reason:
+      "8fb63686fc7e333f / b9427f6237682398: rejectAll leaves an empty inserted note paragraph; remove this marker with the note rejection fix",
   },
 ];
 
