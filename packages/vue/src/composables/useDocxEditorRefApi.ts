@@ -97,6 +97,11 @@ import {
   resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
+import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 
 type LiveDocumentOperationUndoEntry = {
@@ -136,6 +141,7 @@ export const applyWithStagedOperationComments = <
 };
 
 export type UseDocxEditorRefApiOptions = {
+  getReadOnlyReason?: () => EditorReadOnlyReason | null;
   /** Headless controller handle (imperative API + events; Seam 6). */
   editor: FolioEditor;
   /** Off-screen ProseMirror EditorView, or null before mount. */
@@ -160,6 +166,7 @@ export type UseDocxEditorRefApiOptions = {
   clearCommentsDirty: () => void;
   /** Computed page layout, or null before first paint. */
   layout: Ref<Layout | null>;
+  markupView?: Readonly<Ref<DisplayMode>>;
   /** Painted pages container (the `HTMLDivElement` the painter writes into). */
   pagesRef: Ref<HTMLElement | null>;
   /** Scroll root wrapping the full painted editor area. */
@@ -879,6 +886,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const view = opts.editorView.value;
       return view ? getCommentAnchorsFromDoc(view.state.doc) : [];
     },
+    getReadOnlyReason: () => opts.getReadOnlyReason?.() ?? null,
     getSelectionText: () => {
       const view = opts.editorView.value;
       return view ? getSelectedText(view.state) : "";
@@ -888,7 +896,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (!view) {
         return null;
       }
-      return getPageTextFromLayout(opts.layout.value, view.state.doc, page);
+      return getPageTextFromLayout({
+        layout: opts.layout.value,
+        doc: view.state.doc,
+        page,
+        projection: projectMarkupView(view.state, opts.markupView?.value ?? "all-markup"),
+      });
     },
     getTargetPage: (target, snapshot) => {
       const view = opts.editorView.value;

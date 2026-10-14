@@ -1,14 +1,24 @@
 import type { Node as ProseMirrorNode } from "prosemirror-model";
+import type { EditorState } from "prosemirror-state";
 import {
   getInlineDisplayText,
   getInlineDisplayToken,
   isNoteReferenceText,
 } from "./inlineDisplayText";
 
+import type { DisplayMode } from "../managers/EditorModeManager";
+import type { Document } from "../types/document";
 import { expectFieldAttrs } from "./attrs";
+import { projectMarkupView } from "./markupViewProjection";
+import type { MarkupViewProjection } from "./markupViewProjection";
 
-import { findAllMatches, isPageDependentSearchField } from "../utils/findReplace";
-import type { FindOptions } from "../utils/findReplace";
+import { findAllMatches, findInDocument, isPageDependentSearchField } from "../utils/findReplace";
+import type {
+  FindMatch,
+  FindOptions,
+  FindSearchContext,
+  ReplaceEligibility,
+} from "../utils/findReplace";
 
 /**
  * Positional fields of a document search match that the range resolver needs.
@@ -111,6 +121,143 @@ export function findInProseMirrorDocument(
   });
   return matches;
 }
+
+type FindInMarkupViewOptions = {
+  state: EditorState;
+  markupView: DisplayMode;
+  searchText: string;
+  options: FindOptions;
+};
+
+/** Search the displayed story; returned ranges address the authored editor document. */
+export const findInMarkupView = ({
+  state,
+  markupView,
+  searchText,
+  options,
+}: FindInMarkupViewOptions): ProseMirrorFindMatch[] => {
+  const projection = projectMarkupView(state, markupView);
+  if (projection.type === "authored") {
+    return findInProseMirrorDocument(state.doc, searchText, options);
+  }
+  return findInProseMirrorDocument(projection.doc, searchText, options).map((match) =>
+    toAuthoredFindMatch(projection, match),
+  );
+};
+
+type PositionRange = { from: number; to: number };
+
+/** Every view-document position a match carries, mapped to the authored editor document. */
+const toAuthoredFindMatch = (
+  projection: Extract<MarkupViewProjection, { type: "resolved" }>,
+  match: ProseMirrorFindMatch,
+): ProseMirrorFindMatch => {
+  const toEditorRange = ({ from, to }: PositionRange): PositionRange => ({
+    from: projection.toEditor(from, 1),
+    to: projection.toEditor(to, -1),
+  });
+  return {
+    paragraphIndex: match.paragraphIndex,
+    startOffset: match.startOffset,
+    endOffset: match.endOffset,
+    text: match.text,
+    ...toEditorRange(match),
+    ...(match.excludedRanges && { excludedRanges: match.excludedRanges.map(toEditorRange) }),
+    ...(match.atomicTextRanges && {
+      atomicTextRanges: match.atomicTextRanges.map((atom) => ({
+        ...toEditorRange(atom),
+        startOffset: atom.startOffset,
+        endOffset: atom.endOffset,
+      })),
+    }),
+  };
+};
+
+type FindInDisplayedDocumentOptions = {
+  document: Document;
+  /**
+   * Live body editor state. A review view reads its body from this state's
+   * projection, so null defers that search until the body editor mounts.
+   * Hosts without an editor state omit it and search the package model.
+   */
+  state?: EditorState | null | undefined;
+  searchText: string;
+  options: FindOptions;
+  context?: FindSearchContext | undefined;
+};
+
+/** Replacement policy for a projected body match, in the shared eligibility vocabulary. */
+const projectedReplacement = (
+  state: EditorState,
+  viewMatch: PositionRange,
+  authored: ProseMirrorFindMatch,
+): ReplaceEligibility => {
+  const atom = authored.atomicTextRanges?.at(0);
+  if (atom) {
+    return {
+      status: "blocked",
+      reason:
+        state.doc.nodeAt(atom.from)?.type.name === "field" ? "field-result" : "atomic-content",
+    };
+  }
+  // Authored text the view does not show widens the authored range.
+  return authored.to - authored.from === viewMatch.to - viewMatch.from
+    ? { status: "allowed" }
+    : { status: "blocked", reason: "hidden-content" };
+};
+
+/**
+ * Search every story a display mode shows. All Markup searches the package
+ * stories. A resolved review view searches its body through the projection the
+ * layout paints, so body ranges address the authored editor document; anchored
+ * shapes, headers, footers, notes and comments keep the package search owner
+ * with the same display mode. Returns null while a review view has no body
+ * editor state to project.
+ */
+export const findInDisplayedDocument = ({
+  document,
+  state,
+  searchText,
+  options,
+  context,
+}: FindInDisplayedDocumentOptions): FindMatch[] | null => {
+  const displayMode = options.displayMode ?? "all-markup";
+  if (displayMode === "all-markup" || state === undefined) {
+    return findInDocument(document, searchText, options, context);
+  }
+  if (state === null) return null;
+  const packageMatches = findInDocument(document, searchText, options, context);
+  const projection = projectMarkupView(state, displayMode);
+  if (projection.type === "authored" || !searchText) return packageMatches;
+  const bodyMatches = findInProseMirrorDocument(projection.doc, searchText, options).map(
+    (viewMatch): FindMatch => {
+      const authored = toAuthoredFindMatch(projection, viewMatch);
+      const { from, to, excludedRanges, atomicTextRanges } = authored;
+      return {
+        paragraphIndex: authored.paragraphIndex,
+        contentIndex: 0,
+        startOffset: authored.startOffset,
+        endOffset: authored.endOffset,
+        text: authored.text,
+        story: "main",
+        replacement: projectedReplacement(state, viewMatch, authored),
+        authoredRange: {
+          from,
+          to,
+          ...(excludedRanges && { excludedRanges }),
+          ...(atomicTextRanges && { atomicTextRanges }),
+        },
+      };
+    },
+  );
+  return [
+    ...bodyMatches,
+    ...packageMatches.filter(
+      (match) =>
+        match.story !== "main" || match.textBoxIndex !== undefined || match.commentId !== undefined,
+    ),
+  ];
+};
 
 type SearchParagraphVisitor = (
   paragraph: ProseMirrorNode,

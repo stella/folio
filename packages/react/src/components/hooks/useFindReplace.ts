@@ -15,10 +15,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
+import type { EditorState } from "prosemirror-state";
 
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
+import { getReviewViewReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
+import { findInDisplayedDocument } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import { replaceEligibility } from "@stll/folio-core/utils/findReplace";
-import type { ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
+import type { FindSearchContext, ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
 import {
   createFindSearchKey,
   createFindQueryKey,
@@ -26,13 +33,11 @@ import {
   sameFindBodyVersion,
 } from "@stll/folio-core/utils/findSearchKey";
 import type { Document } from "@stll/folio-core/types/document";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import {
   createFindMatchView,
   getRenderedSearchStories,
 } from "@stll/folio-core/utils/findMatchView";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
-import { findInDocument } from "../dialogs/findReplaceUtils";
 import type { FindMatch, FindOptions, FindResult } from "../dialogs/findReplaceUtils";
 import type { UseFindReplaceReturn as FindReplaceStateReturn } from "../dialogs/useFindReplace";
 
@@ -45,6 +50,8 @@ type UseFindReplaceParams = {
   documentState?: Document | null;
   /** Returns the current live document state from the editor */
   getDocumentState?: () => Document | null;
+  /** Live body editor state; a review view searches its displayed projection. */
+  getEditorState?: () => EditorState | null;
   /** Ref to the document search surface */
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** Callback to push a new document state */
@@ -57,7 +64,9 @@ type UseFindReplaceParams = {
   getLayout?: () => Layout | null;
   displayMode?: DisplayMode;
   onFindResultChange?: ((result: FindResult | null) => void) | undefined;
-  readOnly?: boolean;
+  /** Why user editing is refused; review views refuse replacement on their own. */
+  readOnlyReason?: EditorReadOnlyReason | null;
+  onReadonlyEditAttempt?: ((reason: EditorReadOnlyReason) => void) | undefined;
 };
 
 export type UseFindReplaceReturn = {
@@ -101,6 +110,7 @@ type ReplacementGate =
 export function useFindReplace({
   documentState,
   getDocumentState,
+  getEditorState,
   containerRef,
   handleDocumentChange,
   findReplace,
@@ -109,8 +119,11 @@ export function useFindReplace({
   getLayout,
   displayMode,
   onFindResultChange,
-  readOnly,
+  readOnlyReason,
+  onReadonlyEditAttempt,
 }: UseFindReplaceParams): UseFindReplaceReturn {
+  const replacementRefusal =
+    getReviewViewReadOnlyReason(displayMode ?? "all-markup") ?? readOnlyReason ?? null;
   const manager = useMemo(() => new FindReplaceManager<FindMatch>(), []);
   const [publishedResult, setPublishedResult] = useState<PublishedFindResult>({
     status: "cleared",
@@ -155,6 +168,23 @@ export function useFindReplace({
     [getDocumentState, documentState],
   );
 
+  const findDisplayedMatches = useCallback(
+    (
+      currentDocument: Document,
+      searchText: string,
+      options: FindOptions,
+      context: FindSearchContext | undefined,
+    ) =>
+      findInDisplayedDocument({
+        document: currentDocument,
+        ...(getEditorState && { state: getEditorState() }),
+        searchText,
+        options,
+        context,
+      }),
+    [getEditorState],
+  );
+
   const revealMatch = useCallback(
     (match: FindMatch) => {
       const index = manager.getResult()?.currentIndex ?? 0;
@@ -184,6 +214,14 @@ export function useFindReplace({
       const context = getLayout
         ? { renderedStories: getRenderedSearchStories(getLayout()) }
         : undefined;
+      const matches = findDisplayedMatches(currentDocument, searchText, effectiveOptions, context);
+      if (matches === null) {
+        // A review view reads its body from the mounted editor; keep the query
+        // so the body-view refresh repeats this search once the editor exists.
+        query.current = { text: searchText, options };
+        clearFindResult();
+        return null;
+      }
       const nextSource = createFindSearchKey({
         query: searchText,
         options: effectiveOptions,
@@ -195,7 +233,6 @@ export function useFindReplace({
       const currentIndex = refresh ? (manager.getResult()?.currentIndex ?? 0) : 0;
       query.current = { text: searchText, options };
       searchSource.current = { ...nextSource, intentKey: createFindQueryKey(searchText, options) };
-      const matches = findInDocument(currentDocument, searchText, effectiveOptions, context);
       const result = manager.setMatches(matches, currentIndex);
       matchView.current?.destroy();
       const container = containerRef.current;
@@ -221,10 +258,12 @@ export function useFindReplace({
     },
     [
       readDocumentState,
+      findDisplayedMatches,
       manager,
       setMatches,
       revealMatch,
       resetFindResult,
+      clearFindResult,
       displayMode,
       containerRef,
       getBodyDoc,
@@ -241,6 +280,15 @@ export function useFindReplace({
     }, 200);
     return () => clearTimeout(timer);
   }, [handleFind]);
+
+  // A display-mode switch changes what is searchable; refresh without waiting.
+  const previousDisplayMode = useRef(displayMode);
+  useEffect(() => {
+    if (previousDisplayMode.current === displayMode) return;
+    previousDisplayMode.current = displayMode;
+    const active = query.current;
+    if (active) handleFind(active.text, active.options);
+  }, [displayMode, handleFind]);
 
   const handleFindNext = useCallback((): FindMatch | null => {
     const stepped = manager.navigate("next");
@@ -311,7 +359,6 @@ export function useFindReplace({
 
   const handleReplace = useCallback(
     (replaceText: string): boolean => {
-      if (readOnly) return false;
       const currentDocument = readDocumentState();
       if (!currentDocument) {
         return false;
@@ -330,12 +377,11 @@ export function useFindReplace({
       acceptReplacement(newDoc);
       return true;
     },
-    [readDocumentState, manager, acceptReplacement, readOnly, refreshChangedSource],
+    [readDocumentState, manager, acceptReplacement, refreshChangedSource],
   );
 
   const handleReplaceAll = useCallback(
     (searchText: string, replaceText: string, options: FindOptions): ReplaceAllSummary => {
-      if (readOnly) return { replacedCount: 0, skippedCount: manager.getResult()?.totalCount ?? 0 };
       const currentDocument = readDocumentState();
       if (!currentDocument || !searchText.trim()) {
         return { replacedCount: 0, skippedCount: 0 };
@@ -345,7 +391,7 @@ export function useFindReplace({
       if (refreshChangedSource(currentDocument))
         return { replacedCount: 0, skippedCount: previousCount };
 
-      const matches = findInDocument(
+      const matches = findDisplayedMatches(
         currentDocument,
         searchText,
         {
@@ -355,6 +401,7 @@ export function useFindReplace({
         },
         getLayout ? { renderedStories: getRenderedSearchStories(getLayout()) } : undefined,
       );
+      if (matches === null) return { replacedCount: 0, skippedCount: previousCount };
       const mutationMatches = matches.filter(
         (match) => replaceEligibility(match).status === "blocked" || match.text !== replaceText,
       );
@@ -377,13 +424,23 @@ export function useFindReplace({
       readDocumentState,
       manager,
       acceptReplacement,
-      readOnly,
       displayMode,
       getLayout,
+      findDisplayedMatches,
       refreshChangedSource,
       handleQueryChange,
     ],
   );
+
+  // Read-only hosts and review views refuse replacement before any search work.
+  const refuseReplace = useCallback(() => {
+    if (replacementRefusal) onReadonlyEditAttempt?.(replacementRefusal);
+    return false;
+  }, [replacementRefusal, onReadonlyEditAttempt]);
+  const refuseReplaceAll = useCallback((): ReplaceAllSummary => {
+    refuseReplace();
+    return { replacedCount: 0, skippedCount: manager.getResult()?.totalCount ?? 0 };
+  }, [refuseReplace, manager]);
 
   return {
     currentResult: publishedResult.status === "ready" ? publishedResult.result : null,
@@ -396,8 +453,8 @@ export function useFindReplace({
     handleQueryChange,
     handleFindNext,
     handleFindPrevious,
-    handleReplace,
-    handleReplaceAll,
+    handleReplace: replacementRefusal ? refuseReplace : handleReplace,
+    handleReplaceAll: replacementRefusal ? refuseReplaceAll : handleReplaceAll,
     getFindResult: () => manager.getResult(),
     refreshFind: () => {
       const active = query.current;

@@ -73,6 +73,7 @@ import { DocxCompatibility } from '@stll/folio-core/docx/compatibility';
 import { default as DocxEditor } from './components/DocxEditor.vue';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { extractDocumentStyleSet } from '@stll/folio-core/style-sets/extract';
@@ -156,6 +157,7 @@ import { ReplaceEligibility } from '@stll/folio-core/utils/findReplace';
 import { resetTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ResolvedAnchor } from '@stll/folio-core/ai-suggestions/conflict';
 import { resolveSuggestionAnchor } from '@stll/folio-core/ai-suggestions/conflict';
+import { ReviewDisplayMode } from '@stll/folio-core/managers/reviewDisplayMode';
 import { scanDirectives } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
 import { scrollFolioPositionIntoView } from '@stll/folio-core/paged-layout/scrollToPmPosition';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
@@ -411,6 +413,8 @@ export type DocxEditorProps = {
     keyboardShortcuts?: KeyboardShortcutScope;
     hostShortcuts?: readonly HostShortcut[];
     readOnly?: boolean;
+    reviewDisplayMode?: ReviewDisplayMode;
+    showCommentHighlights?: boolean;
     autoOpenReviewSidebar?: boolean;
     components?: Partial<FolioUIComponents>;
     toolbarExtra?: VNodeChild;
@@ -436,7 +440,7 @@ export type DocxEditorProps = {
     onPaste?: () => void;
     mode?: EditorMode;
     onModeChange?: (mode: EditorMode) => void;
-    onReadonlyEditAttempt?: () => void;
+    onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
     comments?: Comment_2[];
     onFindResultChange?: (result: FindResult | null) => void;
     onCommentsChange?: (comments: Comment_2[]) => void;
@@ -466,6 +470,7 @@ export type DocxEditorProps = {
 
 // @public
 export type DocxEditorRef = {
+    getReadOnlyReason: () => EditorReadOnlyReason | null;
     getDocument: () => Document_2 | null;
     hasPendingChanges: () => boolean;
     getEditorRef: () => PagedEditorRef | null;
@@ -560,6 +565,8 @@ export type EditorHandle = {
 };
 
 export { EditorMode }
+
+export { EditorReadOnlyReason }
 
 export { extractDocumentStyleSet }
 
@@ -813,6 +820,8 @@ export { resetTemplateSlashQuery }
 export { ResolvedAnchor }
 
 export { resolveSuggestionAnchor }
+
+export { ReviewDisplayMode }
 
 export { scanDirectives }
 

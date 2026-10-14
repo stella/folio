@@ -8,7 +8,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Relation } from "./metamorphic.ts";
-import { deletedNoteSymptom } from "./deleted-note-symptom.ts";
 
 export const OPEN_ISSUES = {} as const;
 
@@ -26,11 +25,9 @@ export const FINDINGS = {
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
   REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
-    "a tracked deletion of a footnote's reference paragraph, then a tracked paragraph inserted into that footnote: rejecting every change leaves the inserted paragraph behind, empty",
+    "a tracked deletion of a note reference paragraph, then a tracked paragraph inserted into that note: rejecting every change leaves the inserted paragraph behind, empty",
   BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
     "#1356 (closed, still reproduces): in suggested mode, a batch applies insertBeforeBlock on a table-cell paragraph whose row has a pending suggested deletion, which the same operation alone refuses (pendingDeletion)",
-  DELETED_REFERENCE_NOTES_STAY_LISTED:
-    "#1357 (closed, still reproduces): after a direct deletion of the paragraph holding a footnote and an endnote reference, the reviewer still lists both notes, which the saved package no longer has",
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
     "#1408 (closed, still reproduces): a suggested paragraph inserted after a table cell's paragraph and a suggested deletion of the paragraph holding a comment's range end: accepted, the comment's anchored text takes in the inserted paragraph, which direct editing leaves out",
   COLUMN_CELL_IN_ROW_PENDING_DELETION:
@@ -63,13 +60,30 @@ export const KNOWN_FAILING_FLOWS: readonly {
   seed: number;
   steps: number;
   finding: Finding;
+  reason: string;
   /** The flow kind (support/fuzz.ts); `"random"` when absent. */
   kind?: "random" | "collisions";
   /** The generation (support/fuzz.ts); `"targeted"` when absent. */
   generation?: "targeted" | "legacy";
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
-}[] = [{ seed: 18568230, steps: 16, finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES" }];
+}[] = [
+  {
+    seed: 18568230,
+    steps: 16,
+    finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
+    reason: "a tracked merge targets the block another operation in the batch deletes",
+  },
+  {
+    seed: 1775378339,
+    steps: 16,
+    kind: "collisions",
+    relation: "rejectAll",
+    finding: "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",
+    reason:
+      "8fb63686fc7e333f / b9427f6237682398: rejectAll leaves an empty inserted note paragraph; remove this marker with the note rejection fix",
+  },
+];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 type FailureSymptom = RegExp | ((failure: unknown) => boolean);
@@ -87,10 +101,9 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
   REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
-    /\[rejectAll\] the flow's batches replayed tracked and rejected do not give the fixture back[^\n]*\n\s*\{"type":"footnote","noteId":\d+\}: \.blocks\[\d+\]: undefined → \{"kind":"heading","text":""/u,
+    /\[rejectAll\] the flow's batches replayed tracked and rejected do not give the fixture back[^\n]*\n\s*\{"type":"(?:footnote|endnote)","noteId":\d+\}: \.blocks\[\d+\]: undefined → \{"kind":"(?:paragraph|heading|listItem)","text":""/u,
   BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
     /\[batchSequential\] the batch \(suggested: [^)]*\) leaves otherwise than its operations one at a time:\n\s*op-\d+ refused one at a time: pendingDeletion/u,
-  DELETED_REFERENCE_NOTES_STAY_LISTED: deletedNoteSymptom,
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
     /\[directTracked\] the flow's batches replayed tracked and accepted read otherwise than replayed direct[^\n]*\n\s*\{"type":"main"\}: \.comments\[\d+\]: /u,
   // The expected texts list the new cell; the reader's do not.
@@ -107,7 +120,6 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
  */
 export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> = {
   "batch-after-table-row-delete.json": "BATCH_INSERT_BEFORE_ROW_PENDING_DELETION",
-  "deleted-endnote-reopen.json": "DELETED_REFERENCE_NOTES_STAY_LISTED",
   "merge-with-next-block-the-batch-deletes.json": "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
   "suggested-note-delete-and-heading-insert.json":
     "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",

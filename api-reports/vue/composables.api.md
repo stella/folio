@@ -16,6 +16,7 @@ import { CSSProperties } from 'vue';
 import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
 import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
+import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { extractTrackedChanges } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
@@ -135,6 +136,7 @@ export type UseDocxEditorOptions = {
     pageGap?: number;
     pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
     markupView?: MaybeRefOrGetter<DisplayMode>;
+    showCommentHighlights?: MaybeRefOrGetter<boolean>;
     showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
     marginGuideColor?: MaybeRefOrGetter<string | undefined>;
     password?: MaybeRefOrGetter<string | undefined>;
@@ -217,6 +219,7 @@ export function useFindReplace(input: UseFindReplaceOptions): {
     currentIndex: Ref<number, number>;
     currentMatch: ComputedRef<FindMatch | null>;
     canReplaceCurrent: ComputedRef<boolean>;
+    replacementRefusal: ComputedRef<EditorReadOnlyReason | null>;
     performSearch: (cause?: "query" | "refresh") => FindMatch[];
     scheduleSearch: () => void;
     find: (text: string, nextOptions?: Partial<FindOptions>) => FindResult | null;
@@ -239,6 +242,7 @@ export type UseFindReplaceOptions = {
     revealComment?: (commentId: number) => void;
     displayMode: Readonly<Ref<DisplayMode>>;
     readOnly: Readonly<Ref<boolean>>;
+    onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
     onResultChange: (result: FindResult | null) => void;
 };
 

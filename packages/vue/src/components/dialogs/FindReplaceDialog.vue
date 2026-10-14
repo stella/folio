@@ -84,6 +84,7 @@
           {{ t("findReplace.wholeWords") }}
         </label>
         <FolioButton
+          v-if="!replacementReadOnly"
           class="find-replace-dialog__toggle"
           data-testid="find-replace-toggle"
           variant="ghost"
@@ -97,7 +98,7 @@
       </div>
 
       <!-- Replace row -->
-      <div v-if="replaceMode" class="find-replace-dialog__row">
+      <div v-if="replaceMode && !replacementReadOnly" class="find-replace-dialog__row">
         <FolioInput
           v-model="replaceText"
           class="find-replace-dialog__input"
@@ -164,6 +165,7 @@ const emit = defineEmits<{
 const searchInputRef = ref<HTMLInputElement | null>(null);
 const replaceMode = ref(false);
 const replacementSummary = ref<ReplaceAllSummary | null>(null);
+const replacementReadOnly = computed(() => props.search.replacementRefusal.value !== null);
 const {
   searchText,
   replaceText,

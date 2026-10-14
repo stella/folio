@@ -20,6 +20,7 @@ import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { DocxCompatibility } from '@stll/folio-core/docx/compatibility';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { FindMatch } from '@stll/folio-core/utils/findReplace';
@@ -55,6 +56,7 @@ import { Popover } from '@base-ui/react/popover';
 import { ReactNode } from 'react';
 import { RefAttributes } from 'react';
 import { RefObject } from 'react';
+import { ReviewDisplayMode } from '@stll/folio-core/managers/reviewDisplayMode';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
 import { SdtProperties } from '@stll/folio-core/types/document';
 import { Select } from '@base-ui/react/select';
@@ -121,6 +123,7 @@ export type DocxEditorHandle = EditorHandle & {
 
 // @public
 export type DocxEditorRef = {
+    getReadOnlyReason: () => EditorReadOnlyReason | null;
     find: (searchText: string, options?: Partial<FindOptions>) => FindResult | null;
     findNext: () => FindMatch | null;
     findPrevious: () => FindMatch | null;

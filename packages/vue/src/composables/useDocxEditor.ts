@@ -357,6 +357,8 @@ export type UseDocxEditorOptions = {
    * other than All Markup lays out the text it shows. Reactive.
    */
   markupView?: MaybeRefOrGetter<DisplayMode>;
+  /** Paint comment highlights in All Markup. Defaults to true. Reactive. */
+  showCommentHighlights?: MaybeRefOrGetter<boolean>;
   showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
   /** CSS color used for margin guides. Reactive. */
   marginGuideColor?: MaybeRefOrGetter<string | undefined>;
@@ -511,6 +513,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     pageGap = DEFAULT_PAGE_GAP,
     pageRenderer,
     markupView = "all-markup",
+    showCommentHighlights = true,
     showMarginGuides,
     marginGuideColor,
     password,
@@ -672,6 +675,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const painter = new LayoutPainter({ pageGap, showShadow: true });
   const headerFooterManager = createHeaderFooterEditorManager({
     getHost: () => headerFooterHost.value,
+    getReadOnly: () => toValue(readOnly),
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
     getExperimentalSession: () => toValue(experimentalSession),
@@ -833,6 +837,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
           hyphenationReadiness,
           markupView: toValue(markupView),
+          showCommentHighlights: toValue(showCommentHighlights),
         },
         state,
         runOptions,
@@ -1130,6 +1135,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     (isReadOnly) => {
       manager.syncEditable();
       if (isReadOnly) closeNoteStory();
+      headerFooterManager.sync();
     },
   );
 
@@ -1524,6 +1530,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       () => toValue(marginGuideColor),
       () => toValue(pageRenderer),
       () => toValue(markupView),
+      () => toValue(showCommentHighlights),
     ],
     () => reLayout(),
   );

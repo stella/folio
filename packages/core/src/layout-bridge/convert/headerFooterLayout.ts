@@ -20,6 +20,10 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import type { DisplayMode } from "../../managers/EditorModeManager";
+import { projectStoryMarkupView } from "../../prosemirror/markupViewProjection";
+import { remapMarkupViewBlocks } from "./markupViewFlow";
+
 import type {
   FlowBlock,
   FloatingTablePosition,
@@ -731,6 +735,10 @@ export function calculateHeaderFooterBodyTopClearance(
 // =============================================================================
 
 export type ConvertHeaderFooterOptions = {
+  /** Review projection applied before header/footer measurement. Defaults to All Markup. */
+  markupView?: DisplayMode;
+  /** Whether comment highlights are painted. Defaults to true. */
+  showCommentHighlights?: boolean;
   styles?: StyleDefinitions | null;
   numbering?: NumberingDefinitions;
   theme?: Theme | null;
@@ -790,39 +798,7 @@ export function convertHeaderFooterToContent(
     headerFooter.watermarkBlockIndex === undefined
       ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
       : headerFooterToProseDocWithDetachedWatermarkHost(headerFooter, proseDocOptions);
-  const flowOptions: ToFlowBlocksOptions = {};
-  if (options.defaultSize !== undefined) {
-    flowOptions.defaultSize = options.defaultSize;
-  }
-  if (options.styles) {
-    flowOptions.styles = options.styles;
-  }
-  if (options.theme !== undefined) {
-    flowOptions.theme = options.theme;
-  }
-  if (options.embeddedFontFamilyMap !== undefined) {
-    flowOptions.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
-  }
-  if (options.fontAlternates !== undefined) {
-    flowOptions.fontAlternates = options.fontAlternates;
-  }
-  if (options.defaultTabStopTwips !== undefined) {
-    flowOptions.defaultTabStopTwips = options.defaultTabStopTwips;
-  }
-  if (options.lineBreakRules) {
-    flowOptions.lineBreakRules = options.lineBreakRules;
-  }
-  if (options.justificationCompatibility) {
-    flowOptions.justificationCompatibility = options.justificationCompatibility;
-  }
-  if (options.tableIndentCompatibility) {
-    flowOptions.tableIndentCompatibility = options.tableIndentCompatibility;
-  }
-  if (options.automaticHyphenation) {
-    flowOptions.automaticHyphenation = options.automaticHyphenation;
-  }
-  const blocks = toFlowBlocks(pmDoc, flowOptions);
-  return finalizeHeaderFooterContent(blocks, contentWidth, metrics, options);
+  return convertHeaderFooterPmDocToContent(pmDoc, contentWidth, metrics, options);
 }
 
 // =============================================================================
@@ -849,7 +825,12 @@ export function convertHeaderFooterPmDocToContent(
   if (!pmDoc || pmDoc.content.size === 0) {
     return undefined;
   }
-  const flowOptions: ToFlowBlocksOptions = {};
+  const flowOptions: ToFlowBlocksOptions = {
+    showCommentHighlights:
+      options.showCommentHighlights !== false &&
+      options.markupView !== "no-markup" &&
+      options.markupView !== "original",
+  };
   if (options.defaultSize !== undefined) {
     flowOptions.defaultSize = options.defaultSize;
   }
@@ -880,7 +861,17 @@ export function convertHeaderFooterPmDocToContent(
   if (options.automaticHyphenation) {
     flowOptions.automaticHyphenation = options.automaticHyphenation;
   }
-  const blocks = toFlowBlocks(pmDoc, flowOptions);
+  const markupView = options.markupView ?? "all-markup";
+  const projection = projectStoryMarkupView({
+    doc: pmDoc,
+    markupView,
+    styles: options.styles,
+    numbering: options.numbering,
+  });
+  const viewDoc = projection.type === "resolved" ? projection.doc : pmDoc;
+  const flowBlocks = toFlowBlocks(viewDoc, flowOptions);
+  const blocks =
+    projection.type === "resolved" ? remapMarkupViewBlocks(flowBlocks, projection) : flowBlocks;
   return finalizeHeaderFooterContent(blocks, contentWidth, metrics, options);
 }
 

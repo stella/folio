@@ -35,6 +35,15 @@ type ParagraphFindMatch = {
   startOffset: number;
   endOffset: number;
   text: string;
+  /** Authored editor range when the match was found in a resolved markup view. */
+  authoredRange?: {
+    from: number;
+    to: number;
+    /** Navigation anchors inside the logical match, excluded from decorations. */
+    excludedRanges?: { from: number; to: number }[];
+    /** Character subranges inside source atoms, whose text exceeds their editor size. */
+    atomicTextRanges?: { from: number; to: number; startOffset: number; endOffset: number }[];
+  };
 };
 
 export type FindMatch = ParagraphFindMatch &

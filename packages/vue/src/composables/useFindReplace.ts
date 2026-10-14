@@ -1,10 +1,17 @@
-import { computed, onBeforeUnmount, reactive, ref, shallowRef } from "vue";
+import { computed, onScopeDispose, reactive, ref, shallowRef, watch } from "vue";
 import type { Ref } from "vue";
 import type { EditorView } from "prosemirror-view";
 
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
-import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
-import { resolveFindMatchRange } from "@stll/folio-core/prosemirror/findReplaceSelection";
+import { getEditorReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
+import {
+  findInDisplayedDocument,
+  resolveFindMatchRange,
+} from "@stll/folio-core/prosemirror/findReplaceSelection";
 import type { Document } from "@stll/folio-core/types/document";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { createFindSearchKey, sameFindSearchKey } from "@stll/folio-core/utils/findSearchKey";
@@ -14,7 +21,6 @@ import {
 } from "@stll/folio-core/utils/findMatchView";
 import {
   createDefaultFindOptions,
-  findInDocument,
   replaceEligibility,
   type FindMatch,
   type FindOptions,
@@ -31,6 +37,8 @@ export type UseFindReplaceOptions = {
   revealComment?: (commentId: number) => void;
   displayMode: Readonly<Ref<DisplayMode>>;
   readOnly: Readonly<Ref<boolean>>;
+  /** Notified when a replacement is refused because editing is not allowed. */
+  onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
   onResultChange: (result: FindResult | null) => void;
 };
 
@@ -43,6 +51,7 @@ export function useFindReplace({
   revealComment,
   displayMode,
   readOnly,
+  onReadonlyEditAttempt,
   onResultChange,
 }: UseFindReplaceOptions) {
   const manager = new FindReplaceManager<FindMatch>();
@@ -52,10 +61,19 @@ export function useFindReplace({
   const matches = shallowRef<FindMatch[]>([]);
   const currentIndex = ref(-1);
   const currentMatch = computed(() => matches.value.at(currentIndex.value) ?? null);
+  /** Why replacement is refused: host read-only, viewing mode, or a review view. */
+  const getReplacementRefusal = (): EditorReadOnlyReason | null =>
+    getEditorReadOnlyReason({
+      // The view's editable prop is not reactive; read it on every decision.
+      editingMode: editorView.value?.editable === false ? "viewing" : "editing",
+      readOnlyProp: readOnly.value,
+      displayMode: displayMode.value,
+    });
+  const replacementRefusal = computed(getReplacementRefusal);
   const canReplaceCurrent = computed(() => {
     const match = currentMatch.value;
     return (
-      !readOnly.value &&
+      getReplacementRefusal() === null &&
       !!editorView.value &&
       !!match &&
       isSearchCurrent() &&
@@ -90,7 +108,7 @@ export function useFindReplace({
     clearTimeout(searchTimer);
     searchTimer = undefined;
   };
-  const clear = (): void => {
+  const clearResults = (): void => {
     cancelSearch();
     manager.clear();
     matchView?.destroy();
@@ -98,6 +116,9 @@ export function useFindReplace({
     matches.value = [];
     completedSearchKey = null;
     currentIndex.value = -1;
+  };
+  const clear = (): void => {
+    clearResults();
     searchText.value = "";
     notify();
   };
@@ -119,9 +140,22 @@ export function useFindReplace({
       return [];
     }
     const input = searchInputFor(document);
+    const nextMatches = findInDisplayedDocument({
+      document: input.document,
+      state: editorView.value?.state ?? null,
+      searchText: input.query,
+      options: input.options,
+      context: input.context,
+    });
+    if (nextMatches === null) {
+      // A review view reads its body from the mounted editor; keep the query
+      // so the next refresh repeats this search once the editor exists.
+      clearResults();
+      notify();
+      return [];
+    }
     const nextSearchKey = createFindSearchKey(input);
     const refresh = cause === "refresh" && completedSearchKey?.query === nextSearchKey.query;
-    const nextMatches = findInDocument(input.document, input.query, input.options, input.context);
     const result = manager.setMatches(
       nextMatches,
       refresh ? (manager.getResult()?.currentIndex ?? 0) : 0,
@@ -174,11 +208,18 @@ export function useFindReplace({
     return true;
   };
 
+  const refuseReadonlyReplacement = (): boolean => {
+    const reason = getReplacementRefusal();
+    if (reason === null) return false;
+    onReadonlyEditAttempt?.(reason);
+    return true;
+  };
+
   // Replacement remains an editing command on the main editor. Story results
   // must never be interpreted as positions in the body document.
   const replaceCurrent = (): boolean => {
     const view = editorView.value;
-    if (!view || readOnly.value || refreshStaleResults()) return false;
+    if (!view || refuseReadonlyReplacement() || refreshStaleResults()) return false;
     const match = currentMatch.value;
     if (!canReplaceCurrent.value || !view || !match) return false;
     if (match.text === replaceText.value) return true;
@@ -191,7 +232,7 @@ export function useFindReplace({
   const replaceAll = (): ReplaceAllSummary => {
     const view = editorView.value;
     const totalCount = matches.value.length;
-    if (readOnly.value || !view || refreshStaleResults())
+    if (!view || refuseReadonlyReplacement() || refreshStaleResults())
       return { replacedCount: 0, skippedCount: totalCount };
     const eligibleMatches = matches.value.filter(
       (match) => replaceEligibility(match).status === "allowed",
@@ -217,7 +258,12 @@ export function useFindReplace({
     return summary;
   };
 
-  onBeforeUnmount(() => {
+  // A display-mode switch changes what is searchable; refresh without waiting.
+  watch(displayMode, () => {
+    if (searchText.value.trim()) performSearch();
+  });
+
+  onScopeDispose(() => {
     cancelSearch();
     matchView?.destroy();
   });
@@ -229,6 +275,7 @@ export function useFindReplace({
     currentIndex,
     currentMatch,
     canReplaceCurrent,
+    replacementRefusal,
     performSearch,
     scheduleSearch,
     find,

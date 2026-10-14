@@ -24,6 +24,39 @@ export const DISPLAY_MODES = ["all-markup", "simple-markup", "no-markup", "origi
 
 export type DisplayMode = (typeof DISPLAY_MODES)[number];
 
+/** Why a user action cannot edit the displayed document. */
+export type EditorReadOnlyReason = "host-read-only" | "viewing-mode" | "review-display-mode";
+
+const REVIEW_VIEW_ACCESS = {
+  "all-markup": "editable",
+  "simple-markup": "read-only",
+  "no-markup": "read-only",
+  original: "read-only",
+} as const satisfies Record<DisplayMode, "editable" | "read-only">;
+
+export const getReviewViewReadOnlyReason = (
+  displayMode: DisplayMode,
+): EditorReadOnlyReason | null =>
+  REVIEW_VIEW_ACCESS[displayMode] === "read-only" ? "review-display-mode" : null;
+
+type EditorReadOnlyReasonOptions = {
+  editingMode: EditorMode;
+  readOnlyProp: boolean;
+  displayMode: DisplayMode;
+};
+
+export const getEditorReadOnlyReason = ({
+  editingMode,
+  readOnlyProp,
+  displayMode,
+}: EditorReadOnlyReasonOptions): EditorReadOnlyReason | null => {
+  const viewReason = getReviewViewReadOnlyReason(displayMode);
+  if (viewReason) return viewReason;
+  if (readOnlyProp) return "host-read-only";
+  if (editingMode === "viewing") return "viewing-mode";
+  return null;
+};
+
 /** EditorModeManager snapshot. */
 export type EditorModeSnapshot = {
   /** Uncontrolled internal editing mode (the host's controlled prop wins over this). */

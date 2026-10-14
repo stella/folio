@@ -67,6 +67,11 @@ export const resolveDocumentFindRanges = ({
   const byStory = new Map<string, { match: FindMatch; index: number }[]>();
   for (const [index, match] of matches.entries()) {
     if (match.commentId !== undefined) continue;
+    // A review view's body match already addresses the authored editor document.
+    if (match.authoredRange && match.textBoxIndex === undefined) {
+      resolved.push({ ...match.authoredRange, index, story: OP_STORIES.MAIN });
+      continue;
+    }
     const key = storyKey(match.story ?? OP_STORIES.MAIN);
     const group = byStory.get(key);
     if (group) group.push({ match, index });
