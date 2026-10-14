@@ -56,9 +56,16 @@ test("nightly swarm findings use a separate serialized main-only write token", (
   expect(report["needs"]).toEqual(["swarm"]);
   expect(report["if"]).toBe("failure() && github.ref == 'refs/heads/main'");
   expect(report["permissions"]).toEqual({ contents: "read", issues: "write" });
-  expect(report["concurrency"]).toEqual({
+  expect(report["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
+  expect(report["with"]).toEqual({ "artifact-pattern": "swarm-fuzz" });
+  const shared = readWorkflow("fuzz-failure-report.yml");
+  const sharedReport = job(shared.jobs, "report");
+  expect(sharedReport["concurrency"]).toEqual({
     group: "fuzz-failure-issues",
+    queue: "max",
     "cancel-in-progress": false,
   });
-  expect(JSON.stringify(report["steps"])).toContain("--records fuzz-results/fuzz-failures");
+  expect(JSON.stringify(sharedReport["steps"])).toContain(
+    "--artifact-root fuzz-results --require-failures",
+  );
 });

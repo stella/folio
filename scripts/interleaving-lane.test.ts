@@ -49,10 +49,7 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
     expect(reporter["if"]).toBe(
       `always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.${output} == 'true'`,
     );
-    expect(reporter["concurrency"]).toEqual({
-      group: "fuzz-failure-issues",
-      "cancel-in-progress": false,
-    });
+    expect(reporter["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
   }
   const rawSteps = job["steps"];
   if (!Array.isArray(rawSteps)) throw new Error("Workflow steps unavailable");
@@ -68,11 +65,11 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
     expect(specSource).toContain(`"fuzz-artifacts/${lane}/findings"`);
     const reporterName = id === "fuzz" ? "report" : "interleaving-report";
     const reporter = requireRecord(requireRecord(workflow["jobs"])[reporterName]);
-    expect(JSON.stringify(reporter)).toContain(
-      `--records fuzz-results/fuzz-artifacts/${lane}/findings`,
-    );
-    expect(JSON.stringify(reporter)).toContain(`fuzz-results/fuzz-artifacts/${lane}/${log}`);
     const artifactName = id === "fuzz" ? "browser-input-fuzzer" : "interleaving-findings";
+    expect(reporter["with"]).toEqual({
+      "artifact-pattern": artifactName,
+      "log-pattern": `**/fuzz-artifacts/${lane}/*.log`,
+    });
     const upload = steps.find(
       (step) =>
         typeof step["uses"] === "string" &&
@@ -90,17 +87,7 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
   expect(random["timeout-minutes"]).toBeLessThanOrEqual(12);
   expect(random["run"]).toContain("--project=interleaving-fuzzer");
   const reporter = requireRecord(requireRecord(workflow["jobs"])["interleaving-report"]);
-  expect(reporter["timeout-minutes"]).toBeLessThanOrEqual(5);
-  const reportSteps = reporter["steps"];
-  if (!Array.isArray(reportSteps)) throw new Error("Report steps unavailable");
-  expect(
-    reportSteps
-      .map(requireRecord)
-      .some(
-        (step) =>
-          typeof step["run"] === "string" && step["run"].includes("scripts/fuzz-failure-issues.ts"),
-      ),
-  ).toBe(true);
+  expect(reporter["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
 });
 
 // Bind the entire workflow graph instead of mirroring the current lane list.
@@ -141,11 +128,7 @@ test("every scheduled fuzz step has exactly one outcome output and finding repor
           .exec(condition)
           ?.at(1);
       if (!output) throw new Error("Reporter must consume one outcome output on main");
-      expect(reporter["concurrency"]).toEqual({
-        group: "fuzz-failure-issues",
-        "cancel-in-progress": false,
-      });
-      expect(reporter["timeout-minutes"]).toBeLessThanOrEqual(5);
+      expect(reporter["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
       return output;
     });
   expect(reportedOutputs.sort()).toEqual(Object.keys(outputs).sort());
