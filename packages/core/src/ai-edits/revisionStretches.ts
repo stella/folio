@@ -186,6 +186,7 @@ export const separateRevisionStretches = ({
       representation: {
         node: live,
         position: representation.position,
+        role: representation.role,
         from: representation.position,
         to: representation.position + representation.node.nodeSize,
       },

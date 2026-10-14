@@ -53,16 +53,36 @@ const CASES = ["Alpha Bravo Omega", "Alpha 👍🏽 Omega", "Článek 日本語 
   (["none", "inside"] as const).map((comment) => ({ text, comment })),
 );
 
+const formattingDocument = (text: string) => {
+  const document = fromMarkdown(text);
+  for (const [index, block] of document.package.document.content.entries()) {
+    if (block.type !== "paragraph") panic("The formatting fixture must contain paragraphs");
+    // Authored paragraph identities stay stable when their text changes on save.
+    block.paraId = (0x34000001 + index).toString(16).toUpperCase();
+  }
+  return document;
+};
+
 // Existing formatting generators tested formatting once, without a later edit
 // splitting its run or interleaving a comment with the formatting revision.
 test.each(CASES)(
   "formatting split by a replacement and $comment comment saves the same changes ($text)",
   async ({ text, comment }) => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(fromMarkdown(text)), {
-      author: "Reviewer",
-    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(formattingDocument(text)),
+      {
+        author: "Reviewer",
+      },
+    );
     const block = reviewer.snapshot().blocks.at(0);
     if (!block || block.kind === "diagnostic") panic("The formatting fixture lost its paragraph");
+    const formattingRange = createFolioAITextRangeHandle({
+      blockId: block.id,
+      text: block.text,
+      startOffset: 0,
+      endOffset: text.length,
+    });
+    if (!formattingRange) panic("The formatting fixture lost its text range");
     const apply = (
       operations: Parameters<typeof reviewer.applyDocumentOperations>[0]["operations"],
     ) => {
@@ -81,17 +101,24 @@ test.each(CASES)(
       {
         id: "format",
         type: "formatRange",
-        range: createFolioAITextRangeHandle({ block, startOffset: 0, endOffset: text.length }),
+        range: formattingRange,
         formatting: { italic: true },
       },
     ]);
     const start = text.lastIndexOf("Omega");
     if (comment === "inside") {
+      const commentRange = createFolioAITextRangeHandle({
+        blockId: block.id,
+        text: block.text,
+        startOffset: start,
+        endOffset: start + 5,
+      });
+      if (!commentRange) panic("The comment fixture lost its text range");
       apply([
         {
           id: "comment",
           type: "commentOnRange",
-          range: createFolioAITextRangeHandle({ block, startOffset: start, endOffset: start + 5 }),
+          range: commentRange,
           comment: { text: "Review this term." },
         },
       ]);
@@ -119,12 +146,18 @@ test(
   "formatting interleaved with a commented deletion preserves its logical text group",
   async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
-      await createDocx(fromMarkdown("Alpha Bravo Omega\n\nClosing clause.")),
+      await createDocx(formattingDocument("Alpha Bravo Omega\n\nClosing clause.")),
       { author: "Reviewer" },
     );
     const block = reviewer.snapshot().blocks.at(0);
     if (!block || block.kind === "diagnostic") panic("The formatting fixture lost its paragraph");
-    const range = createFolioAITextRangeHandle({ block, startOffset: 6, endOffset: 11 });
+    const range = createFolioAITextRangeHandle({
+      blockId: block.id,
+      text: block.text,
+      startOffset: 6,
+      endOffset: 11,
+    });
+    if (!range) panic("The formatting fixture lost its text range");
     const result = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
