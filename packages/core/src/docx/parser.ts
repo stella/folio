@@ -60,6 +60,8 @@ import {
   extractAllTemplateVariables,
 } from "./documentParser";
 import { normalizeRawDocxNumericIds } from "./numericIdNormalization";
+import { normalizeBookmarkIdsInXmlParts } from "./bookmarkIdNormalization";
+import { diagnoseImportedIdCollisions } from "./importedIdCollisions";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { parseFootnotes, parseEndnotes } from "./footnoteParser";
 import { parseHeader, parseFooter } from "./headerFooterParser";
@@ -99,7 +101,13 @@ import {
   isAltChunkMarkup,
 } from "./altChunk";
 import { countOpaqueRevisionWrappers } from "./opaqueCarrier";
-import { getEntryUncompressedSize, unzipDocx, getMediaMimeType, mediaToDataUrl } from "./unzip";
+import {
+  getEntryUncompressedSize,
+  unzipDocx,
+  getMediaMimeType,
+  mediaToDataUrl,
+  replaceRawDocxXmlParts,
+} from "./unzip";
 import { detectRasterMimeType } from "./rasterMime";
 import {
   getAttribute,
@@ -414,6 +422,8 @@ export async function parseDocxWithPreviewBudget(
     const raw = await timeStageAsync("unzip", () =>
       unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
+    diagnoseImportedIdCollisions(raw.allXml, parseContext);
+    await replaceRawDocxXmlParts(raw, normalizeBookmarkIdsInXmlParts(raw.allXml));
     const repairedDocumentTree = await normalizeRawDocxNumericIds(raw);
     const paragraphPropertySourceDigest = sha256Hex(raw.originalBuffer);
     if (raw.wasEncrypted) {

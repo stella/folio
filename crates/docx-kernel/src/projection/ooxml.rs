@@ -952,6 +952,12 @@ pub(super) fn project_document_xml(
 }
 
 #[derive(Default)]
+struct BookmarkQueue {
+    starts: Vec<Option<(String, BookmarkPoint)>>,
+    cursor: usize,
+}
+
+#[derive(Default)]
 struct ProjectionState {
     frames: Vec<Frame>,
     paragraphs: Vec<RawProjectedParagraph>,
@@ -959,8 +965,7 @@ struct ProjectionState {
     body_seen: bool,
     next_table_ordinal: usize,
     maximum_paragraphs: usize,
-    open_bookmarks: HashMap<u32, (String, BookmarkPoint)>,
-    seen_bookmark_ids: HashSet<u32>,
+    open_bookmarks: HashMap<u32, BookmarkQueue>,
     bookmarks: Vec<PendingBookmarkRange>,
     references: Vec<RawInternalReference>,
     bookmarks_complete: bool,
@@ -2348,12 +2353,15 @@ impl ProjectionState {
             self.bookmarks_complete = false;
             return Ok(());
         };
-        if name.is_empty()
-            || !self.seen_bookmark_ids.insert(id)
-            || self.open_bookmarks.insert(id, (name, point)).is_some()
-        {
+        if name.is_empty() {
             self.bookmarks_complete = false;
+            return Ok(());
         }
+        self.open_bookmarks
+            .entry(id)
+            .or_default()
+            .starts
+            .push(Some((name, point)));
         Ok(())
     }
 
@@ -2368,10 +2376,21 @@ impl ProjectionState {
             self.bookmarks_complete = false;
             return Ok(());
         };
-        let Some((name, start)) = self.open_bookmarks.remove(&id) else {
+        let Some(queue) = self.open_bookmarks.get_mut(&id) else {
             self.bookmarks_complete = false;
             return Ok(());
         };
+        let Some((name, start)) = queue.starts.get_mut(queue.cursor).and_then(Option::take) else {
+            self.bookmarks_complete = false;
+            return Ok(());
+        };
+        queue.cursor = queue
+            .cursor
+            .checked_add(1)
+            .ok_or(ProjectionError::InvalidDocumentXml)?;
+        if queue.cursor == queue.starts.len() {
+            self.open_bookmarks.remove(&id);
+        }
         self.bookmarks.push(PendingBookmarkRange {
             id,
             name,
@@ -2873,4 +2892,74 @@ fn normalized_font_symbol(font: Option<&str>, encoded: u32) -> Option<&'static s
         .iter()
         .find(|mapping| mapping.encoded == encoded && mapping.font.eq_ignore_ascii_case(font))
         .map(|mapping| mapping.unicode)
+}
+
+#[cfg(test)]
+mod collision_tests {
+    use super::*;
+    use proptest::prelude::*;
+    use std::fmt::Write as _;
+
+    fn project_bookmarks(body: &str) -> Result<RawDocumentProjection, TestCaseError> {
+        let xml = format!(
+            r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>{body}</w:p></w:body></w:document>"#
+        );
+        project_document_xml(
+            xml.as_bytes(),
+            32,
+            RevisionView::Current,
+            TextMaterialization::WordHost,
+            Err(FormattingUnknownReason::DocumentPartOnly),
+            None,
+        )
+        .map_err(|error| TestCaseError::fail(format!("unexpected fixture error: {error:?}")))
+    }
+
+    proptest! {
+        #[test]
+        fn balanced_duplicate_ranges_retain_all_content(id in 0_u32..100_000, count in 1_usize..24, overlap in any::<bool>()) {
+            let end = format!(r#"<w:bookmarkEnd w:id="{id}"/>"#);
+            let text = r"<w:r><w:t>Content</w:t></w:r>";
+            let body = if overlap {
+                let mut starts = String::new();
+                for index in 0..count {
+                    write!(starts, r#"<w:bookmarkStart w:id="{id}" w:name="target{index}"/>"#).map_err(|error| TestCaseError::fail(format!("fixture XML write failed: {error:?}")))?;
+                }
+                format!("{starts}{text}{}", end.repeat(count))
+            } else {
+                let mut ranges = String::new();
+                for index in 0..count {
+                    write!(ranges, r#"<w:bookmarkStart w:id="{id}" w:name="target{index}"/>{text}{end}"#).map_err(|error| TestCaseError::fail(format!("fixture XML write failed: {error:?}")))?;
+                }
+                ranges
+            };
+            let output = project_bookmarks(&body)?;
+            let bookmarks = output.bookmarks.map_err(|error| TestCaseError::fail(format!("unexpected fixture error: {error:?}")))?;
+            prop_assert_eq!(bookmarks.len(), count);
+            prop_assert_eq!(&output.paragraphs.first().ok_or_else(|| TestCaseError::fail("fixture has one paragraph"))?.text, &"Content".repeat(if overlap { 1 } else { count }));
+            for (index, bookmark) in bookmarks.iter().enumerate() {
+                prop_assert_eq!(bookmark.id, id);
+                prop_assert_eq!(&bookmark.name, &format!("target{index}"));
+            }
+        }
+    }
+
+    #[test]
+    fn unmatched_colliding_ranges_remain_unknown() -> Result<(), TestCaseError> {
+        let start = r#"<w:bookmarkStart w:id="37" w:name="target"/>"#;
+        let end = r#"<w:bookmarkEnd w:id="37"/>"#;
+        prop_assert!(
+            project_bookmarks(&format!("{start}{start}{end}"))?
+                .bookmarks
+                .is_err(),
+            "unmatched colliding range must remain unknown"
+        );
+        prop_assert!(
+            project_bookmarks(&format!("{start}{end}{end}"))?
+                .bookmarks
+                .is_err(),
+            "unmatched colliding range must remain unknown"
+        );
+        Ok(())
+    }
 }

@@ -30,6 +30,30 @@ its Apache-2.0 license.
 
 ## Inventory
 
+`duplicate-imported-*.docx` are synthetic packages generated from the typed
+identity fixture registry in `packages/core/scripts/imported-id-collision-fixtures.ts`.
+Numbering and relationship duplicates deliberately carry conflicting definitions.
+
+`duplicate-bookmark-ids.docx` is synthetic OOXML from the fixture generator:
+two bookmark ranges reuse ID `7` and name `target`, followed by a `REF target`
+field with a stale cached result. It exercises deterministic duplicate repair
+and first-target field resolution without losing paragraph text.
+
+| File                                    | What it exercises                                                                                   |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `duplicate-bookmark-ids.docx`           | Repeated bookmark ranges and a REF field resolving to the first target                              |
+| `duplicate-imported-bookmark.docx`      | Repeated bookmark source definitions; registry-derived import diagnostics and save fixed point      |
+| `duplicate-imported-comment.docx`       | Repeated comment source definitions; registry-derived import diagnostics and save fixed point       |
+| `duplicate-imported-footnote.docx`      | Repeated footnote source definitions; registry-derived import diagnostics and save fixed point      |
+| `duplicate-imported-endnote.docx`       | Repeated endnote source definitions; registry-derived import diagnostics and save fixed point       |
+| `duplicate-imported-revision.docx`      | Repeated revision source definitions; registry-derived import diagnostics and save fixed point      |
+| `duplicate-imported-paraId.docx`        | Repeated paraId source definitions; registry-derived import diagnostics and save fixed point        |
+| `duplicate-imported-textId.docx`        | Repeated textId source definitions; registry-derived import diagnostics and save fixed point        |
+| `duplicate-imported-numId.docx`         | Repeated numId source definitions; registry-derived import diagnostics and save fixed point         |
+| `duplicate-imported-abstractNumId.docx` | Repeated abstractNumId source definitions; registry-derived import diagnostics and save fixed point |
+| `duplicate-imported-drawing.docx`       | Repeated drawing source definitions; registry-derived import diagnostics and save fixed point       |
+| `duplicate-imported-relationship.docx`  | Repeated relationship source definitions; registry-derived import diagnostics and save fixed point  |
+
 | File                                  | What it exercises                                                                                        |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `block-sdt-richtext.docx`             | Block-level `<w:sdt>` wrapping a paragraph; alias, tag, lock                                             |

@@ -22,6 +22,8 @@ import type { StyleDefinitions, Theme, FontTable, RelationshipMap, MediaFile } f
 export {
   MAX_RETAINED_PARSE_WARNINGS_PER_CODE,
   PARSE_WARNING_CODES,
+  IMPORTED_ID_COLLISION_KINDS,
+  type ImportedIdCollisionKind,
   type ParseWarning,
   type ParseWarningCode,
   type ParseWarningLocation,
