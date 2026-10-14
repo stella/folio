@@ -5,6 +5,10 @@ import ts from "typescript";
 import JSZip from "jszip";
 import { buildPanelLayoutDocument } from "../tests/support/panelLayoutDocument";
 import type { PanelLayoutReview, PanelLayoutSections } from "../tests/support/panelLayoutDocument";
+import {
+  buildCommentSearchDocument,
+  COMMENT_SEARCH_REPLY_LENGTHS,
+} from "../tests/support/commentSearchDocument";
 import { buildScrollRootDocument } from "../tests/support/scrollRootDocument";
 import { generateDocxFixture, validateDocxFixture } from "../tests/support/validatedDocxFixture";
 
@@ -20,6 +24,10 @@ const sectionCases = {
   "landscape-then-portrait": "landscape-then-portrait",
 } as const satisfies Record<PanelLayoutSections, PanelLayoutSections>;
 const fixtureCases = [
+  ...COMMENT_SEARCH_REPLY_LENGTHS.map((sentenceCount) => ({
+    file: "tests/support/commentSearchDocument.ts",
+    build: () => buildCommentSearchDocument(sentenceCount),
+  })),
   { file: "tests/support/scrollRootDocument.ts", build: buildScrollRootDocument },
   ...Object.values(reviewCases).flatMap((review) =>
     Object.values(sectionCases).map((sections) => ({

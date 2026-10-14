@@ -1,7 +1,11 @@
 import { expect, forEachAdapter, openEditor } from "./parity-fixture";
-import { buildCommentSearchDocument, REPLY_SEARCH_TARGET } from "../support/commentSearchDocument";
+import {
+  buildCommentSearchDocument,
+  COMMENT_SEARCH_REPLY_LENGTHS,
+  REPLY_SEARCH_TARGET,
+} from "../support/commentSearchDocument";
 
-for (const replyLength of [8, 40]) {
+for (const replyLength of COMMENT_SEARCH_REPLY_LENGTHS) {
   forEachAdapter(
     `find reveals and re-reveals a ${replyLength}-sentence reply beyond the collapsed text clamp`,
     async (adapter, { page }) => {

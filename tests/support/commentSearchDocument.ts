@@ -2,6 +2,8 @@ import JSZip from "jszip";
 import { buildPanelLayoutDocument } from "./panelLayoutDocument";
 import { generateDocxFixture } from "./validatedDocxFixture";
 
+export const COMMENT_SEARCH_REPLY_LENGTHS = [8, 40] as const;
+
 export const REPLY_SEARCH_TARGET = "reply-tail-search-target";
 
 export const buildCommentSearchDocument = async (replyLength: number) => {
