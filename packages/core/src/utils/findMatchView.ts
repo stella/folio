@@ -48,6 +48,7 @@ type FindMatchViewOptions = {
   bodyDoc?: PMNode | undefined;
   matches: readonly FindMatch[];
   commentRoot?: HTMLElement | undefined;
+  layout?: Layout | null | undefined;
 };
 
 /** Resolve each story once; box positions are local to their parent story. */
@@ -55,7 +56,7 @@ export const resolveDocumentFindRanges = ({
   document,
   bodyDoc,
   matches,
-}: Omit<FindMatchViewOptions, "container" | "commentRoot">): ResolvedMatch[] => {
+}: Omit<FindMatchViewOptions, "container" | "commentRoot" | "layout">): ResolvedMatch[] => {
   const resolved: ResolvedMatch[] = [];
   const { styles, theme, numbering } = document.package;
   const conversionOptions = {
@@ -218,12 +219,17 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       surface: HTMLElement;
     };
     const appendRects = ({ index, rects, source, surface }: AppendRectsOptions) => {
+      const visibleRects = rects.filter((rect) => rect.width > 0 && rect.height > 0);
+      if (visibleRects.length === 0) return;
+      const previousTarget = targets.get(index);
+      if (!previousTarget || (previousTarget.compareDocumentPosition(source) & 2) !== 0)
+        targets.set(index, source);
       const origin = surface.getBoundingClientRect();
       const scaleX = surface.offsetWidth > 0 ? origin.width / surface.offsetWidth : 1;
       const scaleY = surface.offsetHeight > 0 ? origin.height / surface.offsetHeight : 1;
       const elements = marks.get(index) ?? [];
       const viewport = getEditorScrollRoot(source)?.getBoundingClientRect();
-      for (const rect of rects) {
+      for (const rect of visibleRects) {
         const mark = container.ownerDocument.createElement("span");
         mark.dataset["findMatchIndex"] = String(index);
         Object.assign(mark.style, {
@@ -294,9 +300,6 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
           : intervals.map(({ from, to }) => measurePaintedSpanRange(span, from, to));
         for (const measured of measurements) {
           if (measured.type === "outside") continue;
-          const previousTarget = targets.get(range.index);
-          if (!previousTarget || (previousTarget.compareDocumentPosition(span) & 2) !== 0)
-            targets.set(range.index, span);
           const rects = measured.type === "element" ? [measured.rect] : measured.rects;
           appendRects({ index: range.index, rects, source: span, surface: overlay });
         }
@@ -317,7 +320,6 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       if (!paragraph) continue;
       const range = createTextStreamRange(paragraph, match.startOffset, match.endOffset);
       if (!range) continue;
-      targets.set(index, paragraph);
       if (commentOverlay)
         appendRects({
           index,
@@ -364,18 +366,65 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
   container.addEventListener("scroll", schedule, true);
   options.commentRoot?.addEventListener("scroll", schedule, true);
   repaint();
+  const paint = (index: number) => {
+    currentIndex = index;
+    if (pendingReveal !== index) pendingReveal = null;
+    emphasize();
+  };
+  const reveal = (index: number): boolean => {
+    // Thread activation and virtualization may have changed visibility since paint.
+    pendingReveal = null;
+    repaint();
+    const target = targets.get(index);
+    pendingReveal = target ? null : index;
+    if (!target) return false;
+    scrollEditorElementIntoView(target);
+    return true;
+  };
   return {
-    paint: (index: number) => {
-      currentIndex = index;
-      emphasize();
-    },
-    reveal: (index: number): boolean => {
-      if (!targets.has(index)) repaint();
-      const target = targets.get(index);
-      pendingReveal = target ? null : index;
-      if (!target) return false;
-      scrollEditorElementIntoView(target);
-      return true;
+    paint,
+    reveal,
+    navigate: (index: number, activateComment?: (commentId: number) => void): void => {
+      if (!Number.isInteger(index) || index < 0) return;
+      const match = options.matches.at(index);
+      if (!match) return;
+      paint(index);
+      if (match.commentId !== undefined) activateComment?.(match.commentId);
+      if (reveal(index) || match.commentId !== undefined) return;
+      const range = ranges.find((candidate) => candidate.index === index);
+      if (!range) return;
+      const page = options.layout?.pages.find((candidate) => {
+        const story = range.story;
+        if (story === OP_STORIES.MAIN)
+          return candidate.fragments.some(
+            ({ pmStart, pmEnd }) =>
+              pmStart !== undefined &&
+              pmEnd !== undefined &&
+              pmStart < range.to &&
+              pmEnd > range.from,
+          );
+        switch (story.kind) {
+          case "header":
+          case "footer": {
+            const refs = selectSectionHeaderFooterRIds(candidate);
+            return (story.kind === "header" ? refs.headerRId : refs.footerRId) === story.rId;
+          }
+          case "footnote":
+            return candidate.footnoteIds?.includes(story.id) ?? false;
+          case "endnote":
+            return false;
+          default: {
+            const exhaustive: never = story;
+            return exhaustive;
+          }
+        }
+      });
+      if (!page) return;
+      // Shells retain their dimensions while page content is unmounted. Scrolling
+      // mounts the page; the geometry observer finishes the pending reveal.
+      scrollEditorElementIntoView(
+        container.querySelector<HTMLElement>(`[data-page-number="${page.number}"]`),
+      );
     },
     destroy: () => {
       observer.disconnect();

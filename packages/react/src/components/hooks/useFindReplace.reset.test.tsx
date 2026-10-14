@@ -2,8 +2,9 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, expect, spyOn, test } from "bun:test";
 import { panic } from "better-result";
+import type { Layout } from "@stll/folio-core/layout-engine/types";
 import { act, createRef, useImperativeHandle, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
@@ -385,3 +386,294 @@ test.each([true, false])(
     }
   },
 );
+
+// Adapter navigation previously covered only already-mounted story text. Model
+// a virtual page shell and collapsed reply with production DOM attributes.
+const navigationFixture = (kind: "body" | "header" | "reply"): Document => {
+  const doc = createEmptyDocument({ initialText: kind === "body" ? "needle" : "body" });
+  if (kind === "header") {
+    doc.package.headers = new Map([
+      [
+        "h-default",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "run", content: [{ type: "text", text: "needle" }] }],
+            },
+          ],
+        },
+      ],
+    ]);
+    doc.package.document.sections = [
+      { properties: { headerReferences: [{ type: "default", rId: "h-default" }] }, content: [] },
+    ];
+  }
+  if (kind === "reply")
+    doc.package.document.comments = [
+      {
+        id: 7,
+        author: "Author",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text: "root" }] }],
+          },
+        ],
+      },
+      {
+        id: 8,
+        parentId: 7,
+        author: "Author",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text: "needle" }] }],
+          },
+        ],
+      },
+    ];
+  return doc;
+};
+
+const navigationLayout = (kind: "body" | "header"): Layout => ({
+  pageSize: { w: 800, h: 1000 },
+  pages: [1, 2].map((number) => ({
+    number,
+    logicalNumber: number,
+    sectionPageNumber: number,
+    size: { w: 800, h: 1000 },
+    margins: { top: 20, right: 20, bottom: 20, left: 20 },
+    fragments:
+      number === 2 && kind === "body"
+        ? [
+            {
+              kind: "paragraph",
+              blockId: "block-1",
+              x: 20,
+              y: 20,
+              width: 760,
+              height: 18,
+              fromLine: 0,
+              toLine: 1,
+              pmStart: 0,
+              pmEnd: 8,
+            },
+          ]
+        : [],
+    headerFooterRefs: number === 2 && kind === "header" ? { headerDefault: "h-default" } : {},
+  })),
+});
+
+const navigationViewport = () => {
+  const container = document.createElement("div");
+  container.dataset["folioScroll"] = "";
+  Object.defineProperties(container, { clientHeight: { value: 100 }, clientWidth: { value: 500 } });
+  container.getBoundingClientRect = () => new DOMRect(0, 0, 500, 100);
+  const shell = document.createElement("div");
+  shell.className = "layout-page";
+  shell.dataset["pageNumber"] = "2";
+  shell.getBoundingClientRect = () => new DOMRect(0, 1000, 800, 1000);
+  container.append(shell);
+  document.body.append(container);
+  return { container, shell };
+};
+
+const mountNavigationMatch = (shell: HTMLElement, kind: "body" | "header") => {
+  const span = document.createElement("span");
+  span.className = "layout-run-tab";
+  span.dataset["pmStart"] = "1";
+  span.dataset["pmEnd"] = "7";
+  if (kind === "header") {
+    span.dataset["story"] = "header";
+    span.dataset["hfRid"] = "h-default";
+  }
+  span.getBoundingClientRect = () => new DOMRect(30, 1020, 60, 18);
+  shell.append(span);
+};
+
+test.each(["body", "header"] as const)(
+  "React navigation mounts an unmounted page for a %s match",
+  async (kind) => {
+    const fixture = navigationFixture(kind);
+    const { container, shell } = navigationViewport();
+    const layout = navigationLayout(kind);
+    const bodyDoc = toProseDoc(fixture);
+    const handle = createRef<ReturnType<typeof useFindReplace>>();
+    const scroll = spyOn(container, "scrollTo").mockImplementation(() => {
+      if (!shell.querySelector("span")) queueMicrotask(() => mountNavigationMatch(shell, kind));
+    });
+    const Harness = () => {
+      const containerRef = useRef(container);
+      const findReplace = useFindDialogState();
+      const search = useFindReplace({
+        containerRef,
+        findReplace,
+        documentState: fixture,
+        getBodyDoc: () => bodyDoc,
+        getLayout: () => layout,
+        handleDocumentChange: noop,
+      });
+      useImperativeHandle(handle, () => search);
+      return null;
+    };
+    const root = createRoot(document.createElement("div"));
+    try {
+      await act(async () => root.render(<Harness />));
+      await act(async () => {
+        expect(handle.current?.handleFind("needle", options)?.totalCount).toBe(1);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      });
+      expect(scroll).toHaveBeenCalled();
+      expect(shell.querySelector("[data-pm-start]")).not.toBeNull();
+      expect(container.querySelector("[data-find-match-index='0']")).not.toBeNull();
+      expect(scroll.mock.calls.length).toBeGreaterThan(1);
+    } finally {
+      await act(async () => root.unmount());
+      scroll.mockRestore();
+      container.remove();
+    }
+  },
+);
+
+test.each(["collapsed", "visible", "deferred"] as const)(
+  "React activates a %s reply before revealing its geometry",
+  async (visibility) => {
+    const fixture = navigationFixture("reply");
+    const bodyDoc = toProseDoc(fixture);
+    const { container } = navigationViewport();
+    const reply = document.createElement("p");
+    reply.dataset["findCommentId"] = "8";
+    reply.dataset["findCommentParagraph"] = "0";
+    reply.textContent = "needle";
+    container.append(reply);
+    const events: string[] = [];
+    let active = false;
+    let committed = visibility === "visible";
+    const createRange = document.createRange.bind(document);
+    const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
+      const range = createRange();
+      Object.defineProperty(range, "getClientRects", {
+        value: () => {
+          events.push(active ? "measure-active" : "measure-inactive");
+          return committed ? [new DOMRect(30, 200, 60, 18)] : [];
+        },
+      });
+      return range;
+    });
+    const scroll = spyOn(container, "scrollTo").mockImplementation(() => {
+      events.push(active ? "scroll-active" : "scroll-inactive");
+    });
+    const handle = createRef<ReturnType<typeof useFindReplace>>();
+    const Harness = () => {
+      const containerRef = useRef(container);
+      const findReplace = useFindDialogState();
+      const search = useFindReplace({
+        containerRef,
+        findReplace,
+        documentState: fixture,
+        getBodyDoc: () => bodyDoc,
+        handleDocumentChange: noop,
+        selectMatch: (match) => {
+          expect(match.commentId).toBe(8);
+          events.push("activate");
+          active = true;
+          const commit = () => {
+            committed = true;
+            events.push("commit");
+            reply.dataset["replyExpanded"] = "true";
+          };
+          if (visibility === "deferred") queueMicrotask(commit);
+          else commit();
+          return true;
+        },
+      });
+      useImperativeHandle(handle, () => search);
+      return null;
+    };
+    const root = createRoot(document.createElement("div"));
+    try {
+      await act(async () => root.render(<Harness />));
+      await act(async () => {
+        handle.current?.handleFind("needle", options);
+        if (visibility === "deferred") {
+          expect(events).toContain("activate");
+          expect(events).not.toContain("commit");
+          expect(scroll).not.toHaveBeenCalled();
+        }
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      });
+      expect(events).toContain("activate");
+      expect(events).not.toContain("scroll-inactive");
+      expect(
+        container.querySelector("[data-folio-find-comment-overlay] [data-find-match-index='0']"),
+      ).not.toBeNull();
+      expect(events).toContain("scroll-active");
+      expect(events.indexOf("scroll-active")).toBeGreaterThan(events.indexOf("commit"));
+    } finally {
+      await act(async () => root.unmount());
+      rangeFactory.mockRestore();
+      scroll.mockRestore();
+      container.remove();
+    }
+  },
+);
+
+test("React keeps the current match after an older unmounted page finishes mounting", async () => {
+  const fixture = createEmptyDocument({ initialText: "needle needle" });
+  const bodyDoc = toProseDoc(fixture);
+  const { container, shell } = navigationViewport();
+  const mountedPage = document.createElement("div");
+  mountedPage.className = "layout-page";
+  const currentSpan = document.createElement("span");
+  currentSpan.className = "layout-run-tab";
+  currentSpan.dataset["pmStart"] = "8";
+  currentSpan.dataset["pmEnd"] = "14";
+  currentSpan.getBoundingClientRect = () => new DOMRect(30, 200, 60, 18);
+  mountedPage.append(currentSpan);
+  container.append(mountedPage);
+  const scroll = spyOn(container, "scrollTo").mockImplementation(() => {});
+  const handle = createRef<ReturnType<typeof useFindReplace>>();
+  const layout = navigationLayout("body");
+  const Harness = () => {
+    const containerRef = useRef(container);
+    const findReplace = useFindDialogState();
+    const search = useFindReplace({
+      containerRef,
+      findReplace,
+      documentState: fixture,
+      getBodyDoc: () => bodyDoc,
+      getLayout: () => layout,
+      handleDocumentChange: noop,
+    });
+    useImperativeHandle(handle, () => search);
+    return null;
+  };
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(<Harness />));
+    await act(async () => {
+      expect(handle.current?.handleFind("needle", options)?.totalCount).toBe(2);
+      expect(handle.current?.handleFindNext()?.startOffset).toBe(7);
+    });
+    const completedScrolls = scroll.mock.calls.length;
+    mountNavigationMatch(shell, "body");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(scroll.mock.calls.length).toBe(completedScrolls);
+    expect(handle.current?.getFindResult()?.currentIndex).toBe(1);
+    expect(
+      container.querySelector("[data-find-match-index='0']")?.getAttribute("data-current"),
+    ).toBe("false");
+    expect(
+      container.querySelector("[data-find-match-index='1']")?.getAttribute("data-current"),
+    ).toBe("true");
+  } finally {
+    await act(async () => root.unmount());
+    scroll.mockRestore();
+    container.remove();
+  }
+});

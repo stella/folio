@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowRef } from "vue";
+import { computed, onBeforeUnmount, reactive, ref, shallowRef } from "vue";
 import type { Ref } from "vue";
 import type { EditorView } from "prosemirror-view";
 
@@ -83,18 +83,9 @@ export function useFindReplace({
     notify();
   };
 
-  const revealMatch = (match: FindMatch, index: number): boolean => {
+  const revealMatch = (index: number): boolean => {
     currentIndex.value = index;
-    matchView?.paint(index);
-    matchView?.reveal(index);
-    if (match.commentId !== undefined) {
-      revealComment?.(match.commentId);
-      void nextTick(() => {
-        if (matches.value.at(index) !== match || currentIndex.value !== index) return;
-        matchView?.paint(index);
-        matchView?.reveal(index);
-      });
-    }
+    matchView?.navigate(index, revealComment);
     notify();
     return true;
   };
@@ -136,11 +127,12 @@ export function useFindReplace({
           bodyDoc,
           matches: nextMatches,
           commentRoot: commentRoot?.value ?? undefined,
+          layout: layout.value,
         })
       : null;
     matchView?.paint(currentIndex.value);
     const firstMatch = nextMatches.at(0);
-    if (firstMatch && !refresh) revealMatch(firstMatch, 0);
+    if (firstMatch && !refresh) revealMatch(0);
     else notify();
     return nextMatches;
   };
@@ -157,12 +149,12 @@ export function useFindReplace({
   };
   const goToMatch = (index: number): boolean => {
     const selected = manager.goTo(index);
-    return selected ? revealMatch(selected.match, selected.index) : false;
+    return selected ? revealMatch(selected.index) : false;
   };
   const navigate = (direction: "next" | "previous"): FindMatch | null => {
     const stepped = manager.navigate(direction);
     if (!stepped) return null;
-    revealMatch(stepped.match, stepped.index);
+    revealMatch(stepped.index);
     return stepped.match;
   };
 

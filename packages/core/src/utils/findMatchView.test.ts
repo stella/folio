@@ -707,3 +707,78 @@ describe("view-only search geometry", () => {
     resizeDisconnect.mockRestore();
   });
 });
+
+// Navigation needs browser visibility, not merely a text node in the DOM.
+// Exercise the geometry oracle with both empty and zero-area ranges.
+test.each(
+  (["comment", "body"] as const).flatMap((surface) =>
+    (["empty", "zero-width", "zero-height"] as const).map((visibility) => ({
+      surface,
+      visibility,
+    })),
+  ),
+)(
+  "hidden $surface range ($visibility) cannot be revealed until it becomes visible",
+  ({ surface, visibility }) => {
+    const doc = {
+      package: {
+        document: {
+          content: [paragraph("body")],
+          comments: [{ id: 8, parentId: 7, author: "Author", content: [paragraph("reply hit")] }],
+        },
+      },
+    } satisfies Document;
+    const container = viewport();
+    const reply = document.createElement("span");
+    reply.dataset["findCommentId"] = "8";
+    reply.dataset["findCommentParagraph"] = "0";
+    reply.textContent = "reply hit";
+    container.append(reply);
+    let visible = false;
+    const createRange = document.createRange.bind(document);
+    const rangeFactory = spyOn(document, "createRange").mockImplementation(() => {
+      const range = createRange();
+      Object.defineProperty(range, "getClientRects", {
+        value: () => {
+          if (visible) return [new DOMRect(20, 200, 30, 18)];
+          if (visibility === "empty") return [];
+          return [
+            new DOMRect(
+              20,
+              200,
+              visibility === "zero-width" ? 0 : 30,
+              visibility === "zero-height" ? 0 : 18,
+            ),
+          ];
+        },
+      });
+      return range;
+    });
+    if (surface === "body") {
+      doc.package.document.content = [paragraph("reply hit")];
+      const pageElement = document.createElement("div");
+      pageElement.className = "layout-page";
+      delete reply.dataset["findCommentId"];
+      delete reply.dataset["findCommentParagraph"];
+      reply.dataset["pmStart"] = "1";
+      reply.dataset["pmEnd"] = "10";
+      pageElement.append(reply);
+      container.append(pageElement);
+    }
+    const matches = findInDocument(doc, "hit", {
+      ...createDefaultFindOptions(),
+      includeComments: surface === "comment",
+    });
+    const view = createFindMatchView({ container, document: doc, matches });
+    try {
+      expect(view.reveal(0)).toBe(false);
+      expect(container.querySelectorAll("[data-find-match-index]")).toHaveLength(0);
+      visible = true;
+      expect(view.reveal(0)).toBe(true);
+      expect(container.querySelectorAll("[data-find-match-index]")).toHaveLength(1);
+    } finally {
+      view.destroy();
+      rangeFactory.mockRestore();
+    }
+  },
+);

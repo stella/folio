@@ -99,6 +99,7 @@ export default library({
     "./.oxlint-plugins/folio-editor-commands.ts",
     "./.oxlint-plugins/folio-deletion-marks.ts",
     "./.oxlint-plugins/folio-fragment-ownership.ts",
+    "./.oxlint-plugins/folio-find-navigation.ts",
     "./.oxlint-plugins/folio-identity-attributes.ts",
     "./.oxlint-plugins/folio-painted-text.ts",
     "./.oxlint-plugins/folio-verbatim-capture.ts",
@@ -551,6 +552,14 @@ export default library({
       rules: {
         "folio-harness-workspaces/no-undeclared-workspace-runtime-import": "error",
       },
+    },
+    {
+      files: [
+        "packages/react/src/**/*.{ts,tsx}",
+        "packages/vue/src/**/*.ts",
+        "test/__fixtures__/find-navigation*/**/*.ts",
+      ],
+      rules: { "folio-find-navigation/navigation-owner": "error" },
     },
     nonReactPackageOverride,
   ],

@@ -198,8 +198,6 @@ import {
 } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 // Extension system
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
-import { resolveFindMatchRange } from "@stll/folio-core/prosemirror/findReplaceSelection";
-import { selectSectionHeaderFooterRIds } from "@stll/folio-core/layout-painter/renderPage";
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
 import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
@@ -1837,38 +1835,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         );
         return true;
       }
-      const editor = pagedEditorRef.current;
-      if (match.story !== undefined && match.story !== "main") {
-        const story = match.story;
-        if (story.kind === "header" || story.kind === "footer") {
-          const page = editor?.getLayout()?.pages.find((candidate) => {
-            const selected = selectSectionHeaderFooterRIds(candidate);
-            return (
-              (story.kind === "header" ? selected.headerRId : selected.footerRId) === story.rId
-            );
-          });
-          if (page) {
-            editor?.scrollToPage(page.number);
-            return true;
-          }
-        }
-        return false;
-      }
-      const view = editor?.getView();
-      if (!editor || !view) {
-        return false;
-      }
-
-      if (match.textBoxIndex !== undefined) return false;
-      const range = resolveFindMatchRange(view.state.doc, match);
-      if (!range) {
-        return false;
-      }
-
-      requestAnimationFrame(() => {
-        editor.scrollToPosition(range.from);
-      });
-      return true;
+      return false;
     },
     [setActiveCommentId, setVisibleCommentAuthors, setShowCommentsSidebar, commentsRef],
   );

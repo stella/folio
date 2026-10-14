@@ -25,7 +25,7 @@ import {
   getRenderedSearchStories,
 } from "@stll/folio-core/utils/findMatchView";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
-import { findInDocument, scrollToMatch } from "../dialogs/findReplaceUtils";
+import { findInDocument } from "../dialogs/findReplaceUtils";
 import type { FindMatch, FindOptions, FindResult } from "../dialogs/findReplaceUtils";
 import type { UseFindReplaceReturn as FindReplaceStateReturn } from "../dialogs/useFindReplace";
 
@@ -38,13 +38,13 @@ type UseFindReplaceParams = {
   documentState?: Document | null;
   /** Returns the current live document state from the editor */
   getDocumentState?: () => Document | null;
-  /** Ref to the scrollable container for scrollToMatch */
+  /** Ref to the document search surface */
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** Callback to push a new document state */
   handleDocumentChange: (newDoc: Document) => void;
   /** Dialog state manager from useFindReplace (dialogs) */
   findReplace: FindReplaceStateReturn;
-  /** Select and reveal a match in the live editor */
+  /** Activate the thread containing a comment match */
   selectMatch?: (match: FindMatch) => boolean;
   getBodyDoc?: () => PMNode | undefined;
   getLayout?: () => Layout | null;
@@ -132,19 +132,9 @@ export function useFindReplace({
   const revealMatch = useCallback(
     (match: FindMatch) => {
       const index = manager.getResult()?.currentIndex ?? 0;
-      matchView.current?.paint(index);
-      if (matchView.current?.reveal(index)) return;
-      if (selectMatch?.(match)) return;
-      if (
-        (match.story === undefined || match.story === "main") &&
-        match.textBoxIndex === undefined &&
-        match.commentId === undefined &&
-        containerRef.current
-      ) {
-        scrollToMatch(containerRef.current, match);
-      }
+      matchView.current?.navigate(index, () => selectMatch?.(match));
     },
-    [selectMatch, containerRef, manager],
+    [selectMatch, manager],
   );
 
   const handleFind = useCallback(
@@ -176,15 +166,15 @@ export function useFindReplace({
       const result = manager.setMatches(matches, currentIndex);
       matchView.current?.destroy();
       const container = containerRef.current;
-      matchView.current =
-        container && getBodyDoc
-          ? createFindMatchView({
-              container,
-              document: currentDocument,
-              bodyDoc,
-              matches,
-            })
-          : null;
+      matchView.current = container
+        ? createFindMatchView({
+            container,
+            document: currentDocument,
+            bodyDoc,
+            matches,
+            layout: getLayout?.(),
+          })
+        : null;
       publish(result);
       setMatches(matches, result.currentIndex);
       matchView.current?.paint(result.currentIndex);
