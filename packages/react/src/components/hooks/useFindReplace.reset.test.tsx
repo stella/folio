@@ -12,8 +12,16 @@ import type { Document } from "@stll/folio-core/types/document";
 import type { FindMatch } from "../dialogs/findReplaceUtils";
 import { findInDocument } from "@stll/folio-core/utils/findReplace";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
+import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
+import { EditorState } from "prosemirror-state";
+import { EditorView } from "prosemirror-view";
 import { useFindReplace as useFindDialogState } from "../dialogs/useFindReplace";
 import { useFindReplace } from "./useFindReplace";
+import {
+  ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES,
+  buildBoundaryDocument,
+  surroundHiddenBoundary,
+} from "../../../../../test/findReplacementBoundaryFixtures";
 
 const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -23,6 +31,94 @@ afterAll(() => {
 });
 const options = { matchCase: false, matchWholeWord: false };
 const noop = () => {};
+
+// Hidden-revision fixtures previously contained visible authored text only;
+// exercise zero-text carriers through the mounted hook and real PM conversion.
+test.each(
+  Object.entries(ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES).flatMap(([name, content]) =>
+    (["deletion", "moveFrom"] as const).map(
+      (revisionType) => [name, revisionType, content] as const,
+    ),
+  ),
+)(
+  "React replacement preserves a zero-text protected boundary: %s / %s",
+  async (_name, revisionType, content) => {
+    const fixture = buildBoundaryDocument(surroundHiddenBoundary(content, revisionType));
+    const before = structuredClone(fixture);
+    const host = document.createElement("div");
+    const hidden = document.createElement("div");
+    document.body.append(host, hidden);
+    const view = new EditorView(hidden, {
+      state: EditorState.create({ doc: toProseDoc(fixture) }),
+    });
+    const originalState = view.state;
+    const originalJSON = view.state.doc.toJSON();
+    const revision = fixture.package.document.content.at(0);
+    if (revision?.type !== "paragraph") panic("Boundary fixture paragraph missing");
+    const boundary = revision.content.at(1);
+    if (boundary?.type !== "deletion" && boundary?.type !== "moveFrom")
+      panic("Boundary fixture revision missing");
+    let hasRevision = false;
+    view.state.doc.descendants((node) => {
+      hasRevision ||= node.marks.some(
+        (mark) => mark.type.name === "deletion" && mark.attrs["revisionId"] === boundary.info.id,
+      );
+    });
+    const dispatchedDocuments: Document[] = [];
+    const handle = createRef<ReturnType<typeof useFindReplace>>();
+    const Harness = () => {
+      const containerRef = useRef<HTMLDivElement>(null);
+      const findReplace = useFindDialogState();
+      const search = useFindReplace({
+        containerRef,
+        findReplace,
+        getDocumentState: () =>
+          fromProseDoc(view.state.doc, fixture, { stylesheetSource: { type: "package" } }),
+        getBodyDoc: () => view.state.doc,
+        displayMode: "no-markup",
+        handleDocumentChange: (nextDocument) => {
+          dispatchedDocuments.push(nextDocument);
+          const nextDoc = toProseDoc(nextDocument);
+          view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, nextDoc.content));
+        },
+      });
+      useImperativeHandle(handle, () => search);
+      return null;
+    };
+    const root = createRoot(host);
+    const operations = () => handle.current ?? panic("Find hook handle missing");
+    try {
+      expect(hasRevision).toBe(true);
+      await act(async () => root.render(<Harness />));
+      for (const command of ["current", "all"] as const) {
+        await act(async () => {
+          expect(operations().handleFind("AB", options)?.totalCount).toBe(1);
+        });
+        expect(operations().getFindResult()?.matches.at(0)?.replacement).toEqual({
+          status: "blocked",
+          reason: "hidden-content",
+        });
+        await act(async () => {
+          if (command === "current") expect(operations().handleReplace("changed")).toBe(false);
+          else
+            expect(operations().handleReplaceAll("AB", "changed", options)).toEqual({
+              replacedCount: 0,
+              skippedCount: 1,
+            });
+        });
+        expect(dispatchedDocuments).toEqual([]);
+        expect(view.state).toBe(originalState);
+        expect(view.state.doc.toJSON()).toEqual(originalJSON);
+        expect(fixture).toEqual(before);
+      }
+    } finally {
+      await act(async () => root.unmount());
+      view.destroy();
+      host.remove();
+      hidden.remove();
+    }
+  },
+);
 
 const replacementFixture = (kind: "field" | "hidden" | "ordinary"): Document => {
   if (kind === "ordinary") return createEmptyDocument({ initialText: "hit" });

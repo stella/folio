@@ -314,11 +314,12 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
     const projection = joinSearchProjections(
       paragraph.content.map(getParagraphContentSearchProjection),
     );
-    return { ...projection, offsets: [] };
+    return { ...projection, offsets: [], hiddenContentBarriers: [] };
   }
   let text = "";
   let authoredOffset = 0;
   const offsets: number[] = [];
+  const hiddenContentBarriers: number[] = [];
   const replacementBarriers: number[] = [];
   const atomicContentRanges: { start: number; end: number }[] = [];
   const fieldTextRanges: { start: number; end: number }[] = [];
@@ -327,6 +328,9 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
   const visit = (items: readonly ParagraphContent[]): void => {
     for (const item of items) {
       if (isHiddenRevision(item.type, mode)) {
+        // Hidden source can carry anchors without a searchable character. Its
+        // boundary must survive even when authored text offsets stay adjacent.
+        hiddenContentBarriers.push(text.length);
         authoredOffset += getParagraphContentSearchProjection(item).text.length;
         continue;
       }
@@ -368,6 +372,7 @@ const getVisibleParagraphProjection = (paragraph: Paragraph, mode: DisplayMode |
   return {
     text,
     offsets,
+    hiddenContentBarriers,
     pageBreakOffsets,
     excludedTextRanges,
     fieldTextRanges,
@@ -410,7 +415,7 @@ export const findInParagraph = (
 };
 
 type ReplacementProjectionOptions = {
-  projection: SearchProjection & { offsets: number[] };
+  projection: SearchProjection & { offsets: number[]; hiddenContentBarriers: number[] };
   start: number;
   end: number;
 };
@@ -419,6 +424,8 @@ const replacementForProjection = ({
   start,
   end,
 }: ReplacementProjectionOptions): ReplaceEligibility => {
+  if (projection.hiddenContentBarriers.some((offset) => offset > start && offset < end))
+    return { status: "blocked", reason: "hidden-content" };
   if ((projection.fieldTextRanges ?? []).some((range) => range.start < end && range.end > start))
     return { status: "blocked", reason: "field-result" };
   if (
@@ -565,15 +572,19 @@ const getRunSearchProjection = (run: Run): SearchProjection => {
   for (const item of run.content) {
     switch (item.type) {
       case "preservedXml":
+        if (!item.text) replacementBarriers.push(text.length);
         atomicContentRanges.push({ start: text.length, end: text.length + item.text.length });
         text += item.text;
         break;
       case "text":
         text += item.text;
         break;
-      case "symbol":
-        text += decodeOoxmlSymbolCharacter(item.char) ?? "";
+      case "symbol": {
+        const character = decodeOoxmlSymbolCharacter(item.char);
+        if (character) text += character;
+        else replacementBarriers.push(text.length);
         break;
+      }
       case "tab":
         text += "\t";
         break;
@@ -589,12 +600,11 @@ const getRunSearchProjection = (run: Run): SearchProjection => {
       case "endnoteRef":
       case "drawing":
       case "shape":
-        replacementBarriers.push(text.length);
-        break;
       case "noteMarker":
       case "fieldChar":
       case "instrText":
       case "renderedPageBreak":
+        replacementBarriers.push(text.length);
         break;
       default: {
         const unprojected: never = item;
@@ -611,7 +621,11 @@ const getHyperlinkSearchProjection = (hyperlink: Hyperlink): SearchProjection =>
   joinSearchProjections(hyperlink.children.map(getParagraphContentSearchProjection));
 
 /** Nothing on the line: a marker, or markup with no text under it. */
-const noSearchText = (): SearchProjection => ({ text: "", pageBreakOffsets: [] });
+const noSearchText = (): SearchProjection => ({
+  text: "",
+  pageBreakOffsets: [],
+  replacementBarriers: [0],
+});
 
 /**
  * The text one paragraph content item puts on the line, for searching.

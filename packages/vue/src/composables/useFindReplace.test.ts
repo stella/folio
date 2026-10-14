@@ -19,6 +19,12 @@ import type {
 import type { Document } from "@stll/folio-core/types/document";
 import type { FindResult } from "@stll/folio-core/utils/findReplace";
 import type { UseFindReplaceReturn } from "./useFindReplace";
+import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
+import {
+  buildBoundaryDocument,
+  surroundHiddenBoundary,
+  ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES,
+} from "../../../../test/findReplacementBoundaryFixtures";
 
 const { createApp, defineComponent, h, ref, shallowRef } = await import("vue");
 const { useFindReplace } = await import("./useFindReplace");
@@ -108,12 +114,14 @@ test.each([true, false])("Vue search is view-only with readOnly=%s", (readOnly) 
 const textRun = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
 
 const withReplacementEditor = (
-  content: ParagraphContent[],
+  contentOrDocument: ParagraphContent[] | Document,
   check: (search: UseFindReplaceReturn, view: EditorView) => void,
 ) => {
-  const base = {
-    package: { document: { content: [{ type: "paragraph", content }] } },
-  } satisfies Document;
+  const base = Array.isArray(contentOrDocument)
+    ? ({
+        package: { document: { content: [{ type: "paragraph", content: contentOrDocument }] } },
+      } satisfies Document)
+    : contentOrDocument;
   const host = document.createElement("div");
   const hidden = document.createElement("div");
   document.body.append(host, hidden);
@@ -249,6 +257,34 @@ test("Vue replaces an ordinary editable match", () => {
     expect(search.getFindResult()?.totalCount).toBe(0);
   });
 });
+
+for (const [kind, content] of Object.entries(ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES)) {
+  for (const revisionType of ["deletion", "moveFrom"] as const) {
+    test.each(["current", "all"] as const)(
+      `Vue refuses %s replacement across hidden zero-text ${kind} in ${revisionType} without losing source metadata`,
+      (operation) => {
+        expect(getFindParagraphText({ type: "paragraph", content })).toBe("");
+        const fixture = buildBoundaryDocument(surroundHiddenBoundary(content, revisionType));
+        withReplacementEditor(fixture, (search, view) => {
+          const before = view.state;
+          const beforeJson = before.doc.toJSON();
+          expect(JSON.stringify(beforeJson)).toContain("1701037");
+          expect(search.find("AB")?.totalCount).toBe(1);
+          search.replaceText.value = "C";
+          if (operation === "current") expect(search.replaceCurrent()).toBe(false);
+          else expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 1 });
+          expect(view.state).toBe(before);
+          expect(view.state.doc.toJSON()).toEqual(beforeJson);
+          expect(search.currentMatch.value?.replacement).toEqual({
+            status: "blocked",
+            reason: "hidden-content",
+          });
+          expect(search.canReplaceCurrent.value).toBe(false);
+        });
+      },
+    );
+  }
+}
 
 // A debounced refresh can be pending when a host changes the current PM doc.
 // Re-check the result metadata before any transaction crosses that boundary.

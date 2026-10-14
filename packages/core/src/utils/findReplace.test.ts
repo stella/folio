@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import {
+  SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES,
+  CONDITIONAL_SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES,
+} from "../../../../test/findReplacementBoundaryFixtures";
 
 import type { Document } from "../types/document";
 import type { ComplexField, HeaderFooter, Paragraph, Run, SimpleField } from "../types/content";
@@ -53,6 +57,72 @@ const paragraph = (text: string): Paragraph => ({
 });
 
 const textRun = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
+
+describe("hidden source replacement boundaries", () => {
+  const views = [
+    { type: "deletion", displayMode: "no-markup" },
+    { type: "deletion", displayMode: "simple-markup" },
+    { type: "moveFrom", displayMode: "no-markup" },
+    { type: "moveFrom", displayMode: "simple-markup" },
+    { type: "insertion", displayMode: "original" },
+    { type: "moveTo", displayMode: "original" },
+  ] as const;
+  // Earlier fixtures only hid nonempty text: authored-offset gaps caught those
+  // cases, while anchors with no searchable text bypassed that oracle.
+  const fixtures = {
+    ...SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES,
+    ...CONDITIONAL_SOURCE_ZERO_TEXT_BOUNDARY_FIXTURES,
+  };
+  for (const [kind, content] of Object.entries(fixtures)) {
+    test.each(views)(`${kind} in hidden $type ($displayMode) preserves its boundary`, (view) => {
+      expect(getFindParagraphText({ type: "paragraph", content })).toBe("");
+      const source: Paragraph = {
+        type: "paragraph",
+        content: [textRun("A"), { type: view.type, info: { id: 1701037 }, content }, textRun("B")],
+      };
+      const options = { ...createDefaultFindOptions(), displayMode: view.displayMode };
+      expect(
+        findInDocument({ package: { document: { content: [source] } } }, "AB", options).at(0)
+          ?.replacement,
+      ).toEqual({ status: "blocked", reason: "hidden-content" });
+      for (const text of ["A", "B"]) {
+        expect(
+          findInDocument({ package: { document: { content: [source] } } }, text, options).at(0)
+            ?.replacement,
+        ).toEqual({ status: "allowed" });
+      }
+    });
+    test(`${kind} remains a replacement barrier when visible`, () => {
+      const source: Paragraph = {
+        type: "paragraph",
+        content: [textRun("A"), ...content, textRun("B")],
+      };
+      const matches = findInDocument(
+        { package: { document: { content: [source] } } },
+        "AB",
+        createDefaultFindOptions(),
+      );
+      if (kind === "pageBreak") expect(matches).toEqual([]);
+      else expect(matches.at(0)?.replacement.status).toBe("blocked");
+    });
+  }
+  test.each(views)("empty hidden $type ($displayMode) retains revision ownership", (view) => {
+    const source: Paragraph = {
+      type: "paragraph",
+      content: [
+        textRun("A"),
+        { type: view.type, info: { id: 1701037 }, content: [] },
+        textRun("B"),
+      ],
+    };
+    expect(
+      findInDocument({ package: { document: { content: [source] } } }, "AB", {
+        ...createDefaultFindOptions(),
+        displayMode: view.displayMode,
+      }).at(0)?.replacement,
+    ).toEqual({ status: "blocked", reason: "hidden-content" });
+  });
+});
 
 describe("note reference search offsets", () => {
   const cases = (["footnoteRef", "endnoteRef"] as const).flatMap((type) =>
