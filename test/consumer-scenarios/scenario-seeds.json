@@ -368,6 +368,13 @@
       "kind": "random",
       "generation": "targeted",
       "title": "rejection restores notes after paragraph insertions beside deleted references"
+    },
+    {
+      "seed": 1775378402,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "sequential replay preserves pre-batch find anchors across paragraph merges"
     }
   ]
 }

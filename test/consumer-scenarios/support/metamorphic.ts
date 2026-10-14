@@ -20,7 +20,7 @@
  *   undone through its receipt's undo handle leaves the copy as it was
  *   (blocks, comments and changes, ids and dates included).
  * - `batchSequential`: a batch leaves what its applied operations leave one
- *   at a time, each re-resolved against the document as it then stands, in
+ *   at a time, with pre-batch anchors mapped through earlier operations, in
  *   the order the batch contract gives (packages/core/src/ai-edits/
  *   batchOverlap.test.ts): annotations first, then insertions and other
  *   non-column operations, then table-column edits in source-grid order
@@ -430,7 +430,16 @@ const restate = (
     // What a caller re-reading the document would send: the block's hash now.
     restated["precondition"] = { ...precondition, blockTextHash: textHashOf(blockId) };
   }
-  const handle = handleOf(operation);
+  // A batch resolves find against the document as read, before any edit.
+  // A merge may append another occurrence; re-searching then changes the
+  // operation's meaning (or refuses it as ambiguous). Replay its original span.
+  let handle = handleOf(operation);
+  if (operation.type === "replaceInBlock") {
+    const find = String(operation["find"]);
+    const startOffset = pre.text.indexOf(find);
+    if (!find || startOffset < 0 || pre.text.indexOf(find, startOffset + 1) >= 0) return null;
+    handle = { blockId, startOffset, endOffset: startOffset + find.length };
+  }
   if (handle) {
     const shift = rebase(pre.text, now.text, handle.startOffset, handle.endOffset);
     if (shift === null) return null;
@@ -446,6 +455,10 @@ const restate = (
         pre.text.slice(handle.startOffset, handle.endOffset)
     ) {
       return null;
+    }
+    if (operation.type === "replaceInBlock") {
+      const { type: _type, blockId: _blockId, find: _find, ...metadata } = restated;
+      return { ...metadata, id: operation.id, type: "replaceRange", range };
     }
     restated["range"] = range;
   }
