@@ -2543,7 +2543,11 @@ const pendingParagraphRetraction = (
     // The container must keep a paragraph, and end with one.
     return null;
   }
-  const following = at.parent.maybeChild(at.index() + 1);
+  let followingIndex = at.index() + 1;
+  while (at.parent.maybeChild(followingIndex)?.type.name === "blockBookmarkBoundary") {
+    followingIndex++;
+  }
+  const following = at.parent.maybeChild(followingIndex);
   if (
     expectParagraphAttrs(paragraph).pPrMark?.kind === "moveTo" &&
     following?.type.spec["tableRole"] === "table" &&
@@ -5177,7 +5181,8 @@ const applyFolioAIEditOperationsInternal = ({
           const markPlace = tr.doc.resolve(markPosition);
           const endsItsContainer = paragraphEndsItsContainer(markPlace, item.blockNode.type.name);
           const deleted = tr.doc.nodeAt(markPosition);
-          const following = deleted && tr.doc.nodeAt(markPosition + deleted.nodeSize);
+          const following =
+            deleted && paragraphJoinAfter(tr.doc, markPosition + deleted.nodeSize)?.next;
           if (
             deleted &&
             following?.type === deleted.type &&

@@ -415,9 +415,13 @@ export const importedMoveDocument = (): Promise<Uint8Array> => {
     },
     paragraph("Middle clause."),
     {
-      ...paragraph([{ type: "moveTo", info: { ...info, id: 4 }, content: [run("Moved clause.")] }]),
+      ...paragraph([
+        { type: "bookmarkStart", id: 11, name: "MovedClause" },
+        { type: "moveTo", info: { ...info, id: 4 }, content: [run("Moved clause.")] },
+      ]),
       pPrMark: { kind: "moveTo", info: { ...info, id: 3 } },
     },
+    { type: "bookmarkEnd", id: 11 },
     paragraph("Closing clause."),
   );
   return packFixture(document);

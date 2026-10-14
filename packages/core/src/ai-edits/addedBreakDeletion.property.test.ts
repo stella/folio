@@ -13,10 +13,11 @@ import { FolioDocxReviewer } from "./headless";
 type FixtureOptions = {
   kind: "ins" | "moveTo";
   following: "paragraph" | "table" | "end";
+  anchors: "none" | "bookmark";
   text: string;
 };
 
-const fixture = async ({ kind, following, text }: FixtureOptions) => {
+const fixture = async ({ kind, following, anchors, text }: FixtureOptions) => {
   const document = createEmptyDocument();
   const info = { author: "Earlier Reviewer", date: "2026-01-01T00:00:00Z" };
   document.package.document.content = [
@@ -36,6 +37,9 @@ const fixture = async ({ kind, following, text }: FixtureOptions) => {
     {
       ...paragraph(
         [
+          ...(anchors === "bookmark"
+            ? [{ type: "bookmarkStart" as const, id: 11, name: "Clause" }]
+            : []),
           {
             type: kind === "moveTo" ? "moveTo" : "insertion",
             info: { ...info, id: 4 },
@@ -47,6 +51,7 @@ const fixture = async ({ kind, following, text }: FixtureOptions) => {
       paraId: "10000001",
       ...(following !== "end" && { pPrMark: { kind, info: { ...info, id: 3 } } }),
     },
+    ...(anchors === "bookmark" ? [{ type: "bookmarkEnd" as const, id: 11 }] : []),
     ...(following === "table" ? [table({ rows: [["Cell."]] })] : []),
     ...(following === "end" ? [] : [paragraph("Closing clause.", { alignment: "center" })]),
   ];
@@ -104,16 +109,18 @@ const checkDeletion = async (options: FixtureOptions) => {
 // The sequence generator previously started with ordinary revisions only.
 // Exercise imported relocation breaks as well as insertion breaks on every run.
 const CASES = (["ins", "moveTo"] as const).flatMap((kind) =>
-  (["paragraph", "table", "end"] as const).map((following) => ({ kind, following })),
+  (["paragraph", "table", "end"] as const).flatMap((following) =>
+    (["none", "bookmark"] as const).map((anchors) => ({ kind, following, anchors })),
+  ),
 );
 
 test.each(CASES)(
-  "deleting an imported $kind paragraph before $following resolves alike in both modes",
-  async ({ kind, following }) => {
+  "deleting an imported $kind paragraph before $following ($anchors) resolves alike in both modes",
+  async ({ kind, following, anchors }) => {
     await assertProperty(
       fc.asyncProperty(
         fc.constantFrom("Moved clause.", "Approved 👍🏽.", "Článek 日本語."),
-        async (text) => checkDeletion({ kind, following, text }),
+        async (text) => checkDeletion({ kind, following, anchors, text }),
       ),
       { id: "deleting an imported $kind paragraph before $following", numRuns: 3 },
     );
