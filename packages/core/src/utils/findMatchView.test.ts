@@ -6,6 +6,8 @@ import { afterAll, afterEach, describe, expect, spyOn, test } from "bun:test";
 import { OP_STORIES, sameStory, storyBody } from "@stll/docx-core/ops";
 import { Schema } from "prosemirror-model";
 
+import { navigationStories } from "../../typecheck/findNavigationStories.typecheck";
+
 import type { Layout, Page } from "../layout-engine/types";
 import { headerFooterToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Paragraph } from "../types/content";
@@ -779,6 +781,72 @@ test.each(
     } finally {
       view.destroy();
       rangeFactory.mockRestore();
+    }
+  },
+);
+
+test.each(Object.entries(navigationStories))(
+  "initially unmounted %s match scrolls its page shell then reveals after mount",
+  async (_kind, story) => {
+    const doc = fixture();
+    const matches = findInDocument(doc, "hit", createDefaultFindOptions()).filter(
+      (match) =>
+        match.textBoxIndex === undefined && sameStory(match.story ?? OP_STORIES.MAIN, story),
+    );
+    const range = resolveDocumentFindRanges({ document: doc, matches }).at(0);
+    expect(range).toBeDefined();
+    if (!range) return;
+    const targetPage = {
+      ...page(2, { headerDefault: "h-default", footerDefault: "f-default" }),
+      footnoteIds: [1],
+      endnoteIds: [2],
+      fragments: [
+        {
+          kind: "paragraph",
+          blockId: "body",
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 18,
+          fromLine: 0,
+          toLine: 1,
+          pmStart: 1,
+          pmEnd: 20,
+        },
+      ],
+    } satisfies Page;
+    const container = viewport();
+    const shell = document.createElement("div");
+    shell.dataset["pageNumber"] = "2";
+    shell.getBoundingClientRect = () => new DOMRect(0, 600, 500, 1000);
+    container.append(shell);
+    let mounted = false;
+    const scroll = spyOn(container, "scrollTo").mockImplementation(() => {
+      if (mounted) return;
+      mounted = true;
+      queueMicrotask(() => {
+        const span = appendPaintedSpan({ container, ...range, top: 700 });
+        shell.append(span.parentElement);
+      });
+    });
+    const view = createFindMatchView({
+      container,
+      document: doc,
+      matches,
+      layout: layout([page(1, {}), targetPage]),
+    });
+    try {
+      expect(container.querySelectorAll("[data-find-match-index]")).toHaveLength(0);
+      view.navigate(0);
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll).toHaveBeenCalledWith({ top: 1050, left: 0, behavior: "smooth" });
+      await new Promise<void>((resolve) => setTimeout(resolve, 60));
+      expect(scroll).toHaveBeenCalledTimes(2);
+      expect(scroll).toHaveBeenLastCalledWith({ top: 659, left: 0, behavior: "smooth" });
+      expect(container.querySelectorAll("[data-find-match-index]")).toHaveLength(1);
+    } finally {
+      view.destroy();
+      scroll.mockRestore();
     }
   },
 );

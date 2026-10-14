@@ -104,6 +104,19 @@ const layOut = async (document: Document): Promise<HeadlessLayoutResult> => {
   if (result.isErr()) {
     throw result.error;
   }
+  // Pin page identities to the fragments the painter actually addresses,
+  // across document/section endings, tables and page continuations.
+  for (const page of result.value.layout.pages) {
+    const ids = [
+      ...new Set(
+        page.fragments.flatMap((fragment) => {
+          const story = result.value.blockLookup.get(String(fragment.blockId))?.noteStory;
+          return story?.kind === "endnote" ? [story.noteId] : [];
+        }),
+      ),
+    ];
+    expect(page.endnoteIds ?? []).toEqual(ids);
+  }
   return result.value;
 };
 

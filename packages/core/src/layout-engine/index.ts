@@ -13,11 +13,7 @@ import {
   hasPageBreakBefore,
 } from "./keep-together";
 import { measuredLineAdvance } from "./lineFlow";
-import {
-  annotateNoteSeparators,
-  continuesNoteArea,
-  createNoteAreaContinuation,
-} from "./noteAreaFlow";
+import { annotateNoteAreas, continuesNoteArea, createNoteAreaContinuation } from "./noteAreaFlow";
 import { createPaginator } from "./paginator";
 import { paragraphsShareStyle, resolveEffectiveParagraphSpacingTree } from "./paragraphSpacing";
 import {
@@ -160,7 +156,7 @@ export function layoutDocument(
       })
     : initialLayout;
 
-  return annotateNoteSeparators(
+  return annotateNoteAreas(
     applySectionVerticalAlignment(layout, options.sectionVerticalAlignments),
     blocks,
     measures,

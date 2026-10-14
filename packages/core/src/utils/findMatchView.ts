@@ -412,7 +412,7 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
           case "footnote":
             return candidate.footnoteIds?.includes(story.id) ?? false;
           case "endnote":
-            return false;
+            return candidate.endnoteIds?.includes(story.id) ?? false;
           default: {
             const exhaustive: never = story;
             return exhaustive;

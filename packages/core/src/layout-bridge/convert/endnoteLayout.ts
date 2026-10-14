@@ -131,7 +131,6 @@ export function prepareEndnoteAreas(
   }
 
   const separatorBlockIds = new Map<string, NoteSeparatorKind>();
-  const contentBlockIds = new Set<string>();
   const noteStoryByBlockId = new Map<string, NoteStoryKey>();
   const areas: EndnoteArea[] = [];
 
@@ -157,7 +156,6 @@ export function prepareEndnoteAreas(
         const id = `endnote-${String(noteId)}-${String(index)}`;
         blocks.push(withId(stripFlowBlockPmAnchors(block), id));
         measures.push(content.measures[index]!); // SAFETY: one measure per content block
-        contentBlockIds.add(id);
         noteStoryByBlockId.set(id, { kind: "endnote", noteId });
       }
     }
@@ -179,7 +177,7 @@ export function prepareEndnoteAreas(
 
   return {
     areas,
-    noteAreas: { separatorBlockIds, contentBlockIds, continuationSeparator },
+    noteAreas: { separatorBlockIds, noteStoryByBlockId, continuationSeparator },
     noteStoryByBlockId,
   };
 }

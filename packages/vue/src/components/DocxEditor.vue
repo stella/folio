@@ -1795,7 +1795,6 @@ const documentSearch = useFindReplace({
   displayMode,
   readOnly,
   onResultChange: (result) => {
-    props.onFindResultChange?.(result);
     emit("find-result-change", result);
   },
 });

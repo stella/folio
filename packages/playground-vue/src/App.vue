@@ -23,6 +23,7 @@
         :on-copy="() => clipboardCallbackCounts.copy++"
         :on-cut="() => clipboardCallbackCounts.cut++"
         :on-paste="() => clipboardCallbackCounts.paste++"
+        :onFindResultChange="(result) => findResultNotifications.push(result)"
         :on-error="(error) => (status = error.message)"
         :on-editor-view-ready="scrollParityHost.onViewReady"
         @ready="scrollParityHost.onReady"
@@ -43,6 +44,7 @@ import { DocxEditor, createEmptyDocument, createStellaStyleDocumentPreset } from
 import type {
   DocxEditorCollaboration,
   DocxEditorRef,
+  FindResult,
   Document as FolioDocument,
 } from "@stll/folio-vue";
 
@@ -51,11 +53,14 @@ import { buildParityBridge } from "./parityBridge";
 import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
 import { buildScrollParityBridge } from "./scrollParityBridge";
 import type { ScrollParityBridge } from "./scrollParityBridge";
+import { buildFindNotificationBridge } from "./findNotificationBridge";
+import type { FindNotificationBridge } from "./findNotificationBridge";
 
 declare global {
   // eslint-disable-next-line no-var
   var __folioParity: FolioParityBridge | undefined;
   var __folioScrollParity: ScrollParityBridge | undefined;
+  var __folioVueFindNotifications: FindNotificationBridge | undefined;
   // eslint-disable-next-line no-var
   var __folioVueCollaboration:
     | {
@@ -75,6 +80,7 @@ const documentBuffer = shallowRef<ArrayBuffer | null>(null);
 const currentDocument = shallowRef<FolioDocument | null>(null);
 const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
+const findResultNotifications: (FindResult | null)[] = [];
 const query = new URLSearchParams(window.location.search);
 const experimentalSession = query.get("session") === "canonical" ? "canonical" : undefined;
 const collaborationEnabled = query.has("collaboration");
@@ -116,6 +122,10 @@ onMounted(() => {
   globalThis.__folioCanonical = buildCanonicalBridge(() => editorRef.value);
   globalThis.__folioCanonicalReady = true;
   globalThis.__folioScrollParity = scrollParityHost;
+  globalThis.__folioVueFindNotifications = buildFindNotificationBridge(
+    () => editorRef.value,
+    findResultNotifications,
+  );
   globalThis.__folioParity = buildParityBridge(
     () => editorRef.value,
     (kind) => clipboardCallbackCounts[kind],
@@ -164,6 +174,7 @@ onBeforeUnmount(() => {
   globalThis.__folioParity = undefined;
   globalThis.__folioScrollParity = undefined;
   globalThis.__folioVueCollaboration = undefined;
+  globalThis.__folioVueFindNotifications = undefined;
   collaborationAwareness?.destroy();
   collaborationDocument?.destroy();
   for (const awareness of remoteCollaborationAwareness) {

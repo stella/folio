@@ -61,21 +61,21 @@ export function continuesNoteArea(
   noteAreas: NoteAreaLayout | undefined,
   block: FlowBlock,
 ): boolean {
-  return noteAreas?.contentBlockIds.has(String(block.id)) === true;
+  return noteAreas?.noteStoryByBlockId.has(String(block.id)) === true;
 }
 
 /**
- * Record where each separator mark landed. A rule is centred on the first line
- * of the separator paragraph: a `w:separator` spans part of the column and a
+ * Record note identities and where each separator mark landed. A rule is centred
+ * on the first line of the separator paragraph: a `w:separator` spans part of the column and a
  * `w:continuationSeparator` all of it.
  */
-export function annotateNoteSeparators(
+export function annotateNoteAreas(
   layout: Layout,
   blocks: readonly FlowBlock[],
   measures: readonly Measure[],
   noteAreas: NoteAreaLayout | undefined,
 ): Layout {
-  if (noteAreas === undefined || noteAreas.separatorBlockIds.size === 0) {
+  if (noteAreas === undefined) {
     return layout;
   }
   const measureById = new Map<string, ParagraphMeasure>();
@@ -91,6 +91,12 @@ export function annotateNoteSeparators(
   }
 
   for (const page of layout.pages) {
+    const endnoteIds = new Set<number>();
+    for (const fragment of page.fragments) {
+      const story = noteAreas.noteStoryByBlockId.get(String(fragment.blockId));
+      if (story?.kind === "endnote") endnoteIds.add(story.noteId);
+    }
+    if (endnoteIds.size > 0) page.endnoteIds = [...endnoteIds];
     const rules: NoteSeparatorRule[] = [];
     for (const fragment of page.fragments) {
       if (fragment.kind !== "paragraph" || fragment.fromLine !== 0) {

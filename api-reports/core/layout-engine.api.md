@@ -522,7 +522,7 @@ export const NOTE_SEPARATOR_WIDTH_FRACTION = 0.33;
 // @public
 export type NoteAreaLayout = {
     separatorBlockIds: ReadonlyMap<string, NoteSeparatorKind>;
-    contentBlockIds: ReadonlySet<string>;
+    noteStoryByBlockId: ReadonlyMap<string, NoteStoryKey>;
     continuationSeparator?: {
         block: ParagraphBlock;
         measure: ParagraphMeasure;
@@ -556,6 +556,7 @@ export type Page = {
     sectionPageNumber?: number;
     headerFooterRefs?: PageHeaderFooterRefs;
     footnoteIds?: number[];
+    endnoteIds?: number[];
     footnoteReservedHeight?: number;
     noteSeparators?: NoteSeparatorRule[];
     columns?: ColumnLayout;

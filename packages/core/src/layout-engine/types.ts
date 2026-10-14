@@ -24,6 +24,7 @@ import type {
 } from "@stll/docx-core/model";
 
 import { isFloatingWrapType, isWrapNone } from "../types/wrap";
+import type { NoteStoryKey } from "../types/editor-story";
 import type { OutlineStyleAttr } from "../types/documentEnumValues";
 import type { CssBorderStyle } from "../utils/borderCss";
 
@@ -1376,6 +1377,8 @@ export type Page = {
   headerFooterRefs?: PageHeaderFooterRefs;
   /** Footnote IDs that appear on this page (for rendering). */
   footnoteIds?: number[];
+  /** Endnote IDs whose content fragments appear on this page. */
+  endnoteIds?: number[];
   /** Height reserved for the footnote area at page bottom (pixels). */
   footnoteReservedHeight?: number;
   /**
@@ -1550,10 +1553,10 @@ export type NoteAreaLayout = {
    */
   separatorBlockIds: ReadonlyMap<string, NoteSeparatorKind>;
   /**
-   * Note content blocks. A page opened while one of them is laid out
+   * Note identities keyed by content block. A page opened while one is laid out
    * continues the area, so it starts with the continuation separator.
    */
-  contentBlockIds: ReadonlySet<string>;
+  noteStoryByBlockId: ReadonlyMap<string, NoteStoryKey>;
   /** The `w:continuationSeparator` story's first paragraph, already measured. */
   continuationSeparator?: {
     block: ParagraphBlock;
