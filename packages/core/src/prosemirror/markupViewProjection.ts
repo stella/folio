@@ -156,8 +156,8 @@ export const visibleCaretPosition = (
 type ProjectStoryMarkupViewOptions = {
   doc: PMNode;
   markupView: DisplayMode;
-  styles?: StyleDefinitions | null;
-  numbering?: NumberingDefinitions;
+  styles?: StyleDefinitions | null | undefined;
+  numbering?: NumberingDefinitions | undefined;
 };
 
 const storyProjectionStates = new WeakMap<
