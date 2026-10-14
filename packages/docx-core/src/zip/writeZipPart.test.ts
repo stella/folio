@@ -54,9 +54,13 @@ test("text parts preserve supplementary characters across archive chunk boundari
             for (let index = 1; index <= chunk; index++) {
               const boundary = index * ZIP_STRING_CHUNK_SIZE + shift;
               const text = `${"a".repeat(boundary)}${String.fromCodePoint(codePoint)}end`;
+              const encoded = new TextEncoder().encode(text);
               const parts = [
                 { path: `word/text-${index}.xml`, data: encodeUtf8(text) },
                 { path: `word/promised-${index}.xml`, data: Promise.resolve(encodeUtf8(text)) },
+                { path: `word/string-${index}.xml`, data: text },
+                { path: `word/promised-string-${index}.xml`, data: Promise.resolve(text) },
+                { path: `word/arraybuffer-${index}.xml`, data: encoded.buffer },
                 { path: `word/duplicate-${index}.xml`, data: encodeUtf8(text) },
               ];
               for (const part of parts) {

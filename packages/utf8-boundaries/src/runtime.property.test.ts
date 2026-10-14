@@ -1,6 +1,7 @@
 import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { Readable } from "node:stream";
 import { assertProperty, propertyTestTimeout } from "../../../test/property-testing";
 import { createTextReader, encodeUtf8 } from "./encoding";
 import { writeZipEntry } from "./zip";
@@ -83,4 +84,48 @@ test("truncation retains complete scalars and graphemes", async () => {
   expect(truncateGraphemes("👩🏽‍⚖️e\u0301שלום", 1)).toBe("👩🏽‍⚖️");
   expect(truncateCodePoints("😀e\u0301", 1)).toBe("😀");
   expect(truncateCodePoints("abc", -1)).toBe("");
+});
+
+test("ZIP input normalization preserves complete text and binary representations", async () => {
+  const text = "a".repeat(16 * 1024 - 1) + "👩🏽tail";
+  const bytes = encodeUtf8(text);
+  const padded = new Uint8Array(bytes.length + 4);
+  padded.set(bytes, 2);
+  const inputs = {
+    text,
+    promisedText: Promise.resolve(text),
+    array: Array.from(bytes),
+    blob: new Blob([bytes]),
+    view: new DataView(padded.buffer, 2, bytes.length),
+    byteStream: Readable.from([bytes.subarray(0, 16 * 1024), bytes.subarray(16 * 1024)]),
+    textStream: Readable.from([text.slice(0, 16 * 1024), text.slice(16 * 1024)]),
+    promisedBuffer: Promise.resolve(bytes.buffer),
+  };
+  for (const input of Object.values(inputs)) {
+    const zip = new JSZip();
+    writeZipEntry(zip, "entry", input);
+    const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: "uint8array" }));
+    expect(await loaded.file("entry")?.async("uint8array")).toEqual(bytes);
+    expect(await loaded.file("entry")?.async("string")).toBe(text);
+  }
+});
+
+test("explicit string encodings are normalized before byte flags are forced", async () => {
+  const zip = new JSZip();
+  writeZipEntry(zip, "binary", "\x00\xff\x80", { binary: true });
+  writeZipEntry(zip, "base64", "AP+A", { base64: true });
+  const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: "uint8array" }));
+  for (const name of ["binary", "base64"])
+    expect(await loaded.file(name)?.async("uint8array")).toEqual(Uint8Array.of(0, 255, 128));
+});
+
+test("ZIP stream errors propagate to archive generation", async () => {
+  const zip = new JSZip();
+  const stream = new Readable({
+    read() {
+      this.destroy(new TypeError("broken stream"));
+    },
+  });
+  writeZipEntry(zip, "entry", stream);
+  await expect(zip.generateAsync({ type: "uint8array" })).rejects.toThrow("broken stream");
 });

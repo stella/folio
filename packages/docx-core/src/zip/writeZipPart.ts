@@ -9,8 +9,8 @@ const DOS_DIRECTORY_FLAG = 0x10;
 type WriteZipPartOptions = {
   zip: JSZip;
   path: string;
-  data: Uint8Array | Promise<Uint8Array>;
-  options?: Omit<JSZip.JSZipFileOptions, "createFolders" | "binary" | "base64">;
+  data: Parameters<JSZip["loadAsync"]>[0];
+  options?: Omit<JSZip.JSZipFileOptions, "createFolders">;
 };
 
 /** Write exactly one entry, without synthesizing parent directory entries. */
@@ -28,8 +28,6 @@ export const writeZipPart = ({ zip, path, data, options = {} }: WriteZipPartOpti
   }
   writeZipEntry(zip, path, data, {
     ...options,
-    binary: true,
-    base64: false,
     date: options.date ?? new Date(FIXED_ZIP_DATE_MS),
     createFolders: false,
   });
