@@ -5,7 +5,7 @@
  */
 
 import { $ } from "bun";
-import { TaggedError } from "better-result";
+import { panic, TaggedError } from "better-result";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -254,9 +254,9 @@ export const requireFindings = (findings: readonly Finding[]): void => {
 
 // Bound each field so even a large assertion or replay stays below GitHub's body limit.
 const FIELD_LIMIT = 4_000;
-const field = (value: string): string => value.slice(0, FIELD_LIMIT);
-const code = (value: string): string => {
-  const bounded = field(value);
+const field = (value: string, limit = FIELD_LIMIT): string => value.slice(0, limit);
+const code = (value: string, limit = FIELD_LIMIT): string => {
+  const bounded = field(value, limit);
   const fence = "`".repeat(
     Math.max(3, ...[...bounded.matchAll(/`+/gu)].map(([run]) => run.length + 1)),
   );
@@ -266,10 +266,29 @@ const bodyOf = ({ record: { marker } }: Finding): string =>
   [
     `Fingerprint: ${marker.fingerprint}`,
     `Test: ${field(marker.test)}`,
-    `Seed: ${marker.seed}`,
     `Assertion:\n${code(marker.assertion)}`,
-    `Repro command:\n${code(marker.repro)}`,
   ].join("\n\n");
+
+export const MAX_RUN_SEEDS = 10;
+const REPLAY_FIELD_LIMIT = 1_000;
+
+type RunEvidenceOptions = { finding: Finding; context: Context };
+const runEvidence = ({ finding, context }: RunEvidenceOptions): string => {
+  const seeds = finding.seeds.slice(0, MAX_RUN_SEEDS);
+  const omitted = finding.seeds.length - seeds.length;
+  const replays = seeds.map((seed) => {
+    const record = finding.records.find(({ marker: item }) => item.seed === seed);
+    if (record === undefined) panic(`Missing replay record for seed ${seed}`);
+    return `Seed: ${seed}\nRepro command:\n${code(record.marker.repro, REPLAY_FIELD_LIMIT)}`;
+  });
+  return [
+    `Run: ${field(context.runUrl ?? "unavailable")}`,
+    `Seeds: ${seeds.join(", ")}`,
+    ...(omitted > 0 ? [`${omitted} more seeds; see run artifacts.`] : []),
+    bodyOf(finding),
+    ...replays,
+  ].join("\n\n");
+};
 
 const fingerprintOf = (issue: Issue): string | undefined =>
   issue.body?.match(/^Fingerprint: ([0-9a-f]{16})$/mu)?.at(1) ??
@@ -325,26 +344,16 @@ export const fileFindings = async ({
       issues.find(
         (candidate) => fingerprintOf(candidate) === fingerprint && candidate.state === "open",
       ) ?? issues.find((candidate) => fingerprintOf(candidate) === fingerprint);
+    const evidence = runEvidence({ finding, context });
     if (issue === undefined) {
       issue = await client.create(
         `${TITLE_PREFIX} [${fingerprint}]: ${field(test).slice(0, 200)}`,
-        bodyOf(finding),
+        evidence,
       );
       issues.push(issue);
     } else {
       if (issue.state === "closed") await client.reopen(issue.number);
-      // One run comment per fingerprint, with every distinct seed. Split large seed sets
-      // into bounded comments rather than enlarging the standing issue body.
-      for (let start = 0; start < finding.seeds.length; start += 100) {
-        await client.comment(
-          issue.number,
-          [
-            `Run: ${context.runUrl ?? "unavailable"}`,
-            `Seeds: ${finding.seeds.slice(start, start + 100).join(", ")}`,
-            bodyOf(finding),
-          ].join("\n\n"),
-        );
-      }
+      await client.comment(issue.number, evidence);
     }
     filed.push({ fingerprint, issue: `#${issue.number}` });
   }

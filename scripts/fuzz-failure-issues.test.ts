@@ -23,6 +23,7 @@ import {
   LABEL,
   TITLE_PREFIX,
   TITLE_FORMAT,
+  MAX_RUN_SEEDS,
 } from "./fuzz-failure-issues";
 
 const marker = (seed: number, message = "step 3: no comment") =>
@@ -242,6 +243,7 @@ test("all 18 fixture fingerprints file exactly once, despite duplicate markers",
     const created = fake.creates.find(({ title }) =>
       title.includes(finding.record.marker.fingerprint),
     );
+    expect(created?.body).toContain(context.runUrl);
     expect(created?.body).toContain(`Fingerprint: ${finding.record.marker.fingerprint}`);
     expect(created?.body).toContain(`Test: ${finding.record.marker.test}`);
     expect(created?.body).toContain(`Seed: ${finding.record.marker.seed}`);
@@ -296,6 +298,47 @@ test("open and closed fixture issues receive exactly one run comment each; all c
   }
 });
 
+test("creation and recurrence share run evidence for distinct seeds, duplicates, and capped runs", async () => {
+  for (const count of [1, 3, MAX_RUN_SEEDS, MAX_RUN_SEEDS + 901]) {
+    const markers = Array.from({ length: count }, (_, index) => marker(3000 + index));
+    const findings = collectFindings([], [...markers, ...markers]);
+    const finding = findings.at(0);
+    if (!finding) throw new Error("Missing finding");
+    expect(findings).toHaveLength(1);
+    const fresh = fakeClient();
+    await fileFindings({ findings, context, store: fresh.store });
+    expect(fresh.creates).toHaveLength(1);
+    expect(fresh.comments).toHaveLength(0);
+    const created = fresh.creates.at(0);
+    if (!created) throw new Error("Missing created issue");
+    const existing = fakeClient([
+      { number: 1, title: created.title, body: created.body, state: "open", closedAt: null },
+    ]);
+    await fileFindings({ findings, context, store: existing.store });
+    expect(existing.creates).toHaveLength(0);
+    expect(existing.comments).toHaveLength(1);
+    expect(existing.comments.at(0)?.body).toBe(created.body);
+    expect(created.body).toContain(context.runUrl);
+    const displayed = created.body
+      .match(/^Seeds: (.*)$/mu)
+      ?.at(1)
+      ?.split(", ")
+      .map(Number);
+    expect(displayed).toEqual(finding.seeds.slice(0, MAX_RUN_SEEDS));
+    for (const item of markers.slice(0, MAX_RUN_SEEDS)) {
+      expect(created.body).toContain(`Seed: ${item.seed}\n`);
+      expect(created.body).toContain(item.repro);
+    }
+    if (count <= MAX_RUN_SEEDS) {
+      expect(displayed).toEqual(finding.seeds);
+      expect(created.body).not.toContain("more seeds");
+      continue;
+    }
+    expect(created.body).toContain(`${count - MAX_RUN_SEEDS} more seeds; see run artifacts.`);
+    expect(created.body.length).toBeLessThan(65_536);
+  }
+});
+
 test("bodies and run comments remain bounded for large evidence and seed sets", async () => {
   const original = fixtureMarkers.at(0);
   if (!original) throw new Error("Missing fixture marker");
@@ -303,7 +346,8 @@ test("bodies and run comments remain bounded for large evidence and seed sets", 
     ...original,
     seed,
     assertion: "`".repeat(100_000),
-    repro: "x".repeat(100_000),
+    repro: "`".repeat(100_000),
+    test: "x".repeat(100_000),
   }));
   const findings = collectFindings([], markers);
   const fake = fakeClient([
@@ -315,10 +359,16 @@ test("bodies and run comments remain bounded for large evidence and seed sets", 
       closedAt: null,
     },
   ]);
-  await fileFindings({ findings, context, store: fake.store });
-  expect(fake.comments).toHaveLength(11);
+  await fileFindings({
+    findings,
+    context: { ...context, runUrl: "x".repeat(100_000) },
+    store: fake.store,
+  });
+  expect(fake.comments).toHaveLength(1);
   for (const { body } of fake.comments) expect(body.length).toBeLessThan(65_536);
-  expect(fake.comments.at(-1)?.body).toContain("Seeds: 1000");
+  expect(fake.comments.at(0)?.body).toContain(
+    `${1001 - MAX_RUN_SEEDS} more seeds; see run artifacts.`,
+  );
 });
 
 test("failed runs without markers fail; malformed marker lines carry a clear location", () => {
