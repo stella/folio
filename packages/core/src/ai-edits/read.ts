@@ -472,14 +472,14 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   // hyperlink or comment boundary. Keep its contiguous fragments actionable
   // as one logical change, without joining separate adjacent revisions.
   const groups: TrackedChangeGroup[] = [];
-  let previousKey: string | null = null;
-  let previousInlineGroup: TrackedChangeGroup | undefined;
+  let previousInline: { key: string; group: TrackedChangeGroup } | null = null;
   for (const [key, change] of grouped) {
     const range = inlineRanges.get(key);
     // Formatting is an independent revision stream: it cannot interrupt the
     // contiguous inline wrapper whose run carries the property revision.
-    const previous = previousInlineGroup;
-    const previousRange = previousKey === null ? undefined : inlineRanges.get(previousKey);
+    const previous = previousInline?.group;
+    const previousRange =
+      previousInline === null ? undefined : inlineRanges.get(previousInline.key);
     if (
       previous &&
       range &&
@@ -505,8 +505,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     const group = { change: { ...change }, ids: [change.id] };
     groups.push(group);
     if (range) {
-      previousInlineGroup = group;
-      previousKey = key;
+      previousInline = { key, group };
     }
   }
   return groups;
