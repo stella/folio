@@ -129,13 +129,20 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
     yProseMirror: true,
   });
 
+  const folioIdentity = await page.evaluateHandle(() => {
+    const view = globalThis.__folioSmoke?.getEditorRef()?.getEditorRef()?.getView();
+    const paragraph = document.querySelector(".layout-paragraph");
+    if (!view || !paragraph) throw new Error("Folio content is unavailable");
+    return { view, dom: view.dom, paragraph };
+  });
+
   // The host remains editable and owns shortcuts outside the Folio root.
   const host = page.locator("#host-editor .ProseMirror");
   await host.click();
   await page.keyboard.press("End");
   await page.keyboard.type(" works");
   await expect(host).toHaveText("Host text works");
-  const hostIsolation = await page.evaluate(() => {
+  const hostIsolation = await page.evaluate((identity) => {
     const smoke = globalThis.__folioSmoke;
     if (!smoke) throw new Error("Smoke hook is unavailable");
     const hostView = smoke.hostEditor.view;
@@ -149,38 +156,65 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
     hostView.dom.dispatchEvent(event);
     const folioView = smoke.getEditorRef()?.getEditorRef()?.getView();
     if (!folioView) throw new Error("Folio view is unavailable");
-    const before = folioView.state.doc.textContent;
-    folioView.dispatch(folioView.state.tr.insertText("Folio edit ", 1));
     return {
       intercepted: event.defaultPrevented,
       hostText: smoke.hostEditor.text(),
       yjsText: smoke.hostEditor.yjsText(),
-      folioEdited: folioView.state.doc.textContent !== before,
+      sameView: folioView === identity.view,
+      sameViewDom: folioView.dom === identity.dom && identity.dom.isConnected,
+      sameParagraph:
+        document.querySelector(".layout-paragraph") === identity.paragraph &&
+        identity.paragraph.isConnected,
       hostCaret: getComputedStyle(hostView.dom).caretColor,
       hostColor: getComputedStyle(hostView.dom).color,
       hostOutline: getComputedStyle(hostView.dom).outlineWidth,
     };
-  });
+  }, folioIdentity);
   expect(hostIsolation.intercepted).toBe(false);
   expect(hostIsolation.hostText).toBe("Host text works");
   expect(hostIsolation.yjsText).toBe("Host Yjs");
-  expect(hostIsolation.folioEdited).toBe(true);
+  expect(hostIsolation.sameView, "host interaction must preserve the Folio view").toBe(true);
+  expect(hostIsolation.sameViewDom, "host interaction must preserve the editor DOM").toBe(true);
+  expect(hostIsolation.sameParagraph, "host interaction must preserve painted content").toBe(true);
   expect(hostIsolation.hostCaret).toBe("rgb(12, 34, 56)");
   expect(hostIsolation.hostColor).toBe("rgb(12, 34, 56)");
   expect(hostIsolation.hostOutline).toBe("3px");
+  await folioIdentity.dispose();
+
+  // Subscribe before the transaction: a document edit schedules a repaint that
+  // replaces layout nodes. Model state changing does not mean the paint committed.
+  const folioEdit = await page.evaluate(async () => {
+    const editor = globalThis.__folioSmoke?.getEditorRef();
+    const view = editor?.getEditorRef()?.getView();
+    if (!editor || !view) throw new Error("Folio view is unavailable");
+    const before = view.state.doc.textContent;
+    const insertedText = "Folio edit ";
+    const painted = new Promise<void>((resolve) => {
+      const unsubscribe = editor.onLayoutChange(() => {
+        if (!document.querySelector(".layout-paragraph")?.textContent?.includes(insertedText))
+          return;
+        unsubscribe();
+        resolve();
+      });
+    });
+    view.dispatch(view.state.tr.insertText(insertedText, 1));
+    await painted;
+    return {
+      edited: view.state.doc.textContent !== before,
+      rendered: document.querySelector(".layout-paragraph")?.textContent?.includes(insertedText),
+      sameView: editor.getEditorRef()?.getView() === view && view.dom.isConnected,
+    };
+  });
+  expect(folioEdit).toEqual({ edited: true, rendered: true, sameView: true });
 
   const paragraph = page.locator(".layout-paragraph").first();
-  // The edit repaints the layout asynchronously; await its visible projection,
-  // then let each locator action resolve the current paragraph and its geometry.
-  await expect(paragraph).toContainText("Folio edit ");
+  await paragraph.scrollIntoViewIfNeeded();
   await paragraph.click();
   await paragraph.click({ button: "right" });
   const menu = page.locator('[role="menu"][aria-label="Text editing menu"]');
   await expect(menu).toBeVisible({ timeout: 5_000 });
   await page.keyboard.press("Escape");
-
-  // Let any deferred error surface (async worker error events, late intl reads).
-  await page.waitForTimeout(500);
+  await expect(menu).toBeHidden();
 
   // --- Console net: the whole-session assertions. ---------------------------
   const errorLevel = messages.filter((m) => m.level === "error");
