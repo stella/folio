@@ -1,5 +1,21 @@
 # @stll/folio-core
 
+## 0.60.0
+
+### Minor Changes
+
+- [#1700](https://github.com/stella/folio/pull/1700) [`9fa8044`](https://github.com/stella/folio/commit/9fa80447218a28f0822a7dd43b9ed703630835be) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Require host-managed ProseMirror and Yjs peers; isolate editor keys, shortcuts, styles, and fonts while preserving plugin state access across module evaluations.
+
+### Patch Changes
+
+- [#1684](https://github.com/stella/folio/pull/1684) [`19a80db`](https://github.com/stella/folio/commit/19a80db2fd8b3bc2e32f04586c12c63a36521d59) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve input boundaries and surviving paragraph properties, preserve prose formatting toggles, and coalesce pending run formatting revisions.
+
+- [#1700](https://github.com/stella/folio/pull/1700) [`9fa8044`](https://github.com/stella/folio/commit/9fa80447218a28f0822a7dd43b9ed703630835be) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve quoted font-family names in display-list font tables.
+
+- [#1697](https://github.com/stella/folio/pull/1697) [`73ec846`](https://github.com/stella/folio/commit/73ec846b9193c5d522b1d263f8813ed36fd099fa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Open documents with repeated bookmark IDs and report imported identity collisions.
+- Updated dependencies [[`19a80db`](https://github.com/stella/folio/commit/19a80db2fd8b3bc2e32f04586c12c63a36521d59), [`e03e0ec`](https://github.com/stella/folio/commit/e03e0ec4ff4185a8f15f7dc5aad513f7e6b72588), [`73ec846`](https://github.com/stella/folio/commit/73ec846b9193c5d522b1d263f8813ed36fd099fa)]:
+  - @stll/docx-core@0.37.0
+
 ## 0.59.0
 
 ### Minor Changes

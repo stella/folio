@@ -1,5 +1,16 @@
 # @stll/folio-cli
 
+## 0.5.1
+
+### Patch Changes
+
+- [#1698](https://github.com/stella/folio/pull/1698) [`18ff7b2`](https://github.com/stella/folio/commit/18ff7b2c212fe49f370929d2ede74b591d6c133c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Support VS Code 1.86 and newer in the extension, with MCP integration available when the editor supports it.
+
+- [#1702](https://github.com/stella/folio/pull/1702) [`65aadcf`](https://github.com/stella/folio/commit/65aadcf16477649d19eb5d1bffafa96ebd340766) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Document VSIX installation for offline or restricted networks and attach the extension package to GitHub releases.
+- Updated dependencies [[`19a80db`](https://github.com/stella/folio/commit/19a80db2fd8b3bc2e32f04586c12c63a36521d59), [`9fa8044`](https://github.com/stella/folio/commit/9fa80447218a28f0822a7dd43b9ed703630835be), [`9fa8044`](https://github.com/stella/folio/commit/9fa80447218a28f0822a7dd43b9ed703630835be), [`73ec846`](https://github.com/stella/folio/commit/73ec846b9193c5d522b1d263f8813ed36fd099fa)]:
+  - @stll/folio-core@0.60.0
+  - @stll/folio-agents@0.16.1
+
 ## 0.5.0
 
 ### Minor Changes
