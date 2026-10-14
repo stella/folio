@@ -71,7 +71,10 @@ import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteRefer
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
-import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
+import {
+  DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
+  historyShortcutOwner,
+} from "@stll/folio-core/managers/editorShortcuts";
 import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
@@ -566,7 +569,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     rulerUnit = "inch",
     initialZoom = 1,
     enableWheelZoom = true,
-    keyboardShortcuts = "document",
+    keyboardShortcuts = DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
     hostShortcuts: hostShortcutsProp,
     readOnly: readOnlyProp = false,
     autoOpenReviewSidebar = true,

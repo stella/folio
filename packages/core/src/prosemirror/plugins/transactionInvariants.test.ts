@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { TextSelection } from "prosemirror-state";
-import type { EditorState, Plugin } from "prosemirror-state";
+import { EditorState, TextSelection } from "prosemirror-state";
+import type { Plugin } from "prosemirror-state";
 
 import { documentShape } from "../../__tests__/documentShapes";
 import { createHarnessState, parseShapeDocument } from "../../__tests__/editorHarness";
@@ -8,6 +8,7 @@ import { ExtensionManager } from "../extensions/ExtensionManager";
 import { createStarterKit } from "../extensions/StarterKit";
 import { toggleNumberedList } from "../extensions/features/ListExtension";
 import { singletonManager } from "../schema";
+import { createDocumentNumberingPlugin } from "./documentNumbering";
 import {
   checkEditorStateInvariants,
   createTransactionInvariantPlugin,
@@ -30,10 +31,47 @@ const caretIn = (state: EditorState, text: string): EditorState => {
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, target)));
 };
 
-const hasInvariantPlugin = (plugins: readonly Plugin[]): boolean =>
-  plugins.some((plugin) =>
-    (plugin as unknown as { key: string }).key.startsWith("transactionInvariants"),
-  );
+type ExpectInvariantBehaviorOptions = {
+  schema: EditorState["schema"];
+  plugins: readonly Plugin[];
+  mode: "enabled" | "disabled";
+};
+
+const expectInvariantBehavior = ({
+  schema,
+  plugins,
+  mode,
+}: ExpectInvariantBehaviorOptions): void => {
+  // The manager owns schema/runtime plugins; document numbering is supplied
+  // separately by the editor controller, including a document with no lists.
+  const state = EditorState.create({
+    schema,
+    plugins: [createDocumentNumberingPlugin(null), ...plugins],
+  });
+  const paragraph = state.doc.firstChild;
+  if (!paragraph) throw new TypeError("The default document has no paragraph");
+  const applyInvalidReference = () =>
+    state.apply(
+      state.tr.setNodeMarkup(0, undefined, {
+        ...paragraph.attrs,
+        numPr: { kind: "reference", numId: 42, ilvl: 0 },
+      }),
+    );
+  // The previous oracle matched generated key names, so it mistook fresh,
+  // namespaced keys for an absent plugin. Exercise the runtime invariant.
+  switch (mode) {
+    case "enabled":
+      expect(applyInvalidReference).toThrow(TransactionInvariantError);
+      return;
+    case "disabled":
+      expect(applyInvalidReference).not.toThrow();
+      return;
+    default: {
+      const exhaustive: never = mode;
+      return exhaustive;
+    }
+  }
+};
 
 describe("transaction invariants", () => {
   const flags = globalThis.__folioTransactionInvariants;
@@ -120,16 +158,24 @@ describe("transaction invariants", () => {
     const off = new ExtensionManager(createStarterKit());
     off.buildSchema();
     off.initializeRuntime();
-    expect(hasInvariantPlugin(off.getPlugins())).toBe(false);
+    expectInvariantBehavior({
+      schema: off.getSchema(),
+      plugins: off.getPlugins(),
+      mode: "disabled",
+    });
 
     globalThis.__folioTransactionInvariants = { enabled: true };
     const on = new ExtensionManager(createStarterKit());
     on.buildSchema();
     on.initializeRuntime();
-    expect(hasInvariantPlugin(on.getPlugins())).toBe(true);
+    expectInvariantBehavior({ schema: on.getSchema(), plugins: on.getPlugins(), mode: "enabled" });
   });
 
   test("the test preload enables it for editor runtimes", () => {
-    expect(hasInvariantPlugin(singletonManager.getPlugins())).toBe(true);
+    expectInvariantBehavior({
+      schema: singletonManager.getSchema(),
+      plugins: singletonManager.getPlugins(),
+      mode: "enabled",
+    });
   });
 });

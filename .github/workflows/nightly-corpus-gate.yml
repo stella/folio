@@ -1,3 +1,4 @@
+# fuzz-report: none -- Corpus edit checks emit baseline JSON, not FOLIO_FAILURE markers.
 name: Nightly Corpus Edit Fuzz
 
 on:

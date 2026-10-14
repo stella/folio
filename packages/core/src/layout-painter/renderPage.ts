@@ -53,6 +53,7 @@ import type {
 } from "../layout-engine/types";
 import type { BorderSpec, Theme, Watermark } from "../types/document";
 import { cssBorderStyle } from "../utils/borderCss";
+import { embeddedFontFingerprint } from "../fonts/embeddedFontFingerprint";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
 import { borderToStyle } from "../utils/formatToStyle";
@@ -204,6 +205,7 @@ export type PaintPageRequest = {
 };
 
 export type RenderPageOptions = {
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   /** Document to create elements in (default: window.document) */
   document?: Document;
   /** Bookmark name -> 1-indexed page, for resolving PAGEREF fields at paint. */
@@ -331,7 +333,7 @@ function applyPageStyles(
   // Set default font styles (matches Word default: 11pt Calibri).
   // Keep this fallback chain aligned with canvas measurement so text widths
   // do not drift when Calibri is unavailable and Carlito is used instead.
-  element.style.fontFamily = getDefaultPageFontFamily();
+  element.style.fontFamily = resolveFontFamily(DEFAULT_FONT_FAMILY, options).cssFallback;
   // Use pixels to match Canvas-based measurements (11pt = 11 * 96/72 ≈ 14.67px)
   element.style.fontSize = `${(11 * 96) / 72}px`;
   element.style.color = "var(--doc-canvas-text, #000)";
@@ -554,12 +556,12 @@ function syncPageWatermarkOverlay(
     return;
   }
 
-  const overlay = renderWatermarkLayer(
-    watermark,
-    page,
-    doc,
-    options.watermarkImageSrc !== undefined ? { imageSrc: options.watermarkImageSrc } : {},
-  );
+  const overlay = renderWatermarkLayer(watermark, page, doc, {
+    ...(options.watermarkImageSrc !== undefined ? { imageSrc: options.watermarkImageSrc } : {}),
+    ...(options.embeddedFontFamilyMap
+      ? { embeddedFontFamilyMap: options.embeddedFontFamilyMap }
+      : {}),
+  });
   if (!overlay) {
     return;
   }
@@ -1635,12 +1637,12 @@ export function renderPage(
     pageEl.append(pageBorderEl);
   }
   if (options.watermark) {
-    const watermarkEl = renderWatermarkLayer(
-      options.watermark,
-      page,
-      doc,
-      options.watermarkImageSrc !== undefined ? { imageSrc: options.watermarkImageSrc } : {},
-    );
+    const watermarkEl = renderWatermarkLayer(options.watermark, page, doc, {
+      ...(options.watermarkImageSrc !== undefined ? { imageSrc: options.watermarkImageSrc } : {}),
+      ...(options.embeddedFontFamilyMap
+        ? { embeddedFontFamilyMap: options.embeddedFontFamilyMap }
+        : {}),
+    });
     if (watermarkEl) {
       pageEl.append(watermarkEl);
     }
@@ -2843,6 +2845,9 @@ function headerFooterContentFingerprint(
  */
 function computeOptionsHash(options: RenderPageOptions): string {
   const parts: string[] = [];
+  if (options.embeddedFontFamilyMap) {
+    parts.push(`embedded-fonts:${embeddedFontFingerprint(options.embeddedFontFamilyMap)}`);
+  }
 
   // Header/footer content changes affect all pages. Include `textSig` so
   // same-height in-place edits (typing a replacement char, bold toggle, etc.)

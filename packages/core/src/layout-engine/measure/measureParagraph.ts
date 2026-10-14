@@ -358,6 +358,9 @@ export function measureParagraph(
       getFontMetrics({
         fontSize: paragraphFontSize,
         fontFamily: paragraphFontFamily,
+        ...(attrs?.embeddedFontFamilyMap
+          ? { embeddedFontFamilyMap: attrs.embeddedFontFamilyMap }
+          : {}),
         ...(attrs?.defaultAlternateFontFamily !== undefined
           ? { alternateFontFamily: attrs.defaultAlternateFontFamily }
           : {}),
@@ -841,6 +844,7 @@ export function measureParagraph(
       // the real `<math>` element, which the browser sizes natively.
       const style: FontStyle = {
         fontFamily: run.fontFamily ?? "Cambria Math",
+        ...(run.embeddedFontFamilyMap ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap } : {}),
         fontSize: run.fontSize ?? DEFAULT_FONT_SIZE,
         ...(run.bold !== undefined ? { bold: run.bold } : {}),
         ...(run.italic !== undefined ? { italic: run.italic } : {}),

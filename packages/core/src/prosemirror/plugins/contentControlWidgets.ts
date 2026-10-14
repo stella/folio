@@ -13,7 +13,8 @@
  * shell) can subscribe; the plugin does not own the menu/picker chrome.
  */
 
-import { Plugin, PluginKey } from "prosemirror-state";
+import { createPluginKeyOwner } from "../pluginKeyOwner";
+import { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import {
@@ -77,7 +78,8 @@ type ContentControlWidgetElement = ContentControlWidgetAnchor & {
   dataset: DOMStringMap;
 };
 
-export const contentControlWidgetsPluginKey = new PluginKey<unknown>("contentControlWidgets");
+export const contentControlWidgetsPluginKey =
+  createPluginKeyOwner<unknown>("contentControlWidgets");
 
 /**
  * CustomEvent name dispatched on the editor view DOM whenever the plugin
@@ -268,7 +270,7 @@ export function createContentControlWidgetsPlugin(
     );
   };
   return new Plugin({
-    key: contentControlWidgetsPluginKey,
+    key: contentControlWidgetsPluginKey.createKey(),
     props: {
       handleDOMEvents: {
         click(view, event) {

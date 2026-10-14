@@ -5,6 +5,7 @@
  * Improves performance by avoiding repeated measurements of identical content.
  */
 
+import { embeddedFontFingerprint } from "../../fonts/embeddedFontFingerprint";
 import type { ImageRun, ParagraphAttrs, ParagraphBlock, ParagraphMeasure, Run } from "../types";
 import { getLineBreakProviderGeneration } from "./lineBreakProvider";
 import { clearFontResolvedCache } from "./measureHelpers";
@@ -351,14 +352,22 @@ const imageMeasureCacheInput = (run: ExhaustivelyClassifiedImageRun) => ({
   positioned: run.position !== undefined,
 });
 
-const runMeasureCacheInput = (run: Run) => {
+type FontContextRef = (families: ReadonlyMap<string, string> | undefined) => number | undefined;
+
+const runMeasureCacheInput = (run: Run, fontContextRef: FontContextRef) => {
   switch (run.kind) {
     case "text":
     case "tab":
-    case "lineBreak":
     case "renderedPageBreak":
     case "field":
-    case "math":
+    case "math": {
+      const { embeddedFontFamilyMap, ...formatting } = run;
+      return {
+        ...formatting,
+        embeddedFontFamilies: fontContextRef(embeddedFontFamilyMap),
+      };
+    }
+    case "lineBreak":
       return run;
     case "image":
       return imageMeasureCacheInput(run);
@@ -369,10 +378,17 @@ const runMeasureCacheInput = (run: Run) => {
   }
 };
 
-const paragraphAttrsMeasureCacheInput = (attrs: ParagraphAttrs | undefined) => {
+const paragraphAttrsMeasureCacheInput = (
+  attrs: ParagraphAttrs | undefined,
+  fontContextRef: FontContextRef,
+) => {
   if (attrs === undefined) return undefined;
 
-  const { snapToGrid, ...measurementAttrs } = attrs;
+  const { snapToGrid, embeddedFontFamilyMap, ...rest } = attrs;
+  const measurementAttrs = {
+    ...rest,
+    embeddedFontFamilies: fontContextRef(embeddedFontFamilyMap),
+  };
   if (measurementAttrs.documentGridLinePitch === undefined) {
     return measurementAttrs;
   }
@@ -381,10 +397,27 @@ const paragraphAttrsMeasureCacheInput = (attrs: ParagraphAttrs | undefined) => {
 
 /** Serialize the complete, semantically normalized paragraph measurement contract into a cache key. */
 export function hashParagraphBlock(block: ParagraphBlock): string {
+  // Each distinct map appears once in the paragraph key; every run carries
+  // a small local reference instead of duplicating all embedded families.
+  const fontContexts: string[] = [];
+  const contextRefs = new Map<string, number>();
+  const fontContextRef: FontContextRef = (families) => {
+    if (!families) return undefined;
+    const fingerprint = embeddedFontFingerprint(families);
+    const existing = contextRefs.get(fingerprint);
+    if (existing !== undefined) return existing;
+    const index = fontContexts.length;
+    contextRefs.set(fingerprint, index);
+    fontContexts.push(fingerprint);
+    return index;
+  };
+  const attrs = paragraphAttrsMeasureCacheInput(block.attrs, fontContextRef);
+  const runs = block.runs.map((run) => runMeasureCacheInput(run, fontContextRef));
   return JSON.stringify({
     lineBreakProviderGeneration: getLineBreakProviderGeneration(),
-    attrs: paragraphAttrsMeasureCacheInput(block.attrs),
-    runs: block.runs.map(runMeasureCacheInput),
+    attrs,
+    runs,
+    fontContexts,
   });
 }
 

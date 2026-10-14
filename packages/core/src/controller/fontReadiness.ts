@@ -466,7 +466,7 @@ function addLayoutFontFamilyNameFace(
  * the painter and the measurer put in `ctx.font` and `style.fontFamily`.
  */
 function resolvedStackFamilies(family: string, alternate: string | undefined): string[] {
-  const { cssFallback } = resolveFontFamily(family, alternate);
+  const { cssFallback } = resolveFontFamily(family, { alternateFontName: alternate });
   return parseFontFamilyList(cssFallback).filter((name) => !CSS_GENERIC_FONT_FAMILIES.has(name));
 }
 

@@ -105,7 +105,7 @@ const documentStyleContextSpec = (styles: DocumentStylesInput) => {
   else if (styles) resolver = createStyleResolver(styles);
   else resolver = null;
   return {
-    key: documentStylesKey,
+    key: documentStylesKey.createKey(),
     state: {
       init: () => resolver,
       apply: (_tr: Transaction, value: StyleResolver | null) => value,

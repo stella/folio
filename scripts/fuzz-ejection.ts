@@ -36,8 +36,13 @@ import { stripVTControlCharacters } from "node:util";
 
 import { hash32 } from "../test/commit-seed";
 import { extractFailureMarkers } from "./failure-fingerprints";
-import { type Context, type Finding, fileFindings, readFindings } from "./fuzz-failure-issues";
-import type { IssueStore } from "./fuzz-issue-classes";
+import {
+  type Context,
+  type Finding,
+  type FingerprintIssueStore,
+  fileFindings,
+  readFindings,
+} from "./fuzz-failure-issues";
 
 export const LABEL = {
   name: "queue-ejection-pre-existing",
@@ -319,14 +324,12 @@ type FileMainFindingsOptions = {
   findings: Finding[];
   attempts: ReplayAttempt[];
   context: Context;
-  root: string;
-  store?: IssueStore;
+  store?: FingerprintIssueStore;
 };
 export const fileMainFindings = async ({
   findings,
   attempts,
   context,
-  root,
   store,
 }: FileMainFindingsOptions) => {
   const judged = judgeMainFindings(findings, attempts);
@@ -338,7 +341,6 @@ export const fileMainFindings = async ({
     const filed = await fileFindings({
       findings: confirmed,
       context,
-      root,
       ...(store && { store }),
     });
     for (const entry of judged.fingerprints) {
@@ -410,7 +412,6 @@ const report = async (options: Options): Promise<void> => {
         findings,
         attempts,
         context,
-        root: path.resolve(import.meta.dir, ".."),
       });
   const ejection: Ejection = {
     pr: options.pr,

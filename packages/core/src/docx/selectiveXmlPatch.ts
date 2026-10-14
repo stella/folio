@@ -24,6 +24,7 @@ import { resolveNamespaceUri } from "./xmlNamespaceContext";
 import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
 import { resolveParagraphIdentities } from "./paraIdAttribute";
 import { captureVerbatimXml } from "./verbatimCapture";
+import { scanStreamingXmlElements } from "./streamingXmlParser";
 import {
   hasCanonicalWordprocessingPrefixes,
   matchCloseTag,
@@ -932,8 +933,7 @@ function extractElementByIdAttr(
 type NoteElementName = "footnote" | "endnote";
 
 type NoteElementSyntax = {
-  elementName: string;
-  idAttributeName: string;
+  offsets: ParagraphOffsets;
   elementPrefix: string;
   attributePrefix: string;
 };
@@ -946,53 +946,50 @@ const collectNoteElementSyntax = (
   elementName: NoteElementName,
 ): Map<string, NoteElementSyntax[]> => {
   const byId = new Map<string, NoteElementSyntax[]>();
-  const root = parseXmlDocument(xml);
-  for (const element of getChildElements(root)) {
+  let root: XmlElement | undefined;
+  scanStreamingXmlElements(xml, ({ element, parent, nameEnd }) => {
+    if (parent === undefined) {
+      root = element;
+      return;
+    }
     if (
+      parent !== root ||
       getLocalName(element.name) !== elementName ||
       !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
     ) {
-      continue;
+      return;
     }
     const idAttribute = findAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id");
     if (!element.name || !idAttribute) {
-      continue;
+      return;
     }
+    const spelling = idAttribute.value.trim();
+    if (!/^[+-]?\d+$/u.test(spelling) || !Number.isSafeInteger(Number(spelling))) return;
+    const id = String(Number(spelling));
+    const offsets = scanElementRange(
+      xml,
+      nameEnd - element.name.length - 1,
+      `<${element.name}`,
+      `</${element.name}>`,
+    );
+    if (!offsets) return;
     const syntax = {
-      elementName: element.name,
-      idAttributeName: idAttribute.name,
+      offsets,
       elementPrefix: getNamespacePrefix(element.name) ?? "",
       attributePrefix: getNamespacePrefix(idAttribute.name) ?? "",
     };
-    const entries = byId.get(idAttribute.value);
+    const entries = byId.get(id);
     if (entries) {
       entries.push(syntax);
     } else {
-      byId.set(idAttribute.value, [syntax]);
+      byId.set(id, [syntax]);
     }
-  }
+  });
   return byId;
 };
 
-const syntaxLiteral = (syntax: NoteElementSyntax) => ({
-  openLiteral: `<${syntax.elementName}`,
-  closeTag: `</${syntax.elementName}>`,
-  idAttr: syntax.idAttributeName,
-});
-
-const extractNoteElement = (xml: string, syntax: NoteElementSyntax, id: string): string | null => {
-  const { openLiteral, closeTag, idAttr } = syntaxLiteral(syntax);
-  return extractElementByIdAttr(xml, openLiteral, closeTag, idAttr, id);
-};
-
-const findNoteElement = (
-  xml: string,
-  syntax: NoteElementSyntax,
-  id: string,
-): ParagraphOffsets | null => {
-  const { openLiteral, closeTag, idAttr } = syntaxLiteral(syntax);
-  return findElementByIdAttr(xml, openLiteral, closeTag, idAttr, id);
-};
+const extractNoteElement = (xml: string, syntax: NoteElementSyntax): string =>
+  xml.slice(syntax.offsets.start, syntax.offsets.end);
 
 type WordPrefixMapping = {
   source: NoteElementSyntax;
@@ -1222,7 +1219,7 @@ export function buildPatchedNotePartXml({
           ? replacementSyntaxEntries[0]
           : undefined;
       const replacementNote = replacementSyntax
-        ? extractNoteElement(replacementXml, replacementSyntax, id)
+        ? extractNoteElement(replacementXml, replacementSyntax)
         : null;
       if (!replacementSyntax || !replacementNote) {
         return { type: "refused", reason: "unroutable-paragraph" };
@@ -1235,23 +1232,20 @@ export function buildPatchedNotePartXml({
     }
     if (
       currentSyntaxEntries.length !== 1 ||
-      originalSyntaxEntries?.length !== 1 ||
+      !originalSyntaxEntries?.length ||
       replacementSyntaxEntries?.length !== 1
     ) {
       return { type: "refused", reason: "unroutable-paragraph" };
     }
     const currentSyntax = currentSyntaxEntries[0];
-    const originalSyntax = originalSyntaxEntries[0];
+    const originalSyntax = originalSyntaxEntries.at(0);
     const replacementSyntax = replacementSyntaxEntries[0];
     if (!currentSyntax || !originalSyntax || !replacementSyntax) {
       return { type: "refused", reason: "unroutable-paragraph" };
     }
-    const currentNote = extractNoteElement(serializedXml, currentSyntax, id);
-    const originalOffsets = findNoteElement(originalXml, originalSyntax, id);
-    const replacementNote = extractNoteElement(replacementXml, replacementSyntax, id);
-    if (!currentNote || !originalOffsets || !replacementNote) {
-      return { type: "refused", reason: "unroutable-paragraph" };
-    }
+    const currentNote = extractNoteElement(serializedXml, currentSyntax);
+    const originalOffsets = originalSyntax.offsets;
+    const replacementNote = extractNoteElement(replacementXml, replacementSyntax);
     const originalNote = originalXml.slice(originalOffsets.start, originalOffsets.end);
     const currentParagraphs = paragraphRanges(currentNote, currentSyntax.elementPrefix);
     const originalParagraphs = paragraphRanges(originalNote, originalSyntax.elementPrefix);
@@ -1265,9 +1259,7 @@ export function buildPatchedNotePartXml({
     const baselineSyntaxEntries = baselineElements.get(id);
     const baselineSyntax =
       baselineSyntaxEntries?.length === 1 ? baselineSyntaxEntries[0] : undefined;
-    const baselineNote = baselineSyntax
-      ? extractNoteElement(baselineXml, baselineSyntax, id)
-      : null;
+    const baselineNote = baselineSyntax ? extractNoteElement(baselineXml, baselineSyntax) : null;
     const reshaped =
       baselineSyntax !== undefined &&
       baselineNote !== null &&
@@ -1339,26 +1331,25 @@ export function buildPatchedNotePartXml({
       continue;
     }
     const originalSyntaxEntries = originalElements.get(id);
-    const originalSyntax =
-      originalSyntaxEntries?.length === 1 ? originalSyntaxEntries[0] : undefined;
-    const originalOffsets = originalSyntax && findNoteElement(originalXml, originalSyntax, id);
-    if (!originalOffsets) {
+    if (!originalSyntaxEntries?.length) {
       return { type: "refused", reason: "unroutable-paragraph" };
     }
-    const removal: XmlSplice = {
-      start: originalOffsets.start,
-      end: originalOffsets.end,
-      newXml: "",
-    };
-    paragraphSplices.push(removal);
-    noteSplices.push(removal);
+    // Remove all definitions with their owning reference so a later duplicate
+    // cannot become the winner on reopening.
+    for (const { offsets } of originalSyntaxEntries) {
+      const removal = { ...offsets, newXml: "" };
+      paragraphSplices.push(removal);
+      noteSplices.push(removal);
+    }
   }
 
   if (unroutedChangedParaIds.size > 0) {
     return { type: "refused", reason: "unroutable-paragraph" };
   }
   if (addedNotes.length > 0) {
-    const appended = appendNotesSplice(originalXml, originalElements, addedNotes, {
+    const appended = appendNotesSplice({
+      originalElements,
+      addedNotes,
       sourceXmlnsDeclarations: replacementXmlnsDeclarations,
     });
     if (!appended) {
@@ -1381,17 +1372,22 @@ export function buildPatchedNotePartXml({
  * Insert new notes after the part's last note, spelled with that note's
  * prefixes. Null when the part holds no note to follow.
  */
-const appendNotesSplice = (
-  originalXml: string,
-  originalElements: ReadonlyMap<string, readonly NoteElementSyntax[]>,
-  addedNotes: readonly { note: string; syntax: NoteElementSyntax }[],
-  { sourceXmlnsDeclarations }: { sourceXmlnsDeclarations: Record<string, string> },
-): XmlSplice | null => {
+type AppendNotesSpliceOptions = {
+  originalElements: ReadonlyMap<string, readonly NoteElementSyntax[]>;
+  addedNotes: readonly { note: string; syntax: NoteElementSyntax }[];
+  sourceXmlnsDeclarations: Record<string, string>;
+};
+
+const appendNotesSplice = ({
+  originalElements,
+  addedNotes,
+  sourceXmlnsDeclarations,
+}: AppendNotesSpliceOptions): XmlSplice | null => {
   let last: { end: number; syntax: NoteElementSyntax } | null = null;
-  for (const [id, entries] of originalElements) {
+  for (const entries of originalElements.values()) {
     for (const syntax of entries) {
-      const offsets = findNoteElement(originalXml, syntax, id);
-      if (offsets && (!last || offsets.end > last.end)) {
+      const offsets = syntax.offsets;
+      if (!last || offsets.end > last.end) {
         last = { end: offsets.end, syntax };
       }
     }

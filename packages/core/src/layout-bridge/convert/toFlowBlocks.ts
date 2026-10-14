@@ -648,5 +648,51 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     options.splitPageBreakAndParagraphMark === true,
     sectionBreaksWithoutMarker,
   );
-  return groupParagraphFrames(reconciledBlocks, nextBlockId);
+  const result = groupParagraphFrames(reconciledBlocks, nextBlockId);
+  if (options.embeddedFontFamilyMap) {
+    attachEmbeddedFontFamilies(result, options.embeddedFontFamilyMap);
+  }
+  return result;
 }
+
+/** Attach editor-owned resolution to freshly derived blocks without changing authored data. */
+const attachEmbeddedFontFamilies = (
+  blocks: FlowBlock[],
+  familyMap: ReadonlyMap<string, string>,
+): void => {
+  for (const block of blocks) {
+    switch (block.kind) {
+      case "paragraph":
+        for (const run of block.runs) {
+          if (run.kind !== "image" && run.kind !== "lineBreak") {
+            run.embeddedFontFamilyMap = familyMap;
+          }
+        }
+        block.attrs ??= {};
+        block.attrs.embeddedFontFamilyMap = familyMap;
+        if (block.attrs.listMarkerFormatting) {
+          block.attrs.listMarkerFormatting.embeddedFontFamilyMap = familyMap;
+        }
+        break;
+      case "table":
+        for (const row of block.rows) {
+          for (const cell of row.cells) {
+            attachEmbeddedFontFamilies(cell.blocks, familyMap);
+          }
+        }
+        break;
+      case "textBox":
+        attachEmbeddedFontFamilies(block.content, familyMap);
+        break;
+      case "image":
+      case "sectionBreak":
+      case "pageBreak":
+      case "columnBreak":
+        break;
+      default: {
+        const exhaustive: never = block;
+        return exhaustive;
+      }
+    }
+  }
+};

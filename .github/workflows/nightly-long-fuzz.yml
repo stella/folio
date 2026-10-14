@@ -54,3 +54,14 @@ jobs:
           path: test-results/long-fuzz
           retention-days: 14
           if-no-files-found: error
+
+  report:
+    name: File long-flow findings
+    needs: long-fuzz
+    if: failure() && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/fuzz-failure-report.yml
+    with:
+      artifact-pattern: long-fuzz-*

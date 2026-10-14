@@ -32,6 +32,13 @@ import {
 import "@stll/folio-react/editor.css";
 
 import { useEffect, useRef, useState } from "react";
+import { mountHostEditor } from "./host-editor";
+
+const hostContainer = document.createElement("section");
+hostContainer.id = "host-editor";
+hostContainer.className = "dark";
+document.body.prepend(hostContainer);
+const hostEditor = mountHostEditor(hostContainer);
 
 const LOCALE = "en";
 let projectionPromise: Promise<DocxProjectionWire> | undefined;
@@ -109,6 +116,7 @@ declare global {
         measureRoundTrip: () => Promise<{ width: number; alive: boolean }>;
         projectFixture: () => Promise<DocxProjectionWire>;
         projectionSchemaVersion: typeof docxProjectionSchemaVersion;
+        hostEditor: typeof hostEditor;
       }
     | undefined;
 }
@@ -145,6 +153,7 @@ function App() {
         return projectionPromise;
       },
       projectionSchemaVersion: docxProjectionSchemaVersion,
+      hostEditor,
     };
     return () => {
       globalThis.__folioSmoke = undefined;

@@ -1,6 +1,6 @@
 import { panic, TaggedError } from "better-result";
 import type { Fragment, Mark, Node as PMNode, NodeType } from "prosemirror-model";
-import { PluginKey, type Transaction } from "prosemirror-state";
+import type { Transaction } from "prosemirror-state";
 
 import type {
   BlockContent,
@@ -1464,9 +1464,7 @@ export type ParagraphPropertySourceTransfer = {
   selectedToken: string | null;
 };
 
-const paragraphPropertySourceTransfersKey = new PluginKey<
-  readonly ParagraphPropertySourceTransfer[]
->("paragraphPropertySourceTransfers");
+const paragraphPropertySourceTransfersKey = "stll.folio.meta.paragraphPropertySourceTransfers";
 
 type JoinProseParagraphsWithRightPropertySourceOptions = {
   attrs: PMNode["attrs"];

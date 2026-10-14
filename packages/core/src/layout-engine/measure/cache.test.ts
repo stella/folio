@@ -371,3 +371,30 @@ test("paragraph cache preserves image measurement geometry without source payloa
     );
   });
 });
+
+test("embedded font cache identity is content-based and stores each map once per paragraph", () => {
+  const first = new Map([
+    ["Calibri", "folio-embedded-one-Calibri"],
+    ["Cambria", "folio-embedded-one-Cambria"],
+  ]);
+  const equal = new Map([...first].reverse());
+  const different = new Map([
+    ["Calibri", "folio-embedded-two-Calibri"],
+    ["Cambria", "folio-embedded-two-Cambria"],
+  ]);
+  const paragraph = (families: ReadonlyMap<string, string>): ParagraphBlock => ({
+    kind: "paragraph",
+    id: "p",
+    attrs: { embeddedFontFamilyMap: families },
+    runs: Array.from({ length: 100 }, () => ({
+      kind: "text",
+      text: "text",
+      fontFamily: "Calibri",
+      embeddedFontFamilyMap: families,
+    })),
+  });
+  const firstKey = hashParagraphBlock(paragraph(first));
+  expect(firstKey).toBe(hashParagraphBlock(paragraph(equal)));
+  expect(firstKey).not.toBe(hashParagraphBlock(paragraph(different)));
+  expect(firstKey.split("folio-embedded-one-Calibri")).toHaveLength(2);
+});

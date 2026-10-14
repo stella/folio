@@ -13,15 +13,15 @@
  * Folio editor wires up whenever the suggestion list changes.
  */
 
+import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
 import type { AISuggestion, AISuggestionSeverity } from "../../ai-suggestions/types";
 
-export const aiSuggestionDecorationsKey = new PluginKey<AISuggestionDecorationState>(
-  "aiSuggestionDecorations",
-);
+export const aiSuggestionDecorationsKey =
+  createPluginKeyOwner<AISuggestionDecorationState>("aiSuggestionDecorations");
 
 const SET_META = "set";
 const FOCUS_META = "focus";
@@ -129,7 +129,7 @@ function buildDecorationSet(
  */
 export function createAISuggestionDecorationsPlugin(): Plugin<AISuggestionDecorationState> {
   return new Plugin<AISuggestionDecorationState>({
-    key: aiSuggestionDecorationsKey,
+    key: aiSuggestionDecorationsKey.createKey(),
     state: {
       init(_, state): AISuggestionDecorationState {
         return {
@@ -198,7 +198,7 @@ export function createAISuggestionDecorationsPlugin(): Plugin<AISuggestionDecora
 }
 
 export function setAISuggestionsMeta(suggestions: AISuggestion[]): {
-  key: PluginKey<AISuggestionDecorationState>;
+  key: PluginKeyOwner<AISuggestionDecorationState>;
   payload: { type: typeof SET_META; suggestions: AISuggestion[] };
 } {
   return {
@@ -208,7 +208,7 @@ export function setAISuggestionsMeta(suggestions: AISuggestion[]): {
 }
 
 export function setFocusedSuggestionMeta(focusedId: string | null): {
-  key: PluginKey<AISuggestionDecorationState>;
+  key: PluginKeyOwner<AISuggestionDecorationState>;
   payload: { type: typeof FOCUS_META; focusedId: string | null };
 } {
   return {

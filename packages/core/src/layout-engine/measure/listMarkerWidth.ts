@@ -41,6 +41,7 @@ const TWIPS_TO_PX = 96 / 1440;
  * of the paragraph do not format its number.
  */
 export function resolveListMarkerFont(block: ParagraphBlock): {
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   fontFamily: string;
   alternateFontFamily?: string;
   fontSize: number;
@@ -58,6 +59,7 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
     alternateFontFamily = markerFormatting.alternateFontFamily;
   }
   const base = {
+    ...(attrs?.embeddedFontFamilyMap ? { embeddedFontFamilyMap: attrs.embeddedFontFamilyMap } : {}),
     fontFamily,
     ...(alternateFontFamily !== undefined ? { alternateFontFamily } : {}),
     fontSize: markerFormatting?.fontSize ?? attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE,

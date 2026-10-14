@@ -70,14 +70,9 @@ test("public corpus generation stays outside PR gates and files findings with a 
   expect(fuzz["timeout-minutes"]).toBe(45);
   expect(report["permissions"]).toEqual({ contents: "read", issues: "write" });
   expect(report["needs"]).toBe("corpus-flows");
-  expect(report["timeout-minutes"]).toBe(5);
   expect(report["if"]).toBe("failure() && github.ref == 'refs/heads/main'");
-  expect(report["concurrency"]).toEqual({
-    group: "fuzz-failure-issues",
-    "cancel-in-progress": false,
-  });
-  expect(JSON.stringify(report)).toContain("--log fuzz-results/run.log");
-  expect(JSON.stringify(report)).toContain("--records fuzz-results");
+  expect(report["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
+  expect(report["with"]).toEqual({ "artifact-pattern": "public-corpus-full-flows" });
   const dispatcher = workflow("continuous-fuzz.yml").jobs["public-corpus-flows"];
   if (!isRecord(dispatcher)) throw new TypeError("Missing reusable caller");
   expect(dispatcher["permissions"]).toEqual({ contents: "read", issues: "write" });

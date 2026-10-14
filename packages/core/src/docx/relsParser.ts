@@ -125,7 +125,7 @@ export function parseRelationships(relsXml: string): RelationshipMap {
     }
     // If not specified, default is Internal (we don't set it explicitly)
 
-    map.set(id, relationship);
+    if (!map.has(id)) map.set(id, relationship);
   }
 
   return map;

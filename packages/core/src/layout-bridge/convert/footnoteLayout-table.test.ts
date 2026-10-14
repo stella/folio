@@ -13,7 +13,12 @@ import {
 } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
 import type { FlowBlock, ParagraphBlock, Run } from "../../layout-engine/types";
 import type { Footnote } from "../../types/document";
-import { applyFootnotePresentation, convertFootnoteToContent } from "./footnoteLayout";
+import { buildFontString, buildRunFontStyle } from "../../layout-engine/measure/measureHelpers";
+import {
+  applyFootnotePresentation,
+  convertFootnoteToContent,
+  convertNoteStoryToFlowBlocks,
+} from "./footnoteLayout";
 
 const fakeMeasure = { charWidth: fixedCharWidth(5) };
 
@@ -634,4 +639,41 @@ describe("footnote layout", () => {
     expect(paragraph.runs.at(0)).toMatchObject({ fontFamily: "Direct Face" });
     expect(paragraph.runs.at(0)?.alternateFontFamily).toBeUndefined();
   });
+});
+
+test("note story conversion and synthesized references keep their owned embedded fonts", () => {
+  // The former conversion fixture never supplied the document's font context,
+  // so both the note option seam and synthesized number escaped coverage.
+  const note = {
+    type: "footnote",
+    id: 7,
+    noteType: "normal",
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "run",
+            formatting: { fontFamily: { ascii: "Calibri" } },
+            content: [{ type: "text", text: "Note" }],
+          },
+        ],
+      },
+    ],
+  } as const satisfies Footnote;
+  for (const family of ["folio-embedded-first-Calibri", "folio-embedded-second-Calibri"]) {
+    const embeddedFontFamilyMap = new Map([["Calibri", family]]);
+    const converted = convertNoteStoryToFlowBlocks(note.content, {
+      embeddedFontFamilyMap,
+    }).flowBlocks;
+    const paragraph = applyFootnotePresentation(converted, 7).at(0);
+    if (paragraph?.kind !== "paragraph") return panic("Expected note paragraph");
+    expect(paragraph.attrs?.embeddedFontFamilyMap).toBe(embeddedFontFamilyMap);
+    const textRuns = paragraph.runs.filter((run) => run.kind === "text");
+    expect(textRuns).toHaveLength(2);
+    for (const run of textRuns) {
+      expect(run.embeddedFontFamilyMap).toBe(embeddedFontFamilyMap);
+      expect(buildFontString(buildRunFontStyle(run, "Calibri", 11))).toContain(family);
+    }
+  }
 });
