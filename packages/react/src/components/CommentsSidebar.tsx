@@ -106,8 +106,8 @@ export type TrackedChangeEntry = {
 
 export type CommentsSidebarProps = {
   comments: Comment[];
-  activeCommentId?: number | null;
-  onCommentClick?: (commentId: number | null) => void;
+  activeCommentId: number | null;
+  onCommentClick: (commentId: number | null) => void;
   onCommentReply?: (commentId: number, text: string) => void;
   onCommentResolve?: (commentId: number) => void;
   onCommentDelete?: (commentId: number) => void;
@@ -195,7 +195,7 @@ const CANCEL_BUTTON_STYLE: React.CSSProperties = {
 export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   comments,
   onCommentClick,
-  activeCommentId = null,
+  activeCommentId,
   onCommentReply,
   onCommentResolve,
   onCommentDelete,
@@ -219,9 +219,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyText, setReplyText] = useState("");
   const [newCommentText, setNewCommentText] = useState("");
-  const [expandedCard, setExpandedCard] = useState<string | null>(
-    activeCommentId === null ? null : `comment-${activeCommentId}`,
-  );
+  const expandedCard = activeCommentId === null ? null : `comment-${activeCommentId}`;
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
   const [{ positions: cardPositions, knownCards }, setCardGeometry] = useState(() => ({
     positions: new Map<string, number>(),
@@ -494,14 +492,13 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       if (pagesEl.contains(target)) {
         const commentEl = closestHtmlElement(target, "[data-comment-id]");
         if (commentEl?.dataset["commentId"]) {
-          setExpandedCard(`comment-${commentEl.dataset["commentId"]}`);
-          onCommentClick?.(Number(commentEl.dataset["commentId"]));
+          onCommentClick(Number(commentEl.dataset["commentId"]));
           return;
         }
       }
 
       // Click on grey area or anywhere else outside sidebar/highlights → collapse
-      setExpandedCard(null);
+      onCommentClick(null);
       setMenuOpenFor(null);
     };
 
@@ -620,22 +617,11 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
   };
 
-  const [previousActiveCommentId, setPreviousActiveCommentId] = useState(activeCommentId);
-  if (previousActiveCommentId !== activeCommentId) {
-    setPreviousActiveCommentId(activeCommentId);
-    if (activeCommentId !== null) setExpandedCard(`comment-${activeCommentId}`);
-  }
-
-  const handleCardClick = (cardId: string, commentId?: number) => {
+  const handleCardClick = (cardId: string, commentId: number) => {
     const nextExpandedCard = expandedCard === cardId ? null : cardId;
-    setExpandedCard(nextExpandedCard);
     setMenuOpenFor(null);
-    if (commentId !== undefined) {
-      onCommentClick?.(
-        nextExpandedCard === null && activeCommentId === commentId ? null : commentId,
-      );
-    }
-    if (isDrawer && commentId !== undefined && nextExpandedCard !== null) {
+    onCommentClick(nextExpandedCard === null ? null : commentId);
+    if (isDrawer && nextExpandedCard !== null) {
       revealAnchor(cardId);
     }
   };

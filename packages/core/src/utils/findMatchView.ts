@@ -138,6 +138,36 @@ const spanStoryKey = (span: HTMLElement): string => {
   return "body";
 };
 
+/** CSS clipping can hide a nonzero range; scroll roots stay revealable off-screen. */
+const clipPaintedRects = (source: HTMLElement, rects: readonly DOMRect[]) => {
+  const root = getEditorScrollRoot(source);
+  const clips: { box: DOMRect; x: boolean; y: boolean }[] = [];
+  for (
+    let parent = source.parentElement;
+    parent && parent !== root;
+    parent = parent.parentElement
+  ) {
+    const style = getComputedStyle(parent);
+    const x = style.overflowX === "hidden" || style.overflowX === "clip";
+    const y = style.overflowY === "hidden" || style.overflowY === "clip";
+    if (x || y) clips.push({ box: parent.getBoundingClientRect(), x, y });
+  }
+  return rects.flatMap((rect) => {
+    let { left, right, top, bottom } = rect;
+    for (const { box, x, y } of clips) {
+      if (x) {
+        left = Math.max(left, box.left);
+        right = Math.min(right, box.right);
+      }
+      if (y) {
+        top = Math.max(top, box.top);
+        bottom = Math.min(bottom, box.bottom);
+      }
+    }
+    return right > left && bottom > top ? [new DOMRect(left, top, right - left, bottom - top)] : [];
+  });
+};
+
 /** Paint search geometry over the existing page DOM, without changing editor state. */
 export const createFindMatchView = (options: FindMatchViewOptions) => {
   const { container } = options;
@@ -168,7 +198,7 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
     commentRoot.append(commentOverlay);
   }
   const marks = new Map<number, HTMLElement[]>();
-  const targets = new Map<number, HTMLElement>();
+  const targets = new Map<number, { source: HTMLElement; rect: DOMRect }>();
   let currentIndex = 0;
   let pendingReveal: number | null = null;
   let frame: number | null = null;
@@ -219,11 +249,15 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       surface: HTMLElement;
     };
     const appendRects = ({ index, rects, source, surface }: AppendRectsOptions) => {
-      const visibleRects = rects.filter((rect) => rect.width > 0 && rect.height > 0);
+      const visibleRects = clipPaintedRects(source, rects);
       if (visibleRects.length === 0) return;
       const previousTarget = targets.get(index);
-      if (!previousTarget || (previousTarget.compareDocumentPosition(source) & 2) !== 0)
-        targets.set(index, source);
+      const firstRect = visibleRects.at(0);
+      if (
+        firstRect &&
+        (!previousTarget || (previousTarget.source.compareDocumentPosition(source) & 2) !== 0)
+      )
+        targets.set(index, { source, rect: firstRect });
       const origin = surface.getBoundingClientRect();
       const scaleX = surface.offsetWidth > 0 ? origin.width / surface.offsetWidth : 1;
       const scaleY = surface.offsetHeight > 0 ? origin.height / surface.offsetHeight : 1;
@@ -335,7 +369,7 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
       const target = targets.get(pendingReveal);
       if (target) {
         pendingReveal = null;
-        scrollEditorElementIntoView(target);
+        scrollEditorElementIntoView(target.source, { rect: target.rect });
       }
     }
   };
@@ -378,7 +412,7 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
     const target = targets.get(index);
     pendingReveal = target ? null : index;
     if (!target) return false;
-    scrollEditorElementIntoView(target);
+    scrollEditorElementIntoView(target.source, { rect: target.rect });
     return true;
   };
   return {

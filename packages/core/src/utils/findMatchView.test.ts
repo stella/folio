@@ -714,7 +714,7 @@ describe("view-only search geometry", () => {
 // Exercise the geometry oracle with both empty and zero-area ranges.
 test.each(
   (["comment", "body"] as const).flatMap((surface) =>
-    (["empty", "zero-width", "zero-height"] as const).map((visibility) => ({
+    (["empty", "zero-width", "zero-height", "clipped"] as const).map((visibility) => ({
       surface,
       visibility,
     })),
@@ -767,6 +767,14 @@ test.each(
       pageElement.append(reply);
       container.append(pageElement);
     }
+    const clip = document.createElement("div");
+    if (visibility === "clipped") {
+      clip.style.overflowX = "hidden";
+      clip.style.overflowY = "hidden";
+      clip.getBoundingClientRect = () => new DOMRect(0, 0, 500, 40);
+      reply.replaceWith(clip);
+      clip.append(reply);
+    }
     const matches = findInDocument(doc, "hit", {
       ...createDefaultFindOptions(),
       includeComments: surface === "comment",
@@ -776,6 +784,10 @@ test.each(
       expect(view.reveal(0)).toBe(false);
       expect(container.querySelectorAll("[data-find-match-index]")).toHaveLength(0);
       visible = true;
+      if (visibility === "clipped") {
+        clip.style.overflowX = "visible";
+        clip.style.overflowY = "visible";
+      }
       expect(view.reveal(0)).toBe(true);
       expect(container.querySelectorAll("[data-find-match-index]")).toHaveLength(1);
     } finally {

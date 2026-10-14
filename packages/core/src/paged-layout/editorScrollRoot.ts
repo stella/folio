@@ -50,6 +50,8 @@ type ScrollEditorElementOptions = {
   behavior?: ScrollBehavior;
   /** Space to leave between the target and the visible root edge. */
   margin?: number;
+  /** Measured target range when only part of the element should be revealed. */
+  rect?: DOMRectReadOnly;
 };
 
 /** Scroll only the marked root, including when the target is inside a scaled viewport. */
@@ -59,13 +61,14 @@ export const scrollEditorElementIntoView = (
     block = "center",
     behavior = prefersReducedMotionBehavior(),
     margin = 0,
+    rect,
   }: ScrollEditorElementOptions = {},
 ): void => {
   const root = getEditorScrollRoot(element);
   if (!root || !element) {
     return;
   }
-  const targetRect = element.getBoundingClientRect();
+  const targetRect = rect ?? element.getBoundingClientRect();
   const rootRect = root.getBoundingClientRect();
   const visibleTop = rootRect.top + root.clientTop;
   const targetTop = targetRect.top - visibleTop + root.scrollTop;

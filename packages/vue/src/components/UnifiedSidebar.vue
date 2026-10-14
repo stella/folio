@@ -115,11 +115,11 @@ const props = defineProps<{
   pagesContainer: HTMLElement | null;
   pageWidthPx: number;
   zoom?: number;
-  /** Controlled expand: when set, overrides local click toggling.
+  /** Controlled expansion shared by card clicks and search navigation.
    *  Used by DocxEditor to auto-expand cards when the cursor
    *  lands on a commented / tracked span (mirrors React
    *  DocxEditor.tsx:5080-5118 cursorSidebarItem detection). */
-  activeItemId?: string | null;
+  activeItemId: string | null;
   /** Y (in unscaled coords inside the pages-viewport) where the
    *  AddCommentCard should anchor — mirrors React's
    *  addCommentYPosition pass-through. Null = top of rail. */
@@ -146,17 +146,11 @@ const emit = defineEmits<{
 
 const isDrawer = computed(() => props.surface === "drawer");
 
-// Local fallback for uncontrolled use; when `activeItemId` is bound
-// from the parent (DocxEditor) the prop wins and toggleExpanded
-// emits up so the parent can update its own state.
-const localExpanded = ref<string | null>(null);
-const expandedId = computed<string | null>(() =>
-  props.activeItemId !== undefined ? props.activeItemId : localExpanded.value,
-);
+// DocxEditor owns expansion for both card clicks and programmatic navigation.
+const expandedId = computed(() => props.activeItemId);
 
 function toggleExpanded(id: string) {
   const next = expandedId.value === id ? null : id;
-  localExpanded.value = next;
   emit("update:activeItemId", next);
 }
 
@@ -170,7 +164,6 @@ function onSidebarMouseDown(e: MouseEvent) {
   const target = e.target;
   if (target instanceof HTMLElement && target.closest(".unified-sidebar__card-slot")) return;
   if (expandedId.value !== null) {
-    localExpanded.value = null;
     emit("update:activeItemId", null);
   }
 }

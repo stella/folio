@@ -41,6 +41,7 @@ type RenderDrawerOptions = {
   anchorPositions: Map<string, number>;
   activeCommentId?: number;
   surface?: "column" | "drawer";
+  threadComments?: Comment[];
 };
 
 const renderDrawer = async ({
@@ -48,6 +49,7 @@ const renderDrawer = async ({
   anchorPositions,
   activeCommentId,
   surface = "drawer",
+  threadComments = comments,
 }: RenderDrawerOptions) => {
   scrollElement.setAttribute("data-folio-scroll", "");
   const host = document.createElement("div");
@@ -55,20 +57,28 @@ const renderDrawer = async ({
   const root = createRoot(host);
   const editorContainerRef = createRef<HTMLDivElement>();
   editorContainerRef.current = scrollElement;
-  await act(async () => {
+  let selectedCommentId = activeCommentId ?? null;
+  // oxlint-disable-next-line react-perf/jsx-no-new-function-as-prop -- created once per mounted test root and reused across every render
+  const activateComment = (commentId: number | null) => {
+    selectedCommentId = commentId;
+    render();
+  };
+  const render = () => {
     root.render(
       <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
         <CommentsSidebar
-          comments={comments}
+          comments={threadComments}
           editorContainerRef={editorContainerRef}
           anchorPositions={anchorPositions}
-          activeCommentId={activeCommentId}
+          activeCommentId={selectedCommentId}
+          onCommentClick={activateComment}
           surface={surface}
         />
       </IntlProvider>,
     );
-  });
-  return { host, root };
+  };
+  await act(async () => render());
+  return { host, root, activateComment };
 };
 
 const measurePositions = async () => {
@@ -76,6 +86,58 @@ const measurePositions = async () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
   });
 };
+
+test("reactivating a thread after an outside click removes the reply preview clamp", async () => {
+  const replyText = "Preview line one\nPreview line two\nSearch match beyond the preview";
+  const reply = {
+    id: 2,
+    parentId: comment.id,
+    author: "Reviewer",
+    date: "2026-01-01T00:00:00Z",
+    content: [
+      {
+        type: "paragraph",
+        formatting: {},
+        content: [
+          {
+            type: "run",
+            formatting: {},
+            content: [{ type: "text", text: replyText }],
+          },
+        ],
+      },
+    ],
+  } satisfies Comment;
+  const scrollElement = document.createElement("div");
+  const pages = document.createElement("div");
+  pages.className = "paged-editor__pages";
+  scrollElement.append(pages);
+  const { host, root, activateComment } = await renderDrawer({
+    scrollElement,
+    anchorPositions: new Map(),
+    activeCommentId: comment.id,
+    threadComments: [comment, reply],
+  });
+  try {
+    const replyBody = Array.from(host.querySelectorAll<HTMLDivElement>("div")).find(
+      (element) => element.textContent === replyText && element.style.lineHeight === "17px",
+    );
+    expect(replyBody).toBeDefined();
+    expect(replyBody?.style.overflow).not.toBe("hidden");
+
+    // Previous fixtures never collapsed an active thread outside the sidebar.
+    await act(async () => pages.click());
+    expect(replyBody?.style.overflow).toBe("hidden");
+
+    await act(async () => activateComment(comment.id));
+    expect(replyBody?.style.overflow).not.toBe("hidden");
+    expect(host.querySelector(".docx-comment-card input[readonly]")).not.toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    scrollElement.remove();
+  }
+});
 
 test("drawer expansion prefers the rendered comment anchor over layout positions", async () => {
   const scrollElement = document.createElement("div");
