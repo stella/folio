@@ -218,30 +218,32 @@ const serializers = {
   },
 } satisfies Record<string, SerializerCase>;
 
-test("document serializers retain Unicode across byte and buffer boundaries", async () => {
-  await assertProperty(
-    fc.asyncProperty(
-      astralText,
-      fc.array(astralText, { maxLength: 4 }),
-      async (astral, suffixPoints) => {
-        const exercised = new Set<string>();
-        const suffix = suffixPoints.join("");
-        for (const { boundary, text } of boundaryTextCases(astral, suffix)) {
-          const paragraph: Paragraph = {
-            type: "paragraph",
-            paraId: "00000001",
-            content: [{ type: "run", content: [{ type: "text", text }] }],
-          };
-          const document: Document = { package: { document: { content: [paragraph] } } };
-          await assertTextRoundTrip({ text, roundTrip: (value) => roundTripText(value, boundary) });
-          for (const [name, serializer] of Object.entries(serializers)) {
+// Register directly from the census so each producer has its own timeout budget.
+// Keep the shared property ID: every producer replays the existing pinned inputs.
+for (const [name, serializer] of Object.entries(serializers)) {
+  test(`${name} retains Unicode across byte and buffer boundaries`, async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        astralText,
+        fc.array(astralText, { maxLength: 4 }),
+        async (astral, suffixPoints) => {
+          const suffix = suffixPoints.join("");
+          for (const { boundary, text } of boundaryTextCases(astral, suffix)) {
+            const paragraph: Paragraph = {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [{ type: "run", content: [{ type: "text", text }] }],
+            };
+            const document: Document = { package: { document: { content: [paragraph] } } };
+            await assertTextRoundTrip({
+              text,
+              roundTrip: (value) => roundTripText(value, boundary),
+            });
             await serializer(text, document, paragraph, boundary);
-            exercised.add(name);
           }
-        }
-        expect([...exercised].sort()).toEqual(Object.keys(serializers).sort());
-      },
-    ),
-    { numRuns: 3, id: "document serializers retain Unicode across byte boundaries" },
-  );
-});
+        },
+      ),
+      { numRuns: 3, id: "document serializers retain Unicode across byte boundaries" },
+    );
+  });
+}
