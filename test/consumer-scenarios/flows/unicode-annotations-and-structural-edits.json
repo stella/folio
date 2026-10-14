@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "large-100-pages",
+  "mode": "tracked-changes",
+  "seed": 976901117,
+  "steps": [
+    {
+      "action": "reject all",
+      "seed": 2176631260
+    },
+    {
+      "action": "core batch",
+      "seed": 4008197073,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "3CEFFC83",
+          "find": "Clause",
+          "replace": "revised"
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "mistake",
+      "seed": 2744525733
+    },
+    {
+      "action": "save and reopen",
+      "seed": 217183053
+    },
+    {
+      "action": "reject one",
+      "seed": 2048748866
+    },
+    {
+      "action": "reject all",
+      "seed": 1416913196
+    },
+    {
+      "action": "story batch",
+      "seed": 3248479009,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "3CEFFC83",
+          "text": "A rewritten clause."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "An added clause."
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "accept one",
+      "seed": 1984807669
+    },
+    {
+      "action": "accept all",
+      "seed": 1352971999
+    },
+    {
+      "action": "mistake",
+      "seed": 3184537812
+    },
+    {
+      "action": "reject one",
+      "seed": 2552702142
+    },
+    {
+      "action": "save and reopen",
+      "seed": 89300659
+    },
+    {
+      "action": "selective save",
+      "seed": 1920866472
+    },
+    {
+      "action": "new reviewer",
+      "seed": 3752432285
+    },
+    {
+      "action": "story batch",
+      "seed": 1289030802,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "40C65AC2",
+          "text": "Delivery goods term."
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1792984078,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "62DC8952",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3560608694,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "5D5DFD69",
+            "startOffset": 85,
+            "endOffset": 88,
+            "selectedTextHash": "h3ol178"
+          },
+          "comment": {
+            "text": "Notice payment clause written payment notice."
+          }
+        },
+        {
+          "type": "insertTable",
+          "blockId": "1C82C499",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "replaceBlock",
+          "blockId": "5BB01740",
+          "text": "Written delivery goods notice written delivery."
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "reply and resolve",
+      "seed": 209606753
+    }
+  ],
+  "title": "Unicode text survives annotated structural edits and comment replies"
+}
