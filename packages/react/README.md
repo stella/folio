@@ -45,6 +45,38 @@ export function Editor({ docx }: { docx: ArrayBuffer }) {
 The editor renders to the DOM; under SSR, load it from a client-only/dynamic
 import.
 
+## Read-only review views
+
+```tsx
+<DocxEditor
+  documentBuffer={docx}
+  readOnly
+  reviewDisplayMode="final"
+  showCommentHighlights={false}
+/>
+```
+
+`reviewDisplayMode` accepts `all-markup` (the default), `final` (all pending
+changes accepted for display), or `original` (all pending changes rejected for
+display). It controls the displayed text, formatting, numbering, table rows,
+pagination and search. The controlled prop updates the view without reparsing.
+Omit it to let the editor's review selector control the view.
+
+Projected views (`final`, `original`, and Simple Markup in the review selector)
+are read-only: typing and replacement are refused. Switch to `all-markup` to
+edit. `ref.current.getReadOnlyReason()` returns `review-display-mode`,
+`host-read-only`, `viewing-mode`, or `null` when editing is allowed.
+`onReadonlyEditAttempt(reason)` receives the exported `EditorReadOnlyReason`
+when a user attempts an edit.
+
+`showCommentHighlights` defaults to `true` and independently hides comment
+highlights in `all-markup`. Highlights are always hidden in `final` and
+`original`. Neither prop changes the document, revisions or comments: saving
+or exporting DOCX preserves the same authored document in every view. The
+Vue `DocxEditor` exposes the same props. `ReviewDisplayMode` is exported by
+both adapters and folio-core; core's `reviewDisplayModeToDisplayMode` selects
+the existing `markupView` layout configuration (`final` uses `no-markup`).
+
 ## Exports
 
 | Import                         | What it is                                                                                                                                              |

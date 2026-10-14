@@ -34,6 +34,7 @@ import path from "node:path";
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import type { BlockContent, Document, Paragraph, Run } from "../types/document";
+import { cloneDocumentWithParagraphPropertySources } from "./paragraphPropertySource";
 import { parseDocx } from "./parser";
 import { repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
@@ -72,6 +73,11 @@ const readFixture = (name: string): ArrayBuffer => {
 
 const parse = (buffer: ArrayBuffer): Promise<Document> =>
   parseDocx(buffer, { preloadFonts: false });
+
+let parsedEditFixture: Promise<Document> | undefined;
+
+// Parse once; each generated edit gets an isolated model with save provenance intact.
+const readEditModel = () => (parsedEditFixture ??= parse(readFixture(EDIT_FIXTURE)));
 
 const fullRepack = (doc: Document, originalBuffer: ArrayBuffer): Promise<ArrayBuffer> =>
   repackDocx({ ...doc, originalBuffer });
@@ -205,7 +211,7 @@ const findEditableTarget = (para: Paragraph): EditableTarget | null => {
 };
 
 /**
- * Apply the edit to a freshly parsed doc, mutating in place. Returns the paraId
+ * Apply the edit to an independent document, mutating in place. Returns the paraId
  * that was changed, or null when the doc has no editable paraId'd paragraph.
  */
 const applyEdit = (doc: Document, spec: EditSpec): string | null => {
@@ -385,9 +391,10 @@ describe("invariant 3: selective save is never silently wrong", () => {
     "selective returns null or a document that applies exactly the edit",
     async () => {
       const buffer = readFixture(EDIT_FIXTURE);
+      const original = await readEditModel();
       await fc.assert(
         fc.asyncProperty(arbEditSpec, async (spec) => {
-          const doc = await parse(buffer);
+          const doc = cloneDocumentWithParagraphPropertySources(original);
           const paraId = applyEdit(doc, spec);
           if (!paraId) {
             return;
@@ -420,6 +427,7 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
     "a single-paragraph edit leaves untouched parts and unedited paragraphs byte-identical",
     async () => {
       const buffer = readFixture(EDIT_FIXTURE);
+      const original = await readEditModel();
       const originalZip = await JSZip.loadAsync(buffer);
       const originalXml = await documentXml(buffer);
 
@@ -444,7 +452,7 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
 
       await fc.assert(
         fc.asyncProperty(arbEditSpec, async (spec) => {
-          const doc = await parse(buffer);
+          const doc = cloneDocumentWithParagraphPropertySources(original);
           const paraId = applyEdit(doc, spec);
           if (!paraId) {
             return;

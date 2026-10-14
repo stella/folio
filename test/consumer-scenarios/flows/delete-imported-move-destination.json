@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "importedMoves",
+  "mode": "direct",
+  "seed": 10357178,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2849829543,
+      "operations": [{ "type": "deleteBlock", "blockId": "@3" }],
+      "atomic": true
+    }
+  ],
+  "title": "deleting an imported move destination removes its added break"
+}

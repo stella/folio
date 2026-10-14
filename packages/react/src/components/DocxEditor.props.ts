@@ -32,6 +32,8 @@ import type {
   HostShortcut,
   KeyboardShortcutScope,
 } from "@stll/folio-core/managers/editorShortcuts";
+import type { EditorReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
+import type { ReviewDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
@@ -210,6 +212,10 @@ export type DocxEditorProps = {
   hostShortcuts?: readonly HostShortcut[];
   /** Whether the editor is read-only. When true, hides toolbar and rulers */
   readOnly?: boolean;
+  /** Controlled review view. Defaults to all-markup; saving preserves all revisions. */
+  reviewDisplayMode?: ReviewDisplayMode;
+  /** Show comment highlights in all-markup (default: true); hidden in final/original. */
+  showCommentHighlights?: boolean;
   /**
    * Whether the comments sidebar opens when a document with open comment
    * threads loads (default: true). It stays closed when it would be empty:
@@ -291,7 +297,7 @@ export type DocxEditorProps = {
   /** Callback when the editing mode changes */
   onModeChange?: (mode: EditorMode) => void;
   /** Callback when a readonly user action would mutate the document. */
-  onReadonlyEditAttempt?: () => void;
+  onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
   /**
    * Controlled comments array. When provided, the editor reads comment thread
    * metadata from this prop and emits every change through `onCommentsChange`.
@@ -440,6 +446,8 @@ export type HighlightPassageOptions = {
  * Imperative handle exposed by the DocxEditor component.
  */
 export type DocxEditorRef = {
+  /** Current reason user editing is refused, or null in an editable view. */
+  getReadOnlyReason: () => EditorReadOnlyReason | null;
   /** Get the current document */
   getDocument: () => Document | null;
   /** Whether the live ProseMirror state has edits that have not been serialized. */

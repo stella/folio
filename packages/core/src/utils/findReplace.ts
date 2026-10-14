@@ -18,6 +18,8 @@ export type FindMatch = {
   startOffset: number;
   endOffset: number;
   text: string;
+  /** Authored editor range when the match was found in a resolved markup view. */
+  authoredRange?: { from: number; to: number };
 };
 
 export type FindOptions = {

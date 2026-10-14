@@ -32,6 +32,7 @@ export type HiddenHeaderFooterPMsRef = {
 
 export type HiddenHeaderFooterPMsProps = {
   document: Document | null;
+  readOnly?: boolean;
   experimentalSession?: "canonical";
   getCanonicalApi?: () => HiddenEditorApi | null;
   onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
@@ -64,6 +65,7 @@ export const HiddenHeaderFooterPMs = memo(
   forwardRef<HiddenHeaderFooterPMsRef, HiddenHeaderFooterPMsProps>(function HiddenHeaderFooterPMs(
     {
       document,
+      readOnly,
       styles,
       theme,
       onTransaction,
@@ -75,6 +77,7 @@ export const HiddenHeaderFooterPMs = memo(
   ) {
     const hostRef = useRef<HTMLDivElement>(null);
     const documentRef = useRef(document);
+    const readOnlyRef = useRef(readOnly);
     const stylesRef = useRef(styles);
     const themeRef = useRef(theme);
     const onTransactionRef = useRef(onTransaction);
@@ -85,6 +88,7 @@ export const HiddenHeaderFooterPMs = memo(
     const managerRef = useRef<HeaderFooterEditorManager | null>(null);
     useLayoutEffect(() => {
       documentRef.current = document;
+      readOnlyRef.current = readOnly;
       stylesRef.current = styles;
       themeRef.current = theme;
       onTransactionRef.current = onTransaction;
@@ -94,6 +98,7 @@ export const HiddenHeaderFooterPMs = memo(
       managerRef.current ??= createHeaderFooterEditorManager({
         getHost: () => hostRef.current,
         getDocument: () => documentRef.current,
+        getReadOnly: () => readOnlyRef.current ?? false,
         getStyles: () => stylesRef.current,
         getTheme: () => themeRef.current,
         getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
@@ -103,8 +108,10 @@ export const HiddenHeaderFooterPMs = memo(
           onTransactionRef.current?.(rId, kind, view, docChanged, selectionChanged);
         },
       });
+      managerRef.current.sync();
     }, [
       document,
+      readOnly,
       styles,
       theme,
       onTransaction,
@@ -112,10 +119,6 @@ export const HiddenHeaderFooterPMs = memo(
       experimentalSession,
       onSessionRefusal,
     ]);
-
-    useEffect(() => {
-      managerRef.current?.sync();
-    });
 
     useEffect(
       () => () => {

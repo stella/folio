@@ -144,8 +144,8 @@ for (const adapter of adapters) {
     await page.getByRole("button", { name: "Options", exact: false }).click();
     await page.getByRole("button", { name: "Close header editing" }).click();
 
-    const footer = page.locator(".layout-page-footer").first();
-    await footer.scrollIntoViewIfNeeded();
+    const footer = page.locator(`.layout-page-footer[data-rid="${footerRId}"]`).first();
+    // dblclick scrolls and retries actionability after the painter replaces slots on header close.
     await footer.dblclick();
     await expect(page.locator(".hf-inline-editor")).toBeVisible();
     const footerEditor = page.locator(
