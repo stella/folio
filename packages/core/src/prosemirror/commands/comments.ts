@@ -71,6 +71,7 @@ import {
 } from "../anchoredTextBoxes";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
+import { carryParagraphProperties, paragraphLeftAfter } from "../paragraphPropertyCarry";
 import { runInCellPending, runParagraphIntoTable } from "../tableRunIn";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
@@ -200,6 +201,29 @@ function resolveChange(
       const tableCellStructuralOps: TableCellStructuralOp[] = [];
       let removedSectionEndpointCount = 0;
       const removedSectionReferences: RemovedSectionReference[] = [];
+      // A selective rejection restores properties on their current carrier.
+      // If its break still goes, the eventual survivor must read them too.
+      const carryRestoredProperties = (position: number): void => {
+        if (mode !== "reject" || revisionSet === null) return;
+        const source = tr.doc.nodeAt(position);
+        const mark = source ? expectParagraphAttrs(source).pPrMark : null;
+        if (
+          !source ||
+          (mark?.kind !== "del" && mark?.kind !== "moveFrom") ||
+          revisionSet.has(mark.info.id)
+        )
+          return;
+        const survivor = paragraphLeftAfter({ doc: tr.doc, paragraphPos: position });
+        if (survivor === null) return;
+        carryParagraphProperties({
+          tr,
+          position: survivor,
+          source,
+          styleResolver,
+          numbering,
+          revision: mark.info,
+        });
+      };
 
       state.doc.nodesBetween(from, to, (node, pos): boolean => {
         if (node.type.name === "paragraph") {
@@ -241,6 +265,7 @@ function resolveChange(
             } else {
               tr.setNodeMarkup(pos, undefined, nextAttrs);
             }
+            carryRestoredProperties(pos);
           }
 
           return true;
@@ -669,7 +694,9 @@ function resolveChange(
           // PM rejects the join if the two blocks aren't structurally
           // compatible (e.g. paragraph followed by a table). Leaving the
           // marker is the safe fallback.
+          continue;
         }
+        if (op.markWasAdded) carryRestoredProperties(mappedPos);
       }
 
       if (removedSectionEndpointCount > 0) {
