@@ -1318,8 +1318,11 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     if (!view) {
       return;
     }
-    // EditorView calls editable() dynamically; ARIA state needs explicit sync.
-    syncHiddenEditorAccessibility(view, deps.getReadOnly());
+    const readOnly = deps.getReadOnly();
+    if (view.editable !== !readOnly) {
+      view.setProps({ editable: () => !deps.getReadOnly() });
+    }
+    syncHiddenEditorAccessibility(view, readOnly);
   };
 
   const publishStoryCommit = (storyView: EditorView, commit: CanonicalCommit): boolean => {

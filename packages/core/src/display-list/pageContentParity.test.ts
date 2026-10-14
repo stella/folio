@@ -184,7 +184,11 @@ describe("every character the engine placed on a page is painted", () => {
           continue;
         }
         const expected = comparable(
-          getPageTextFromLayout(laidOut.value.layout, laidOut.value.proseDoc, index + 1) ?? "",
+          getPageTextFromLayout({
+            layout: laidOut.value.layout,
+            doc: laidOut.value.proseDoc,
+            page: index + 1,
+          }) ?? "",
         );
         const uncovered = firstUncoveredIndex(expected, comparable(paintedTextOf(page)));
         expect({

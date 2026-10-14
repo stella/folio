@@ -1,4 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
+import { EditorState } from "prosemirror-state";
+
+import { resolveStateStory } from "../../prosemirror/markupViewProjection";
+import { proseDocToBlocks } from "../../prosemirror/conversion/fromProseDoc";
 
 import {
   EXPECTED_CANCELLED_STYLE_TOGGLES,
@@ -6,7 +11,13 @@ import {
   makeStyleToggleDefinitions,
   makeStyleToggleParagraph,
 } from "../../__tests__/styleToggleFlowFixture";
-import type { FlowBlock, Measure, ParagraphBlock, TableBlock } from "../../layout-engine/types";
+import type {
+  FlowBlock,
+  HeaderFooterContent,
+  Measure,
+  ParagraphBlock,
+  TableBlock,
+} from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
 import type { BlockContent, HeaderFooter } from "../../types/document";
@@ -1369,4 +1380,88 @@ describe("convertHeaderFooterPmDocToContent", () => {
       convertHeaderFooterPmDocToContent(malformedDoc, 456, pmMetrics, { measureBlocks }),
     ).toThrow("paragraph.attrs._detachedWatermarkHost");
   });
+});
+
+test("header/footer comment visibility is view-only for live PM stories", () => {
+  const pmDoc = schema.node("doc", null, [
+    schema.node("paragraph", null, [
+      schema.text("review", [schema.marks["comment"]!.create({ commentId: 7 })]),
+    ]),
+  ]);
+  const authored = pmDoc.toJSON();
+  for (const showCommentHighlights of [true, false, true]) {
+    const content = convertHeaderFooterPmDocToContent(pmDoc, 400, metrics, {
+      measureBlocks: (blocks) =>
+        blocks.map(() => ({ kind: "paragraph", lines: [], totalHeight: 12 })),
+      showCommentHighlights,
+    });
+    const block = content?.blocks.at(0);
+    expect(block?.kind).toBe("paragraph");
+    if (block?.kind !== "paragraph") {
+      panic("Expected a paragraph block");
+    }
+    expect(block.runs.find((run) => run.kind === "text")).toMatchObject({ text: "review" });
+    const run = block.runs.find((candidate) => candidate.kind === "text");
+    expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
+      showCommentHighlights ? [7] : undefined,
+    );
+    expect(pmDoc.toJSON()).toEqual(authored);
+  }
+});
+
+test("header/footer review projections match resolved stories and preserve authored sources", () => {
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, [
+      schema.text("before "),
+      schema.text("inserted ", [schema.marks["insertion"]!.create({ revisionId: 1 })]),
+      schema.text("deleted ", [schema.marks["deletion"]!.create({ revisionId: 2 })]),
+      schema.text("after"),
+    ]),
+  ]);
+  const state = EditorState.create({ doc });
+  const headerFooter: HeaderFooter = {
+    type: "header",
+    hdrFtrType: "default",
+    content: proseDocToBlocks(doc, []),
+  };
+  const authoredDoc = doc.toJSON();
+  const authoredModel = JSON.stringify(headerFooter);
+  for (const markupView of ["no-markup", "original", "all-markup", "no-markup"] as const) {
+    const resolvedDoc =
+      markupView === "all-markup"
+        ? doc
+        : resolveStateStory(state, markupView === "original" ? "reject" : "accept").resolved;
+    const expected = convertHeaderFooterPmDocToContent(resolvedDoc, 400, metrics, {
+      measureBlocks,
+    });
+    for (const content of [
+      convertHeaderFooterPmDocToContent(doc, 400, metrics, { measureBlocks, markupView }),
+      convertHeaderFooterToContent(headerFooter, 400, metrics, { measureBlocks, markupView }),
+    ]) {
+      const texts = (value: HeaderFooterContent | undefined) =>
+        value?.blocks
+          .flatMap((block) =>
+            block.kind === "paragraph"
+              ? block.runs.map((run) => (run.kind === "text" ? run.text : run.kind))
+              : [block.kind],
+          )
+          .join("");
+      expect(texts(content)).toBe(texts(expected));
+      expect(content?.height).toBe(expected?.height);
+      expect(
+        content?.blocks.every(
+          (block) =>
+            block.kind !== "paragraph" ||
+            block.runs.every(
+              (run) =>
+                run.kind !== "text" ||
+                markupView === "all-markup" ||
+                (!run.isInsertion && !run.isDeletion),
+            ),
+        ),
+      ).toBe(true);
+    }
+    expect(doc.toJSON()).toEqual(authoredDoc);
+    expect(JSON.stringify(headerFooter)).toBe(authoredModel);
+  }
 });

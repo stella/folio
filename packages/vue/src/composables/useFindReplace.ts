@@ -1,17 +1,25 @@
-import { computed, reactive, ref, shallowRef } from "vue";
+import { computed, reactive, ref, shallowRef, watch } from "vue";
 import type { ComputedRef, Ref, ShallowRef } from "vue";
 import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
+import { getEditorReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
 import {
-  findInProseMirrorDocument,
+  findInMarkupView,
   type ProseMirrorFindMatch,
 } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import { createDefaultFindOptions, type FindOptions } from "@stll/folio-core/utils/findReplace";
 
 export type UseFindReplaceOptions = {
   editorView: Readonly<Ref<EditorView | null>>;
+  markupView?: Readonly<Ref<DisplayMode>>;
+  readOnly?: Readonly<Ref<boolean>>;
+  onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
   scrollVisiblePositionIntoView?: (pmPos: number) => void;
 };
 
@@ -33,6 +41,9 @@ export type UseFindReplaceReturn = {
 
 export function useFindReplace({
   editorView,
+  markupView,
+  readOnly,
+  onReadonlyEditAttempt,
   scrollVisiblePositionIntoView,
 }: UseFindReplaceOptions): UseFindReplaceReturn {
   const manager = new FindReplaceManager<ProseMirrorFindMatch>();
@@ -66,7 +77,12 @@ export function useFindReplace({
       clear();
       return [];
     }
-    const nextMatches = findInProseMirrorDocument(view.state.doc, searchText.value, options);
+    const nextMatches = findInMarkupView({
+      state: view.state,
+      markupView: markupView?.value ?? "all-markup",
+      searchText: searchText.value,
+      options,
+    });
     manager.setMatches(nextMatches);
     matches.value = nextMatches;
     currentIndex.value = nextMatches.length > 0 ? 0 : -1;
@@ -90,10 +106,26 @@ export function useFindReplace({
     return stepped.match;
   };
 
+  const refuseReadonlyReplacement = (view: EditorView): boolean => {
+    const reason = getEditorReadOnlyReason({
+      editingMode: view.editable ? "editing" : "viewing",
+      readOnlyProp: readOnly?.value ?? false,
+      displayMode: markupView?.value ?? "all-markup",
+    });
+    if (reason === null) return false;
+    onReadonlyEditAttempt?.(reason);
+    return true;
+  };
+
   const replaceCurrent = (): boolean => {
     const view = editorView.value;
     const match = currentMatch.value;
-    if (!view || !match || match.to > view.state.doc.content.size) {
+    if (
+      !view ||
+      refuseReadonlyReplacement(view) ||
+      !match ||
+      match.to > view.state.doc.content.size
+    ) {
       return false;
     }
     view.dispatch(view.state.tr.insertText(replaceText.value, match.from, match.to));
@@ -103,7 +135,7 @@ export function useFindReplace({
 
   const replaceAll = (): number => {
     const view = editorView.value;
-    if (!view || matches.value.length === 0) {
+    if (!view || refuseReadonlyReplacement(view) || matches.value.length === 0) {
       return 0;
     }
     let transaction = view.state.tr;
@@ -116,6 +148,12 @@ export function useFindReplace({
     performSearch();
     return replacedCount;
   };
+
+  if (markupView) {
+    watch(markupView, () => {
+      if (searchText.value.trim()) performSearch();
+    });
+  }
 
   return {
     searchText,

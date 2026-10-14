@@ -16,8 +16,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { Selection } from "prosemirror-state";
-import type { EditorState } from "prosemirror-state";
+import { EditorState, Selection } from "prosemirror-state";
 import type { StepMap } from "prosemirror-transform";
 
 import type { DisplayMode } from "../managers/EditorModeManager";
@@ -25,7 +24,9 @@ import { indexedPositionMap } from "../internal/indexedPositionMap";
 import { finalRevisionParagraphRanges } from "../internal/revisionResolutionTracking";
 import type { RevisionResolutionMode } from "../internal/revisionResolutionInline";
 import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
-import { getDocumentNumbering } from "./plugins/documentNumbering";
+import { createDocumentNumberingPlugin, getDocumentNumbering } from "./plugins/documentNumbering";
+import { createDocumentStyleContextPlugin } from "./plugins/documentStyles";
+import type { NumberingDefinitions, StyleDefinitions } from "../types/document";
 import { getDocumentStyleResolver } from "./plugins/documentStyleState";
 
 /** Resolve every revision in the state's story with the state's own styles and numbering. */
@@ -150,4 +151,40 @@ export const visibleCaretPosition = (
   const bounded = Math.max(0, Math.min(viewPosition, projection.doc.content.size));
   const near = Selection.near(projection.doc.resolve(bounded), -1);
   return projection.toEditor(near.head, -1);
+};
+
+type ProjectStoryMarkupViewOptions = {
+  doc: PMNode;
+  markupView: DisplayMode;
+  styles?: StyleDefinitions | null | undefined;
+  numbering?: NumberingDefinitions | undefined;
+};
+
+const storyProjectionStates = new WeakMap<
+  PMNode,
+  {
+    styles: ProjectStoryMarkupViewOptions["styles"];
+    numbering: ProjectStoryMarkupViewOptions["numbering"];
+    state: EditorState;
+  }
+>();
+
+/** Detached stories use the same state-aware projection owner as the body. */
+export const projectStoryMarkupView = ({
+  doc,
+  markupView,
+  styles,
+  numbering,
+}: ProjectStoryMarkupViewOptions) => {
+  if (markupView === "all-markup") return AUTHORED;
+  const cached = storyProjectionStates.get(doc);
+  if (cached && cached.styles === styles && cached.numbering === numbering) {
+    return projectMarkupView(cached.state, markupView);
+  }
+  const state = EditorState.create({
+    doc,
+    plugins: [createDocumentStyleContextPlugin(styles), createDocumentNumberingPlugin(numbering)],
+  });
+  storyProjectionStates.set(doc, { styles, numbering, state });
+  return projectMarkupView(state, markupView);
 };

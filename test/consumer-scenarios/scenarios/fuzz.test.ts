@@ -81,7 +81,7 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
   const repro = `FOLIO_SCENARIO_SEED=${SEED} FOLIO_SCENARIO_FUZZ_STEPS=${STEPS} ${runs} ${relationRepro} bun scripts/consumer-scenarios.ts --only '^${label} run ${run} \\('`;
   test(
     `${label} run ${run} (seed ${seed}): ${fixture} / ${mode}, ${STEPS} steps`,
-    known ? { skip: `reproduces ${known.finding}; runs in known-issues.test.ts` } : {},
+    known ? { skip: `${known.reason}; runs in known-issues.test.ts` } : {},
     async () => {
       const sampleIndex = kind === "random" ? run : RUNS + run;
       const shouldSave = sampleIndex < SAVE_SAMPLE;
@@ -123,7 +123,7 @@ for (const flow of PINNED_SCENARIO_FLOWS) {
     : undefined;
   test(
     `${flow.kind} flow with seed ${flow.seed} (${flow.steps} steps) ${flow.title}`,
-    known ? { skip: `reproduces ${known.finding}; runs in known-issues.test.ts` } : {},
+    known ? { skip: `${known.reason}; runs in known-issues.test.ts` } : {},
     async () => {
       try {
         await runFlow(flow.seed, flow.steps, flow.kind, { generation: flow.generation });
