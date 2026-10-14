@@ -1850,9 +1850,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   // Find/Replace handlers (depends on handleDocumentChange)
   const {
-    currentResult: currentFindResult,
+    currentSearch: currentFindSearch,
     resetFindResult,
     handleFind,
+    handleQueryChange,
     handleFindNext,
     handleFindPrevious,
     handleReplace,
@@ -4963,19 +4964,21 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         resetFindResult();
       },
       onFind: handleFind,
+      onQueryChange: handleQueryChange,
       onFindNext: handleFindNext,
       onFindPrevious: handleFindPrevious,
       onReplace: handleReplace,
       onReplaceAll: handleReplaceAll,
-      currentResult: currentFindResult,
+      currentSearch: currentFindSearch,
       readOnly,
     }),
     [
-      currentFindResult,
+      currentFindSearch,
       readOnly,
       closeFindDialog,
       findReplace.state,
       handleFind,
+      handleQueryChange,
       handleFindNext,
       handleFindPrevious,
       handleReplace,

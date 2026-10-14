@@ -17,7 +17,7 @@ import type {
   SimpleField,
 } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
-import type { FindResult } from "@stll/folio-core/utils/findReplace";
+import type { FindOptions, FindResult } from "@stll/folio-core/utils/findReplace";
 import type { UseFindReplaceReturn } from "./useFindReplace";
 import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
 import {
@@ -258,6 +258,48 @@ test("Vue replaces an ordinary editable match", () => {
   });
 });
 
+test.each(["current", "all"] as const)(
+  "Vue accepts %s exact-text replacement without dispatch and permits a later edit",
+  (operation) => {
+    withReplacementEditor([textRun("hit hit")], (search, view) => {
+      expect(search.find("hit")?.totalCount).toBe(2);
+      const before = view.state;
+      const beforeJson = before.doc.toJSON();
+      search.replaceText.value = "hit";
+      if (operation === "current") expect(search.replaceCurrent()).toBe(true);
+      else expect(search.replaceAll()).toEqual({ replacedCount: 2, skippedCount: 0 });
+      expect(view.state).toBe(before);
+      expect(view.state.doc.toJSON()).toEqual(beforeJson);
+      search.replaceText.value = "changed";
+      if (operation === "current") {
+        expect(search.replaceCurrent()).toBe(true);
+        expect(view.state.doc.textContent).toBe("changed hit");
+      } else {
+        expect(search.replaceAll()).toEqual({ replacedCount: 2, skippedCount: 0 });
+        expect(view.state.doc.textContent).toBe("changed changed");
+      }
+    });
+  },
+);
+
+test("Vue mixed replace all leaves an exact-text source run untouched", () => {
+  withReplacementEditor(
+    [
+      { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "hit" }] },
+      { type: "run", formatting: { italic: true }, content: [{ type: "text", text: " Hit" }] },
+    ],
+    (search, view) => {
+      expect(search.find("hit")?.totalCount).toBe(2);
+      const firstRun = view.state.doc.firstChild?.firstChild;
+      expect(firstRun).toBeDefined();
+      search.replaceText.value = "hit";
+      expect(search.replaceAll()).toEqual({ replacedCount: 2, skippedCount: 0 });
+      expect(view.state.doc.textContent).toBe("hit hit");
+      expect(view.state.doc.firstChild?.firstChild).toBe(firstRun);
+    },
+  );
+});
+
 for (const [kind, content] of Object.entries(ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES)) {
   for (const revisionType of ["deletion", "moveFrom"] as const) {
     test.each(["current", "all"] as const)(
@@ -310,6 +352,66 @@ test.each(["current", "all"] as const)(
     });
   },
 );
+
+type MatchingOptionFixture = {
+  text: string;
+  query: string;
+  initialOptions: Partial<FindOptions>;
+  change: (search: UseFindReplaceReturn) => void;
+};
+
+const matchingOptionFixtures = {
+  matchCase: {
+    text: "Hit",
+    query: "hit",
+    initialOptions: {},
+    change: (search) => {
+      search.options.matchCase = true;
+    },
+  },
+  matchWholeWord: {
+    text: "hitched",
+    query: "hit",
+    initialOptions: {},
+    change: (search) => {
+      search.options.matchWholeWord = true;
+    },
+  },
+  useRegex: {
+    text: "hit",
+    query: "^hit",
+    initialOptions: { useRegex: true },
+    change: (search) => {
+      search.options.useRegex = false;
+    },
+  },
+} satisfies Record<
+  keyof Pick<FindOptions, "matchCase" | "matchWholeWord" | "useRegex">,
+  MatchingOptionFixture
+>;
+
+for (const [option, fixture] of Object.entries(matchingOptionFixtures)) {
+  test.each(["current", "all"] as const)(
+    `Vue refreshes a changed ${option} before %s replacement while search is debounced`,
+    (operation) => {
+      withReplacementEditor([textRun(fixture.text)], (search, view) => {
+        expect(search.find(fixture.query, fixture.initialOptions)?.totalCount).toBe(1);
+        expect(search.canReplaceCurrent.value).toBe(true);
+        const before = view.state;
+        const beforeJson = before.doc.toJSON();
+        fixture.change(search);
+        expect(search.canReplaceCurrent.value).toBe(false);
+        search.scheduleSearch();
+        search.replaceText.value = "replacement";
+        if (operation === "current") expect(search.replaceCurrent()).toBe(false);
+        else expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 1 });
+        expect(view.state).toBe(before);
+        expect(view.state.doc.toJSON()).toEqual(beforeJson);
+        expect(search.getFindResult()?.totalCount).toBe(0);
+      });
+    },
+  );
+}
 
 // Adapter navigation previously covered only already-mounted story text. Model
 // a virtual page shell and collapsed reply with production DOM attributes.
@@ -390,6 +492,73 @@ const navigationLayout = (kind: "body" | "header"): Layout => ({
     headerFooterRefs: number === 2 && kind === "header" ? { headerDefault: "h-default" } : {},
   })),
 });
+
+for (const change of ["secondary-story", "rendered-scope"] as const) {
+  test.each(["current", "all"] as const)(
+    `Vue refreshes ${change} changes before %s replacement with the same PM body`,
+    (operation) => {
+      const source = navigationFixture("header");
+      source.package.document.content = [{ type: "paragraph", content: [textRun("hit")] }];
+      const header = source.package.headers?.get("h-default");
+      if (!header) throw new TypeError("Header fixture is missing");
+      header.content = [{ type: "paragraph", content: [textRun("hit")] }];
+      const host = document.createElement("div");
+      const hidden = document.createElement("div");
+      document.body.append(host, hidden);
+      const view = new EditorView(hidden, {
+        state: EditorState.create({ doc: toProseDoc(source) }),
+      });
+      const currentLayout = shallowRef(navigationLayout("header"));
+      const holder: { search: UseFindReplaceReturn | null } = { search: null };
+      const app = createApp(
+        defineComponent({
+          setup() {
+            holder.search = useFindReplace({
+              editorView: shallowRef(view),
+              pagesRef: shallowRef(null),
+              layout: currentLayout,
+              getDocument: () =>
+                fromProseDoc(view.state.doc, source, { stylesheetSource: { type: "package" } }),
+              displayMode: ref("no-markup"),
+              readOnly: ref(false),
+              onResultChange: () => {},
+            });
+            return () => h("div");
+          },
+        }),
+      );
+      app.mount(host);
+      try {
+        const search = holder.search ?? panic("Search composable was not mounted");
+        expect(search.find("hit")?.totalCount).toBe(2);
+        const before = view.state;
+        const beforeJson = before.doc.toJSON();
+        if (change === "secondary-story")
+          header.content = [{ type: "paragraph", content: [textRun("miss")] }];
+        else {
+          for (const page of currentLayout.value.pages) page.headerFooterRefs = {};
+          currentLayout.value = { ...currentLayout.value };
+        }
+        search.scheduleSearch();
+        search.replaceText.value = "changed";
+        if (operation === "current") expect(search.replaceCurrent()).toBe(false);
+        else expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 2 });
+        expect(view.state).toBe(before);
+        expect(view.state.doc.toJSON()).toEqual(beforeJson);
+        expect(search.getFindResult()?.totalCount).toBe(1);
+        // Fresh clones from the document getter cannot keep the command stale.
+        if (operation === "current") expect(search.replaceCurrent()).toBe(true);
+        else expect(search.replaceAll()).toEqual({ replacedCount: 1, skippedCount: 0 });
+        expect(view.state.doc.textContent).toBe("changed");
+      } finally {
+        app.unmount();
+        view.destroy();
+        host.remove();
+        hidden.remove();
+      }
+    },
+  );
+}
 
 const navigationViewport = () => {
   const container = document.createElement("div");

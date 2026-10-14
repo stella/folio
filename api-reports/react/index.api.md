@@ -574,6 +574,7 @@ export type FindReplaceDialogProps = {
     isOpen: boolean;
     onClose: () => void;
     onFind: (searchText: string, options: FindOptions) => FindResult | null;
+    onQueryChange?: (searchText: string, options: FindOptions) => void;
     onFindNext: () => FindMatch | null;
     onFindPrevious: () => FindMatch | null;
     onReplace: (replaceText: string) => boolean;
@@ -583,7 +584,10 @@ export type FindReplaceDialogProps = {
     onClearHighlights?: () => void;
     initialSearchText?: string;
     replaceMode?: boolean;
-    currentResult?: FindResult | null;
+    currentSearch?: {
+        queryKey: string;
+        result: FindResult;
+    } | null;
     className?: string;
     style?: CSSProperties;
 };

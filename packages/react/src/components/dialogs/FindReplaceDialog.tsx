@@ -16,6 +16,7 @@ import { ChevronDownIcon, ChevronUpIcon, SearchIcon, XIcon } from "lucide-react"
 import { useTranslations } from "use-intl";
 import { replaceEligibility } from "@stll/folio-core/utils/findReplace";
 import type { ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
+import { createFindQueryKey } from "@stll/folio-core/utils/findSearchKey";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import { getFindReplaceOverlayStyle } from "./findReplaceDialogLayout";
@@ -56,6 +57,8 @@ export type FindReplaceDialogProps = {
   onClose: () => void;
   /** Callback when searching for text */
   onFind: (searchText: string, options: FindOptions) => FindResult | null;
+  /** Publish edits immediately, before the delayed search. */
+  onQueryChange?: (searchText: string, options: FindOptions) => void;
   /** Callback when navigating to next match */
   onFindNext: () => FindMatch | null;
   /** Callback when navigating to previous match */
@@ -77,8 +80,8 @@ export type FindReplaceDialogProps = {
   initialSearchText?: string;
   /** Whether to start in replace mode */
   replaceMode?: boolean;
-  /** Current match result (from external state) */
-  currentResult?: FindResult | null;
+  /** External result paired with the query that produced it. */
+  currentSearch?: { queryKey: string; result: FindResult } | null;
   /** Additional CSS class */
   className?: string;
   /** Additional inline styles */
@@ -128,9 +131,6 @@ type FindDialogResultState =
   | { status: "cleared" }
   | { status: "ready"; queryKey: string; result: FindResult };
 
-const getFindQueryKey = (text: string, { matchCase, matchWholeWord }: FindOptions) =>
-  JSON.stringify([text, matchCase, matchWholeWord]);
-
 const getQueryResult = (state: FindDialogResultState, queryKey: string): FindResult | null => {
   switch (state.status) {
     case "cleared":
@@ -148,6 +148,7 @@ function FindReplaceDialogForm({
   isOpen,
   onClose,
   onFind,
+  onQueryChange,
   onFindNext,
   onFindPrevious,
   onReplace,
@@ -157,7 +158,7 @@ function FindReplaceDialogForm({
   onHighlightMatches,
   onClearHighlights,
   initialSearchText = "",
-  currentResult,
+  currentSearch,
   className,
   style,
   matchCase,
@@ -172,7 +173,9 @@ function FindReplaceDialogForm({
   const [searchText, setSearchText] = useState(initialSearchText);
   const [replaceText, setReplaceText] = useState("");
   const [replacementSummary, setReplacementSummary] = useState<ReplaceAllSummary | null>(null);
-  const queryKey = getFindQueryKey(searchText, { matchCase, matchWholeWord });
+  const currentResult = currentSearch === null ? null : currentSearch?.result;
+  const currentQueryKey = currentSearch?.queryKey;
+  const queryKey = createFindQueryKey(searchText, { matchCase, matchWholeWord });
   const [findResult, setFindResult] = useState<FindDialogResultState>({ status: "cleared" });
   const [previousCurrentResult, setPreviousCurrentResult] = useState(currentResult);
   if (currentResult !== previousCurrentResult) {
@@ -182,6 +185,7 @@ function FindReplaceDialogForm({
     if (
       findResult.status === "ready" &&
       findResult.queryKey === queryKey &&
+      currentQueryKey === queryKey &&
       currentResult !== undefined
     ) {
       setFindResult(
@@ -191,7 +195,14 @@ function FindReplaceDialogForm({
       );
     }
   }
-  const result = getQueryResult(findResult, queryKey);
+  const result =
+    currentResult !== undefined && currentQueryKey !== queryKey
+      ? null
+      : getQueryResult(findResult, queryKey);
+
+  useLayoutEffect(() => {
+    onQueryChange?.(searchText, { matchCase, matchWholeWord });
+  }, [onQueryChange, searchText, matchCase, matchWholeWord]);
 
   // Refs
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -215,7 +226,7 @@ function FindReplaceDialogForm({
         searchResult
           ? {
               status: "ready",
-              queryKey: getFindQueryKey(text, options),
+              queryKey: createFindQueryKey(text, options),
               result: searchResult,
             }
           : { status: "cleared" },
@@ -262,17 +273,19 @@ function FindReplaceDialogForm({
     (value: boolean) => {
       setReplacementSummary(null);
       setFindResult({ status: "cleared" });
+      onQueryChange?.(searchText, { matchCase: value, matchWholeWord });
       onMatchCaseChange(value);
     },
-    [onMatchCaseChange, setFindResult],
+    [onMatchCaseChange, onQueryChange, searchText, matchWholeWord, setFindResult],
   );
   const handleMatchWholeWordChange = useCallback(
     (value: boolean) => {
       setReplacementSummary(null);
       setFindResult({ status: "cleared" });
+      onQueryChange?.(searchText, { matchCase, matchWholeWord: value });
       onMatchWholeWordChange(value);
     },
-    [onMatchWholeWordChange, setFindResult],
+    [onMatchWholeWordChange, onQueryChange, searchText, matchCase, setFindResult],
   );
 
   const handleSearchChange = useCallback(
@@ -281,12 +294,13 @@ function FindReplaceDialogForm({
       setReplacementSummary(null);
       setSearchText(text);
       setFindResult({ status: "cleared" });
+      onQueryChange?.(text, { matchCase, matchWholeWord });
       if (!text.trim()) {
         onFind(text, { matchCase, matchWholeWord });
         onClearHighlights?.();
       }
     },
-    [onFind, matchCase, matchWholeWord, onClearHighlights, setFindResult],
+    [onFind, onQueryChange, matchCase, matchWholeWord, onClearHighlights, setFindResult],
   );
 
   const handleFindNext = useCallback(() => {

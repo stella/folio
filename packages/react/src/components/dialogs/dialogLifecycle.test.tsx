@@ -9,6 +9,8 @@ import { createRoot } from "react-dom/client";
 import { IntlProvider } from "use-intl";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { findInDocument } from "@stll/folio-core/utils/findReplace";
+import { createFindQueryKey } from "@stll/folio-core/utils/findSearchKey";
+import type { FindResult } from "@stll/folio-core/utils/findReplace";
 import type { Document as FolioDocument } from "@stll/folio-core/types/document";
 import { FolioUIProvider, type FolioDialog, type FolioInputProps } from "../../ui/folio-ui";
 import { ImagePositionDialog } from "./ImagePositionDialog";
@@ -71,11 +73,16 @@ const externalResult = {
   currentIndex: 1,
 };
 const lateExternalResult = { ...externalResult, currentIndex: 2 };
+const selectedQueryKey = createFindQueryKey("selected", {
+  matchCase: false,
+  matchWholeWord: false,
+});
 const popupData = (anchorEl: HTMLAnchorElement, name: string) => ({
   href: `https://${name}.example`,
   displayText: name,
   anchorEl,
 });
+const keyedResult = (queryKey: string, result: FindResult) => ({ queryKey, result });
 const noop = () => {};
 const noMatch = () => null;
 const wrap = (children: ReactNode) => (
@@ -221,7 +228,10 @@ test.each([false, true])(
               replaceMode
               readOnly={readOnly}
               initialSearchText="hit"
-              currentResult={result}
+              currentSearch={keyedResult(
+                createFindQueryKey("hit", { matchCase: false, matchWholeWord: false }),
+                result,
+              )}
               onClose={noop}
               onFind={onFind}
               onFindNext={noMatch}
@@ -288,7 +298,7 @@ test("find initializes selected text, searches, clears on close and refreshes ex
           {...props}
           isOpen
           initialSearchText="selected"
-          currentResult={externalResult}
+          currentSearch={keyedResult(selectedQueryKey, externalResult)}
         />,
       ),
     ),
@@ -321,7 +331,7 @@ test("query edits invalidate unchanged host results and reopening an empty query
     onFindPrevious,
     onReplace: () => false,
     onReplaceAll: () => ({ replacedCount: 0, skippedCount: 0 }),
-    currentResult: externalResult,
+    currentSearch: { result: externalResult, queryKey: selectedQueryKey },
   };
   const render = (isOpen: boolean, initialSearchText: string) =>
     wrap(<FindReplaceDialog {...props} isOpen={isOpen} initialSearchText={initialSearchText} />);
@@ -359,7 +369,7 @@ test("query edits invalidate unchanged host results and reopening an empty query
             {...props}
             isOpen
             initialSearchText="selected"
-            currentResult={lateExternalResult}
+            currentSearch={keyedResult(selectedQueryKey, lateExternalResult)}
           />,
         ),
       ),
@@ -387,6 +397,97 @@ test("query edits invalidate unchanged host results and reopening an empty query
     });
     expect(onFindNext).not.toHaveBeenCalled();
     expect(onFindPrevious).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
+test.each(["matchCase", "matchWholeWord"] as const)(
+  "find publishes %s edits before the pending search",
+  async (option) => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onFind = mock(() => externalResult);
+    const onQueryChange = mock(noop);
+    const props = {
+      onClose: noop,
+      onFind,
+      onQueryChange,
+      onFindNext: noMatch,
+      onFindPrevious: noMatch,
+      onReplace: () => false,
+      onReplaceAll: () => ({ replacedCount: 0, skippedCount: 0 }),
+    };
+    try {
+      await act(async () =>
+        root.render(wrap(<FindReplaceDialog {...props} isOpen initialSearchText="selected" />)),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 140));
+      });
+      expect(onFind).toHaveBeenCalledTimes(1);
+      const checkbox = container
+        .querySelectorAll<HTMLInputElement>("input[type='checkbox']")
+        .item(option === "matchCase" ? 0 : 1);
+      expect(checkbox).not.toBeNull();
+      await act(async () => checkbox.click());
+      expect(onQueryChange).toHaveBeenLastCalledWith("selected", {
+        matchCase: option === "matchCase",
+        matchWholeWord: option === "matchWholeWord",
+      });
+      expect(onFind).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  },
+);
+
+test("a host result for another query cannot enable replacement of the dialog query", async () => {
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  const onReplace = mock(() => true);
+  const props = {
+    onClose: noop,
+    onFind: () => externalResult,
+    onFindNext: noMatch,
+    onFindPrevious: noMatch,
+    onReplace,
+    onReplaceAll: () => ({ replacedCount: 0, skippedCount: 0 }),
+  };
+  const render = (currentQueryKey: string, currentResult = externalResult) =>
+    wrap(
+      <FindReplaceDialog
+        {...props}
+        isOpen
+        replaceMode
+        initialSearchText="selected"
+        currentSearch={keyedResult(currentQueryKey, currentResult)}
+      />,
+    );
+  const replaceButton = () =>
+    Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent === "Replace current match",
+    );
+  try {
+    await act(async () => root.render(render(selectedQueryKey)));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 140));
+    });
+    expect(replaceButton()?.disabled).toBe(false);
+    await act(async () =>
+      root.render(
+        render(
+          createFindQueryKey("another query", { matchCase: false, matchWholeWord: false }),
+          lateExternalResult,
+        ),
+      ),
+    );
+    expect(container.querySelector("input")?.value).toBe("selected");
+    expect(replaceButton()?.disabled).toBe(true);
+    await act(async () => replaceButton()?.click());
+    expect(onReplace).not.toHaveBeenCalled();
   } finally {
     await act(async () => root.unmount());
   }

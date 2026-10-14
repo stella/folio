@@ -15,6 +15,9 @@ import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
+import { IntlProvider } from "use-intl";
+import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+import { FindReplaceDialog } from "../dialogs/FindReplaceDialog";
 import { useFindReplace as useFindDialogState } from "../dialogs/useFindReplace";
 import { useFindReplace } from "./useFindReplace";
 import {
@@ -31,6 +34,316 @@ afterAll(() => {
 });
 const options = { matchCase: false, matchWholeWord: false };
 const noop = () => {};
+
+const pendingOptionCases = [
+  { option: "matchCase", text: "hit HIT", query: "hit", previousCount: 2, refreshedCount: 1 },
+  {
+    option: "matchWholeWord",
+    text: "hit hitman",
+    query: "hit",
+    previousCount: 2,
+    refreshedCount: 1,
+  },
+  { option: "useRegex", text: "a.b axb", query: "a.b", previousCount: 1, refreshedCount: 2 },
+] as const;
+
+test.each(
+  pendingOptionCases.flatMap((scenario) =>
+    (["current", "all"] as const).flatMap((command) =>
+      (["unchanged", "changed"] as const).map(
+        (replacement) => [scenario.option, command, replacement, scenario] as const,
+      ),
+    ),
+  ),
+)(
+  "React refuses pending %s changes before %s replacement (%s)",
+  async (_option, command, replacement, scenario) => {
+    const fixture = createEmptyDocument({ initialText: scenario.text });
+    const before = structuredClone(fixture);
+    const bodyDoc = toProseDoc(fixture);
+    const applied: Document[] = [];
+    const liveOptions = { matchCase: false, matchWholeWord: false, useRegex: false };
+    const handle = createRef<ReturnType<typeof useFindReplace>>();
+    const Harness = () => {
+      const findReplace = useFindDialogState();
+      const containerRef = useRef<HTMLDivElement>(null);
+      const search = useFindReplace({
+        containerRef,
+        findReplace,
+        getDocumentState: () => fixture,
+        getBodyDoc: () => bodyDoc,
+        handleDocumentChange: (nextDocument) => applied.push(nextDocument),
+      });
+      useImperativeHandle(handle, () => search);
+      return null;
+    };
+    const root = createRoot(document.createElement("div"));
+    const operations = () => handle.current ?? panic("Find hook handle missing");
+    try {
+      await act(async () => root.render(<Harness />));
+      await act(async () => {
+        expect(operations().handleFind(scenario.query, liveOptions)?.totalCount).toBe(
+          scenario.previousCount,
+        );
+      });
+      // A host can mutate options before the dialog's debounced find has run.
+      liveOptions[scenario.option] = true;
+      const pendingReplacement = replacement === "unchanged" ? scenario.query : "changed";
+      await act(async () => {
+        if (command === "current")
+          expect(operations().handleReplace(pendingReplacement)).toBe(false);
+        else
+          expect(
+            operations().handleReplaceAll(scenario.query, pendingReplacement, liveOptions),
+          ).toEqual({
+            replacedCount: 0,
+            skippedCount: scenario.previousCount,
+          });
+      });
+      expect(applied).toEqual([]);
+      expect(fixture).toEqual(before);
+      expect(operations().getFindResult()?.totalCount).toBe(scenario.refreshedCount);
+      operations().handleQueryChange(scenario.query, { ...liveOptions });
+      await act(async () => {
+        if (command === "current") expect(operations().handleReplace("changed")).toBe(true);
+        else
+          expect(
+            operations().handleReplaceAll(scenario.query, "changed", { ...liveOptions }),
+          ).toEqual({
+            replacedCount: scenario.refreshedCount,
+            skippedCount: 0,
+          });
+      });
+      expect(applied).toHaveLength(1);
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);
+
+test("React uses the live query edit before its next debounced search", async () => {
+  const fixture = createEmptyDocument({ initialText: "alpha beta" });
+  const bodyDoc = toProseDoc(fixture);
+  const applied: Document[] = [];
+  const handle = createRef<ReturnType<typeof useFindReplace>>();
+  const Harness = () => {
+    const findReplace = useFindDialogState();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const search = useFindReplace({
+      containerRef,
+      findReplace,
+      getDocumentState: () => fixture,
+      getBodyDoc: () => bodyDoc,
+      handleDocumentChange: (nextDocument) => applied.push(nextDocument),
+    });
+    useImperativeHandle(handle, () => search);
+    return null;
+  };
+  const root = createRoot(document.createElement("div"));
+  const operations = () => handle.current ?? panic("Find hook handle missing");
+  try {
+    await act(async () => root.render(<Harness />));
+    await act(async () => operations().handleFind("alpha", options));
+    operations().handleQueryChange("beta", { ...options });
+    await act(async () => expect(operations().handleReplace("changed")).toBe(false));
+    expect(applied).toEqual([]);
+    expect(operations().getFindResult()?.matches.at(0)?.text).toBe("beta");
+    await act(async () => expect(operations().handleReplace("changed")).toBe(true));
+    expect(applied).toHaveLength(1);
+    expect(findInDocument(applied.at(0), "alpha", options)).toHaveLength(1);
+    expect(findInDocument(applied.at(0), "beta", options)).toHaveLength(0);
+    expect(findInDocument(applied.at(0), "changed", options)).toHaveLength(1);
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
+test.each(["current", "all"] as const)(
+  "React waits for the committed body after accepted %s replacement",
+  async (command) => {
+    let liveDocument = createEmptyDocument({ initialText: "hit" });
+    let bodyDoc = toProseDoc(liveDocument);
+    const applied: Document[] = [];
+    const handle = createRef<ReturnType<typeof useFindReplace>>();
+    const Harness = () => {
+      const findReplace = useFindDialogState();
+      const containerRef = useRef<HTMLDivElement>(null);
+      const search = useFindReplace({
+        containerRef,
+        findReplace,
+        getDocumentState: () => liveDocument,
+        getBodyDoc: () => bodyDoc,
+        handleDocumentChange: (nextDocument) => applied.push(nextDocument),
+      });
+      useImperativeHandle(handle, () => search);
+      return null;
+    };
+    const root = createRoot(document.createElement("div"));
+    const operations = () => handle.current ?? panic("Find hook handle missing");
+    const replace = (query: string, text: string) =>
+      command === "current"
+        ? operations().handleReplace(text)
+        : operations().handleReplaceAll(query, text, { ...options }).replacedCount > 0;
+    try {
+      await act(async () => root.render(<Harness />));
+      await act(async () => operations().handleFind("hit", options));
+      await act(async () => expect(replace("hit", "changed")).toBe(true));
+      expect(applied).toHaveLength(1);
+      expect(operations().getFindResult()).toBeNull();
+      await act(async () => expect(replace("hit", "duplicate")).toBe(false));
+      await act(async () => operations().resetFindResult());
+      await act(async () => operations().handleFind("hit", { ...options, matchCase: true }));
+      liveDocument.package.headers = new Map([
+        [
+          "h-pending",
+          {
+            type: "header",
+            hdrFtrType: "default",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "run", content: [{ type: "text", text: "header" }] }],
+              },
+            ],
+          },
+        ],
+      ]);
+      await act(async () => expect(replace("hit", "duplicate")).toBe(false));
+      expect(applied).toHaveLength(1);
+      expect(bodyDoc.textContent).toBe("hit");
+
+      liveDocument = applied.at(0) ?? panic("Accepted document missing");
+      bodyDoc = toProseDoc(liveDocument);
+      await act(async () => operations().handleFind("changed", options));
+      await act(async () => expect(replace("changed", "committed")).toBe(true));
+      expect(applied).toHaveLength(2);
+      expect(findInDocument(applied.at(1), "committed", options)).toHaveLength(1);
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);
+
+test.each(["current", "all"] as const)(
+  "React accepts an unchanged %s replacement without waiting for a body commit",
+  async (command) => {
+    const fixture = createEmptyDocument({ initialText: "hit" });
+    const host = document.createElement("div");
+    const hidden = document.createElement("div");
+    document.body.append(host, hidden);
+    const view = new EditorView(hidden, {
+      state: EditorState.create({ doc: toProseDoc(fixture) }),
+    });
+    const originalState = view.state;
+    const applied: Document[] = [];
+    const handle = createRef<ReturnType<typeof useFindReplace>>();
+    const Harness = () => {
+      const findReplace = useFindDialogState();
+      const containerRef = useRef<HTMLDivElement>(null);
+      const search = useFindReplace({
+        containerRef,
+        findReplace,
+        getDocumentState: () =>
+          fromProseDoc(view.state.doc, fixture, { stylesheetSource: { type: "package" } }),
+        getBodyDoc: () => view.state.doc,
+        handleDocumentChange: (nextDocument) => {
+          applied.push(nextDocument);
+          const nextDoc = toProseDoc(nextDocument);
+          if (nextDoc.eq(view.state.doc)) return;
+          view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, nextDoc.content));
+        },
+      });
+      useImperativeHandle(handle, () => search);
+      return null;
+    };
+    const root = createRoot(host);
+    const operations = () => handle.current ?? panic("Find hook handle missing");
+    const replace = (text: string) =>
+      command === "current"
+        ? operations().handleReplace(text)
+        : operations().handleReplaceAll("hit", text, { ...options }).replacedCount > 0;
+    try {
+      await act(async () => root.render(<Harness />));
+      await act(async () => operations().handleFind("hit", options));
+      await act(async () => expect(replace("hit")).toBe(true));
+      expect(view.state).toBe(originalState);
+      expect(applied).toEqual([]);
+      await act(async () => operations().handleFind("hit", { ...options }));
+      await act(async () => expect(replace("changed")).toBe(true));
+      expect(applied).toHaveLength(1);
+      expect(view.state.doc.textContent).toBe("changed");
+    } finally {
+      await act(async () => root.unmount());
+      view.destroy();
+      host.remove();
+      hidden.remove();
+    }
+  },
+);
+
+test("React host search changes cannot relabel the mounted dialog result", async () => {
+  const fixture = createEmptyDocument({ initialText: "alpha beta" });
+  const bodyDoc = toProseDoc(fixture);
+  const applied: Document[] = [];
+  const handle = createRef<ReturnType<typeof useFindReplace>>();
+  const Harness = () => {
+    const findReplace = useFindDialogState();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const search = useFindReplace({
+      containerRef,
+      findReplace,
+      getDocumentState: () => fixture,
+      getBodyDoc: () => bodyDoc,
+      handleDocumentChange: (nextDocument) => applied.push(nextDocument),
+    });
+    useImperativeHandle(handle, () => search);
+    return (
+      <FindReplaceDialog
+        isOpen
+        replaceMode
+        initialSearchText="alpha"
+        onClose={noop}
+        onFind={search.handleFind}
+        onQueryChange={search.handleQueryChange}
+        onFindNext={search.handleFindNext}
+        onFindPrevious={search.handleFindPrevious}
+        onReplace={search.handleReplace}
+        onReplaceAll={search.handleReplaceAll}
+        currentSearch={search.currentSearch}
+      />
+    );
+  };
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const operations = () => handle.current ?? panic("Find hook handle missing");
+  const replaceButton = () =>
+    Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent === "Replace current match",
+    );
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+          <Harness />
+        </IntlProvider>,
+      ),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 140));
+    });
+    expect(replaceButton()?.disabled).toBe(false);
+    await act(async () => operations().handleFind("beta", options));
+    expect(operations().getFindResult()?.matches.at(0)?.text).toBe("beta");
+    expect(host.querySelector("input")?.value).toBe("alpha");
+    expect(replaceButton()?.disabled).toBe(true);
+    await act(async () => replaceButton()?.click());
+    expect(applied).toEqual([]);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});
 
 // Hidden-revision fixtures previously contained visible authored text only;
 // exercise zero-text carriers through the mounted hook and real PM conversion.

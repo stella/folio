@@ -7,6 +7,7 @@ import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import { resolveFindMatchRange } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import type { Document } from "@stll/folio-core/types/document";
 import type { Layout } from "@stll/folio-core/layout-engine";
+import { createFindSearchKey, sameFindSearchKey } from "@stll/folio-core/utils/findSearchKey";
 import {
   createFindMatchView,
   getRenderedSearchStories,
@@ -57,14 +58,31 @@ export function useFindReplace({
       !readOnly.value &&
       !!editorView.value &&
       !!match &&
+      isSearchCurrent() &&
       replaceEligibility(match).status === "allowed"
     );
   });
   let matchView: ReturnType<typeof createFindMatchView> | null = null;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
-  let matchedQuery = "";
-  let matchedBodyDoc: EditorView["state"]["doc"] | undefined;
-  let matchedDisplayMode = displayMode.value;
+  let completedSearchKey: ReturnType<typeof createFindSearchKey> | null = null;
+
+  const searchInputFor = (document: Document) => {
+    const bodyDoc = editorView.value?.state.doc;
+    return {
+      query: searchText.value,
+      options: { ...options, displayMode: displayMode.value, includeComments: !!commentRoot },
+      document,
+      ...(bodyDoc ? { bodyVersion: bodyDoc } : {}),
+      context: { renderedStories: getRenderedSearchStories(layout.value) },
+    };
+  };
+  const isSearchCurrent = () => {
+    const document = getDocument();
+    return (
+      !!document &&
+      sameFindSearchKey(completedSearchKey, createFindSearchKey(searchInputFor(document)))
+    );
+  };
 
   const getFindResult = (): FindResult | null => manager.getResult();
   const notify = () => onResultChange(getFindResult());
@@ -78,6 +96,7 @@ export function useFindReplace({
     matchView?.destroy();
     matchView = null;
     matches.value = [];
+    completedSearchKey = null;
     currentIndex.value = -1;
     searchText.value = "";
     notify();
@@ -95,28 +114,19 @@ export function useFindReplace({
     const document = getDocument();
     const container = pagesRef.value;
     const bodyDoc = editorView.value?.state.doc;
-    matchedBodyDoc = bodyDoc;
-    matchedDisplayMode = displayMode.value;
     if (!document || !searchText.value.trim()) {
       clear();
       return [];
     }
-    const refresh = cause === "refresh" && matchedQuery === searchText.value;
-    matchedQuery = searchText.value;
-    const nextMatches = findInDocument(
-      document,
-      searchText.value,
-      {
-        ...options,
-        displayMode: displayMode.value,
-        includeComments: !!commentRoot,
-      },
-      { renderedStories: getRenderedSearchStories(layout.value) },
-    );
+    const input = searchInputFor(document);
+    const nextSearchKey = createFindSearchKey(input);
+    const refresh = cause === "refresh" && completedSearchKey?.query === nextSearchKey.query;
+    const nextMatches = findInDocument(input.document, input.query, input.options, input.context);
     const result = manager.setMatches(
       nextMatches,
       refresh ? (manager.getResult()?.currentIndex ?? 0) : 0,
     );
+    completedSearchKey = nextSearchKey;
     matches.value = nextMatches;
     currentIndex.value = nextMatches.length > 0 ? result.currentIndex : -1;
     matchView?.destroy();
@@ -158,13 +168,8 @@ export function useFindReplace({
     return stepped.match;
   };
 
-  const refreshStaleResults = (view: EditorView): boolean => {
-    if (
-      view.state.doc === matchedBodyDoc &&
-      matchedDisplayMode === displayMode.value &&
-      matchedQuery === searchText.value
-    )
-      return false;
+  const refreshStaleResults = (): boolean => {
+    if (isSearchCurrent()) return false;
     performSearch("refresh");
     return true;
   };
@@ -173,9 +178,10 @@ export function useFindReplace({
   // must never be interpreted as positions in the body document.
   const replaceCurrent = (): boolean => {
     const view = editorView.value;
-    if (!view || readOnly.value || refreshStaleResults(view)) return false;
+    if (!view || readOnly.value || refreshStaleResults()) return false;
     const match = currentMatch.value;
     if (!canReplaceCurrent.value || !view || !match) return false;
+    if (match.text === replaceText.value) return true;
     const range = resolveFindMatchRange(view.state.doc, match);
     if (!range) return false;
     view.dispatch(view.state.tr.insertText(replaceText.value, range.from, range.to));
@@ -185,16 +191,23 @@ export function useFindReplace({
   const replaceAll = (): ReplaceAllSummary => {
     const view = editorView.value;
     const totalCount = matches.value.length;
-    if (readOnly.value || !view || refreshStaleResults(view))
+    if (readOnly.value || !view || refreshStaleResults())
       return { replacedCount: 0, skippedCount: totalCount };
-    const ranges = matches.value
-      .filter((match) => replaceEligibility(match).status === "allowed")
+    const eligibleMatches = matches.value.filter(
+      (match) => replaceEligibility(match).status === "allowed",
+    );
+    const unchangedCount = eligibleMatches.filter(
+      (match) => match.text === replaceText.value,
+    ).length;
+    const ranges = eligibleMatches
+      .filter((match) => match.text !== replaceText.value)
       .flatMap((match) => {
         const range = resolveFindMatchRange(view.state.doc, match);
         return range ? [range] : [];
       })
       .toSorted((a, b) => b.from - a.from);
-    const summary = { replacedCount: ranges.length, skippedCount: totalCount - ranges.length };
+    const replacedCount = ranges.length + unchangedCount;
+    const summary = { replacedCount, skippedCount: totalCount - replacedCount };
     if (!ranges.length) return summary;
     let transaction = view.state.tr;
     for (const range of ranges)

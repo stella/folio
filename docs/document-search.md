@@ -38,13 +38,17 @@ inserted and moved-to text. Query input and document refreshes are debounced.
 
 Replacement remains a body editing operation. Each match exposes `replacement`:
 `{ status: "allowed" }` or `{ status: "blocked", reason }`. Reasons are
-`field-result`, `atomic-content` (opaque preserved content or a crossed reference anchor), `hidden-content` (visible characters have discontinuous authored
+`field-result`, `atomic-content` (opaque preserved content or a crossed source anchor), `hidden-content` (hidden revisions or discontinuous authored
 offsets), and `non-body-story` (including shapes and comments). Field results are
 searchable, but this API does not edit fields. Replace is disabled for blocked
 matches; read-only mode rejects replacements. Replace All skips blocked matches
 and returns `{ replacedCount, skippedCount }`. Changes made after search refresh
 the result and refuse that replacement invocation, so stale eligibility cannot
-apply to newly inserted content.
+apply to newly inserted content. The shared search key includes the query, every
+matching option, display mode, body version, secondary stories, comments, and
+rendered story scope. Pending option edits also invalidate replacement. React
+dialog consumers supply controlled results as `currentSearch: { queryKey, result }`;
+use `createFindQueryKey` from `@stll/folio-core/utils/findSearchKey` for the producing query.
 
 Core consumers can call `findInDocument` from `@stll/folio-core/utils/findReplace`.
 Pass the active page-selected stories as `FindSearchContext.renderedStories` to
