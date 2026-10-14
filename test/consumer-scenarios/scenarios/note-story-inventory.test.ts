@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { fromMarkdown } from "@stll/folio-core/markdown";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, paragraph, run } from "@stll/folio-core/server";
+import {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  paragraph,
+  run,
+  type FolioDocumentStoryHandle,
+} from "@stll/folio-core/server";
 
 import { openReviewer, packDocument } from "../support/documents.ts";
 import { assertStoryInventory, saveAndReopen } from "../support/invariants.ts";
@@ -67,6 +72,46 @@ const noteInventoryDocument = async (random: Random, references: number) => {
   return { bytes: await packDocument(document), id, kinds };
 };
 
+type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
+type NoteHandle = Extract<FolioDocumentStoryHandle, { type: "footnote" | "endnote" }>;
+
+/** Enumerate every public note-content projection, including cached direct reads. */
+const noteReaders = (reviewer: Reviewer, story: NoteHandle) => ({
+  listing: () =>
+    reviewer
+      .listStories()
+      .some(
+        ({ handle }) =>
+          (handle.type === "footnote" || handle.type === "endnote") &&
+          handle.type === story.type &&
+          handle.noteId === story.noteId,
+      ),
+  text: () => reviewer.getNotesAsText().includes(`[${story.type} #${story.noteId}]`),
+  direct: () => reviewer.readStory(story) !== null,
+  snapshot: () => reviewer.snapshotStory(story) !== null,
+  original: () => reviewer.readReviewedStory({ story, view: "original" }) !== null,
+  final: () => reviewer.readReviewedStory({ story, view: "final" }) !== null,
+  markup: () => reviewer.readReviewedStory({ story, view: "current-markup" }) !== null,
+  document: () => {
+    const pkg = reviewer.toDocument().package;
+    return (
+      (story.type === "footnote" ? pkg.footnotes : pkg.endnotes)?.some(
+        (note) => note.id === story.noteId,
+      ) ?? false
+    );
+  },
+});
+
+const assertNoteReaders = (reviewer: Reviewer, story: NoteHandle, expected: boolean) => {
+  for (const [name, read] of Object.entries(noteReaders(reviewer, story))) {
+    assert.equal(read(), expected, `${name} must follow the live story inventory`);
+  }
+  if (!expected) {
+    assert.deepEqual(reviewer.storyTables({ story }), []);
+    assert.equal(reviewer.resolveReviewedStory({ story, view: "final" }), false);
+  }
+};
+
 // Enumerate both note kinds, reference cardinalities and every edit mode on
 // every run. Check the inventory between individual revision resolutions.
 for (const mode of MODES) {
@@ -78,6 +123,12 @@ for (const mode of MODES) {
         const { bytes, id, kinds } = await noteInventoryDocument(random, references);
         let reviewer = await openReviewer(bytes);
         const original = reviewer.getNotesAsText();
+        // Prime caches before removal; unloaded and already-open stories must agree.
+        for (const kind of kinds) {
+          const story = { type: kind, noteId: id };
+          assertNoteReaders(reviewer, story, true);
+          assert.equal(reviewer.resolveReviewedStory({ story, view: "final" }), true);
+        }
         for (const kind of kinds) {
           // Capture reference paragraphs before rejecting can restore them.
           const blocks = reviewer
@@ -118,11 +169,12 @@ for (const mode of MODES) {
               }
             }
             const kept = (mode !== "direct" && resolution === "reject") || index + 1 < references;
-            assert.equal(reviewer.getNotesAsText().includes(`[${kind} #${id}]`), kept);
+            assertNoteReaders(reviewer, { type: kind, noteId: id }, kept);
             reviewer = (
               await saveAndReopen(reviewer, `${mode} / ${resolution} / ${kind} / ${index}`)
             ).reopened;
             assertStoryInventory(reviewer);
+            assertNoteReaders(reviewer, { type: kind, noteId: id }, kept);
           }
         }
         if (mode !== "direct" && resolution === "reject") {
