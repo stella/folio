@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import { panic } from "better-result";
+import { writeZipEntry } from "@stll/utf8-boundaries";
 
 import { createEmptyDocx } from "../../docx/rezip";
 
@@ -17,21 +18,24 @@ export const createHeadingCollectorOoxmlFixture = async (): Promise<ArrayBuffer>
     return panic("The empty DOCX fixture is missing package relationships.");
   }
 
-  zip.file(
+  writeZipEntry(
+    zip,
     "[Content_Types].xml",
     contentTypes.replace(
       "</Types>",
       `<Override PartName="/word/numbering.xml" ContentType="${NUMBERING_CONTENT_TYPE}"/></Types>`,
     ),
   );
-  zip.file(
+  writeZipEntry(
+    zip,
     "word/_rels/document.xml.rels",
     relationships.replace(
       "</Relationships>",
       `<Relationship Id="rIdOutlineFixture" Type="${NUMBERING_RELATIONSHIP}" Target="numbering.xml"/></Relationships>`,
     ),
   );
-  zip.file(
+  writeZipEntry(
+    zip,
     "word/numbering.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -44,7 +48,8 @@ export const createHeadingCollectorOoxmlFixture = async (): Promise<ArrayBuffer>
   <w:num w:numId="7"><w:abstractNumId w:val="7"/></w:num>
 </w:numbering>`,
   );
-  zip.file(
+  writeZipEntry(
+    zip,
     "word/styles.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -59,7 +64,8 @@ export const createHeadingCollectorOoxmlFixture = async (): Promise<ArrayBuffer>
   </w:style>
 </w:styles>`,
   );
-  zip.file(
+  writeZipEntry(
+    zip,
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
