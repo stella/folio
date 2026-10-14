@@ -7,7 +7,14 @@ import { getTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { insertPageBreak } from "../../prosemirror/commands/pageBreak";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
-import type { Document, ParagraphAlignment, TabStopAlignment } from "../../types/document";
+import type { HyperlinkAttrs } from "../../prosemirror/schema/marks";
+import type {
+  Document,
+  Hyperlink,
+  Paragraph,
+  ParagraphAlignment,
+  TabStopAlignment,
+} from "../../types/document";
 import {
   PARAGRAPH_ALIGNMENT_VALUES,
   TAB_STOP_ALIGNMENT_VALUES,
@@ -2604,39 +2611,55 @@ describe("toFlowBlocks hyperlink identity", () => {
     expect(getHyperlinkIndexes(document)).toEqual([0, 1]);
   });
 
-  test("allocates distinct identities through tracked changes", () => {
-    const href = "https://example.test";
-    const document: Document = {
-      package: {
-        document: {
-          content: [
-            {
-              type: "paragraph",
-              content: [
-                {
-                  type: "hyperlink",
-                  href,
-                  children: [{ type: "run", content: [{ type: "text", text: href }] }],
-                },
-                {
-                  type: "insertion",
-                  info: { id: 1, author: "Reviewer" },
-                  content: [
-                    {
-                      type: "hyperlink",
-                      href,
-                      children: [{ type: "run", content: [{ type: "text", text: "رابط" }] }],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      },
-    };
+  test("shares carrier identity across revision boundaries only when all non-identity attributes match", () => {
+    const left = {
+      type: "hyperlink",
+      href: "https://example.test",
+      tooltip: "original",
+      rId: "rId1",
+      target: "_self",
+      history: true,
+      docLocation: "original",
+      children: [{ type: "run", content: [{ type: "text", text: "left" }] }],
+    } as const satisfies Hyperlink;
+    const right = {
+      ...left,
+      children: [{ type: "run", content: [{ type: "text", text: "رابط" }] }],
+    } as const satisfies Hyperlink;
+    const insertion = (links: Hyperlink[]) =>
+      ({
+        type: "insertion",
+        info: { id: 1, author: "Reviewer" },
+        content: links,
+      }) as const;
+    const documentWith = (content: Paragraph["content"]): Document =>
+      ({ package: { document: { content: [{ type: "paragraph", content }] } } }) as const;
+    const boundaryWith = (inserted: Hyperlink) => documentWith([left, insertion([inserted])]);
 
-    expect(getHyperlinkIndexes(document)).toEqual([0, 1]);
+    expect(getHyperlinkIndexes(boundaryWith(right))).toEqual([0, 0]);
+
+    // Every payload attribute needs a negative boundary case when the mark grows.
+    const changedAttributes = {
+      href: { href: "https://example.test/changed" },
+      tooltip: { tooltip: "changed" },
+      rId: { rId: "rId2" },
+      target: { target: "_blank" },
+      history: { history: false },
+      docLocation: { docLocation: "changed" },
+    } as const satisfies {
+      [Key in keyof Omit<HyperlinkAttrs, "_docxHyperlinkIndex">]-?: Pick<HyperlinkAttrs, Key>;
+    };
+    expect(Object.keys(changedAttributes).sort()).toEqual(
+      Object.keys(schema.marks["hyperlink"]?.spec.attrs ?? {})
+        .filter((name) => name !== "_docxHyperlinkIndex")
+        .sort(),
+    );
+    for (const changed of Object.values(changedAttributes)) {
+      expect(getHyperlinkIndexes(boundaryWith({ ...right, ...changed }))).toEqual([0, 1]);
+    }
+
+    expect(getHyperlinkIndexes(documentWith([left, right]))).toEqual([0, 1]);
+    expect(getHyperlinkIndexes(documentWith([insertion([left, right])]))).toEqual([0, 1]);
   });
 
   test("keeps identities distinct when run-in paragraphs merge", () => {
