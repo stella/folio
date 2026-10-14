@@ -61,7 +61,7 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
     sourceText,
     ts.ScriptTarget.Latest,
     true,
-    fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    /\.[jt]sx$/u.test(fileName) ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
   const violations: Violation[] = [];
   const jszipBindings = new Set<string>();
@@ -90,6 +90,19 @@ const findWrites = (sourceText: string, fileName = "fixture.ts"): Violation[] =>
       }
     }
     if (ts.isVariableDeclaration(node)) declarations.push(node);
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined &&
+      ts.isCallExpression(node.initializer) &&
+      ts.isIdentifier(node.initializer.expression) &&
+      node.initializer.expression.text === "require" &&
+      node.initializer.arguments.some(
+        (argument) => ts.isStringLiteral(argument) && argument.text === "jszip",
+      )
+    ) {
+      jszipBindings.add(node.name.text);
+    }
     if (ts.isParameter(node) || ts.isVariableDeclaration(node)) typedDeclarations.push(node);
   };
   const allNodes: ts.Node[] = [source];
@@ -218,7 +231,7 @@ const isExcludedSource = (relativePath: string): boolean => {
   const segments = relativePath.split(path.sep);
   return (
     segments.some((segment) => /^(?:__tests__|__fixtures__|tests?|fixtures?)$/u.test(segment)) ||
-    /\.(?:test|spec|fixture)\.tsx?$/u.test(relativePath)
+    /\.(?:test|spec|fixture)\.[cm]?[jt]sx?$/u.test(relativePath)
   );
 };
 
@@ -230,7 +243,7 @@ const sourceViolations = (relativePath: string, sourceText: string): Violation[]
 
 const productionViolations = async (): Promise<string[]> => {
   const offenders: string[] = [];
-  for await (const file of new Bun.Glob("*/src/**/*.{ts,tsx}").scan({
+  for await (const file of new Bun.Glob("*/src/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}").scan({
     absolute: true,
     cwd: PACKAGES_DIR,
   })) {
@@ -285,7 +298,34 @@ describe("ZIP part writer", () => {
     ).toEqual([]);
   });
 
+  test("every package rejects direct string inputs before archive generation", async () => {
+    for await (const manifest of new Bun.Glob("*/package.json").scan({ cwd: PACKAGES_DIR })) {
+      const unsafeSource = `
+        import JSZip from "jszip";
+        const zip = new JSZip();
+        zip.file("word/document.xml", "a".repeat(16383) + "👩");
+        zip.generateAsync({ type: "uint8array" });
+      `;
+      for (const extension of ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"]) {
+        const sourcePath = path.join(path.dirname(manifest), "src", `unsafe.${extension}`);
+        expect(sourceViolations(sourcePath, unsafeSource)).toHaveLength(1);
+      }
+    }
+  });
+
+  test("CommonJS writers cannot escape through bound method references", () => {
+    expect(
+      findWrites(`
+        const Archive = require("jszip");
+        const zip = new Archive();
+        const write = zip.file.bind(zip);
+        write("word/document.xml", "text");
+        zip.generateAsync({ type: "uint8array" });
+      `),
+    ).toHaveLength(1);
+  });
+
   test("production ZIP writes use the owner helper", async () => {
     expect(await productionViolations()).toEqual([]);
-  });
+  }, 30_000);
 });
