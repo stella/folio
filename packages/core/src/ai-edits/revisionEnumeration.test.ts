@@ -717,6 +717,74 @@ describe("body revision enumeration", () => {
   );
 
   test.each(["accept", "reject"] as const)(
+    "%s resolves an insertion split by a comment nested in another, before and after save",
+    async (mode) => {
+      const document = createEmptyDocument();
+      document.package.document.content = [
+        {
+          type: "paragraph",
+          paraId: "A0000300",
+          content: [{ type: "run", content: [{ type: "text", text: "Service Agreement" }] }],
+        },
+      ];
+      const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document), {
+        author: AUTHOR,
+      });
+      const blockId = reviewer.getContent().at(0)?.id;
+      if (blockId === undefined) throw new Error("the paragraph is missing");
+      const apply = (
+        editMode: "direct" | "tracked-changes",
+        operation: Record<string, unknown> & { type: string },
+      ) =>
+        reviewer.applyDocumentOperations(
+          {
+            version: 1,
+            mode: editMode,
+            operations: [{ id: `op-${operation.type}`, blockId, ...operation }],
+          } as never,
+          { undefinedReferences: "refuse" },
+        ).applied.length;
+      // A comment over the paragraph, its text replaced under tracking, and a
+      // second comment on a word of the inserted text: the insertion's saved
+      // runs are split at the inner comment's start, inside the outer one.
+      expect(apply("direct", { type: "commentOnBlock", comment: { text: "Whole clause." } })).toBe(
+        1,
+      );
+      expect(
+        apply("tracked-changes", { type: "replaceBlock", text: "Agreement notice goods clause." }),
+      ).toBe(1);
+      expect(
+        apply("tracked-changes", {
+          type: "commentOnBlock",
+          quote: "notice",
+          comment: { text: "This word." },
+        }),
+      ).toBe(1);
+
+      const project = (changes: ReturnType<FolioDocxReviewer["getChanges"]>) =>
+        changes.map((change) => ({
+          type: change.type,
+          text: change.text,
+          blockId: change.blockId,
+        }));
+      const live = project(reviewer.getChanges());
+      expect(live).toEqual([
+        { type: "deletion", text: "Service Agreement", blockId },
+        { type: "insertion", text: "Agreement notice goods clause.", blockId },
+      ]);
+      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      expect(project(reopened.getChanges())).toEqual(live);
+
+      const insertion = reopened.getChanges().find(({ type }) => type === "insertion");
+      if (!insertion) throw new Error("the split insertion is missing");
+      expect(
+        mode === "accept" ? reopened.acceptChange(insertion) : reopened.rejectChange(insertion),
+      ).toBe(true);
+      expect(reopened.getChanges().filter(({ type }) => type === "insertion")).toEqual([]);
+    },
+  );
+
+  test.each(["accept", "reject"] as const)(
     "%s resolves each enumerated carrier without consuming the others",
     (mode) => {
       for (const selected of expectedChanges) {
