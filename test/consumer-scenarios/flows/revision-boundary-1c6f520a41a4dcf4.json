@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "tracked-changes",
+  "seed": 1026397191,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2226127334,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "412DDC7F",
+          "text": "A rewritten clause."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "An added clause."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3425857477,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "412DDC7F",
+          "find": "rewritten",
+          "replace": "revised"
+        }
+      ]
+    },
+    {
+      "action": "new reviewer",
+      "seed": 1650656377
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2218550850,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "31617F9A",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1522773983,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@1"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2090668456,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "412DDC7F",
+            "startOffset": 10,
+            "endOffset": 16,
+            "selectedTextHash": "hwx73rb"
+          },
+          "comment": {
+            "text": "Check this word."
+          }
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "412DDC7F",
+            "startOffset": 10,
+            "endOffset": 16,
+            "selectedTextHash": "hwx73rb"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from splice+delete of 58a8af7a9e1b4f4a",
+  "title": "PINNED #1379 1c6f520a41a4dcf4, reported seed 1026397225: reader projection survives save"
+}

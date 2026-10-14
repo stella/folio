@@ -24,8 +24,6 @@ export const FINDINGS = {
     "insertAfterBlock on a block whose tracked merge with the next is pending lists the new paragraph between them, but accepting joins the new paragraph onto the merged block and leaves the block the merge named apart",
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
-  REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
-    "a tracked deletion of a note reference paragraph, then a tracked paragraph inserted into that note: rejecting every change leaves the inserted paragraph behind, empty",
   BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
     "#1356 (closed, still reproduces): in suggested mode, a batch applies insertBeforeBlock on a table-cell paragraph whose row has a pending suggested deletion, which the same operation alone refuses (pendingDeletion)",
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
@@ -74,15 +72,6 @@ export const KNOWN_FAILING_FLOWS: readonly {
     finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
     reason: "a tracked merge targets the block another operation in the batch deletes",
   },
-  {
-    seed: 1775378339,
-    steps: 16,
-    kind: "collisions",
-    relation: "rejectAll",
-    finding: "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",
-    reason:
-      "8fb63686fc7e333f / b9427f6237682398: rejectAll leaves an empty inserted note paragraph; remove this marker with the note rejection fix",
-  },
 ];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
@@ -100,8 +89,6 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
     /legacy (?:setTabs|addTabStop|removeTabStop) serialization retains original paragraph tabs/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
-  REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
-    /\[rejectAll\] the flow's batches replayed tracked and rejected do not give the fixture back[^\n]*\n\s*\{"type":"(?:footnote|endnote)","noteId":\d+\}: \.blocks\[\d+\]: undefined → \{"kind":"(?:paragraph|heading|listItem)","text":""/u,
   BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
     /\[batchSequential\] the batch \(suggested: [^)]*\) leaves otherwise than its operations one at a time:\n\s*op-\d+ refused one at a time: pendingDeletion/u,
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
@@ -121,8 +108,6 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
 export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> = {
   "batch-after-table-row-delete.json": "BATCH_INSERT_BEFORE_ROW_PENDING_DELETION",
   "merge-with-next-block-the-batch-deletes.json": "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
-  "suggested-note-delete-and-heading-insert.json":
-    "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",
   "suggested-story-insert-and-delete.json": "COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT",
   "tracked-story-row-delete-and-column-insert.json": "COLUMN_CELL_IN_ROW_PENDING_DELETION",
 };

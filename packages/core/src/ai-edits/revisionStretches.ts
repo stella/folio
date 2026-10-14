@@ -11,16 +11,34 @@
  *
  * A stretch is what the reader lists as one change: the revision's content in
  * one paragraph, uninterrupted but for comment references.
+ * A formatting revision instead belongs to one serialized run carrier. A
+ * later edit can split that carrier without changing its property mark, so
+ * each resulting carrier gets its own id through the same allocator.
  */
 
 import type { Mark } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
+import { panic } from "better-result";
 
-import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
+import {
+  expectRunPropertyChangeMarkAttrs,
+  expectTrackedChangeMarkAttrs,
+} from "../prosemirror/attrs";
+import {
+  applyMarksToRunFormattingRepresentation,
+  expandRunFormattingCarrier,
+  type RunFormattingCarrierRepresentation,
+} from "../prosemirror/runFormattingInlineCarriers";
 
 type Stretch = { id: number; interrupted: boolean };
 
 type Retarget = { from: number; to: number; mark: Mark; ids: ReadonlyMap<number, number> };
+
+type FormattingRetarget = {
+  representation: RunFormattingCarrierRepresentation;
+  mark: Mark;
+  ids: ReadonlyMap<number, number>;
+};
 
 type SeparateRevisionStretchesOptions = {
   tr: Transaction;
@@ -42,6 +60,9 @@ export const separateRevisionStretches = ({
   let nextRevisionId = revisionSeed;
   const minted: SeparatedRevisionStretches["minted"] = [];
   const retargets: Retarget[] = [];
+  const formattingRetargets: FormattingRetarget[] = [];
+  const formattingIds = new Set<number>();
+  const formattingRepresentations = new Set<number>();
   // The open stretches of the current paragraph.
   let stretches = new Map<string, Stretch>();
 
@@ -49,6 +70,33 @@ export const separateRevisionStretches = ({
     if (node.isTextblock) {
       stretches = new Map();
       return true;
+    }
+    // A property revision lives on one w:r, rather than the wrapper around
+    // several runs. Later text/revision edits can split that run: give every
+    // resulting carrier its id now, before the save's uniqueness pass would.
+    const carrier = node.marks.some(({ type }) => type.name === "runPropertyChange")
+      ? expandRunFormattingCarrier(node, pos)
+      : null;
+    for (const representation of carrier?.representations ?? []) {
+      if (carrier?.disposition === "structured-field" && representation.role === "owner") {
+        // The outer field projects its result runs; it emits no w:rPr itself.
+        continue;
+      }
+      const mark = representation.node.marks.find(({ type }) => type.name === "runPropertyChange");
+      if (!mark) continue;
+      if (formattingRepresentations.has(representation.position)) continue;
+      formattingRepresentations.add(representation.position);
+      const ids = new Map<number, number>();
+      for (const { info } of expectRunPropertyChangeMarkAttrs(mark).changes) {
+        if (!formattingIds.has(info.id)) {
+          formattingIds.add(info.id);
+          continue;
+        }
+        const fresh = nextRevisionId++;
+        minted.push({ revisionId: fresh, from: info.id });
+        ids.set(info.id, fresh);
+      }
+      if (ids.size > 0) formattingRetargets.push({ representation, mark, ids });
     }
     // Content, not the inline containers around it: a revision that runs
     // into a content control and out again is one wrapper when saved.
@@ -123,6 +171,27 @@ export const separateRevisionStretches = ({
         }),
       }),
     );
+  }
+  for (const { representation, mark, ids } of formattingRetargets) {
+    const live = tr.doc.nodeAt(representation.position);
+    if (!live) panic("A formatting revision carrier vanished during normalization");
+    const changes = expectRunPropertyChangeMarkAttrs(mark).changes.map((change) =>
+      Object.assign({}, change, {
+        info: Object.assign({}, change.info, { id: ids.get(change.info.id) ?? change.info.id }),
+      }),
+    );
+    const replacement = mark.type.create({ ...mark.attrs, changes });
+    applyMarksToRunFormattingRepresentation({
+      tr,
+      representation: {
+        node: live,
+        position: representation.position,
+        role: representation.role,
+        from: representation.position,
+        to: representation.position + representation.node.nodeSize,
+      },
+      marks: replacement.addToSet(live.marks),
+    });
   }
   return { nextRevisionId, minted };
 };
