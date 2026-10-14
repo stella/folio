@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "direct",
+  "seed": 31371,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 191128944,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "7735D914"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from splice of 554b3bbc30eeaf61",
+  "title": "Removing a footnote reference keeps live and saved note readers aligned"
+}

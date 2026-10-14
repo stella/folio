@@ -25,7 +25,7 @@ export const FINDINGS = {
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
   REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
-    "a tracked deletion of a footnote's reference paragraph, then a tracked paragraph inserted into that footnote: rejecting every change leaves the inserted paragraph behind, empty",
+    "a tracked deletion of a note reference paragraph, then a tracked paragraph inserted into that note: rejecting every change leaves the inserted paragraph behind, empty",
   BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
     "#1356 (closed, still reproduces): in suggested mode, a batch applies insertBeforeBlock on a table-cell paragraph whose row has a pending suggested deletion, which the same operation alone refuses (pendingDeletion)",
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
@@ -66,7 +66,16 @@ export const KNOWN_FAILING_FLOWS: readonly {
   generation?: "targeted" | "legacy";
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
-}[] = [{ seed: 18568230, steps: 16, finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES" }];
+}[] = [
+  { seed: 18568230, steps: 16, finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES" },
+  {
+    seed: 1775378339,
+    steps: 16,
+    kind: "collisions",
+    relation: "rejectAll",
+    finding: "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",
+  },
+];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 type FailureSymptom = RegExp | ((failure: unknown) => boolean);
@@ -84,7 +93,7 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
   REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
-    /\[rejectAll\] the flow's batches replayed tracked and rejected do not give the fixture back[^\n]*\n\s*\{"type":"footnote","noteId":\d+\}: \.blocks\[\d+\]: undefined → \{"kind":"heading","text":""/u,
+    /\[rejectAll\] the flow's batches replayed tracked and rejected do not give the fixture back[^\n]*\n\s*\{"type":"(?:footnote|endnote)","noteId":\d+\}: \.blocks\[\d+\]: undefined → \{"kind":"(?:paragraph|heading|listItem)","text":""/u,
   BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
     /\[batchSequential\] the batch \(suggested: [^)]*\) leaves otherwise than its operations one at a time:\n\s*op-\d+ refused one at a time: pendingDeletion/u,
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:

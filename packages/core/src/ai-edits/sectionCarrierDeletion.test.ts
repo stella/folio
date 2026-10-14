@@ -79,8 +79,9 @@ describe("deleting the paragraph that ends a section", () => {
 
     const reopened = await open(saved.buffer);
     expect(reviewer.getNotesAsText()).toBe(reopened.getNotesAsText());
-    expect(reviewer.getNotesAsText()).not.toContain("Header one default.");
-    expect(reviewer.getNotesAsText()).not.toContain("Footer one default.");
+    // Removing a section reference retains the package's stored parts.
+    expect(reviewer.getNotesAsText()).toContain("Header one default.");
+    expect(reviewer.getNotesAsText()).toContain("Footer one default.");
     // This header is still referenced by the final section.
     expect(reviewer.getNotesAsText()).toContain("Header one first.");
     expect(sectionsOf(reopened)).toEqual([

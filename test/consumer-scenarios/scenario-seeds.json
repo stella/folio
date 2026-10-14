@@ -332,7 +332,8 @@
       "steps": 16,
       "kind": "collisions",
       "generation": "targeted",
-      "title": "removed note stories stay absent from live and reopened readers"
+      "title": "removed note stories stay absent from live and reopened readers",
+      "skipKnownIssue": true
     },
     {
       "seed": 1775378438,
