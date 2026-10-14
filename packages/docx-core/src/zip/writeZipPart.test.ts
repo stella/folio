@@ -2,7 +2,7 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import { encodeUtf8 } from "../encoding";
+import { encodeUtf8 } from "@stll/utf8-boundaries";
 import { writeZipPart } from "./writeZipPart";
 
 setDefaultTimeout(propertyTestTimeout(30_000));

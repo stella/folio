@@ -1,4 +1,4 @@
-import { encodeUtf8, decodeText } from "../encoding";
+import { encodeUtf8, decodeText } from "@stll/utf8-boundaries";
 import { writeZipPart } from "../zip/writeZipPart";
 import JSZip from "jszip";
 

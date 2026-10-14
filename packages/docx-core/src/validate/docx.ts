@@ -1,4 +1,4 @@
-import { decodeText } from "../encoding";
+import { decodeText } from "@stll/utf8-boundaries";
 import { panic } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import JSZip from "jszip";

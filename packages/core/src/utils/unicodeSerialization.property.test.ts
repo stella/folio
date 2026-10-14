@@ -1,5 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { astralText, boundaryTextCases, assertTextRoundTrip } from "@stll/utf8-boundaries/testing";
 import { Window } from "happy-dom";
 import * as Y from "yjs";
 import { serializeDocumentToDocx } from "@stll/docx-core";
@@ -27,8 +28,6 @@ import { bytesToHex, createTextReader, decodeText, encodeUtf8, readBlobText } fr
 
 setDefaultTimeout(propertyTestTimeout(180_000));
 
-// Include the JSZip string chunk, larger buffers, and ordinary stream chunk sizes.
-const BOUNDARIES = [7, 4096, 16 * 1024, 64 * 1024] as const;
 const timestamp = "2026-01-01T00:00:00.000Z";
 const clipboardWindow = new Window();
 const parseClipboardText = (html: string, plainText: string): string => {
@@ -222,28 +221,24 @@ const serializers = {
 test("document serializers retain Unicode across byte and buffer boundaries", async () => {
   await assertProperty(
     fc.asyncProperty(
-      fc.integer({ min: 0x10000, max: 0x10ffff }),
-      fc.array(fc.integer({ min: 0x10000, max: 0x10ffff }), { maxLength: 4 }),
-      async (codePoint, suffixPoints) => {
+      astralText,
+      fc.array(astralText, { maxLength: 4 }),
+      async (astral, suffixPoints) => {
         const exercised = new Set<string>();
-        const astral = String.fromCodePoint(codePoint);
-        const suffix = suffixPoints.map((point) => String.fromCodePoint(point)).join("");
-        for (const boundary of BOUNDARIES)
-          for (const shift of [-1, 0, 1])
-            for (const cluster of [astral, "e\u0301", "שָׁלוֹם", "👩🏽‍⚖️", "🇨🇿"]) {
-              const text = `${"a".repeat(boundary + shift)}${cluster}${astral}e\u0301שלום${suffix}tail`;
-              const paragraph: Paragraph = {
-                type: "paragraph",
-                paraId: "00000001",
-                content: [{ type: "run", content: [{ type: "text", text }] }],
-              };
-              const document: Document = { package: { document: { content: [paragraph] } } };
-              expect(roundTripText(text, boundary)).toBe(text);
-              for (const [name, serializer] of Object.entries(serializers)) {
-                await serializer(text, document, paragraph, boundary);
-                exercised.add(name);
-              }
-            }
+        const suffix = suffixPoints.join("");
+        for (const { boundary, text } of boundaryTextCases(astral, suffix)) {
+          const paragraph: Paragraph = {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [{ type: "run", content: [{ type: "text", text }] }],
+          };
+          const document: Document = { package: { document: { content: [paragraph] } } };
+          await assertTextRoundTrip({ text, roundTrip: (value) => roundTripText(value, boundary) });
+          for (const [name, serializer] of Object.entries(serializers)) {
+            await serializer(text, document, paragraph, boundary);
+            exercised.add(name);
+          }
+        }
         expect([...exercised].sort()).toEqual(Object.keys(serializers).sort());
       },
     ),

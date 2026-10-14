@@ -22,6 +22,7 @@ const published = (slug: string, name: string): PublishedPackage => ({
 });
 
 export const PUBLISHED_PACKAGES: readonly PublishedPackage[] = [
+  published("utf8-boundaries", "@stll/utf8-boundaries"),
   published("docx-core", "@stll/docx-core"),
   published("core", "@stll/folio-core"),
   published("react", "@stll/folio-react"),

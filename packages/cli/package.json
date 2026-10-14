@@ -60,6 +60,7 @@
     "@stll/agent-input": "0.1.0",
     "@stll/folio-agents": "workspace:^",
     "@stll/folio-core": "workspace:^",
+    "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1",
     "fast-xml-parser": "^5.10.1",
     "jszip": "3.10.2"

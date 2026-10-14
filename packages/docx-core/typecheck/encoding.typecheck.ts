@@ -1,4 +1,4 @@
-import { createTextReader, decodeText, encodeUtf8 } from "../src/encoding";
+import { createTextReader, decodeText, encodeUtf8 } from "@stll/utf8-boundaries";
 
 decodeText(encodeUtf8("👩🏽‍⚖️"));
 const reader = createTextReader();

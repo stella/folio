@@ -19,9 +19,9 @@
  * so the choice is invisible in the output.
  */
 
-import { bytesToBase64 } from "@stll/docx-core/encoding";
+import { bytesToBase64 } from "@stll/utf8-boundaries";
 
-export { bytesToBase64, encodeBase64Portable } from "@stll/docx-core/encoding";
+export { bytesToBase64, encodeBase64Portable } from "@stll/utf8-boundaries";
 
 /** Encode bytes as a `data:` URL with the given media type. */
 export const bytesToDataUrl = (bytes: Uint8Array, mimeType: string): string =>

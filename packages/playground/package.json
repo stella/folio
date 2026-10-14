@@ -16,6 +16,7 @@
   "dependencies": {
     "@stll/folio-core": "workspace:*",
     "@stll/folio-react": "workspace:*",
+    "@stll/utf8-boundaries": "workspace:*",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "use-intl": "^4.13.0",

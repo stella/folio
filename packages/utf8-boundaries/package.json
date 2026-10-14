@@ -1,0 +1,57 @@
+{
+  "name": "@stll/utf8-boundaries",
+  "version": "0.0.0",
+  "description": "Shared Unicode text, streaming codec, and ZIP entry boundaries.",
+  "homepage": "https://github.com/stella/folio/tree/main/packages/utf8-boundaries",
+  "bugs": {
+    "url": "https://github.com/stella/folio/issues"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stella/folio.git",
+    "directory": "packages/utf8-boundaries"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE",
+    "NOTICE.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/runtime.ts",
+    "./oxlint": "./src/oxlint.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsdown",
+    "test": "bun test src",
+    "typecheck": "bun check --no-pretty --all --project=tsconfig.build.json",
+    "prepack": "bun run build",
+    "format": "oxfmt ."
+  },
+  "dependencies": {
+    "better-result": "3.0.1"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "1.87.0",
+    "bun-types": "1.4.3",
+    "tsdown": "0.22.9"
+  },
+  "peerDependencies": {
+    "fast-check": "^4.9.0",
+    "jszip": "^3.10.2"
+  },
+  "peerDependenciesMeta": {
+    "fast-check": {
+      "optional": true
+    }
+  }
+}

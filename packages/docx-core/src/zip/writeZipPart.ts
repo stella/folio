@@ -1,4 +1,5 @@
 import type JSZip from "jszip";
+import { writeZipEntry } from "@stll/utf8-boundaries";
 
 // Match the deterministic timestamp used by the package fixtures.
 const FIXED_ZIP_DATE_MS = Date.UTC(2000, 0, 1);
@@ -25,7 +26,7 @@ export const writeZipPart = ({ zip, path, data, options = {} }: WriteZipPartOpti
   ) {
     data = new Uint8Array();
   }
-  zip.file(path, data, {
+  writeZipEntry(zip, path, data, {
     ...options,
     binary: true,
     base64: false,

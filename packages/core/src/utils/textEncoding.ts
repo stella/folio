@@ -10,4 +10,4 @@ export {
   decodeText,
   readBlobText,
   encodeUtf8,
-} from "@stll/docx-core/encoding";
+} from "@stll/utf8-boundaries";

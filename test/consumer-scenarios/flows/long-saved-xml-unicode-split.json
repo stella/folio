@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "large-100-pages",
+  "mode": "direct",
+  "seed": 976900317,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2176630460,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "6A03EF1F"
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "2ED3C35F",
+          "find": "Clause 68.2. ",
+          "replace": "",
+          "precondition": {
+            "blockTextHash": "hv6wcof"
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "0D8863D7"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "accept one",
+      "seed": 1416912396
+    },
+    {
+      "action": "mistake",
+      "seed": 3248478209
+    },
+    {
+      "action": "new reviewer",
+      "seed": 2616642539
+    },
+    {
+      "action": "reject all",
+      "seed": 153241056
+    },
+    {
+      "action": "new reviewer",
+      "seed": 1984806869
+    },
+    {
+      "action": "new reviewer",
+      "seed": 3816372682
+    },
+    {
+      "action": "accept all",
+      "seed": 1352971199
+    },
+    {
+      "action": "add_comment",
+      "seed": 3184537012
+    },
+    {
+      "action": "new reviewer",
+      "seed": 3688490288
+    },
+    {
+      "action": "add_comment",
+      "seed": 1225088805
+    },
+    {
+      "action": "accept one",
+      "seed": 529311938
+    },
+    {
+      "action": "reject all",
+      "seed": 2360877751
+    },
+    {
+      "action": "reject all",
+      "seed": 4192443564
+    },
+    {
+      "action": "story batch",
+      "seed": 1729042081,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "5D2726DC",
+          "separator": " "
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "78014A8E",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "alignment": "center"
+          }
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "5D2726DC",
+          "properties": {
+            "alignment": "center"
+          }
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "new reviewer",
+      "seed": 3368784303
+    },
+    {
+      "action": "reply and resolve",
+      "seed": 905382820
+    },
+    {
+      "action": "core batch",
+      "seed": 2041171766,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "First added clause."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Second added clause."
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "accept one",
+      "seed": 777500426
+    },
+    {
+      "action": "core batch",
+      "seed": 2609066239,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "596ADF6B",
+          "text": "Goods party notice schedule notice."
+        },
+        {
+          "type": "replaceBlock",
+          "blockId": "4320B240",
+          "text": "Invoice schedule written notice term."
+        },
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "19B6A002",
+            "startOffset": 89,
+            "endOffset": 96,
+            "selectedTextHash": "hxuo1fr"
+          },
+          "replace": "updated"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "selective save",
+      "seed": 1721465781
+    },
+    {
+      "action": "core batch",
+      "seed": 3553031594,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "3CEFFC83",
+          "text": "Term party clause buyer invoice agreement schedule invoice."
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "origin": "collisions flow seed 976900317",
+  "title": "preserves Unicode at a saved XML text split"
+}

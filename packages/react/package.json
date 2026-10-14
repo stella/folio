@@ -72,6 +72,7 @@
     "@fontsource/source-sans-3": "^5.2.9",
     "@fontsource/tinos": "^5.2.7",
     "@stll/folio-core": "workspace:^",
+    "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1",
     "lucide-react": "1.24.0",
     "react-compiler-runtime": "^1.0.0"

@@ -79,6 +79,7 @@ const scenarioSrc = path.join(repoRoot, "test", "consumer-scenarios");
 
 /** The packages a scenario may import, in dependency order. */
 const PACKAGES = [
+  { dir: "utf8-boundaries", name: "@stll/utf8-boundaries" },
   { dir: "docx-core", name: "@stll/docx-core" },
   { dir: "core", name: "@stll/folio-core" },
   { dir: "agents", name: "@stll/folio-agents" },

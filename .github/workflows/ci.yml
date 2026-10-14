@@ -44,6 +44,7 @@ jobs:
             crates/docx-kernel/src/**
             crates/text-shaper/Cargo.toml
             crates/text-shaper/src/**
+            packages/utf8-boundaries/src/**
             packages/docx-core/src/**
             packages/core/src/**
             packages/react/src/**
@@ -57,6 +58,8 @@ jobs:
             bun.lock
             packages/docx-core/src/generated/**
             packages/core/src/generated/**
+            packages/utf8-boundaries/CHANGELOG.md
+            packages/utf8-boundaries/package.json
             packages/docx-core/CHANGELOG.md
             packages/docx-core/package.json
             packages/core/CHANGELOG.md
@@ -77,6 +80,7 @@ jobs:
             plugins/herdr/herdr-plugin.toml
             plugins/vscode/package.json
           package-files: |
+            packages/utf8-boundaries/package.json
             packages/docx-core/package.json
             packages/core/package.json
             packages/react/package.json
@@ -514,7 +518,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: api-reports-regenerated
-          path: .cache/api-reports/
+          path: |
+            .cache/api-reports/
+            packages/utf8-boundaries/dist/**/*.d.ts
           retention-days: 1
           if-no-files-found: error
 

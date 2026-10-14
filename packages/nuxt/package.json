@@ -53,7 +53,8 @@
   },
   "dependencies": {
     "@nuxt/kit": "^3.14.0 || ^4.0.0",
-    "@stll/folio-vue": "workspace:^"
+    "@stll/folio-vue": "workspace:^",
+    "@stll/utf8-boundaries": "workspace:*"
   },
   "devDependencies": {
     "@nuxt/module-builder": "^1.0.0",

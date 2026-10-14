@@ -12,7 +12,7 @@ import path from "node:path";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES_DIR = path.join(REPOSITORY_ROOT, "packages");
-const WRITER = "docx-core/src/zip/writeZipPart.ts";
+const WRITER = "utf8-boundaries/src/zip.ts";
 
 type Violation = { line: number; method: "file" | "folder" };
 

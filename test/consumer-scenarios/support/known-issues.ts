@@ -145,6 +145,8 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]
   "delete-split-and-merge.json": [0],
   // The original recorded flow starts by accepting a change before any exists.
   "tracked-final-retirement-spacing.json": [0],
+  // These three recorded accept-one steps have no pending suggestion to accept.
+  "long-saved-xml-unicode-split.json": [1, 11, 18],
 };
 
 /**

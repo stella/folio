@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@stll/folio-core": "workspace:^",
+    "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1"
   }
 }

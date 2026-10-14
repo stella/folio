@@ -1,4 +1,6 @@
 ---
+"@stll/utf8-boundaries": minor
+"@stll/folio-nuxt": patch
 "@stll/docx-core": patch
 "@stll/folio-core": patch
 "@stll/folio-agents": patch

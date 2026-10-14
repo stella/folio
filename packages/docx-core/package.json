@@ -36,8 +36,7 @@
     "./ops": "./src/ops/documentOps.ts",
     "./projection": "./src/projection.ts",
     "./schema": "./src/schema/sequenceChildren.ts",
-    "./zip": "./src/zip/writeZipPart.ts",
-    "./encoding": "./src/encoding.ts"
+    "./zip": "./src/zip/writeZipPart.ts"
   },
   "publishConfig": {
     "access": "public"
@@ -56,6 +55,7 @@
   "dependencies": {
     "@nodable/entities": "^3.0.0",
     "@stll/docx-utils": "^0.1.0",
+    "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1",
     "fast-xml-parser": "^5.10.1",
     "jszip": "3.10.2",

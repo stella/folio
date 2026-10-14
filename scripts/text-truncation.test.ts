@@ -4,7 +4,7 @@ import ts from "typescript";
 import { readFileSync } from "node:fs";
 
 const PACKAGES = path.resolve(import.meta.dir, "../packages");
-const OWNER = "core/src/utils/sliceText.ts";
+const OWNER = "utf8-boundaries/src/sliceText.ts";
 const EXTENSIONS = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs", "vue"];
 const SOURCE_GLOB = `*/src/**/*.{${EXTENSIONS.join(",")}}`;
 const CAP_NAME = /max|limit|radius|preview|snippet|context|truncate|unchanged.*edge/iu;

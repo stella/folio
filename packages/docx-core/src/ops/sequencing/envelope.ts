@@ -1,4 +1,4 @@
-import { encodeUtf8 } from "../../encoding";
+import { encodeUtf8 } from "@stll/utf8-boundaries";
 import { cloneModel } from "../modelClone";
 import { Result, TaggedError } from "better-result";
 import type { ParagraphFormatting, TextFormatting } from "../../model/document";

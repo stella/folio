@@ -3,7 +3,7 @@ import path from "node:path";
 import ts from "typescript";
 
 const PACKAGES = path.resolve(import.meta.dir, "../packages");
-const OWNER = "docx-core/src/encoding.ts";
+const OWNER = "utf8-boundaries/src/encoding.ts";
 const GENERATED = ["docx-core/src/generated/docx_kernel.js", "core/src/generated/text_shaper.js"];
 const EXTENSIONS = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs", "vue"];
 const SOURCE_GLOB = `*/src/**/*.{${EXTENSIONS.join(",")}}`;
@@ -462,7 +462,7 @@ describe("production text encoding boundaries", () => {
       "function consume(codec: TextDecoder) { return codec.decode(bytes); }",
       "import { TextEncoder as Codec } from 'node:util'; new Codec()",
       "new globalThis['TextEncoder']()",
-      "import { decodeText as decode } from '@stll/docx-core/encoding'; for (const chunk of chunks) decode(chunk)",
+      "import { decodeText as decode } from '@stll/utf8-boundaries'; for (const chunk of chunks) decode(chunk)",
       "for (let i = 0; i < bytes.length; i += 3) decodeText(bytes.subarray(i, i + 3))",
       "for (const data of input) decodeText(data)",
       "stream.on('data', data => decodeText(data))",
