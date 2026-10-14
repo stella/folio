@@ -2835,7 +2835,29 @@ export class FolioDocxReviewer {
     };
   }
 
-  private documentFromStateSnapshot(snapshot: FolioReviewerStateSnapshot): Document {
+  private documentFromStateSnapshot(authored: FolioReviewerStateSnapshot): Document {
+    const pendingCommentIds = new Set(
+      this.exportPendingSuggestions().flatMap(({ commentId }) =>
+        commentId === undefined ? [] : [commentId],
+      ),
+    );
+    // Model readers and save share the revision owner's projection. Stripping
+    // markers during conversion alone cannot undo style-inherited run marks.
+    const snapshot = {
+      ...authored,
+      mainState: withoutPendingSuggestionCommentMarks(
+        rejectSuggestions(authored.mainState),
+        pendingCommentIds,
+      ),
+      secondaryStoryStates: authored.secondaryStoryStates.map((entry) => ({
+        ...entry,
+        state: withoutPendingSuggestionCommentMarks(
+          rejectSuggestions(entry.state),
+          pendingCommentIds,
+        ),
+      })),
+      createdComments: authored.createdComments.filter(({ id }) => !pendingCommentIds.has(id)),
+    };
     const sourceDocument =
       snapshot.importedStyles === undefined
         ? this.baseDocument
@@ -2923,11 +2945,6 @@ export class FolioDocxReviewer {
 
   private captureSaveSnapshot(): FolioSaveSnapshot {
     const snapshot = this.captureReviewerState();
-    const pendingCommentIds = new Set(
-      this.exportPendingSuggestions().flatMap(({ commentId }) =>
-        commentId === undefined ? [] : [commentId],
-      ),
-    );
     const changedParaIds = new Set(getChangedParagraphIds(snapshot.mainState));
     let structuralChange =
       hasStructuralChanges(snapshot.mainState) ||
@@ -2957,21 +2974,7 @@ export class FolioDocxReviewer {
       path = { type: "full-repack", reason: "untrackedChange" };
     }
     return {
-      document: this.documentFromStateSnapshot({
-        ...snapshot,
-        mainState: withoutPendingSuggestionCommentMarks(
-          rejectSuggestions(snapshot.mainState),
-          pendingCommentIds,
-        ),
-        secondaryStoryStates: snapshot.secondaryStoryStates.map((entry) => ({
-          ...entry,
-          state: withoutPendingSuggestionCommentMarks(
-            rejectSuggestions(entry.state),
-            pendingCommentIds,
-          ),
-        })),
-        createdComments: snapshot.createdComments.filter(({ id }) => !pendingCommentIds.has(id)),
-      }),
+      document: this.documentFromStateSnapshot(snapshot),
       path,
       changedNoteParaIds,
       sectionReferenceRemovals: snapshot.sectionReferenceRemovals,
@@ -3332,7 +3335,11 @@ export class FolioDocxReviewer {
    */
   private storyBlocks(state: EditorState | undefined, source: { content: BlockContent[] }) {
     return state
-      ? proseDocToBlocks(state.doc, source.content, this.baseDocument.package.styles)
+      ? proseDocToBlocks(
+          rejectSuggestions(state).doc,
+          source.content,
+          this.baseDocument.package.styles,
+        )
       : source.content;
   }
 

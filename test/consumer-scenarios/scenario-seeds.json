@@ -319,6 +319,13 @@
       "kind": "collisions",
       "generation": "targeted",
       "title": "range deletions preserve saved revision ancestry"
+    },
+    {
+      "seed": 1775378407,
+      "steps": 16,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "suggested note styles share the saved Markdown projection"
     }
   ]
 }
