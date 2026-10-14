@@ -1,3 +1,4 @@
+import { decodeText } from "../utils/textEncoding";
 /**
  * Image decoding for PDF image XObjects.
  *
@@ -95,12 +96,7 @@ const readPngChunks = (bytes: Uint8Array): Result<PngChunks, PdfImageError> => {
 
   while (cursor + CHUNK_HEADER_BYTES <= bytes.length) {
     const length = view.getUint32(cursor);
-    const type = String.fromCharCode(
-      bytes[cursor + 4] ?? 0,
-      bytes[cursor + 5] ?? 0,
-      bytes[cursor + 6] ?? 0,
-      bytes[cursor + 7] ?? 0,
-    );
+    const type = decodeText(bytes.subarray(cursor + 4, cursor + 8), { encoding: "binary" });
     const dataStart = cursor + CHUNK_HEADER_BYTES;
     const dataEnd = dataStart + length;
     if (dataEnd > bytes.length) {
@@ -663,7 +659,7 @@ const decodeJpeg = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =
     const segment = cursor + 4;
     const frame = JPEG_FRAME_MODES[marker as keyof typeof JPEG_FRAME_MODES];
     if (marker === APP14 && length >= 12) {
-      adobe = String.fromCharCode(...bytes.subarray(segment, segment + 5)) === "Adobe";
+      adobe = decodeText(bytes.subarray(segment, segment + 5), { encoding: "binary" }) === "Adobe";
     }
     if (frame !== undefined) {
       if (!frame.dctDecodable) {

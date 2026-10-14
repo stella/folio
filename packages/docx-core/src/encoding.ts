@@ -7,11 +7,17 @@ type DecodeTextOptions = NonNullable<ConstructorParameters<typeof TextDecoder>[1
   encoding?: string;
 };
 
-/** Decode a complete byte buffer; chunked input must use a text reader. */
+const decodeBinaryString = (bytes: Uint8Array): string =>
+  Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+
+/** Decode a complete buffer; `binary` maps each byte to its exact code unit. */
 export const decodeText = (
   bytes: Uint8Array,
   { encoding = "utf-8", ...options }: DecodeTextOptions = {},
-): string => new TextDecoder(encoding, options).decode(bytes);
+): string =>
+  encoding === "binary"
+    ? decodeBinaryString(bytes)
+    : new TextDecoder(encoding, options).decode(bytes);
 
 /** Clipboard and file blobs are decoded from a complete byte buffer. */
 export const readBlobText = async (blob: Blob): Promise<string> =>
@@ -19,23 +25,29 @@ export const readBlobText = async (blob: Blob): Promise<string> =>
 
 /** One decoder retains incomplete scalars between byte chunks. */
 export const createTextReader = ({ encoding = "utf-8", ...options }: DecodeTextOptions = {}) => {
-  const decoder = new TextDecoder(encoding, options);
+  const decoder = encoding === "binary" ? undefined : new TextDecoder(encoding, options);
   return {
-    read: (bytes: Uint8Array): string => decoder.decode(bytes, { stream: true }),
-    finish: (): string => decoder.decode(),
+    read: (bytes: Uint8Array): string =>
+      decoder ? decoder.decode(bytes, { stream: true }) : decodeBinaryString(bytes),
+    finish: (): string => decoder?.decode() ?? "",
     // A bounded prefix omits an incomplete trailing scalar rather than replacing it.
     finishPrefix: (): string => "",
   };
 };
 
-/** UTF-16BE is required by PDF text strings and Unicode character maps. */
-export const encodeUtf16BE = (text: string): Uint8Array<ArrayBuffer> => {
+const encodeUtf16 = (text: string, littleEndian: boolean): Uint8Array<ArrayBuffer> => {
   const bytes = new Uint8Array(text.length * 2);
   const view = new DataView(bytes.buffer);
   for (let index = 0; index < text.length; index++)
-    view.setUint16(index * 2, text.charCodeAt(index));
+    view.setUint16(index * 2, text.charCodeAt(index), littleEndian);
   return bytes;
 };
+
+/** UTF-16BE is required by PDF text strings and Unicode character maps. */
+export const encodeUtf16BE = (text: string): Uint8Array<ArrayBuffer> => encodeUtf16(text, false);
+
+/** UTF-16LE is required by the document encryption format. */
+export const encodeUtf16LE = (text: string): Uint8Array<ArrayBuffer> => encodeUtf16(text, true);
 
 /** Binary strings carry byte values, rather than Unicode text. */
 export const encodeBinaryString = (text: string): Uint8Array<ArrayBuffer> =>

@@ -1,4 +1,4 @@
-import { base64ToBytes } from "../../utils/textEncoding";
+import { base64ToBytes, encodeUtf16LE } from "../../utils/textEncoding";
 /** Byte helpers shared by MS-CFB and MS-OFFCRYPTO agile decryption. */
 
 export const joinBytes = (parts: readonly Uint8Array[]): Uint8Array => {
@@ -24,15 +24,7 @@ export const writeUint32Le = (value: number): Uint8Array => {
   return out;
 };
 
-export const passwordToUtf16Le = (password: string): Uint8Array => {
-  const out = new Uint8Array(password.length * 2);
-  for (let i = 0; i < password.length; i++) {
-    const code = password.charCodeAt(i);
-    out[i * 2] = code & 0xff;
-    out[i * 2 + 1] = code >> 8;
-  }
-  return out;
-};
+export const passwordToUtf16Le = encodeUtf16LE;
 
 export const bytesEqual = (left: Uint8Array, right: Uint8Array): boolean => {
   if (left.length !== right.length) {

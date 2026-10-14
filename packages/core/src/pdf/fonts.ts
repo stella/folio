@@ -1,4 +1,4 @@
-import { bytesToHex, encodeUtf16BE, encodeUtf8 } from "../utils/textEncoding";
+import { bytesToHex, decodeText, encodeUtf16BE, encodeUtf8 } from "../utils/textEncoding";
 /**
  * Font embedding.
  *
@@ -139,7 +139,9 @@ const UPPERCASE_A = 65;
 const WOFF_SIGNATURES = ["wOFF", "wOF2"] as const;
 
 const readTag = (bytes: Uint8Array): string =>
-  String.fromCharCode(bytes[0] ?? 0, bytes[1] ?? 0, bytes[2] ?? 0, bytes[3] ?? 0);
+  decodeText(Uint8Array.of(bytes[0] ?? 0, bytes[1] ?? 0, bytes[2] ?? 0, bytes[3] ?? 0), {
+    encoding: "binary",
+  });
 
 /**
  * Six uppercase letters derived from the face and the exact glyph set, so the

@@ -1,0 +1,10 @@
+{
+  "document serializers retain Unicode across byte boundaries": [
+    {
+      "seed": -220337333,
+      "path": "0:0:0",
+      "note": "Clipboard round trips must exercise the element reader with a complete DOM fixture and no plain-text fallback.",
+      "date": "2026-10-14"
+    }
+  ]
+}

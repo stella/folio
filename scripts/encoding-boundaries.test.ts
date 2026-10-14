@@ -203,6 +203,25 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
     }
     if (ts.isCallExpression(expression)) {
       const method = property(expression.expression);
+      // A Map key selects a complete stored value; its bytes do not flow into that value.
+      if (
+        method === "get" &&
+        ts.isPropertyAccessExpression(expression.expression) &&
+        ts.isIdentifier(expression.expression.expression)
+      ) {
+        const declaration = localDeclaration(expression.expression.expression);
+        if (
+          declaration &&
+          ((declaration.type && /^(?:Readonly)?Map\s*</u.test(declaration.type.getText(source))) ||
+            (ts.isVariableDeclaration(declaration) &&
+              declaration.initializer &&
+              ts.isNewExpression(declaration.initializer) &&
+              ts.isIdentifier(declaration.initializer.expression) &&
+              declaration.initializer.expression.text === "Map" &&
+              localDeclaration(declaration.initializer.expression) === undefined))
+        )
+          return false;
+      }
       if ((method === "slice" || method === "subarray") && loopAncestor(expression)) return true;
       if (
         ts.isPropertyAccessExpression(expression.expression) ||
@@ -248,6 +267,17 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
     const first = node.arguments.at(0);
     const name = ts.isIdentifier(node.expression) ? node.expression.text : method;
     const argument = first?.getText(source) ?? "";
+    const options = node.arguments.at(1);
+    const binaryField =
+      options &&
+      ts.isObjectLiteralExpression(options) &&
+      options.properties.some(
+        (option) =>
+          ts.isPropertyAssignment(option) &&
+          option.name.getText(source) === "encoding" &&
+          ts.isStringLiteral(option.initializer) &&
+          option.initializer.text === "binary",
+      );
     if (name && binaryCodecs.has(name))
       add(node, "binary string codec must use the encoding owner");
     if (method === "fromCharCode" || method === "fromCodePoint") {
@@ -258,8 +288,9 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
       for (let parent = node.parent; parent; parent = parent.parent) {
         if (
           ts.isCallExpression(parent) &&
-          property(parent.expression) === "from" &&
-          /Uint8Array/u.test(parent.expression.getText(source))
+          ((property(parent.expression) === "from" &&
+            /Uint8Array/u.test(parent.expression.getText(source))) ||
+            /^set(?:Int|Uint)(?:8|16|32)$/u.test(property(parent.expression) ?? ""))
         ) {
           add(node, "manual binary string-to-byte codec");
           break;
@@ -278,6 +309,7 @@ const findViolations = (text: string, file = "fixture.ts"): Violation[] => {
     if (
       name &&
       decoders.has(name) &&
+      !binaryField &&
       (chunkConsumer(node, first) ||
         /(?:^|\W)(?:chunk|chunks|piece|segment)\b/iu.test(argument) ||
         (loopAncestor(node) && /\.(?:slice|subarray)\(/u.test(argument)))
@@ -448,6 +480,7 @@ describe("production text encoding boundaries", () => {
       "globalThis.btoa(binary)",
       "Uint8Array.from(binary, character => character.charCodeAt(0))",
       "for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i)",
+      "for (let i = 0; i < text.length; i++) view.setUint16(i * 2, text.charCodeAt(i), true)",
       "String.fromCharCode(...bytes)",
     ];
     for (const packageName of packages)
@@ -469,6 +502,21 @@ describe("production text encoding boundaries", () => {
         "decodeText(bytes); encodeUtf8(text); for (const chunk of chunks) reader.read(chunk); reader.finish(); Buffer.from(bytes.subarray(1)).toString('hex'); Buffer.from(await serializeDocumentToDocx(doc));",
       ),
     ).toEqual([]);
+    expect(
+      findViolations(
+        "const parts = new Map<string, string>(); for (const path of paths) { const xml = parts.get(path); if (xml) encodeUtf8(xml); } for (let i = 0; i < bytes.length; i += 4) decodeText(bytes.subarray(i, i + 4), { encoding: 'binary' });",
+      ),
+    ).toEqual([]);
+    expect(
+      findViolations(
+        "for (let i = 0; i < bytes.length; i += 4) decodeText(bytes.subarray(i, i + 4), { encoding: 'utf-8' });",
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      findViolations(
+        "const Map = class { get(chunk) { return chunk; } }; const parts = new Map(); for (const chunk of chunks) encodeUtf8(parts.get(chunk));",
+      ).length,
+    ).toBeGreaterThan(0);
   });
 
   test("generated codec exceptions retain their verified whole-buffer shapes", async () => {

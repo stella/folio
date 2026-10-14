@@ -1,3 +1,4 @@
+import { decodeText } from "../utils/textEncoding";
 /**
  * Extract a browser-renderable raster (PNG/JPEG) embedded inside an
  * EMF/WMF metafile.
@@ -44,12 +45,7 @@ function extractPng(bytes: Uint8Array): Uint8Array | null {
     const b2 = bytes[off + 2]!;
     const b3 = bytes[off + 3]!;
     const len = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
-    const type = String.fromCharCode(
-      bytes[off + 4]!,
-      bytes[off + 5]!,
-      bytes[off + 6]!,
-      bytes[off + 7]!,
-    );
+    const type = decodeText(bytes.subarray(off + 4, off + 8), { encoding: "binary" });
     const next = off + 12 + (len >>> 0);
     if (type === "IEND") {
       return bytes.slice(start, off + 12);

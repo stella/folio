@@ -1,3 +1,4 @@
+import { encodeBinaryString } from "../../utils/textEncoding";
 /**
  * WOFF 1.0 container decoding.
  *
@@ -114,9 +115,7 @@ const buildSfnt = (flavor: number, tables: readonly DecodedTable[]): Uint8Array 
   let entry = SFNT_HEADER_SIZE;
   let dataOffset = SFNT_HEADER_SIZE + directorySize;
   for (const table of sorted) {
-    for (let index = 0; index < table.tag.length; index++) {
-      view.setUint8(entry + index, table.tag.charCodeAt(index));
-    }
+    output.set(encodeBinaryString(table.tag), entry);
     view.setUint32(entry + 4, table.checksum);
     view.setUint32(entry + 8, dataOffset);
     view.setUint32(entry + 12, table.data.byteLength);

@@ -1,3 +1,4 @@
+import { decodeText } from "../../utils/textEncoding";
 /**
  * Shared sfnt container primitives: table tags, the container magics, the
  * table directory, and the `loca` offset array.
@@ -94,11 +95,9 @@ export const readTag = (view: DataView, offset: number): string => {
     return "";
   }
 
-  let tag = "";
-  for (let index = 0; index < TAG_LENGTH; index++) {
-    tag += String.fromCharCode(view.getUint8(offset + index));
-  }
-  return tag;
+  return decodeText(new Uint8Array(view.buffer, view.byteOffset + offset, TAG_LENGTH), {
+    encoding: "binary",
+  });
 };
 
 /** The leading version word, or `undefined` when the buffer is shorter than it. */

@@ -36,6 +36,7 @@ const parseClipboardText = (html: string, plainText: string): string => {
     window: clipboardWindow,
     DOMParser: clipboardWindow.DOMParser,
     Node: clipboardWindow.Node,
+    HTMLElement: clipboardWindow.HTMLElement,
   };
   const previous = new Map(
     Object.keys(globals).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),

@@ -3,6 +3,7 @@ export {
   bytesToHex,
   encodeBinaryString,
   encodeUtf16BE,
+  encodeUtf16LE,
   bytesToBase64,
   bytesToBase64Url,
   createTextReader,

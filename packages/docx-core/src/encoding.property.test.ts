@@ -7,7 +7,9 @@ import {
   createTextReader,
   decodeText,
   encodeBase64Portable,
+  encodeBinaryString,
   encodeUtf16BE,
+  encodeUtf16LE,
   encodeUtf8,
 } from "./encoding";
 
@@ -53,6 +55,9 @@ test(
           expect(
             decodeText(encodeUtf16BE(text), { encoding: "utf-16be", ignoreBOM: true, fatal: true }),
           ).toBe(text);
+          expect(
+            decodeText(encodeUtf16LE(text), { encoding: "utf-16le", ignoreBOM: true, fatal: true }),
+          ).toBe(text);
         },
       ),
       { numRuns: 100, id: "stream prefixes retain complete Unicode scalars" },
@@ -68,6 +73,7 @@ test(
       fc.property(fc.uint8Array({ maxLength: 4096 }), (bytes) => {
         expect(base64ToBytes(encodeBase64Portable(bytes))).toEqual(bytes);
         expect(base64ToBytes(bytesToBase64Url(bytes))).toEqual(bytes);
+        expect(encodeBinaryString(decodeText(bytes, { encoding: "binary" }))).toEqual(bytes);
       }),
       { numRuns: 100, id: "encoding owner preserves binary payloads" },
     );
