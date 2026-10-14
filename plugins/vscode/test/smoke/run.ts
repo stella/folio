@@ -28,7 +28,7 @@ await build({
   bundle: true,
   platform: "node",
   format: "cjs",
-  target: "node22",
+  target: "node18",
   external: ["vscode"],
   logLevel: "warning",
 });
@@ -51,7 +51,11 @@ try {
     cachePath: path.join(extensionRoot, ".vscode-test"),
     extensionDevelopmentPath: extensionRoot,
     extensionTestsPath: suiteOut,
-    extensionTestsEnv: { FOLIO_VSCODE_TEST: "1", FOLIO_SMOKE_DOCUMENT: documentPath },
+    extensionTestsEnv: {
+      FOLIO_VSCODE_TEST: "1",
+      FOLIO_SMOKE_DOCUMENT: documentPath,
+      FOLIO_SMOKE_MCP: process.env["FOLIO_SMOKE_MCP"] ?? "registered",
+    },
     launchArgs: [
       workspace,
       "--user-data-dir",

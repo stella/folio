@@ -561,88 +561,91 @@ test("generated retained source identities survive a later pending formatting ac
   const refusals = new Map<DocumentOpRefusalReason, number>();
   assertProperty(
     fc.property(shapeArbitrary, (shape) => {
-      const original = fixture(Object.assign({}, shape, { priorReview: true }));
-      const deletion: EditorIntent = {
-        type: "replaceText",
-        from: position({ offset: 0 }),
-        to: position({ offset: shape.token === "😀" ? 2 : 1 }),
-        text: "",
-      };
-      const allocation = allocateEditorIntentIds(original, deletion);
-      const directDeleted = compile({
-        document: original,
-        intent: deletion,
-        mode: "editing",
-        allocation,
-        refusals,
-      });
-      const trackedDeleted = compile({
-        document: original,
-        intent: deletion,
-        mode: "suggesting",
-        allocation,
-        refusals,
-      });
-      const directFormatting: EditorIntent = {
-        type: "formatRun",
-        from: position({ offset: 0 }),
-        to: position({ offset: lengthOf(directDeleted.document) }),
-        patch: { bold: true },
-      };
-      const trackedFormatting: EditorIntent = {
-        type: "formatRun",
-        from: position({ offset: shape.token === "😀" ? 2 : 1 }),
-        to: position({ offset: lengthOf(trackedDeleted.document) }),
-        patch: { bold: true },
-      };
-      const formattingAllocation = allocateEditorIntentIds(
-        trackedDeleted.document,
-        trackedFormatting,
-      );
-      const direct = compile({
-        document: directDeleted.document,
-        intent: directFormatting,
-        mode: "editing",
-        allocation: formattingAllocation,
-        refusals,
-      });
-      const tracked = compile({
-        document: trackedDeleted.document,
-        intent: trackedFormatting,
-        mode: "suggesting",
-        allocation: formattingAllocation,
-        refusals,
-      });
-      const acceptedDeletion = resolve({
-        document: tracked.document,
-        revisionIds: trackedDeleted.revisions,
-        decision: REVISION_DECISIONS.ACCEPT,
-      });
-      expect(
-        resolvePendingRunFormatting(
-          resolve({
-            document: acceptedDeletion,
-            revisionIds: tracked.revisions,
-            decision: REVISION_DECISIONS.ACCEPT,
-          }),
-          "accept",
-        ),
-      ).toStrictEqual(resolvePendingRunFormatting(direct.document, "accept"));
-      const rejectedFormatting = resolve({
-        document: tracked.document,
-        revisionIds: tracked.revisions,
-        decision: REVISION_DECISIONS.REJECT,
-      });
-      expect(
-        resolvePendingRunFormatting(
-          resolve({
-            document: rejectedFormatting,
-            revisionIds: trackedDeleted.revisions,
-            decision: REVISION_DECISIONS.REJECT,
-          }),
-          "reject",
-        ),
-      ).toStrictEqual(resolvePendingRunFormatting(original, "reject"));
+      for (const includeDeleted of [false, true]) {
+        const original = fixture(Object.assign({}, shape, { priorReview: true }));
+        const deletedLength = shape.token.length;
+        const deletion: EditorIntent = {
+          type: "replaceText",
+          from: position({ offset: 0 }),
+          to: position({ offset: deletedLength }),
+          text: "",
+        };
+        const allocation = allocateEditorIntentIds(original, deletion);
+        const directDeleted = compile({
+          document: original,
+          intent: deletion,
+          mode: "editing",
+          allocation,
+          refusals,
+        });
+        const trackedDeleted = compile({
+          document: original,
+          intent: deletion,
+          mode: "suggesting",
+          allocation,
+          refusals,
+        });
+        const directFormatting: EditorIntent = {
+          type: "formatRun",
+          from: position({ offset: 0 }),
+          to: position({ offset: lengthOf(directDeleted.document) }),
+          patch: { bold: true },
+        };
+        const trackedFormatting: EditorIntent = {
+          type: "formatRun",
+          from: position({ offset: includeDeleted ? 0 : deletedLength }),
+          to: position({ offset: lengthOf(trackedDeleted.document) }),
+          patch: { bold: true },
+        };
+        const formattingAllocation = allocateEditorIntentIds(
+          trackedDeleted.document,
+          trackedFormatting,
+        );
+        const direct = compile({
+          document: directDeleted.document,
+          intent: directFormatting,
+          mode: "editing",
+          allocation: formattingAllocation,
+          refusals,
+        });
+        const tracked = compile({
+          document: trackedDeleted.document,
+          intent: trackedFormatting,
+          mode: "suggesting",
+          allocation: formattingAllocation,
+          refusals,
+        });
+        const acceptedDeletion = resolve({
+          document: tracked.document,
+          revisionIds: trackedDeleted.revisions,
+          decision: REVISION_DECISIONS.ACCEPT,
+        });
+        expect(
+          resolvePendingRunFormatting(
+            resolve({
+              document: acceptedDeletion,
+              revisionIds: tracked.revisions,
+              decision: REVISION_DECISIONS.ACCEPT,
+            }),
+            "accept",
+          ),
+        ).toStrictEqual(resolvePendingRunFormatting(direct.document, "accept"));
+        const rejectedFormatting = resolve({
+          document: tracked.document,
+          revisionIds: tracked.revisions,
+          decision: REVISION_DECISIONS.REJECT,
+        });
+        expect(
+          resolvePendingRunFormatting(
+            resolve({
+              document: rejectedFormatting,
+              revisionIds: trackedDeleted.revisions,
+              decision: REVISION_DECISIONS.REJECT,
+            }),
+            "reject",
+          ),
+        ).toStrictEqual(resolvePendingRunFormatting(original, "reject"));
+      }
     }),
     {
       numRuns: 25,

@@ -18,8 +18,9 @@
  *   numbering defines.
  */
 
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../attrs";
@@ -156,7 +157,7 @@ const introducedIssues = (
   });
 };
 
-const transactionInvariantsKey = new PluginKey("transactionInvariants");
+const transactionInvariantsKey = createPluginKeyOwner("transactionInvariants");
 
 /**
  * Throw a {@link TransactionInvariantError} naming the offending steps when a
@@ -165,7 +166,7 @@ const transactionInvariantsKey = new PluginKey("transactionInvariants");
  */
 export const createTransactionInvariantPlugin = (): Plugin =>
   new Plugin({
-    key: transactionInvariantsKey,
+    key: transactionInvariantsKey.createKey(),
     appendTransaction(transactions, oldState, newState) {
       if (!transactions.some((transaction) => transaction.docChanged)) {
         return null;

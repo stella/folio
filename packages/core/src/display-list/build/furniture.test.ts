@@ -559,6 +559,42 @@ describe("embedded faces", () => {
     subsetted: false,
   });
 
+  test("interleaved documents preserve scoped family names including commas", () => {
+    withFakeTextMeasure(() => {
+      // The old font-table oracle exercised unquoted family names only.
+      // Use resolver output containing a quoted comma to cover the parser too.
+      const originalFamily = "Brand, Serif";
+      const families = ["folio-embedded-first-Brand, Serif", "folio-embedded-second-Brand, Serif"];
+      for (const family of [...families, ...families]) {
+        const embeddedFontFamilyMap = new Map([[originalFamily, family]]);
+        const block: ParagraphBlock = {
+          kind: "paragraph",
+          id: "p",
+          runs: [
+            { kind: "text", text: "same text", fontFamily: originalFamily, embeddedFontFamilyMap },
+          ],
+          attrs: { embeddedFontFamilyMap },
+        };
+        const list = buildDisplayList(buildLayout([block]));
+        expect(list.fonts.at(0)?.family).toBe(family);
+      }
+    }, fakeMeasure);
+  });
+
+  test("font-table families preserve resolver quoting across authored names", () => {
+    withFakeTextMeasure(() => {
+      // The font-table oracle previously covered only unquoted family names.
+      for (const family of ["Brand Serif", "Brand, Serif", 'Brand "Serif"', "Brand; Serif"]) {
+        const block: ParagraphBlock = {
+          kind: "paragraph",
+          id: "p",
+          runs: [{ kind: "text", text: "same text", fontFamily: family }],
+        };
+        expect(buildDisplayList(buildLayout([block])).fonts.at(0)?.family).toBe(family);
+      }
+    }, fakeMeasure);
+  });
+
   test("a face the measurer used carries its bytes once", () => {
     withFakeTextMeasure(() => {
       const bytes = new Uint8Array([0x00, 0x01, 0x00, 0x00]);

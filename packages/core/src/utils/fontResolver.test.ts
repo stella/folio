@@ -10,7 +10,6 @@ import {
   isCjkFont,
   parseFontFamilyList,
   resolveFontFamily,
-  setEmbeddedFontFamilyMap,
   setGoogleFontsEnabled,
 } from "./fontResolver";
 
@@ -101,7 +100,7 @@ describe("fontResolver — David uses a Hebrew serif fallback", () => {
 
 describe("fontResolver — alternate families", () => {
   test("tries an alternate immediately after a mapped primary", () => {
-    const resolved = resolveFontFamily("Calibri", "Times New Roman");
+    const resolved = resolveFontFamily("Calibri", { alternateFontName: "Times New Roman" });
     const families = parseFontFamilyList(resolved.cssFallback);
 
     expect(families.slice(0, 2)).toEqual(["Calibri", "Times New Roman"]);
@@ -109,7 +108,7 @@ describe("fontResolver — alternate families", () => {
   });
 
   test("uses alternate metrics when the primary is unknown", () => {
-    const resolved = resolveFontFamily("Unknown Brand Face", "Cambria");
+    const resolved = resolveFontFamily("Unknown Brand Face", { alternateFontName: "Cambria" });
 
     expect(parseFontFamilyList(resolved.cssFallback).slice(0, 2)).toEqual([
       "Unknown Brand Face",
@@ -121,23 +120,22 @@ describe("fontResolver — alternate families", () => {
 
   test("treats a comma-containing alternate as one font name", () => {
     const families = parseFontFamilyList(
-      resolveFontFamily("Unknown Brand Face", "Name A, Name B").cssFallback,
+      resolveFontFamily("Unknown Brand Face", { alternateFontName: "Name A, Name B" }).cssFallback,
     );
 
     expect(families.slice(0, 2)).toEqual(["Unknown Brand Face", "Name A, Name B"]);
   });
 
   test("keeps an embedded primary ahead of its alternate", () => {
-    try {
-      setEmbeddedFontFamilyMap(new Map([["Brand Face", "folio-embedded-doc1-brand"]]));
-
-      const families = parseFontFamilyList(resolveFontFamily("Brand Face", "Calibri").cssFallback);
-
-      expect(families.slice(0, 2)).toEqual(["folio-embedded-doc1-brand", "Calibri"]);
-      expect(families).not.toContain("Brand Face");
-    } finally {
-      setEmbeddedFontFamilyMap(null);
-    }
+    const embeddedFontFamilyMap = new Map([["Brand Face", "folio-embedded-doc1-brand"]]);
+    const families = parseFontFamilyList(
+      resolveFontFamily("Brand Face", {
+        alternateFontName: "Calibri",
+        embeddedFontFamilyMap,
+      }).cssFallback,
+    );
+    expect(families.slice(0, 2)).toEqual(["folio-embedded-doc1-brand", "Calibri"]);
+    expect(families).not.toContain("Brand Face");
   });
 
   test("includes the alternate in the measurement font string", () => {
@@ -154,8 +152,8 @@ describe("fontResolver — alternate families", () => {
 
   test("keeps resolved metric cache entries distinct by alternate", () => {
     const withoutAlternate = getResolvedData("Unknown Cache Face");
-    const withArial = getResolvedData("Unknown Cache Face", "Arial");
-    const withCambria = getResolvedData("Unknown Cache Face", "Cambria");
+    const withArial = getResolvedData("Unknown Cache Face", { alternateFontFamily: "Arial" });
+    const withCambria = getResolvedData("Unknown Cache Face", { alternateFontFamily: "Cambria" });
 
     expect(withoutAlternate.singleLineRatio).toBeCloseTo(1.15, 4);
     expect(withArial.singleLineRatio).toBeCloseTo(1.1499, 4);
@@ -369,45 +367,42 @@ describe("fontResolver — Google Fonts compatibility toggle", () => {
 });
 
 describe("fontResolver — embedded-font family scoping", () => {
-  // `quoteFontName` only wraps names with spaces/special chars, so
-  // "Calibri" (mapped branch) stays unquoted while "My Brand Sans"
-  // (unmapped/category branch) gets quoted — this exercises both forms.
-  test("an active map substitutes the scoped family and drops the raw name, for both mapped and unmapped fonts", () => {
-    try {
-      setEmbeddedFontFamilyMap(
-        new Map([
-          ["Calibri", "folio-embedded-doc1-Calibri"],
-          ["My Brand Sans", "folio-embedded-doc1-My Brand Sans"],
-        ]),
-      );
-
-      const calibri = resolveFontFamily("Calibri");
-      expect(calibri.cssFallback.startsWith("folio-embedded-doc1-Calibri,")).toBe(true);
-      expect(calibri.cssFallback).not.toMatch(/(^|,\s*)Calibri(,|$)/u);
-
-      const brand = resolveFontFamily("My Brand Sans");
-      expect(brand.cssFallback.startsWith('"folio-embedded-doc1-My Brand Sans",')).toBe(true);
-      expect(brand.cssFallback).not.toContain('"My Brand Sans"');
-    } finally {
-      setEmbeddedFontFamilyMap(null);
+  test("owned maps keep interleaved editor measurement and resolution independent", () => {
+    const fonts = ["Calibri", "My Brand Sans"];
+    const first = new Map(fonts.map((font) => [font, `folio-embedded-doc1-${font}`]));
+    const second = new Map(fonts.map((font) => [font, `folio-embedded-doc2-${font}`]));
+    // The old fixture exercised one active singleton at a time. Interleave
+    // both owned maps and the host to catch cross-editor cache contamination.
+    for (const embeddedFontFamilyMap of [first, second, first, undefined, second]) {
+      for (const font of fonts) {
+        const expected = embeddedFontFamilyMap?.get(font) ?? font;
+        const options = { embeddedFontFamilyMap };
+        const resolved = resolveFontFamily(font, options);
+        expect(parseFontFamilyList(resolved.cssFallback).at(0)).toBe(expected);
+        expect(getResolvedData(font, options).cssFallback).toBe(resolved.cssFallback);
+      }
     }
   });
 
-  test("a font absent from the map resolves unscoped as usual", () => {
-    try {
-      setEmbeddedFontFamilyMap(new Map([["My Brand Sans", "folio-embedded-doc1-My Brand Sans"]]));
-      const resolved = resolveFontFamily("Calibri");
-      expect(resolved.cssFallback).not.toContain("folio-embedded");
-      expect(resolved.cssFallback.startsWith("Calibri,")).toBe(true);
-    } finally {
-      setEmbeddedFontFamilyMap(null);
-    }
+  test("an absent font resolves with the authored family", () => {
+    const embeddedFontFamilyMap = new Map([["My Brand Sans", "folio-embedded-doc1-brand"]]);
+    expect(
+      parseFontFamilyList(resolveFontFamily("Calibri", { embeddedFontFamilyMap }).cssFallback).at(
+        0,
+      ),
+    ).toBe("Calibri");
   });
 
-  test("clearing the map (null) falls back to the raw name", () => {
-    setEmbeddedFontFamilyMap(new Map([["Calibri", "folio-embedded-doc1-Calibri"]]));
-    setEmbeddedFontFamilyMap(null);
-    expect(resolveFontFamily("Calibri").cssFallback.startsWith("Calibri,")).toBe(true);
+  test("an embedded alternate uses the same editor's map", () => {
+    const embeddedFontFamilyMap = new Map([["Cambria", "folio-embedded-doc1-Cambria"]]);
+    expect(
+      parseFontFamilyList(
+        resolveFontFamily("Brand", {
+          alternateFontName: "Cambria",
+          embeddedFontFamilyMap,
+        }).cssFallback,
+      ).slice(0, 2),
+    ).toEqual(["Brand", "folio-embedded-doc1-Cambria"]);
   });
 });
 

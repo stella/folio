@@ -2499,7 +2499,10 @@ const isPendingDeletion = (
 };
 
 /** Whether every piece of the paragraph's content is pending inserted text. */
-const holdsOnlyInsertedContent = (paragraph: PMNode): boolean => {
+const holdsOnlyInsertedContent = (
+  paragraph: PMNode,
+  revisions: "ordinary" | "including-moves",
+): boolean => {
   let whollyInserted = true;
   paragraph.descendants((node) => {
     if (!whollyInserted) {
@@ -2509,7 +2512,9 @@ const holdsOnlyInsertedContent = (paragraph: PMNode): boolean => {
       return true;
     }
     whollyInserted = node.marks.some(
-      (mark) => mark.type.name === "insertion" && mark.attrs["moveKind"] !== "moveTo",
+      (mark) =>
+        mark.type.name === "insertion" &&
+        (revisions === "including-moves" || mark.attrs["moveKind"] !== "moveTo"),
     );
     return false;
   });
@@ -2532,7 +2537,7 @@ const pendingParagraphRetraction = (
   position: number,
 ): { clearBreakAt: number | null } | null => {
   const paragraph = doc.nodeAt(position);
-  if (paragraph?.type.name !== "paragraph" || !holdsOnlyInsertedContent(paragraph)) {
+  if (paragraph?.type.name !== "paragraph") {
     return null;
   }
   const at = doc.resolve(position);
@@ -2542,6 +2547,21 @@ const pendingParagraphRetraction = (
     // The container must keep a paragraph, and end with one.
     return null;
   }
+  let followingIndex = at.index() + 1;
+  while (at.parent.maybeChild(followingIndex)?.type.name === "blockBookmarkBoundary") {
+    followingIndex++;
+  }
+  const following = at.parent.maybeChild(followingIndex);
+  if (
+    expectParagraphAttrs(paragraph).pPrMark?.kind === "moveTo" &&
+    following?.type.spec["tableRole"] === "table" &&
+    holdsOnlyInsertedContent(paragraph, "including-moves")
+  ) {
+    // A whole moved destination before a table has no paragraph to run into.
+    // Retract the destination; rejecting the move still restores its source.
+    return { clearBreakAt: null };
+  }
+  if (!holdsOnlyInsertedContent(paragraph, "ordinary")) return null;
   if (isInsertedPPrMark(paragraph.attrs["pPrMark"]) || isSuggestedParagraphInsert(paragraph)) {
     return { clearBreakAt: null };
   }
@@ -2916,7 +2936,7 @@ const hasDeferredParagraphPropertyWrite = ({
     if (
       mark != null &&
       !(
-        isInsertedPPrMark(mark) &&
+        addedBreakRevisionId(mark) !== null &&
         canRetractFinalBreak({ predecessor: predecessor.node, target: writeTarget })
       )
     )
@@ -2966,7 +2986,7 @@ const paragraphPropertyRevisionTargets = ({
   for (const deletion of deletedFinalParagraphs) {
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
     const predecessor = finalParagraphPredecessor(tr.doc, at);
-    if (!predecessor || !isInsertedPPrMark(predecessor.node.attrs["pPrMark"])) continue;
+    if (!predecessor || addedBreakRevisionId(predecessor.node.attrs["pPrMark"]) === null) continue;
     const target = tr.doc.nodeAt(predecessor.position + predecessor.node.nodeSize);
     if (!target) continue;
     if (canRetractFinalBreak({ predecessor: predecessor.node, target }))
@@ -3084,7 +3104,7 @@ const withRetiredFinalParagraphs = ({
       addedRevisions.push({ operationId, revisionId });
       continue;
     }
-    if (isInsertedPPrMark(mark)) {
+    if (addedBreakRevisionId(mark) !== null) {
       const following = tr.doc.nodeAt(position + previous.nodeSize);
       if (!following || !canRetractFinalBreak({ predecessor: previous, target: following })) {
         // One w:pPrChange per paragraph: an occupied predecessor keeps the emptied target.
@@ -3123,7 +3143,7 @@ const withRetiredFinalParagraphs = ({
       }
       continue;
     }
-    // A relocation's end or a surviving deleted break stays as it is.
+    // A surviving deleted break stays as it is.
   }
   return { nextRevisionId, resolvedOperationIds, addedRevisions, retractedRevisionIds };
 };
@@ -3203,7 +3223,7 @@ const withRotatedAddedFinalBreaks = ({
           !batchRevisionIds.has(deletedBreakRevisionId) &&
           !holdsOnlyDeletedContent(previous.node) &&
           (trackedInsertion || suggestedInsertion) &&
-          holdsOnlyInsertedContent(node)
+          holdsOnlyInsertedContent(node, "ordinary")
         ) {
           supersededDeletedBreaks.push({
             preceding: previous.position,
@@ -5183,15 +5203,17 @@ const applyFolioAIEditOperationsInternal = ({
           const markPlace = tr.doc.resolve(markPosition);
           const endsItsContainer = paragraphEndsItsContainer(markPlace, item.blockNode.type.name);
           const deleted = tr.doc.nodeAt(markPosition);
-          const following = deleted && tr.doc.nodeAt(markPosition + deleted.nodeSize);
+          const following =
+            deleted && paragraphJoinAfter(tr.doc, markPosition + deleted.nodeSize)?.next;
           if (
             deleted &&
             following?.type === deleted.type &&
             !isPairedMove(item.operation.moveId) &&
-            isInsertedPPrMark(deleted.attrs["pPrMark"])
+            addedBreakRevisionId(deleted.attrs["pPrMark"]) !== null
           ) {
             // Its break is a pending insertion (a split, or a break rotated
-            // off the story's end), and deleting it retracts that insertion,
+            // off the story's end) or a relocation destination, and deleting
+            // it retracts that added break,
             // as deleting a merged break does: the words stay, marked
             // deleted, in the paragraph that follows.
             //

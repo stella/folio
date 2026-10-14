@@ -16,8 +16,8 @@
  * automatically.
  */
 
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { PluginKey } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 
 import {
@@ -205,19 +205,8 @@ export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
   return ranges;
 };
 
-// Pin the PluginKey to a process-wide symbol so every module
-// evaluation (Vite dev double-serve, @stll/folio re-export) resolves
-// to the same key instance — otherwise host key-based lookups break.
-const KEY_HOLDER_SYMBOL = Symbol.for("stll.folio.templateDirectivesKey");
-type KeyHolder = {
-  [KEY_HOLDER_SYMBOL]?: PluginKey<DocScanState<undefined, DirectiveRange>>;
-};
-const keyHolder = globalThis as unknown as KeyHolder;
-export const templateDirectivesKey: PluginKey<DocScanState<undefined, DirectiveRange>> =
-  keyHolder[KEY_HOLDER_SYMBOL] ??
-  (keyHolder[KEY_HOLDER_SYMBOL] = new PluginKey<DocScanState<undefined, DirectiveRange>>(
-    "templateDirectives",
-  ));
+export const templateDirectivesKey =
+  createPluginKeyOwner<DocScanState<undefined, DirectiveRange>>("templateDirectives");
 
 export type TemplateDirectivesPluginOptions = {
   onRangesChange?: (ranges: readonly DirectiveRange[]) => void;

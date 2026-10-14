@@ -136,6 +136,7 @@ const formatEndnoteTexts = (
 };
 
 const sameMeasureInputs = (left: LayoutMeasureInputs, right: LayoutMeasureInputs): boolean =>
+  left.embeddedFontFamilyMap === right.embeddedFontFamilyMap &&
   left.styles === right.styles &&
   left.theme === right.theme &&
   left.defaultTabStop === right.defaultTabStop &&
@@ -496,7 +497,11 @@ function runLayoutPipelineMeasured<THfPMs>(
     let phaseStartedAt = performance.now();
     const pageContentHeight = pageSize.h - margins.top - margins.bottom;
     const fontAlternates = buildFontAlternates(document?.package.fontTable);
+    const embeddedFontFamilies = session.embeddedFontFamilyMap
+      ? { embeddedFontFamilyMap: session.embeddedFontFamilyMap }
+      : {};
     const measureInputs: LayoutMeasureInputs = {
+      ...embeddedFontFamilies,
       styles,
       theme: _theme,
       defaultTabStop,
@@ -506,6 +511,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       markupView,
     };
     const flowOpts: ToFlowBlocksOptions = {
+      ...embeddedFontFamilies,
       pageContentHeight,
       fontAlternates,
       ...(styles ? { styles } : {}),
@@ -708,6 +714,7 @@ function runLayoutPipelineMeasured<THfPMs>(
         ...(flowOpts.defaultSize === undefined ? {} : { defaultSize: flowOpts.defaultSize }),
         ...(_theme !== undefined ? { theme: _theme } : {}),
         fontAlternates,
+        ...embeddedFontFamilies,
         measureBlocks: hfMeasureBlocks,
         ...(defaultTabStop !== undefined ? { defaultTabStopTwips: defaultTabStop } : {}),
         ...(flowOpts.lineBreakRules ? { lineBreakRules: flowOpts.lineBreakRules } : {}),
@@ -944,6 +951,9 @@ function runLayoutPipelineMeasured<THfPMs>(
         noteOptions.numbering = document.package.numbering;
       }
       noteOptions.fontAlternates = fontAlternates;
+      if (session.embeddedFontFamilyMap) {
+        noteOptions.embeddedFontFamilyMap = session.embeddedFontFamilyMap;
+      }
       if (defaultTabStop !== undefined) {
         noteOptions.defaultTabStopTwips = defaultTabStop;
       }
@@ -1317,6 +1327,7 @@ function runLayoutPipelineMeasured<THfPMs>(
         pageGap?: number;
         footnotesByPage?: Map<number, FootnoteRenderItem[]>;
       } = {
+        ...embeddedFontFamilies,
         pageGap,
         showShadow: true,
         blockLookup,

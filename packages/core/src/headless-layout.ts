@@ -255,6 +255,9 @@ const buildBlockLookup = (
 type StoryOptions = Omit<ConvertFootnoteOptions, "measureBlocks">;
 
 const buildStoryOptions = (flowOptions: ToFlowBlocksOptions): StoryOptions => ({
+  ...(flowOptions.embeddedFontFamilyMap === undefined
+    ? {}
+    : { embeddedFontFamilyMap: flowOptions.embeddedFontFamilyMap }),
   ...(flowOptions.defaultSize === undefined ? {} : { defaultSize: flowOptions.defaultSize }),
   ...(flowOptions.styles === undefined ? {} : { styles: flowOptions.styles }),
   ...(flowOptions.theme === undefined ? {} : { theme: flowOptions.theme }),

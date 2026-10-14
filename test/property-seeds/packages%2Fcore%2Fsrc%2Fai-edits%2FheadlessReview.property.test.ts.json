@@ -1,0 +1,10 @@
+{
+  "tracked-changes edit then rejectAll restores the original visible text": [
+    {
+      "seed": 255725904,
+      "path": "25:1:1:1",
+      "note": "The corpus includes inherited insertion revisions; rejectAll must compare against independently rejected source text, not its pending-revision visible text.",
+      "date": "2026-10-13"
+    }
+  ]
+}

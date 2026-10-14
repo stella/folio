@@ -16,10 +16,12 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
+import { assertValidOoxmlNumericIds } from "@stll/docx-core";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseDocx } from "./parser";
+import { repackDocx } from "./rezip";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -94,6 +96,54 @@ const plainText = (content: { content: { content: { text?: string }[] }[] }): st
 
 describe("duplicate comment ids (property)", () => {
   test(
+    "saving against pre-repair bytes serializes valid comment ids and preserves first definitions",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc
+            .tuple(fc.integer({ min: 2_147_483_648, max: 2_000_000_000_000 }), commentIdsArbitrary)
+            .map(([base, offsets]) => offsets.map((offset) => base + offset)),
+          async (ids) => {
+            const originalBuffer = await docxFor(ids);
+            const parsed = await parseDocx(originalBuffer, { preloadFonts: false });
+            const firstContents = parsed.package.document.comments?.map((comment) =>
+              comment.content.map(plainText),
+            );
+            const saved = await repackDocx(
+              { ...parsed, originalBuffer },
+              { updateModifiedDate: false },
+            );
+            const zip = await JSZip.loadAsync(saved);
+            const xml = await zip.file("word/comments.xml")?.async("string");
+            expect(xml).toBeDefined();
+            if (xml !== undefined) assertValidOoxmlNumericIds(xml, "word/comments.xml");
+            const bodyXml = await zip.file("word/document.xml")?.async("string");
+            expect(bodyXml).toBeDefined();
+            if (bodyXml !== undefined) assertValidOoxmlNumericIds(bodyXml, "word/document.xml");
+            const reopened = await parseDocx(saved, { preloadFonts: false });
+            expect(
+              reopened.package.document.comments?.map((comment) => comment.content.map(plainText)),
+            ).toEqual(firstContents);
+            const referenceIds = reopened.package.document.content.flatMap((block) =>
+              block.type === "paragraph"
+                ? block.content.flatMap((item) =>
+                    item.type === "commentReference" ? [item.id] : [],
+                  )
+                : [],
+            );
+            expect(referenceIds).toHaveLength(new Set(ids).size);
+            expect(new Set(referenceIds)).toEqual(
+              new Set(reopened.package.document.comments?.map((comment) => comment.id)),
+            );
+          },
+        ),
+        propertyConfig({ numRuns: 20 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
     "parse keeps one comment per id and every unambiguous reference",
     async () => {
       await fc.assert(
@@ -122,6 +172,17 @@ describe("duplicate comment ids (property)", () => {
             warning.startsWith("Dropped "),
           );
           expect(reported.length).toBe(duplicates > 0 ? 1 : 0);
+
+          // A body-only edit owns no comment definition, including the later
+          // duplicate definitions the editable model intentionally omits.
+          document.package.document.content.push({
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text: "Body edit" }] }],
+          });
+          const saved = await JSZip.loadAsync(
+            await repackDocx(document, { updateModifiedDate: false }),
+          );
+          expect(await saved.file("word/comments.xml")?.async("string")).toBe(commentsXmlFor(ids));
         }),
         propertyConfig({ numRuns: 60 }),
       );

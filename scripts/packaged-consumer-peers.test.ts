@@ -1,6 +1,20 @@
 import { expect, test } from "bun:test";
 import manifest from "../packages/react/package.json";
-import { REACT_PEER_FLOOR, reactPeerFloor, reactPeerInstallArgs } from "./packaged-consumer-lib";
+import coreManifest from "../packages/core/package.json";
+import {
+  REACT_PEER_FLOOR,
+  hostPeerInstallArgs,
+  reactPeerFloor,
+  reactPeerInstallArgs,
+} from "./packaged-consumer-lib";
+
+test("the packed host explicitly installs every core singleton peer", () => {
+  expect(hostPeerInstallArgs().toSorted()).toEqual(
+    Object.entries(coreManifest.peerDependencies)
+      .map(([name, range]) => `${name}@${range}`)
+      .toSorted(),
+  );
+});
 
 test("clean-room consumers install the declared React and React DOM peer floor", () => {
   const dependencies = reactPeerInstallArgs();

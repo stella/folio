@@ -77,6 +77,7 @@ export function buildRunFontStyle(
   const horizontalScale = normalizeHorizontalScalePercent(run.horizontalScale);
   return {
     fontFamily: run.fontFamily ?? fallbackFontFamily,
+    ...(run.embeddedFontFamilyMap ? { embeddedFontFamilyMap: run.embeddedFontFamilyMap } : {}),
     ...(run.alternateFontFamily !== undefined
       ? { alternateFontFamily: run.alternateFontFamily }
       : {}),
@@ -117,23 +118,42 @@ type ResolvedFontCache = {
 
 /** Cache for resolved font data */
 const fontResolvedCache = new Map<string, ResolvedFontCache>();
+let embeddedFontResolvedCaches = new WeakMap<
+  ReadonlyMap<string, string>,
+  Map<string, ResolvedFontCache>
+>();
 
 /**
  * Get the resolved font data for a font family, with caching.
  */
+type ResolvedDataOptions = {
+  alternateFontFamily?: string | undefined;
+  embeddedFontFamilyMap?: ReadonlyMap<string, string> | undefined;
+};
+
 export function getResolvedData(
   fontFamily: string,
-  alternateFontFamily?: string,
+  options: ResolvedDataOptions = {},
 ): ResolvedFontCache {
+  const { alternateFontFamily, embeddedFontFamilyMap } = options;
+  let cache = fontResolvedCache;
+  if (embeddedFontFamilyMap) {
+    const owned = embeddedFontResolvedCaches.get(embeddedFontFamilyMap);
+    cache = owned ?? new Map<string, ResolvedFontCache>();
+    if (!owned) embeddedFontResolvedCaches.set(embeddedFontFamilyMap, cache);
+  }
   const cacheKey = `${fontFamily}\u0000${alternateFontFamily ?? ""}`;
-  let cached = fontResolvedCache.get(cacheKey);
+  let cached = cache.get(cacheKey);
   if (cached === undefined) {
-    const resolved = resolveFontFamily(fontFamily, alternateFontFamily);
+    const resolved = resolveFontFamily(fontFamily, {
+      alternateFontName: alternateFontFamily,
+      embeddedFontFamilyMap,
+    });
     cached = {
       cssFallback: resolved.cssFallback,
       singleLineRatio: resolved.singleLineRatio,
     };
-    fontResolvedCache.set(cacheKey, cached);
+    cache.set(cacheKey, cached);
     for (const family of parseFontFamilyList(resolved.cssFallback)) {
       layoutFontFamilies.add(normalizeFontFamilyName(family));
     }
@@ -170,20 +190,14 @@ export function isLayoutFontFamily(family: string): boolean {
 /**
  * Get the CSS fallback string for a font family, with caching.
  */
-function getResolvedFallback(fontFamily: string, alternateFontFamily?: string): string {
-  return getResolvedData(fontFamily, alternateFontFamily).cssFallback;
+function getResolvedFallback(fontFamily: string, style: FontStyle): string {
+  return getResolvedData(fontFamily, style).cssFallback;
 }
 
-/**
- * Clear the resolved-font-family cache. `resolveFontFamily`'s output for a
- * given key can change even when the raw font names don't — e.g. when the
- * active document's embedded-font family map changes (see
- * `utils/fontResolver.ts`'s `setEmbeddedFontFamilyMap`) — so this must be
- * cleared whenever that happens, not just on font-name changes. Folded into
- * `clearAllCaches` (`./cache.ts`) so callers get it for free.
- */
+/** Clear cached resolution after a browser font-set or font-policy change. */
 export function clearFontResolvedCache(): void {
   fontResolvedCache.clear();
+  embeddedFontResolvedCaches = new WeakMap();
 }
 
 /**
@@ -221,7 +235,7 @@ export function buildFontString(style: FontStyle): string {
 
   // Use the font resolver for category-appropriate fallback stacks
   const fontFamily = style.fontFamily ?? DEFAULT_FONT_FAMILY;
-  parts.push(getResolvedFallback(fontFamily, style.alternateFontFamily));
+  parts.push(getResolvedFallback(fontFamily, style));
 
   return parts.join(" ");
 }

@@ -30,6 +30,7 @@ export type LayoutTemplatePreview = {
  * that changes how text measures brings new styles or font alternates.
  */
 export type LayoutMeasureInputs = {
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   styles: StyleDefinitions | null | undefined;
   theme: Theme | null | undefined;
   defaultTabStop: number | undefined;
@@ -48,6 +49,7 @@ export type LayoutMeasureInputs = {
 // artifacts and the inputs that produced them, so a relayout can decide whether
 // it can reuse work or must recompute.
 export type LayoutSession = {
+  embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   artifacts: LayoutArtifacts | null;
   lastEditorState: EditorState | null;
   lastPmDoc: EditorState["doc"] | null;

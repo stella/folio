@@ -18,8 +18,9 @@
  * generic doc-change reset racing the host's selection move.
  */
 
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { EditorState, PluginSpec, Transaction } from "prosemirror-state";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin } from "prosemirror-state";
 
 import { getTemplateDirectives } from "./templateDirectives";
 
@@ -69,14 +70,8 @@ type Meta = OpenMeta | ClearMeta;
 // new field name.
 const QUERY_CHAR = /[\p{L}\p{N}_.-]/u;
 
-const KEY_HOLDER_SYMBOL = Symbol.for("stll.folio.templateSlashMenuKey");
-type KeyHolder = {
-  [KEY_HOLDER_SYMBOL]?: PluginKey<TemplateSlashMenuState>;
-};
-const keyHolder = globalThis as unknown as KeyHolder;
-export const templateSlashMenuKey: PluginKey<TemplateSlashMenuState> =
-  keyHolder[KEY_HOLDER_SYMBOL] ??
-  (keyHolder[KEY_HOLDER_SYMBOL] = new PluginKey<TemplateSlashMenuState>("templateSlashMenu"));
+export const templateSlashMenuKey =
+  createPluginKeyOwner<TemplateSlashMenuState>("templateSlashMenu");
 
 /** Whether the char immediately before `pos` is a marker boundary (start of the
  *  text block or whitespace). This is the misfire guard: a `/` mid-token (dates,
@@ -182,7 +177,7 @@ export const templateSlashMenuPlugin = (
   options: TemplateSlashMenuPluginOptions = {},
 ): Plugin<TemplateSlashMenuState> => {
   const spec: PluginSpec<TemplateSlashMenuState> = {
-    key: templateSlashMenuKey,
+    key: templateSlashMenuKey.createKey(),
     state: {
       init: () => IDLE,
       apply: (tr, value, _oldState, newState) => {

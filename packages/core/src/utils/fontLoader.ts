@@ -21,8 +21,8 @@ let isLoadingAny = false;
 
 /**
  * Mapping from common Office/system fonts to bundled Croscore equivalents.
- * The CSS @font-face aliases in font-aliases.css handle the visual mapping;
- * this map is used for font availability checks and preloading.
+ * The resolver supplies the visual fallback stack; this map is used for
+ * font availability checks and preloading.
  */
 export const FONT_MAPPING: Record<string, string> = {
   Aptos: "Lato",
@@ -52,12 +52,6 @@ const BUNDLED_FONTS = new Set([
   "Cousine",
   "Lato",
   "Source Sans 3",
-  // Also register the Microsoft names since @font-face aliases exist
-  "Calibri",
-  "Cambria",
-  "Arial",
-  "Times New Roman",
-  "Courier New",
   // Arabic-script coverage for the Latin Croscore fonts.
   "Noto Sans Arabic",
 ]);

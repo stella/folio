@@ -43,7 +43,14 @@ const mcpAuthor = async (root: string): Promise<string> =>
     osUserName: osUserName(),
   });
 
-const registerMcp = (context: vscode.ExtensionContext, runtime: CliRuntime): vscode.Disposable => {
+const registerMcp = (
+  context: vscode.ExtensionContext,
+  runtime: CliRuntime,
+): vscode.Disposable | undefined => {
+  if (typeof vscode.lm?.registerMcpServerDefinitionProvider !== "function") {
+    console.log("[Folio] MCP registration skipped: this editor has no MCP provider API.");
+    return undefined;
+  }
   const changed = new vscode.EventEmitter<void>();
   const version = extensionVersion(context);
 
@@ -84,15 +91,22 @@ const registerMcp = (context: vscode.ExtensionContext, runtime: CliRuntime): vsc
  * The extension's exports: nothing, except the editor's test hooks when the
  * smoke test runs it with `FOLIO_VSCODE_TEST=1`.
  */
-export const activate = (context: vscode.ExtensionContext): EditorTestHooks | undefined => {
+export type ExtensionTestHooks = EditorTestHooks & {
+  readonly mcpRegistration: "registered" | "unavailable";
+};
+
+export const activate = (context: vscode.ExtensionContext): ExtensionTestHooks | undefined => {
   const runtime: CliRuntime = {
     nodePath: process.execPath,
     cliEntry: context.asAbsolutePath(path.join("dist", "cli", "folio.mjs")),
   };
   const testMode = process.env["FOLIO_VSCODE_TEST"] === "1";
   const editor = registerEditor(context, runtime, testMode);
-  context.subscriptions.push(editor.disposable, registerMcp(context, runtime));
-  return testMode ? editor.testHooks : undefined;
+  context.subscriptions.push(editor.disposable);
+  const mcp = registerMcp(context, runtime);
+  if (mcp !== undefined) context.subscriptions.push(mcp);
+  if (!testMode || editor.testHooks === undefined) return undefined;
+  return { ...editor.testHooks, mcpRegistration: mcp === undefined ? "unavailable" : "registered" };
 };
 
 export const deactivate = (): void => undefined;

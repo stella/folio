@@ -101,6 +101,7 @@ export type FontMetrics = {
 
 // @public
 export type FontStyle = {
+    embeddedFontFamilyMap?: ReadonlyMap<string, string>;
     fontFamily?: string;
     alternateFontFamily?: string;
     eastAsiaFontFamily?: string;

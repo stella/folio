@@ -13,14 +13,15 @@
  * {@link JOINED_RUNS_RESTYLED_META}, and is left as it is.
  */
 
-import { Plugin, PluginKey } from "prosemirror-state";
+import { createPluginKeyOwner } from "../../pluginKeyOwner";
+import { Plugin } from "prosemirror-state";
 
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 
 export const JOINED_RUNS_RESTYLED_META = "joinedRunsRestyled";
 
-const pastedTableEndKey = new PluginKey("pastedTableEnd");
+const pastedTableEndKey = createPluginKeyOwner("pastedTableEnd");
 
 /**
  * A table pasted over a story's last paragraph leaves that paragraph, emptied,
@@ -30,7 +31,7 @@ const pastedTableEndKey = new PluginKey("pastedTableEnd");
  */
 const createPastedTableEndPlugin = (): Plugin =>
   new Plugin({
-    key: pastedTableEndKey,
+    key: pastedTableEndKey.createKey(),
     appendTransaction(transactions, oldState, newState) {
       const pasted = transactions.some(
         (transaction) => transaction.docChanged && transaction.getMeta("uiEvent") === "paste",

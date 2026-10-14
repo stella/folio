@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
@@ -22,6 +23,8 @@ import {
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { expectParagraphBlock } from "../../../../../test/paragraphBlock";
 import { toFlowBlocks } from "./toFlowBlocks";
+import { buildRunFontStyle, buildFontString } from "../../layout-engine/measure/measureHelpers";
+import { hashParagraphBlock } from "../../layout-engine/measure/cache";
 
 describe("toFlowBlocks paragraph formatting", () => {
   type FlowAlignment = "left" | "center" | "right" | "justify";
@@ -3943,4 +3946,33 @@ describe("toFlowBlocks image attribute normalization", () => {
       exactLineHeight: true,
     });
   });
+});
+
+test("font resolution stays owned by each derived document without changing authored data", () => {
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, [
+      schema.text("same text", [schema.mark("fontFamily", { value: "Calibri" })]),
+    ]),
+  ]);
+  const before = doc.toJSON();
+  const firstMap = new Map([["Calibri", "folio-embedded-first-Calibri"]]);
+  const secondMap = new Map([["Calibri", "folio-embedded-second-Calibri"]]);
+  const first = toFlowBlocks(doc, { embeddedFontFamilyMap: firstMap }).at(0);
+  const second = toFlowBlocks(doc, { embeddedFontFamilyMap: secondMap }).at(0);
+  if (first?.kind !== "paragraph" || second?.kind !== "paragraph")
+    return panic("Expected paragraphs");
+  const firstRun = first.runs.at(0);
+  const secondRun = second.runs.at(0);
+  if (firstRun?.kind !== "text" || secondRun?.kind !== "text") return panic("Expected text runs");
+  expect(buildFontString(buildRunFontStyle(firstRun, "Calibri", 11))).toContain(
+    "folio-embedded-first-Calibri",
+  );
+  expect(buildFontString(buildRunFontStyle(secondRun, "Calibri", 11))).toContain(
+    "folio-embedded-second-Calibri",
+  );
+  expect(buildFontString(buildRunFontStyle(firstRun, "Calibri", 11))).toContain(
+    "folio-embedded-first-Calibri",
+  );
+  expect(hashParagraphBlock(first)).not.toBe(hashParagraphBlock(second));
+  expect(doc.toJSON()).toEqual(before);
 });

@@ -17,8 +17,9 @@
  * one painter.
  */
 
+import { createPluginKeyOwner, type PluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin } from "prosemirror-state";
 import type { EditorState, PluginSpec } from "prosemirror-state";
 
 import { collectBlockChunks, joinChunks, offsetToDocPos } from "./pmTextScan";
@@ -48,26 +49,9 @@ type AnonymizationDecorationState = {
   matches: readonly AnonymizationMatch[];
 };
 
-// Pin the PluginKey to a process-wide symbol on `globalThis` so
-// every module evaluation resolves to the *same* key instance.
-// Vite's dev server occasionally serves this file twice — once
-// to the bundle that registers the plugin (Folio's relative
-// import path) and once to an external consumer (`@stll/folio`
-// re-export). A fresh `new PluginKey()` per evaluation would mean
-// the host can't read the plugin's state by key identity, even
-// though both copies of the file look identical. The `Symbol.for`
-// lookup deduplicates across all module instances; the key string
-// "anonymizationDecorations" is metadata for the PM debug name.
-const KEY_HOLDER_SYMBOL = Symbol.for("stll.folio.anonymizationDecorationsKey");
-type KeyHolder = {
-  [KEY_HOLDER_SYMBOL]?: PluginKey<AnonymizationDecorationState>;
-};
-const keyHolder = globalThis as unknown as KeyHolder;
-export const anonymizationDecorationsKey: PluginKey<AnonymizationDecorationState> =
-  keyHolder[KEY_HOLDER_SYMBOL] ??
-  (keyHolder[KEY_HOLDER_SYMBOL] = new PluginKey<AnonymizationDecorationState>(
-    "anonymizationDecorations",
-  ));
+export const anonymizationDecorationsKey = createPluginKeyOwner<AnonymizationDecorationState>(
+  "anonymizationDecorations",
+);
 
 export const slugAnonymizationLabel = (label: string): string =>
   label.toLowerCase().replace(/[^a-z0-9]+/gu, "-");
@@ -181,7 +165,7 @@ export const createAnonymizationDecorationsPlugin = ({
   onMatchesChange,
 }: AnonymizationPluginOptions = {}): Plugin<AnonymizationDecorationState> => {
   const spec: PluginSpec<AnonymizationDecorationState> = {
-    key: anonymizationDecorationsKey,
+    key: anonymizationDecorationsKey.createKey(),
     state: {
       init(): AnonymizationDecorationState {
         return { terms: [], matches: [] };
@@ -239,20 +223,13 @@ export const createAnonymizationDecorationsPlugin = ({
 export const setAnonymizationTermsMeta = (
   terms: readonly AnonymizationTerm[],
 ): {
-  key: PluginKey<AnonymizationDecorationState>;
+  key: PluginKeyOwner<AnonymizationDecorationState>;
   payload: { type: typeof SET_META; terms: readonly AnonymizationTerm[] };
 } => ({
   key: anonymizationDecorationsKey,
   payload: { type: SET_META, terms },
 });
 
-/**
- * Read the plugin's current match list out of a Folio editor
- * view. Lives inside the same module as the plugin key so a host
- * that imports it via `@stll/folio` gets the *same* key instance
- * as the plugin registration — bypassing the dev-HMR hazard
- * where re-evaluating the plugin module would create a second
- * PluginKey and break key-based lookups.
- */
+/** Read anonymization matches owned by this editor state. */
 export const getAnonymizationMatches = (state: EditorState): readonly AnonymizationMatch[] =>
   anonymizationDecorationsKey.getState(state)?.matches ?? [];

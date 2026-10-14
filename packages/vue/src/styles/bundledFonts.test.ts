@@ -8,10 +8,7 @@ const readStylesheet = (packageName: "react" | "vue", file: string) =>
 const importSpecs = (css: string) =>
   [...css.matchAll(/@import "(?<spec>@fontsource\/[^"]+)";/gu)].map((match) => match.groups?.spec);
 
-const faceRules = (css: string) =>
-  [...css.matchAll(/@font-face\s*\{[^}]+\}/gu)].map((match) => match[0].replace(/\s+/gu, " "));
-
-test("Vue ships the same bundled font faces and aliases as React", () => {
+test("Vue ships the same bundled font faces as React", () => {
   const vueFonts = readStylesheet("vue", "fonts.css");
   const reactFonts = readStylesheet("react", "fonts.css");
   const imports = importSpecs(vueFonts);
@@ -27,7 +24,4 @@ test("Vue ships the same bundled font faces and aliases as React", () => {
   for (const packageName of Object.values(FONTSOURCE_PACKAGES)) {
     expect(dependencies).toHaveProperty(`@fontsource/${packageName}`);
   }
-  const aliases = faceRules(readStylesheet("vue", "font-aliases.css"));
-  expect(aliases.length).toBeGreaterThan(0);
-  expect(aliases).toEqual(faceRules(readStylesheet("react", "font-aliases.css")));
 });

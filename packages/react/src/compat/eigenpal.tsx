@@ -1,4 +1,5 @@
 import { forwardRef, type ReactNode } from "react";
+import { DEFAULT_KEYBOARD_SHORTCUT_SCOPE } from "@stll/folio-core/managers/editorShortcuts";
 import { IntlProvider, useTranslations } from "use-intl";
 
 import {
@@ -145,7 +146,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, LegacyDocxEditorProps>(
         // The legacy flag only ever switched the shortcuts off; an explicit
         // scope from a migrated call site is the finer statement and wins.
         keyboardShortcuts={
-          keyboardShortcuts ?? (disableFindReplaceShortcuts === true ? "none" : "document")
+          keyboardShortcuts ??
+          (disableFindReplaceShortcuts === true ? "none" : DEFAULT_KEYBOARD_SHORTCUT_SCOPE)
         }
         ref={ref}
       />

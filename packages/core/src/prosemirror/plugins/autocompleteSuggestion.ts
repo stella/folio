@@ -22,9 +22,10 @@
  * {@link clearAutocompleteSuggestion}.
  */
 
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, PluginSpec, Transaction } from "prosemirror-state";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
 export type AutocompleteSuggestionStatus = "idle" | "streaming" | "shown";
@@ -52,21 +53,8 @@ type ConsumeMeta = { type: "consume"; requestId: string; consumed: string };
 type ClearMeta = { type: "clear" };
 type Meta = StartMeta | TokenMeta | FinishMeta | ConsumeMeta | ClearMeta;
 
-// Pinned PluginKey, same trick as anonymizationDecorations: Vite's
-// dev server occasionally evaluates this module twice and a fresh
-// `new PluginKey()` per evaluation would mean the overlay can't
-// read the plugin's state by key identity. `Symbol.for` lookup
-// deduplicates across all module instances.
-const KEY_HOLDER_SYMBOL = Symbol.for("stll.folio.autocompleteSuggestionKey");
-type KeyHolder = {
-  [KEY_HOLDER_SYMBOL]?: PluginKey<AutocompleteSuggestionPluginState>;
-};
-const keyHolder = globalThis as unknown as KeyHolder;
-export const autocompleteSuggestionKey: PluginKey<AutocompleteSuggestionPluginState> =
-  keyHolder[KEY_HOLDER_SYMBOL] ??
-  (keyHolder[KEY_HOLDER_SYMBOL] = new PluginKey<AutocompleteSuggestionPluginState>(
-    "autocompleteSuggestion",
-  ));
+export const autocompleteSuggestionKey =
+  createPluginKeyOwner<AutocompleteSuggestionPluginState>("autocompleteSuggestion");
 
 type AutocompleteSuggestionPluginState = {
   suggestion: AutocompleteSuggestionState;
@@ -198,7 +186,7 @@ export const autocompleteSuggestionPlugin = (
     keymap: options.keymap ?? false,
   };
   const spec: PluginSpec<AutocompleteSuggestionPluginState> = {
-    key: autocompleteSuggestionKey,
+    key: autocompleteSuggestionKey.createKey(),
     state: {
       init: (_config, instance) => ({
         suggestion: IDLE,

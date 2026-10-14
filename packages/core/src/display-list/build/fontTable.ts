@@ -11,7 +11,7 @@ import type { EmbeddedFont } from "../../fonts/embeddedFonts";
 import { ptToPx } from "../../layout-engine/measure/measureHelpers";
 import { getFontMetrics } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
-import { resolveFontFamily } from "../../utils/fontResolver";
+import { parseFontFamilyList, resolveFontFamily } from "../../utils/fontResolver";
 import type { DisplayEmbeddedFont, DisplayFontFace, DisplayFontRef } from "../types";
 
 const CSS_NORMAL_WEIGHT = 400;
@@ -28,9 +28,6 @@ const GENERIC_FAMILIES = {
 } as const satisfies Record<GenericFamily, GenericFamily>;
 
 const DEFAULT_GENERIC: GenericFamily = "sans-serif";
-
-const splitFallbackStack = (cssFallback: string): string[] =>
-  cssFallback.split(",").map((entry) => entry.trim().replace(/^["']|["']$/gu, ""));
 
 /**
  * The category `resolveFontFamily` chose. It is the last CSS generic in the
@@ -55,8 +52,8 @@ const faceKey = (family: string, weight: number, italic: boolean): string =>
  * Package faces keyed by every family name a run can resolve to.
  *
  * `resolveFontFamily` substitutes the scoped `folio-embedded-{nonce}-{name}`
- * family only while the document's embedded-family map is installed; a build
- * that never installed it resolves the same run to the authored name. Both
+ * family when the run carries its document-owned embedded-family map; a build
+ * without that context resolves the same run to the authored name. Both
  * names therefore key the same face, and the bytes are interned by id so one
  * face's binary appears once however many names reach it.
  */
@@ -110,8 +107,11 @@ export class FontTable {
     italic,
     measureStyle,
   }: FontFaceRequest): DisplayFontRef {
-    const stack = splitFallbackStack(
-      resolveFontFamily(fontFamily, alternateFontFamily).cssFallback,
+    const stack = parseFontFamilyList(
+      resolveFontFamily(fontFamily, {
+        alternateFontName: alternateFontFamily,
+        embeddedFontFamilyMap: measureStyle.embeddedFontFamilyMap,
+      }).cssFallback,
     );
     // The leading entry is the concrete face the canvas measured with, and the
     // only one a backend can embed; the trailing generic is the fallback.

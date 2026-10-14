@@ -43,6 +43,14 @@ const shared = {
   // Source-mirrored output: one dist module per source module, inter-module
   // imports preserved as relative, every runtime dependency left external.
   unbundle: true,
+  deps: {
+    neverBundle: [
+      /^prosemirror-[a-z-]+(?:$|\/)/u,
+      /^yjs(?:$|\/)/u,
+      /^y-prosemirror(?:$|\/)/u,
+      /^y-protocols(?:$|\/)/u,
+    ],
+  },
 };
 
 // JS and declarations are emitted in two separate rolldown passes. Generating

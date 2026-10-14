@@ -225,13 +225,9 @@ test("random host flow is isolated to a bounded scheduled lane with preserved fi
   const report = requireRecord(jobs["report-host-api"]);
   expect(report["if"]).toContain("outputs.host_api_findings == 'true'");
   expect(report["if"]).toContain("github.ref == 'refs/heads/main'");
-  expect(report["timeout-minutes"]).toBeLessThanOrEqual(5);
-  const reportSteps = report["steps"];
-  if (!Array.isArray(reportSteps)) throw new Error("Reporter steps unavailable");
-  const reporter = reportSteps
-    .map(requireRecord)
-    .find((step) => step["name"] === "Open or update findings");
-  expect(reporter?.["run"]).toContain(
-    "--log fuzz-results/fuzz-artifacts/host-api/host-api-fuzz.log",
-  );
+  expect(report["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
+  expect(report["with"]).toEqual({
+    "artifact-pattern": "host-api-fuzz",
+    "log-pattern": "**/fuzz-artifacts/host-api/*.log",
+  });
 });
