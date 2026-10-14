@@ -31,44 +31,6 @@
       "firstSeen": "2026-10-01"
     },
     {
-      "fingerprint": "4fd39893ffb61a7a",
-      "issueOrPr": "#1351",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1351,
-        "primary": "bbff0f5468045ea1",
-        "title": "Fuzz failure [4fd39893ffb61a7a]: consumer flow notes / direct: the reopened package shows something else than the reviewer that saved it",
-        "flow": {
-          "version": 1,
-          "kind": "random",
-          "generation": "targeted",
-          "fixture": "notes",
-          "mode": "direct",
-          "seed": 31371,
-          "steps": [
-            {
-              "action": "suggest_changes",
-              "seed": 191128944,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "7735D914"
-                }
-              ]
-            }
-          ],
-          "origin": "shrunk from splice of 554b3bbc30eeaf61"
-        },
-        "type": "consumer",
-        "reportSeed": 774176098
-      }
-    },
-    {
-      "fingerprint": "bbff0f5468045ea1",
-      "issueOrPr": "#1351",
-      "firstSeen": "2026-10-02"
-    },
-    {
       "fingerprint": "0151749367fd20ab",
       "issueOrPr": "#1355",
       "firstSeen": "2026-10-02",

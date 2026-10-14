@@ -333,6 +333,28 @@
       "kind": "collisions",
       "generation": "targeted",
       "title": "keeps formatting and commented text revision groups stable across save"
+    },
+    {
+      "seed": 1775378438,
+      "steps": 16,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "removed note stories stay absent from live and reopened readers"
+    },
+    {
+      "seed": 1775378339,
+      "steps": 16,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "removed note stories stay absent from live and reopened readers",
+      "skipKnownIssue": true
+    },
+    {
+      "seed": 1775378438,
+      "steps": 16,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "removed note stories stay absent from live and reopened readers"
     }
   ]
 }

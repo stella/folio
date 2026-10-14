@@ -153,7 +153,9 @@ describe("layoutDocxHeadless", () => {
       }
     }
 
-    expect(getPageTextFromLayout(layout, proseDoc, 1)?.length ?? 0).toBeGreaterThan(0);
+    expect(getPageTextFromLayout({ layout, doc: proseDoc, page: 1 })?.length ?? 0).toBeGreaterThan(
+      0,
+    );
   });
 
   test("resolves the complete character-style toggle cascade in body layout", async () => {

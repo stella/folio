@@ -1,3 +1,4 @@
+import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 /**
  * Regression coverage for the layout pipeline's commit-vs-discard contract.
  *
@@ -16,6 +17,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
+import { panic } from "better-result";
 
 import {
   EXPECTED_CANCELLED_STYLE_TOGGLES,
@@ -521,6 +523,38 @@ describe("runLayoutPipeline", () => {
     clearAllCaches();
   });
 
+  test("comment visibility follows the review view and round-trips without editing authored marks", () => {
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("commented", [schema.marks["comment"]!.create({ commentId: 7 })]),
+        ]),
+      ]),
+    });
+    const authored = state.doc.toJSON();
+    const session = createLayoutSession();
+    for (const markupView of ["all-markup", "no-markup", "original", "all-markup"] as const) {
+      for (const showCommentHighlights of [true, false, true]) {
+        const outcome = runLayoutPipeline(
+          makeDeps(session, { markupView, showCommentHighlights }),
+          state,
+        );
+        expect(layoutErrors).toEqual([]);
+        const block = outcome.blocks?.at(0);
+        expect(block?.kind).toBe("paragraph");
+        if (block?.kind !== "paragraph") {
+          panic("Expected a paragraph block");
+        }
+        const run = block.runs.find((candidate) => candidate.kind === "text");
+        expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
+          markupView === "all-markup" && showCommentHighlights ? [7] : undefined,
+        );
+        expect(state.doc.toJSON()).toEqual(authored);
+      }
+    }
+  });
+
   test("commits the session memory and returns a painted outcome on success", () => {
     const session = createLayoutSession();
     const state = makeState();
@@ -661,6 +695,62 @@ describe("runLayoutPipeline", () => {
     expect(findStyleToggleRun(outcome.blocks ?? [])).toMatchObject(
       EXPECTED_CANCELLED_STYLE_TOGGLES,
     );
+    expect(layoutErrors).toHaveLength(0);
+  });
+
+  test.each(["no-markup", "original"] as const)("forwards %s to note measurement", (markupView) => {
+    const document = createEmptyDocument();
+    const noteDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("inserted", [schema.mark("insertion", { revisionId: 1 })]),
+        schema.text("deleted", [schema.mark("deletion", { revisionId: 2 })]),
+      ]),
+    ]);
+    document.package.footnotes = [
+      {
+        type: "footnote",
+        id: 1,
+        noteType: "normal",
+        content: proseDocToBlocks(noteDoc, []),
+      },
+    ];
+    const state = EditorState.create({
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("Body"),
+          schema.text("1", [
+            schema.mark("footnoteRef", {
+              occurrenceId: "fixture-note",
+              id: "1",
+              noteType: "footnote",
+            }),
+          ]),
+        ]),
+      ]),
+    });
+    let captured: Map<number, FootnoteContent> | undefined;
+    runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document,
+        markupView,
+        painter: new LayoutPainter(),
+        pagesContainer: asContainer(fakeDocument.createElement("div")),
+        buildFootnoteRenderItems: (_pageMap, contentMap) => {
+          captured = contentMap;
+          return new Map();
+        },
+      }),
+      state,
+    );
+    const text = captured
+      ?.get(1)
+      ?.blocks.flatMap((block) =>
+        block.kind === "paragraph"
+          ? block.runs.map((run) => (run.kind === "text" ? run.text : ""))
+          : [],
+      )
+      .join("");
+    expect(text).toBe(markupView === "original" ? "1 deleted" : "1 inserted");
     expect(layoutErrors).toHaveLength(0);
   });
 

@@ -733,6 +733,9 @@ export const DRAWING_SAFETY_CLASSES: {
 export type DrawingSafetyClass = (typeof DRAWING_SAFETY_CLASSES)[keyof typeof DRAWING_SAFETY_CLASSES];
 
 // @public
+export type EditorReadOnlyReason = "host-read-only" | "viewing-mode" | "review-display-mode";
+
+// @public
 export type EmbeddedFont = {
     family: string;
     originalFamily: string;
@@ -1877,6 +1880,9 @@ export type ResolvedAnchor = {
 
 // @public
 export function resolveSuggestionAnchor(doc: Node_2, suggestion: AISuggestion): ResolvedAnchor | null;
+
+// @public (undocumented)
+export type ReviewDisplayMode = (typeof REVIEW_DISPLAY_MODES)[number];
 
 // @public (undocumented)
 export const scanDirectives: (doc: Node_2) => DirectiveRange[];

@@ -113,6 +113,9 @@ describe("Folio find and replace", () => {
     );
 
     expect(findInDocument(replaced, "Within table", createDefaultFindOptions())).toHaveLength(1);
+    expect(findInDocument(replaced, "Inside table", createDefaultFindOptions())).toHaveLength(0);
+    expect(findInDocument(document, "Inside table", createDefaultFindOptions())).toHaveLength(1);
+    expect(findInDocument(document, "Within table", createDefaultFindOptions())).toHaveLength(0);
   });
 
   test("finds run text wrapped inside an inline SDT", () => {
