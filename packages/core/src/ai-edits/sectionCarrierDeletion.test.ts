@@ -78,6 +78,11 @@ describe("deleting the paragraph that ends a section", () => {
     expect(xml).not.toContain("rIdHeaderOneDefault");
 
     const reopened = await open(saved.buffer);
+    expect(reviewer.getNotesAsText()).toBe(reopened.getNotesAsText());
+    expect(reviewer.getNotesAsText()).not.toContain("Header one default.");
+    expect(reviewer.getNotesAsText()).not.toContain("Footer one default.");
+    // This header is still referenced by the final section.
+    expect(reviewer.getNotesAsText()).toContain("Header one first.");
     expect(sectionsOf(reopened)).toEqual([
       { text: SECTIONS_FIXTURE_TEXT.oneOpens, endsSection: false },
       { text: SECTIONS_FIXTURE_TEXT.twoOpens, endsSection: false },
@@ -103,7 +108,9 @@ describe("deleting the paragraph that ends a section", () => {
       });
       if (mode === "suggested") expect(reviewer.acceptSuggestion("delete")).toBe(true);
       reviewer.acceptAll();
-      expect(sectionsOf(await open(await reviewer.toBuffer()))).toEqual(expected);
+      const reopened = await open(await reviewer.toBuffer());
+      expect(sectionsOf(reopened)).toEqual(expected);
+      expect(reviewer.getNotesAsText()).toBe(reopened.getNotesAsText());
     }
   });
 
@@ -139,6 +146,8 @@ describe("deleting the paragraph that ends a section", () => {
     if (!result.undoHandle) return;
 
     expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe("undone");
+    expect(reviewer.getNotesAsText()).toContain("Header one default.");
+    expect(reviewer.getNotesAsText()).toContain("Footer one default.");
 
     const xml = await documentXml(await reviewer.toBuffer());
     expect(xml.match(/<w:sectPr\b/gu)).toHaveLength(3);

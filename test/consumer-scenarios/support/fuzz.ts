@@ -53,7 +53,12 @@ import {
   LEGACY_ACTIONS,
   TARGETED_ACTIONS,
 } from "./flow-file.ts";
-import { assertReadersAgree, saveAndReopen, visibleState } from "./invariants.ts";
+import {
+  assertStoryInventory,
+  assertReadersAgree,
+  saveAndReopen,
+  visibleState,
+} from "./invariants.ts";
 import { LARGE_DOCUMENT_FIXTURE, largeDocument } from "./large-document.ts";
 import { startRelations } from "./metamorphic.ts";
 import { assertRequestedOutcome, assertResolvedTo, capture, captureResolution } from "./oracle.ts";
@@ -538,7 +543,7 @@ export type StepContext = {
 };
 
 /** A check every flow runs after every step; throw to fail the flow. */
-export type StepCheck = { name: string; check: (context: StepContext) => Promise<void> };
+export type StepCheck = { name: string; check: (context: StepContext) => void | Promise<void> };
 
 /** The texts of every story besides the body, by handle. */
 const storyTexts = (reviewer: Reviewer): Record<string, string[]> =>
@@ -554,6 +559,10 @@ const storyTexts = (reviewer: Reviewer): Record<string, string[]> =>
  * flow; `saved()` shares the step's save.
  */
 export const STEP_CHECKS: StepCheck[] = [
+  {
+    name: "story trailers enumerate the live story inventory",
+    check: ({ flow }) => assertStoryInventory(flow.reviewer),
+  },
   {
     name: "the package saves and reopens to what the reviewer shows",
     check: async ({ saved }) => {

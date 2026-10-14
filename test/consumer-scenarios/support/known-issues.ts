@@ -8,7 +8,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Relation } from "./metamorphic.ts";
-import { deletedNoteSymptom } from "./deleted-note-symptom.ts";
 
 export const OPEN_ISSUES = {} as const;
 
@@ -29,8 +28,6 @@ export const FINDINGS = {
     "a tracked deletion of a footnote's reference paragraph, then a tracked paragraph inserted into that footnote: rejecting every change leaves the inserted paragraph behind, empty",
   BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
     "#1356 (closed, still reproduces): in suggested mode, a batch applies insertBeforeBlock on a table-cell paragraph whose row has a pending suggested deletion, which the same operation alone refuses (pendingDeletion)",
-  DELETED_REFERENCE_NOTES_STAY_LISTED:
-    "#1357 (closed, still reproduces): after a direct deletion of the paragraph holding a footnote and an endnote reference, the reviewer still lists both notes, which the saved package no longer has",
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
     "#1408 (closed, still reproduces): a suggested paragraph inserted after a table cell's paragraph and a suggested deletion of the paragraph holding a comment's range end: accepted, the comment's anchored text takes in the inserted paragraph, which direct editing leaves out",
   COLUMN_CELL_IN_ROW_PENDING_DELETION:
@@ -90,7 +87,6 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
     /\[rejectAll\] the flow's batches replayed tracked and rejected do not give the fixture back[^\n]*\n\s*\{"type":"footnote","noteId":\d+\}: \.blocks\[\d+\]: undefined → \{"kind":"heading","text":""/u,
   BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
     /\[batchSequential\] the batch \(suggested: [^)]*\) leaves otherwise than its operations one at a time:\n\s*op-\d+ refused one at a time: pendingDeletion/u,
-  DELETED_REFERENCE_NOTES_STAY_LISTED: deletedNoteSymptom,
   COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
     /\[directTracked\] the flow's batches replayed tracked and accepted read otherwise than replayed direct[^\n]*\n\s*\{"type":"main"\}: \.comments\[\d+\]: /u,
   // The expected texts list the new cell; the reader's do not.
@@ -107,7 +103,6 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
  */
 export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> = {
   "batch-after-table-row-delete.json": "BATCH_INSERT_BEFORE_ROW_PENDING_DELETION",
-  "deleted-endnote-reopen.json": "DELETED_REFERENCE_NOTES_STAY_LISTED",
   "merge-with-next-block-the-batch-deletes.json": "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
   "suggested-note-delete-and-heading-insert.json":
     "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",

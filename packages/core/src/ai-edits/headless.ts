@@ -1979,50 +1979,32 @@ export class FolioDocxReviewer {
    * with the sections that show it: `[header first (sections 1, 3)] …`.
    */
   getNotesAsText(): string {
-    const pkg = this.baseDocument.package;
     const lines: string[] = [];
     const placements = this.headerFooterPlacements();
-
-    const pushHeaderFooter = (
-      map: Map<string, HeaderFooter> | undefined,
-      label: "header" | "footer",
-    ) => {
-      if (!map) {
-        return;
-      }
-      for (const [relationshipId, hf] of map) {
-        const handle = { type: label, relationshipId } as const;
-        const text = this.getHeaderFooterStoryText(handle, hf);
-        if (text.length > 0) {
-          const roles = placements.byPart.get(`${label}:${relationshipId}`);
-          lines.push(
-            `[${label} ${roles ? describePlacements(roles, placements.sectionCount) : hf.hdrFtrType}] ${text}`,
-          );
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (handle.type === "main") continue;
+      const text = this.getStoryText(handle);
+      if (text.length === 0) continue;
+      switch (handle.type) {
+        case "header":
+        case "footer": {
+          const source = this.getHeaderFooterStory(handle);
+          if (!source) panic("A listed document story no longer exists", { story: handle });
+          const roles = placements.byPart.get(`${handle.type}:${handle.relationshipId}`);
+          const label = roles
+            ? describePlacements(roles, placements.sectionCount)
+            : source.hdrFtrType;
+          lines.push(`[${handle.type} ${label}] ${text}`);
+          break;
         }
-      }
-    };
-
-    pushHeaderFooter(pkg.headers, "header");
-    pushHeaderFooter(pkg.footers, "footer");
-
-    for (const footnote of pkg.footnotes ?? []) {
-      if (isSeparatorFootnote(footnote)) {
-        continue;
-      }
-      const handle = { type: "footnote", noteId: footnote.id } as const;
-      const text = this.getNoteStoryText(handle, footnote);
-      if (text.length > 0) {
-        lines.push(`[footnote #${footnote.id}] ${text}`);
-      }
-    }
-    for (const endnote of pkg.endnotes ?? []) {
-      if (isSeparatorEndnote(endnote)) {
-        continue;
-      }
-      const handle = { type: "endnote", noteId: endnote.id } as const;
-      const text = this.getNoteStoryText(handle, endnote);
-      if (text.length > 0) {
-        lines.push(`[endnote #${endnote.id}] ${text}`);
+        case "footnote":
+        case "endnote":
+          lines.push(`[${handle.type} #${handle.noteId}] ${text}`);
+          break;
+        default: {
+          const unreachable: never = handle;
+          return unreachable;
+        }
       }
     }
 
