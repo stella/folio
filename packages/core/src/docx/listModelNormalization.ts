@@ -68,9 +68,13 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
       ) {
         next.formatting = { ...formatting, numPrFromStyle: styleNumbering };
       }
+      // A paragraph that owns its reference, or whose current style supplies no
+      // numbering, keeps no style-derived numbering from an earlier style.
       if (
         formatting?.numPrFromStyle !== undefined &&
-        (formatting.numPr?.kind === "reference" || formatting.numPr?.kind === "none")
+        (styleNumbering === undefined ||
+          formatting.numPr?.kind === "reference" ||
+          formatting.numPr?.kind === "none")
       ) {
         next.formatting = { ...formatting };
         delete next.formatting.numPrFromStyle;
@@ -95,6 +99,7 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
       );
       if (
         paragraph.listRendering === undefined &&
+        formatting?.numPrFromStyle === undefined &&
         next.formatting?.numPrFromStyle === undefined &&
         (numPr?.kind !== "reference" || numbering === null)
       ) {
