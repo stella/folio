@@ -400,6 +400,29 @@ export const trackedChangesDocument = async (): Promise<Uint8Array> => {
   return saveFixture(reviewer, base);
 };
 
+export const IMPORTED_MOVE_FIXTURE = "importedMoves";
+
+/** Imported moves have independently owned run wrappers and paragraph breaks. */
+export const importedMoveDocument = (): Promise<Uint8Array> => {
+  const document = fromMarkdown("Opening clause.");
+  const info = { author: "Earlier Reviewer", date: "2026-01-01T00:00:00Z" };
+  document.package.document.content.push(
+    {
+      ...paragraph([
+        { type: "moveFrom", info: { ...info, id: 2 }, content: [run("Moved clause.")] },
+      ]),
+      pPrMark: { kind: "moveFrom", info: { ...info, id: 1 } },
+    },
+    paragraph("Middle clause."),
+    {
+      ...paragraph([{ type: "moveTo", info: { ...info, id: 4 }, content: [run("Moved clause.")] }]),
+      pPrMark: { kind: "moveTo", info: { ...info, id: 3 } },
+    },
+    paragraph("Closing clause."),
+  );
+  return packFixture(document);
+};
+
 /** Emoji outside the Basic Multilingual Plane, a modifier and a ZWJ sequence, next to words. */
 export const EMOJI_TEXTS = [
   "Approved 👍🏽 by the family 👨‍👩‍👧 today.",

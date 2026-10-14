@@ -39,6 +39,8 @@ import {
 import {
   COLLISION_FIXTURES,
   FIXTURES,
+  IMPORTED_MOVE_FIXTURE,
+  importedMoveDocument,
   openReviewer,
   pinnedParaIdsOf,
   STORY_FIXTURES,
@@ -721,6 +723,7 @@ type LoadFixtureOptions = Pick<FlowFile, "fixture" | "kind" | "generation">;
 
 const loadFixture = ({ fixture, kind, generation }: LoadFixtureOptions): Promise<Uint8Array> => {
   if (fixture === LARGE_DOCUMENT_FIXTURE) return largeDocument();
+  if (fixture === IMPORTED_MOVE_FIXTURE) return importedMoveDocument();
   if (isPublicCorpusFixture(fixture)) return loadPublicCorpusFixture(fixture);
   const load = flowFixtures(kind, generation)[fixture];
   if (load === undefined) {
