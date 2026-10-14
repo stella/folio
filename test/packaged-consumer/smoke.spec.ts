@@ -170,15 +170,11 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
   expect(hostIsolation.hostOutline).toBe("3px");
 
   const paragraph = page.locator(".layout-paragraph").first();
-  await paragraph.scrollIntoViewIfNeeded();
-  const paraBox = await paragraph.boundingBox();
-  expect(paraBox, "a paragraph must be painted").not.toBeNull();
-  if (paraBox) {
-    const x = paraBox.x + paraBox.width / 2;
-    const y = paraBox.y + paraBox.height / 2;
-    await page.mouse.click(x, y);
-    await page.mouse.click(x, y, { button: "right" });
-  }
+  // The edit repaints the layout asynchronously; await its visible projection,
+  // then let each locator action resolve the current paragraph and its geometry.
+  await expect(paragraph).toContainText("Folio edit ");
+  await paragraph.click();
+  await paragraph.click({ button: "right" });
   const menu = page.locator('[role="menu"][aria-label="Text editing menu"]');
   await expect(menu).toBeVisible({ timeout: 5_000 });
   await page.keyboard.press("Escape");
