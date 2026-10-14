@@ -1,3 +1,4 @@
+import { decodeText } from "../../utils/textEncoding";
 import { createHash } from "node:crypto";
 
 import { Result, TaggedError } from "better-result";
@@ -105,7 +106,7 @@ const decodeXml = (bytes: Uint8Array, part: string): string => {
   }
 
   const decoded = Result.try({
-    try: () => new TextDecoder(encoding, { fatal: true }).decode(bytes),
+    try: () => decodeText(bytes, { encoding, fatal: true }),
     catch: (cause) =>
       new FolioDocxPackageInspectionError({
         message: `Failed to decode XML package part "${part}"`,

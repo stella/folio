@@ -1,3 +1,4 @@
+import { base64ToBytes } from "../../utils/textEncoding";
 /** Byte helpers shared by MS-CFB and MS-OFFCRYPTO agile decryption. */
 
 export const joinBytes = (parts: readonly Uint8Array[]): Uint8Array => {
@@ -56,17 +57,7 @@ export const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 };
 
-export const decodeBase64 = (encoded: string): Uint8Array => {
-  if (typeof atob === "function") {
-    const binary = atob(encoded);
-    const out = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      out[i] = binary.charCodeAt(i);
-    }
-    return out;
-  }
-  return new Uint8Array(Buffer.from(encoded, "base64"));
-};
+export const decodeBase64 = base64ToBytes;
 
 export const padToBlock = (bytes: Uint8Array, blockSize: number, padByte = 0x36): Uint8Array => {
   if (bytes.length >= blockSize) {

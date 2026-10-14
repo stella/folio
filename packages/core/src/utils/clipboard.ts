@@ -1,3 +1,4 @@
+import { readBlobText, encodeUtf8 } from "./textEncoding";
 /**
  * Clipboard utilities for copy/paste with formatting
  *
@@ -314,10 +315,10 @@ export async function writeToClipboard(content: ClipboardContent): Promise<boole
     // Try to use the modern Clipboard API
     const items = [
       new ClipboardItem({
-        [CLIPBOARD_TYPES.PLAIN]: new Blob([content.plainText], {
+        [CLIPBOARD_TYPES.PLAIN]: new Blob([encodeUtf8(content.plainText)], {
           type: CLIPBOARD_TYPES.PLAIN,
         }),
-        [CLIPBOARD_TYPES.HTML]: new Blob([content.html], {
+        [CLIPBOARD_TYPES.HTML]: new Blob([encodeUtf8(content.html)], {
           type: CLIPBOARD_TYPES.HTML,
         }),
       }),
@@ -398,7 +399,7 @@ async function parseClipboardItems(
       // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; html accumulates into one outer variable
       const blob = await item.getType(CLIPBOARD_TYPES.HTML);
       // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; html accumulates into one outer variable
-      html = await blob.text();
+      html = await readBlobText(blob);
     }
 
     // Get plain text
@@ -406,7 +407,7 @@ async function parseClipboardItems(
       // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; plainText accumulates into one outer variable
       const blob = await item.getType(CLIPBOARD_TYPES.PLAIN);
       // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; plainText accumulates into one outer variable
-      plainText = await blob.text();
+      plainText = await readBlobText(blob);
     }
   }
 

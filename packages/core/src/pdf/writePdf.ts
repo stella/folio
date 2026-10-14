@@ -1,3 +1,4 @@
+import { encodeUtf8 } from "../utils/textEncoding";
 /**
  * The PDF backend's entry point.
  *
@@ -543,7 +544,7 @@ export const writePdf = async (
     const parts = paintPage({ page, fonts: byFontIndex });
     const resources = collectResources(parts);
     const contentRef = document.add(
-      pdfFlateStream([], new TextEncoder().encode(renderContentStream(parts, resources))),
+      pdfFlateStream([], encodeUtf8(renderContentStream(parts, resources))),
     );
     const annotationRefs: PdfRef[] = [];
     for (const link of page.links) {

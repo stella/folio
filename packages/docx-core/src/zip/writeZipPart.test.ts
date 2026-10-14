@@ -1,15 +1,18 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import { encodeUtf8 } from "../encoding";
 import { writeZipPart } from "./writeZipPart";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 test("nested part writes create exactly their named entries with reproducible dates", async () => {
   const names = ["word/document.xml", "docProps/core.xml", "word/media/nested/image.png"];
   const first = new JSZip();
   const second = new JSZip();
   for (const zip of [first, second]) {
-    for (const path of names) writeZipPart({ zip, path, data: path });
+    for (const path of names) writeZipPart({ zip, path, data: encodeUtf8(path) });
     expect(Object.keys(zip.files)).toEqual(names);
     for (const file of Object.values(zip.files)) {
       expect(file.date).toEqual(new Date(Date.UTC(2000, 0, 1)));
@@ -27,7 +30,7 @@ test("explicit entry metadata is preserved without creating parents", () => {
   writeZipPart({
     zip,
     path: "word/document.xml",
-    data: "<document/>",
+    data: encodeUtf8("<document/>"),
     options: { date, compression: "DEFLATE", compressionOptions: { level: 6 } },
   });
   expect(Object.keys(zip.files)).toEqual(["word/document.xml"]);
@@ -52,9 +55,9 @@ test("text parts preserve supplementary characters across archive chunk boundari
               const boundary = index * ZIP_STRING_CHUNK_SIZE + shift;
               const text = `${"a".repeat(boundary)}${String.fromCodePoint(codePoint)}end`;
               const parts = [
-                { path: `word/text-${index}.xml`, data: text },
-                { path: `word/promised-${index}.xml`, data: Promise.resolve(text) },
-                { path: `word/explicit-text-${index}.xml`, data: text, options: { binary: false } },
+                { path: `word/text-${index}.xml`, data: encodeUtf8(text) },
+                { path: `word/promised-${index}.xml`, data: Promise.resolve(encodeUtf8(text)) },
+                { path: `word/duplicate-${index}.xml`, data: encodeUtf8(text) },
               ];
               for (const part of parts) {
                 writeZipPart({ zip, ...part });
@@ -79,15 +82,13 @@ test("text parts preserve supplementary characters across archive chunk boundari
   );
 });
 
-test("binary and base64 inputs retain their byte values", async () => {
+test("byte inputs retain their values", async () => {
   const bytes = Uint8Array.of(0xff, 0, 0x80);
   const zip = new JSZip();
-  writeZipPart({ zip, path: "binary", data: "\xff\0\x80", options: { binary: true } });
-  writeZipPart({ zip, path: "base64", data: "/wCA", options: { base64: true } });
   writeZipPart({ zip, path: "bytes", data: bytes });
   writeZipPart({ zip, path: "promised-bytes", data: Promise.resolve(bytes) });
   const reopened = await JSZip.loadAsync(await zip.generateAsync({ type: "uint8array" }));
-  for (const name of ["binary", "base64", "bytes", "promised-bytes"]) {
+  for (const name of ["bytes", "promised-bytes"]) {
     expect(await reopened.file(name)?.async("uint8array")).toEqual(bytes);
   }
 });
@@ -103,8 +104,8 @@ test("directory entries ignore payload encoding", async () => {
     writeZipPart({
       zip,
       path: "folder",
-      data: "not base64!",
-      options: { ...options, base64: true },
+      data: Uint8Array.of(1, 2, 3),
+      options,
     });
     expect(Object.keys(zip.files)).toEqual(["folder/"]);
     expect(await zip.files["folder/"]?.async("uint8array")).toEqual(new Uint8Array());

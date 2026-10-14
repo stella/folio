@@ -1,3 +1,4 @@
+import { sliceText } from "@stll/folio-core/utils/sliceText";
 import type { CollaborativeUser } from "./useCollaboration";
 
 type AvatarStackProps = {
@@ -8,9 +9,12 @@ type AvatarStackProps = {
 const initials = (name: string): string => {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) {
-    return parts[0]!.slice(0, 2);
+    return sliceText({ text: parts[0]!, units: "graphemes", end: 2 });
   }
-  return (parts[0]![0]! + parts.at(-1)![0]!).slice(0, 2);
+  return parts
+    .filter((_, index) => index === 0 || index === parts.length - 1)
+    .map((text) => sliceText({ text, units: "graphemes", end: 1 }))
+    .join("");
 };
 
 export function AvatarStack({ users, max = 5 }: AvatarStackProps) {

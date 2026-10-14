@@ -73,6 +73,17 @@
       "seed": 3184537812
     },
     {
+      "action": "suggest_changes",
+      "seed": 2552702142,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Pending Unicode 👩 é שלום change."
+        }
+      ]
+    },
+    {
       "action": "reject one",
       "seed": 2552702142
     },

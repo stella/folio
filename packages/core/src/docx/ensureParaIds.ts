@@ -1,3 +1,4 @@
+import { encodeUtf8 } from "../utils/textEncoding";
 import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * Headless `w14:paraId` normalization for a `.docx` buffer.
@@ -587,7 +588,7 @@ const ensureParaIdsInternal = async (
     writeZipPart({
       zip,
       path: partPath,
-      data: content,
+      data: encodeUtf8(content),
       options: {
         compression: "DEFLATE",
         compressionOptions: { level: 6 },

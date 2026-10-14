@@ -1,3 +1,4 @@
+import { encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 /**
  * Advertised schemas. Whatever `tools/list` returns is resent on every turn,
  * so a listed schema carries the shape and nothing else: no descriptions, no
@@ -146,4 +147,4 @@ export const hoistRepeatedSchemas = (
 
 /** The UTF-8 size of what `tools/list` sends for these tools. */
 export const advertisedBytes = (tools: readonly ListedTool[]): number =>
-  new TextEncoder().encode(JSON.stringify(tools)).length;
+  encodeUtf8(JSON.stringify(tools)).length;

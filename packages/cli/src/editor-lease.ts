@@ -1,3 +1,4 @@
+import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 /**
  * The editor lease and the flush handshake: how a live editor (the VS Code
  * custom editor, `folio serve --edit`) and a folio write share one `.docx`
@@ -154,7 +155,7 @@ export const pendingFlushRequests = async (
     const requestPath = path.join(directory, name);
     const bytes = await readSidecarFile(requestPath);
     if (bytes.isErr()) continue;
-    const request = parseRequest(new TextDecoder().decode(bytes.value));
+    const request = parseRequest(decodeText(bytes.value));
     if (request === null) continue;
     if (Date.parse(request.deadline) > now.getTime()) {
       pending.push(request);
@@ -175,10 +176,7 @@ const placeRequest = async (
     path.dirname(documentPath),
     `.${path.basename(documentPath)}.folio-flush.${request.id}.tmp`,
   );
-  const written = await writeNewSidecarFile(
-    temporary,
-    new TextEncoder().encode(`${JSON.stringify(request)}\n`),
-  );
+  const written = await writeNewSidecarFile(temporary, encodeUtf8(`${JSON.stringify(request)}\n`));
   if (written.isErr()) return Result.err(written.error);
   const renamed = await Result.tryPromise(() => rename(temporary, target));
   if (renamed.isOk()) return Result.ok();

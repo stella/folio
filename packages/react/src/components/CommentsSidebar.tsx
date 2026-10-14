@@ -1,3 +1,4 @@
+import { sliceText } from "@stll/folio-core/utils/sliceText";
 /**
  * Comments Sidebar
  *
@@ -63,12 +64,12 @@ function formatDate(dateStr: string | undefined, locale: string): string {
 }
 
 function getInitials(name: string): string {
-  return name
+  const initials = name
     .split(/\s+/u)
-    .map((w) => w[0])
+    .map((word) => sliceText({ text: word, units: "graphemes", end: 1 }))
     .join("")
-    .toUpperCase()
-    .slice(0, 2);
+    .toUpperCase();
+  return sliceText({ text: initials, units: "graphemes", end: 2 });
 }
 
 function getCommentParentId(comment: Comment): number | null | undefined {

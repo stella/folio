@@ -1,3 +1,4 @@
+import { sliceText } from "@stll/folio-core/utils/sliceText";
 /**
  * The response envelope both surfaces share: `{ ok: true, data }` on success,
  * `{ ok: false, error: { code, message, hint?, details? } }` on an expected
@@ -99,7 +100,8 @@ const renderResult = (tool: string, result: unknown): string[] | null => {
   return null;
 };
 
-const shortVersion = (value: unknown): string => text(value).slice(0, 12);
+const shortVersion = (value: unknown): string =>
+  sliceText({ text: text(value), units: "codeUnits", end: 12 });
 
 /** One line per committed or replayed transaction. */
 const renderReceipt = (receipt: Record<string, unknown>): string => {

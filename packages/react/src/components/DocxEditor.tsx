@@ -1,3 +1,4 @@
+import { readBlobText } from "@stll/folio-core/utils/textEncoding";
 import {
   CANONICAL_GAP,
   usesCanonicalSession,
@@ -2986,11 +2987,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             for (const item of items) {
               if (item.types.includes("text/html")) {
                 // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; html accumulates into one outer variable
-                html = await (await item.getType("text/html")).text();
+                html = await readBlobText(await item.getType("text/html"));
               }
               if (item.types.includes("text/plain")) {
                 // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; text accumulates into one outer variable
-                text = await (await item.getType("text/plain")).text();
+                text = await readBlobText(await item.getType("text/plain"));
               }
             }
             const dt = new DataTransfer();

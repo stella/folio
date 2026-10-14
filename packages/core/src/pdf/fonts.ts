@@ -1,3 +1,4 @@
+import { bytesToHex, encodeUtf16BE, encodeUtf8 } from "../utils/textEncoding";
 /**
  * Font embedding.
  *
@@ -266,25 +267,9 @@ const buildWinAnsiTable = (): ReadonlyMap<number, number> => {
 
 const WIN_ANSI_BY_CODE_POINT = buildWinAnsiTable();
 
-const utf16BeHexOf = (text: string): string =>
-  [...text].map((character) => utf16BeHex(character.codePointAt(0) ?? 0)).join("");
+const utf16BeHexOf = (text: string): string => bytesToHex(encodeUtf16BE(text)).toUpperCase();
 
-const utf16BeHex = (codePoint: number): string => {
-  const SUPPLEMENTARY_START = 0x10000;
-  const SURROGATE_HALF_BITS = 10;
-  const LOW_SURROGATE_MASK = 0x3ff;
-  const HIGH_SURROGATE_BASE = 0xd800;
-  const LOW_SURROGATE_BASE = 0xdc00;
-  const hex = (unit: number) => unit.toString(16).padStart(4, "0").toUpperCase();
-  if (codePoint < SUPPLEMENTARY_START) {
-    return hex(codePoint);
-  }
-  const offset = codePoint - SUPPLEMENTARY_START;
-  return (
-    hex(HIGH_SURROGATE_BASE + (offset >> SURROGATE_HALF_BITS)) +
-    hex(LOW_SURROGATE_BASE + (offset & LOW_SURROGATE_MASK))
-  );
-};
+const utf16BeHex = (codePoint: number): string => utf16BeHexOf(String.fromCodePoint(codePoint));
 
 /** Entries per `beginbfchar` block; the CMap syntax caps this at 100. */
 const BFCHAR_BLOCK_SIZE = 100;
@@ -520,7 +505,7 @@ const emitFont = (document: PdfDocument, plan: FontPlan): PdfRef => {
     }),
   );
   const toUnicodeRef = document.add(
-    pdfFlateStream([], new TextEncoder().encode(toUnicodeCMap(plan.glyphToText))),
+    pdfFlateStream([], encodeUtf8(toUnicodeCMap(plan.glyphToText))),
   );
   // A CFF-flavoured OpenType descends from a CIDFontType0; only a `glyf`
   // program is a CIDFontType2. Both keep the two-byte Identity-H codes, which

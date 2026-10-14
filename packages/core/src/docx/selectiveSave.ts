@@ -1,3 +1,4 @@
+import { encodeUtf8, decodeText } from "../utils/textEncoding";
 import { writeZipPart } from "@stll/docx-core/zip";
 import type { SaveDiagnosticOptions } from "./saveDiagnostics";
 /**
@@ -116,7 +117,9 @@ async function patchNoteParts(
     if (!file) {
       return true;
     }
-    const originalXml = await file.async("text");
+    const originalXml = await file
+      .async("uint8array")
+      .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
     const originalIds = collectParaIds(originalXml);
     const partIds = new Set<string>();
     for (const id of remainingIds) {
@@ -217,7 +220,9 @@ async function patchCommentsExtended(
   }
 
   const baselineInfo = existing
-    ? parseCommentsExtended(await existing.async("text"))
+    ? parseCommentsExtended(
+        await existing.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+      )
     : new Map<string, CommentExtendedInfo>();
   if (commentsExtendedInfoEqual(parseCommentsExtended(desiredXml), baselineInfo)) {
     return true;
@@ -238,7 +243,12 @@ async function ensureCommentsExtendedPackaging(
   updates: Map<string, string>,
 ): Promise<boolean> {
   const ctPath = "[Content_Types].xml";
-  const ctXml = updates.get(ctPath) ?? (await zip.file(ctPath)?.async("text"));
+  const ctXml =
+    updates.get(ctPath) ??
+    (await zip
+      .file(ctPath)
+      ?.async("uint8array")
+      .then((bytes) => decodeText(bytes, { ignoreBOM: true })));
   if (ctXml === undefined) {
     return false;
   }
@@ -248,7 +258,12 @@ async function ensureCommentsExtendedPackaging(
   }
 
   const relsPath = "word/_rels/document.xml.rels";
-  const relsXml = updates.get(relsPath) ?? (await zip.file(relsPath)?.async("text"));
+  const relsXml =
+    updates.get(relsPath) ??
+    (await zip
+      .file(relsPath)
+      ?.async("uint8array")
+      .then((bytes) => decodeText(bytes, { ignoreBOM: true })));
   if (relsXml === undefined) {
     return false;
   }
@@ -300,7 +315,9 @@ async function patchNumberingPart(
     return false;
   }
 
-  const originalXml = await file.async("text");
+  const originalXml = await file
+    .async("uint8array")
+    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   const baselineXml = serializeNumberingXml(parseNumbering(originalXml).definitions);
   const currentXml = serializeNumberingXml(numbering);
   if (currentXml === baselineXml) {
@@ -353,8 +370,8 @@ const queueSettingsUpdates = async (zip: JSZip, updates: Map<string, string>): P
   }
   const relsFile = zip.file("word/_rels/settings.xml.rels");
   const filtered = withoutAttachedTemplate(
-    await settingsFile.async("text"),
-    await relsFile?.async("text"),
+    await settingsFile.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+    await relsFile?.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
   );
 
   if (filtered.settingsXml !== undefined) {
@@ -461,10 +478,13 @@ export async function attemptSelectiveSave(
         const lowerPath = path.toLowerCase();
         if (file.dir || !lowerPath.startsWith("word/") || !lowerPath.endsWith(".xml")) continue;
         // oxlint-disable-next-line no-await-in-loop -- reserve the complete baseline id spaces before remapping
-        sourceParts.set(path, await file.async("text"));
+        sourceParts.set(
+          path,
+          await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+        );
       }
       for (const [path, xml] of normalizeImportedNumericIds(sourceParts)) {
-        if (xml !== sourceParts.get(path)) writeZipPart({ zip, path, data: xml });
+        if (xml !== sourceParts.get(path)) writeZipPart({ zip, path, data: encodeUtf8(xml) });
       }
     }
 
@@ -483,7 +503,9 @@ export async function attemptSelectiveSave(
       if (!docXmlFile) {
         return null;
       }
-      const originalDocXml = await docXmlFile.async("text");
+      const originalDocXml = await docXmlFile
+        .async("uint8array")
+        .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
       // The body's id space is the model's own serialization, not the source
       // part. A producer that writes no `w14:paraId` (LibreOffice, Google Docs,
       // python-docx, docx4j) makes every changed id look like a note paragraph
@@ -503,7 +525,13 @@ export async function attemptSelectiveSave(
       if (structuralChange && doc.package.numbering) {
         const numberingFile = findZipEntryCaseInsensitive(zip, "word/numbering.xml");
         const baselineNumbering = numberingFile
-          ? serializeNumberingXml(parseNumbering(await numberingFile.async("text")).definitions)
+          ? serializeNumberingXml(
+              parseNumbering(
+                await numberingFile
+                  .async("uint8array")
+                  .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+              ).definitions,
+            )
           : "";
         const added = collectAddedNumberingDefs(
           baselineNumbering,
@@ -554,7 +582,9 @@ export async function attemptSelectiveSave(
     const sourceCommentsFile = findZipEntryCaseInsensitive(zip, "word/comments.xml");
     const commentsPartPath = sourceCommentsFile?.name ?? "word/comments.xml";
     const sourceCommentsXml = sourceCommentsFile
-      ? await sourceCommentsFile.async("text")
+      ? await sourceCommentsFile
+          .async("uint8array")
+          .then((bytes) => decodeText(bytes, { ignoreBOM: true }))
       : undefined;
     const commentsUnchanged =
       sourceCommentsXml !== undefined && canReplayCommentsPart(doc, sourceCommentsXml);
@@ -571,7 +601,9 @@ export async function attemptSelectiveSave(
       // Ensure [Content_Types].xml has an Override for comments.xml
       const ctFile = zip.file("[Content_Types].xml");
       if (ctFile) {
-        const ctXml = await ctFile.async("text");
+        const ctXml = await ctFile
+          .async("uint8array")
+          .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
         if (!ctXml.toLowerCase().includes("/word/comments.xml")) {
           updates.set(
             "[Content_Types].xml",
@@ -587,7 +619,9 @@ export async function attemptSelectiveSave(
       const relsPath = "word/_rels/document.xml.rels";
       const relsFile = zip.file(relsPath);
       if (relsFile) {
-        const relsXml = await relsFile.async("text");
+        const relsXml = await relsFile
+          .async("uint8array")
+          .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
         if (!relsXml.toLowerCase().includes("comments.xml")) {
           const maxId = findMaxRId(relsXml);
           updates.set(
@@ -649,7 +683,9 @@ export async function attemptSelectiveSave(
     // Update modification date in docProps/core.xml
     const corePropsFile = zip.file("docProps/core.xml");
     if (corePropsFile) {
-      const corePropsXml = await corePropsFile.async("text");
+      const corePropsXml = await corePropsFile
+        .async("uint8array")
+        .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
       updates.set(
         "docProps/core.xml",
         updateCoreProperties(corePropsXml, { updateModifiedDate: true }),

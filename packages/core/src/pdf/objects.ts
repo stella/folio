@@ -1,3 +1,4 @@
+import { bytesToHex, encodeBinaryString, encodeUtf16BE, encodeUtf8 } from "../utils/textEncoding";
 /**
  * The PDF object model: values, serialization, the cross-reference table and
  * the trailer.
@@ -125,10 +126,9 @@ const NAME_REGULAR = /^[A-Za-z0-9._\-+]$/u;
 
 const encodeName = (value: string): string => {
   let out = "/";
-  for (const char of value) {
-    out += NAME_REGULAR.test(char)
-      ? char
-      : `#${char.charCodeAt(0).toString(16).padStart(2, "0").toUpperCase()}`;
+  for (const byte of encodeUtf8(value)) {
+    const char = String.fromCharCode(byte);
+    out += NAME_REGULAR.test(char) ? char : `#${byte.toString(16).padStart(2, "0").toUpperCase()}`;
   }
   return out;
 };
@@ -151,13 +151,8 @@ const encodeAsciiString = (value: string): string => {
   return `${out})`;
 };
 
-const encodeTextString = (value: string): string => {
-  let hex = "FEFF";
-  for (let index = 0; index < value.length; index += 1) {
-    hex += value.charCodeAt(index).toString(16).padStart(4, "0").toUpperCase();
-  }
-  return `<${hex}>`;
-};
+const encodeTextString = (value: string): string =>
+  `<FEFF${bytesToHex(encodeUtf16BE(value)).toUpperCase()}>`;
 
 /** Collects the file's bytes and hands back the offset of each object. */
 type ByteSink = {
@@ -176,11 +171,7 @@ const createByteSink = (): ByteSink => {
   };
   return {
     writeAscii: (text) => {
-      const bytes = new Uint8Array(text.length);
-      for (let index = 0; index < text.length; index += 1) {
-        bytes[index] = text.charCodeAt(index) & 0xff;
-      }
-      writeBytes(bytes);
+      writeBytes(encodeBinaryString(text));
     },
     writeBytes,
     offset: () => length,

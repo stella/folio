@@ -1,3 +1,4 @@
+import { createTextReader } from "@stll/folio-core/utils/textEncoding";
 /**
  * Whether a file is a WordprocessingML package at all, decided the way the
  * Open Packaging Conventions say to find its main part: the package
@@ -170,7 +171,7 @@ const inflatePrefix = (
   limit: number,
 ): Promise<{ text: string; truncated: boolean }> =>
   new Promise((resolve, reject) => {
-    const decoder = new TextDecoder();
+    const decoder = createTextReader();
     let text = "";
     let size = 0;
     const stream = entry.internalStream("uint8array");
@@ -178,14 +179,14 @@ const inflatePrefix = (
       .on("data", (chunk: Uint8Array) => {
         const room = limit - size;
         size += chunk.length;
-        text += decoder.decode(chunk.subarray(0, Math.max(0, room)), { stream: true });
+        text += decoder.read(chunk.subarray(0, Math.max(0, room)));
         if (size > limit) {
           stream.pause();
-          resolve({ text: text + decoder.decode(), truncated: true });
+          resolve({ text: text + decoder.finishPrefix(), truncated: true });
         }
       })
       .on("error", reject)
-      .on("end", () => resolve({ text: text + decoder.decode(), truncated: false }))
+      .on("end", () => resolve({ text: text + decoder.finish(), truncated: false }))
       .resume();
   });
 

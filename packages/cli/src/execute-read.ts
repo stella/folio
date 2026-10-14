@@ -1,3 +1,9 @@
+import {
+  base64ToBytes,
+  bytesToBase64Url,
+  decodeText,
+  encodeUtf8,
+} from "@stll/folio-core/utils/textEncoding";
 import { panic, Result } from "better-result";
 
 import { createReviewerBridge } from "@stll/folio-agents/bridges/reviewer";
@@ -107,11 +113,11 @@ const labelBlocks = (
 type ReadCursor = { fileVersion: string; afterBlockId: string };
 
 export const encodeReadCursor = ({ fileVersion, afterBlockId }: ReadCursor): string =>
-  Buffer.from(JSON.stringify({ v: fileVersion, a: afterBlockId }), "utf8").toString("base64url");
+  bytesToBase64Url(encodeUtf8(JSON.stringify({ v: fileVersion, a: afterBlockId })));
 
 const decodeReadCursor = (cursor: string): ReadCursor | null => {
   const parsed = Result.try((): unknown =>
-    JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
+    JSON.parse(decodeText(base64ToBytes(cursor), { ignoreBOM: true })),
   );
   if (parsed.isErr() || !isRecord(parsed.value)) {
     return null;
@@ -125,8 +131,7 @@ const decodeReadCursor = (cursor: string): ReadCursor | null => {
 const invalidInput = (message: string, hint?: string): FolioCliError =>
   cliError({ code: FOLIO_CLI_ERROR_CODES.invalidInput, message, hint });
 
-const byteLength = (value: unknown): number =>
-  Buffer.byteLength(JSON.stringify(value) ?? "", "utf8");
+const byteLength = (value: unknown): number => encodeUtf8(JSON.stringify(value) ?? "").byteLength;
 
 type ReadDocumentPage = {
   blocks: unknown[];

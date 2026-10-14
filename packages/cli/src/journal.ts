@@ -1,3 +1,4 @@
+import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 /**
  * The transaction journal: `.folio/journal.jsonl` beside the document (or
  * `--journal`), one JSON line per committed transaction plus one per crash
@@ -109,7 +110,7 @@ export const appendJournal = async (
   const { handle } = opened.value;
   const written = await Result.tryPromise(async () => {
     try {
-      await handle.writeFile(`${JSON.stringify(entry)}\n`);
+      await handle.writeFile(encodeUtf8(`${JSON.stringify(entry)}\n`));
       await handle.sync();
     } finally {
       await handle.close();
@@ -186,7 +187,7 @@ export const findCommit = async (
   const bytes = await readSidecarFile(journalPath);
   if (bytes.isErr()) return Result.err(bytes.error);
   let found: CommittedTransaction | undefined;
-  for (const line of new TextDecoder().decode(bytes.value).split("\n")) {
+  for (const line of decodeText(bytes.value).split("\n")) {
     if (!line.includes(txId)) continue;
     if (isDiscardRecord(line, txId)) return Result.ok(undefined);
     const commit = parseCommit(line);
@@ -232,7 +233,7 @@ export const latestCommitFor = async (
   if (parent.isErr() || parent.value.type !== "directory") return null;
   const bytes = await readSidecarFile(journal);
   if (bytes.isErr()) return null;
-  const lines = new TextDecoder().decode(bytes.value).split("\n");
+  const lines = decodeText(bytes.value).split("\n");
   const discarded = new Set<unknown>();
   for (let index = lines.length - 1; index >= 0; index--) {
     const parsed = Result.try((): unknown => JSON.parse(lines[index] ?? ""));

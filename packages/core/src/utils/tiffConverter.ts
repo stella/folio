@@ -1,3 +1,4 @@
+import { base64ToBytes } from "./textEncoding";
 /**
  * TIFF to PNG Converter
  *
@@ -136,12 +137,7 @@ function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer | null {
     return null;
   }
   try {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.codePointAt(i) ?? 0;
-    }
-    return bytes.buffer;
+    return base64ToBytes(base64).buffer;
   } catch {
     return null;
   }

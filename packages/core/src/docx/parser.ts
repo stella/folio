@@ -1,3 +1,4 @@
+import { decodeText, encodeUtf8 } from "../utils/textEncoding";
 /**
  * Main Parser Orchestrator - Unified parseDocx function
  *
@@ -296,7 +297,7 @@ const extractAltChunkPlainText = async (
   }
   context.budget.remainingBytes -= bytes.byteLength;
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return decodeText(bytes, { fatal: true });
   } catch {
     return undefined;
   }
@@ -1025,7 +1026,7 @@ async function buildMediaMap(
         ? renderEmfSvg(data)
         : null;
     if (emfSvg) {
-      const svgBytes = new TextEncoder().encode(emfSvg);
+      const svgBytes = encodeUtf8(emfSvg);
       if (svgBytes.byteLength <= remainingEmfPreviewBytes) {
         remainingEmfPreviewBytes -= svgBytes.byteLength;
         const mediaFile: MediaFile = {
@@ -1070,11 +1071,11 @@ async function buildMediaMap(
   for (const [path, xml] of raw.allXml.entries()) {
     if (
       !/^word\/diagrams\/[^/]+\.xml$/iu.test(path) ||
-      new TextEncoder().encode(xml).byteLength > FOLIO_XML_RESOURCE_LIMITS.maxBytes
+      encodeUtf8(xml).byteLength > FOLIO_XML_RESOURCE_LIMITS.maxBytes
     ) {
       continue;
     }
-    const data = new TextEncoder().encode(xml).buffer;
+    const data = encodeUtf8(xml).buffer;
     const file: MediaFile = {
       path,
       filename: path.split("/").pop() ?? path,

@@ -17,6 +17,7 @@
 </template>
 
 <script setup lang="ts">
+import { sliceText } from "@stll/folio-core/utils/sliceText";
 import { computed } from "vue";
 
 const props = withDefaults(
@@ -39,7 +40,7 @@ function toISODate(value: string | Date | null): string {
     const day = value.getDate().toString().padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
-  return value.length >= 10 ? value.slice(0, 10) : value;
+  return value.length >= 10 ? sliceText({ text: value, units: "codeUnits", end: 10 }) : value;
 }
 
 const isoValue = computed(() => toISODate(props.value));

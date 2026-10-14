@@ -1,3 +1,4 @@
+import { readBlobText } from "@stll/folio-core/utils/textEncoding";
 /**
  * Vue port of packages/react/src/hooks/useClipboard.ts. Wraps the
  * framework-agnostic clipboard helpers in core.
@@ -83,10 +84,10 @@ export function useClipboard(options: UseClipboardOptions = {}): UseClipboardRet
         let plainText = "";
         for (const item of items) {
           if (item.types.includes("text/html")) {
-            html = await (await item.getType("text/html")).text();
+            html = await readBlobText(await item.getType("text/html"));
           }
           if (item.types.includes("text/plain")) {
-            plainText = await (await item.getType("text/plain")).text();
+            plainText = await readBlobText(await item.getType("text/plain"));
           }
         }
         if (asPlainText) html = "";

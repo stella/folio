@@ -1,3 +1,4 @@
+import { base64ToBytes } from "../utils/textEncoding";
 import { Result } from "better-result";
 import { Fragment, Slice } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
@@ -549,7 +550,7 @@ export const prepareCanonicalPaste = ({
           if (payload.length > Math.ceil((MAX_CLIPBOARD_IMAGE_BYTES * 4) / 3))
             return refuse("The clipboard image exceeds the import size limit.");
           const decoded = Result.try({
-            try: () => Uint8Array.from(atob(payload), (char) => char.charCodeAt(0)),
+            try: () => base64ToBytes(payload),
             catch: () =>
               new CanonicalSessionError({
                 gap: CANONICAL_GAP.dispatch,

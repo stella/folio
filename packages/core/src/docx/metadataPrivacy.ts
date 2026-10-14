@@ -1,3 +1,4 @@
+import { encodeUtf8, decodeText } from "../utils/textEncoding";
 import { writeZipPart } from "@stll/docx-core/zip";
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
@@ -232,7 +233,7 @@ const readCoreProperties = async (entry: JSZip.JSZipObject): Promise<string> => 
     });
   }
   // `ignoreBOM` keeps a leading U+FEFF, as the previous string read did.
-  return new TextDecoder("utf-8", { ignoreBOM: true }).decode(result.bytes);
+  return decodeText(result.bytes, { ignoreBOM: true });
 };
 
 /** Rewrite selected package metadata fields without changing other package parts. */
@@ -261,7 +262,7 @@ export const rewriteDocxMetadataPrivacy = async (
   }
   // Write back under the entry's original name/casing so a non-conventional
   // producer doesn't end up with two core-properties-shaped parts.
-  writeZipPart({ zip, path: coreProperties.name, data: rewritten.xml });
+  writeZipPart({ zip, path: coreProperties.name, data: encodeUtf8(rewritten.xml) });
   return {
     buffer: await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" }),
     privacyReport: {

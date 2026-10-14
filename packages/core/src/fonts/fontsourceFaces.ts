@@ -1,3 +1,4 @@
+import { decodeText } from "../utils/textEncoding";
 /**
  * Faces from the `@fontsource` packages, for a caller that measures and paints
  * without a browser's font stack: a PDF export, a server-rendered preview, a
@@ -152,7 +153,7 @@ const parseRangeList = (declared: string): readonly CodePointRange[] =>
 
 const parseDeclaredRanges = (bytes: Uint8Array): ReadonlyMap<string, readonly CodePointRange[]> => {
   const ranges = new Map<string, readonly CodePointRange[]>();
-  const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  const parsed: unknown = JSON.parse(decodeText(bytes));
   if (typeof parsed !== "object" || parsed === null) return ranges;
   for (const [subset, declared] of Object.entries(parsed)) {
     if (typeof declared === "string") {

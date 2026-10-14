@@ -1,3 +1,4 @@
+import { sliceText } from "@stll/folio-core/utils/sliceText";
 import type {
   FolioBlockDiff,
   FolioCompareDocxVersionsOptions,
@@ -50,7 +51,7 @@ const truncateUnchangedRun = (text: string): string => {
   if (text.length <= UNCHANGED_EDGE_CHARS * 2 + ELLIPSIS.length) {
     return text;
   }
-  return `${text.slice(0, UNCHANGED_EDGE_CHARS)}${ELLIPSIS}${text.slice(-UNCHANGED_EDGE_CHARS)}`;
+  return `${sliceText({ text, units: "codeUnits", end: UNCHANGED_EDGE_CHARS })}${ELLIPSIS}${sliceText({ text, units: "codeUnits", start: -UNCHANGED_EDGE_CHARS })}`;
 };
 
 const renderSegment = (segment: FolioVersionDiffSegment): string => {

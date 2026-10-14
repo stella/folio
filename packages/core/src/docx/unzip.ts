@@ -1,3 +1,4 @@
+import { encodeUtf8 } from "../utils/textEncoding";
 import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * DOCX Unzipper
@@ -554,7 +555,7 @@ export const replaceRawDocxXmlParts = async (
       lowerPath: path.toLowerCase(),
       content: xmlContent,
     });
-    writeZipPart({ zip: content.originalZip, path, data: xmlContent });
+    writeZipPart({ zip: content.originalZip, path, data: encodeUtf8(xmlContent) });
     identitiesChanged = true;
   }
   if (identitiesChanged) {

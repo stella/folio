@@ -1,3 +1,4 @@
+import { encodeUtf8, decodeText } from "../utils/textEncoding";
 import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * What a repack carries out of the source package, and the guarantee that
@@ -183,7 +184,10 @@ const readRelationshipParts = async (zip: JSZip): Promise<RelationshipPart[]> =>
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- a handful of tiny parts, read in package order
-    parts.push({ path, xml: await file.async("text") });
+    parts.push({
+      path,
+      xml: await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+    });
   }
   return parts;
 };
@@ -199,7 +203,7 @@ const writePart = ({ zip, path, xml, compressionLevel }: WritePartOptions): void
   writeZipPart({
     zip,
     path,
-    data: xml,
+    data: encodeUtf8(xml),
     options: {
       compression: "DEFLATE",
       compressionOptions: { level: compressionLevel },
@@ -275,7 +279,9 @@ export const reconcilePackageReferences = async (
       `\\s+r:[A-Za-z]+\\s*=\\s*(?<quote>["'])(?<id>${idPattern})\\k<quote>`,
       "gu",
     );
-    const xml = await file.async("text");
+    const xml = await file
+      .async("uint8array")
+      .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
     const removedIds = new Set<string>();
     const scrubbed = xml.replaceAll(referencePattern, (...args) => {
       const groups = args.at(-1) as { id?: string } | undefined;
@@ -297,18 +303,17 @@ export const reconcilePackageReferences = async (
     return repair;
   }
   let droppedOverride = false;
-  const prunedContentTypes = (await contentTypes.async("text")).replaceAll(
-    CONTENT_TYPE_ELEMENT,
-    (element) => {
-      const partName = PART_NAME_ATTRIBUTE.exec(element)?.groups?.["value"];
-      if (partName === undefined || isPresent(present, partName)) {
-        return element;
-      }
-      repair.danglingOverrides.push(normalizePartPath(decodePartName(partName) ?? partName));
-      droppedOverride = true;
-      return "";
-    },
-  );
+  const prunedContentTypes = (
+    await contentTypes.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true }))
+  ).replaceAll(CONTENT_TYPE_ELEMENT, (element) => {
+    const partName = PART_NAME_ATTRIBUTE.exec(element)?.groups?.["value"];
+    if (partName === undefined || isPresent(present, partName)) {
+      return element;
+    }
+    repair.danglingOverrides.push(normalizePartPath(decodePartName(partName) ?? partName));
+    droppedOverride = true;
+    return "";
+  });
   if (droppedOverride) {
     writePart({ zip, path: contentTypes.name, xml: prunedContentTypes, compressionLevel });
   }
@@ -385,7 +390,9 @@ export const checkPackageIntegrity = async (zip: JSZip): Promise<PackageIntegrit
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- a handful of XML parts, read in package order
-    const xml = await file.async("text");
+    const xml = await file
+      .async("uint8array")
+      .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
     const ids = idsByOwningPart.get(path);
     for (const match of xml.matchAll(REFERENCE_ATTRIBUTE)) {
       const id = match.groups?.["id"];

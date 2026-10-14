@@ -1,3 +1,4 @@
+import { sliceText } from "@stll/folio-core/utils/sliceText";
 /**
  * Framework-agnostic comment + tracked-change helpers shared by adapters. The
  * data shapes and string-formatting rules here are part of the visible UI
@@ -34,12 +35,12 @@ export function formatDate(dateStr?: string): string {
 }
 
 export function getInitials(name: string): string {
-  return name
+  const initials = name
     .split(/\s+/)
-    .map((w) => w[0])
+    .map((word) => sliceText({ text: word, units: "graphemes", end: 1 }))
     .join("")
-    .toUpperCase()
-    .slice(0, 2);
+    .toUpperCase();
+  return sliceText({ text: initials, units: "graphemes", end: 2 });
 }
 
 // Kibana-style avatar palette — deterministic per author name.
@@ -69,7 +70,9 @@ export function getAvatarColor(name: string): string {
 }
 
 export function truncateText(text: string, maxLength = 50): string {
-  return text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
+  return text.length > maxLength
+    ? sliceText({ text, units: "codeUnits", end: maxLength }) + "..."
+    : text;
 }
 
 /**

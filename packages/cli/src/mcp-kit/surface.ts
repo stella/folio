@@ -1,3 +1,10 @@
+import {
+  base64ToBytes,
+  bytesToBase64Url,
+  decodeText,
+  encodeUtf8,
+} from "@stll/folio-core/utils/textEncoding";
+import { Result } from "better-result";
 /**
  * A tool surface with lazy discovery. The frequent tools are listed directly
  * with compact schemas; the rest stay out of `tools/list` and are reached
@@ -136,10 +143,12 @@ const compareIds = (a: string, b: string): number => {
   return a < b ? -1 : 1;
 };
 
-const encodeCursor = (id: string): string => Buffer.from(id, "utf8").toString("base64url");
+const encodeCursor = (id: string): string => bytesToBase64Url(encodeUtf8(id));
 
 const decodeCursor = (cursor: string): string | null => {
-  const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+  const parsed = Result.try(() => decodeText(base64ToBytes(cursor), { ignoreBOM: true }));
+  if (parsed.isErr()) return null;
+  const decoded = parsed.value;
   return decoded.length > 0 && encodeCursor(decoded) === cursor ? decoded : null;
 };
 

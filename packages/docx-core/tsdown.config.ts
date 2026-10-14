@@ -8,6 +8,7 @@ export default defineConfig({
     "src/projection.ts",
     "src/schema/sequenceChildren.ts",
     "src/zip/writeZipPart.ts",
+    "src/encoding.ts",
   ],
   format: ["esm"],
   platform: "neutral",

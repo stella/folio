@@ -1,3 +1,4 @@
+import { sliceText } from "../utils/sliceText";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 
 import type { DocxConformanceClass } from "../types/document";
@@ -103,7 +104,7 @@ export const detectDocxConformanceClass = (documentXml: string | null): DocxConf
   const scanTarget =
     documentXml.length <= ROOT_START_TAG_SCAN_LIMIT
       ? documentXml
-      : documentXml.slice(0, ROOT_START_TAG_SCAN_LIMIT);
+      : sliceText({ text: documentXml, units: "codeUnits", end: ROOT_START_TAG_SCAN_LIMIT });
   const rootStartTag = scanRootStartTag(scanTarget);
   const fastRoot =
     rootStartTag === undefined

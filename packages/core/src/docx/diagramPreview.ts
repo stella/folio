@@ -1,3 +1,4 @@
+import { decodeText } from "../utils/textEncoding";
 import type { Image, MediaFile, PreviewShape, RelationshipMap } from "../types/document";
 import {
   findChildByNamespaceUri,
@@ -88,7 +89,7 @@ const partByRelationshipId = ({
     return cached;
   }
   const file = media.get(path);
-  const parsed = file?.data ? parseXmlDocument(new TextDecoder().decode(file.data)) : null;
+  const parsed = file?.data ? parseXmlDocument(decodeText(new Uint8Array(file.data))) : null;
   cache.set(path, parsed);
   return parsed;
 };

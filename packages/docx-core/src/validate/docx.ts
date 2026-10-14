@@ -1,3 +1,4 @@
+import { decodeText } from "../encoding";
 import { panic } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import JSZip from "jszip";
@@ -401,7 +402,7 @@ export const validateDocxPackage = async (
       };
     }
     const documentBytes = documentRead?.bytes;
-    const documentXml = documentBytes ? new TextDecoder().decode(documentBytes) : undefined;
+    const documentXml = documentBytes ? decodeText(documentBytes) : undefined;
     const documentError = documentXml
       ? validateDocumentXml(documentXml)
       : "Generated DOCX has no word/document.xml root document.";
@@ -424,9 +425,7 @@ export const validateDocxPackage = async (
         error: documentRelsRead.error,
       };
     }
-    const documentRelsXml = documentRelsRead
-      ? new TextDecoder().decode(documentRelsRead.bytes)
-      : undefined;
+    const documentRelsXml = documentRelsRead ? decodeText(documentRelsRead.bytes) : undefined;
     if (documentRelsXml?.includes("/relationships/numbering") && !zip.file("word/numbering.xml")) {
       return {
         valid: false,
@@ -452,7 +451,7 @@ export const validateDocxPackage = async (
             code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
             error: read.error,
           };
-        xml = new TextDecoder().decode(read.bytes);
+        xml = decodeText(read.bytes);
       }
       const issue = validateSchemaAttributes(xml);
       if (issue)
