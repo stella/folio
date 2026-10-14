@@ -68,11 +68,12 @@ export const normalizeListModelRendering = (document: Document): CanonicalListNo
       ) {
         next.formatting = { ...formatting, numPrFromStyle: styleNumbering };
       }
-      // A paragraph that owns its reference, or whose current style supplies no
-      // numbering, keeps no style-derived numbering from an earlier style.
+      // A paragraph that owns its reference, or whose named style supplies no
+      // numbering, keeps no style-derived numbering from an earlier style. Without
+      // a style ID the inherited reference is authored and stays.
       if (
         formatting?.numPrFromStyle !== undefined &&
-        (styleNumbering === undefined ||
+        ((formatting.styleId !== undefined && styleNumbering === undefined) ||
           formatting.numPr?.kind === "reference" ||
           formatting.numPr?.kind === "none")
       ) {
