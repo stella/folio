@@ -355,14 +355,10 @@ export function useFindReplace({
         },
         getLayout ? { renderedStories: getRenderedSearchStories(getLayout()) } : undefined,
       );
-      let unchangedCount = 0;
-      const mutationMatches = matches.filter((match) => {
-        if (replaceEligibility(match).status === "allowed" && match.text === replaceText) {
-          unchangedCount++;
-          return false;
-        }
-        return true;
-      });
+      const mutationMatches = matches.filter(
+        (match) => replaceEligibility(match).status === "blocked" || match.text !== replaceText,
+      );
+      const unchangedCount = matches.length - mutationMatches.length;
       if (mutationMatches.length === 0) return { replacedCount: unchangedCount, skippedCount: 0 };
       const outcome = manager.replaceAll(currentDocument, mutationMatches, replaceText);
       if (!outcome) {
