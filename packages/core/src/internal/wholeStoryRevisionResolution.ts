@@ -1,3 +1,4 @@
+import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { Mapping, StepMap, ReplaceStep, Transform, type Step } from "prosemirror-transform";
@@ -44,10 +45,26 @@ const resolveProperties = ({
   steps,
   changedRanges,
 }: ResolvePropertiesOptions) => {
+  const collector = createResolvedCommentPointCollector({
+    removes: (node) =>
+      mode === "accept" && doc.type.schema.marks["deletion"]?.isInSet(node.marks) !== undefined,
+    retiresStructure: () => mode === "accept",
+  });
   let structural = false;
   // Noted on this walk so a story without one needs no separate scan.
   let runsIntoTable = false;
-  const walk = (node: PMNode, position: number): PMNode => {
+  const walk = ({
+    node,
+    position,
+    eligibleComments = true,
+    previous,
+  }: {
+    node: PMNode;
+    position: number;
+    eligibleComments?: boolean;
+    previous?: PMNode;
+  }): PMNode => {
+    const childComments = eligibleComments && collector.visit(node, position, previous);
     if (node.isText) return node;
     if (!runsIntoTable && !node.isTextblock) {
       for (let index = 0; index + 1 < node.childCount; index++) {
@@ -116,9 +133,16 @@ const resolveProperties = ({
     }
     const children: PMNode[] = [];
     let changed = false;
-    const visitChild = (child: PMNode, childPosition: number): PMNode => {
+    const visitChild = (child: PMNode, childPosition: number, previousChild?: PMNode): PMNode => {
       const replacement = rebased.get(child) ?? child;
-      if (rebased.size === 0) return walk(replacement, childPosition);
+      if (rebased.size === 0)
+        return walk({
+          node: replacement,
+          position: childPosition,
+          eligibleComments: childComments,
+          ...(previousChild ? { previous: previousChild } : {}),
+        });
+      if (childComments) collector.visit(child, childPosition, previousChild);
       recordNodeResolution({ before: child, after: replacement, position: childPosition, steps });
       if (replacement.isLeaf) return replacement;
       const nested: PMNode[] = [];
@@ -127,15 +151,19 @@ const resolveProperties = ({
       );
       return rebuild(replacement, { content: nested });
     };
-    resolved.forEach((child, offset) => {
-      const result = visitChild(child, position + 1 + offset);
+    resolved.forEach((child, offset, index) => {
+      const result = visitChild(
+        child,
+        position + 1 + offset,
+        index > 0 ? (node.maybeChild(index - 1) ?? undefined) : undefined,
+      );
       children.push(result);
       changed ||= result !== child;
     });
     return changed ? rebuild(resolved, { content: children }) : resolved;
   };
-  const resolved = walk(doc, -1);
-  return { resolved, structural, runsIntoTable };
+  const resolved = walk({ node: doc, position: -1 });
+  return { resolved, structural, runsIntoTable, pointComments: new Set(collector.finish().keys()) };
 };
 
 type StructuralContext = {
@@ -647,6 +675,7 @@ const resolveStoryRevisions = ({
   });
   const properties = propertyResult.resolved;
   const inline = resolveInlineRevisions({
+    pointComments: propertyResult.pointComments,
     doc: properties,
     mode,
     styleResolver,

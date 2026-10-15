@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 1026397380,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 4057693336,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "31617F9A",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hk7ezx1"
+          },
+          "formatting": {
+            "italic": true
+          }
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "31617F9A",
+          "find": "Launch",
+          "replace": "amended",
+          "precondition": {
+            "blockTextHash": "hrit6rr"
+          }
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from random flow seed 1026397380",
+  "title": "PINNED #1379 b4fcc3f71f4d3b79, reported seed 1026397380: reader projection survives save"
+}

@@ -26,15 +26,15 @@ const nothingFollowsIn = (
 
 /**
  * Whether the paragraph starting at `at` is the one its container ENDS with,
- * which is the one place a paragraph mark cannot carry a revision.
+ * where a paragraph break cannot join into a following paragraph.
  *
- * A deleted mark asks a reader to join the paragraph it ends with the one
- * after it, and an inserted mark says that break was added, so rejecting it
- * closes the paragraph back over the next one. A body, a table cell, a header
- * or footer, a note and a text box each end with a paragraph that nothing
- * follows, so neither direction can be resolved there: a consumer is left with
- * a revision it can only ignore, and the redline no longer resolves to the two
- * documents it was written from.
+ * Added boundaries normally rotate onto a preceding paragraph, so rejecting
+ * them joins back into this one. If an occupied boundary or a table prevents
+ * rotation, the final inserted paragraph must retain its own revision: the
+ * resolver removes the whole paragraph after rejecting its inserted content.
+ * A terminal deletion, by contrast, clears without removing the container's
+ * required ending. Bodies, table cells, headers, footers, notes and text boxes
+ * share these rules.
  *
  * A paragraph before a TABLE is not one of those: the table is a following
  * sibling, so the paragraph does not end anything and carries its own mark

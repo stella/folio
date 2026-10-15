@@ -11,6 +11,12 @@
       "seed": 20261005,
       "note": "Owned comment-reference atoms occupy physical offset units; inverse ownership checks remove only owned anchors before comparing preserved text.",
       "date": "2026-10-04"
+    },
+    {
+      "seed": 20261005,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Comment operations preserve unrelated package relationships while their owned state is reversed.",
+      "date": "2026-10-13"
     }
   ],
   "generated text and revision histories retain live comment ownership and exact reversible state": [

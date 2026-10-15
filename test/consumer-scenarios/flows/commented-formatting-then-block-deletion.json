@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 476301935,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 37,
+            "endOffset": 42,
+            "selectedTextHash": "h4k7sdk"
+          },
+          "comment": {
+            "text": "Review this term."
+          }
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 37,
+            "endOffset": 42,
+            "selectedTextHash": "h4k7sdk"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "core batch",
+      "seed": 2,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ],
+      "atomic": true
+    }
+  ],
+  "title": "commented formatting then block deletion"
+}

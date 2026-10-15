@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "direct",
+  "seed": 1576447779,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3280131198,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "5E88C024",
+            "startOffset": 0,
+            "endOffset": 2,
+            "selectedTextHash": "h6jou"
+          },
+          "comment": {
+            "text": "Invoice clause payment."
+          }
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "5E88C024",
+          "find": "🎉",
+          "replace": "",
+          "precondition": {
+            "blockTextHash": "hs2py72"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -23,7 +23,10 @@
  */
 
 import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
-import type { FolioDocumentStoryHandle } from "@stll/folio-core/server";
+import {
+  FOLIO_DOCUMENT_OPERATION_TYPES,
+  type FolioDocumentStoryHandle,
+} from "@stll/folio-core/server";
 import { readFileSync } from "node:fs";
 
 import { observeHits, registerFeatureOperations, type StepKind } from "./coverage.ts";
@@ -265,13 +268,21 @@ const drawOperations = (
   return operations;
 };
 
-const tool = (flow: Flow, name: string, args: unknown) =>
-  executeFolioToolCallUntyped(
+const tool = (flow: Flow, name: string, args: unknown) => {
+  const requestedTypes = name === "suggest_changes" ? flow.planned?.operationTypes : undefined;
+  const operationTypes =
+    requestedTypes === undefined
+      ? undefined
+      : FOLIO_DOCUMENT_OPERATION_TYPES.filter((type) => requestedTypes.includes(type));
+  if (requestedTypes !== undefined && operationTypes?.length !== requestedTypes.length)
+    throw new TypeError(`Unknown flow operation types: ${JSON.stringify(requestedTypes)}`);
+  return executeFolioToolCallUntyped(
     name,
     args,
     createReviewerBridge(flow.reviewer, { mode: flow.mode }),
-    {},
+    operationTypes === undefined ? {} : { suggestChanges: { operationTypes } },
   );
+};
 
 type Receipt = { applied: readonly { id: string }[] };
 
@@ -308,6 +319,11 @@ const suggestChecked = async (
   const asked = Array.isArray(operations) ? (operations as Operation[]) : [];
   touch(flow, asked);
   const outcome = appliedOf(asked, receipt);
+  const expectedApplied = flow.planned?.expectedApplied;
+  if (expectedApplied !== undefined && outcome.applied.length !== expectedApplied)
+    throw new Error(
+      `step ${flow.log.length - 1}: expected ${expectedApplied} applied operations, got ${outcome.applied.length}; receipt ${JSON.stringify(receipt)}; ${flow.log.at(-1)}`,
+    );
   await assertRequestedOutcome(flow.reviewer, pre, outcome, `step ${flow.log.length - 1}`);
   return outcome.applied.length;
 };
@@ -385,7 +401,12 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<StepEffect> => {
     flow.random = createRandom(planned.seed);
   }
   flow.planned = planned;
-  flow.trace.push({ action, seed: flow.random.state() });
+  flow.trace.push({
+    action,
+    seed: flow.random.state(),
+    ...(planned?.operationTypes === undefined ? {} : { operationTypes: planned.operationTypes }),
+    ...(planned?.expectedApplied === undefined ? {} : { expectedApplied: planned.expectedApplied }),
+  });
   const { random } = flow;
   switch (action) {
     case "suggest_changes": {

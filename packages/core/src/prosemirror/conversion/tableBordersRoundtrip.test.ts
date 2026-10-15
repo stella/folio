@@ -240,3 +240,21 @@ describe("w:tblBorders round-trip", () => {
     );
   });
 });
+
+test("inherited cell borders and margins do not become direct formatting", () => {
+  for (const baseline of [undefined, {}]) {
+    for (const side of ["top", "bottom", "left", "right", "insideH", "insideV"] as const) {
+      const document = makeDocumentWithTableBorders({ [side]: singleBorder });
+      const table = expectFirstTable(document);
+      table.formatting = { ...table.formatting, cellMargins: { top: { value: 80, type: "dxa" } } };
+      for (const row of table.rows) for (const cell of row.cells) cell.formatting = baseline;
+      const projected = toProseDoc(document);
+      const roundTripped = fromProseDoc(projected, document, {
+        stylesheetSource: { type: "package" },
+      });
+      for (const row of expectFirstTable(roundTripped).rows) {
+        for (const cell of row.cells) expect(cell.formatting).toBeUndefined();
+      }
+    }
+  }
+});

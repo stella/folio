@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 1026396991,
+  "steps": [
+    {
+      "action": "mistake",
+      "seed": 2162185937
+    },
+    {
+      "action": "story batch",
+      "seed": 3482222174,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 13
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Invoice written invoice.",
+          "alignment": "right"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3858293056,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "@5",
+          "text": "Delivery buyer buyer schedule invoice warranty invoice."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 4170422741,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 35,
+            "endOffset": 44,
+            "selectedTextHash": "hs1tsq3"
+          },
+          "comment": {
+            "text": "Check this word."
+          }
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 35,
+            "endOffset": 44,
+            "selectedTextHash": "hs1tsq3"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from collisions flow seed 1026396991",
+  "title": "PINNED #1379 d1d649f92ee45f9c, reported seed 1026396991: reader projection survives save"
+}

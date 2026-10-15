@@ -4,7 +4,8 @@ import type { TextFormatting } from "../types/document";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
 import { marksToTextFormatting } from "./runFormattingFromMarks";
 import { textFormattingToMarks } from "./extensions/marks/markUtils";
-import { expectCharacterStyleMarkAttrs } from "./attrs";
+import { expectCharacterStyleMarkAttrs, expectRunIdentityMarkAttrs } from "./attrs";
+import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 import {
   getParagraphMarkSuppressionOverrides,
@@ -35,6 +36,16 @@ export const readAuthoredRunFormatting = ({
     paragraphMarkPrecedesStyle: context.paragraphMarkPrecedesStyle,
     ...(styleResolver !== undefined ? { styleResolver } : {}),
   });
+
+/** Preserve the authored distinction between an absent and empty property set in revisions. */
+export const readAuthoredRunPropertySnapshot = (
+  options: ReadAuthoredRunFormattingOptions,
+): TextFormatting | undefined => {
+  const formatting = readAuthoredRunFormatting(options);
+  if (Object.keys(formatting).length > 0) return formatting;
+  const identity = options.marks.find(({ type }) => type.name === RUN_IDENTITY_MARK_NAME);
+  return identity && expectRunIdentityMarkAttrs(identity).emptyFormatting ? formatting : undefined;
+};
 
 type ReconcileRunFormattingMarksOptions = {
   authoredFormatting: TextFormatting;
