@@ -4,13 +4,13 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 
 import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
+import { isCommentRangeInertAtom } from "../../commentRangeInlineAtoms";
 import {
   planCommentReferenceRepairs,
   type CommentMarkExtent,
   type CommentReferenceOccurrence,
 } from "../../commentReferenceIntegrity";
 import { readRangeAnchorAttrs } from "../../rangeAnchorAttrs";
-import { trackedRunInlineAtomDisposition } from "../../trackedRunInlineAtoms";
 import { createNodeExtension } from "../create";
 import { RANGE_ANCHOR_NODE_NAME } from "./RangeAnchorExtension";
 
@@ -33,8 +33,8 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
   const unanchoredMarks: CommentReferenceSurvey["unanchoredMarks"] = [];
 
   doc.descendants((node, position) => {
-    const transparent = trackedRunInlineAtomDisposition(node) === "transparent";
-    if (transparent) {
+    const inert = isCommentRangeInertAtom(node);
+    if (inert) {
       for (const mark of node.marks) {
         if (mark.type.name === "comment")
           unanchoredMarks.push({ position, size: node.nodeSize, mark });
@@ -67,7 +67,7 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
       }
       return false;
     }
-    if (transparent) return false;
+    if (inert) return false;
     if (!node.isInline) {
       return true;
     }

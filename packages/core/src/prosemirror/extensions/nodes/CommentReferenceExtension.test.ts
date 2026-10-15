@@ -16,7 +16,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { schema } from "../../schema";
 import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
 import { planCommentReferenceRepairs } from "../../commentReferenceIntegrity";
-import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "../../trackedRunInlineAtoms";
+import { COMMENT_RANGE_INLINE_ATOM_PARTICIPATION } from "../../commentRangeInlineAtoms";
 import { CommentReferenceExtension } from "./CommentReferenceExtension";
 
 const integrityPlugin = (): Plugin => {
@@ -109,12 +109,12 @@ describe("CommentReferenceExtension editing integrity", () => {
   });
 });
 
-type TransparentAtom = {
+type CommentRangeInertAtom = {
   [
-    Name in keyof typeof TRACKED_RUN_INLINE_ATOM_DISPOSITIONS
-  ]: (typeof TRACKED_RUN_INLINE_ATOM_DISPOSITIONS)[Name] extends "transparent" ? Name : never;
-}[keyof typeof TRACKED_RUN_INLINE_ATOM_DISPOSITIONS];
-const transparentAtoms = {
+    Name in keyof typeof COMMENT_RANGE_INLINE_ATOM_PARTICIPATION
+  ]: (typeof COMMENT_RANGE_INLINE_ATOM_PARTICIPATION)[Name] extends "inert" ? Name : never;
+}[keyof typeof COMMENT_RANGE_INLINE_ATOM_PARTICIPATION];
+const inertAtoms = {
   commentReference: () => reference(7),
   rangeAnchor: () =>
     schema.node("rangeAnchor", {
@@ -122,11 +122,11 @@ const transparentAtoms = {
       end: { type: "commentRangeEnd", id: 7 },
     }),
   renderedPageBreak: () => schema.node("renderedPageBreak"),
-} satisfies Record<TransparentAtom, () => PMNode>;
+} satisfies Record<CommentRangeInertAtom, () => PMNode>;
 
 // Comment ranges over marker atoms were not part of the editing-integrity fixture.
-for (const [name, create] of Object.entries(transparentAtoms)) {
-  test(`transparent ${name} cannot keep another comment range alive`, () => {
+for (const [name, create] of Object.entries(inertAtoms)) {
+  test(`inert ${name} cannot keep another comment range alive`, () => {
     const state = stateWith([
       schema.text("alpha", [commentMark(7)]),
       create(),
@@ -145,3 +145,21 @@ for (const [name, create] of Object.entries(transparentAtoms)) {
     expect(fixed.transactions).toHaveLength(1);
   });
 }
+
+// Revision ownership and comment-range participation are separate policies:
+// a cached page break stays inside its tracked run but never holds a comment.
+test("a revision-owned rendered page break loses only its comment mark", () => {
+  const insertion = schema.mark("insertion");
+  const state = stateWith([
+    schema.text("alpha", [insertion]),
+    schema.node("renderedPageBreak", null, null, [insertion]),
+    schema.text("tail", [insertion]),
+  ]);
+  const edited = state.applyTransaction(state.tr.addMark(1, 7, commentMark(23))).state;
+  const pageBreakMarks: string[][] = [];
+  edited.doc.descendants((node) => {
+    if (node.type.name === "renderedPageBreak")
+      pageBreakMarks.push(node.marks.map(({ type }) => type.name));
+  });
+  expect(pageBreakMarks).toEqual([["insertion"]]);
+});
