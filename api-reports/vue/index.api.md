@@ -174,6 +174,7 @@ import { SetContentControlValueInput } from '@stll/folio-core/content-controls';
 import { setDocumentWatermark } from '@stll/folio-core/watermark';
 import { setFocusedSuggestionMeta } from '@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations';
 import { setTemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
+import { ShallowRef } from 'vue';
 import { shouldTriggerAutocomplete } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { startAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { STELLA_STYLE_SET_NAME } from '@stll/folio-core/style-sets/stellaStyle';

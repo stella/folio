@@ -6,14 +6,23 @@
 
 import { ComponentOptionsMixin } from 'vue';
 import { ComponentProvideOptions } from 'vue';
+import { ComputedRef } from 'vue';
 import { DefineComponent } from 'vue';
 import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
+import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorView } from 'prosemirror-view';
 import { EndnoteProperties } from '@stll/folio-core/types/content';
+import { FindMatch } from '@stll/folio-core/utils/findReplace';
+import { FindOptions } from '@stll/folio-core/utils/findReplace';
+import { FindResult } from '@stll/folio-core/utils/findReplace';
 import { FootnoteProperties } from '@stll/folio-core/types/content';
+import { Layout } from '@stll/folio-core/layout-engine';
 import { PublicProps } from 'vue';
+import { Ref } from 'vue';
+import { ReplaceAllSummary } from '@stll/folio-core/utils/findReplace';
 import { SectionProperties } from '@stll/folio-core/types/document';
+import { ShallowRef } from 'vue';
 import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
 import { Watermark } from '@stll/folio-core/watermark';
 
