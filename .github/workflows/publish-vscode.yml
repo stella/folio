@@ -157,6 +157,13 @@ jobs:
           fi
           tag="folio-vscode@$VERSION"
           if gh release view "$tag" --repo "$REPO" > /dev/null 2>&1; then
+            # A later package release can leave the extension version alone.
+            # Only a retry from the commit the release names may replace its files.
+            released="$(gh api "repos/$REPO/commits/$tag" --jq .sha)"
+            if [[ "$released" != "$SOURCE_REF" ]]; then
+              echo "::notice::$tag was released from $released; leaving it unchanged."
+              exit 0
+            fi
             gh release upload "$tag" folio.vsix folio.vsix.sha256 --repo "$REPO" --clobber
           else
             gh release create "$tag" folio.vsix folio.vsix.sha256 --repo "$REPO" \
