@@ -120,7 +120,7 @@ describe("canonical public operation batches", () => {
     expect(refused.status).toBe("rejected");
     expect(
       refused.issues.find(({ operationId }) => operationId === "table")?.canonicalRefusal,
-    ).toEqual({ gap: "publicOps.tableProjection" });
+    ).toEqual({ gap: "command-descriptors" });
     expect(editor.session.document).toBe(before);
     expect(editor.state()).toBe(state);
     expect(editor.session.version).toBe(0);
@@ -295,7 +295,7 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
     editor
       .apply([{ id: "table", type: "insertTable", blockId: "12345678", rows: [["cell"]] }])
       .issues.at(0)?.canonicalRefusal?.gap,
-  ).toBe("publicOps.tableProjection");
+  ).toBe("command-descriptors");
   const before = editor.session.document;
   editor.session.beginComposition();
   expect(

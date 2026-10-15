@@ -10,7 +10,6 @@ export const CANONICAL_GAP = {
   watermark: "watermark-model-edits",
   collaboration: "collaboration-session",
   dispatch: "unclassified-transactions",
-  tableActivation: "table-session-activation",
   save: "pm-save-projection",
   resourceReplacement: "canonical-resource-replacement",
   history: "pm-history",
@@ -22,7 +21,6 @@ export const CANONICAL_GAP = {
   aiSnapshots: "pm-ai-snapshots",
   publicComments: "publicOps.comments",
   publicSuggestedMode: "publicOps.suggestedMode",
-  publicTableProjection: "publicOps.tableProjection",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   publicPendingParagraphMarkProperties: "publicOps.pendingParagraphMarkProperties",
   publicHeadlessSession: "publicOps.headlessSession",
@@ -111,12 +109,6 @@ export const CANONICAL_CAPABILITIES = {
     adapters: ["react", "vue"],
     summary: "Unclassified native and plugin mutations are refused at the projection boundary.",
   },
-  [CANONICAL_GAP.tableActivation]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary: "Canonical session activation requires table projection and cell addressing.",
-  },
   [CANONICAL_GAP.save]: {
     owner: "controller",
     kind: "routing",
@@ -182,14 +174,6 @@ export const CANONICAL_CAPABILITIES = {
     adapters: ["react", "vue"],
     summary:
       "Public suggested mode refuses in canonical sessions until pending suggestions use the journal.",
-  },
-  [CANONICAL_GAP.publicTableProjection]: {
-    owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Public table operations refuse while canonical projections require paragraph stories.",
   },
   [CANONICAL_GAP.publicUnsupportedInline]: {
     owner: "document-operations",
