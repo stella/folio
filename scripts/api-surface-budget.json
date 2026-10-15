@@ -30,10 +30,10 @@
     "declarationLines": 1292
   },
   "vue": {
-    "reportBytes": 55010,
-    "reportLines": 1587,
-    "declarationBytes": 158558,
-    "declarationLines": 3315
+    "reportBytes": 57793,
+    "reportLines": 1650,
+    "declarationBytes": 163235,
+    "declarationLines": 3391
   },
   "nuxt": {
     "reportBytes": 442,
