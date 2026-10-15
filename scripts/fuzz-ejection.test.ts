@@ -251,6 +251,33 @@ test("a failing base replay reproduces only requested fingerprints present in it
   });
 });
 
+test("a fingerprint counts only in the replay that requested it", async () => {
+  await withStore(async ({ store, writes }) => {
+    const findings = [finding("stories"), finding("comments")];
+    const [stories, comments] = findings.map(({ record }) => record.marker.fingerprint);
+    if (stories === undefined || comments === undefined)
+      throw new Error("Missing fixture fingerprints");
+    const judged = await fileMainFindings({
+      findings,
+      attempts: [
+        // The consumer replay fails and also logs the comments fingerprint,
+        // which only the separate passing replay below asked about.
+        { requested: [stories], outcome: { status: "failed", fingerprints: [stories, comments] } },
+        { requested: [comments], outcome: { status: "passed", fingerprints: [] } },
+      ],
+      context,
+      store,
+    });
+    expect(judged.fingerprints.map(({ reproducedOnBase }) => reproducedOnBase)).toEqual([
+      true,
+      false,
+    ]);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.body).toContain(stories);
+    expect(writes[0]?.body).not.toContain(comments);
+  });
+});
+
 test("unavailable or incomplete main replay prevents every store access", async () => {
   await withStore(async ({ store, writes, reads }) => {
     const findings = [finding("stories"), finding("comments")];
