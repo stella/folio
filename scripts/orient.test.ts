@@ -28,6 +28,8 @@ describe("repository orientation", () => {
       "required.ts",
       "import-equals.ts",
       "import-type.ts",
+      "template-dynamic.ts",
+      "template-required.ts",
     ];
     const source = `
       import { value } from "./static";
@@ -39,6 +41,9 @@ describe("repository orientation", () => {
       const required = require("./required");
       import legacy = require("./import-equals");
       type Imported = import("./import-type").Type;
+      const fixedTemplate = () => import(\`./template-dynamic\`);
+      const fixedRequired = require(\`./template-required\`);
+      const substituted = () => import(\`./ignored\${variable}\`);
       import { duplicate } from "./static";
       import { external } from "external-package";
       import "./untracked";

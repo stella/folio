@@ -279,7 +279,8 @@ const importSpecifiers = (file: string, source: string): string[] => {
         (ts.isIdentifier(node.expression) && node.expression.text === "require"))
     ) {
       const argument = node.arguments.at(0);
-      if (argument && ts.isStringLiteral(argument)) specifiers.push(argument.text);
+      // A fixed template (`./module`) names a module as plainly as a string.
+      if (argument && ts.isStringLiteralLike(argument)) specifiers.push(argument.text);
     } else if (
       ts.isImportEqualsDeclaration(node) &&
       ts.isExternalModuleReference(node.moduleReference) &&
