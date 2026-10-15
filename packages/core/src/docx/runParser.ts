@@ -1,3 +1,8 @@
+import {
+  isEmptyRunPropertiesAttribute,
+  retainsEmptyRunProperties,
+  omitsPreviousRunProperties,
+} from "./runPropertyPresence";
 /**
  * Run Parser - Parse text runs (w:r) with complete formatting
  *
@@ -645,13 +650,13 @@ export function parseRunProperties(
   // empty formatting. Keep an actually empty rPr, and any formatting payload.
   const children = getChildElements(rPr);
   if (
-    owner === RUN_PROPERTY_OWNERS.paragraphMark &&
+    owner !== RUN_PROPERTY_OWNERS.standalone &&
     Object.keys(formatting).length === 0 &&
     children.length > 0 &&
     children.every(
       (child) =>
         WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") &&
-        Object.hasOwn(OWNED_BY_A_SIBLING_RECORD.paragraphMark, getLocalName(child.name)),
+        Object.hasOwn(OWNED_BY_A_SIBLING_RECORD[owner], getLocalName(child.name)),
     )
   ) {
     return undefined;
@@ -694,7 +699,10 @@ function parseRunPropertyChanges(
       theme,
       RUN_PROPERTY_OWNERS.standalone,
     );
-    if (previousFormatting) {
+    if (
+      previousFormatting &&
+      (!omitsPreviousRunProperties(changeElement) || Object.keys(previousFormatting).length > 0)
+    ) {
       change.previousFormatting = previousFormatting;
     }
     if (currentFormatting) {
@@ -1262,7 +1270,9 @@ export function parseRun(
   // Parse run properties (w:rPr)
   const rPr = findChild(node, "w", "rPr");
   if (rPr) {
-    const formattingResult = parseRunProperties(rPr, theme, RUN_PROPERTY_OWNERS.run);
+    const formattingResult =
+      parseRunProperties(rPr, theme, RUN_PROPERTY_OWNERS.run) ??
+      (retainsEmptyRunProperties(node) ? {} : undefined);
     if (formattingResult) {
       run.formatting = formattingResult;
     }
@@ -1286,8 +1296,10 @@ export function parseRun(
   // `CT_R` declares `w:rsidR`, `w:rsidDel` and `w:rsidRPr`, and `serializeRun`
   // writes no attribute of its own, so every attribute the source wrote is
   // the remainder.
-  const remainder = attributeRemainder({ element: node, modelled: NO_MODELLED_ATTRIBUTES });
-  if (remainder) {
+  const remainder = attributeRemainder({ element: node, modelled: NO_MODELLED_ATTRIBUTES })?.filter(
+    (attribute) => !isEmptyRunPropertiesAttribute(attribute),
+  );
+  if (remainder?.length) {
     run.preservedAttributes = remainder;
   }
 

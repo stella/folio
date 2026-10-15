@@ -60,6 +60,6 @@
     "cells": {},
     "operations": []
   },
-  "origin": "shrunk from collisions flow seed 1026398037",
-  "title": "PINNED #1379, reported seed 1026398037: a tracked insertion across nested comments reads as one change after save"
+  "origin": "revision round-trip regression",
+  "title": "Revision coverage and both resolution outcomes survive save"
 }

@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "direct",
+  "seed": 118244350,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1317974493,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "483CD5EB",
+            "startOffset": 0,
+            "endOffset": 6,
+            "selectedTextHash": "hmiedpg"
+          },
+          "replace": "updated"
+        }
+      ]
+    },
+    {
+      "action": "mistake",
+      "seed": 1254033296
+    },
+    {
+      "action": "story batch",
+      "seed": 2389822242,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "483CD5EB",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "412DDC7F"
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "3CEFFC83",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 4093505661,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "483CD5EB",
+          "quote": "copies",
+          "comment": {
+            "text": "Buyer agreement goods delivery buyer written goods payment."
+          },
+          "id": "comment-before-deletion"
+        }
+      ],
+      "operationTypes": ["commentOnBlock"],
+      "expectedApplied": 1
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 4093505661,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB",
+          "id": "delete-commented-block"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "5E88C024",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ],
+          "id": "insert-table-after-deletion"
+        }
+      ],
+      "operationTypes": ["deleteBlock", "insertTable"],
+      "expectedApplied": 2
+    },
+    {
+      "action": "story batch",
+      "seed": 2006175060,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "483CD5EB",
+          "quote": "updated",
+          "comment": {
+            "text": "Party delivery schedule agreement warranty period written notice."
+          }
+        },
+        {
+          "type": "replaceBlock",
+          "blockId": "3CEFFC83",
+          "text": "Invoice term written party."
+        },
+        {
+          "type": "commentOnBlock",
+          "blockId": "483CD5EB",
+          "quote": "copies",
+          "comment": {
+            "text": "Goods agreement period delivery."
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "Comment replacement and mixed operation coverage"
+}

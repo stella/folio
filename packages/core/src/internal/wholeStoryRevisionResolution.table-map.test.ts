@@ -44,7 +44,9 @@ test("cell deletion preserves positions in surviving cells", () => {
     table([
       row([
         cell("left"),
-        cell("deleted", { cellMarker: { kind: "del", info: { revisionId: 2 } } }),
+        cell("deleted", {
+          cellMarker: { kind: "del", info: { revisionId: 2, author: "Reviewer" } },
+        }),
         cell("right"),
       ]),
     ]),

@@ -44,5 +44,6 @@
     "cells": {},
     "operations": []
   },
-  "origin": "shrunk from collisions flow seed 1785651632"
+  "origin": "revision round-trip regression",
+  "title": "Revision coverage and both resolution outcomes survive save"
 }

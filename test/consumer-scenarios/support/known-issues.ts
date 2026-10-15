@@ -7,6 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { holdFailureMarkers } from "./failure-fingerprints.ts";
 import type { Relation } from "./metamorphic.ts";
 
 export const OPEN_ISSUES = {} as const;
@@ -152,6 +153,32 @@ export const KNOWN_FAILING_FOLLOW_UPS: readonly {
   symptom: RegExp;
 }[] = [];
 
+/**
+ * Run an expected failure's body and judge it. A failure with the finding's
+ * symptom is the known one: the failure markers it logged are dropped, so the
+ * fuzz reporters do not file a finding this file already tracks. Any other
+ * failure is a regression and keeps its markers.
+ */
+export const settleExpectedFailure = async (
+  issue: OpenIssue | Finding,
+  name: string,
+  symptom: FailureSymptom,
+  body: () => Promise<void> | void,
+): Promise<void> => {
+  const { failed, failure, release } = await holdFailureMarkers(body);
+  if (!failed) {
+    assert.fail(
+      `${describeKnown(issue)} no longer reproduces: "${name}" passes. ` +
+        "Make it a plain scenario and drop the entry from support/known-issues.ts.",
+    );
+  }
+  if (!matchesFailureSymptom(symptom, failure)) {
+    // It fails, but not the way the issue does: a real regression.
+    release();
+    throw failure;
+  }
+};
+
 export const expectedFailure = (
   issue: OpenIssue | Finding,
   name: string,
@@ -159,22 +186,6 @@ export const expectedFailure = (
   body: () => Promise<void> | void,
 ): void => {
   const tag = typeof issue === "number" ? `#${issue}` : issue;
-  test(`${name} [expected failure: ${tag}]`, async () => {
-    let failure: unknown;
-    try {
-      await body();
-    } catch (error) {
-      failure = error;
-    }
-    if (failure === undefined) {
-      assert.fail(
-        `${describeKnown(issue)} no longer reproduces: "${name}" passes. ` +
-          "Make it a plain scenario and drop the entry from support/known-issues.ts.",
-      );
-    }
-    if (!matchesFailureSymptom(symptom, failure)) {
-      // It fails, but not the way the issue does: a real regression.
-      throw failure;
-    }
-  });
+  test(`${name} [expected failure: ${tag}]`, () =>
+    settleExpectedFailure(issue, name, symptom, body));
 };

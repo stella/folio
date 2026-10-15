@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 1026397717,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 962456520,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "3CEFFC83",
+          "text": "Delivery warranty schedule."
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1210645008,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "3CEFFC83",
+          "quote": "schedule",
+          "comment": {
+            "text": "Goods written party written warranty period buyer schedule."
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2970693324,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "revision round-trip regression",
+  "title": "Revision coverage and both resolution outcomes survive save"
+}

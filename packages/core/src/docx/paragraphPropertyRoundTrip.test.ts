@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import JSZip from "jszip";
 import { Fragment, Slice } from "prosemirror-model";
@@ -1462,3 +1463,33 @@ describe("paragraph properties survive a no-edit full repack", () => {
     expect(insertion?.namespaceUri).toBe(NAMESPACES.w);
   });
 });
+
+// Revision-only rPr capture previously became authored empty formatting on resolution.
+test.each(PARAGRAPH_MARK_CHANGE_KINDS)(
+  "resolved %s mark capture preserves property-set presence",
+  async (kind) => {
+    for (const runProperties of [undefined, {}, { bold: true }] as const) {
+      for (const mode of ["normal", "runIn"] as const) {
+        const source = await parseDocx(await createEmptyDocx(), { preloadFonts: false });
+        const paragraph = firstParagraph(source);
+        paragraph.formatting = {
+          styleId: "Heading1",
+          ...(runProperties === undefined ? {} : { runProperties }),
+          ...(mode === "runIn" ? { runInWithNext: true } : {}),
+        };
+        paragraph.pPrMark = { kind, info: { id: 7, author: "Reviewer" } };
+        const pending = await parseDocx(await repackDocx(source, { updateModifiedDate: false }), {
+          preloadFonts: false,
+        });
+        delete firstParagraph(pending).pPrMark;
+        const resolved = await parseDocx(await repackDocx(pending, { updateModifiedDate: false }), {
+          preloadFonts: false,
+        });
+        expect(firstParagraph(resolved).formatting?.runProperties).toStrictEqual(runProperties);
+        expect(firstParagraph(resolved).formatting?.runInWithNext).toBe(
+          mode === "runIn" ? true : undefined,
+        );
+      }
+    }
+  },
+);

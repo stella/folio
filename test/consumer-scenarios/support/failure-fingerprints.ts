@@ -1,4 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -135,8 +136,41 @@ export const failureMarker = ({
   };
 };
 
+// Markers logged while `holdFailureMarkers` runs a body wait for its verdict.
+const heldMarkers = new AsyncLocalStorage<FailureMarker[]>();
+
+/**
+ * Log the line the failure reporters read. Every logged marker is a finding:
+ * a merge-group replay files it once main fails with it too.
+ */
 export const logFailureMarker = (marker: FailureMarker): void => {
+  const held = heldMarkers.getStore();
+  if (held !== undefined) {
+    held.push(marker);
+    return;
+  }
   console.error(`FOLIO_FAILURE ${JSON.stringify(marker)}`);
+};
+
+/**
+ * Run `body`, holding back the failure markers it logs. `release` logs them,
+ * for a failure that turns out to be a finding; leaving it uncalled drops
+ * them, for a failure that is already known (an expected failure that fails
+ * the way its finding does).
+ */
+export const holdFailureMarkers = async (
+  body: () => Promise<void> | void,
+): Promise<{ failed: boolean; failure: unknown; release: () => void }> => {
+  const held: FailureMarker[] = [];
+  const release = () => {
+    for (const marker of held.splice(0)) logFailureMarker(marker);
+  };
+  try {
+    await heldMarkers.run(held, body);
+    return { failed: false, failure: undefined, release };
+  } catch (failure) {
+    return { failed: true, failure, release };
+  }
 };
 
 /**

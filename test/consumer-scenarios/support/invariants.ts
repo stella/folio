@@ -10,6 +10,7 @@ import { validateDocxPackage } from "@stll/docx-core";
 import { openReviewer } from "./documents.ts";
 import { projectContentPair } from "./identity.ts";
 import { labelFields, readAll } from "./readers.ts";
+import { assertReviewRoundTrip } from "./review-comparison.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
@@ -90,10 +91,8 @@ export const visibleState = (reviewer: Reviewer) => ({
       }
     }
   }),
-  // Which kinds of change by whom. How a reader groups revisions into
-  // entries (a nested `w:ins > w:del` reads as one entry after a reopen, two
-  // before) is not what a save must keep; what they resolve to is checked by
-  // accept-all / reject-all.
+  // Overview only; the shared review comparator checks lossless coverage,
+  // authorship dates and both complete resolution documents below.
   changes: [
     ...new Set(reviewer.getChanges().map((change) => `${change.type} by ${change.author}`)),
   ].sort(),
@@ -169,6 +168,8 @@ export const saveAndReopen = async (
     { ...expected, blocks: blocks.left },
     `${context}: the reopened package shows something else than the reviewer that saved it`,
   );
+  if (options.persisted === undefined)
+    await assertReviewRoundTrip({ live: reviewer, reopened, context });
   return { bytes, reopened };
 };
 

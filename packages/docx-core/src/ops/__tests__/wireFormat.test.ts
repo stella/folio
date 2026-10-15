@@ -243,4 +243,5 @@ test("clipboard package resources remain pinned in the schema-10 wire contract",
       },
     ],
   });
+  expect(() => envelopes()).not.toThrow();
 });
