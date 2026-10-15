@@ -1213,11 +1213,8 @@ export const EXPECTATIONS = {
   },
   insertSignatureTable: (model, operation) => {
     const position = operation["position"] === "before" ? "before" : "after";
-    const anchor = insertionAnchor(
-      model,
-      target(model, operation["blockId"], { adjacent: true }),
-      position,
-    );
+    const named = target(model, operation["blockId"], { adjacent: true });
+    const anchor = insertionAnchor(model, named, position);
     const parties = operation["parties"] as {
       name: string;
       signatory?: string;
@@ -1229,7 +1226,14 @@ export const EXPECTATIONS = {
       if (title) lines.push(title);
       return lines;
     });
-    gapOf(model, anchor, position).push(...texts.map((text) => modelRow(text)));
+    // Like a block, a signature table anchored in a cell lands beside the
+    // outermost table, so rows the batch adds to that table stay nearer it.
+    const rows = texts.map((text) => {
+      const row = modelRow(text);
+      if (named.pre?.table) row.besideTable = true;
+      return row;
+    });
+    gapOf(model, anchor, position).push(...rows);
     addComment(model, operation);
   },
   mergeTableCells: null,

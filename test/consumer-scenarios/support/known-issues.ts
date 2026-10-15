@@ -130,6 +130,10 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]
   "delete-split-and-merge.json": [0],
   // The original recorded flow starts by accepting a change before any exists.
   "tracked-final-retirement-spacing.json": [0],
+  // Recorded from the fuzzer: after the first batch is resolved, its range
+  // replacement, single accept and comment reply find nothing to act on; the
+  // table batch at the end is what the flow guards.
+  "suggested-table-row-beside-replaced-paragraph.json": [4, 6, 7],
 };
 
 /**
