@@ -259,7 +259,7 @@ export const pruneExpiredExcludes = ({
   // Each line is judged by its own annotation. Matching by name instead would
   // delete every entry sharing that name, including one whose expiry was
   // renewed and has not passed.
-  const block = bunfig
+  const lines = bunfig
     .slice(blockStart, blockEnd)
     .split("\n")
     .filter((line) => {
@@ -270,10 +270,14 @@ export const pruneExpiredExcludes = ({
       if (now.getTime() < Date.parse(parsed.expiresAt)) return true;
       pruned.push(parsed.name);
       return false;
-    })
-    .join("\n");
+    });
 
   if (pruned.length === 0) return { bunfig, pruned: [] };
+
+  // An emptied list closes on its opening line, as the formatter writes it.
+  const block = lines.slice(1).every((line) => line.trim() === "")
+    ? (lines[0] ?? "").trimEnd()
+    : lines.join("\n");
 
   return { bunfig: bunfig.slice(0, blockStart) + block + bunfig.slice(blockEnd), pruned };
 };

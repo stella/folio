@@ -244,6 +244,24 @@ minimumReleaseAgeExcludes = [
     expect(result.bunfig).not.toContain("2026-08-09T10:39:22.487Z");
   });
 
+  test("writes an emptied list the way the formatter does", () => {
+    const bunfig = `
+[install]
+minimumReleaseAge = 432_000
+minimumReleaseAgeExcludes = [
+  "bun-types", # quarantine-expires: 2026-08-08T14:16:00.210Z
+]
+`;
+    const result = pruneExpiredExcludes({ bunfig, now: new Date("2026-08-09T00:00:00.000Z") });
+
+    expect(result.pruned).toEqual(["bun-types"]);
+    expect(result.bunfig).toBe(`
+[install]
+minimumReleaseAge = 432_000
+minimumReleaseAgeExcludes = []
+`);
+  });
+
   test("leaves a malformed annotation for the guard to report", () => {
     const bunfig = createBunfig('"dompurify", # quarantine-expires: nope');
     const result = pruneExpiredExcludes({ bunfig, now: new Date("2026-09-01T00:00:00.000Z") });
