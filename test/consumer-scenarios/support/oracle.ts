@@ -410,6 +410,12 @@ type ModelRow = {
    * hold: nothing read from that pre-state describes it.
    */
   outsidePreState?: boolean;
+  /**
+   * A block inserted before or after the table its anchor sits in. Rows and
+   * cells the batch adds to that table go inside it, so they stay between
+   * the table's own blocks and this one, whatever the batch order.
+   */
+  besideTable?: boolean;
   before: ModelRow[];
   after: ModelRow[];
   /** Formatting that must hold over `[start, end)` of the result's text. */
@@ -985,11 +991,28 @@ const insertBlock =
         row.fields = fields;
         row.checks = checks;
       }
+      if (named.pre?.table) row.besideTable = true;
       return row;
     });
     gapOf(model, anchor, position).push(...rows);
     addComment(model, operation);
   };
+
+/**
+ * Add `cells`, new blocks of a table, to the gap on `side` of one of its
+ * blocks: after any the batch put there before them, and nearer the table
+ * than a block inserted beside the table.
+ */
+const addToTable = (row: ModelRow, side: "before" | "after", cells: readonly ModelRow[]) => {
+  const gap = row[side];
+  const beside = gap.filter((entry) => entry.besideTable === true);
+  const inside = [...gap.filter((entry) => entry.besideTable !== true), ...cells];
+  gap.splice(
+    0,
+    gap.length,
+    ...(side === "after" ? [...inside, ...beside] : [...beside, ...inside]),
+  );
+};
 
 /**
  * The blocks inserted between `row` and its neighbour on `position`'s side.
@@ -1141,7 +1164,7 @@ export const EXPECTATIONS = {
     const position = operation["position"] === "before" ? "before" : "after";
     const edge = position === "before" ? inRow[0] : inRow.at(-1);
     if (!edge) throw new Unmodelled("the anchor row has no blocks");
-    edge[position].push(...added);
+    addToTable(edge, position, added);
   },
   deleteTableRow: (model, operation) => {
     const anchor = tableOf(tableRemovalTarget(model, operation["blockId"]));
@@ -1174,8 +1197,8 @@ export const EXPECTATIONS = {
           ? (row.pre?.table?.gridColumnIndex ?? 0) <= column
           : (row.pre?.table?.gridColumnIndex ?? 0) < column,
       );
-      if (lastBefore) lastBefore.after.push(cell);
-      else inRow[0]?.before.push(cell);
+      if (lastBefore) addToTable(lastBefore, "after", [cell]);
+      else if (inRow[0]) addToTable(inRow[0], "before", [cell]);
     });
   },
   deleteTableColumn: (model, operation) => {
@@ -1190,11 +1213,8 @@ export const EXPECTATIONS = {
   },
   insertSignatureTable: (model, operation) => {
     const position = operation["position"] === "before" ? "before" : "after";
-    const anchor = insertionAnchor(
-      model,
-      target(model, operation["blockId"], { adjacent: true }),
-      position,
-    );
+    const named = target(model, operation["blockId"], { adjacent: true });
+    const anchor = insertionAnchor(model, named, position);
     const parties = operation["parties"] as {
       name: string;
       signatory?: string;
@@ -1206,7 +1226,14 @@ export const EXPECTATIONS = {
       if (title) lines.push(title);
       return lines;
     });
-    gapOf(model, anchor, position).push(...texts.map((text) => modelRow(text)));
+    // Like a block, a signature table anchored in a cell lands beside the
+    // outermost table, so rows the batch adds to that table stay nearer it.
+    const rows = texts.map((text) => {
+      const row = modelRow(text);
+      if (named.pre?.table) row.besideTable = true;
+      return row;
+    });
+    gapOf(model, anchor, position).push(...rows);
     addComment(model, operation);
   },
   mergeTableCells: null,

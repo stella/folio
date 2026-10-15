@@ -363,6 +363,13 @@
       "title": "removed note stories stay absent from live and reopened readers"
     },
     {
+      "seed": 477270582,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "a paragraph inserted after a table's last cell stays after a row the batch adds"
+    },
+    {
       "seed": 1775378339,
       "steps": 16,
       "kind": "random",

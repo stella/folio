@@ -133,6 +133,10 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]
   "tracked-final-retirement-spacing.json": [0],
   // These three recorded accept-one steps have no pending suggestion to accept.
   "long-saved-xml-unicode-split.json": [1, 11, 18],
+  // Recorded from the fuzzer: after the first batch is resolved, its range
+  // replacement, single accept and comment reply find nothing to act on; the
+  // table batch at the end is what the flow guards.
+  "suggested-table-row-beside-replaced-paragraph.json": [4, 6, 7],
 };
 
 /**
