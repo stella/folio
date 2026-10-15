@@ -53,7 +53,8 @@ const readZipStream = (stream: NodeJS.ReadableStream): Promise<string | Uint8Arr
     stream.on("data", onData);
   });
 
-type ZipEntryInput = Parameters<JSZip["loadAsync"]>[0] | ArrayBufferView;
+/** Content `writeZipEntry` accepts; text is encoded to UTF-8 once, as a whole. */
+export type ZipEntryInput = Parameters<JSZip["loadAsync"]>[0] | ArrayBufferView;
 
 const zipEntryBytes = async (
   input: ZipEntryInput,
