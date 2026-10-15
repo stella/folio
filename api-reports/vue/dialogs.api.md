@@ -4,43 +4,56 @@
 
 ```ts
 
-// @public
-export const FindReplaceDialog: any;
+import { ComponentOptionsMixin } from 'vue';
+import { ComponentProvideOptions } from 'vue';
+import { DefineComponent } from 'vue';
+import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorView } from 'prosemirror-view';
+import { EndnoteProperties } from '@stll/folio-core/types/content';
+import { FootnoteProperties } from '@stll/folio-core/types/content';
+import { PublicProps } from 'vue';
+import { SectionProperties } from '@stll/folio-core/types/document';
+import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
+import { Watermark } from '@stll/folio-core/watermark';
 
 // @public (undocumented)
-export const FootnotePropertiesDialog: any;
+export const FindReplaceDialog: typeof __VLS_export;
 
 // @public (undocumented)
-export const HyperlinkDialog: any;
+export const FootnotePropertiesDialog: typeof __VLS_export_2;
 
 // @public (undocumented)
-export const ImagePositionDialog: any;
+export const HyperlinkDialog: typeof __VLS_export_3;
 
 // @public (undocumented)
-export const ImagePropertiesDialog: any;
+export const ImagePositionDialog: typeof __VLS_export_4;
 
 // @public (undocumented)
-export const InsertImageDialog: any;
+export const ImagePropertiesDialog: typeof __VLS_export_5;
 
 // @public (undocumented)
-export const InsertSymbolDialog: any;
+export const InsertImageDialog: typeof __VLS_export_6;
 
 // @public (undocumented)
-export const InsertTableDialog: any;
+export const InsertSymbolDialog: typeof __VLS_export_7;
 
 // @public (undocumented)
-export const PageSetupDialog: any;
+export const InsertTableDialog: typeof __VLS_export_8;
 
 // @public (undocumented)
-export const PasteSpecialDialog: any;
+export const PageSetupDialog: typeof __VLS_export_9;
 
 // @public (undocumented)
-export const SplitCellDialog: any;
+export const PasteSpecialDialog: typeof __VLS_export_10;
 
 // @public (undocumented)
-export const TablePropertiesDialog: any;
+export const SplitCellDialog: typeof __VLS_export_11;
 
 // @public (undocumented)
-export const WatermarkDialog: any;
+export const TablePropertiesDialog: typeof __VLS_export_12;
+
+// @public (undocumented)
+export const WatermarkDialog: typeof __VLS_export_13;
 
 ```

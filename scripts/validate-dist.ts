@@ -72,16 +72,15 @@ import path from "node:path";
 
 import { installCleanRoomDependencies } from "./clean-room-install";
 import { scanDistUrlTargets } from "./dist-url-targets";
-import { assertHostPeersExternal } from "./host-peer-policy";
 import {
   REACT_PEER_FLOOR,
+  buildAndPack,
   hostPeerInstallArgs,
   reactPeerInstallArgs,
 } from "./packaged-consumer-lib";
 import { findUncoveredUtilities } from "./standalone-css-coverage";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
-const prepareScript = path.join(repoRoot, "scripts", "prepare-publish.ts");
 // Resolve the classic TypeScript compiler explicitly rather than via
 // `.bin/tsc`: the native TS7 compiler is installed under the aliased
 // `@typescript/native` package and also claims a `tsc` bin, so `.bin/tsc`
@@ -109,42 +108,6 @@ const record = (name: string, ok: boolean, detail: string): void => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
 };
 
-// Build a package, transform its package.json to the dist shape (reversibly),
-// pack a tarball into `destDir`, and return the tarball path.
-//
-// `prepare` runs `prepare-publish.ts` (source `./src/*.ts` exports -> dist).
-// Skip it for packages that already ship dist-shaped exports in-repo
-// (@stll/folio-vue): prepare-publish only understands `./src/*` string exports
-// and panics on their `{ types, import }` objects. `bun pm pack` still rewrites
-// their `workspace:` deps to concrete versions, so no transform is needed.
-const buildAndPack = async (pkgDir: string, destDir: string, prepare: boolean): Promise<string> => {
-  const name = path.basename(pkgDir);
-  const packageJson = (await Bun.file(path.join(pkgDir, "package.json")).json()) as {
-    name: string;
-  };
-  console.log(`→ building ${packageJson.name}`);
-  await $`bun run build`.cwd(pkgDir).quiet();
-  assertHostPeersExternal(pkgDir);
-
-  const pkgJsonPath = path.join(pkgDir, "package.json");
-  const original = await readFile(pkgJsonPath, "utf-8");
-  try {
-    if (prepare) {
-      console.log(`→ transforming ${packageJson.name} package.json to dist shape`);
-      await $`bun ${prepareScript} ${pkgDir}`.quiet();
-    }
-    console.log(`→ packing ${packageJson.name} tarball`);
-    await $`bun pm pack --destination ${destDir}`.cwd(pkgDir).quiet();
-  } finally {
-    // Always restore the in-repo source-shape package.json.
-    await writeFile(pkgJsonPath, original);
-  }
-  const tgz = (await readdir(destDir)).find((f) => f.endsWith(".tgz"));
-  return tgz
-    ? path.join(destDir, tgz)
-    : panic(`validate-dist: bun pm pack produced no tarball for ${name}`);
-};
-
 const dirs: Record<string, string> = {
   "docx-core": path.join(repoRoot, "packages", "docx-core"),
   core: path.join(repoRoot, "packages", "core"),
@@ -166,10 +129,9 @@ const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-"));
 
 // core/react/agents carry source-shaped exports that prepare-publish
 // rewrites; vue already ships dist-shaped exports (skip the transform).
-const needsPrepare = target !== "vue" && target !== "nuxt";
 const pkgDir = dirs[target];
 const pkgName = target === "docx-core" ? "@stll/docx-core" : `@stll/folio-${target}`;
-const tarball = await buildAndPack(pkgDir, packDir, needsPrepare);
+const tarball = await buildAndPack(pkgDir, packDir);
 
 // Every package above docx-core depends on its sibling build. Pack it too so
 // the clean room resolves coordinated workspace changes npm-style (no
@@ -177,7 +139,7 @@ const tarball = await buildAndPack(pkgDir, packDir, needsPrepare);
 // tarballs, since their next versions are not yet on a registry.
 let docxCoreTarball: string | null = null;
 if (target !== "docx-core") {
-  docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir, true);
+  docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir);
 }
 
 // react, agents, cli, and vue all depend on @stll/folio-core.
@@ -189,14 +151,14 @@ if (
   target === "vue" ||
   target === "nuxt"
 ) {
-  coreTarball = await buildAndPack(coreDir, corePackDir, true);
+  coreTarball = await buildAndPack(coreDir, corePackDir);
 }
 
 // The CLI runs @stll/folio-agents' tools; pack it so the clean room resolves
 // the coordinated unpublished version.
 let agentsTarball: string | null = null;
 if (target === "cli") {
-  agentsTarball = await buildAndPack(dirs.agents, agentsPackDir, true);
+  agentsTarball = await buildAndPack(dirs.agents, agentsPackDir);
 }
 
 // The Nuxt module's runtime component delegates to @stll/folio-vue. Pack that
@@ -204,7 +166,7 @@ if (target === "cli") {
 // dependency graph rather than resolving an older registry release.
 let vueTarball: string | null = null;
 if (target === "nuxt") {
-  vueTarball = await buildAndPack(dirs.vue, vuePackDir, false);
+  vueTarball = await buildAndPack(dirs.vue, vuePackDir);
 }
 
 console.log(`→ installing tarball into ${consumerDir}`);

@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@nuxt/kit": "^3.14.0 || ^4.0.0",
+    "@nuxt/schema": "^3.14.0 || ^4.0.0",
     "@stll/folio-vue": "workspace:^"
   },
   "devDependencies": {
@@ -67,11 +68,21 @@
     "vue": "^3.5.43"
   },
   "peerDependencies": {
+    "prosemirror-commands": "^1.7.1",
+    "prosemirror-dropcursor": "^1.8.2",
+    "prosemirror-gapcursor": "^1.4.1",
     "prosemirror-history": "^1.5.0",
+    "prosemirror-inputrules": "^1.5.0",
+    "prosemirror-keymap": "^1.2.3",
     "prosemirror-model": "^1.25.9",
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
+    "prosemirror-transform": "^1.12.0",
     "prosemirror-view": "^1.42.6",
-    "vue": "^3.3.0"
+    "react": "^19.2.0",
+    "vue": "^3.3.0",
+    "y-prosemirror": "^1.3.7",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.31"
   }
 }

@@ -86,13 +86,17 @@
     },
     "packaged_consumer": {
       "paths": [
-        "packages/{docx-core,core,react}/**",
-        "!**/*.md",
-        "!packages/*/src/**/*.test.{ts,tsx}",
-        "!packages/*/src/**/__tests__/**",
         "test/packaged-consumer/**",
         "scripts/packaged-consumer-*.ts",
-        "scripts/prepare-publish.ts"
+        "scripts/check-package-dependencies*",
+        "scripts/lib/published-packages.ts",
+        "scripts/prepare-publish.ts",
+        "scripts/lib/packed-exports.ts",
+        "scripts/lib/packed-declaration-diagnostics.ts",
+        "scripts/packed-declaration-diagnostics.test.ts",
+        "scripts/packed-exports.test.ts",
+        "scripts/published-packages.test.ts",
+        "scripts/clean-room-install.ts"
       ]
     },
     "browser_discovery": {

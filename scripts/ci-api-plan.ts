@@ -116,6 +116,30 @@ export const apiRequiredForPaths = ({
   });
 };
 
+const PACKED_NON_INPUT =
+  /(?:^|\/)(?:__tests__|__snapshots__|test|tests)\/|\.(?:test|spec|test-d)\.[^/]+$|\.md$/u;
+
+/** Packed dependency checks share the manifest discovery and PR diff with API planning. */
+export const packagedConsumerRequiredForPaths = ({
+  changedPaths,
+  publishedPackagePaths: packages,
+}: ApiRequiredForPathsOptions): boolean => {
+  for (const file of changedPaths) validateChangedPath(file);
+  for (const directory of packages) validateChangedPath(directory);
+  return changedPaths.some((file) => {
+    if (file === "bun.lock" || file === "bunfig.toml" || file === "package.json") return true;
+    // Membership changes, deletions and a private package becoming public all need a proof.
+    if (file.endsWith("/package.json")) return true;
+    // Build configs, tsconfigs, build scripts and ambient types shape the emitted
+    // runtime and declarations, so every published package file counts except docs and tests.
+    return packages.some(
+      (directory) =>
+        file.startsWith(`${directory}/`) &&
+        !PACKED_NON_INPUT.test(file.slice(directory.length + 1)),
+    );
+  });
+};
+
 type DiffOptions = { repoRoot: string; base: string; head: string };
 export const changedApiPaths = ({ repoRoot, base, head }: DiffOptions): string[] => {
   if (![base, head].every((sha) => /^(?:[\da-f]{40}|[\da-f]{64})$/iu.test(sha)))
@@ -169,8 +193,8 @@ const parseArguments = (args: readonly string[]) => {
   return { base, head };
 };
 
-const emit = (required: boolean) => {
-  const output = `api_required=${String(required)}\n`;
+const emit = (apiRequired: boolean, packagedRequired: boolean) => {
+  const output = `api_required=${String(apiRequired)}\npackaged_consumer_required=${String(packagedRequired)}\n`;
   const destination = process.env["GITHUB_OUTPUT"];
   if (destination) appendFileSync(destination, output);
   process.stdout.write(output);
@@ -187,15 +211,14 @@ if (import.meta.main) {
     if (root.exitCode !== 0)
       throw new TypeError(`Cannot locate API planner repository: ${root.stderr.toString().trim()}`);
     const repoRoot = root.stdout.toString().trim();
-    emit(
-      apiRequiredForPaths({
-        changedPaths: changedApiPaths({ repoRoot, base, head }),
-        publishedPackagePaths: publishedPackagePaths(repoRoot),
-      }),
-    );
+    const scope = {
+      changedPaths: changedApiPaths({ repoRoot, base, head }),
+      publishedPackagePaths: publishedPackagePaths(repoRoot),
+    };
+    emit(apiRequiredForPaths(scope), packagedConsumerRequiredForPaths(scope));
   } catch (error) {
     process.exitCode = 1;
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    emit(true);
+    emit(true, true);
   }
 }

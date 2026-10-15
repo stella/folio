@@ -116,7 +116,7 @@ jobs:
       interactions_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions) }}
       differential_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).differential) }}
       consumer_scenarios_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).consumer_scenarios) }}
-      packaged_consumer_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer) }}
+      packaged_consumer_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.packaged_consumer_required == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer) }}
     steps:
       - name: Find successful merge-group coverage
         id: reuse
@@ -339,6 +339,9 @@ jobs:
       - name: Workspace dependency boundaries
         run: bun run check:dependencies
 
+      - name: Published package dependency declarations
+        run: bun scripts/check-package-dependencies.ts --source
+
       - name: Format check
         run: bun run format:check
 
@@ -517,27 +520,6 @@ jobs:
           path: .cache/api-reports/
           retention-days: 1
           if-no-files-found: error
-
-  validate-dist:
-    name: Published package validation
-    needs: ci-plan
-    if: needs.ci-plan.outputs.code_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      - name: Validate dist
-        if: needs.ci-plan.outputs.suite_depth == 'full'
-        run: bun run validate-dist
 
   tests-1:
     name: Focused and full tests (1/4)
@@ -1115,7 +1097,7 @@ jobs:
   packaged-consumer:
     name: Packaged-consumer build (tarballs)
     needs: ci-plan
-    if: needs.ci-plan.outputs.packaged_consumer_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
+    if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1128,15 +1110,37 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # Builds + packs both packages, installs the tarballs into a clean-room
+      - name: Dependency smoke over every published tarball
+        run: bun scripts/packaged-consumer-dependencies.ts --pack-dir test-results/package-tarballs
+
+      - name: Upload packed dependency artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packed-dependency-tarballs
+          path: test-results/package-tarballs/
+          retention-days: 1
+          if-no-files-found: warn
+
+      - name: Validate published artifacts
+        if: needs.ci-plan.outputs.suite_depth == 'full'
+        run: bun run validate-dist
+        env:
+          FOLIO_PACKED_TARBALLS: test-results/package-tarballs
+
+      # Installs the same tarballs into a clean-room
       # consumer OUTSIDE the workspace, and runs a production `vite build`. The
       # playground e2e consumes SOURCE and so cannot catch a packaging
       # regression (e.g. a worker `new URL(..., import.meta.url)` target the
       # dist never emits); this build consumes the published TARBALLS.
       - name: Production Vite build over packed tarballs
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run test:packaged-consumer
+        env:
+          FOLIO_PACKED_TARBALLS: test-results/package-tarballs
 
       - name: Install Playwright Chromium
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: |
           sudo rm -f \
             /etc/apt/sources.list.d/azure-cli.list \
@@ -1150,7 +1154,10 @@ jobs:
       # build time but fails to spawn/execute, and UI strings missing from the
       # shipped runtime catalog (IntlError: MISSING_MESSAGE).
       - name: Runtime smoke over packed tarballs
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run test:packaged-consumer-smoke
+        env:
+          FOLIO_PACKED_TARBALLS: test-results/package-tarballs
 
   # The ruleset requires this single check. It evaluates every planned job,
   # including jobs GitHub skipped or cancelled before their first step.
@@ -1166,7 +1173,6 @@ jobs:
       - typecheck
       - build-api
       - browser-discovery
-      - validate-dist
       - tests-1
       - tests-2
       - tests-3
@@ -1202,7 +1208,6 @@ jobs:
             "warm-main-caches":{"event":"push","reuse":"required","warm":"required"},
             "typecheck":{"area":"code_required"},
             "build-api":{"area":"api_required"},
-            "validate-dist":{"area":"code_required","depth":"full"},
             "tests-1":{"area":"code_required"},
             "tests-2":{"area":"code_required"},
             "tests-3":{"area":"code_required"},
@@ -1215,7 +1220,7 @@ jobs:
             "differential":{"area":"differential_required","depth":"full"},
             "consumer-scenarios":{"area":"consumer_scenarios_required","depth":"full"},
             "consumer-scenarios-minimum":{"area":"consumer_scenarios_required","depth":"full"},
-            "packaged-consumer":{"area":"packaged_consumer_required","depth":"full"}}
+            "packaged-consumer":{"area":"packaged_consumer_required"}}
         run: |
           if [[ "$PLAN_RESULT" == "skipped" ]]; then
             if [[ "$EVENT" != "pull_request" ]]; then

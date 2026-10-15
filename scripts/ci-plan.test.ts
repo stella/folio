@@ -13,7 +13,6 @@ import {
   BROWSER_INPUT_REGRESSIONS,
   PINNED_BROWSER_INPUT_TAG,
 } from "../tests/visual/browserInputRegressions";
-import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 import {
   assignTestShards,
   changedTestPaths,
@@ -31,7 +30,7 @@ const PLAN_JOB = "ci-plan";
 // condition and nothing to scope. Lint checks policy unless a push reuses CI.
 const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset", "lint", "warm-main-caches", "ci-result"]);
 const AREA_OUTPUT =
-  /^\$\{\{ steps\.reuse\.outputs\.reused_run == '' && \(github\.event_name == 'merge_group' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*)\) \}\}$/u;
+  /^\$\{\{ steps\.reuse\.outputs\.reused_run == '' && \(github\.event_name == 'merge_group' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| (?:steps\.api-plan\.outputs\.packaged_consumer_required == 'true' \|\| )?fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*)\) \}\}$/u;
 const GATE =
   /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'(?: && needs\.ci-plan\.outputs\.suite_depth == 'full')?$/u;
 const PR_SCOPED_JOBS = new Set(["browser-discovery"]);
@@ -138,11 +137,6 @@ describe("CI plan", () => {
       });
       expect([id, commands]).toEqual([id, expected]);
     }
-    const root = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
-    // Earlier validators leave sibling dist outputs for each later package build.
-    expect(root.scripts["validate-dist"]).toBe(
-      PUBLISHED_PACKAGES.map(({ slug }) => `bun scripts/validate-dist.ts ${slug}`).join(" && "),
-    );
   });
 
   test("PR source guards retain their required scans without a depth condition", () => {
@@ -157,6 +151,10 @@ describe("CI plan", () => {
       "scripts/zip-part-writer.test.ts",
       "scripts/on-off-spelling.test.ts",
       "scripts/consumer-scenario-dependencies.test.ts",
+      "scripts/check-package-dependencies.test.ts",
+      "scripts/packed-declaration-diagnostics.test.ts",
+      "scripts/packed-exports.test.ts",
+      "scripts/published-packages.test.ts",
       "scripts/adapter-layout-timing.test.ts",
       "scripts/specification-sources.test.ts",
       "scripts/ci-plan.test.ts",
@@ -755,6 +753,52 @@ describe("CI plan", () => {
       }
     });
   }
+
+  test("packed dependency smoke runs on scoped PRs and shares tarballs with full artifact checks", () => {
+    expect(jobs["packaged-consumer"]?.if).toBe(
+      "needs.ci-plan.outputs.packaged_consumer_required == 'true'",
+    );
+    expect(planOutputs["packaged_consumer_required"]).toContain(
+      "steps.api-plan.outputs.packaged_consumer_required == 'true'",
+    );
+    const steps = jobs["packaged-consumer"]?.steps;
+    if (!Array.isArray(steps)) throw new TypeError("Missing packaged consumer steps");
+    const smoke = steps.find(
+      (step) => isRecord(step) && step["name"] === "Dependency smoke over every published tarball",
+    );
+    expect(smoke).toEqual({
+      name: "Dependency smoke over every published tarball",
+      run: "bun scripts/packaged-consumer-dependencies.ts --pack-dir test-results/package-tarballs",
+    });
+    for (const name of [
+      "Validate published artifacts",
+      "Production Vite build over packed tarballs",
+      "Runtime smoke over packed tarballs",
+    ]) {
+      const step = steps.find((candidate) => isRecord(candidate) && candidate["name"] === name);
+      if (!isRecord(step)) throw new TypeError(`Missing packed step ${name}`);
+      expect(step["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'full'");
+      expect(step["env"]).toEqual({ FOLIO_PACKED_TARBALLS: "test-results/package-tarballs" });
+    }
+    const lintSteps = jobs["lint"]?.steps;
+    if (!Array.isArray(lintSteps)) throw new TypeError("Missing lint steps");
+    expect(
+      lintSteps.find(
+        (step) => isRecord(step) && step["name"] === "Published package dependency declarations",
+      ),
+    ).toEqual({
+      name: "Published package dependency declarations",
+      run: "bun scripts/check-package-dependencies.ts --source",
+    });
+    expect(jobs["validate-dist"]).toBeUndefined();
+    const harness = readFileSync(
+      path.join(REPO_ROOT, "scripts/packaged-consumer-dependencies.ts"),
+      "utf8",
+    );
+    expect(harness).toContain('import { PUBLISHED_PACKAGES } from "./lib/published-packages"');
+    // Both packing and consumption must traverse the discovered publication set.
+    expect(harness.match(/for \(const pkg of PUBLISHED_PACKAGES\)/gu)).toHaveLength(2);
+  });
 
   test("VS Code compatibility gates its selected area and exercises both API branches", () => {
     const workflow = readWorkflow("vscode-extension.yml");
