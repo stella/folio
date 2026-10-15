@@ -132,11 +132,11 @@ export type DisplayImageRef = number;
 
 /**
  * Raw image bytes plus the format they are already in. `png` and `jpeg`
- * pass through to PDF unchanged; every other source format is transcoded by
- * the producer, so a backend never owns a codec.
+ * pass through to PDF unchanged. SVG is retained for vector previews in the
+ * DOM backend; PDF reports it as unsupported rather than silently rasterizing.
  */
 export type DisplayImageSource = {
-  readonly format: "png" | "jpeg";
+  readonly format: "png" | "jpeg" | "svg";
   readonly bytes: Uint8Array;
   readonly pixelWidth: number;
   readonly pixelHeight: number;

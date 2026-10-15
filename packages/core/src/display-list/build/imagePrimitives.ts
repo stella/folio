@@ -1,13 +1,13 @@
-import { base64ToBytes } from "../../utils/textEncoding";
+import { base64ToBytes, encodeUtf8 } from "../../utils/textEncoding";
 /**
  * Images: the source table, and the primitives an image draws.
  *
  * The display list carries raw bytes plus the format they are already in, so a
  * backend never owns a codec. This module therefore decodes only far enough to
- * fill `pixelWidth`/`pixelHeight` and to know PNG from JPEG. It transcodes
- * nothing: a WMF, EMF, TIFF, SVG, GIF or BMP source is reported through
- * `unsupported` and paints nothing, because a silently missing picture is worse
- * than a named one.
+ * fill `pixelWidth`/`pixelHeight` and identify PNG, JPEG, or a generated SVG
+ * preview. It transcodes nothing: WMF, EMF, TIFF, GIF, and BMP are reported
+ * through `unsupported` and paint nothing, because a silently missing picture
+ * is worse than a named one.
  */
 
 import { Result } from "better-result";
@@ -27,10 +27,10 @@ import { paintPreview } from "./previewPrimitives";
 import { resolveBorderStroke } from "./strokes";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
-const DATA_URL_PATTERN = /^data:([^;,]*)(;base64)?,(.*)$/su;
+const DATA_URL_PATTERN = /^data:([^;,]*)(?:;charset=[^;,]*)?(;base64)?,(.*)$/su;
 
 type DecodedImage = {
-  readonly format: "png" | "jpeg";
+  readonly format: "png" | "jpeg" | "svg";
   readonly bytes: Uint8Array;
   readonly pixelWidth: number;
   readonly pixelHeight: number;
@@ -177,9 +177,37 @@ export class ImageTable {
     if (!match) {
       return fail("image bytes are not inline (blob: URLs need a fetch the builder cannot do)");
     }
+    // Generated group previews are percent-encoded SVG. Keeping their source
+    // bytes lets the DOM display-list backend paint the same vector image as
+    // the layout painter, without turning it into a resolution-bound bitmap.
+    if (match[1] === "image/svg+xml" && match[2] === undefined) {
+      const decoded = Result.try(() => decodeURIComponent(match[3]!));
+      if (decoded.isErr()) {
+        return fail("SVG data: URL payload is not valid percent-encoding");
+      }
+      if (!decoded.value.includes('data-folio-preview="wpGroup"')) {
+        return fail("SVG is not a supported generated group preview");
+      }
+      const width = /<svg\b[^>]*\bwidth="([0-9.]+)"/u.exec(decoded.value)?.at(1);
+      const height = /<svg\b[^>]*\bheight="([0-9.]+)"/u.exec(decoded.value)?.at(1);
+      const pixelWidth = width === undefined ? 0 : Number(width);
+      const pixelHeight = height === undefined ? 0 : Number(height);
+      if (!(pixelWidth > 0 && pixelHeight > 0)) {
+        return fail("SVG carries no positive numeric width and height");
+      }
+      const ref = this.sources.length;
+      this.sources.push({
+        format: "svg",
+        bytes: encodeUtf8(decoded.value),
+        pixelWidth,
+        pixelHeight,
+      });
+      this.refBySrc.set(src, ref);
+      return ref;
+    }
     // SAFETY: groups 2 and 3 exist whenever the pattern matched.
     if (match[2] === undefined) {
-      return fail("only base64 data: URLs carry decodable bytes");
+      return fail("only base64 data: URLs and SVG previews carry decodable bytes");
     }
     const bytes = decodeBase64(match[3]!);
     if (bytes === undefined) {

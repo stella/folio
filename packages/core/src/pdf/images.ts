@@ -705,6 +705,8 @@ export const decodeImage = (source: DisplayImageSource): Result<PdfImageSamples,
       return decodePng(source.bytes);
     case "jpeg":
       return decodeJpeg(source.bytes);
+    case "svg":
+      return Result.err(new PdfImageError({ message: "SVG images are not supported in PDF" }));
     default: {
       const unreachable: never = source.format;
       return Result.err(

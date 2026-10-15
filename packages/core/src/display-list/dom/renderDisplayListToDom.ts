@@ -87,6 +87,7 @@ const DEGREES_PER_RADIAN = 180 / Math.PI;
 const IMAGE_MIME_TYPES = {
   png: "image/png",
   jpeg: "image/jpeg",
+  svg: "image/svg+xml",
 } as const satisfies Record<DisplayImageSource["format"], string>;
 
 /**

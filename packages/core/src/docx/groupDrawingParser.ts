@@ -30,6 +30,7 @@ const CROP_SCALE = 100_000;
 const MAX_PATH_COMMANDS = 10_000;
 const MAX_TEXT_CHARACTERS = 20_000;
 const MAX_SVG_CHARACTERS = 1_000_000;
+const NON_RENDERING_GROUP_CHILDREN = new Set(["cNvGrpSpPr", "grpSpPr", "extLst"]);
 
 const numericAttr = (element: XmlElement | null, name: string): number => {
   const direct = parseNumericAttribute(element, null, name);
@@ -296,19 +297,20 @@ const renderPicture = (
   return `<defs><clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${width}" height="${height}"/></clipPath></defs><g clip-path="url(#${clipId})">${image}</g>`;
 };
 
-const groupViewBox = (
+const effectiveRootTransform = (
   group: XmlElement,
   width: number,
   height: number,
-): { x: number; y: number; width: number; height: number } => {
-  const transform = readTransform(
+): ReturnType<typeof readTransform> => {
+  const authored = readTransform(
     findChildByLocalName(findChildByLocalName(group, "grpSpPr"), "xfrm"),
   );
   return {
-    x: transform.childX,
-    y: transform.childY,
-    width: transform.childWidth > 0 ? transform.childWidth : width,
-    height: transform.childHeight > 0 ? transform.childHeight : height,
+    ...authored,
+    width: authored.width > 0 ? authored.width : width,
+    height: authored.height > 0 ? authored.height : height,
+    childWidth: authored.childWidth > 0 ? authored.childWidth : width,
+    childHeight: authored.childHeight > 0 ? authored.childHeight : height,
   };
 };
 
@@ -388,8 +390,10 @@ const createSvg = (
           : "";
         // The nested markup was counted as it was produced.
         total -= nested.length;
-      } else {
+      } else if (NON_RENDERING_GROUP_CHILDREN.has(localName)) {
         continue;
+      } else {
+        return null;
       }
       content += piece;
       total += piece.length;
@@ -399,12 +403,19 @@ const createSvg = (
     }
     return content;
   };
-  const viewBox = groupViewBox(group, width, height);
-  const content = render(group, { x: width / viewBox.width, y: height / viewBox.height }, 0);
+  const root = effectiveRootTransform(group, width, height);
+  const content = render(
+    group,
+    { x: root.width / root.childWidth, y: root.height / root.childHeight },
+    0,
+  );
   if (content === null || (!content && hostedTextBoxes.size === 0)) {
     return null;
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}" width="${emuToPixels(width)}" height="${emuToPixels(height)}">${content}</svg>`;
+  const transformed = content
+    ? wrapTransformed(root, `<g transform="${nestedGroupTransform(root)}">${content}</g>`)
+    : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" data-folio-preview="wpGroup" viewBox="0 0 ${width} ${height}" width="${emuToPixels(width)}" height="${emuToPixels(height)}">${transformed}</svg>`;
 };
 
 const groupElement = (drawing: XmlElement): XmlElement | null => {
@@ -463,9 +474,13 @@ export const parseGroupDrawing = (
   if (!image || image.size.width <= 0 || image.size.height <= 0) {
     return null;
   }
-  const hosted = hostsTextBoxes(image)
-    ? collectGroupTextBoxes(group, image.size.width, image.size.height)
-    : [];
+  const rootTransform = effectiveRootTransform(group, image.size.width, image.size.height);
+  const rootTurnsChildren =
+    rootTransform.rotation !== 0 || rootTransform.flipH || rootTransform.flipV;
+  const hosted =
+    hostsTextBoxes(image) && !rootTurnsChildren
+      ? collectGroupTextBoxes(group, image.size.width, image.size.height)
+      : [];
   const svg = createSvg(
     group,
     image.size.width,

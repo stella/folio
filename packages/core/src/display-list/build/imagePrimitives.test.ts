@@ -27,6 +27,19 @@ describe("ImageTable.intern", () => {
     expect(images.intern(MALFORMED_BASE64_URL)).toBeUndefined();
   });
 
+  test("a percent-encoded group SVG preview interns with its explicit geometry", () => {
+    const svg =
+      'data:image/svg+xml;charset=utf-8,%3Csvg xmlns="http://www.w3.org/2000/svg" data-folio-preview="wpGroup" width="96" height="48"%3E%3Crect width="96" height="48"/%3E%3C/svg%3E';
+    const images = new ImageTable();
+
+    expect(images.intern(svg)).toBe(0);
+    expect(images.snapshot().at(0)).toMatchObject({
+      format: "svg",
+      pixelWidth: 96,
+      pixelHeight: 48,
+    });
+  });
+
   test("a well-formed PNG data: URL interns", () => {
     // 1x1 transparent PNG.
     const png =

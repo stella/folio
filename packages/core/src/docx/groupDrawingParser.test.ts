@@ -172,11 +172,73 @@ describe("parseGroupDrawing", () => {
     const image = parseGroupDrawing(drawing, standalonePreviewLedger(), rels, media);
     expect(image?.size).toEqual({ width: 2_000_000, height: 1_000_000 });
     const svg = decodeURIComponent(image?.src?.split(",").at(1) ?? "");
-    expect(svg).toContain('viewBox="100 200 1800000 800000"');
+    expect(svg).toContain('viewBox="0 0 2000000 1000000"');
+    expect(svg).toContain(
+      'transform="translate(0 0) scale(1.1111111111111112 1.25) translate(-100 -200)"',
+    );
     expect(svg.match(/<image /gu)).toHaveLength(2);
     expect(svg).toContain('href="data:image/png;base64,Zmlyc3Q="');
     expect(svg).toContain('href="data:image/png;base64,c2Vjb25k"');
     expect(svg).toContain('<clipPath id="group-picture-1">');
+  });
+
+  test("composes root and nested group transforms, rotations, and flips", () => {
+    const drawing = parseXmlDocument(`
+      <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+        xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+        xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+        <wp:inline><wp:extent cx="1000" cy="800"/>
+          <a:graphic><a:graphicData><wpg:wgp>
+            <wpg:grpSpPr><a:xfrm rot="5400000" flipH="1">
+              <a:off x="100" y="50"/><a:ext cx="800" cy="600"/>
+              <a:chOff x="10" y="20"/><a:chExt cx="400" cy="300"/>
+            </a:xfrm></wpg:grpSpPr>
+            <wpg:grpSp>
+              <wpg:grpSpPr><a:xfrm flipV="1">
+                <a:off x="60" y="70"/><a:ext cx="200" cy="120"/>
+                <a:chOff x="5" y="10"/><a:chExt cx="100" cy="60"/>
+              </a:xfrm></wpg:grpSpPr>
+              <wps:wsp><wps:spPr><a:xfrm><a:off x="15" y="20"/><a:ext cx="30" cy="40"/></a:xfrm><a:prstGeom prst="rect"/></wps:spPr></wps:wsp>
+            </wpg:grpSp>
+          </wpg:wgp></a:graphicData></a:graphic>
+        </wp:inline>
+      </w:drawing>
+    `);
+    if (!drawing) {
+      throw new Error("Expected drawing fixture");
+    }
+
+    const image = parseGroupDrawing(drawing, standalonePreviewLedger());
+    const svg = decodeURIComponent(image?.src?.split(",").at(1) ?? "");
+
+    expect(svg).toContain('viewBox="0 0 1000 800"');
+    expect(svg).toContain("rotate(90 500 350)");
+    expect(svg).toContain("translate(500 350) scale(-1 1) translate(-500 -350)");
+    expect(svg).toContain("translate(100 50) scale(2 2) translate(-10 -20)");
+    expect(svg).toContain("translate(60 70) scale(2 2) translate(-5 -10)");
+    expect(svg).toContain("translate(160 130) scale(1 -1) translate(-160 -130)");
+    expect(svg).toContain('<rect x="15" y="20" width="30" height="40"');
+  });
+
+  test("declines a partially unsupported group instead of dropping a child", () => {
+    const drawing = parseXmlDocument(`
+      <w:drawing xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+        xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+        xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+        <wp:inline><wp:extent cx="100" cy="100"/><a:graphic><a:graphicData><wpg:wgp>
+          <wps:wsp><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="50" cy="50"/></a:xfrm></wps:spPr></wps:wsp>
+          <wpg:graphicFrame/>
+        </wpg:wgp></a:graphicData></a:graphic></wp:inline>
+      </w:drawing>
+    `);
+    if (!drawing) {
+      throw new Error("Expected drawing fixture");
+    }
+
+    expect(parseGroupDrawing(drawing, standalonePreviewLedger())).toBeNull();
   });
 
   test("bounds a group of large text boxes instead of embedding every shape unbounded", () => {
