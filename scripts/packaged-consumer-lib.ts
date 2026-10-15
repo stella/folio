@@ -66,6 +66,14 @@ export const buildAndPack = async (pkgDir: string, destDir: string): Promise<str
   const packageJson = (await Bun.file(path.join(pkgDir, "package.json")).json()) as {
     name: string;
   };
+  const sharedTarballs = process.env["FOLIO_PACKED_TARBALLS"];
+  if (sharedTarballs) {
+    const tarballs = await Bun.file(path.join(sharedTarballs, "tarballs.json")).json();
+    const tarball = tarballs[packageJson.name];
+    if (typeof tarball !== "string" || !(await Bun.file(tarball).exists()))
+      panic(`packaged-consumer: no shared tarball for ${packageJson.name}`);
+    return tarball;
+  }
   console.log(`→ building ${packageJson.name}`);
   await $`bun run build`.cwd(pkgDir).quiet();
   assertHostPeersExternal(pkgDir);
@@ -73,10 +81,17 @@ export const buildAndPack = async (pkgDir: string, destDir: string): Promise<str
   const pkgJsonPath = path.join(pkgDir, "package.json");
   const original = await readFile(pkgJsonPath, "utf-8");
   try {
-    console.log(`→ transforming ${packageJson.name} package.json to dist shape`);
-    await $`bun ${prepareScript} ${pkgDir}`.quiet();
+    const manifest = JSON.parse(original);
+    if (
+      Object.values(manifest.exports).some(
+        (target) => typeof target === "string" && target.startsWith("./src/"),
+      )
+    ) {
+      console.log(`→ transforming ${packageJson.name} package.json to dist shape`);
+      await $`bun ${prepareScript} ${pkgDir}`.quiet();
+    }
     console.log(`→ packing ${packageJson.name} tarball`);
-    await $`bun pm pack --destination ${destDir}`.cwd(pkgDir).quiet();
+    await $`bun pm pack --ignore-scripts --destination ${destDir}`.cwd(pkgDir).quiet();
   } finally {
     // Always restore the in-repo source-shape package.json.
     await writeFile(pkgJsonPath, original);
