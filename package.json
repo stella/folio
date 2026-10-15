@@ -157,7 +157,7 @@
     "@rolldown/plugin-babel": "^0.2.2",
     "@stll/docx-core": "workspace:*",
     "@stll/folio-core": "workspace:*",
-    "@stll/oxlint-config": "1.0.0",
+    "@stll/oxlint-config": "1.1.0",
     "@stll/utf8-boundaries": "workspace:*",
     "@types/babel__core": "^7.20.5",
     "@types/node": "^26.2.0",

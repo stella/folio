@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \"${CLAUDE_CODE_REMOTE:-}\" = \"true\" ]; then\n  bash .agents/cloud-setup.sh start || exit \"$?\"\n  if [ -n \"${CLAUDE_ENV_FILE:-}\" ]; then\n    if [ ! -f /etc/profile.d/stll-cloud.sh ]; then\n      printf '%s\\n' 'cloud-setup: cloud shell profile is unavailable; run install' >&2\n      exit 1\n    fi\n    printf '\\n' >> \"$CLAUDE_ENV_FILE\" || exit \"$?\"\n    cat /etc/profile.d/stll-cloud.sh >> \"$CLAUDE_ENV_FILE\"\n  fi\nfi"
+          }
+        ]
+      }
+    ]
+  }
+}
