@@ -262,6 +262,44 @@ describe("shared toolchain CI selection", () => {
     }
     expect(runDetector({ result: { status: "compared", changed: "false" } }).status).not.toBe(0);
   });
+
+  test("an unreadable detector result is reported as an error annotation", () => {
+    const command = `bunx() { printf '%s\\n' "$DETECTOR_RESULT"; }; ${detector.run}`;
+    const directory = mkdtempSync(path.join(tmpdir(), "folio-toolchain-plan-"));
+    try {
+      const run = (result) =>
+        Bun.spawnSync(["bash", "-c", command], {
+          cwd: repo,
+          env: {
+            ...process.env,
+            TOOLCHAIN_BASE: "event-base",
+            GITHUB_OUTPUT: path.join(directory, "output"),
+            DETECTOR_RESULT: JSON.stringify(result),
+          },
+        }).stdout.toString();
+      expect(run({ status: "unreadable", changed: true, error: "unavailable base" })).toContain(
+        "::error title=Toolchain change detection unreadable::unavailable base; every job runs.",
+      );
+      expect(run({ status: "compared", changed: true, tools: ["bun"] })).not.toContain("::error");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  // The shared detector fails open on anything it cannot read, which silently runs
+  // every job; this repository's own declarations must stay readable.
+  test("the shared detector reads this repository's toolchain declarations", () => {
+    const run = Bun.spawnSync(
+      ["bunx", "--no-install", "stll-toolchain-changed", "--since", "HEAD"],
+      { cwd: repo },
+    );
+    expect(run.exitCode).toBe(0);
+    const result = JSON.parse(run.stdout.toString());
+    expect({ status: result.status, error: result.error }).toEqual({
+      status: "compared",
+      error: undefined,
+    });
+  });
 });
 
 describe("required shared toolchain policy", () => {

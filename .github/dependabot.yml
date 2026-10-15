@@ -15,18 +15,28 @@ updates:
       dependencies:
         patterns: ["*"]
         update-types: [minor, patch]
-    # These pins are updated through the shared toolchain policy.
+    # These pins are updated through the shared toolchain policy; security updates stay enabled.
     ignore:
       - dependency-name: "typescript"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "oxlint"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "@oxlint/plugins"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "oxfmt"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "oxlint-tsgolint"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "@stll/oxlint-plugin"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "lefthook"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "@typescript/native"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "typescript-compat"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "bun-types"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
   - package-ecosystem: cargo
     directories:
       - "/"
@@ -56,19 +66,30 @@ updates:
       dependencies:
         patterns: ["*"]
         update-types: [minor, patch]
-    # These pins are updated through the shared toolchain policy.
+    # These pins are updated through the shared toolchain policy; security updates stay enabled.
     ignore:
       - dependency-name: "actions/checkout"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "oven-sh/setup-bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "actions/setup-node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "actions/setup-python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "astral-sh/setup-uv"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "actions/cache"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "actions/cache/restore"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "actions/cache/save"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "actions/upload-artifact"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "actions/download-artifact"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "stella/.github/.github/workflows/package-consumer-compat.yml"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
   - package-ecosystem: docker
     directories:
       - "/docker/audit"
@@ -84,29 +105,53 @@ updates:
       dependencies:
         patterns: ["*"]
         update-types: [minor, patch]
-    # These pins are updated through the shared toolchain policy.
+    # These pins are updated through the shared toolchain policy; security updates stay enabled.
     ignore:
       - dependency-name: "node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "oven/bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "library/node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "library/python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "library/oven/bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "docker.io/node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "docker.io/python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "docker.io/oven/bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "docker.io/library/node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "docker.io/library/python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "docker.io/library/oven/bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "index.docker.io/node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "index.docker.io/python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "index.docker.io/oven/bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "index.docker.io/library/node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "index.docker.io/library/python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "index.docker.io/library/oven/bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "registry-1.docker.io/node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "registry-1.docker.io/python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "registry-1.docker.io/oven/bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "registry-1.docker.io/library/node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "registry-1.docker.io/library/python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "registry-1.docker.io/library/oven/bun"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
