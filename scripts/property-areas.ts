@@ -43,6 +43,8 @@ const PROPERTY_FILE = /\.test\.tsx?$/;
  * of the area the path itself belongs to.
  */
 export const COUPLINGS: readonly { prefix: string; areas: readonly string[] }[] = [
+  // Shared boundaries are exercised by the actual ZIP and document serializers.
+  { prefix: "packages/utf8-boundaries/src/", areas: ["docx-core/zip", "core/utils"] },
   // The comparison's internals live under internal/compare.
   { prefix: "packages/core/src/internal/compare/", areas: ["core/compare"] },
   // Whole-story revision resolution backs accept/reject in the reviewer and

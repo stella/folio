@@ -8,6 +8,7 @@
  */
 
 import JSZip from "jszip";
+import { writeZipEntry } from "@stll/utf8-boundaries";
 
 const NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships";
@@ -101,7 +102,7 @@ export const buildNestedTableDocx = async ({
 
   const zip = new JSZip();
   for (const name of Object.keys(parts).toSorted()) {
-    zip.file(name, parts[name] ?? "", ZIP_ENTRY_OPTIONS);
+    writeZipEntry(zip, name, parts[name] ?? "", ZIP_ENTRY_OPTIONS);
   }
   return await zip.generateAsync({ type: "arraybuffer" });
 };

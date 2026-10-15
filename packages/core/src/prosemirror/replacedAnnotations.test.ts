@@ -15,8 +15,12 @@ import {
   hasReplacedAnnotations,
   nonInclusiveMarkNames,
   surveyReplacedAnnotations,
+  resolvedCommentPoints,
 } from "./replacedAnnotations";
 import { schema } from "./schema";
+import { EditorState } from "prosemirror-state";
+import { acceptAIEditRevision, acceptChange } from "./commands/comments";
+import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 
 describe("NON_INCLUSIVE_MARK_DISPOSITION", () => {
   test("classifies every non-inclusive mark the schema declares", () => {
@@ -92,3 +96,114 @@ describe("surveyReplacedAnnotations", () => {
     expect(annotations.trailing.map((node) => node.attrs["marker"])).toEqual([end.attrs["marker"]]);
   });
 });
+
+// Boundary deletion can live on either adjacent physical paragraph carrier.
+test.each(["del", "moveFrom"] as const)(
+  "point comments distinguish retired %s boundaries from surviving text",
+  (kind) => {
+    const deletion = schema.marks["deletion"];
+    const comment = schema.marks["comment"];
+    if (!deletion || !comment) throw new Error("Expected revision and comment marks");
+    for (const owner of ["own", "previous", "none"] as const) {
+      for (const remaining of ["", "tail"]) {
+        const boundary = { pPrMark: { kind, info: { id: 12, author: "Reviewer" } } };
+        const previous = schema.node("paragraph", owner === "previous" ? boundary : null, [
+          schema.text("Prefix"),
+        ]);
+        const paragraph = schema.node("paragraph", owner === "own" ? boundary : null, [
+          schema.text("gone", [
+            deletion.create({ revisionId: 11, author: "Reviewer" }),
+            comment.create({ commentId: 3 }),
+          ]),
+          ...(remaining ? [schema.text(remaining)] : []),
+        ]);
+        const doc = schema.node("doc", null, [previous, paragraph]);
+        const points = resolvedCommentPoints({
+          doc,
+          removes: (node) => deletion.isInSet(node.marks) !== undefined,
+          retiresStructure: () => true,
+        });
+        expect([...points.keys()]).toEqual(owner === "none" || remaining ? [3] : []);
+      }
+    }
+  },
+);
+
+// Bulk-only fixtures missed independently pending structural revisions.
+test.each(["paragraph", "precedingParagraph", "tableRow", "tableCell", "tableHeader"] as const)(
+  "accepting text alone retains a comment inside pending %s deletion",
+  (owner) => {
+    const deletion = schema.marks["deletion"];
+    const comment = schema.marks["comment"];
+    if (!deletion || !comment) throw new Error("Expected revision and comment marks");
+    for (const resolution of ["revision", "range"] as const) {
+      const boundary = { kind: "del" as const, info: { id: 12, author: "Reviewer" } };
+      const membership = { revisionId: 12, author: "Reviewer" };
+      const paragraph = schema.node(
+        "paragraph",
+        owner === "paragraph" ? { pPrMark: boundary } : null,
+        [
+          schema.text("gone", [
+            deletion.create({ revisionId: 11, author: "Reviewer" }),
+            comment.create({ commentId: 3 }),
+          ]),
+        ],
+      );
+      const prefix = schema.node(
+        "paragraph",
+        owner === "precedingParagraph" ? { pPrMark: boundary } : null,
+        [schema.text("Prefix")],
+      );
+      const container =
+        owner === "paragraph" || owner === "precedingParagraph"
+          ? paragraph
+          : schema.node("table", null, [
+              schema.node("tableRow", owner === "tableRow" ? { trDel: membership } : null, [
+                schema.node(
+                  owner === "tableHeader" ? "tableHeader" : "tableCell",
+                  owner === "tableCell" || owner === "tableHeader"
+                    ? { cellMarker: { kind: "del", info: membership } }
+                    : null,
+                  [paragraph],
+                ),
+              ]),
+            ]);
+      const doc = schema.node("doc", null, [prefix, container]);
+      let state = EditorState.create({ schema, doc });
+      let textPosition = -1;
+      doc.descendants((node, position) => {
+        if (node.isText && deletion.isInSet(node.marks)) textPosition = position;
+      });
+      expect(textPosition).toBeGreaterThan(0);
+      const command =
+        resolution === "revision"
+          ? acceptAIEditRevision(11)
+          : acceptChange(textPosition, textPosition + 4);
+      expect(
+        command(state, (transaction) => {
+          state = state.apply(transaction);
+        }),
+      ).toBe(true);
+      const points: number[] = [];
+      state.doc.descendants((node) => {
+        if (node.type.name !== "rangeAnchor") return;
+        const attrs = readRangeAnchorAttrs(node);
+        if (attrs.ok && attrs.value.start.type === "commentRangeStart")
+          points.push(attrs.value.start.id);
+      });
+      expect(points).toEqual([3]);
+      expect(state.doc.textContent).toBe("Prefix");
+      const retained = state.doc.child(1);
+      if (owner === "paragraph") expect(retained.attrs["pPrMark"]).toEqual(boundary);
+      if (owner === "precedingParagraph")
+        expect(state.doc.child(0).attrs["pPrMark"]).toEqual(boundary);
+      if (owner === "tableRow") expect(retained.firstChild?.attrs["trDel"]).toEqual(membership);
+      if (owner === "tableCell" || owner === "tableHeader")
+        expect(retained.firstChild?.firstChild?.attrs["cellMarker"]).toEqual({
+          kind: "del",
+          info: membership,
+        });
+      expect(() => state.doc.check()).not.toThrow();
+    }
+  },
+);

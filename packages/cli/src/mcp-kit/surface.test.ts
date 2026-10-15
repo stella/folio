@@ -210,6 +210,13 @@ describe("listing", () => {
 });
 
 describe("capability tools", () => {
+  test("malformed cursor encodings return validation errors", async () => {
+    for (const cursor of ["%", "a", "====", "日本語", "a===", "AA=="]) {
+      const result = await call(CAPABILITY_TOOL_NAMES.list, { cursor });
+      expect(result.result.isError).toBe(true);
+    }
+  });
+
   test("list_capabilities pages the unlisted tools and filters by domain and access", async () => {
     const all = await call(CAPABILITY_TOOL_NAMES.list, {});
     const items = await call(CAPABILITY_TOOL_NAMES.list, { domain: "items", access: "write" });

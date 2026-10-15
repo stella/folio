@@ -1,0 +1,10 @@
+{
+  "ZIP text preserves supplementary characters across chunk boundaries": [
+    {
+      "seed": 2138928917,
+      "path": "0:0:0",
+      "note": "A supplementary character crossing an archive string chunk must retain both surrogate code units.",
+      "date": "2026-10-14"
+    }
+  ]
+}

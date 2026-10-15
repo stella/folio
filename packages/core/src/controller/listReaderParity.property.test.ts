@@ -39,7 +39,7 @@ const PRODUCER_READERS = {
   "packages/core/src/prosemirror/listMarker.ts::advanceVisibleListMarker": "pm",
   "packages/core/src/docx/listMarkerComputation.ts::computeListMarker": "parser",
   "packages/core/src/docx/blockContentParser.ts::p": "parser",
-  "packages/core/src/controller/canonicalListRendering.ts::normalizeBody": "canonical",
+  "packages/core/src/docx/listModelNormalization.ts::normalizeBody": "canonical",
   "packages/core/src/prosemirror/listLabels.ts::listLabelAttrsFromRendering": "model",
   "packages/core/src/prosemirror/listLabels.ts::createListLabelCounter": "snapshot",
   "packages/core/src/markdown/renderParagraph.ts::renderParagraphBlock": "markdown",

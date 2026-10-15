@@ -1,3 +1,8 @@
+import { reconcileDocumentPartRelationships } from "@stll/docx-core/ops";
+import { normalizeListModelRendering } from "../docx/listModelNormalization";
+import { commentTextParagraph } from "../docx/commentTextParagraph";
+import { buildSections } from "../docx/documentParser";
+import { noteStoryInventory } from "./note-story-inventory";
 import { getHeaderFooterText, getEndnoteText, getFootnoteText } from "../docx/storyPlainText";
 import JSZip from "jszip";
 import { classifyResourceReference } from "./referenceClassification";
@@ -218,13 +223,7 @@ const createReviewerComment = ({
   id,
   author,
   date: date ?? new Date().toISOString(),
-  content: [
-    {
-      type: "paragraph",
-      formatting: {},
-      content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
-    },
-  ],
+  content: [commentTextParagraph(text)],
 });
 
 type FolioDocumentOperationUndoEntry = {
@@ -1979,50 +1978,32 @@ export class FolioDocxReviewer {
    * with the sections that show it: `[header first (sections 1, 3)] …`.
    */
   getNotesAsText(): string {
-    const pkg = this.baseDocument.package;
     const lines: string[] = [];
     const placements = this.headerFooterPlacements();
-
-    const pushHeaderFooter = (
-      map: Map<string, HeaderFooter> | undefined,
-      label: "header" | "footer",
-    ) => {
-      if (!map) {
-        return;
-      }
-      for (const [relationshipId, hf] of map) {
-        const handle = { type: label, relationshipId } as const;
-        const text = this.getHeaderFooterStoryText(handle, hf);
-        if (text.length > 0) {
-          const roles = placements.byPart.get(`${label}:${relationshipId}`);
-          lines.push(
-            `[${label} ${roles ? describePlacements(roles, placements.sectionCount) : hf.hdrFtrType}] ${text}`,
-          );
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (handle.type === "main") continue;
+      const text = this.getStoryText(handle);
+      if (text.length === 0) continue;
+      switch (handle.type) {
+        case "header":
+        case "footer": {
+          const source = this.getHeaderFooterStory(handle);
+          if (!source) panic("A listed document story no longer exists", { story: handle });
+          const roles = placements.byPart.get(`${handle.type}:${handle.relationshipId}`);
+          const label = roles
+            ? describePlacements(roles, placements.sectionCount)
+            : source.hdrFtrType;
+          lines.push(`[${handle.type} ${label}] ${text}`);
+          break;
         }
-      }
-    };
-
-    pushHeaderFooter(pkg.headers, "header");
-    pushHeaderFooter(pkg.footers, "footer");
-
-    for (const footnote of pkg.footnotes ?? []) {
-      if (isSeparatorFootnote(footnote)) {
-        continue;
-      }
-      const handle = { type: "footnote", noteId: footnote.id } as const;
-      const text = this.getNoteStoryText(handle, footnote);
-      if (text.length > 0) {
-        lines.push(`[footnote #${footnote.id}] ${text}`);
-      }
-    }
-    for (const endnote of pkg.endnotes ?? []) {
-      if (isSeparatorEndnote(endnote)) {
-        continue;
-      }
-      const handle = { type: "endnote", noteId: endnote.id } as const;
-      const text = this.getNoteStoryText(handle, endnote);
-      if (text.length > 0) {
-        lines.push(`[endnote #${endnote.id}] ${text}`);
+        case "footnote":
+        case "endnote":
+          lines.push(`[${handle.type} #${handle.noteId}] ${text}`);
+          break;
+        default: {
+          const unreachable: never = handle;
+          return unreachable;
+        }
       }
     }
 
@@ -2044,12 +2025,13 @@ export class FolioDocxReviewer {
     for (const relationshipId of this.importedFooters.keys()) {
       handles.push({ type: "footer", relationshipId });
     }
-    for (const footnote of pkg.footnotes ?? []) {
+    const notes = noteStoryInventory(pkg, this.removedNoteStories);
+    for (const footnote of notes.footnotes ?? []) {
       if (!isSeparatorFootnote(footnote)) {
         handles.push({ type: "footnote", noteId: footnote.id });
       }
     }
-    for (const endnote of pkg.endnotes ?? []) {
+    for (const endnote of notes.endnotes ?? []) {
       if (!isSeparatorEndnote(endnote)) {
         handles.push({ type: "endnote", noteId: endnote.id });
       }
@@ -2058,10 +2040,7 @@ export class FolioDocxReviewer {
       if (handle.type === "header" || handle.type === "footer") {
         return !this.removedHeaderFooterStories.has(headerFooterStoryKey(handle));
       }
-      return (
-        (handle.type !== "footnote" && handle.type !== "endnote") ||
-        !this.removedNoteStories.has(noteStoryKey(handle))
-      );
+      return true;
     });
   }
 
@@ -2805,6 +2784,19 @@ export class FolioDocxReviewer {
     };
   }
 
+  /** Resolve ordinary revisions on a detached in-memory document. */
+  toResolvedDocument(decision: "accept" | "reject"): Document {
+    const copy = new FolioDocxReviewer({
+      baseDocument: this.toDocument(),
+      originalBuffer: this.originalBuffer,
+      state: this.state,
+      author: this.author,
+    });
+    if (decision === "accept") copy.acceptAll();
+    else copy.rejectAll();
+    return copy.toDocument();
+  }
+
   /** The current document model with edits merged back in. */
   toDocument(): Document {
     const document = this.documentFromStateSnapshot(this.captureReviewerState());
@@ -2831,7 +2823,9 @@ export class FolioDocxReviewer {
       importedFooters: new Map(this.importedFooters),
       createdComments: [...this.createdComments],
       resolvedOverrides: new Map(this.resolvedOverrides),
-      resolvedStoryExpectations: [...this.resolvedStoryExpectations.values()],
+      resolvedStoryExpectations: [...this.resolvedStoryExpectations.values()].filter(
+        ({ story }) => story.type === "main" || this.secondaryStorySource(story) !== undefined,
+      ),
     };
   }
 
@@ -2874,6 +2868,11 @@ export class FolioDocxReviewer {
     });
     if (snapshot.finalSectionPropertiesOverride !== undefined) {
       document.package.document.finalSectionProperties = snapshot.finalSectionPropertiesOverride;
+      if (document.package.document.sections !== undefined)
+        document.package.document.sections = buildSections(
+          document.package.document.content,
+          snapshot.finalSectionPropertiesOverride,
+        );
     }
     if (snapshot.importedStyles !== undefined) document.package.styles = snapshot.importedStyles;
     if (snapshot.importedMedia.size > 0)
@@ -2909,17 +2908,7 @@ export class FolioDocxReviewer {
       const candidates = new Set(snapshot.removedNoteStories.map(noteStoryKey));
       const referenced: ReadonlySet<string> = referencedNotes(document, candidates);
       const removed = new Set([...candidates].filter((key) => !referenced.has(key)));
-      const { footnotes, endnotes } = document.package;
-      if (footnotes) {
-        document.package.footnotes = footnotes.filter(
-          (note) => !removed.has(noteStoryKey({ type: "footnote", noteId: note.id })),
-        );
-      }
-      if (endnotes) {
-        document.package.endnotes = endnotes.filter(
-          (note) => !removed.has(noteStoryKey({ type: "endnote", noteId: note.id })),
-        );
-      }
+      Object.assign(document.package, noteStoryInventory(document.package, removed));
     }
     const definitions = [
       ...(document.package.document.comments ?? []),
@@ -2940,7 +2929,7 @@ export class FolioDocxReviewer {
         snapshot.resolvedOverrides,
       );
     }
-    return document;
+    return normalizeListModelRendering(reconcileDocumentPartRelationships(document)).document;
   }
 
   private captureSaveSnapshot(): FolioSaveSnapshot {
@@ -3106,6 +3095,7 @@ export class FolioDocxReviewer {
     if (story.type === "main") {
       return this.state;
     }
+    if (!this.secondaryStorySource(story)) return null;
     const key = secondaryStoryKey(story);
     const existing = this.secondaryStoryStates.get(key);
     if (existing) {
@@ -3136,17 +3126,21 @@ export class FolioDocxReviewer {
    * state for a story nothing edits.
    */
   private readSecondaryStoryDoc(story: FolioSecondaryStoryHandle): PMNode | null {
+    if (!this.secondaryStorySource(story)) return null;
     return (
       this.secondaryStoryStates.get(secondaryStoryKey(story))?.state.doc ??
       this.secondaryStoryDoc(story)
     );
   }
 
+  private secondaryStorySource(story: FolioSecondaryStoryHandle) {
+    return story.type === "header" || story.type === "footer"
+      ? this.getHeaderFooterStory(story)
+      : this.getNoteStory(story);
+  }
+
   private secondaryStoryDoc(story: FolioSecondaryStoryHandle): PMNode | null {
-    const source =
-      story.type === "header" || story.type === "footer"
-        ? this.getHeaderFooterStory(story)
-        : this.getNoteStory(story);
+    const source = this.secondaryStorySource(story);
     if (!source) {
       return null;
     }
@@ -3312,14 +3306,13 @@ export class FolioDocxReviewer {
   }
 
   private getNoteStory(story: FolioNoteStoryHandle): Footnote | Endnote | undefined {
+    const notes = noteStoryInventory(this.baseDocument.package, this.removedNoteStories);
     if (story.type === "footnote") {
-      return this.baseDocument.package.footnotes?.find(
+      return notes.footnotes?.find(
         (note) => note.id === story.noteId && !isSeparatorFootnote(note),
       );
     }
-    return this.baseDocument.package.endnotes?.find(
-      (note) => note.id === story.noteId && !isSeparatorEndnote(note),
-    );
+    return notes.endnotes?.find((note) => note.id === story.noteId && !isSeparatorEndnote(note));
   }
 
   /**
@@ -3530,7 +3523,12 @@ export class FolioDocxReviewer {
         anchoredBefore,
         entry
           ? anchoredCommentIdsInProseDoc(entry.initialState.doc)
-          : anchoredCommentIdsInBlocks(this.getNoteStory(handle)?.content ?? []),
+          : anchoredCommentIdsInBlocks(
+              (handle.type === "footnote"
+                ? this.baseDocument.package.footnotes
+                : this.baseDocument.package.endnotes
+              )?.find((note) => note.id === handle.noteId)?.content ?? [],
+            ),
       );
     }
     return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });

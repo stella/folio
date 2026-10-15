@@ -24,6 +24,7 @@
     },
     "container_contract": {
       "paths": [
+        "packages/utf8-boundaries/**",
         "packages/core/src/**",
         "packages/docx-core/src/**",
         "packages/{core,docx-core}/package.json",
@@ -55,6 +56,7 @@
     },
     "interactions": {
       "paths": [
+        "packages/utf8-boundaries/**",
         "packages/{core,docx-core,react,vue,playground,playground-vue,editor-web}/**",
         "tests/**",
         "!**/*.md",
@@ -63,6 +65,7 @@
     },
     "differential": {
       "paths": [
+        "packages/utf8-boundaries/**",
         "packages/core/src/**",
         "packages/core/scripts/differential/**",
         "packages/docx-core/src/**",
@@ -73,6 +76,7 @@
     },
     "consumer_scenarios": {
       "paths": [
+        "packages/utf8-boundaries/**",
         "packages/{docx-core,core,agents,cli}/**",
         "!packages/{docx-core,core,cli}/**/*.md",
         "!packages/*/src/**/*.test.{ts,tsx}",
@@ -86,13 +90,17 @@
     },
     "packaged_consumer": {
       "paths": [
-        "packages/{docx-core,core,react}/**",
-        "!**/*.md",
-        "!packages/*/src/**/*.test.{ts,tsx}",
-        "!packages/*/src/**/__tests__/**",
         "test/packaged-consumer/**",
         "scripts/packaged-consumer-*.ts",
-        "scripts/prepare-publish.ts"
+        "scripts/check-package-dependencies*",
+        "scripts/lib/published-packages.ts",
+        "scripts/prepare-publish.ts",
+        "scripts/lib/packed-exports.ts",
+        "scripts/lib/packed-declaration-diagnostics.ts",
+        "scripts/packed-declaration-diagnostics.test.ts",
+        "scripts/packed-exports.test.ts",
+        "scripts/published-packages.test.ts",
+        "scripts/clean-room-install.ts"
       ]
     },
     "browser_discovery": {

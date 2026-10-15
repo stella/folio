@@ -1,0 +1,16 @@
+{
+  "partial comment spans retain aligned coverage and point anchors in both edit modes": [
+    {
+      "seed": 1683001,
+      "path": "2:1:0:1",
+      "note": "Rejected deletion restores the original range without retaining its replacement point.",
+      "date": "2026-10-13"
+    },
+    {
+      "seed": 1683001,
+      "path": "2:1:0:6:0:2",
+      "note": "Partial coverage remains unchanged when a saved replacement is rejected.",
+      "date": "2026-10-13"
+    }
+  ]
+}

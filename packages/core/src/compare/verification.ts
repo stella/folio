@@ -648,6 +648,8 @@ export const revisedFinalParagraphMarks = (
     }
     const inADeletedRow = insideADeletedRow || isADeletedTableRow(value);
     for (const [key, item] of Object.entries(value)) {
+      // Sections partition the body; their endpoints are not physical container ends.
+      if (key === "sections" && Array.isArray(value["content"])) continue;
       trail.push(key);
       visit(item, inADeletedRow);
       trail.pop();

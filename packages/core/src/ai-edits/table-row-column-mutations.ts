@@ -1,3 +1,4 @@
+import { sliceText } from "../utils/sliceText";
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
@@ -82,7 +83,7 @@ const UNPLACED_TEXT_PREVIEW_LENGTH = 40;
 const previewCellText = (text: string): string =>
   JSON.stringify(
     text.length > UNPLACED_TEXT_PREVIEW_LENGTH
-      ? `${text.slice(0, UNPLACED_TEXT_PREVIEW_LENGTH)}…`
+      ? `${sliceText({ text, units: "codeUnits", end: UNPLACED_TEXT_PREVIEW_LENGTH })}…`
       : text,
   );
 

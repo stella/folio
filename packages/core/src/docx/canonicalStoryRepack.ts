@@ -1,3 +1,4 @@
+import { encodeUtf8, decodeText } from "../utils/textEncoding";
 /** Canonical snapshots own explicit section references; the PM projection does not. */
 import JSZip from "jszip";
 import { parseDocx } from "./parser";
@@ -13,7 +14,7 @@ const referenceKey = ({ element, type, rId }: HeaderFooterReference): string =>
   `${element}:${type}:${rId}`;
 
 const xmlFingerprint = async (xml: string): Promise<string> => {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(xml));
+  const digest = await crypto.subtle.digest("SHA-256", encodeUtf8(xml));
   let fingerprint = "";
   for (const byte of new Uint8Array(digest)) fingerprint += byte.toString(16).padStart(2, "0");
   return fingerprint;
@@ -32,7 +33,10 @@ export const repackWithCanonicalStoryRemovals = async <T>({
   const originalBuffer = document.originalBuffer;
   if (!originalBuffer) return repack();
   const zip = await JSZip.loadAsync(originalBuffer);
-  const xml = await zip.file("word/document.xml")?.async("text");
+  const xml = await zip
+    .file("word/document.xml")
+    ?.async("uint8array")
+    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   if (!xml) return repack();
   const before = readDocumentSectionFacts(xml);
   const serializedXml = serializeDocument(document);

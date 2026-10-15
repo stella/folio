@@ -1,3 +1,4 @@
+import { readBlobText } from "@stll/folio-core/utils/textEncoding";
 import {
   CANONICAL_GAP,
   usesCanonicalSession,
@@ -253,6 +254,7 @@ import {
 } from "@stll/folio-core/ai-edits/blockRange";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import { resolveCommentCreationRange } from "./commentAnchors";
+import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 import { toast } from "./toast";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
@@ -571,6 +573,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     keyboardShortcuts = DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
     hostShortcuts: hostShortcutsProp,
     readOnly: readOnlyProp = false,
+    reviewDisplayMode,
+    showCommentHighlights = true,
     autoOpenReviewSidebar = true,
     components,
     toolbarExtra,
@@ -711,12 +715,20 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const [anchorPositions, setAnchorPositions] =
     useState<Map<string, number>>(EMPTY_ANCHOR_POSITIONS);
 
-  const { editingMode, readOnly, trackChangesOn, toggleTrackChanges, displayMode, setDisplayMode } =
-    useEditorMode({
-      modeProp,
-      onModeChange,
-      readOnlyProp,
-    });
+  const {
+    editingMode,
+    readOnly,
+    readOnlyReason,
+    trackChangesOn,
+    toggleTrackChanges,
+    displayMode,
+    setDisplayMode,
+  } = useEditorMode({
+    modeProp,
+    onModeChange,
+    readOnlyProp,
+    ...(reviewDisplayMode === undefined ? {} : { reviewDisplayMode }),
+  });
 
   useEffect(() => {
     pagedEditorRef.current
@@ -1302,6 +1314,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     // already resolved internally for save / remove.
     getHfView: pagedEditorBinding.getHfView,
   });
+  useLayoutEffect(() => {
+    if (readOnly && hfEditPosition) handleBodyClick();
+  }, [readOnly, hfEditPosition, handleBodyClick]);
   let activeHfRId = hfEditIsFirstPage ? activeFirstFooterRId : activeFooterRId;
   if (hfEditPosition === "header") {
     activeHfRId = hfEditIsFirstPage ? activeFirstHeaderRId : activeHeaderRId;
@@ -1834,7 +1849,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       return false;
     }
 
-    const range = resolveFindMatchRange(view.state.doc, match);
+    const range = match.authoredRange ?? resolveFindMatchRange(view.state.doc, match);
     if (!range) {
       return false;
     }
@@ -1845,6 +1860,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     });
     return true;
   }, []);
+
+  const notifyReadonlyEditAttempt = useCallback(() => {
+    if (readOnlyReason) onReadonlyEditAttempt?.(readOnlyReason);
+  }, [readOnlyReason, onReadonlyEditAttempt]);
 
   // Find/Replace handlers (depends on handleDocumentChange)
   const {
@@ -1857,10 +1876,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     handleReplaceAll,
   } = useFindReplace({
     getDocumentState: buildCurrentDocument,
+    getEditorState: () => pagedEditorRef.current?.getView()?.state ?? null,
+    markupView: displayMode,
     containerRef,
     handleDocumentChange,
     findReplace,
     selectMatch: selectFindMatch,
+    readOnlyReason,
+    onReadonlyEditAttempt,
   });
 
   useLayoutEffect(() => {
@@ -2964,11 +2987,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             for (const item of items) {
               if (item.types.includes("text/html")) {
                 // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; html accumulates into one outer variable
-                html = await (await item.getType("text/html")).text();
+                html = await readBlobText(await item.getType("text/html"));
               }
               if (item.types.includes("text/plain")) {
                 // oxlint-disable-next-line no-await-in-loop -- sequential reads from a shared clipboard item; text accumulates into one outer variable
-                text = await (await item.getType("text/plain")).text();
+                text = await readBlobText(await item.getType("text/plain"));
               }
             }
             const dt = new DataTransfer();
@@ -3431,6 +3454,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   useImperativeHandle(
     ref,
     () => ({
+      getReadOnlyReason: () => readOnlyReason,
       getDocument: () => buildCurrentDocument(),
       hasPendingChanges: () => {
         const view = pagedEditorRef.current?.getView();
@@ -3465,6 +3489,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         openFind(readFindSelectionSeed());
       },
       openReplace: () => {
+        if (readOnlyReason) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         openReplace(readFindSelectionSeed());
       },
       loadDocument: (document) => {
@@ -4012,7 +4040,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           return null;
         }
         const layout = pagedEditorRef.current?.getEditor()?.getLayout() ?? null;
-        return getPageTextFromLayout(layout, view.state.doc, page);
+        return getPageTextFromLayout({
+          layout,
+          doc: view.state.doc,
+          page,
+          projection: projectMarkupView(view.state, displayMode),
+        });
       },
       getTargetPage: (target, snapshot) => {
         const view = pagedEditorRef.current?.getView();
@@ -4108,6 +4141,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [
       author,
       buildCurrentDocument,
+      displayMode,
+      readOnlyReason,
+      notifyReadonlyEditAttempt,
       scrollPageInfo,
       handleSave,
       setZoomWithViewportAnchor,
@@ -5290,6 +5326,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           documentIO={documentIO}
                           documentIdentity={loadedDocumentIdentity}
                           markupView={displayMode}
+                          showCommentHighlights={showCommentHighlights}
                           {...(fonts !== undefined ? { fonts } : {})}
                           theme={history.state.package.theme || theme || null}
                           sectionProperties={effectiveSectionProperties ?? null}
@@ -5328,7 +5365,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           {...(onCut !== undefined ? { onCut } : {})}
                           {...(onPaste !== undefined ? { onPaste } : {})}
                           {...(onReadonlyEditAttempt !== undefined
-                            ? { onReadOnlyEditAttempt: onReadonlyEditAttempt }
+                            ? { onReadOnlyEditAttempt: notifyReadonlyEditAttempt }
                             : {})}
                           onSelectionChange={handlePagedSelectionChange}
                           {...(onSelectionTextChange !== undefined

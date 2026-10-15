@@ -1,3 +1,4 @@
+import { encodeUtf8, decodeText } from "../utils/textEncoding";
 import { writeZipPart } from "@stll/docx-core/zip";
 import type JSZip from "jszip";
 import { OOXML_NS } from "@stll/docx-utils";
@@ -48,7 +49,9 @@ export const removeResolvedHeaderFooterParts = async ({
   if (removedReferences.length === 0) return;
   const relsFile = zip.file(DOCUMENT_RELS_PATH);
   if (!relsFile) return panic("A resolved header/footer part has no document relationships");
-  const relsXml = await relsFile.async("text");
+  const relsXml = await relsFile
+    .async("uint8array")
+    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   const relationships = parseRelationships(relsXml);
   const removedIds = new Set<string>();
   const candidates = new Set<string>();
@@ -77,7 +80,9 @@ export const removeResolvedHeaderFooterParts = async ({
   // Another package part may share the retired story part through its own relationship.
   for (const file of Object.values(zip.files)) {
     if (file.dir || !file.name.endsWith(".rels") || file.name === DOCUMENT_RELS_PATH) continue;
-    const otherRelationships = parseRelationships(await file.async("text"));
+    const otherRelationships = parseRelationships(
+      await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+    );
     for (const relationship of otherRelationships.values()) {
       if (relationship.targetMode !== "External") {
         candidates.delete(resolveRelativePath(file.name, relationship.target));
@@ -90,7 +95,9 @@ export const removeResolvedHeaderFooterParts = async ({
     const relsPath = `${path.slice(0, slash + 1)}_rels/${path.slice(slash + 1)}.rels`;
     const partRels = zip.file(relsPath);
     if (!partRels) continue;
-    for (const relationship of parseRelationships(await partRels.async("text")).values()) {
+    for (const relationship of parseRelationships(
+      await partRels.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+    ).values()) {
       if (
         !officeRelationshipHasType(relationship.type, "image") ||
         relationship.targetMode === "External"
@@ -105,12 +112,14 @@ export const removeResolvedHeaderFooterParts = async ({
   writeZipPart({
     zip,
     path: DOCUMENT_RELS_PATH,
-    data: withoutChildren(
-      relsXml,
-      (child) =>
-        getNamespaceUri(child) === OOXML_NS.pr &&
-        getLocalName(child.name) === "Relationship" &&
-        removedIds.has(getAttribute(child, null, "Id") ?? ""),
+    data: encodeUtf8(
+      withoutChildren(
+        relsXml,
+        (child) =>
+          getNamespaceUri(child) === OOXML_NS.pr &&
+          getLocalName(child.name) === "Relationship" &&
+          removedIds.has(getAttribute(child, null, "Id") ?? ""),
+      ),
     ),
     options: { compression: "DEFLATE", compressionOptions },
   });
@@ -125,7 +134,9 @@ export const removeResolvedHeaderFooterParts = async ({
   }
   for (const file of Object.values(zip.files)) {
     if (file.dir || !file.name.endsWith(".rels")) continue;
-    for (const relationship of parseRelationships(await file.async("text")).values()) {
+    for (const relationship of parseRelationships(
+      await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+    ).values()) {
       if (relationship.targetMode !== "External")
         retiredMedia.delete(resolveRelativePath(file.name, relationship.target));
     }
@@ -136,16 +147,20 @@ export const removeResolvedHeaderFooterParts = async ({
   }
   const contentTypes = zip.file("[Content_Types].xml");
   if (!contentTypes) return panic("The package has no content types");
-  const contentTypesXml = await contentTypes.async("text");
+  const contentTypesXml = await contentTypes
+    .async("uint8array")
+    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
   writeZipPart({
     zip,
     path: "[Content_Types].xml",
-    data: withoutChildren(
-      contentTypesXml,
-      (child) =>
-        getNamespaceUri(child) === OOXML_NS.ct &&
-        getLocalName(child.name) === "Override" &&
-        candidates.has((getAttribute(child, null, "PartName") ?? "").replace(/^\//u, "")),
+    data: encodeUtf8(
+      withoutChildren(
+        contentTypesXml,
+        (child) =>
+          getNamespaceUri(child) === OOXML_NS.ct &&
+          getLocalName(child.name) === "Override" &&
+          candidates.has((getAttribute(child, null, "PartName") ?? "").replace(/^\//u, "")),
+      ),
     ),
     options: { compression: "DEFLATE", compressionOptions },
   });

@@ -8,6 +8,7 @@ export const nonReactPackageOverride = {
     "packages/cli/**",
     "packages/core/**",
     "packages/docx-core/**",
+    "packages/utf8-boundaries/**",
     "packages/nuxt/**",
     "packages/playground-vue/**",
     "packages/vue/**",
@@ -91,6 +92,7 @@ export default library({
     "unicorn/prefer-response-static-json": "off",
   },
   jsPlugins: [
+    "./packages/utf8-boundaries/src/oxlint.ts",
     "./.oxlint-plugins/folio-clean-room-install.ts",
     "./.oxlint-plugins/folio-layer-boundaries.ts",
     "./.oxlint-plugins/folio-canonical-load.ts",
@@ -132,6 +134,23 @@ export default library({
     "test/__fixtures__/**",
   ],
   overrides: [
+    {
+      files: ["packages/*/src/**/*.{ts,tsx,js,jsx,vue}"],
+      rules: {
+        "utf8-boundaries/no-string-zip-entry": [
+          "error",
+          { ownerPath: "packages/utf8-boundaries/src/zip.ts" },
+        ],
+        "utf8-boundaries/no-chunked-text-codec": "error",
+      },
+    },
+    {
+      files: ["**/*.test.*", "**/__tests__/**", "**/generated/**"],
+      rules: {
+        "utf8-boundaries/no-string-zip-entry": "off",
+        "utf8-boundaries/no-chunked-text-codec": "off",
+      },
+    },
     {
       files: ["scripts/**/*.{ts,js,mts,mjs,cts,cjs}", "test/__fixtures__/clean-room-install.*.ts"],
       rules: { "folio-clean-room-install/install-owner": "error" },

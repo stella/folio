@@ -26,7 +26,6 @@ import { appendAutocompleteToken } from '@stll/folio-core/prosemirror/plugins/au
 import { applyFolioAIEditOperations } from '@stll/folio-core/ai-edits';
 import { ApplyResult } from '@stll/folio-core/ai-suggestions/apply';
 import { applySuggestions } from '@stll/folio-core/ai-suggestions/apply';
-import { default as AutocompleteCaretOverlay } from './components/AutocompleteCaretOverlay.vue';
 import { autocompleteSuggestionKey } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { autocompleteSuggestionPlugin } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { AutocompleteSuggestionPluginOptions } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -39,6 +38,7 @@ import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
 import { buildPositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
 import { clearAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { clearTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
+import { ColorValue } from '@stll/folio-core/types/document';
 import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { Component } from 'vue';
 import { ComponentOptionsMixin } from 'vue';
@@ -62,6 +62,7 @@ import { DeriveBlockIdInput } from '@stll/folio-core/types/block-id';
 import { diffWordSegments } from '@stll/folio-core/ai-edits';
 import { DirectiveKind } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
 import { DirectiveRange } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
+import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
 import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { DOCUMENT_PRESET_VERSION } from '@stll/folio-core/style-sets/types';
 import { DOCUMENT_STYLE_SET_VERSION } from '@stll/folio-core/style-sets/types';
@@ -70,11 +71,12 @@ import { DocumentStyleCatalog } from '@stll/folio-core/style-sets/extract';
 import { DocumentStyleCatalogEntry } from '@stll/folio-core/style-sets/extract';
 import { DocumentStyleSet } from '@stll/folio-core/style-sets/types';
 import { DocxCompatibility } from '@stll/folio-core/docx/compatibility';
-import { default as DocxEditor } from './components/DocxEditor.vue';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
+import { EndnoteProperties } from '@stll/folio-core/types/content';
 import { extractDocumentStyleSet } from '@stll/folio-core/style-sets/extract';
 import { extractDocumentStyleSetFromDocx } from '@stll/folio-core/style-sets/extract';
 import { ExtractDocumentStyleSetOptions } from '@stll/folio-core/style-sets/extract';
@@ -109,7 +111,7 @@ import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
 import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
-import { default as FormattingBar } from './components/FormattingBar.vue';
+import { FootnoteProperties } from '@stll/folio-core/types/content';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getAnonymizationMatches } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { getAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -151,10 +153,12 @@ import { RendererNode } from 'vue';
 import { resetTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ResolvedAnchor } from '@stll/folio-core/ai-suggestions/conflict';
 import { resolveSuggestionAnchor } from '@stll/folio-core/ai-suggestions/conflict';
+import { ReviewDisplayMode } from '@stll/folio-core/managers/reviewDisplayMode';
 import { scanDirectives } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
 import { scrollFolioPositionIntoView } from '@stll/folio-core/paged-layout/scrollToPmPosition';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
 import { SdtProperties } from '@stll/folio-core/types/document';
+import { SectionProperties } from '@stll/folio-core/types/document';
 import { SelectionState } from '@stll/folio-core/prosemirror';
 import { setActiveCitationMeta } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
 import { setAICitationsMeta } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
@@ -170,6 +174,7 @@ import { startAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugin
 import { STELLA_STYLE_SET_NAME } from '@stll/folio-core/style-sets/stellaStyle';
 import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comments';
 import { SuggestionKind } from '@stll/folio-core/prosemirror/commands/comments';
+import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
 import { TemplatePreviewHiddenRange } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewSpan } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValue } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
@@ -188,7 +193,6 @@ import { VNodeChild } from 'vue';
 import { Watermark } from '@stll/folio-core/watermark';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
 import { XmlFragment } from 'yjs';
-import { default as ZoomControl } from './components/ui/ZoomControl.vue';
 
 export { AcceptAutocompleteResult }
 
@@ -232,7 +236,8 @@ export { ApplyResult }
 
 export { applySuggestions }
 
-export { AutocompleteCaretOverlay }
+// @public (undocumented)
+export const AutocompleteCaretOverlay: typeof __VLS_export_2;
 
 // @public (undocumented)
 export type AutocompleteCaretOverlayProps = {
@@ -340,7 +345,8 @@ export { DocumentStyleSet }
 
 export { DocxCompatibility }
 
-export { DocxEditor }
+// @public (undocumented)
+export const DocxEditor: typeof __VLS_export;
 
 // @public (undocumented)
 export type DocxEditorApplyDocumentOperationsOptions = {
@@ -406,6 +412,8 @@ export type DocxEditorProps = {
     keyboardShortcuts?: KeyboardShortcutScope;
     hostShortcuts?: readonly HostShortcut[];
     readOnly?: boolean;
+    reviewDisplayMode?: ReviewDisplayMode;
+    showCommentHighlights?: boolean;
     autoOpenReviewSidebar?: boolean;
     components?: Partial<FolioUIComponents>;
     toolbarExtra?: VNodeChild;
@@ -431,7 +439,7 @@ export type DocxEditorProps = {
     onPaste?: () => void;
     mode?: EditorMode;
     onModeChange?: (mode: EditorMode) => void;
-    onReadonlyEditAttempt?: () => void;
+    onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
     comments?: Comment_2[];
     onCommentsChange?: (comments: Comment_2[]) => void;
     onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
@@ -460,6 +468,7 @@ export type DocxEditorProps = {
 
 // @public
 export type DocxEditorRef = {
+    getReadOnlyReason: () => EditorReadOnlyReason | null;
     getDocument: () => Document_2 | null;
     hasPendingChanges: () => boolean;
     getEditorRef: () => PagedEditorRef | null;
@@ -550,14 +559,16 @@ export type EditorHandle = {
 
 export { EditorMode }
 
+export { EditorReadOnlyReason }
+
 export { extractDocumentStyleSet }
 
 export { extractDocumentStyleSetFromDocx }
 
 export { ExtractDocumentStyleSetOptions }
 
-// @public
-export const FindReplaceDialog: any;
+// @public (undocumented)
+export const FindReplaceDialog: typeof __VLS_export_4;
 
 export { finishAutocompleteSuggestion }
 
@@ -649,9 +660,10 @@ export type FontOption = {
 };
 
 // @public (undocumented)
-export const FootnotePropertiesDialog: any;
+export const FootnotePropertiesDialog: typeof __VLS_export_5;
 
-export { FormattingBar }
+// @public (undocumented)
+export const FormattingBar: typeof __VLS_export_3;
 
 // @public (undocumented)
 export type FormattingBarProps = {
@@ -699,7 +711,7 @@ export type HighlightPassageOptions = {
 export type HighlightPassageResult = "passage" | "block" | "none";
 
 // @public (undocumented)
-export const HyperlinkDialog: any;
+export const HyperlinkDialog: typeof __VLS_export_6;
 
 // @public
 export const i18nPlugin: {
@@ -709,25 +721,25 @@ export const i18nPlugin: {
 export { ImageMeta }
 
 // @public (undocumented)
-export const ImagePositionDialog: any;
+export const ImagePositionDialog: typeof __VLS_export_7;
 
 // @public (undocumented)
-export const ImagePropertiesDialog: any;
+export const ImagePropertiesDialog: typeof __VLS_export_8;
 
 export { ImageRef }
 
 // @public (undocumented)
-export const InsertImageDialog: any;
+export const InsertImageDialog: typeof __VLS_export_9;
 
 export { insertImageFromFile }
 
 export { insertPageBreakInView }
 
 // @public (undocumented)
-export const InsertSymbolDialog: any;
+export const InsertSymbolDialog: typeof __VLS_export_10;
 
 // @public (undocumented)
-export const InsertTableDialog: any;
+export const InsertTableDialog: typeof __VLS_export_11;
 
 export { insertTableInView }
 
@@ -763,10 +775,10 @@ export type OutlineItem = {
 };
 
 // @public (undocumented)
-export const PageSetupDialog: any;
+export const PageSetupDialog: typeof __VLS_export_12;
 
 // @public (undocumented)
-export const PasteSpecialDialog: any;
+export const PasteSpecialDialog: typeof __VLS_export_13;
 
 export { PictureWatermark }
 
@@ -793,6 +805,8 @@ export { ResolvedAnchor }
 
 export { resolveSuggestionAnchor }
 
+export { ReviewDisplayMode }
+
 export { scanDirectives }
 
 export { scrollFolioPositionIntoView }
@@ -816,7 +830,7 @@ export { setTemplatePreviewValues }
 export { shouldTriggerAutocomplete }
 
 // @public (undocumented)
-export const SplitCellDialog: any;
+export const SplitCellDialog: typeof __VLS_export_14;
 
 export { startAutocompleteSuggestion }
 
@@ -827,7 +841,7 @@ export { SuggestionAppliedAs }
 export { SuggestionKind }
 
 // @public (undocumented)
-export const TablePropertiesDialog: any;
+export const TablePropertiesDialog: typeof __VLS_export_15;
 
 export { TemplatePreviewHiddenRange }
 
@@ -863,11 +877,12 @@ export function useWheelZoom(initialZoom?: number): UseZoomReturn;
 export { Watermark }
 
 // @public (undocumented)
-export const WatermarkDialog: any;
+export const WatermarkDialog: typeof __VLS_export_16;
 
 export { WordDiffSegment }
 
-export { ZoomControl }
+// @public (undocumented)
+export const ZoomControl: typeof __VLS_export_17;
 
 // @public (undocumented)
 export type ZoomControlProps = {

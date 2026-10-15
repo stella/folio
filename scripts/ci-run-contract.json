@@ -49,6 +49,10 @@
       "if": null
     },
     {
+      "run": "bun scripts/check-package-dependencies.ts --source",
+      "if": null
+    },
+    {
       "run": "bun run format:check",
       "if": null
     },
@@ -159,16 +163,6 @@
     {
       "run": "bun scripts/api-surface-budget.ts --self-test\nbun run api:check\nbun run api:budget\n",
       "if": null
-    }
-  ],
-  "validate-dist": [
-    {
-      "run": "bun install --frozen-lockfile",
-      "if": null
-    },
-    {
-      "run": "bun run validate-dist",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
     }
   ],
   "tests-1": [

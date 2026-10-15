@@ -59,6 +59,36 @@ const replay =
     }
   };
 
+test("flow files retain explicit tool coverage and reject misplaced options", () => {
+  const step = {
+    action: "suggest_changes",
+    seed: 1,
+    operationTypes: ["commentOnBlock", "deleteBlock", "insertTable"],
+    expectedApplied: 3,
+    operations: [
+      { type: "commentOnBlock", blockId: "12345678", comment: { text: "Note" } },
+      { type: "deleteBlock", blockId: "12345678" },
+      { type: "insertTable", blockId: "23456789", rows: [["Term", "Value"]] },
+    ],
+  };
+  const flow = {
+    version: 1,
+    kind: "random",
+    generation: "targeted",
+    fixture: "comments",
+    mode: "direct",
+    seed: 1,
+    steps: [step],
+  };
+  assert.deepEqual(parseFlowFile(flow).steps, [step]);
+  for (const invalid of [
+    { ...step, action: "core batch" },
+    { ...step, operationTypes: ["commentOnBlock", "commentOnBlock"] },
+    { ...step, expectedApplied: 0 },
+  ])
+    assert.throws(() => parseFlowFile({ ...flow, steps: [invalid] }), TypeError);
+});
+
 const requested = process.env["FOLIO_SCENARIO_FLOW"];
 
 if (requested !== undefined && requested !== "") {

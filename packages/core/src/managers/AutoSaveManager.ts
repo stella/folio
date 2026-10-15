@@ -1,3 +1,4 @@
+import { encodeUtf8 } from "../utils/textEncoding";
 /**
  * AutoSaveManager
  *
@@ -402,7 +403,7 @@ export function getAutoSaveStorageSize(storageKey: string = DEFAULT_STORAGE_KEY)
     if (!data) {
       return 0;
     }
-    return new Blob([data]).size;
+    return encodeUtf8(data).byteLength;
   } catch {
     return 0;
   }

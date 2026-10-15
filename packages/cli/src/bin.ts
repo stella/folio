@@ -1,20 +1,24 @@
 #!/usr/bin/env node
+import { createTextReader, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
+import { panic } from "better-result";
 import { runFolioCli } from "./cli";
 
 const readStdin = async (): Promise<string> => {
-  const chunks: Buffer[] = [];
+  const reader = createTextReader({ ignoreBOM: true });
+  const chunks: string[] = [];
   for await (const chunk of process.stdin) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+    if (!(chunk instanceof Uint8Array)) panic("Standard input must provide byte chunks");
+    chunks.push(reader.read(chunk));
   }
-  return Buffer.concat(chunks).toString("utf8");
+  return chunks.join("") + reader.finish();
 };
 
 process.exitCode = await runFolioCli(process.argv.slice(2), {
   stdout: (text) => {
-    process.stdout.write(text);
+    process.stdout.write(encodeUtf8(text));
   },
   stderr: (text) => {
-    process.stderr.write(text);
+    process.stderr.write(encodeUtf8(text));
   },
   readStdin,
   isTTY: process.stdout.isTTY,

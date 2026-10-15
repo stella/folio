@@ -1,3 +1,4 @@
+import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 /**
  * Cooperative write lease: `.<name>.folio-lock` beside the document, holding
  * the owner's pid, host, expiry, and a random token. A folio write takes it
@@ -144,7 +145,7 @@ export const readLease = async (documentPath: string): Promise<LeaseState> => {
   if (entry.value.type === "missing") return { type: "free" };
   const modifiedMs = entry.value.type === "file" ? entry.value.modifiedMs : Date.now();
   const bytes = await readSidecarFile(lockPath);
-  const holder = bytes.isOk() ? parseHolder(new TextDecoder().decode(bytes.value)) : null;
+  const holder = bytes.isOk() ? parseHolder(decodeText(bytes.value)) : null;
   return holder === null
     ? { type: "unreadable", modifiedMs }
     : { type: "held", holder, modifiedMs };
@@ -227,8 +228,7 @@ const placeLock = async (
   }
 };
 
-const encodeHolder = (holder: LockHolder): Uint8Array =>
-  new TextEncoder().encode(`${JSON.stringify(holder)}\n`);
+const encodeHolder = (holder: LockHolder): Uint8Array => encodeUtf8(`${JSON.stringify(holder)}\n`);
 
 /** How long a swap lock may stand before another process breaks it (its holder crashed). */
 const SWAP_STALE_MS = 10 * 1000;
@@ -257,7 +257,7 @@ const underSwapLock = async <T>(
   change: () => Promise<Result<T, FolioCliError>>,
 ): Promise<Result<T, FolioCliError>> => {
   const swapPath = lockSwapPathFor(documentPath);
-  const marker = new TextEncoder().encode(`${process.pid}\n`);
+  const marker = encodeUtf8(`${process.pid}\n`);
   const deadline = Date.now() + SWAP_WAIT_MS;
   for (;;) {
     const taken = await placeLock(swapPath, marker, "create");

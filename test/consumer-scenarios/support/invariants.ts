@@ -10,8 +10,41 @@ import { validateDocxPackage } from "@stll/docx-core";
 import { openReviewer } from "./documents.ts";
 import { projectContentPair } from "./identity.ts";
 import { labelFields, readAll } from "./readers.ts";
+import { assertReviewRoundTrip } from "./review-comparison.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
+
+/** Match full story text from the end so label-like text inside a story stays literal. */
+export const assertStoryInventory = (
+  reviewer: Pick<Reviewer, "listStories" | "getNotesAsText">,
+): void => {
+  const message = "story trailer and live story inventory disagree";
+  let trailer = reviewer.getNotesAsText();
+  for (const { handle, text } of reviewer.listStories().toReversed()) {
+    if (handle.type === "main" || text.length === 0) continue;
+    const suffix = `] ${text}`;
+    assert.ok(trailer.endsWith(suffix), message);
+    const labelEnd = trailer.length - suffix.length + 1;
+    const labelStart = trailer.lastIndexOf("\n[", labelEnd - 1) + 1;
+    const label = trailer.slice(labelStart, labelEnd);
+    switch (handle.type) {
+      case "footnote":
+      case "endnote":
+        assert.equal(label, `[${handle.type} #${handle.noteId}]`, message);
+        break;
+      case "header":
+      case "footer":
+        assert.ok(label.startsWith(`[${handle.type} `), message);
+        break;
+      default: {
+        const unreachable: never = handle;
+        return unreachable;
+      }
+    }
+    trailer = trailer.slice(0, labelStart).replace(/\n$/u, "");
+  }
+  assert.equal(trailer, "", message);
+};
 
 /** Everything a person or a model can see of a reviewer's document. */
 export const visibleState = (reviewer: Reviewer) => ({
@@ -58,10 +91,8 @@ export const visibleState = (reviewer: Reviewer) => ({
       }
     }
   }),
-  // Which kinds of change by whom. How a reader groups revisions into
-  // entries (a nested `w:ins > w:del` reads as one entry after a reopen, two
-  // before) is not what a save must keep; what they resolve to is checked by
-  // accept-all / reject-all.
+  // Overview only; the shared review comparator checks lossless coverage,
+  // authorship dates and both complete resolution documents below.
   changes: [
     ...new Set(reviewer.getChanges().map((change) => `${change.type} by ${change.author}`)),
   ].sort(),
@@ -137,6 +168,8 @@ export const saveAndReopen = async (
     { ...expected, blocks: blocks.left },
     `${context}: the reopened package shows something else than the reviewer that saved it`,
   );
+  if (options.persisted === undefined)
+    await assertReviewRoundTrip({ live: reviewer, reopened, context });
   return { bytes, reopened };
 };
 

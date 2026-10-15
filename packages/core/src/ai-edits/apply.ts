@@ -72,6 +72,7 @@ import {
 import { resolveNewListOperations } from "./newListNumbering";
 import {
   readAuthoredRunFormatting,
+  readAuthoredRunPropertySnapshot,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
@@ -112,12 +113,15 @@ import {
   annotatedReplacement,
   commentsAcrossBlockBoundary,
   commentsForTrackedInsertion,
+  commentPoint,
   hasReplacedAnnotations,
   inheritedReplacementMarks,
   NON_INCLUSIVE_MARK_DISPOSITION,
   placeTrackedInsertion,
   surveyReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
+import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
+import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnchorExtension";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import {
   deleteTextBoxesAnchoredAt,
@@ -1661,7 +1665,7 @@ const applyTrackedInlineFormattingToRanges = ({
     formattingMarks: readonly Mark[];
     representation: SelectedRunFormattingCarrierRepresentation;
     includedProperties: string[];
-    previousFormatting: TextFormatting;
+    previousFormatting: TextFormatting | undefined;
   }[] = [];
   let hasPendingRunPropertyChange = false;
   const representations = ranges.flatMap(({ from, to }) =>
@@ -1674,13 +1678,13 @@ const applyTrackedInlineFormattingToRanges = ({
       pos: representation.from,
       ...(styleResolver !== undefined ? { styleResolver } : {}),
     });
-    const previousFormatting = readAuthoredRunFormatting({
+    const previousFormatting = readAuthoredRunPropertySnapshot({
       context: styleContext,
       marks: node.marks,
       ...(styleResolver !== undefined ? { styleResolver } : {}),
     });
     const includedProperties = formattingChangesForAuthoredFormatting(
-      previousFormatting,
+      previousFormatting ?? {},
       formatting,
     );
     if (includedProperties.length === 0) {
@@ -1695,7 +1699,7 @@ const applyTrackedInlineFormattingToRanges = ({
       continue;
     }
     const nextAuthoredFormatting = patchAuthoredRunFormatting({
-      authoredFormatting: previousFormatting,
+      authoredFormatting: previousFormatting ?? {},
       formatting,
       includedProperties,
     });
@@ -1737,7 +1741,7 @@ const applyTrackedInlineFormattingToRanges = ({
     const change: RunPropertyChange = {
       type: "runPropertyChange",
       info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
-      ...(Object.keys(segment.previousFormatting).length > 0
+      ...(segment.previousFormatting !== undefined
         ? { previousFormatting: segment.previousFormatting }
         : {}),
     };
@@ -2365,6 +2369,7 @@ type RotateAddedFinalBreaksOptions = {
   date: string;
   initials: string | undefined;
   styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+  numbering: NumberingMap | null;
 };
 
 type RotatedAddedFinalBreaks = {
@@ -2495,7 +2500,10 @@ const isPendingDeletion = (
 };
 
 /** Whether every piece of the paragraph's content is pending inserted text. */
-const holdsOnlyInsertedContent = (paragraph: PMNode): boolean => {
+const holdsOnlyInsertedContent = (
+  paragraph: PMNode,
+  revisions: "ordinary" | "including-moves",
+): boolean => {
   let whollyInserted = true;
   paragraph.descendants((node) => {
     if (!whollyInserted) {
@@ -2505,7 +2513,9 @@ const holdsOnlyInsertedContent = (paragraph: PMNode): boolean => {
       return true;
     }
     whollyInserted = node.marks.some(
-      (mark) => mark.type.name === "insertion" && mark.attrs["moveKind"] !== "moveTo",
+      (mark) =>
+        mark.type.name === "insertion" &&
+        (revisions === "including-moves" || mark.attrs["moveKind"] !== "moveTo"),
     );
     return false;
   });
@@ -2528,7 +2538,7 @@ const pendingParagraphRetraction = (
   position: number,
 ): { clearBreakAt: number | null } | null => {
   const paragraph = doc.nodeAt(position);
-  if (paragraph?.type.name !== "paragraph" || !holdsOnlyInsertedContent(paragraph)) {
+  if (paragraph?.type.name !== "paragraph") {
     return null;
   }
   const at = doc.resolve(position);
@@ -2538,6 +2548,21 @@ const pendingParagraphRetraction = (
     // The container must keep a paragraph, and end with one.
     return null;
   }
+  let followingIndex = at.index() + 1;
+  while (at.parent.maybeChild(followingIndex)?.type.name === "blockBookmarkBoundary") {
+    followingIndex++;
+  }
+  const following = at.parent.maybeChild(followingIndex);
+  if (
+    expectParagraphAttrs(paragraph).pPrMark?.kind === "moveTo" &&
+    following?.type.spec["tableRole"] === "table" &&
+    holdsOnlyInsertedContent(paragraph, "including-moves")
+  ) {
+    // A whole moved destination before a table has no paragraph to run into.
+    // Retract the destination; rejecting the move still restores its source.
+    return { clearBreakAt: null };
+  }
+  if (!holdsOnlyInsertedContent(paragraph, "ordinary")) return null;
   if (isInsertedPPrMark(paragraph.attrs["pPrMark"]) || isSuggestedParagraphInsert(paragraph)) {
     return { clearBreakAt: null };
   }
@@ -2912,7 +2937,7 @@ const hasDeferredParagraphPropertyWrite = ({
     if (
       mark != null &&
       !(
-        isInsertedPPrMark(mark) &&
+        addedBreakRevisionId(mark) !== null &&
         canRetractFinalBreak({ predecessor: predecessor.node, target: writeTarget })
       )
     )
@@ -2962,7 +2987,7 @@ const paragraphPropertyRevisionTargets = ({
   for (const deletion of deletedFinalParagraphs) {
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
     const predecessor = finalParagraphPredecessor(tr.doc, at);
-    if (!predecessor || !isInsertedPPrMark(predecessor.node.attrs["pPrMark"])) continue;
+    if (!predecessor || addedBreakRevisionId(predecessor.node.attrs["pPrMark"]) === null) continue;
     const target = tr.doc.nodeAt(predecessor.position + predecessor.node.nodeSize);
     if (!target) continue;
     if (canRetractFinalBreak({ predecessor: predecessor.node, target }))
@@ -3080,7 +3105,7 @@ const withRetiredFinalParagraphs = ({
       addedRevisions.push({ operationId, revisionId });
       continue;
     }
-    if (isInsertedPPrMark(mark)) {
+    if (addedBreakRevisionId(mark) !== null) {
       const following = tr.doc.nodeAt(position + previous.nodeSize);
       if (!following || !canRetractFinalBreak({ predecessor: previous, target: following })) {
         // One w:pPrChange per paragraph: an occupied predecessor keeps the emptied target.
@@ -3119,7 +3144,7 @@ const withRetiredFinalParagraphs = ({
       }
       continue;
     }
-    // A relocation's end or a surviving deleted break stays as it is.
+    // A surviving deleted break stays as it is.
   }
   return { nextRevisionId, resolvedOperationIds, addedRevisions, retractedRevisionIds };
 };
@@ -3127,10 +3152,10 @@ const withRetiredFinalParagraphs = ({
 /**
  * Move an ADDED paragraph break off every paragraph its container ends with.
  *
- * A container's final mark carries no revision in either direction: nothing
- * follows it, so "join this paragraph with the one after it" and its mirror
- * both state an edit that cannot be carried out, and a reader is left with a
- * revision neither accepting nor rejecting everything can clear.
+ * Prefer a preceding carrier so rejection can join the inserted content back
+ * over its added boundary. When no carrier is free, the insertion keeps its
+ * own mark: the resolver can remove that whole paragraph when its text is
+ * rejected, while a markless empty paragraph would have no insertion owner.
  *
  * Appending at a container's end therefore rotates exactly as removing from it
  * does. The first inserted break moves onto the paragraph the run was appended
@@ -3164,7 +3189,10 @@ const withRotatedAddedFinalBreaks = ({
   date,
   initials,
   styleResolver,
+  numbering,
 }: RotateAddedFinalBreaksOptions): RotatedAddedFinalBreaks => {
+  let nextRevisionId = revisionSeed;
+  const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] = [];
   // A later insertion may land between a deleted break and the paragraph it
   // would join into. Move the old deletion to the new boundary so resolving
   // either revision keeps the inserted paragraph separate.
@@ -3199,7 +3227,7 @@ const withRotatedAddedFinalBreaks = ({
           !batchRevisionIds.has(deletedBreakRevisionId) &&
           !holdsOnlyDeletedContent(previous.node) &&
           (trackedInsertion || suggestedInsertion) &&
-          holdsOnlyInsertedContent(node)
+          holdsOnlyInsertedContent(node, "ordinary")
         ) {
           supersededDeletedBreaks.push({
             preceding: previous.position,
@@ -3239,6 +3267,31 @@ const withRotatedAddedFinalBreaks = ({
     }
     tr.setNodeAttribute(preceding, "pPrMark", precedingMark);
     tr.setNodeAttribute(inserted, "pPrMark", deletedMark);
+    if (insertionRevisionId === null) continue;
+    // The shifted deletion joins the insertion into the surviving paragraph
+    // on accept. Its mark must carry the inserted paragraph's properties too;
+    // otherwise the final carrier still renders like the old last survivor.
+    const source = tr.doc.nodeAt(inserted);
+    const survivor = paragraphLeftAfter({ doc: tr.doc, paragraphPos: inserted });
+    if (!source || survivor === null) continue;
+    const revisionId = nextRevisionId;
+    const carried = carryParagraphProperties({
+      tr,
+      position: survivor,
+      source,
+      styleResolver,
+      numbering,
+      revision: {
+        id: revisionId,
+        author,
+        date,
+        ...(initials ? { initials } : {}),
+      },
+    });
+    if (carried.tracked) {
+      nextRevisionId++;
+      synthesizedRevisions.push({ ownerRevisionId: insertionRevisionId, revisionId });
+    }
   }
 
   const paragraphTypeName = tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
@@ -3255,17 +3308,15 @@ const withRotatedAddedFinalBreaks = ({
     .toSorted((left, right) => right.position - left.position);
 
   let next = tr;
-  let nextRevisionId = revisionSeed;
-  const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] = [];
   const retractedRevisionIds: number[] = [];
   // Attribute writes do not move anything, so the positions stay valid.
   for (const { position: finalPosition, node: final, mark: finalMark } of rotations) {
     const resolved = next.doc.resolve(finalPosition);
     const carrier = finalBreakCarrierBefore(resolved, final.type.name, batchRevisionIds);
     if (!carrier) {
-      // Nothing to hand the break to. Writing it would be worse than losing
-      // it: the redline would carry a revision no reader can resolve.
-      next = next.setNodeAttribute(finalPosition, "pPrMark", null);
+      // A deleted boundary or an existing table can block rotation. Keep the
+      // insertion's own mark: rejecting it removes the emptied final paragraph,
+      // while clearing it here would erase the fact that the paragraph was new.
       continue;
     }
 
@@ -3283,8 +3334,7 @@ const withRotatedAddedFinalBreaks = ({
       }
     }
     if (path.at(-1)?.position !== carrier.position) {
-      next = next.setNodeAttribute(finalPosition, "pPrMark", null);
-      continue;
+      panic("A final-mark rotation lost its carrier", { finalPosition, carrier: carrier.position });
     }
     if (
       path.slice(0, -1).some(({ node }) => {
@@ -4364,6 +4414,24 @@ const applyFolioAIEditOperationsInternal = ({
       ? { revisionId: operationRevisionSeed, author, date, ...trackedRevisionExtras }
       : null;
 
+    const commentSource = tr.doc;
+    const commentStepsBefore = tr.steps.length;
+    const commentReplacement = replacementText(item.operation);
+    const commentPlan =
+      mode === "direct" &&
+      commentReplacement !== null &&
+      surveyReplacedAnnotations(commentSource, item.from, item.to).carried.some(
+        (mark) => mark.type.name === "comment",
+      )
+        ? planDocumentReplacement({
+            doc: commentSource,
+            item,
+            replacement: stripInlineEmphasisMarkers(commentReplacement),
+            noteReferences,
+            planChanges: (before, after) => changesFromSegments(diffText(before, after)),
+            keepFieldsOf: planTextChanges,
+          })
+        : null;
     switch (item.operation.type) {
       case "replaceInBlock":
       case "replaceRange": {
@@ -5161,15 +5229,17 @@ const applyFolioAIEditOperationsInternal = ({
           const markPlace = tr.doc.resolve(markPosition);
           const endsItsContainer = paragraphEndsItsContainer(markPlace, item.blockNode.type.name);
           const deleted = tr.doc.nodeAt(markPosition);
-          const following = deleted && tr.doc.nodeAt(markPosition + deleted.nodeSize);
+          const following =
+            deleted && paragraphJoinAfter(tr.doc, markPosition + deleted.nodeSize)?.next;
           if (
             deleted &&
             following?.type === deleted.type &&
             !isPairedMove(item.operation.moveId) &&
-            isInsertedPPrMark(deleted.attrs["pPrMark"])
+            addedBreakRevisionId(deleted.attrs["pPrMark"]) !== null
           ) {
             // Its break is a pending insertion (a split, or a break rotated
-            // off the story's end), and deleting it retracts that insertion,
+            // off the story's end) or a relocation destination, and deleting
+            // it retracts that added break,
             // as deleting a merged break does: the words stay, marked
             // deleted, in the paragraph that follows.
             //
@@ -5846,6 +5916,17 @@ const applyFolioAIEditOperationsInternal = ({
         break;
     }
 
+    if (commentPlan !== null) {
+      tr = applyAlignedReplacementComments({
+        tr,
+        source: commentSource,
+        item,
+        plan: commentPlan,
+        stepsBefore: commentStepsBefore,
+        noteReferences,
+      });
+    }
+
     // commentOnBlock is intentionally a doc-mutation-free op
     // (adds a mark; that DOES count as a step) but covers the
     // edge case where the comment mark is missing. Treat any op
@@ -5926,6 +6007,7 @@ const applyFolioAIEditOperationsInternal = ({
       date,
       initials,
       styleResolver: styleResolver ?? null,
+      numbering,
     });
     tr = rotated.transaction;
     revisionSeed = rotated.nextRevisionId;
@@ -6769,6 +6851,82 @@ const directReplacementMarks = ({
   return allocated;
 };
 
+const replacementText = (operation: FolioAIEditOperation): string | null => {
+  switch (operation.type) {
+    case "replaceBlock":
+      return operation.text;
+    case "replaceInBlock":
+    case "replaceRange":
+      return operation.replace;
+    default:
+      return null;
+  }
+};
+
+type AlignedReplacementCommentsOptions = {
+  tr: Transaction;
+  source: PMNode;
+  item: ResolvedOperation;
+  plan: DocumentReplacementPlan;
+  stepsBefore: number;
+  noteReferences: NoteReferenceLabels;
+};
+
+/** Both modes project comment coverage through the same text alignment. */
+const applyAlignedReplacementComments = ({
+  tr,
+  source,
+  item,
+  plan,
+  stepsBefore,
+  noteReferences,
+}: AlignedReplacementCommentsOptions): Transaction => {
+  const comments = surveyReplacedAnnotations(source, item.from, item.to).carried.filter(
+    (mark) => mark.type.name === "comment",
+  );
+  if (comments.length === 0) return tr;
+  const marks = directReplacementMarks({ doc: source, plan, replacementBackground: "keep" });
+  const blockFrom = tr.mapping.slice(stepsBefore).map(item.blockFrom, -1);
+  const block = tr.doc.nodeAt(blockFrom);
+  if (!block) panic("Replacement lost its paragraph");
+  const clean = buildCleanBlockText(block, blockFrom, { fieldResults: "text", noteReferences });
+  for (const [index, expected] of marks.entries()) {
+    const from = clean.offsets[plan.spanStart + index];
+    if (from === undefined) panic("Replacement lost an aligned character");
+    const node = tr.doc.nodeAt(from);
+    if (!node?.isText || noteReferenceOf(node) !== null) continue;
+    for (const comment of comments) {
+      if (comment.isInSet(expected)) tr.addMark(from, from + 1, comment);
+      else tr.removeMark(from, from + 1, comment);
+    }
+  }
+  const visible = new Set<number>();
+  const points = new Set<number>();
+  tr.doc.descendants((node) => {
+    if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+      const attrs = readRangeAnchorAttrs(node);
+      if (attrs.ok && attrs.value.start.type === "commentRangeStart")
+        points.add(attrs.value.start.id);
+    }
+    if (
+      !node.isInline ||
+      isZeroWidthAnchor(node) ||
+      node.marks.some((mark) => mark.type.name === "deletion")
+    )
+      return;
+    for (const mark of node.marks)
+      if (mark.type.name === "comment") visible.add(mark.attrs["commentId"]);
+  });
+  const at = clean.offsets[plan.spanStart];
+  if (at === undefined) panic("Replacement lost its start gap");
+  for (const comment of comments) {
+    const id = comment.attrs["commentId"];
+    if (visible.has(id) || points.has(id)) continue;
+    tr.insert(at, commentPoint(tr.doc.type.schema, id));
+  }
+  return tr;
+};
+
 type MinimalDirectReplacementResult = {
   transaction: Transaction;
   /** See {@link replacementUnifiesFormatting}. */
@@ -6971,10 +7129,21 @@ const applyMinimalTrackedReplacement = ({
     noteReferences,
     planChanges: planTextChanges,
   });
+  const annotationMarks = directReplacementMarks({
+    doc: tr.doc,
+    plan,
+    replacementBackground: "keep",
+  });
   const allocatedMarks =
     directPlan === null
       ? null
-      : directReplacementMarks({ doc: tr.doc, plan: directPlan, replacementBackground });
+      : directReplacementMarks({ doc: tr.doc, plan: directPlan, replacementBackground }).map(
+          (marks, index) =>
+            addCarriedMarks(
+              marks.filter((mark) => mark.type.name !== "comment"),
+              (annotationMarks[index] ?? []).filter((mark) => mark.type.name === "comment"),
+            ),
+        );
   const unifiesFormatting =
     directPlan === null ? false : replacementUnifiesFormatting(tr.doc, directPlan);
 

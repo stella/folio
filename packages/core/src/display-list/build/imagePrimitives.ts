@@ -1,3 +1,4 @@
+import { base64ToBytes } from "../../utils/textEncoding";
 /**
  * Images: the source table, and the primitives an image draws.
  *
@@ -42,16 +43,8 @@ type DecodeFailure = { readonly reason: string };
  * document the builder reports, not an exception that aborts the build.
  */
 const decodeBase64 = (encoded: string): Uint8Array | undefined => {
-  const decoded = Result.try(() => atob(encoded));
-  if (decoded.isErr()) {
-    return undefined;
-  }
-  const binary = decoded.value;
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
+  const decoded = Result.try(() => base64ToBytes(encoded));
+  return decoded.isOk() ? decoded.value : undefined;
 };
 
 const readUint32BE = (bytes: Uint8Array, offset: number): number =>

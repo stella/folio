@@ -166,7 +166,11 @@ type RevisionInfo = { id: number; author: string; date: string | null };
 
 type InlineBoundary = {
   hyperlink: string | null;
-  comment: number | null;
+  /**
+   * Every comment the run sits in, in id order: comments nest, and a
+   * comment that starts or ends inside another is a boundary too.
+   */
+  comments: string;
   revisionParents: string;
 };
 
@@ -439,11 +443,15 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           : `${path}:${pos}`;
       lastInlineGroupByPath.set(path, key);
       const hyperlink = node.marks.find((candidate) => candidate.type.name === "hyperlink");
-      const comment = node.marks.find((candidate) => candidate.type.name === "comment");
-      const commentId = comment?.attrs["commentId"];
+      const commentIds = node.marks.flatMap((candidate) => {
+        const commentId = candidate.attrs["commentId"];
+        return candidate.type.name === "comment" && typeof commentId === "number"
+          ? [commentId]
+          : [];
+      });
       const boundary: InlineBoundary = {
         hyperlink: hyperlink ? String(hyperlink.attrs["href"] ?? "") : null,
-        comment: typeof commentId === "number" ? commentId : null,
+        comments: commentIds.toSorted((left, right) => left - right).join(","),
         revisionParents: JSON.stringify(pathLayers.slice(0, layerIndex)),
       };
       const range = inlineRanges.get(key);
@@ -472,11 +480,14 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   // hyperlink or comment boundary. Keep its contiguous fragments actionable
   // as one logical change, without joining separate adjacent revisions.
   const groups: TrackedChangeGroup[] = [];
-  let previousKey: string | null = null;
+  let previousInline: { key: string; group: TrackedChangeGroup } | null = null;
   for (const [key, change] of grouped) {
     const range = inlineRanges.get(key);
-    const previous = groups.at(-1);
-    const previousRange = previousKey === null ? undefined : inlineRanges.get(previousKey);
+    // Formatting is an independent revision stream: it cannot interrupt the
+    // contiguous inline wrapper whose run carries the property revision.
+    const previous = previousInline?.group;
+    const previousRange =
+      previousInline === null ? undefined : inlineRanges.get(previousInline.key);
     if (
       previous &&
       range &&
@@ -485,7 +496,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       transparentGap(previousRange.end, range.start) &&
       previousRange.lastBoundary.revisionParents === range.firstBoundary.revisionParents &&
       (previousRange.lastBoundary.hyperlink !== range.firstBoundary.hyperlink ||
-        previousRange.lastBoundary.comment !== range.firstBoundary.comment ||
+        previousRange.lastBoundary.comments !== range.firstBoundary.comments ||
         previousRange.end !== range.start) &&
       (change.type === "insertion" || change.type === "deletion") &&
       previous.change.type === change.type &&
@@ -499,8 +510,11 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       previousRange.lastBoundary = range.lastBoundary;
       continue;
     }
-    groups.push({ change: { ...change }, ids: [change.id] });
-    previousKey = key;
+    const group = { change: { ...change }, ids: [change.id] };
+    groups.push(group);
+    if (range) {
+      previousInline = { key, group };
+    }
   }
   return groups;
 };

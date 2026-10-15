@@ -3,6 +3,8 @@
  * Used by find & replace. Operates immutably.
  */
 
+import { EditorState } from "prosemirror-state";
+
 import type {
   BlockContent,
   Document,
@@ -13,6 +15,11 @@ import type {
   ParagraphContent,
   TextFormatting,
 } from "../types/document";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { textFormattingToMarks } from "../prosemirror/commands/formatting";
+import { resolveFindMatchRange } from "../prosemirror/findReplaceSelection";
+import { schema } from "../prosemirror/schema";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 
 type ReplaceRange = {
@@ -32,13 +39,28 @@ export function replaceTextInDocument(
   const { start, end } = range;
 
   if (start.paragraphIndex === end.paragraphIndex) {
-    const paragraph = getParagraphByIndex(body, start.paragraphIndex);
-    if (!paragraph) {
+    const proseDoc = toProseDoc(newDoc);
+    const proseRange = resolveFindMatchRange(proseDoc, {
+      paragraphIndex: start.paragraphIndex,
+      startOffset: start.offset,
+      endOffset: end.offset,
+    });
+    if (proseRange === null) {
       return newDoc;
     }
 
-    paragraph.content = deleteTextInParagraph(paragraph, start.offset, end.offset);
-    paragraph.content = insertTextAtOffset(paragraph, start.offset, text, formatting);
+    const transaction = EditorState.create({ doc: proseDoc }).tr;
+    if (text.length > 0 && formatting !== undefined) {
+      transaction.replaceWith(
+        proseRange.from,
+        proseRange.to,
+        schema.text(text, textFormattingToMarks(formatting)),
+      );
+    } else {
+      transaction.insertText(text, proseRange.from, proseRange.to);
+    }
+    // canonical-gap: pm-save-projection
+    return fromProseDoc(transaction.doc, newDoc, { stylesheetSource: { type: "package" } });
   } else {
     const startParagraph = getParagraphByIndex(body, start.paragraphIndex);
     if (!startParagraph) {

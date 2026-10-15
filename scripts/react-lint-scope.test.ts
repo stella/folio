@@ -2,7 +2,8 @@ import { reactCompilerRules } from "@stll/oxlint-config";
 import { parse } from "@vue/compiler-sfc";
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import ts from "typescript";
 import config, { nonReactPackageOverride } from "../oxlint.config.ts";
@@ -10,13 +11,6 @@ import config, { nonReactPackageOverride } from "../oxlint.config.ts";
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const isReactModule = (specifier: string) => /^(?:react|react-dom)(?:\/|$)/u.test(specifier);
 const isReactRule = (rule: string) => /^(?:react|react-hooks|react-compiler)\//u.test(rule);
-const DEPENDENCY_SECTIONS = [
-  "dependencies",
-  "devDependencies",
-  "peerDependencies",
-  "optionalDependencies",
-] as const;
-
 const sourceImportsReact = (source: string, filename = "source.ts") => {
   // The SFC parser excludes templates, comments and styles from module imports.
   const scripts = [source];
@@ -76,23 +70,22 @@ const sourceImportsReact = (source: string, filename = "source.ts") => {
   });
 };
 
+const packageImportsReact = (directory: string) =>
+  [
+    ...new Bun.Glob("src/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs,vue}").scanSync({
+      cwd: directory,
+      onlyFiles: true,
+    }),
+  ].some((file) => sourceImportsReact(readFileSync(path.join(directory, file), "utf8"), file));
+
 const packages = [...new Bun.Glob("packages/*/package.json").scanSync({ cwd: REPO_ROOT })]
   .toSorted()
   .map((manifestPath) => {
     const directory = path.dirname(manifestPath);
-    const manifest = JSON.parse(readFileSync(path.join(REPO_ROOT, manifestPath), "utf8"));
-    const dependsOnReact = DEPENDENCY_SECTIONS.some((section) =>
-      Object.keys(manifest[section] ?? {}).some(isReactModule),
-    );
-    const importsReact = [
-      ...new Bun.Glob("src/**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs,vue}").scanSync({
-        cwd: path.join(REPO_ROOT, directory),
-        onlyFiles: true,
-      }),
-    ].some((file) =>
-      sourceImportsReact(readFileSync(path.join(REPO_ROOT, directory, file), "utf8"), file),
-    );
-    return { directory, usesReact: dependsOnReact || importsReact };
+    const importsReact = packageImportsReact(path.join(REPO_ROOT, directory));
+    // A required peer of a framework-neutral dependency does not make Vue
+    // source React-owned. Apply hook rules according to the source import census.
+    return { directory, usesReact: importsReact };
   });
 
 const overrideMatches = (filename: string) =>
@@ -216,6 +209,27 @@ describe("React lint package scope", () => {
     'import { createRoot } from "react-dom/client";',
   ])("detects real React imports: %s", (source) => {
     expect(sourceImportsReact(source)).toBe(true);
+  });
+
+  test("required React peers do not change a framework-neutral source package's lint ownership", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "folio-react-source-census-"));
+    try {
+      mkdirSync(path.join(root, "src"));
+      writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({
+          name: "framework-neutral-adapter",
+          dependencies: { react: "^19.2.0" },
+        }),
+      );
+      const entry = path.join(root, "src", "entry.ts");
+      writeFileSync(entry, 'import { createTranslator } from "use-intl/core";');
+      expect(packageImportsReact(root)).toBe(false);
+      writeFileSync(entry, 'import { useState } from "react";');
+      expect(packageImportsReact(root)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("Vue script imports count but comments and string fixtures do not", () => {

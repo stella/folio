@@ -1,3 +1,4 @@
+import { sliceText } from "@stll/folio-core/utils/sliceText";
 import { panic } from "better-result";
 
 import {
@@ -380,7 +381,12 @@ const findTextMatches = (
           blockTextHash,
           range,
           occurrenceInBlock: occurrence,
-          context: block.text.slice(contextStart, contextEnd),
+          context: sliceText({
+            text: block.text,
+            units: "codeUnits",
+            start: contextStart,
+            end: contextEnd,
+          }),
           ...(page !== undefined && page !== null && { page }),
         });
       }
@@ -420,10 +426,12 @@ const findStoryTextMatches = (
         startOffset: at,
         endOffset: at + matchedText.length,
         occurrenceInStory: totalMatches,
-        context: text.slice(
-          Math.max(0, at - CONTEXT_RADIUS),
-          Math.min(text.length, at + matchedText.length + CONTEXT_RADIUS),
-        ),
+        context: sliceText({
+          text,
+          units: "codeUnits",
+          start: Math.max(0, at - CONTEXT_RADIUS),
+          end: Math.min(text.length, at + matchedText.length + CONTEXT_RADIUS),
+        }),
       });
     }
     totalMatches += 1;

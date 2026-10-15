@@ -66,3 +66,14 @@ test("the install subprocess receives the policy first, preserves arguments, and
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("dependency consumers explicitly select the isolated linker", async () => {
+  const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-isolated-consumer-"));
+  try {
+    await writeCleanRoomInstallConfig(consumerDir, "isolated");
+    const config = Bun.TOML.parse(await readFile(path.join(consumerDir, "bunfig.toml"), "utf8"));
+    expect(config.install.linker).toBe("isolated");
+  } finally {
+    await rm(consumerDir, { recursive: true, force: true });
+  }
+});

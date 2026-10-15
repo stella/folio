@@ -1,3 +1,4 @@
+import { encodeBinaryString } from "../../utils/textEncoding";
 /**
  * TrueType (`glyf`) subsetting.
  *
@@ -354,9 +355,7 @@ const assembleSfnt = (tables: readonly OutputTable[]): Uint8Array => {
   let dataOffset = SFNT_HEADER_SIZE + directorySize;
   let headOffset = -1;
   for (const table of sorted) {
-    for (let index = 0; index < table.tag.length; index++) {
-      view.setUint8(entry + index, table.tag.charCodeAt(index));
-    }
+    output.set(encodeBinaryString(table.tag), entry);
     view.setUint32(entry + 4, checksumOf(table.data));
     view.setUint32(entry + 8, dataOffset);
     view.setUint32(entry + 12, table.data.byteLength);

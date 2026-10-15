@@ -1,6 +1,6 @@
 /** Zero-width `w:commentReference`: where a comment's visible mark is painted. */
 
-import type { Node as PMNode } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 
 import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
@@ -10,6 +10,7 @@ import {
   type CommentReferenceOccurrence,
 } from "../../commentReferenceIntegrity";
 import { readRangeAnchorAttrs } from "../../rangeAnchorAttrs";
+import { trackedRunInlineAtomDisposition } from "../../trackedRunInlineAtoms";
 import { createNodeExtension } from "../create";
 import { RANGE_ANCHOR_NODE_NAME } from "./RangeAnchorExtension";
 
@@ -23,13 +24,22 @@ export const COMMENT_REFERENCE_NODE_NAME = "commentReference";
 type CommentReferenceSurvey = {
   references: CommentReferenceOccurrence[];
   markExtents: CommentMarkExtent[];
+  unanchoredMarks: { position: number; size: number; mark: Mark }[];
 };
 
 const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
   const references: CommentReferenceOccurrence[] = [];
   const markEnds = new Map<number, number>();
+  const unanchoredMarks: CommentReferenceSurvey["unanchoredMarks"] = [];
 
   doc.descendants((node, position) => {
+    const transparent = trackedRunInlineAtomDisposition(node) === "transparent";
+    if (transparent) {
+      for (const mark of node.marks) {
+        if (mark.type.name === "comment")
+          unanchoredMarks.push({ position, size: node.nodeSize, mark });
+      }
+    }
     if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
       const attrs = readCommentReferenceAttrs(node);
       references.push(
@@ -57,6 +67,7 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
       }
       return false;
     }
+    if (transparent) return false;
     if (!node.isInline) {
       return true;
     }
@@ -75,6 +86,7 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
 
   return {
     references,
+    unanchoredMarks,
     markExtents: [...markEnds].map(([commentId, end]) => ({ commentId, end })),
   };
 };
@@ -132,12 +144,16 @@ export const CommentReferenceExtension = createNodeExtension<CommentReferenceOpt
             return null;
           }
 
-          const repairs = planCommentReferenceRepairs(surveyCommentReferences(newState.doc));
-          if (repairs.length === 0) {
+          const survey = surveyCommentReferences(newState.doc);
+          const repairs = planCommentReferenceRepairs(survey);
+          if (repairs.length === 0 && survey.unanchoredMarks.length === 0) {
             return null;
           }
 
           const transaction = newState.tr;
+          for (const { position, size, mark } of survey.unanchoredMarks) {
+            transaction.removeMark(position, position + size, mark);
+          }
           for (const repair of repairs) {
             if (repair.type === "delete") {
               transaction.delete(repair.position, repair.position + repair.size);

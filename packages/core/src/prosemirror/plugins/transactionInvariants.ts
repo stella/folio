@@ -1,3 +1,4 @@
+import { sliceText } from "../../utils/sliceText";
 /**
  * Transaction invariants: a development and test aid that checks the editor
  * document after every transaction, so a command that leaves a document the
@@ -59,7 +60,7 @@ const describeSteps = (transactions: readonly Transaction[]): string => {
   );
   const json = JSON.stringify(steps);
   return json.length > MAX_REPORTED_STEPS_LENGTH
-    ? `${json.slice(0, MAX_REPORTED_STEPS_LENGTH)}… (${json.length} characters)`
+    ? `${sliceText({ text: json, units: "codeUnits", end: MAX_REPORTED_STEPS_LENGTH })}… (${json.length} characters)`
     : json;
 };
 

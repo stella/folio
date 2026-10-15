@@ -1,3 +1,4 @@
+import { base64ToBytes } from "../utils/textEncoding";
 import type { Document } from "../types/document";
 import { validateFolioDocumentModel } from "../docx/modelValidation";
 import { bytesToBase64 } from "../utils/base64";
@@ -34,14 +35,7 @@ export type EncodedAutoSaveDocument = {
   json: string;
 };
 
-const decodeBase64 = (value: string): ArrayBuffer => {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes.buffer;
-};
+const decodeBase64 = (value: string): ArrayBuffer => base64ToBytes(value).buffer;
 
 const encodeValue = (value: unknown): EncodedValue => {
   if (value === undefined) {

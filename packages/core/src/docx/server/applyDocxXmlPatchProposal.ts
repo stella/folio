@@ -1,3 +1,4 @@
+import { encodeUtf8 } from "../../utils/textEncoding";
 import { writeZipPart } from "@stll/docx-core/zip";
 import { createHash } from "node:crypto";
 
@@ -260,9 +261,8 @@ const applyReplacements = async ({
     writeZipPart({
       zip,
       path: replacement.path,
-      data: new TextEncoder().encode(replacement.replacementXml),
+      data: encodeUtf8(replacement.replacementXml),
       options: {
-        binary: true,
         date: current.date,
         comment: current.comment,
         unixPermissions: current.unixPermissions,

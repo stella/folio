@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 1026399023,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2226129166,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "412DDC7F",
+            "startOffset": 6,
+            "endOffset": 14,
+            "selectedTextHash": "hnavq79"
+          },
+          "comment": {
+            "text": "Check this word."
+          }
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "412DDC7F",
+            "startOffset": 6,
+            "endOffset": 14,
+            "selectedTextHash": "hnavq79"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 962457826,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "412DDC7F"
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "3CEFFC83",
+          "find": "The",
+          "replace": "revised"
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "revision round-trip regression",
+  "title": "Revision coverage and both resolution outcomes survive save"
+}

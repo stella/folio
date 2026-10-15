@@ -1,3 +1,4 @@
+import { bytesToBase64, bytesToBase64Url, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 /**
  * `folio serve`: a read-only live preview of one document on 127.0.0.1.
  *
@@ -119,7 +120,7 @@ export const startPreviewServer = async ({
   if (initial.isErr()) return Result.err(initial.error);
   const realPath = initial.value.path;
   const title = path.basename(realPath);
-  const token = randomBytes(24).toString("base64url");
+  const token = bytesToBase64Url(randomBytes(24));
   const prefix = `/${token}/`;
 
   let stamp: FileStamp | null = null;
@@ -167,7 +168,9 @@ export const startPreviewServer = async ({
     rendered = result;
     stamp = next;
     if (changed) {
-      const message = `data: ${JSON.stringify({ fileVersion: result.fileVersion })}\n\n`;
+      const message = encodeUtf8(
+        `data: ${JSON.stringify({ fileVersion: result.fileVersion })}\n\n`,
+      );
       for (const listener of listeners) listener.write(message);
     }
     return result;
@@ -188,7 +191,7 @@ export const startPreviewServer = async ({
     headers: Record<string, string> = {},
   ) => {
     response.writeHead(status, { ...SECURITY_HEADERS, ...headers });
-    response.end(body);
+    response.end(encodeUtf8(body));
   };
 
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
@@ -210,7 +213,7 @@ export const startPreviewServer = async ({
     }
     const route = url.pathname.slice(prefix.length);
     if (route === "") {
-      const nonce = randomBytes(16).toString("base64");
+      const nonce = bytesToBase64(randomBytes(16));
       const page = await current();
       respond(
         response,
@@ -257,7 +260,7 @@ export const startPreviewServer = async ({
       listeners.add(response);
       request.on("close", () => listeners.delete(response));
       const page = await current();
-      response.write(`data: ${JSON.stringify({ fileVersion: page.fileVersion })}\n\n`);
+      response.write(encodeUtf8(`data: ${JSON.stringify({ fileVersion: page.fileVersion })}\n\n`));
       return;
     }
     respond(response, 404, "not found", { "Content-Type": "text/plain" });

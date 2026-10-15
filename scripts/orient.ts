@@ -263,6 +263,44 @@ type ImportGraph = {
   readonly importedBy: ReadonlyMap<string, readonly string[]>;
 };
 
+const importSpecifiers = (file: string, source: string): string[] => {
+  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest);
+  const specifiers: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      specifiers.push(node.moduleSpecifier.text);
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+    ) {
+      const argument = node.arguments.at(0);
+      // A fixed template (`./module`) names a module as plainly as a string.
+      if (argument && ts.isStringLiteralLike(argument)) specifiers.push(argument.text);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      node.moduleReference.expression &&
+      ts.isStringLiteral(node.moduleReference.expression)
+    ) {
+      specifiers.push(node.moduleReference.expression.text);
+    } else if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal)
+    ) {
+      specifiers.push(node.argument.literal.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  return specifiers;
+};
+
 export const buildImportGraph = (
   repoRoot: string,
   trackedFiles: readonly string[],
@@ -276,9 +314,8 @@ export const buildImportGraph = (
   for (const file of sourceFiles) {
     const sourcePath = canonicalPathInsideRepo(canonicalRepoRoot, path.join(repoRoot, file));
     const source = readFileSync(sourcePath, "utf8");
-    const resolved = ts
-      .preProcessFile(source, true, true)
-      .importedFiles.map(({ fileName }) => resolveImport(file, fileName, tracked))
+    const resolved = importSpecifiers(file, source)
+      .map((specifier) => resolveImport(file, specifier, tracked))
       .filter((candidate): candidate is string => candidate !== null);
     const unique = [...new Set(resolved)].toSorted((a, b) => a.localeCompare(b));
     imports.set(file, unique);

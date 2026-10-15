@@ -1,24 +1,14 @@
 /**
- * One run identity for the pieces of a `w:r` a tracked change cut.
- *
- * A revision inside a run splits it: `<w:r a>Sel</w:r><w:del><w:r a>ler</w:r></w:del>`,
- * `<w:r a>Sel</w:r><w:ins>…</w:ins><w:r a>ler</w:r>`, or a `w:rPrChange` on
- * one piece of the run only. Read back, each
- * `w:r` is its own authored run, so resolving the revision would leave two
- * runs where the source had one. The package cannot say whether the two were
- * one run, but runs that carry the same attributes and that only revised
- * content holds apart are what such a cut writes, so the later piece takes the
- * earlier one's identity. The pieces stay separate runs while the revision
- * holds them apart, and become one run once it is resolved and they state the
- * same properties again (a run joins its owner only then, see `fromProseDoc`).
- *
- * Runs the package writes side by side under the same revision state keep
- * their own identities.
+ * One source identity for matching runs and hyperlinks a revision cut apart.
+ * Serialized fragments mint separate identities on reopen. Matching fragments
+ * across a revision boundary or revised-only bridge take the earlier identity,
+ * so resolution can rejoin them. Every non-identity attribute must match.
+ * Adjacent carriers under the same revision state keep their source identities.
  */
 
 import { Fragment, Mark, type Node as PMNode } from "prosemirror-model";
 
-import { expectRunIdentityMarkAttrs } from "./attrs";
+import { expectRunIdentityMarkAttrs, expectHyperlinkMarkAttrs } from "./attrs";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "./extensions/nodes/SdtExtension";
 import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
 
@@ -28,46 +18,70 @@ const REVISION_MARK_NAMES: ReadonlySet<string> = new Set([
   "runPropertyChange",
 ]);
 
-const identityOf = (node: PMNode): Mark | undefined =>
-  node.marks.find((mark) => mark.type.name === RUN_IDENTITY_MARK_NAME);
+const CARRIER_OWNERS = [
+  {
+    markName: RUN_IDENTITY_MARK_NAME,
+    read: (mark: Mark) => {
+      const attrs = expectRunIdentityMarkAttrs(mark);
+      return { id: attrs.id, payloadKey: JSON.stringify({ ...attrs, id: 0 }) };
+    },
+  },
+  {
+    markName: "hyperlink",
+    read: (mark: Mark) => {
+      const attrs = expectHyperlinkMarkAttrs(mark);
+      if (typeof attrs._docxHyperlinkIndex !== "number") return undefined;
+      return {
+        id: attrs._docxHyperlinkIndex,
+        payloadKey: JSON.stringify({ ...attrs, _docxHyperlinkIndex: 0 }),
+      };
+    },
+  },
+] as const;
+type CarrierOwner = (typeof CARRIER_OWNERS)[number];
+
+/** The continuation policy covers every declared source-carrier mark. */
+export const SOURCE_CARRIER_MARK_NAMES = CARRIER_OWNERS.map(({ markName }) => markName);
+
+const identityOf = (node: PMNode, owner: CarrierOwner) => {
+  const mark = node.marks.find((candidate) => candidate.type.name === owner.markName);
+  if (!mark) return undefined;
+  const identity = owner.read(mark);
+  return identity === undefined ? undefined : { mark, ...identity };
+};
 
 const revisionMarksOf = (node: PMNode): readonly Mark[] =>
   node.marks.filter((mark) => REVISION_MARK_NAMES.has(mark.type.name));
 
-/** The identity's attrs without the id: what the run carries. */
-const payloadKey = (identity: Mark): string =>
-  JSON.stringify({ ...expectRunIdentityMarkAttrs(identity), id: 0 });
-
-type ContinuesRunOptions = {
+type ContinuesCarrierOptions = {
   left: PMNode;
   right: PMNode;
   /** Whether revised content lies between the two. */
   bridged: boolean;
+  owner: CarrierOwner;
 };
 
 /** Whether `right` continues `left`'s run across a revision boundary. */
-const continuesRun = ({ left, right, bridged }: ContinuesRunOptions): boolean => {
-  const leftIdentity = identityOf(left);
-  const rightIdentity = identityOf(right);
-  if (!leftIdentity || !rightIdentity || leftIdentity.eq(rightIdentity)) {
+const continuesCarrier = ({ left, right, bridged, owner }: ContinuesCarrierOptions): boolean => {
+  const leftIdentity = identityOf(left, owner);
+  const rightIdentity = identityOf(right, owner);
+  if (!leftIdentity || !rightIdentity || leftIdentity.mark.eq(rightIdentity.mark)) {
     return false;
   }
   return (
     (bridged || !Mark.sameSet(revisionMarksOf(left), revisionMarksOf(right))) &&
-    payloadKey(leftIdentity) === payloadKey(rightIdentity)
+    leftIdentity.payloadKey === rightIdentity.payloadKey
   );
 };
 
 /**
- * `nodes`, one inline container's content, with each run a revision cut given
- * the identity of the run it was cut from. A control is a container of its
+ * `nodes`, one inline container's content, with each revision fragment given
+ * the identity of its matching source carrier. A control is a container of its
  * own. `nodes` itself comes back when nothing changes.
  */
-export const continueRunIdentitiesAcrossRevisions = (
-  nodes: readonly PMNode[],
-): readonly PMNode[] => {
+const continueIdentities = (nodes: readonly PMNode[], owner: CarrierOwner): readonly PMNode[] => {
   const renamed = new Map<number, Mark>();
-  /** The last run with an identity, while only revised content follows it. */
+  /** The last carrier with an identity, while only revised content follows it. */
   let anchor: PMNode | undefined;
   let bridged = false;
   let changed = false;
@@ -78,14 +92,14 @@ export const continueRunIdentitiesAcrossRevisions = (
       node.forEach((child) => {
         children.push(child);
       });
-      const continued = continueRunIdentitiesAcrossRevisions(children);
+      const continued = continueIdentities(children, owner);
       if (continued === children) {
         return node;
       }
       changed = true;
       return node.copy(Fragment.fromArray([...continued]));
     }
-    const identity = identityOf(node);
+    const identity = identityOf(node, owner);
     if (!identity) {
       if (anchor && revisionMarksOf(node).length > 0) {
         bridged = true;
@@ -94,10 +108,10 @@ export const continueRunIdentitiesAcrossRevisions = (
       }
       return node;
     }
-    const id = expectRunIdentityMarkAttrs(identity).id;
+    const id = identity.id;
     let replacement = renamed.get(id);
-    if (!replacement && anchor && continuesRun({ left: anchor, right: node, bridged })) {
-      replacement = identityOf(anchor);
+    if (!replacement && anchor && continuesCarrier({ left: anchor, right: node, bridged, owner })) {
+      replacement = identityOf(anchor, owner)?.mark;
       if (replacement) {
         renamed.set(id, replacement);
       }
@@ -109,4 +123,13 @@ export const continueRunIdentitiesAcrossRevisions = (
     return next;
   });
   return changed ? result : nodes;
+};
+
+/** Every source-carrier family uses the same revision-boundary continuation policy. */
+export const continueSourceCarrierIdentitiesAcrossRevisions = (
+  nodes: readonly PMNode[],
+): readonly PMNode[] => {
+  let continued = nodes;
+  for (const owner of CARRIER_OWNERS) continued = continueIdentities(continued, owner);
+  return continued;
 };

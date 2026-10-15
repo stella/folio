@@ -12,13 +12,27 @@
  * operations (find, replace, scroll-to-match) on top.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { EditorState } from "prosemirror-state";
 
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
+import { getReviewViewReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
+import { findInMarkupView } from "@stll/folio-core/prosemirror/findReplaceSelection";
+import type { ProseMirrorFindMatch } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import type { Document } from "@stll/folio-core/types/document";
 import { findInDocument, scrollToMatch } from "../dialogs/findReplaceUtils";
 import type { FindMatch, FindOptions, FindResult } from "../dialogs/findReplaceUtils";
 import type { UseFindReplaceReturn as FindReplaceStateReturn } from "../dialogs/useFindReplace";
+
+const toEditorFindMatch = ({ from, to, ...match }: ProseMirrorFindMatch) => ({
+  ...match,
+  contentIndex: 0,
+  authoredRange: { from, to },
+});
 
 // ============================================================================
 // TYPES
@@ -29,6 +43,9 @@ type UseFindReplaceParams = {
   documentState?: Document | null;
   /** Returns the current live document state from the editor */
   getDocumentState?: () => Document | null;
+  /** Live editor state for searching the displayed review view. */
+  getEditorState?: () => EditorState | null;
+  markupView?: DisplayMode;
   /** Ref to the scrollable container for scrollToMatch */
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** Callback to push a new document state */
@@ -37,6 +54,8 @@ type UseFindReplaceParams = {
   findReplace: FindReplaceStateReturn;
   /** Select and reveal a match in the live editor */
   selectMatch?: (match: FindMatch) => boolean;
+  readOnlyReason?: EditorReadOnlyReason | null;
+  onReadonlyEditAttempt?: ((reason: EditorReadOnlyReason) => void) | undefined;
 };
 
 export type UseFindReplaceReturn = {
@@ -63,16 +82,24 @@ export type UseFindReplaceReturn = {
 export function useFindReplace({
   documentState,
   getDocumentState,
+  getEditorState,
+  markupView: markupViewProp,
   containerRef,
   handleDocumentChange,
   findReplace,
   selectMatch,
+  readOnlyReason,
+  onReadonlyEditAttempt,
 }: UseFindReplaceParams): UseFindReplaceReturn {
+  const markupView = markupViewProp ?? "all-markup";
+  const replacementRefusal = getReviewViewReadOnlyReason(markupView) ?? readOnlyReason ?? null;
   const manager = useMemo(() => new FindReplaceManager<FindMatch>(), []);
   const [currentResult, setCurrentResult] = useState<FindResult | null>(null);
+  const activeSearch = useRef<{ searchText: string; options: FindOptions } | null>(null);
   const { setMatches, goToMatch } = findReplace;
 
   const resetFindResult = useCallback(() => {
+    activeSearch.current = null;
     manager.clear();
     setCurrentResult(null);
     setMatches([], 0);
@@ -100,7 +127,20 @@ export function useFindReplace({
         return null;
       }
 
-      const matches = findInDocument(currentDocument, searchText, options);
+      const editorState = getEditorState?.();
+      let matches: FindMatch[];
+      if (markupView === "all-markup") {
+        matches = findInDocument(currentDocument, searchText, options);
+      } else {
+        if (!editorState) {
+          resetFindResult();
+          return null;
+        }
+        matches = findInMarkupView({ state: editorState, markupView, searchText, options }).map(
+          toEditorFindMatch,
+        );
+      }
+      activeSearch.current = { searchText, options };
       const result = manager.setMatches(matches);
       setCurrentResult(result);
       setMatches(matches, 0);
@@ -112,8 +152,24 @@ export function useFindReplace({
 
       return result;
     },
-    [readDocumentState, manager, setMatches, revealMatch, resetFindResult],
+    [
+      readDocumentState,
+      getEditorState,
+      markupView,
+      manager,
+      setMatches,
+      revealMatch,
+      resetFindResult,
+    ],
   );
+
+  const previousMarkupView = useRef(markupView);
+  useEffect(() => {
+    if (previousMarkupView.current === markupView) return;
+    previousMarkupView.current = markupView;
+    const search = activeSearch.current;
+    if (search) handleFind(search.searchText, search.options);
+  }, [markupView, handleFind]);
 
   const handleFindNext = useCallback((): FindMatch | null => {
     const stepped = manager.navigate("next");
@@ -175,13 +231,22 @@ export function useFindReplace({
     [readDocumentState, manager, handleDocumentChange, resetFindResult],
   );
 
+  const refuseReplace = useCallback(() => {
+    if (replacementRefusal) onReadonlyEditAttempt?.(replacementRefusal);
+    return false;
+  }, [replacementRefusal, onReadonlyEditAttempt]);
+  const refuseReplaceAll = useCallback(() => {
+    refuseReplace();
+    return 0;
+  }, [refuseReplace]);
+
   return {
     currentResult,
     resetFindResult,
     handleFind,
     handleFindNext,
     handleFindPrevious,
-    handleReplace,
-    handleReplaceAll,
+    handleReplace: replacementRefusal ? refuseReplace : handleReplace,
+    handleReplaceAll: replacementRefusal ? refuseReplaceAll : handleReplaceAll,
   };
 }

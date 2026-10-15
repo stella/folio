@@ -1872,3 +1872,33 @@ test("committed version keys survive composition and distinguish document loads"
     GlobalRegistrator.unregister();
   }
 });
+
+test("read-only switches synchronize DOM editability without changing the authored state", () => {
+  GlobalRegistrator.register();
+  let readOnly = false;
+  const host = document.createElement("div");
+  const source = createEmptyDocument({ initialText: "Read-only state" });
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getReadOnly: () => readOnly,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView() ?? panic("Expected editor view");
+    const state = view.state;
+    for (const mode of [true, false, true, false]) {
+      readOnly = mode;
+      manager.syncEditable();
+      expect(view.editable).toBe(!mode);
+      expect(view.dom.getAttribute("contenteditable")).toBe(String(!mode));
+      expect(view.dom.getAttribute("aria-readonly")).toBe(String(mode));
+      expect(view.state).toBe(state);
+    }
+  } finally {
+    manager.destroyView();
+    GlobalRegistrator.unregister();
+  }
+});

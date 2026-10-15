@@ -1,3 +1,4 @@
+import { encodeUtf8, decodeText } from "../utils/textEncoding";
 import { writeZipPart } from "@stll/docx-core/zip";
 /**
  * Date comparison output from the comparison's timestamp. Imported entries
@@ -35,7 +36,14 @@ export const withFixedPackageDates = async (
     writeZipPart({
       zip,
       path: CORE_PROPERTIES_PATH,
-      data: withFixedModifiedDate(await coreProps.async("text"), date),
+      data: encodeUtf8(
+        withFixedModifiedDate(
+          await coreProps
+            .async("uint8array")
+            .then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+          date,
+        ),
+      ),
       options: {
         compression: "DEFLATE",
         compressionOptions: { level: DOCX_COMPRESSION_LEVEL },

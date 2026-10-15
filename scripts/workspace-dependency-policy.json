@@ -1,12 +1,13 @@
 {
-  "agents": ["core"],
-  "cli": ["agents", "core"],
-  "core": ["docx-core"],
-  "docx-core": [],
-  "editor-web": ["core", "react"],
-  "nuxt": ["vue"],
-  "playground": ["core", "react"],
-  "playground-vue": ["vue"],
-  "react": ["core"],
-  "vue": ["core"]
+  "agents": ["core", "utf8-boundaries"],
+  "cli": ["agents", "core", "utf8-boundaries"],
+  "core": ["docx-core", "utf8-boundaries"],
+  "docx-core": ["utf8-boundaries"],
+  "editor-web": ["core", "react", "utf8-boundaries"],
+  "nuxt": ["vue", "utf8-boundaries"],
+  "playground": ["core", "react", "utf8-boundaries"],
+  "playground-vue": ["vue", "utf8-boundaries"],
+  "react": ["core", "utf8-boundaries"],
+  "vue": ["core", "utf8-boundaries"],
+  "utf8-boundaries": []
 }

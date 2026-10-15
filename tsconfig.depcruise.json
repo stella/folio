@@ -18,7 +18,9 @@
       "@stll/folio-react": ["packages/react/src/index.ts"],
       "@stll/folio-react/*": ["packages/react/src/*"],
       "@stll/folio-vue": ["packages/vue/src/index.ts"],
-      "@stll/folio-vue/*": ["packages/vue/src/*"]
+      "@stll/folio-vue/*": ["packages/vue/src/*"],
+      "@stll/utf8-boundaries": ["packages/utf8-boundaries/src/runtime.ts"],
+      "@stll/utf8-boundaries/*": ["packages/utf8-boundaries/src/*.ts"]
     }
   },
   "include": ["packages"]

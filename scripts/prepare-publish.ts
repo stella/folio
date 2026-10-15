@@ -24,7 +24,7 @@ import { panic } from "better-result";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-type JsEntry = { types: string; import: string };
+type JsEntry = { types: string; import: string; default: string };
 
 const pkgDir = process.argv[2] ?? panic("usage: bun scripts/prepare-publish.ts <package-dir>");
 
@@ -87,7 +87,7 @@ for (const [subpath, target] of Object.entries(pkg.exports)) {
   // built artifact). @stll/folio-core exposes its source-mirrored dist this way.
   if (subpath.includes("*")) {
     const base = target.replace(/^\.\/src\//u, "./dist/").replace(/\.[cm]?tsx?$/u, "");
-    distExports[subpath] = { types: `${base}.d.ts`, import: `${base}.js` };
+    distExports[subpath] = { types: `${base}.d.ts`, import: `${base}.js`, default: `${base}.js` };
     continue;
   }
 
@@ -103,6 +103,8 @@ for (const [subpath, target] of Object.entries(pkg.exports)) {
   distExports[subpath] = {
     types: `${jsBase}.d.ts`,
     import: `${jsBase}.js`,
+    // Vue CJS entries require these ESM modules through Node's synchronous loader.
+    default: `${jsBase}.js`,
   };
 }
 

@@ -1,3 +1,4 @@
+import { readBlobText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 /**
  * Image clipboard + replace helpers. Pure DOM/PM operations — every
  * function takes the view as a parameter so they're testable and don't
@@ -59,8 +60,8 @@ export function copyImageToClipboard(view: EditorView, pmPos: number): void {
   const imgHtml = `<img src="${src}" data-pm-image="true" data-width="${width}" data-height="${height}" data-wrap-type="${wrapType}" data-display-mode="${displayMode}" data-rid="${rId}" />`;
 
   const clipboardItem = new ClipboardItem({
-    "text/html": new Blob([imgHtml], { type: "text/html" }),
-    "text/plain": new Blob(["[image]"], { type: "text/plain" }),
+    "text/html": new Blob([encodeUtf8(imgHtml)], { type: "text/html" }),
+    "text/plain": new Blob([encodeUtf8("[image]")], { type: "text/plain" }),
   });
   navigator.clipboard.write([clipboardItem]).catch(() => {
     // Fallback: at least copy as HTML
@@ -132,7 +133,7 @@ export async function pasteFromClipboard(view: EditorView): Promise<void> {
 
       if (item.types.includes("text/html")) {
         const htmlBlob = await item.getType("text/html");
-        const html = await htmlBlob.text();
+        const html = await readBlobText(htmlBlob);
         const match = /<img[^>]+src="(?<src>[^"]+)"[^>]*>/iu.exec(html);
         const src = match?.groups?.["src"];
         if (src) {
@@ -147,7 +148,7 @@ export async function pasteFromClipboard(view: EditorView): Promise<void> {
 
       if (item.types.includes("text/plain")) {
         const textBlob = await item.getType("text/plain");
-        const text = await textBlob.text();
+        const text = await readBlobText(textBlob);
         if (text && text !== "[image]") {
           const { from } = view.state.selection;
           view.dispatch(view.state.tr.insertText(text, from));

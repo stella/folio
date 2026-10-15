@@ -34,6 +34,7 @@ import {
   reactPeerInstallArgs,
   reactDir,
   repoRoot,
+  utf8BoundariesDir,
   writeConsumerPackageJson,
 } from "./packaged-consumer-lib";
 
@@ -81,12 +82,15 @@ let failure: string | null = null;
 let docxCorePackDir = "";
 let corePackDir = "";
 let reactPackDir = "";
+let utf8BoundariesPackDir = "";
 const consumerDirs: string[] = [];
 try {
   docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
   corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
   reactPackDir = await mkdtemp(path.join(tmpdir(), "folio-react-pack-"));
+  utf8BoundariesPackDir = await mkdtemp(path.join(tmpdir(), "folio-utf8-boundaries-pack-"));
 
+  const utf8BoundariesTarball = await buildAndPack(utf8BoundariesDir, utf8BoundariesPackDir);
   const docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir);
   const coreTarball = await buildAndPack(coreDir, corePackDir);
   const reactTarball = await buildAndPack(reactDir, reactPackDir);
@@ -115,7 +119,12 @@ try {
         path.join(consumerSrc, "vite.runtime.config.ts"),
         path.join(consumerDir, "vite.runtime.config.ts"),
       );
-      await writeConsumerPackageJson({ consumerDir, coreTarball, docxCoreTarball });
+      await writeConsumerPackageJson({
+        consumerDir,
+        coreTarball,
+        docxCoreTarball,
+        utf8BoundariesTarball,
+      });
 
       console.log(`→ installing tarballs + React ${reactVersion} peers`);
       await installCleanRoomDependencies({
@@ -124,6 +133,7 @@ try {
           reactTarball,
           coreTarball,
           docxCoreTarball,
+          utf8BoundariesTarball,
           ...reactPeerInstallArgs(),
           ...hostPeerInstallArgs(),
           "use-intl@^4",
@@ -204,7 +214,13 @@ try {
 
   await runSmoke(REACT_PEER_FLOOR.version);
 } finally {
-  for (const dir of [docxCorePackDir, corePackDir, reactPackDir, ...consumerDirs]) {
+  for (const dir of [
+    docxCorePackDir,
+    corePackDir,
+    reactPackDir,
+    utf8BoundariesPackDir,
+    ...consumerDirs,
+  ]) {
     if (dir !== "") {
       await rm(dir, { recursive: true, force: true });
     }

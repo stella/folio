@@ -1,3 +1,4 @@
+import { decodeText } from "../../utils/textEncoding";
 /**
  * Read-only MS-CFB compound file access for encrypted OOXML packages.
  *
@@ -61,7 +62,7 @@ const u64 = (view: DataView, offset: number): bigint => {
 };
 
 const decodeName = (nameBytes: Uint8Array): string => {
-  const decoded = new TextDecoder("utf-16le").decode(nameBytes);
+  const decoded = decodeText(nameBytes, { encoding: "utf-16le" });
   let end = decoded.length;
   while (end > 0 && decoded.charCodeAt(end - 1) === 0) {
     end--;

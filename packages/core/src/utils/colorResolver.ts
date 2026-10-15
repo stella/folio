@@ -1,3 +1,4 @@
+import { sliceText } from "./sliceText";
 /**
  * Color Resolver - Convert OOXML colors to CSS
  *
@@ -134,7 +135,7 @@ function parseModifierValue(hexValue: string | undefined): number {
  */
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   // Ensure 6 characters
-  const normalized = hex.padStart(6, "0").slice(0, 6);
+  const normalized = sliceText({ text: hex.padStart(6, "0"), units: "codeUnits", end: 6 });
 
   const r = Number.parseInt(normalized.slice(0, 2), 16);
   const g = Number.parseInt(normalized.slice(2, 4), 16);
@@ -474,7 +475,7 @@ export function parseColorString(colorString: string | undefined): ColorValue | 
   }
 
   // Unknown format, return as RGB anyway
-  return { rgb: hex.padStart(6, "0").slice(0, 6) };
+  return { rgb: sliceText({ text: hex.padStart(6, "0"), units: "codeUnits", end: 6 }) };
 }
 
 /**

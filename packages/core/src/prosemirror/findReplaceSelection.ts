@@ -1,7 +1,10 @@
 import type { Node as ProseMirrorNode } from "prosemirror-model";
+import type { EditorState } from "prosemirror-state";
 
+import type { DisplayMode } from "../managers/EditorModeManager";
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { expectSymbolAttrs } from "./attrs";
+import { projectMarkupView } from "./markupViewProjection";
 
 import { findAllMatches } from "../utils/findReplace";
 import type { FindOptions } from "../utils/findReplace";
@@ -87,6 +90,34 @@ export function findInProseMirrorDocument(
   });
   return matches;
 }
+
+type FindInMarkupViewOptions = {
+  state: EditorState;
+  markupView: DisplayMode;
+  searchText: string;
+  options: FindOptions;
+};
+
+/** Search the displayed story; returned ranges address the authored editor document. */
+export const findInMarkupView = ({
+  state,
+  markupView,
+  searchText,
+  options,
+}: FindInMarkupViewOptions): ProseMirrorFindMatch[] => {
+  const projection = projectMarkupView(state, markupView);
+  if (projection.type === "authored") {
+    return findInProseMirrorDocument(state.doc, searchText, options);
+  }
+  return findInProseMirrorDocument(projection.doc, searchText, options).map((match) => ({
+    paragraphIndex: match.paragraphIndex,
+    startOffset: match.startOffset,
+    endOffset: match.endOffset,
+    text: match.text,
+    from: projection.toEditor(match.from, 1),
+    to: projection.toEditor(match.to, -1),
+  }));
+};
 
 type SearchParagraphVisitor = (
   paragraph: ProseMirrorNode,

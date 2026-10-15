@@ -2,13 +2,14 @@
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { Result, TaggedError } from "better-result";
+import { Result, TaggedError, panic } from "better-result";
 
 import { keyDifferences, validateExactObjectKeys } from "./lib/exact-object";
+import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 
 const REPORT_ROOT = path.resolve(import.meta.dir, "../api-reports");
 const BASELINE_PATH = path.join(import.meta.dir, "api-surface-budget.json");
-const PACKAGES = ["docx-core", "core", "react", "agents", "cli", "vue", "nuxt"] as const;
+const PACKAGES = PUBLISHED_PACKAGES.map(({ slug }) => slug);
 const HEADROOM = 1.05;
 const BYTE_FLOOR = 1024;
 const LINE_FLOOR = 50;
@@ -21,7 +22,7 @@ type SurfaceSize = {
   declarationBytes: number;
   declarationLines: number;
 };
-type Baseline = Record<PackageName, SurfaceSize>;
+type Baseline = Map<PackageName, SurfaceSize>;
 
 const METRIC_NAMES = [
   "reportBytes",
@@ -89,15 +90,10 @@ const measurePackage = (name: PackageName): SurfaceSize => {
   };
 };
 
-const measureAll = (): Baseline => ({
-  "docx-core": measurePackage("docx-core"),
-  core: measurePackage("core"),
-  react: measurePackage("react"),
-  agents: measurePackage("agents"),
-  cli: measurePackage("cli"),
-  vue: measurePackage("vue"),
-  nuxt: measurePackage("nuxt"),
-});
+const measureAll = (): Baseline => new Map(PACKAGES.map((name) => [name, measurePackage(name)]));
+
+const sizeFor = (baseline: Baseline, name: PackageName): SurfaceSize =>
+  baseline.get(name) ?? panic("Missing measured API surface", { name });
 
 const readEntry = (value: Record<string, unknown>, name: PackageName) => {
   if (typeof value !== "object" || value === null || !(name in value)) {
@@ -147,29 +143,13 @@ const readBaseline = () => {
   if (exactBaseline.isErr()) {
     return exactBaseline;
   }
-  const docxCore = readEntry(exactBaseline.value, "docx-core");
-  const core = readEntry(exactBaseline.value, "core");
-  const react = readEntry(exactBaseline.value, "react");
-  const agents = readEntry(exactBaseline.value, "agents");
-  const cli = readEntry(exactBaseline.value, "cli");
-  const vue = readEntry(exactBaseline.value, "vue");
-  const nuxt = readEntry(exactBaseline.value, "nuxt");
-  if (docxCore.isErr()) return docxCore;
-  if (core.isErr()) return core;
-  if (react.isErr()) return react;
-  if (agents.isErr()) return agents;
-  if (cli.isErr()) return cli;
-  if (vue.isErr()) return vue;
-  if (nuxt.isErr()) return nuxt;
-  return Result.ok({
-    "docx-core": docxCore.value,
-    core: core.value,
-    react: react.value,
-    agents: agents.value,
-    cli: cli.value,
-    vue: vue.value,
-    nuxt: nuxt.value,
-  } satisfies Baseline);
+  const baseline: Baseline = new Map();
+  for (const name of PACKAGES) {
+    const entry = readEntry(exactBaseline.value, name);
+    if (entry.isErr()) return entry;
+    baseline.set(name, entry.value);
+  }
+  return Result.ok(baseline);
 };
 
 const maximum = (baseline: number, floor: number): number =>
@@ -183,7 +163,7 @@ const ratchetAvailable = (current: number, baseline: number): boolean =>
 
 const report = (measured: Baseline): void => {
   for (const name of PACKAGES) {
-    const size = measured[name];
+    const size = sizeFor(measured, name);
     console.log(
       `api-surface-budget: ${name} reports ${size.reportLines.toLocaleString("en-US")} lines / ` +
         `${size.reportBytes.toLocaleString("en-US")} bytes; declarations ` +
@@ -204,8 +184,8 @@ const check = (measured: Baseline): number => {
   for (const name of PACKAGES) {
     for (const metric of METRIC_NAMES) {
       const floor = METRICS[metric];
-      const current = measured[name][metric];
-      const previous = baseline[name][metric];
+      const current = sizeFor(measured, name)[metric];
+      const previous = sizeFor(baseline, name)[metric];
       if (exceedsMaximum(current, previous, floor)) {
         failures.push(`${name}.${metric}: ${previous} -> ${current}`);
       } else if (ratchetAvailable(current, previous)) {
@@ -295,7 +275,7 @@ try {
   const measured = measureAll();
   report(measured);
   if (mode === "--write") {
-    writeFileSync(BASELINE_PATH, `${JSON.stringify(measured, null, 2)}\n`);
+    writeFileSync(BASELINE_PATH, `${JSON.stringify(Object.fromEntries(measured), null, 2)}\n`);
     console.log("api-surface-budget: wrote scripts/api-surface-budget.json");
     process.exit(0);
   }

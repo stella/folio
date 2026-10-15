@@ -1,3 +1,4 @@
+import { decodeText } from "../../utils/textEncoding";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 
 import type { DocxConformanceClass } from "../../types/document";
@@ -218,7 +219,7 @@ const readPartForInspection = async (
       throw error;
     }
     const bytes = await archive.readEntryUint8(part);
-    return bytes === null ? null : new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+    return bytes === null ? null : decodeText(bytes, { ignoreBOM: true });
   }
 };
 

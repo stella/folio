@@ -1,3 +1,4 @@
+import { encodeUtf8 } from "@stll/utf8-boundaries";
 import { cloneModel } from "../modelClone";
 import { Result, TaggedError } from "better-result";
 import type { ParagraphFormatting, TextFormatting } from "../../model/document";
@@ -493,10 +494,7 @@ export const validateDocumentBatch = (value: unknown): Result<DocumentBatch, Bat
     );
   }
   const encoded = Result.try(() => JSON.stringify(value));
-  if (
-    encoded.isErr() ||
-    new TextEncoder().encode(encoded.value).byteLength > MAX_BATCH_WIRE_BYTES
-  ) {
+  if (encoded.isErr() || encodeUtf8(encoded.value).byteLength > MAX_BATCH_WIRE_BYTES) {
     return Result.err(
       new BatchRejection({
         reason: BATCH_REJECTION_REASONS.INVALID_BATCH,
@@ -517,7 +515,7 @@ export const validateDocumentBatch = (value: unknown): Result<DocumentBatch, Bat
   }
   const decoded = decodeDocumentBatch(normalized.value);
   if (decoded.isErr()) return decoded;
-  if (new TextEncoder().encode(JSON.stringify(decoded.value)).byteLength > MAX_BATCH_WIRE_BYTES) {
+  if (encodeUtf8(JSON.stringify(decoded.value)).byteLength > MAX_BATCH_WIRE_BYTES) {
     return Result.err(
       new BatchRejection({
         reason: BATCH_REJECTION_REASONS.INVALID_BATCH,
@@ -640,7 +638,7 @@ export const validateSequencedBatch = (value: unknown): Result<SequencedBatch, B
 
 /** Parse the wire representation without propagating parser exceptions. */
 export const parseDocumentBatch = (json: string): Result<DocumentBatch, BatchRejection> => {
-  if (new TextEncoder().encode(json).byteLength > MAX_BATCH_WIRE_BYTES) {
+  if (encodeUtf8(json).byteLength > MAX_BATCH_WIRE_BYTES) {
     return Result.err(
       new BatchRejection({
         reason: BATCH_REJECTION_REASONS.INVALID_BATCH,

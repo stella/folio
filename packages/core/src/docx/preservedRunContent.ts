@@ -1,3 +1,4 @@
+import { sliceText } from "../utils/sliceText";
 /**
  * The run-level arm of the verbatim sink.
  *
@@ -67,7 +68,7 @@ export const preservedRunChildText = (element: XmlElement): string => {
       collectTextContent(source, parts);
     }
   }
-  return parts.join("").slice(0, MAX_PRESERVED_TEXT_LENGTH);
+  return sliceText({ text: parts.join(""), units: "codeUnits", end: MAX_PRESERVED_TEXT_LENGTH });
 };
 
 /**
@@ -132,6 +133,6 @@ export const preserveInlineChild = (element: XmlElement): PreservedInline => {
   return {
     type: "preservedInline",
     xml: captureVerbatimXml(element),
-    text: parts.join("").slice(0, MAX_PRESERVED_TEXT_LENGTH),
+    text: sliceText({ text: parts.join(""), units: "codeUnits", end: MAX_PRESERVED_TEXT_LENGTH }),
   };
 };

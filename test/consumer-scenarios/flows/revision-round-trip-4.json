@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 1026396995,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1906422405,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 37,
+            "endOffset": 42,
+            "selectedTextHash": "h4k7sdk"
+          },
+          "comment": {
+            "text": "Check this word."
+          }
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 37,
+            "endOffset": 42,
+            "selectedTextHash": "h4k7sdk"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ]
+    },
+    {
+      "action": "mistake",
+      "seed": 2410375681
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "revision round-trip regression",
+  "title": "Revision coverage and both resolution outcomes survive save"
+}

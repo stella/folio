@@ -1,3 +1,4 @@
+import { decodeText } from "../../utils/textEncoding";
 /**
  * A self-contained TrueType/OpenType (sfnt) reader.
  *
@@ -505,22 +506,19 @@ const sanitizePostScriptName = (raw: string): string => {
 };
 
 const decodeUtf16Be = (view: DataView, offset: number, length: number): string => {
-  let text = "";
-  for (let index = 0; index + 1 < length; index += 2) {
-    text += String.fromCharCode(view.getUint16(offset + index));
-  }
-  return text;
+  return decodeText(new Uint8Array(view.buffer, view.byteOffset + offset, length - (length % 2)), {
+    encoding: "utf-16be",
+    ignoreBOM: true,
+  });
 };
 
 const decodeMacRomanAscii = (view: DataView, offset: number, length: number): string => {
-  let text = "";
-  for (let index = 0; index < length; index++) {
-    const code = view.getUint8(offset + index);
-    // Only the ASCII subset is unambiguous without a MacRoman table; the
-    // sanitizer would drop the high half anyway.
-    text += code < 0x80 ? String.fromCharCode(code) : "";
-  }
-  return text;
+  // Only the ASCII subset is unambiguous without a MacRoman table.
+  const bytes = new Uint8Array(view.buffer, view.byteOffset + offset, length);
+  return decodeText(
+    bytes.filter((byte) => byte < 0x80),
+    { encoding: "binary" },
+  );
 };
 
 /**

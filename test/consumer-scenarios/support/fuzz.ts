@@ -23,7 +23,10 @@
  */
 
 import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
-import type { FolioDocumentStoryHandle } from "@stll/folio-core/server";
+import {
+  FOLIO_DOCUMENT_OPERATION_TYPES,
+  type FolioDocumentStoryHandle,
+} from "@stll/folio-core/server";
 import { readFileSync } from "node:fs";
 
 import { observeHits, registerFeatureOperations, type StepKind } from "./coverage.ts";
@@ -39,6 +42,8 @@ import {
 import {
   COLLISION_FIXTURES,
   FIXTURES,
+  IMPORTED_MOVE_FIXTURE,
+  importedMoveDocument,
   openReviewer,
   pinnedParaIdsOf,
   STORY_FIXTURES,
@@ -53,7 +58,12 @@ import {
   LEGACY_ACTIONS,
   TARGETED_ACTIONS,
 } from "./flow-file.ts";
-import { assertReadersAgree, saveAndReopen, visibleState } from "./invariants.ts";
+import {
+  assertStoryInventory,
+  assertReadersAgree,
+  saveAndReopen,
+  visibleState,
+} from "./invariants.ts";
 import { LARGE_DOCUMENT_FIXTURE, largeDocument } from "./large-document.ts";
 import { startRelations } from "./metamorphic.ts";
 import { assertRequestedOutcome, assertResolvedTo, capture, captureResolution } from "./oracle.ts";
@@ -258,13 +268,21 @@ const drawOperations = (
   return operations;
 };
 
-const tool = (flow: Flow, name: string, args: unknown) =>
-  executeFolioToolCallUntyped(
+const tool = (flow: Flow, name: string, args: unknown) => {
+  const requestedTypes = name === "suggest_changes" ? flow.planned?.operationTypes : undefined;
+  const operationTypes =
+    requestedTypes === undefined
+      ? undefined
+      : FOLIO_DOCUMENT_OPERATION_TYPES.filter((type) => requestedTypes.includes(type));
+  if (requestedTypes !== undefined && operationTypes?.length !== requestedTypes.length)
+    throw new TypeError(`Unknown flow operation types: ${JSON.stringify(requestedTypes)}`);
+  return executeFolioToolCallUntyped(
     name,
     args,
     createReviewerBridge(flow.reviewer, { mode: flow.mode }),
-    {},
+    operationTypes === undefined ? {} : { suggestChanges: { operationTypes } },
   );
+};
 
 type Receipt = { applied: readonly { id: string }[] };
 
@@ -301,6 +319,11 @@ const suggestChecked = async (
   const asked = Array.isArray(operations) ? (operations as Operation[]) : [];
   touch(flow, asked);
   const outcome = appliedOf(asked, receipt);
+  const expectedApplied = flow.planned?.expectedApplied;
+  if (expectedApplied !== undefined && outcome.applied.length !== expectedApplied)
+    throw new Error(
+      `step ${flow.log.length - 1}: expected ${expectedApplied} applied operations, got ${outcome.applied.length}; receipt ${JSON.stringify(receipt)}; ${flow.log.at(-1)}`,
+    );
   await assertRequestedOutcome(flow.reviewer, pre, outcome, `step ${flow.log.length - 1}`);
   return outcome.applied.length;
 };
@@ -378,7 +401,12 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<StepEffect> => {
     flow.random = createRandom(planned.seed);
   }
   flow.planned = planned;
-  flow.trace.push({ action, seed: flow.random.state() });
+  flow.trace.push({
+    action,
+    seed: flow.random.state(),
+    ...(planned?.operationTypes === undefined ? {} : { operationTypes: planned.operationTypes }),
+    ...(planned?.expectedApplied === undefined ? {} : { expectedApplied: planned.expectedApplied }),
+  });
   const { random } = flow;
   switch (action) {
     case "suggest_changes": {
@@ -538,7 +566,7 @@ export type StepContext = {
 };
 
 /** A check every flow runs after every step; throw to fail the flow. */
-export type StepCheck = { name: string; check: (context: StepContext) => Promise<void> };
+export type StepCheck = { name: string; check: (context: StepContext) => void | Promise<void> };
 
 /** The texts of every story besides the body, by handle. */
 const storyTexts = (reviewer: Reviewer): Record<string, string[]> =>
@@ -554,6 +582,10 @@ const storyTexts = (reviewer: Reviewer): Record<string, string[]> =>
  * flow; `saved()` shares the step's save.
  */
 export const STEP_CHECKS: StepCheck[] = [
+  {
+    name: "story trailers enumerate the live story inventory",
+    check: ({ flow }) => assertStoryInventory(flow.reviewer),
+  },
   {
     name: "the package saves and reopens to what the reviewer shows",
     check: async ({ saved }) => {
@@ -721,6 +753,7 @@ type LoadFixtureOptions = Pick<FlowFile, "fixture" | "kind" | "generation">;
 
 const loadFixture = ({ fixture, kind, generation }: LoadFixtureOptions): Promise<Uint8Array> => {
   if (fixture === LARGE_DOCUMENT_FIXTURE) return largeDocument();
+  if (fixture === IMPORTED_MOVE_FIXTURE) return importedMoveDocument();
   if (isPublicCorpusFixture(fixture)) return loadPublicCorpusFixture(fixture);
   const load = flowFixtures(kind, generation)[fixture];
   if (load === undefined) {

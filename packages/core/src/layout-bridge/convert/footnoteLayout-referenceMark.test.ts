@@ -113,3 +113,43 @@ for (const kind of ["footnote", "endnote"] as const) {
     }
   }
 }
+
+test("note-story conversion hides comments without changing authored content", () => {
+  const footnote = footnoteFromParagraphXml(
+    `<w:p><w:commentRangeStart w:id="7"/><w:r><w:t>review</w:t></w:r><w:commentRangeEnd w:id="7"/></w:p>`,
+  );
+  const authored = JSON.stringify(footnote.content);
+  for (const showCommentHighlights of [true, false, true]) {
+    const { flowBlocks } = convertNoteStoryToFlowBlocks(footnote.content, {
+      showCommentHighlights,
+    });
+    const run = firstParagraphRuns(flowBlocks).find((candidate) => candidate.kind === "text");
+    expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
+      showCommentHighlights ? [7] : undefined,
+    );
+    expect(JSON.stringify(footnote.content)).toBe(authored);
+  }
+});
+
+for (const kind of ["footnote", "endnote"] as const) {
+  for (const markupView of ["no-markup", "original"] as const) {
+    test(`${kind} displays ${markupView} text before measurement`, () => {
+      const xml = `<w:${kind}s xmlns:w="${W_NS}"><w:${kind} w:id="4"><w:p><w:r><w:t>base</w:t></w:r><w:ins w:id="1" w:author="Reviewer"><w:r><w:t>inserted</w:t></w:r></w:ins><w:del w:id="2" w:author="Reviewer"><w:r><w:delText>deleted</w:delText></w:r></w:del></w:p></w:${kind}></w:${kind}s>`;
+      const note = (kind === "footnote" ? parseFootnotes(xml) : parseEndnotes(xml)).byId.get(4);
+      if (!note) panic("Expected parsed note");
+      const options = {
+        markupView,
+        measureBlocks: (blocks: FlowBlock[]) => {
+          expect(visibleText(firstParagraphRuns(blocks))).toBe(
+            markupView === "original" ? "1 basedeleted" : "1 baseinserted",
+          );
+          return [];
+        },
+      };
+      const content = convertFootnoteToContent(note, 1, 400, options);
+      expect(visibleText(firstParagraphRuns(content.blocks))).toBe(
+        markupView === "original" ? "1 basedeleted" : "1 baseinserted",
+      );
+    });
+  }
+}

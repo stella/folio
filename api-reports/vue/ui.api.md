@@ -4,100 +4,79 @@
 
 ```ts
 
-import { default as AddCommentCard } from './components/sidebar/AddCommentCard.vue';
-import { default as AlignmentButtons } from './components/ui/AlignmentButtons.vue';
-import { default as Button } from './components/ui/Button.vue';
-import { default as Checkbox } from './components/ui/Checkbox.vue';
-import { default as ColorPicker } from './components/ui/ColorPicker.vue';
-import { default as CommentCard } from './components/sidebar/CommentCard.vue';
-import { default as CommentMarginMarkers } from './components/CommentMarginMarkers.vue';
+import { ColorValue } from '@stll/folio-core/types/document';
+import { Command } from 'prosemirror-state';
+import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { Component } from 'vue';
-import { default as DatePickerPopover } from './components/ui/DatePickerPopover.vue';
-import { default as Dialog } from './components/ui/Dialog.vue';
-import { default as DocumentName } from './components/DocumentName.vue';
-import { default as EditingModeDropdown } from './components/EditingModeDropdown.vue';
-import { default as EditorToolbar } from './components/EditorToolbar.vue';
-import { default as FindReplaceDialog } from './components/dialogs/FindReplaceDialog.vue';
-import { default as FontPicker } from './components/ui/FontPicker.vue';
-import { default as FontSizePicker } from './components/ui/FontSizePicker.vue';
-import { default as FootnotePropertiesDialog } from './components/dialogs/FootnotePropertiesDialog.vue';
-import { default as HorizontalRuler } from './components/ui/HorizontalRuler.vue';
-import { default as HyperlinkDialog } from './components/dialogs/HyperlinkDialog.vue';
-import { default as IconGridDropdown } from './components/ui/IconGridDropdown.vue';
-import { default as ImagePositionDialog } from './components/dialogs/ImagePositionDialog.vue';
-import { default as ImagePropertiesDialog } from './components/dialogs/ImagePropertiesDialog.vue';
-import { default as ImageTransformDropdown } from './components/ui/ImageTransformDropdown.vue';
-import { default as ImageWrapDropdown } from './components/ui/ImageWrapDropdown.vue';
-import { default as Input } from './components/ui/Input.vue';
-import { default as InsertImageDialog } from './components/dialogs/InsertImageDialog.vue';
-import { default as InsertSymbolDialog } from './components/dialogs/InsertSymbolDialog.vue';
-import { default as InsertTableDialog } from './components/dialogs/InsertTableDialog.vue';
-import { default as LineSpacingPicker } from './components/ui/LineSpacingPicker.vue';
-import { default as ListButtons } from './components/ui/ListButtons.vue';
-import { default as MenuBar } from './components/MenuBar.vue';
-import { default as MenuDropdown } from './components/ui/MenuDropdown.vue';
-import { default as OutlineRail } from './components/ui/OutlineRail.vue';
-import { default as PageSetupDialog } from './components/dialogs/PageSetupDialog.vue';
-import { default as PasteSpecialDialog } from './components/dialogs/PasteSpecialDialog.vue';
-import { default as Popover } from './components/ui/Popover.vue';
-import { default as PrintButton } from './components/PrintButton.vue';
-import { default as ReplyInput } from './components/sidebar/ReplyInput.vue';
-import { default as ReplyThread } from './components/sidebar/ReplyThread.vue';
-import { default as ResolvedCommentMarker } from './components/sidebar/ResolvedCommentMarker.vue';
-import { default as Select } from './components/ui/Select.vue';
-import { default as SplitCellDialog } from './components/dialogs/SplitCellDialog.vue';
-import { default as StylePicker } from './components/ui/StylePicker.vue';
-import { default as TableBorderColorPicker } from './components/ui/TableBorderColorPicker.vue';
-import { default as TableBorderPicker } from './components/ui/TableBorderPicker.vue';
-import { default as TableBorderWidthPicker } from './components/ui/TableBorderWidthPicker.vue';
-import { default as TableCellFillPicker } from './components/ui/TableCellFillPicker.vue';
-import { default as TableGridInline } from './components/ui/TableGridInline.vue';
-import { default as TableGridPicker } from './components/ui/TableGridPicker.vue';
-import { default as TableMoreDropdown } from './components/ui/TableMoreDropdown.vue';
-import { default as TablePropertiesDialog } from './components/dialogs/TablePropertiesDialog.vue';
-import { default as TableStyleGallery } from './components/ui/TableStyleGallery.vue';
-import { default as TableToolbar } from './components/ui/TableToolbar.vue';
-import { default as TitleBar } from './components/TitleBar.vue';
-import { default as Toolbar } from './components/Toolbar.vue';
-import { default as TrackedChangeCard } from './components/sidebar/TrackedChangeCard.vue';
-import { default as UnifiedSidebar } from './components/UnifiedSidebar.vue';
-import { default as VerticalRuler } from './components/ui/VerticalRuler.vue';
-import { default as WatermarkDialog } from './components/dialogs/WatermarkDialog.vue';
-
-export { AddCommentCard }
-
-export { AlignmentButtons }
-
-export { Button }
+import { ComponentOptionsMixin } from 'vue';
+import { ComponentProvideOptions } from 'vue';
+import { ComputedRef } from 'vue';
+import { CSSProperties } from 'vue';
+import { DefineComponent } from 'vue';
+import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorView } from 'prosemirror-view';
+import { EndnoteProperties } from '@stll/folio-core/types/content';
+import { FootnoteProperties } from '@stll/folio-core/types/content';
+import { ListState } from '@stll/folio-core/prosemirror';
+import { PublicProps } from 'vue';
+import { SectionProperties } from '@stll/folio-core/types/document';
+import { Style } from '@stll/folio-core/types/document';
+import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
+import { TabStop } from '@stll/folio-core/types/document';
+import { Theme } from '@stll/folio-core/types/document';
+import { TrackedChangeEntry } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
+import { VNode } from 'vue';
+import { Watermark } from '@stll/folio-core/watermark';
 
 // @public (undocumented)
-export const CARD_STYLE_COLLAPSED: CSSProperties;
+export const AddCommentCard: typeof __VLS_export_32;
 
 // @public (undocumented)
-export const CARD_STYLE_EXPANDED: CSSProperties;
+export const AlignmentButtons: typeof __VLS_export_13;
 
-export { Checkbox }
+// @public (undocumented)
+export const Button: typeof __VLS_export_15;
 
-export { ColorPicker }
+// @public (undocumented)
+export const CARD_STYLE_COLLAPSED: CSSProperties_2;
 
-export { CommentCard }
+// @public (undocumented)
+export const CARD_STYLE_EXPANDED: CSSProperties_2;
 
-export { CommentMarginMarkers }
+// @public (undocumented)
+export const Checkbox: typeof __VLS_export_56;
 
-export { DatePickerPopover }
+// @public (undocumented)
+export const ColorPicker: typeof __VLS_export_12;
+
+// @public (undocumented)
+export const CommentCard: typeof __VLS_export_30;
+
+// @public (undocumented)
+export const CommentMarginMarkers: typeof __VLS_export_36;
+
+// @public (undocumented)
+export const DatePickerPopover: typeof __VLS_export_57;
 
 // @public (undocumented)
 export const DEFAULT_COMPONENTS: FolioUIComponents;
 
-export { Dialog }
+// @public (undocumented)
+export const Dialog: typeof __VLS_export_53;
 
-export { DocumentName }
+// @public (undocumented)
+export const DocumentName: typeof __VLS_export_6;
 
-export { EditingModeDropdown }
+// @public (undocumented)
+export const EditingModeDropdown: typeof __VLS_export_7;
 
-export { EditorToolbar }
+// @public (undocumented)
+export const EditorToolbar: typeof __VLS_export_2;
 
-export { FindReplaceDialog }
+// @public (undocumented)
+export const FindReplaceDialog: typeof __VLS_export_37;
 
 // @public
 export type FolioCheckboxProps = {
@@ -189,103 +168,148 @@ export type FolioSelectProps = {
     className?: string;
 };
 
-export { FontPicker }
+// @public (undocumented)
+export const FontPicker: typeof __VLS_export_8;
 
-export { FontSizePicker }
+// @public (undocumented)
+export const FontSizePicker: typeof __VLS_export_9;
 
-export { FootnotePropertiesDialog }
+// @public (undocumented)
+export const FootnotePropertiesDialog: typeof __VLS_export_38;
 
-export { HorizontalRuler }
+// @public (undocumented)
+export const HorizontalRuler: typeof __VLS_export_51;
 
-export { HyperlinkDialog }
+// @public (undocumented)
+export const HyperlinkDialog: typeof __VLS_export_39;
 
-export { IconGridDropdown }
+// @public (undocumented)
+export const IconGridDropdown: typeof __VLS_export_16;
 
-export { ImagePositionDialog }
+// @public (undocumented)
+export const ImagePositionDialog: typeof __VLS_export_41;
 
-export { ImagePropertiesDialog }
+// @public (undocumented)
+export const ImagePropertiesDialog: typeof __VLS_export_42;
 
-export { ImageTransformDropdown }
+// @public (undocumented)
+export const ImageTransformDropdown: typeof __VLS_export_28;
 
-export { ImageWrapDropdown }
+// @public (undocumented)
+export const ImageWrapDropdown: typeof __VLS_export_27;
 
-export { Input }
+// @public (undocumented)
+export const Input: typeof __VLS_export_55;
 
-export { InsertImageDialog }
+// @public (undocumented)
+export const InsertImageDialog: typeof __VLS_export_40;
 
-export { InsertSymbolDialog }
+// @public (undocumented)
+export const InsertSymbolDialog: typeof __VLS_export_43;
 
-export { InsertTableDialog }
+// @public (undocumented)
+export const InsertTableDialog: typeof __VLS_export_44;
 
-export { LineSpacingPicker }
+// @public (undocumented)
+export const LineSpacingPicker: typeof __VLS_export_10;
 
-export { ListButtons }
+// @public (undocumented)
+export const ListButtons: typeof __VLS_export_14;
 
-export { MenuBar }
+// @public (undocumented)
+export const MenuBar: typeof __VLS_export_4;
 
-export { MenuDropdown }
+// @public (undocumented)
+export const MenuDropdown: typeof __VLS_export_5;
 
-export { OutlineRail }
+// @public (undocumented)
+export const OutlineRail: typeof __VLS_export_58;
 
-export { PageSetupDialog }
+// @public (undocumented)
+export const PageSetupDialog: typeof __VLS_export_45;
 
-export { PasteSpecialDialog }
+// @public (undocumented)
+export const PasteSpecialDialog: typeof __VLS_export_46;
 
-export { Popover }
+// @public (undocumented)
+export const Popover: typeof __VLS_export_17;
 
-export { PrintButton }
+// @public (undocumented)
+export const PrintButton: typeof __VLS_export_50;
 
 // @public
 export function provideFolioUI(components?: Partial<FolioUIComponents>): void;
 
-export { ReplyInput }
+// @public (undocumented)
+export const ReplyInput: typeof __VLS_export_33;
 
-export { ReplyThread }
+// @public (undocumented)
+export const ReplyThread: typeof __VLS_export_34;
 
-export { ResolvedCommentMarker }
+// @public (undocumented)
+export const ResolvedCommentMarker: typeof __VLS_export_35;
 
 // @public
 export function resolveFolioComponents(components?: Partial<FolioUIComponents>): FolioUIComponents;
 
-export { Select }
+// @public (undocumented)
+export const Select: typeof __VLS_export_54;
 
-export { SplitCellDialog }
+// @public (undocumented)
+export const SplitCellDialog: typeof __VLS_export_47;
 
-export { StylePicker }
+// @public (undocumented)
+export const StylePicker: typeof __VLS_export_11;
 
-export { TableBorderColorPicker }
+// @public (undocumented)
+export const TableBorderColorPicker: typeof __VLS_export_25;
 
-export { TableBorderPicker }
+// @public (undocumented)
+export const TableBorderPicker: typeof __VLS_export_24;
 
-export { TableBorderWidthPicker }
+// @public (undocumented)
+export const TableBorderWidthPicker: typeof __VLS_export_26;
 
-export { TableCellFillPicker }
+// @public (undocumented)
+export const TableCellFillPicker: typeof __VLS_export_23;
 
-export { TableGridInline }
+// @public (undocumented)
+export const TableGridInline: typeof __VLS_export_21;
 
-export { TableGridPicker }
+// @public (undocumented)
+export const TableGridPicker: typeof __VLS_export_20;
 
-export { TableMoreDropdown }
+// @public (undocumented)
+export const TableMoreDropdown: typeof __VLS_export_22;
 
-export { TablePropertiesDialog }
+// @public (undocumented)
+export const TablePropertiesDialog: typeof __VLS_export_48;
 
-export { TableStyleGallery }
+// @public (undocumented)
+export const TableStyleGallery: typeof __VLS_export_19;
 
-export { TableToolbar }
+// @public (undocumented)
+export const TableToolbar: typeof __VLS_export_18;
 
-export { TitleBar }
+// @public (undocumented)
+export const TitleBar: typeof __VLS_export_3;
 
-export { Toolbar }
+// @public (undocumented)
+export const Toolbar: typeof __VLS_export;
 
-export { TrackedChangeCard }
+// @public (undocumented)
+export const TrackedChangeCard: typeof __VLS_export_31;
 
-export { UnifiedSidebar }
+// @public (undocumented)
+export const UnifiedSidebar: typeof __VLS_export_29;
 
 // @public
 export function useFolioUI(): FolioUIComponents;
 
-export { VerticalRuler }
+// @public (undocumented)
+export const VerticalRuler: typeof __VLS_export_52;
 
-export { WatermarkDialog }
+// @public (undocumented)
+export const WatermarkDialog: typeof __VLS_export_49;
 
 ```

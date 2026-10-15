@@ -1,3 +1,4 @@
+import { encodeUtf8, decodeText } from "@stll/utf8-boundaries";
 import { writeZipPart } from "../zip/writeZipPart";
 import JSZip from "jszip";
 
@@ -153,30 +154,53 @@ export const serializeDocumentToDocx = async (
 ): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   const hasNumbering = hasNumberingDefinitions(document.package.numbering);
-  writeZipPart({ zip, path: "[Content_Types].xml", data: contentTypesXml(hasNumbering) });
-  writeZipPart({ zip, path: "_rels/.rels", data: ROOT_RELS_XML });
-  writeZipPart({ zip, path: "docProps/app.xml", data: APP_XML });
-  writeZipPart({ zip, path: "docProps/core.xml", data: serializeCoreProperties(document) });
-  writeZipPart({ zip, path: "word/document.xml", data: serializeDocumentXml(document) });
-  writeZipPart({ zip, path: "word/styles.xml", data: serializeStyles(document.package.styles) });
+  writeZipPart({
+    zip,
+    path: "[Content_Types].xml",
+    data: encodeUtf8(contentTypesXml(hasNumbering)),
+  });
+  writeZipPart({ zip, path: "_rels/.rels", data: encodeUtf8(ROOT_RELS_XML) });
+  writeZipPart({ zip, path: "docProps/app.xml", data: encodeUtf8(APP_XML) });
+  writeZipPart({
+    zip,
+    path: "docProps/core.xml",
+    data: encodeUtf8(serializeCoreProperties(document)),
+  });
+  writeZipPart({
+    zip,
+    path: "word/document.xml",
+    data: encodeUtf8(serializeDocumentXml(document)),
+  });
+  writeZipPart({
+    zip,
+    path: "word/styles.xml",
+    data: encodeUtf8(serializeStyles(document.package.styles)),
+  });
   if (hasNumbering) {
     writeZipPart({
       zip,
       path: "word/numbering.xml",
-      data: serializeNumbering(document.package.numbering),
+      data: encodeUtf8(serializeNumbering(document.package.numbering)),
     });
   }
   writeZipPart({
     zip,
     path: `word/${DEFAULT_FOOTER_PART_NAME}`,
-    data: buildFooterXml(options.language),
+    data: encodeUtf8(buildFooterXml(options.language)),
   });
-  writeZipPart({ zip, path: "word/_rels/document.xml.rels", data: documentRelsXml(hasNumbering) });
+  writeZipPart({
+    zip,
+    path: "word/_rels/document.xml.rels",
+    data: encodeUtf8(documentRelsXml(hasNumbering)),
+  });
 
   for (const [path, file] of Object.entries(zip.files)) {
     if (file.dir || !path.endsWith(".xml")) continue;
     // oxlint-disable-next-line no-await-in-loop -- validate each part before the shared ZIP writer emits any output
-    assertValidOoxmlNumericIds(await file.async("text"), path);
+    assertValidOoxmlNumericIds(
+      await file.async("uint8array").then((bytes) => decodeText(bytes, { ignoreBOM: true })),
+      path,
+    );
   }
 
   return await zip.generateAsync({

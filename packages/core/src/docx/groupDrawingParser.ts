@@ -1,3 +1,4 @@
+import { sliceText } from "../utils/sliceText";
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
 import type { Image, MediaFile, RelationshipMap } from "../types/document";
@@ -231,7 +232,14 @@ const renderTextBox = (wsp: XmlElement, unitScale: number): string => {
   const maxCharacters = Math.max(1, Math.floor(width / (fontSize * 0.38)));
   const lines = paragraphs
     .flatMap((paragraph) =>
-      wrapLine(getTextContent(paragraph).slice(0, MAX_TEXT_CHARACTERS), maxCharacters),
+      wrapLine(
+        sliceText({
+          text: getTextContent(paragraph),
+          units: "codeUnits",
+          end: MAX_TEXT_CHARACTERS,
+        }),
+        maxCharacters,
+      ),
     )
     .map(escapeXmlText);
   if (lines.length === 0) {

@@ -1,3 +1,4 @@
+import { commentPoint, resolvedCommentPoints } from "../replacedAnnotations";
 /**
  * Comment and Track Changes Commands
  *
@@ -71,6 +72,7 @@ import {
 } from "../anchoredTextBoxes";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
+import { carryParagraphProperties, paragraphLeftAfter } from "../paragraphPropertyCarry";
 import { runInCellPending, runParagraphIntoTable } from "../tableRunIn";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
@@ -189,6 +191,31 @@ function resolveChange(
       (typeof mark.attrs["revisionId"] === "number" && revisionSet.has(mark.attrs["revisionId"]));
 
     if (dispatch) {
+      const points =
+        mode === "accept"
+          ? resolvedCommentPoints({
+              doc: state.doc,
+              retiresStructure: (node, position) => {
+                if (node.type.name === "paragraph")
+                  return (
+                    collectPPrMarkOp(node, position, from, to, mode, revisionSet)?.action === "join"
+                  );
+                if (!rangeCoversNode(from, to, position, node)) return false;
+                if (node.type.name === "tableRow")
+                  return (
+                    collectTableRowStructuralOp(node, position, mode, revisionSet)?.action ===
+                    "remove"
+                  );
+                return collectTableCellStructuralOps(node, position, mode, revisionSet).some(
+                  (op) => op.type === "membership" && op.action === "remove",
+                );
+              },
+              removes: (node, position) =>
+                position >= from &&
+                position + node.nodeSize <= to &&
+                node.marks.some((mark) => mark.type === removeType && matchesRevision(mark)),
+            })
+          : new Map<number, number>();
       const tr = state.tr;
       // Joins below re-read the runs they move themselves.
       tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
@@ -200,6 +227,29 @@ function resolveChange(
       const tableCellStructuralOps: TableCellStructuralOp[] = [];
       let removedSectionEndpointCount = 0;
       const removedSectionReferences: RemovedSectionReference[] = [];
+      // A selective rejection restores properties on their current carrier.
+      // If its break still goes, the eventual survivor must read them too.
+      const carryRestoredProperties = (position: number): void => {
+        if (mode !== "reject" || revisionSet === null) return;
+        const source = tr.doc.nodeAt(position);
+        const mark = source ? expectParagraphAttrs(source).pPrMark : null;
+        if (
+          !source ||
+          (mark?.kind !== "del" && mark?.kind !== "moveFrom") ||
+          revisionSet.has(mark.info.id)
+        )
+          return;
+        const survivor = paragraphLeftAfter({ doc: tr.doc, paragraphPos: position });
+        if (survivor === null) return;
+        carryParagraphProperties({
+          tr,
+          position: survivor,
+          source,
+          styleResolver,
+          numbering,
+          revision: mark.info,
+        });
+      };
 
       state.doc.nodesBetween(from, to, (node, pos): boolean => {
         if (node.type.name === "paragraph") {
@@ -241,6 +291,7 @@ function resolveChange(
             } else {
               tr.setNodeMarkup(pos, undefined, nextAttrs);
             }
+            carryRestoredProperties(pos);
           }
 
           return true;
@@ -669,7 +720,9 @@ function resolveChange(
           // PM rejects the join if the two blocks aren't structurally
           // compatible (e.g. paragraph followed by a table). Leaving the
           // marker is the safe fallback.
+          continue;
         }
+        if (op.markWasAdded) carryRestoredProperties(mappedPos);
       }
 
       if (removedSectionEndpointCount > 0) {
@@ -707,6 +760,9 @@ function resolveChange(
         if (!field) continue;
         if (field.type === node.type) tr.setNodeMarkup(position, undefined, node.attrs, node.marks);
         else tr.replaceWith(position, position + field.nodeSize, node);
+      }
+      for (const [id, position] of [...points].toReversed()) {
+        tr.insert(tr.mapping.map(position, -1), commentPoint(tr.doc.type.schema, id));
       }
       if (tr.steps.length > 0) {
         dispatch(tr);

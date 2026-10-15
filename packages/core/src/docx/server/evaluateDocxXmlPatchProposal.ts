@@ -1,3 +1,4 @@
+import { encodeUtf8 } from "../../utils/textEncoding";
 import { createHash } from "node:crypto";
 
 import { panic, TaggedError } from "better-result";
@@ -498,7 +499,7 @@ export const evaluateDocxXmlPatchProposal = async ({
       continue;
     }
 
-    const replacementBytes = new TextEncoder().encode(replacement.replacementXml);
+    const replacementBytes = encodeUtf8(replacement.replacementXml);
     const exceedsEncodedPart = replacementBytes.byteLength > limits.maxPartBytes;
     const nextEncodedTotalBytes = encodedTotalBytes + replacementBytes.byteLength;
     if (exceedsEncodedPart) {

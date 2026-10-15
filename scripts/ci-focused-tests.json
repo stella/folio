@@ -1,4 +1,5 @@
 [
+  "scripts/typescript-api.test.ts",
   "scripts/host-api-flow.test.ts",
   "scripts/shared-docx-fixtures.test.ts",
   "scripts/property-timeout.test.ts",

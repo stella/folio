@@ -1,3 +1,4 @@
+import { decodeText } from "@stll/folio-core/utils/textEncoding";
 /**
  * Package-level facts a transaction reports and checks: which parts a save
  * changed, the first revision id free for new revisions, and whether the
@@ -105,7 +106,9 @@ export const nextRevisionIdSeed = async (
   let highest = 0;
   for (const [part, entry] of partEntries(zip.value)) {
     if (!part.endsWith(".xml")) continue;
-    const xml = await entry.async("string");
+    const xml = await entry
+      .async("uint8array")
+      .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
     for (const prefix of prefixesBoundTo(xml, WORDPROCESSINGML_NAMESPACES)) {
       const pattern = new RegExp(`\\s${escapeRegExp(prefix)}:id\\s*=\\s*"(\\d+)"`, "gu");
       for (const [, id] of xml.matchAll(pattern)) {
@@ -176,7 +179,9 @@ const checkChangedPart = async ({ zip, parts, part }: CheckPartOptions): Promise
   if (entry === undefined || !(part.endsWith(".xml") || part.endsWith(".rels"))) {
     return null;
   }
-  const xml = await entry.async("string");
+  const xml = await entry
+    .async("uint8array")
+    .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
   if (XMLValidator.validate(xml) !== true) {
     return `${part} is not well-formed XML.`;
   }
@@ -193,7 +198,10 @@ const checkChangedPart = async ({ zip, parts, part }: CheckPartOptions): Promise
   }
   const prefixes = prefixesBoundTo(xml, RELATIONSHIP_NAMESPACES);
   if (prefixes.size === 0) return null;
-  const relsXml = await zip.file(relationshipsPartFor(part))?.async("string");
+  const relsXml = await zip
+    .file(relationshipsPartFor(part))
+    ?.async("uint8array")
+    .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
   const ids = new Set(parseRelationships(relsXml ?? "").map(({ id }) => id));
   for (const prefix of prefixes) {
     const pattern = new RegExp(`\\s${escapeRegExp(prefix)}:[A-Za-z]+\\s*=\\s*"([^"]*)"`, "gu");

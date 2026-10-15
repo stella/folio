@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Clean-room validation that the *published* shape of a folio package works.
 //
-// Usage: `bun scripts/validate-dist.ts <docx-core|core|react|agents|cli|vue|nuxt>`
+// Usage: `bun scripts/validate-dist.ts <utf8-boundaries|docx-core|core|react|agents|cli|vue|nuxt>`
 //
 // For the named package it builds, transforms its package.json to the dist
 // shape exactly like the publish workflow (`prepare-publish.ts`), packs a
@@ -17,6 +17,7 @@
 // rejects (a pre-existing vue build gap).
 //
 //   docx-core — runtime, types, externals, packaged assets, and attribution.
+//   utf8-boundaries — runtime, types, and externals for `.`, `./oxlint`, and `./testing`.
 //
 //   core  — 4 checks:
 //     1. Runtime  — ESM `import` of `.`, `/markdown`, `/server`, `/redline`, and a `./*`
@@ -69,19 +70,20 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import utf8BoundariesManifest from "../packages/utf8-boundaries/package.json";
 
 import { installCleanRoomDependencies } from "./clean-room-install";
 import { scanDistUrlTargets } from "./dist-url-targets";
-import { assertHostPeersExternal } from "./host-peer-policy";
 import {
   REACT_PEER_FLOOR,
+  buildAndPack,
   hostPeerInstallArgs,
   reactPeerInstallArgs,
 } from "./packaged-consumer-lib";
 import { findUncoveredUtilities } from "./standalone-css-coverage";
+import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
-const prepareScript = path.join(repoRoot, "scripts", "prepare-publish.ts");
 // Resolve the classic TypeScript compiler explicitly rather than via
 // `.bin/tsc`: the native TS7 compiler is installed under the aliased
 // `@typescript/native` package and also claims a `tsc` bin, so `.bin/tsc`
@@ -92,6 +94,7 @@ const tscBin = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
 const target = process.argv[2];
 if (
   target !== "docx-core" &&
+  target !== "utf8-boundaries" &&
   target !== "core" &&
   target !== "react" &&
   target !== "agents" &&
@@ -99,7 +102,9 @@ if (
   target !== "vue" &&
   target !== "nuxt"
 ) {
-  panic("usage: bun scripts/validate-dist.ts <docx-core|core|react|agents|cli|vue|nuxt>");
+  panic(
+    "usage: bun scripts/validate-dist.ts <utf8-boundaries|docx-core|core|react|agents|cli|vue|nuxt>",
+  );
 }
 
 type CheckResult = { name: string; ok: boolean; detail: string };
@@ -109,43 +114,8 @@ const record = (name: string, ok: boolean, detail: string): void => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
 };
 
-// Build a package, transform its package.json to the dist shape (reversibly),
-// pack a tarball into `destDir`, and return the tarball path.
-//
-// `prepare` runs `prepare-publish.ts` (source `./src/*.ts` exports -> dist).
-// Skip it for packages that already ship dist-shaped exports in-repo
-// (@stll/folio-vue): prepare-publish only understands `./src/*` string exports
-// and panics on their `{ types, import }` objects. `bun pm pack` still rewrites
-// their `workspace:` deps to concrete versions, so no transform is needed.
-const buildAndPack = async (pkgDir: string, destDir: string, prepare: boolean): Promise<string> => {
-  const name = path.basename(pkgDir);
-  const packageJson = (await Bun.file(path.join(pkgDir, "package.json")).json()) as {
-    name: string;
-  };
-  console.log(`→ building ${packageJson.name}`);
-  await $`bun run build`.cwd(pkgDir).quiet();
-  assertHostPeersExternal(pkgDir);
-
-  const pkgJsonPath = path.join(pkgDir, "package.json");
-  const original = await readFile(pkgJsonPath, "utf-8");
-  try {
-    if (prepare) {
-      console.log(`→ transforming ${packageJson.name} package.json to dist shape`);
-      await $`bun ${prepareScript} ${pkgDir}`.quiet();
-    }
-    console.log(`→ packing ${packageJson.name} tarball`);
-    await $`bun pm pack --destination ${destDir}`.cwd(pkgDir).quiet();
-  } finally {
-    // Always restore the in-repo source-shape package.json.
-    await writeFile(pkgJsonPath, original);
-  }
-  const tgz = (await readdir(destDir)).find((f) => f.endsWith(".tgz"));
-  return tgz
-    ? path.join(destDir, tgz)
-    : panic(`validate-dist: bun pm pack produced no tarball for ${name}`);
-};
-
 const dirs: Record<string, string> = {
+  "utf8-boundaries": path.join(repoRoot, "packages", "utf8-boundaries"),
   "docx-core": path.join(repoRoot, "packages", "docx-core"),
   core: path.join(repoRoot, "packages", "core"),
   react: path.join(repoRoot, "packages", "react"),
@@ -155,10 +125,12 @@ const dirs: Record<string, string> = {
   nuxt: path.join(repoRoot, "packages", "nuxt"),
 };
 const docxCoreDir = dirs["docx-core"];
+const utf8BoundariesDir = dirs["utf8-boundaries"];
 const coreDir = dirs.core;
 
 const packDir = await mkdtemp(path.join(tmpdir(), "folio-pack-"));
 const docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
+const utf8BoundariesPackDir = await mkdtemp(path.join(tmpdir(), "folio-utf8-boundaries-pack-"));
 const corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
 const agentsPackDir = await mkdtemp(path.join(tmpdir(), "folio-agents-pack-"));
 const vuePackDir = await mkdtemp(path.join(tmpdir(), "folio-vue-pack-"));
@@ -166,19 +138,25 @@ const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-"));
 
 // core/react/agents carry source-shaped exports that prepare-publish
 // rewrites; vue already ships dist-shaped exports (skip the transform).
-const needsPrepare = target !== "vue" && target !== "nuxt";
 const pkgDir = dirs[target];
-const pkgName = target === "docx-core" ? "@stll/docx-core" : `@stll/folio-${target}`;
-const tarball = await buildAndPack(pkgDir, packDir, needsPrepare);
+const pkgName =
+  PUBLISHED_PACKAGES.find(({ slug }) => slug === target)?.name ??
+  panic("Missing published package", { target });
+const tarball = await buildAndPack(pkgDir, packDir);
 
 // Every package above docx-core depends on its sibling build. Pack it too so
 // the clean room resolves coordinated workspace changes npm-style (no
 // workspace leak). `overrides` pins transitive dependencies to these exact
 // tarballs, since their next versions are not yet on a registry.
 let docxCoreTarball: string | null = null;
-if (target !== "docx-core") {
-  docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir, true);
+if (target !== "docx-core" && target !== "utf8-boundaries") {
+  docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir);
 }
+
+const utf8BoundariesTarball =
+  target === "utf8-boundaries"
+    ? tarball
+    : await buildAndPack(utf8BoundariesDir, utf8BoundariesPackDir);
 
 // react, agents, cli, and vue all depend on @stll/folio-core.
 let coreTarball: string | null = null;
@@ -189,14 +167,14 @@ if (
   target === "vue" ||
   target === "nuxt"
 ) {
-  coreTarball = await buildAndPack(coreDir, corePackDir, true);
+  coreTarball = await buildAndPack(coreDir, corePackDir);
 }
 
 // The CLI runs @stll/folio-agents' tools; pack it so the clean room resolves
 // the coordinated unpublished version.
 let agentsTarball: string | null = null;
 if (target === "cli") {
-  agentsTarball = await buildAndPack(dirs.agents, agentsPackDir, true);
+  agentsTarball = await buildAndPack(dirs.agents, agentsPackDir);
 }
 
 // The Nuxt module's runtime component delegates to @stll/folio-vue. Pack that
@@ -204,7 +182,7 @@ if (target === "cli") {
 // dependency graph rather than resolving an older registry release.
 let vueTarball: string | null = null;
 if (target === "nuxt") {
-  vueTarball = await buildAndPack(dirs.vue, vuePackDir, false);
+  vueTarball = await buildAndPack(dirs.vue, vuePackDir);
 }
 
 console.log(`→ installing tarball into ${consumerDir}`);
@@ -217,6 +195,9 @@ const consumerPkg: Record<string, unknown> = {
 const overrides: Record<string, string> = {};
 if (docxCoreTarball) {
   overrides["@stll/docx-core"] = docxCoreTarball;
+}
+if (target !== "utf8-boundaries") {
+  overrides["@stll/utf8-boundaries"] = utf8BoundariesTarball;
 }
 if (coreTarball) {
   overrides["@stll/folio-core"] = coreTarball;
@@ -236,9 +217,19 @@ await writeFile(
 );
 
 const installArgs: string[] = [tarball];
-if (target !== "docx-core") installArgs.push(...hostPeerInstallArgs());
+if (target !== "docx-core" && target !== "utf8-boundaries") {
+  installArgs.push(...hostPeerInstallArgs());
+}
 if (docxCoreTarball) {
   installArgs.push(docxCoreTarball);
+}
+if (target !== "utf8-boundaries") installArgs.push(utf8BoundariesTarball);
+if (target === "utf8-boundaries") {
+  installArgs.push(
+    ...Object.entries(utf8BoundariesManifest.peerDependencies).map(
+      ([name, range]) => `${name}@${range}`,
+    ),
+  );
 }
 if (target === "react") {
   if (!coreTarball) panic("validate-dist: react needs a @stll/folio-core tarball");
@@ -271,6 +262,18 @@ const installedDist = path.join(installedDir, "dist");
 
 // --- runtime expectations ---------------------------------------------------
 const runtimeExpect: Record<string, Record<string, string[]>> = {
+  "utf8-boundaries": {
+    "@stll/utf8-boundaries": [
+      "encodeUtf8",
+      "decodeText",
+      "createTextReader",
+      "writeZipEntry",
+      "sliceText",
+      "truncateGraphemes",
+    ],
+    "@stll/utf8-boundaries/oxlint": ["default"],
+    "@stll/utf8-boundaries/testing": ["astralText", "boundaryTextCases", "assertTextRoundTrip"],
+  },
   "docx-core": {
     "@stll/docx-core": [
       "compileLegalSourceToDocx",
@@ -453,6 +456,18 @@ if (target === "cli") {
 
 // --- Check 2: types resolve under node16 AND bundler ------------------------
 const consumerTsByTarget: Record<string, string> = {
+  "utf8-boundaries": `
+import JSZip from "jszip";
+import { encodeUtf8, createTextReader, writeZipEntry, truncateGraphemes } from "@stll/utf8-boundaries";
+import plugin from "@stll/utf8-boundaries/oxlint";
+import { astralText, boundaryTextCases, assertTextRoundTrip } from "@stll/utf8-boundaries/testing";
+
+const zip = new JSZip();
+const written = writeZipEntry(zip, "word/document.xml", "👩🏽‍⚖️");
+const decoded = createTextReader().read(encodeUtf8(truncateGraphemes("👩🏽‍⚖️x", 1)));
+export const used = [written, decoded, plugin, astralText, boundaryTextCases, assertTextRoundTrip];
+export type Surface = typeof plugin;
+`,
   "docx-core": `
 import {
   compileLegalSourceToDocx,
@@ -790,8 +805,9 @@ const leaked = reactSentinels.filter((s) => allJs.includes(s));
 // specifiers, never bundled. Type-only dependencies do not survive in JS and
 // therefore cannot be asserted here.
 const externalsByTarget: Record<string, string[]> = {
-  "docx-core": ["better-result", "jszip"],
-  core: ["prosemirror-state", "prosemirror-model", "jszip"],
+  "utf8-boundaries": ["better-result", "fast-check"],
+  "docx-core": ["better-result", "jszip", "@stll/utf8-boundaries"],
+  core: ["prosemirror-state", "prosemirror-model", "jszip", "@stll/utf8-boundaries"],
   react: ["react", "react-dom", "react/jsx-runtime", "react-compiler-runtime", "@stll/folio-core"],
   agents: ["@stll/folio-core"],
   cli: ["@stll/folio-core", "@stll/folio-agents", "@modelcontextprotocol/server"],
@@ -805,6 +821,7 @@ const notExternalized = expectedExternals.filter(
 const dataFontInlined = /["']data:font|["']data:application\/font/u.test(allJs);
 const externalOk = leaked.length === 0 && notExternalized.length === 0 && !dataFontInlined;
 const externalLabels: Record<string, string> = {
+  "utf8-boundaries": "external: better-result and fast-check stay external",
   "docx-core": "external: better-result and JSZip stay external",
   core: "external: React never bundled; deps stay external",
   react: "external: React / compiler runtime / ProseMirror / @stll/folio-core not bundled",
@@ -826,6 +843,33 @@ record(
         .filter(Boolean)
         .join("; "),
 );
+
+if (target === "utf8-boundaries") {
+  const declarationFiles = (await readdir(installedDist, { recursive: true })).filter((file) =>
+    file.endsWith(".d.ts"),
+  );
+  const declarationContents = await Promise.all(
+    declarationFiles.map(async (file) => ({
+      file,
+      code: await readFile(path.join(installedDist, file), "utf-8"),
+    })),
+  );
+  const declarationByEntry = new Map(declarationContents.map(({ file, code }) => [file, code]));
+  const expectedTypePeers = [
+    { file: "index.d.ts", peer: "jszip" },
+    { file: "testing.d.ts", peer: "fast-check" },
+  ];
+  const missingTypePeers = expectedTypePeers.filter(
+    ({ file, peer }) => !declarationByEntry.get(file)?.includes(`"${peer}"`),
+  );
+  record(
+    "types: ZIP and testing peers stay external",
+    missingTypePeers.length === 0,
+    missingTypePeers.length === 0
+      ? "jszip and fast-check remain declaration imports"
+      : `missing peer declaration import(s): ${missingTypePeers.map(({ file, peer }) => `${file} → ${peer}`).join(", ")}`,
+  );
+}
 
 // --- Check (react only): standalone.css covers every utility the JS uses ----
 // Every Tailwind utility a shipped component references must have a generated
@@ -976,6 +1020,7 @@ if (target === "react") {
 // --- Summary ----------------------------------------------------------------
 await rm(packDir, { recursive: true, force: true });
 await rm(docxCorePackDir, { recursive: true, force: true });
+await rm(utf8BoundariesPackDir, { recursive: true, force: true });
 await rm(corePackDir, { recursive: true, force: true });
 await rm(vuePackDir, { recursive: true, force: true });
 await rm(consumerDir, { recursive: true, force: true });

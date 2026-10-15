@@ -1,3 +1,4 @@
+import { encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 /**
  * `folio render` and `folio serve`: the document as its pages, from folio's
  * own layout and painters. Neither changes the document.
@@ -191,9 +192,7 @@ const render = async ({
       const selected = list.isOk() ? checkPages(list.value, pages) : list;
       output = selected.isOk()
         ? Result.ok({
-            bytes: new TextEncoder().encode(
-              displayListHtml(selected.value, path.basename(file.value.path)),
-            ),
+            bytes: encodeUtf8(displayListHtml(selected.value, path.basename(file.value.path))),
             pageCount: selected.value.pages.length,
           })
         : Result.err(selected.error);

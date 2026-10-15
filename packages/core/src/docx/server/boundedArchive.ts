@@ -1,3 +1,4 @@
+import { decodeText } from "../../utils/textEncoding";
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
@@ -319,7 +320,7 @@ export const loadDocxArchive = async (
       if (content === null) {
         return null;
       }
-      const xml = new TextDecoder("utf-8", { ignoreBOM: true }).decode(content);
+      const xml = decodeText(content, { ignoreBOM: true });
       const lower = path.toLowerCase();
       if (!lower.endsWith(".xml") && !lower.endsWith(".rels")) {
         return xml;

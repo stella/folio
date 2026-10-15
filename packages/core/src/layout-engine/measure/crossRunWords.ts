@@ -1,3 +1,4 @@
+import { sliceText } from "../../utils/sliceText";
 /**
  * Words that span runs: glue widths between differently formatted runs and
  * the segments of a word collected across several runs.
@@ -63,7 +64,7 @@ export function computeFollowingTextLeads(block: ParagraphBlock): (string | unde
     if (!run || !isTextRun(run)) {
       lead = undefined;
     } else if (run.text) {
-      lead = run.text[0];
+      lead = sliceText({ text: run.text, units: "codePoints", end: 1 });
     }
   }
   return leads;
@@ -165,6 +166,7 @@ type CollectCrossRunWordOptions = {
  * invoked from, without the per-word text-length budget ever kicking in.
  */
 const MAX_CROSS_RUN_SEGMENTS = 64;
+const MAX_SCALAR_CODE_UNITS = 2;
 
 /** Collect one lexical word continued through adjacent formatting runs. */
 export function collectCrossRunWord({
@@ -195,7 +197,12 @@ export function collectCrossRunWord({
     }
 
     const remainingBudget = MAX_HYPHENATION_WORD_LENGTH - text.length;
-    const boundedRemainder = remainder.slice(0, remainingBudget + 1);
+    // Keep one complete lookahead scalar so clipping cannot hide an over-budget word.
+    const boundedRemainder = sliceText({
+      text: remainder,
+      units: "codeUnits",
+      end: remainingBudget + MAX_SCALAR_CODE_UNITS,
+    });
     const firstBreak = findWordBreaks(
       boundedRemainder,
       resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run }).provider,

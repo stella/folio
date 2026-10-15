@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { FolioDocxReviewer } from "../ai-edits/headless";
+import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
 import { panic } from "better-result";
 import { storyRevisionIds } from "../../../../test/reviewProjection";
 import { Fragment, Slice } from "prosemirror-model";
@@ -724,3 +726,218 @@ test(
   },
   propertyTestTimeout(5_000),
 );
+
+// Reader parity also covers a style introduced after the initial parse.
+test(
+  "generated headless style changes keep resolved list models stable before saving",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 9 }),
+        fc.integer({ min: 1, max: 4 }),
+        async (start, count) => {
+          const minted = mintListInstance(undefined, { kind: "numbered", start });
+          const buffer = await createDocx({
+            package: {
+              numbering: minted.definitions,
+              styles: {
+                styles: [
+                  {
+                    type: "paragraph",
+                    styleId: "Numbered",
+                    name: "Numbered",
+                    pPr: { numPr: { kind: "reference", numId: minted.numId, ilvl: 0 } },
+                  },
+                ],
+              },
+              document: {
+                content: Array.from({ length: count + 1 }, (_, index) => ({
+                  type: "paragraph",
+                  paraId: (index + 1).toString(16).padStart(8, "0"),
+                  ...(index === 0 ? {} : { formatting: { styleId: "Numbered" } }),
+                  content: [{ type: "run", content: [{ type: "text", text: "Item" }] }],
+                })),
+              },
+            },
+          });
+          const canonical = createCanonicalSession(
+            await parseDocx(buffer, { preloadFonts: false }),
+          ).unwrap();
+          let state = EditorState.create({ schema, doc: canonical.projection.doc });
+          const before = canonical.document;
+          const position = { story: "main", blockId: "00000001", offset: 0 } as const;
+          state = publishCanonicalProjection({
+            session: canonical,
+            state,
+            commit: canonical
+              .prepareOps(
+                state,
+                [
+                  {
+                    type: "setParagraphProps",
+                    story: "main",
+                    blockId: position.blockId,
+                    patch: { styleId: "Numbered" },
+                  },
+                ],
+                { type: "text", anchor: position, head: position },
+              )
+              .unwrap(),
+          }).unwrap().state;
+          const after = canonical.document;
+          state = publishCanonicalProjection({
+            session: canonical,
+            state,
+            commit: canonical.prepareUndo(state).unwrap(),
+          }).unwrap().state;
+          expect(canonicalReviewModel(canonical.document)).toEqual(canonicalReviewModel(before));
+          state = publishCanonicalProjection({
+            session: canonical,
+            state,
+            commit: canonical.prepareRedo(state).unwrap(),
+          }).unwrap().state;
+          expect(canonicalReviewModel(canonical.document)).toEqual(canonicalReviewModel(after));
+          for (const mode of ["direct", "tracked-changes"] as const) {
+            const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+            const block = reviewer.snapshot().blocks.at(0);
+            if (!block) panic("Expected list fixture block");
+            const result = reviewer.applyDocumentOperations(
+              {
+                version: 1,
+                mode,
+                operations: [
+                  {
+                    id: "style",
+                    type: "setBlockParagraphProperties",
+                    blockId: block.id,
+                    properties: { styleId: "Numbered" },
+                  },
+                ],
+              },
+              { undefinedReferences: "refuse" },
+            );
+            expect(result.skipped).toEqual([]);
+            expect(result.applied).toHaveLength(1);
+            const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+            for (const decision of ["accept", "reject"] as const) {
+              expect(canonicalReviewModel(reopened.toResolvedDocument(decision))).toEqual(
+                canonicalReviewModel(reviewer.toResolvedDocument(decision)),
+              );
+            }
+          }
+        },
+      ),
+      {
+        numRuns: 12,
+        seed: 1683007,
+        id: "generated headless style changes keep resolved list models stable before saving",
+      },
+    );
+  },
+  propertyTestTimeout(10_000),
+);
+
+// The reverse transition: a style without numbering drops the style-derived list.
+test("changing to a style without numbering drops style numbering before and after saving", async () => {
+  const minted = mintListInstance(undefined, { kind: "numbered", start: 1 });
+  const buffer = await createDocx({
+    package: {
+      numbering: minted.definitions,
+      styles: {
+        styles: [
+          {
+            type: "paragraph",
+            styleId: "Numbered",
+            name: "Numbered",
+            pPr: { numPr: { kind: "reference", numId: minted.numId, ilvl: 0 } },
+          },
+          { type: "paragraph", styleId: "Plain", name: "Plain" },
+        ],
+      },
+      document: {
+        content: ["00000001", "00000002"].map((paraId) => ({
+          type: "paragraph",
+          paraId,
+          formatting: { styleId: "Numbered" },
+          content: [{ type: "run", content: [{ type: "text", text: "Item" }] }],
+        })),
+      },
+    },
+  });
+  const paragraphAt = (
+    document: { package: { document: { content: unknown[] } } },
+    index: number,
+  ) => {
+    const block = document.package.document.content.at(index);
+    if (!block || typeof block !== "object" || !("type" in block) || block.type !== "paragraph")
+      panic("Expected a paragraph");
+    return block as Paragraph;
+  };
+  const expectUnnumbered = (paragraph: Paragraph) => {
+    expect(paragraph.formatting?.styleId).toBe("Plain");
+    expect(paragraph.formatting?.numPrFromStyle).toBeUndefined();
+    expect(paragraph.listRendering).toBeUndefined();
+  };
+
+  const canonical = createCanonicalSession(
+    await parseDocx(buffer, { preloadFonts: false }),
+  ).unwrap();
+  const before = canonical.document;
+  expect(paragraphAt(before, 0).listRendering?.marker).toBe("1.");
+  let state = EditorState.create({ schema, doc: canonical.projection.doc });
+  const position = { story: "main", blockId: "00000001", offset: 0 } as const;
+  state = publishCanonicalProjection({
+    session: canonical,
+    state,
+    commit: canonical
+      .prepareOps(
+        state,
+        [
+          {
+            type: "setParagraphProps",
+            story: "main",
+            blockId: position.blockId,
+            patch: { styleId: "Plain" },
+          },
+        ],
+        { type: "text", anchor: position, head: position },
+      )
+      .unwrap(),
+  }).unwrap().state;
+  expectUnnumbered(paragraphAt(canonical.document, 0));
+  expect(paragraphAt(canonical.document, 1).listRendering?.marker).toBe("1.");
+  state = publishCanonicalProjection({
+    session: canonical,
+    state,
+    commit: canonical.prepareUndo(state).unwrap(),
+  }).unwrap().state;
+  expect(canonicalReviewModel(canonical.document)).toEqual(canonicalReviewModel(before));
+
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const block = reviewer.snapshot().blocks.at(0);
+  if (!block) panic("Expected list fixture block");
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "style",
+          type: "setBlockParagraphProperties",
+          blockId: block.id,
+          properties: { styleId: "Plain" },
+        },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  expect(result.skipped).toEqual([]);
+  expect(result.applied).toHaveLength(1);
+  const live = reviewer.toDocument();
+  expectUnnumbered(paragraphAt(live, 0));
+  expect(paragraphAt(live, 1).listRendering?.marker).toBe("1.");
+  const saved = (await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer())).toDocument();
+  expectUnnumbered(paragraphAt(saved, 0));
+  expect(paragraphAt(saved, 1).listRendering?.marker).toBe("1.");
+  expect(canonicalReviewModel(saved)).toEqual(canonicalReviewModel(live));
+});

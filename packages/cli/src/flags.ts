@@ -1,3 +1,4 @@
+import { decodeText, encodeUtf8 } from "@stll/folio-core/utils/textEncoding";
 /**
  * Command flags generated from a tool's JSON Schema. Each top-level property
  * becomes `--kebab-case-name`: booleans are switches, numbers and strings take
@@ -142,13 +143,13 @@ export const readInputSource = async ({
   } else if (source.startsWith("@")) {
     const inputPath = source.slice(1);
     const read = await Result.tryPromise({
-      try: () => readFile(inputPath, "utf8"),
+      try: () => readFile(inputPath).then((bytes) => decodeText(bytes, { ignoreBOM: true })),
       catch: () => usage(`Cannot read --input file ${inputPath}.`),
     });
     if (read.isErr()) return Result.err(read.error);
     text = read.value;
   }
-  if (Buffer.byteLength(text, "utf8") > MAX_INPUT_BYTES) {
+  if (encodeUtf8(text).byteLength > MAX_INPUT_BYTES) {
     return Result.err(usage(`--input is over the ${MAX_INPUT_BYTES}-byte limit.`));
   }
   const parsed = Result.try((): unknown => JSON.parse(text));

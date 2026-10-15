@@ -1,3 +1,4 @@
+import { decodeText } from "../../utils/textEncoding";
 /**
  * Parse the EncryptionInfo stream for Agile Encryption (Office 2010+).
  *
@@ -151,7 +152,7 @@ const requireSpinCount = (attrs: Record<string, string>, element: string): numbe
 };
 
 const parseAgileXml = (xmlBytes: Uint8Array): AgileKeyMaterial => {
-  const xml = new TextDecoder("utf-8").decode(xmlBytes);
+  const xml = decodeText(xmlBytes, { encoding: "utf-8" });
   const keyDataTag = findElement(xml, "keyData");
   const integrityTag = findElement(xml, "dataIntegrity");
   const encryptedKeyTag = findElement(xml, "encryptedKey");
