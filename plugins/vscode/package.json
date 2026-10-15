@@ -40,8 +40,8 @@
     "test:smoke": "bun test/smoke/run.ts"
   },
   "devDependencies": {
-    "@types/node": "26.6.4",
-    "@types/vscode": "1.86.0",
+    "@types/node": "26.6.5",
+    "@types/vscode": "1.140.0",
     "@vscode/test-electron": "3.1.0",
     "@vscode/vsce": "4.0.0",
     "bun-types": "1.4.3",
