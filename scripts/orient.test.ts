@@ -179,6 +179,7 @@ describe("repository orientation", () => {
     }
   });
 
+  // Builds the whole-repository import graph twice with the syntax-tree scanner.
   test("report ordering and aggregate checks are deterministic", () => {
     const files = [
       "parity/compare.ts",
@@ -187,5 +188,5 @@ describe("repository orientation", () => {
     ];
     const tracked = trackedFiles();
     expect(buildReport(REPO_ROOT, tracked, files)).toEqual(buildReport(REPO_ROOT, tracked, files));
-  });
+  }, 30_000);
 });
