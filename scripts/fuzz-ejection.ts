@@ -139,6 +139,15 @@ export type ReplayOutcome =
   | { status: "unavailable"; message: string };
 export type ReplayAttempt = { requested: string[]; outcome: ReplayOutcome };
 
+export const consumerReplaySettings = (groupSha: string) => ({
+  args: ["scripts/consumer-scenarios.ts", "--typecheck"],
+  env: {
+    FOLIO_SCENARIO_SEED: String(consumerSeed(groupSha)),
+    FOLIO_SCENARIO_FUZZ_RUNS: "0",
+    FOLIO_SCENARIO_COLLISION_RUNS: "0",
+  },
+});
+
 /** A setup failure or a zero-test run is not evidence that main passed. */
 export const replayOutcome = ({
   output,
@@ -200,11 +209,12 @@ const replay = (options: Options): void => {
   const attempts: ReplayAttempt[] = [];
   const consumers = markers.filter((marker) => marker.repro.includes("consumer-scenarios.ts"));
   if (consumers.length > 0) {
-    // The group's run seeded its fuzz flows from the group commit; the base
-    // replays the same flows under that seed, with the same defaults.
-    const outcome = run("bun", ["scripts/consumer-scenarios.ts"], {
+    const settings = consumerReplaySettings(options.groupSha);
+    // Match the merge-group lane: generated fuzz and collision flows are off,
+    // while the group's commit-derived seed still governs pinned replays.
+    const outcome = run("bun", settings.args, {
       cwd: options.base,
-      env: { FOLIO_SCENARIO_SEED: String(consumerSeed(options.groupSha)) },
+      env: settings.env,
       log: path.join(options.out, "base-consumer-scenarios.log"),
     });
     attempts.push({ requested: consumers.map((marker) => marker.fingerprint), outcome });
@@ -309,11 +319,18 @@ export const verifyReplayAttempts = (
   }
 };
 
+const reproducedFingerprints = (attempts: readonly ReplayAttempt[]): Set<string> =>
+  new Set(
+    attempts.flatMap(({ requested, outcome }) => {
+      if (outcome.status !== "failed") return [];
+      const requestedFingerprints = new Set(requested);
+      return outcome.fingerprints.filter((fingerprint) => requestedFingerprints.has(fingerprint));
+    }),
+  );
+
 const judgeMainFindings = (findings: readonly Finding[], attempts: readonly ReplayAttempt[]) => {
   verifyReplayAttempts(findings, attempts);
-  const reproduced = new Set(
-    attempts.flatMap(({ outcome }) => (outcome.status === "failed" ? outcome.fingerprints : [])),
-  );
+  const reproduced = reproducedFingerprints(attempts);
   return judge(
     findings.map(({ record }) => record.marker),
     reproduced,
@@ -333,9 +350,7 @@ export const fileMainFindings = async ({
   store,
 }: FileMainFindingsOptions) => {
   const judged = judgeMainFindings(findings, attempts);
-  const reproduced = new Set(
-    attempts.flatMap(({ outcome }) => (outcome.status === "failed" ? outcome.fingerprints : [])),
-  );
+  const reproduced = reproducedFingerprints(attempts);
   const confirmed = findings.filter(({ record }) => reproduced.has(record.marker.fingerprint));
   if (confirmed.length > 0) {
     const filed = await fileFindings({

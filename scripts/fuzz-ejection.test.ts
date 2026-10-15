@@ -11,6 +11,7 @@ import type { Issue } from "./fuzz-issue-classes";
 
 import { hash32 } from "../test/commit-seed";
 import {
+  consumerReplaySettings,
   consumerSeed,
   judge,
   packageOf,
@@ -37,6 +38,14 @@ describe("merge group fuzz replay", () => {
     // scripts/consumer-scenarios.ts: commitSeed("consumer-scenarios fuzz") >>> 1.
     expect(consumerSeed(sha)).toBe(hash32(`${sha}\0consumer-scenarios fuzz`) >>> 1);
     expect(consumerSeed(sha)).toBeGreaterThanOrEqual(0);
+    expect(consumerReplaySettings(sha)).toEqual({
+      args: ["scripts/consumer-scenarios.ts", "--typecheck"],
+      env: {
+        FOLIO_SCENARIO_SEED: String(consumerSeed(sha)),
+        FOLIO_SCENARIO_FUZZ_RUNS: "0",
+        FOLIO_SCENARIO_COLLISION_RUNS: "0",
+      },
+    });
   });
 
   test("property replays come from the failure lines, and only well-formed ones", () => {
@@ -202,6 +211,43 @@ test("matching main failures file one issue per reproduced fingerprint", async (
     for (const issue of writes)
       expect(issue.body).not.toContain(findings.at(2)?.record.marker.fingerprint);
     expect(judged.fingerprints.map(({ issue }) => issue)).toEqual(["#1", "#2", null]);
+  });
+});
+
+test("a failing base replay reproduces only requested fingerprints present in its log", async () => {
+  await withStore(async ({ store, writes }) => {
+    const findings = [finding("stories"), finding("comments")];
+    const fingerprints = findings.map(({ record }) => record.marker.fingerprint);
+    const matching = findings[0]!.record.marker;
+    const unrelatedMarker = finding("lists").record.marker;
+    const outcome = replayOutcome({
+      output: [
+        `FOLIO_FAILURE ${JSON.stringify(unrelatedMarker)}`,
+        `FOLIO_FAILURE ${JSON.stringify(matching)}`,
+        "1 pass",
+        "1 fail",
+      ].join("\n"),
+      exitCode: 1,
+    });
+    const judged = await fileMainFindings({
+      findings,
+      attempts: [
+        {
+          requested: fingerprints,
+          outcome,
+        },
+      ],
+      context,
+      store,
+    });
+    expect(judged.fingerprints.map(({ reproducedOnBase }) => reproducedOnBase)).toEqual([
+      true,
+      false,
+    ]);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.body).toContain(fingerprints[0]);
+    expect(writes[0]?.body).not.toContain(fingerprints[1]);
+    expect(writes[0]?.body).not.toContain(unrelatedMarker.fingerprint);
   });
 });
 
