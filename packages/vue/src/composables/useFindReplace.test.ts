@@ -345,6 +345,33 @@ for (const [kind, content] of Object.entries(ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES)
   }
 }
 
+// A visible atom with no search text still sits between the matched letters in
+// PM; replacing the enclosing range would delete it.
+for (const [kind, content] of Object.entries(ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES)) {
+  test.each(["current", "all"] as const)(
+    `Vue %s replacement keeps a visible zero-text ${kind} between the matched text`,
+    (operation) => {
+      const fixture = buildBoundaryDocument([textRun("A"), ...content, textRun("B")]);
+      withReplacementEditor(fixture, (search, view) => {
+        const before = view.state;
+        const beforeJson = before.doc.toJSON();
+        expect(search.find("AB")?.totalCount).toBe(1);
+        expect(search.currentMatch.value?.replacement).toEqual({
+          status: "blocked",
+          reason:
+            kind === "simpleField" || kind === "complexField" ? "field-result" : "atomic-content",
+        });
+        expect(search.canReplaceCurrent.value).toBe(false);
+        search.replaceText.value = "C";
+        if (operation === "current") expect(search.replaceCurrent()).toBe(false);
+        else expect(search.replaceAll()).toEqual({ replacedCount: 0, skippedCount: 1 });
+        expect(view.state).toBe(before);
+        expect(view.state.doc.toJSON()).toEqual(beforeJson);
+      });
+    },
+  );
+}
+
 // A debounced refresh can be pending when a host changes the current PM doc.
 // Re-check the result metadata before any transaction crosses that boundary.
 test.each(["current", "all"] as const)(

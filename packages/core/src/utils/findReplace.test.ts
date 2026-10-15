@@ -58,6 +58,8 @@ const paragraph = (text: string): Paragraph => ({
 
 const textRun = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
 
+const FIELD_KINDS = new Set(["simpleField", "complexField"]);
+
 describe("hidden source replacement boundaries", () => {
   const views = [
     { type: "deletion", displayMode: "no-markup" },
@@ -103,9 +105,37 @@ describe("hidden source replacement boundaries", () => {
         createDefaultFindOptions(),
       );
       if (kind === "pageBreak") expect(matches).toEqual([]);
-      else expect(matches.at(0)?.replacement.status).toBe("blocked");
+      else
+        expect(matches.at(0)?.replacement).toEqual({
+          status: "blocked",
+          reason: FIELD_KINDS.has(kind) ? "field-result" : "atomic-content",
+        });
     });
   }
+  // Empty fields and empty preserved inline markup put no character on the
+  // line; each view's projection must still keep their replacement barrier.
+  test.each(
+    (["simpleField", "complexField", "preservedInline"] as const).flatMap((kind) =>
+      (["all-markup", "simple-markup", "no-markup", "original"] as const).map(
+        (displayMode) => [kind, displayMode] as const,
+      ),
+    ),
+  )("visible empty %s blocks replacing across it in %s", (kind, displayMode) => {
+    const content = fixtures[kind] ?? panic(`Missing ${kind} fixture`);
+    const source: Paragraph = {
+      type: "paragraph",
+      content: [textRun("A"), ...content, textRun("B")],
+    };
+    const doc: Document = { package: { document: { content: [source] } } };
+    const options = { ...createDefaultFindOptions(), displayMode };
+    const [match, ...rest] = findInDocument(doc, "AB", options);
+    expect(rest).toEqual([]);
+    expect(match?.text).toBe("AB");
+    expect(match?.replacement).toEqual({
+      status: "blocked",
+      reason: FIELD_KINDS.has(kind) ? "field-result" : "atomic-content",
+    });
+  });
   test.each(views)("empty hidden $type ($displayMode) retains revision ownership", (view) => {
     const source: Paragraph = {
       type: "paragraph",
