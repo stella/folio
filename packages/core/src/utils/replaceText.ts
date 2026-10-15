@@ -188,6 +188,15 @@ const replaceTextInParagraph = ({
               output.push(unit);
               continue;
             }
+            if (unit.type !== "text" && !overlaps) {
+              // A zero-width insertion on a native unit's boundary goes beside the unit.
+              if (startOffset === unitEnd) output.push(unit);
+              inserted = true;
+              if (formatting) splitAtInsertion = true;
+              else if (text) output.push({ type: "text", text });
+              if (startOffset === unitStart) (splitAtInsertion ? after : before).push(unit);
+              continue;
+            }
             const prefix = unitText.slice(0, Math.max(0, startOffset - unitStart));
             const suffix = unitText.slice(Math.max(0, endOffset - unitStart));
             if (prefix) output.push({ type: "text", text: prefix });

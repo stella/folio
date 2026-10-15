@@ -419,3 +419,41 @@ describe("replaceTextInDocument", () => {
     expect(insertedRun.formatting?.bold).toBe(true);
   });
 });
+
+describe("replaceTextInDocument native unit boundaries", () => {
+  const nativeUnits = {
+    columnBreak: { type: "break", breakType: "column" },
+    symbol: { type: "symbol", font: "Symbol", char: "00A7" },
+    tab: { type: "tab" },
+  } as const satisfies Record<string, Run["content"][number]>;
+
+  const insertAt = (unit: Run["content"][number], offset: number): Run["content"] => {
+    const source = documentWithContent([
+      { type: "run", content: [unit, { type: "text", text: "tail" }] },
+    ]);
+    const replaced = replaceTextInDocument(
+      source,
+      { start: { paragraphIndex: 0, offset }, end: { paragraphIndex: 0, offset } },
+      "X",
+    );
+    const edited = paragraphOf(replaced).content.at(0);
+    if (edited?.type !== "run") panic("Expected the edited run");
+    return edited.content;
+  };
+
+  test.each(Object.entries(nativeUnits))("inserts after a leading %s", (_, unit) => {
+    expect(insertAt(unit, 1)).toEqual([
+      unit,
+      { type: "text", text: "X" },
+      { type: "text", text: "tail" },
+    ]);
+  });
+
+  test.each(Object.entries(nativeUnits))("inserts before a leading %s", (_, unit) => {
+    expect(insertAt(unit, 0)).toEqual([
+      { type: "text", text: "X" },
+      unit,
+      { type: "text", text: "tail" },
+    ]);
+  });
+});
