@@ -63,5 +63,5 @@
     "operations": []
   },
   "origin": "shrunk from random flow seed 1026398514",
-  "title": "PINNED #1379 494eb13095458d0e, reported seed 1026398514: reader projection survives save"
+  "title": "PINNED #1379, reported seed 1026398514: a tracked insertion beside a comment reads as one change after save"
 }
