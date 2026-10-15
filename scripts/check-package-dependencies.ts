@@ -130,12 +130,15 @@ export const checkRequiredPeers = (
 ): string[] =>
   Object.keys(dependency.peerDependencies ?? {}).flatMap((peer) => {
     if (dependency.peerDependenciesMeta?.[peer]?.optional === true) return [];
+    if (manifest.dependencies?.[peer] !== undefined) return [];
+    // An optional parent peer lets consumers omit what the dependency requires.
     if (
-      manifest.dependencies?.[peer] !== undefined ||
-      manifest.peerDependencies?.[peer] !== undefined
+      manifest.peerDependencies?.[peer] !== undefined &&
+      manifest.peerDependenciesMeta?.[peer]?.optional !== true
     )
       return [];
-    return [`${manifest.name}: dependency ${dependency.name} requires undeclared peer ${peer}`];
+    const reason = manifest.peerDependencies?.[peer] === undefined ? "undeclared" : "optional";
+    return [`${manifest.name}: dependency ${dependency.name} requires ${reason} peer ${peer}`];
   });
 
 const readManifest = (file: string): DependencyManifest => JSON.parse(readFileSync(file, "utf8"));

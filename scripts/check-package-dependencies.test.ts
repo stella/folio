@@ -107,6 +107,27 @@ test("a dependency required peer cannot be supplied by hoisting, development or 
   ).toEqual([]);
 });
 
+test("an optional parent peer does not satisfy a dependency required peer", () => {
+  const dependency = { name: "model", peerDependencies: { integration: "^1.0.0" } };
+  const optionalPeer = {
+    ...manifest,
+    peerDependencies: { ...manifest.peerDependencies, integration: "^1.0.0" },
+    peerDependenciesMeta: { ...manifest.peerDependenciesMeta, integration: { optional: true } },
+  };
+  expect(checkRequiredPeers(optionalPeer, dependency)).toEqual([
+    "@example/editor: dependency model requires optional peer integration",
+  ]);
+  expect(
+    checkRequiredPeers(
+      { ...optionalPeer, peerDependenciesMeta: { integration: { optional: false } } },
+      dependency,
+    ),
+  ).toEqual([]);
+  expect(
+    checkRequiredPeers({ ...optionalPeer, dependencies: { integration: "^1.0.0" } }, dependency),
+  ).toEqual([]);
+});
+
 test("scoped ambient type dependencies own corresponding declaration imports", () => {
   expect(
     checkImports({
