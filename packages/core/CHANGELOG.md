@@ -1,5 +1,29 @@
 # @stll/folio-core
 
+## 0.62.0
+
+### Minor Changes
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Highlight all document search matches across rendered stories and expose navigation, counts, and safe replacement eligibility.
+
+- [#1778](https://github.com/stella/folio/pull/1778) [`ed89c2f`](https://github.com/stella/folio/commit/ed89c2f645974f285a76bb5eda33c6cd0d22ecfb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render DrawingML shape groups with composed transforms, nested shapes, pictures, and text boxes.
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry note identities in layout metadata to reveal search matches on unmounted endnote pages and notify Vue find-result listeners once per update.
+
+### Patch Changes
+
+- [#1710](https://github.com/stella/folio/pull/1710) [`a2b23d9`](https://github.com/stella/folio/commit/a2b23d964f778c45165dd0b8d61bd443483acebf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Project pending story suggestions through the same revision owner for document readers and saving, preserving authored run formatting.
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep comment expansion under editor ownership and reveal visible search ranges beyond reply previews; UnifiedSidebar now requires controlled activeItemId.
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Refuse search replacement across hidden revisions and zero-text source anchors.
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve tracked revision ownership of cached pagination marks through editor conversion and save.
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bind replacements to complete search keys and pair controlled React dialog results with their producing query.
+
+- [#1701](https://github.com/stella/folio/pull/1701) [`ab4c4cf`](https://github.com/stella/folio/commit/ab4c4cfcbc3ec84edae7ed2ca64dd8d95ff16f54) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reveal search matches on unmounted pages and activate comment threads before navigating to visible reply text.
+
 ## 0.61.0
 
 ### Minor Changes
