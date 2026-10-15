@@ -1,0 +1,10 @@
+{
+  "generated rejected partial edits retain one hyperlink through save and reopen": [
+    {
+      "seed": 1683012,
+      "path": "0:0:0",
+      "note": "A rejected partial hyperlink edit retains one matching source carrier after save and reopen.",
+      "date": "2026-10-13"
+    }
+  ]
+}

@@ -28,7 +28,10 @@ test(
         fc.integer({ min: 3, max: 7 }),
         fc.integer({ min: 3, max: 9 }),
         fc.boolean(),
-        async (firstEnd, secondEnd, hasBaseline) => {
+        fc.boolean(),
+        async (firstEnd, secondEnd, hasBaseline, hasEmptyBaseline) => {
+          const populatedBaseline = hasBaseline ? { fontSize: 22, bold: false } : undefined;
+          const baseline = populatedBaseline ?? (hasEmptyBaseline ? {} : undefined);
           const original = {
             package: {
               document: {
@@ -39,7 +42,7 @@ test(
                     content: [
                       {
                         type: "run",
-                        ...(hasBaseline ? { formatting: { fontSize: 22, bold: false } } : {}),
+                        ...(baseline === undefined ? {} : { formatting: baseline }),
                         content: [{ type: "text", text: "abcdefghi" }],
                       },
                     ],
@@ -83,9 +86,7 @@ test(
             expect(pending?.info.date).toBe(
               latest === undefined ? undefined : `2000-01-0${latest.id}T00:00:00Z`,
             );
-            expect(pending?.previousFormatting).toEqual(
-              pending && hasBaseline ? { fontSize: 22, bold: false } : undefined,
-            );
+            expect(pending?.previousFormatting).toEqual(pending ? baseline : undefined);
             const text = run.content
               .flatMap((leaf) => (leaf.type === "text" ? [leaf.text] : []))
               .join("");
@@ -96,7 +97,7 @@ test(
                 ...(offset >= 2 && offset < secondEnd ? { italic: true } : {}),
               };
               expect(run.formatting).toEqual(
-                Object.keys(expected).length > 0 ? expected : undefined,
+                Object.keys(expected).length > 0 ? expected : baseline,
               );
               offset++;
             }
@@ -126,10 +127,7 @@ test(
               ).toBe(true);
               if (decision === "reject") {
                 for (const run of runsOf(resolved)) {
-                  // An empty persisted w:rPr has no authored properties, like an absent one.
-                  expect(run.formatting ?? {}).toEqual(
-                    hasBaseline ? { fontSize: 22, bold: false } : {},
-                  );
+                  expect(run.formatting).toEqual(baseline);
                 }
               } else {
                 expect(runsOf(resolved).map(({ formatting }) => formatting)).toEqual(

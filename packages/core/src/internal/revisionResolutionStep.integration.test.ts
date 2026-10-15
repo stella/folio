@@ -300,3 +300,42 @@ test("a paragraph join after whole-table deletion has a valid replay map", () =>
   const inverse = Step.fromJSON(schema, step.invert(doc).toJSON());
   expect(inverse.apply(transaction.doc).doc?.eq(doc)).toBe(true);
 });
+
+test("comment point resolution has replayable maps and exact inverses", () => {
+  for (const count of [1, 2, 3]) {
+    for (const prefix of ["", "Keep "]) {
+      const marks = Array.from({ length: count }, (_, commentId) =>
+        schema.marks.comment.create({ commentId }),
+      );
+      const first = paragraphNode(1, "none", [
+        ...(prefix ? [schema.text(prefix)] : []),
+        schema.text("Removed", [schema.marks.deletion.create(revision(1)), ...marks]),
+        ...Array.from({ length: count }, (_, commentId) =>
+          schema.node("commentReference", { commentId }),
+        ),
+      ]);
+      const doc = schema.node("doc", null, [first, paragraph(2, "none", "plain")]);
+      const state = EditorState.create({ schema, doc });
+      let transaction: Transaction | null = null;
+      expect(
+        acceptAllChanges()(state, (tr) => {
+          transaction = tr;
+        }),
+      ).toBe(true);
+      if (!transaction) throw new Error("Missing resolution transaction");
+      const pointIds: number[] = [];
+      transaction.doc.descendants((node) => {
+        if (node.type.name === "rangeAnchor") pointIds.push(node.attrs["start"].id);
+      });
+      expect(pointIds).toEqual(Array.from({ length: count }, (_, id) => id));
+      expect(transaction.mapping.map(first.nodeSize + 1)).toBe(
+        transaction.doc.child(0).nodeSize + 1,
+      );
+      const step = transaction.steps.at(0);
+      if (!step) throw new Error("Missing resolution step");
+      expect(Step.fromJSON(schema, step.toJSON()).apply(doc).doc?.eq(transaction.doc)).toBe(true);
+      const inverse = Step.fromJSON(schema, step.invert(doc).toJSON());
+      expect(inverse.apply(transaction.doc).doc?.eq(doc)).toBe(true);
+    }
+  }
+});

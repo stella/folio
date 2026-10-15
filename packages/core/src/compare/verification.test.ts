@@ -108,6 +108,20 @@ describe("revisedFinalParagraphMarks", () => {
     ).toEqual([]);
   });
 
+  test("section mirrors do not turn internal body breaks into final marks", () => {
+    const boundary = paragraph("section", { kind: "del" });
+    const terminal = paragraph("last");
+    const document = {
+      content: [boundary, terminal],
+      sections: [{ content: [boundary] }, { content: [terminal] }],
+    };
+    expect(revisedFinalParagraphMarks({ document })).toEqual([]);
+    const changed = { ...document, content: [boundary, paragraph("last", { kind: "del" })] };
+    expect(revisedFinalParagraphMarks({ document: changed })).toEqual([
+      { container: "package.document.content", paragraphIndex: 1, kind: "del" },
+    ]);
+  });
+
   test("a package with nothing on any final mark reports nothing", () => {
     expect(
       revisedFinalParagraphMarks({

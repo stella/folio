@@ -257,8 +257,8 @@ describe("resolving tracked edits that build on pending ones", () => {
     apply({ type: "commentOnRange", range, comment: { text: "Which standard?" } });
     apply({ type: "replaceBlock", blockId: target.id, text: "The Supplier delivers promptly." });
     const before = reviewer.getComments().map((comment) => comment.anchoredText);
-    // The removed word, and the new one that takes its place.
-    assert.deepEqual(before, ["goodpromptly"]);
+    // The removed word and its complete aligned replacement span.
+    assert.deepEqual(before, ["good promptly."]);
     const { reopened } = await saveAndReopen(reviewer, "comment anchor");
     assert.deepEqual(
       reopened.getComments().map((comment) => comment.anchoredText),

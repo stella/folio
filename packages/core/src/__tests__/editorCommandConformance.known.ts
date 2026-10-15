@@ -167,6 +167,18 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:clearStyle",
       "host:clearFormatting",
     ],
+    excludedCases: [
+      {
+        scope: "shapeOperation",
+        shape: "style-numbered-headings",
+        operation: "command:applyStyle(Heading1)",
+      },
+      {
+        scope: "shapeOperation",
+        shape: "style-numbered-headings",
+        operation: "command:applyStyle(Heading2)",
+      },
+    ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch"],
   },

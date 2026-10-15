@@ -20,7 +20,7 @@
  *   undone through its receipt's undo handle leaves the copy as it was
  *   (blocks, comments and changes, ids and dates included).
  * - `batchSequential`: a batch leaves what its applied operations leave one
- *   at a time, each re-resolved against the document as it then stands, in
+ *   at a time, with pre-batch anchors mapped through earlier operations, in
  *   the order the batch contract gives (packages/core/src/ai-edits/
  *   batchOverlap.test.ts): annotations first, then insertions and other
  *   non-column operations, then table-column edits in source-grid order
@@ -56,6 +56,7 @@ import {
 import { openReviewer } from "./documents.ts";
 import { projectContentPair, projectSnapshotIdentities } from "./identity.ts";
 import { comparableMarkdown } from "./markdown-comparison.ts";
+import { assertReviewRoundTrip } from "./review-comparison.ts";
 import type { Finding } from "./known-issues.ts";
 import type { Mode } from "./operations.ts";
 import { resolvedState, type Row } from "./oracle.ts";
@@ -430,7 +431,16 @@ const restate = (
     // What a caller re-reading the document would send: the block's hash now.
     restated["precondition"] = { ...precondition, blockTextHash: textHashOf(blockId) };
   }
-  const handle = handleOf(operation);
+  // A batch resolves find against the document as read, before any edit.
+  // A merge may append another occurrence; re-searching then changes the
+  // operation's meaning (or refuses it as ambiguous). Replay its original span.
+  let handle = handleOf(operation);
+  if (operation.type === "replaceInBlock") {
+    const find = String(operation["find"]);
+    const startOffset = pre.text.indexOf(find);
+    if (!find || startOffset < 0 || pre.text.indexOf(find, startOffset + 1) >= 0) return null;
+    handle = { blockId, startOffset, endOffset: startOffset + find.length };
+  }
   if (handle) {
     const shift = rebase(pre.text, now.text, handle.startOffset, handle.endOffset);
     if (shift === null) return null;
@@ -446,6 +456,10 @@ const restate = (
         pre.text.slice(handle.startOffset, handle.endOffset)
     ) {
       return null;
+    }
+    if (operation.type === "replaceInBlock") {
+      const { type: _type, blockId: _blockId, find: _find, ...metadata } = restated;
+      return { ...metadata, id: operation.id, type: "replaceRange", range };
     }
     restated["range"] = range;
   }
@@ -1050,7 +1064,12 @@ export const startRelations = async ({
     checked("batchSequential");
   };
 
-  const readerStability = (live: Reviewer, reopened: Reviewer, context: string): void => {
+  const readerStability = async (
+    live: Reviewer,
+    reopened: Reviewer,
+    context: string,
+  ): Promise<void> => {
+    await assertReviewRoundTrip({ live, reopened, context });
     const content = projectContentPair({
       leftRows: live.getContent(),
       rightRows: reopened.getContent(),
@@ -1062,27 +1081,12 @@ export const startRelations = async ({
         content[side === "left" ? "leftAliases" : "rightAliases"],
       ),
       toMarkdown: comparableMarkdown(toMarkdown(target.toDocument())) as unknown,
-      // Revision ids and dates can change on save. Keep every entry's kind,
-      // author, content and containing block, including duplicate entries.
-      getChanges: target
-        .getChanges()
-        .map(({ type, author, text, blockId }) => ({
-          type,
-          author,
-          text,
-          blockId:
-            blockId === null
-              ? null
-              : (content[side === "left" ? "leftAliases" : "rightAliases"].get(blockId) ?? blockId),
-        }))
-        .toSorted((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
       getComments: target.getComments() as unknown,
     });
     const tolerances: Record<keyof ReturnType<typeof views>, Tolerance<unknown>[]> = {
       getContent: [],
       snapshot: [],
       toMarkdown: [],
-      getChanges: [],
       getComments: [],
     };
     const a = views(live, "left");
@@ -1118,7 +1122,7 @@ export const startRelations = async ({
       }
       if (on("readerStability")) {
         if (pending) skipped("readerStability", "pending suggestions stay out of the package");
-        else readerStability(live, saved.reopened, context);
+        else await readerStability(live, saved.reopened, context);
       }
     },
     finish: async () => {

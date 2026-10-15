@@ -1116,7 +1116,7 @@ describe("canonical clipboard", () => {
     }
   });
 
-  test("source package style collisions import definitions and aliases without changing owned styles", () => {
+  test("source package style collisions import definitions and aliases without changing owned styles", async () => {
     const destination = seed();
     destination.package.numbering = {
       nums: [{ numId: 1, abstractNumId: 1 }],
@@ -1193,7 +1193,8 @@ describe("canonical clipboard", () => {
       }
     });
     if (!projected) throw new TypeError("Imported style projection disappeared.");
-    expect(projected.attrs["listMarker"]).toBe("%1)");
+    expect(projected.attrs["listMarkerTemplate"]).toBe("%1)");
+    expect(projected.attrs["listMarker"]).toBe(pasted.listRendering?.marker);
     expect(projected.attrs["listNumFmt"]).toBe("upperRoman");
     expect(projected.attrs["listLevelStarts"]?.at(0)).toBe(8);
     const rendered = toFlowBlocks(state.doc).find(
@@ -1202,6 +1203,14 @@ describe("canonical clipboard", () => {
     if (rendered?.kind !== "paragraph")
       throw new TypeError("Imported style layout paragraph disappeared.");
     expect(rendered.attrs?.listMarker).toBe("VIII)");
+    const reopened = await parseDocx(await createDocx(session.document), { preloadFonts: false });
+    const parsed = reopened.package.document.content.find(
+      (paragraph) => paragraph.type === "paragraph" && paragraph.paraId === pasted.paraId,
+    );
+    if (parsed?.type !== "paragraph")
+      throw new TypeError("Imported style paragraph did not reopen.");
+    expect(parsed.listRendering?.marker).toBe(pasted.listRendering?.marker);
+    expect(parsed.listRendering?.marker).toBe(rendered.attrs?.listMarker);
     expect(imported?.name).toBe("Foreign");
     expect(imported?.rPr?.bold).toBe(true);
     const importedNumbering = imported?.pPr?.numPr;

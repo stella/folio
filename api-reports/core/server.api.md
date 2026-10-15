@@ -1323,6 +1323,7 @@ export class FolioDocxReviewer {
     storyTables(input?: FolioReadReviewedStoryOptions): readonly FolioStoryTable[];
     toBuffer(): Promise<ArrayBuffer>;
     toDocument(): import__stll_docx_core_model.Document;
+    toResolvedDocument(decision: "accept" | "reject"): import__stll_docx_core_model.Document;
     undoDocumentOperations(undoHandle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult;
 }
 

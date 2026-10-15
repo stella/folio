@@ -1,3 +1,7 @@
+import {
+  isEmptyRowPropertiesAttribute,
+  retainsEmptyRowProperties,
+} from "./tableRowPropertyPresence";
 /**
  * Table Parser - Parse tables with full OOXML structure
  *
@@ -95,6 +99,7 @@ import {
   findWordprocessingChild,
   getAttribute,
   getAttributeByNamespaceUri,
+  getChildElements,
   getLocalName,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
@@ -1128,8 +1133,21 @@ export function parseTableRowProperties(
     formatting.preserved = preserved;
   }
 
-  // No empty-record guard: see `parseTableCellProperties` for why the element's
-  // presence is the value.
+  // A revision-only carrier states no formatting; authored empty sets remain present.
+  const children = getChildElements(trPrElement);
+  if (
+    Object.keys(formatting).length === 0 &&
+    children.length > 0 &&
+    Object.keys(trPrElement.attributes ?? {}).every(
+      (name) => name === "xmlns" || name.startsWith("xmlns:"),
+    ) &&
+    children.every(
+      (child) =>
+        WORDPROCESSINGML_NAMESPACE_URIS.has(child.namespaceUri ?? "") &&
+        REVISION_PROPERTY_CHILDREN.has(getLocalName(child.name)),
+    )
+  )
+    return undefined;
   return withSourceXml(formatting, trPrElement);
 }
 
@@ -1948,7 +1966,11 @@ export function parseTableRow(
 
   // Parse row properties (w:trPr)
   const trPrElement = findChild(trElement, "w", "trPr");
-  const formatting = parseTableRowProperties(trPrElement);
+  const formatting =
+    parseTableRowProperties(trPrElement) ??
+    (trPrElement && retainsEmptyRowProperties(trElement)
+      ? withSourceXml({}, trPrElement)
+      : undefined);
   if (formatting) {
     row.formatting = formatting;
   }
@@ -1985,8 +2007,8 @@ export function parseTableRow(
   const remainingAttributes = attributeRemainder({
     element: trElement,
     modelled: NO_MODELLED_ATTRIBUTES,
-  });
-  if (remainingAttributes) {
+  })?.filter((attribute) => !isEmptyRowPropertiesAttribute(attribute));
+  if (remainingAttributes?.length) {
     row.preservedAttributes = remainingAttributes;
   }
 

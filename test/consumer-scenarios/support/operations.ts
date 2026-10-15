@@ -544,6 +544,27 @@ const lastCell = (blocks: readonly Block[]) => blocks.findLast(inTable);
 const cellTexts = (count: number, label: string) =>
   Array.from({ length: count }, (_, index) => `${label} ${index + 1}`);
 
+/** Adjacent paragraphs whose merge makes a unique pre-batch find ambiguous. */
+export const mergedFindCollision: Collision = (blocks) => {
+  for (let index = 0; index + 1 < blocks.length; index += 1) {
+    const block = blocks.at(index);
+    const next = blocks.at(index + 1);
+    if (!block || !next || inTable(block) || inTable(next)) continue;
+    const shared = wordsOf(block.text).find(
+      ({ word, start }) =>
+        block.text.indexOf(word) === start &&
+        block.text.indexOf(word, start + 1) === -1 &&
+        next.text.includes(word),
+    );
+    if (!shared) continue;
+    return [
+      { type: "mergeBlockWithNext", blockId: block.id, separator: " " },
+      { type: "replaceInBlock", blockId: block.id, find: shared.word, replace: "revised" },
+    ];
+  }
+  return null;
+};
+
 /**
  * Batches aimed where batch claims, offsets and payloads meet: two
  * operations on one block, an edit inside a block another operation deletes,
