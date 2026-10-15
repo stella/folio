@@ -1,5 +1,46 @@
 # @stll/folio-core
 
+## 0.61.0
+
+### Minor Changes
+
+- [#1683](https://github.com/stella/folio/pull/1683) [`ab765b7`](https://github.com/stella/folio/commit/ab765b79049f388c63b02ff630521b140b01d91b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve aligned comment coverage, retained point comments, and inherited table-cell formatting across editing and revision resolution.
+
+  Expose in-memory document resolution snapshots and keep section content aligned with the edited body.
+
+  Keep comment relationships aligned with modeled comment threads.
+
+- [#1699](https://github.com/stella/folio/pull/1699) [`087e009`](https://github.com/stella/folio/commit/087e009673cceee4a6e1166b99d208707e93e3e4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add controlled review display modes and independent comment highlight visibility with search and layout following the displayed document.
+
+  Projected review views refuse editing and report a typed read-only reason. `getPageTextFromLayout` now takes one options object (`{ layout, doc, page, projection? }`) instead of three positional arguments.
+
+### Patch Changes
+
+- [#1705](https://github.com/stella/folio/pull/1705) [`7fbd519`](https://github.com/stella/folio/commit/7fbd519345dd2e3ca3c09eeb0c116e059064aecb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Saving could corrupt astral characters such as emoji at 16 KiB boundaries inside document XML parts. Upgrade to keep them intact.
+
+- [#1722](https://github.com/stella/folio/pull/1722) [`ffffb67`](https://github.com/stella/folio/commit/ffffb6771ea1abf455cb940ba7406cbc2e3bae5d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a tracked insertion or deletion as one change after saving when a comment that starts or ends inside another comment splits its runs.
+
+- [#1696](https://github.com/stella/folio/pull/1696) [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep generated implementation modules outside the public wildcard exports.
+
+- [#1696](https://github.com/stella/folio/pull/1696) [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose the published ESM module targets to synchronous module loaders.
+
+- [#1699](https://github.com/stella/folio/pull/1699) [`087e009`](https://github.com/stella/folio/commit/087e009673cceee4a6e1166b99d208707e93e3e4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Project note text before review-view measurement and defer projected search until editor state is available.
+
+- [#1707](https://github.com/stella/folio/pull/1707) [`cd3e64e`](https://github.com/stella/folio/commit/cd3e64e180cd7625099524ac367edc3596bf7fbc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Read note trailers from the current story inventory so removed notes and section stories stay absent before and after saving.
+
+- [#1708](https://github.com/stella/folio/pull/1708) [`a63712c`](https://github.com/stella/folio/commit/a63712cc9467edb4b3f3ed5102db7b6477fa3337) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retract added paragraph breaks when deleting pending relocation destinations so accepting tracked deletions matches direct edits.
+
+- [#1711](https://github.com/stella/folio/pull/1711) [`97f8333`](https://github.com/stella/folio/commit/97f8333d2fa8ce87c3c83efb95ecd79a643898b5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep formatting and adjacent commented text revisions grouped consistently before and after saving split runs.
+
+- [#1709](https://github.com/stella/folio/pull/1709) [`2ba665b`](https://github.com/stella/folio/commit/2ba665b899c0d239717b23cc6557a704ead14c5f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve paragraph insertion ownership when an occupied boundary blocks final-mark rotation, so rejecting edits restores note content across save and reopen.
+
+- [#1699](https://github.com/stella/folio/pull/1699) [`087e009`](https://github.com/stella/folio/commit/087e009673cceee4a6e1166b99d208707e93e3e4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Accept absent style and numbering resources in detached story projection.
+
+- [#1724](https://github.com/stella/folio/pull/1724) [`1006c70`](https://github.com/stella/folio/commit/1006c70516aa1c067d4e3e1ccef9207394af98c9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve inserted paragraph properties when accepting tracked insertions after terminal paragraph deletions.
+- Updated dependencies [[`ab765b7`](https://github.com/stella/folio/commit/ab765b79049f388c63b02ff630521b140b01d91b), [`7fbd519`](https://github.com/stella/folio/commit/7fbd519345dd2e3ca3c09eeb0c116e059064aecb), [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3)]:
+  - @stll/docx-core@0.38.0
+  - @stll/utf8-boundaries@0.1.0
+
 ## 0.60.0
 
 ### Minor Changes

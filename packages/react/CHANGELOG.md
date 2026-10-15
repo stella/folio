@@ -1,5 +1,28 @@
 # @stll/folio-react
 
+## 0.29.0
+
+### Minor Changes
+
+- [#1699](https://github.com/stella/folio/pull/1699) [`087e009`](https://github.com/stella/folio/commit/087e009673cceee4a6e1166b99d208707e93e3e4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add controlled review display modes and independent comment highlight visibility with search and layout following the displayed document.
+
+  Projected review views refuse editing and report a typed read-only reason. `getPageTextFromLayout` now takes one options object (`{ layout, doc, page, projection? }`) instead of three positional arguments.
+
+### Patch Changes
+
+- [#1705](https://github.com/stella/folio/pull/1705) [`7fbd519`](https://github.com/stella/folio/commit/7fbd519345dd2e3ca3c09eeb0c116e059064aecb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Saving could corrupt astral characters such as emoji at 16 KiB boundaries inside document XML parts. Upgrade to keep them intact.
+
+- [#1696](https://github.com/stella/folio/pull/1696) [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose the published ESM module targets to synchronous module loaders.
+
+- [#1696](https://github.com/stella/folio/pull/1696) [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Declare the React type packages referenced by published declarations.
+
+- [#1696](https://github.com/stella/folio/pull/1696) [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Declare the required host peers of runtime workspace dependencies.
+
+- [#1699](https://github.com/stella/folio/pull/1699) [`087e009`](https://github.com/stella/folio/commit/087e009673cceee4a6e1166b99d208707e93e3e4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Project note text before review-view measurement and defer projected search until editor state is available.
+- Updated dependencies [[`ab765b7`](https://github.com/stella/folio/commit/ab765b79049f388c63b02ff630521b140b01d91b), [`7fbd519`](https://github.com/stella/folio/commit/7fbd519345dd2e3ca3c09eeb0c116e059064aecb), [`ffffb67`](https://github.com/stella/folio/commit/ffffb6771ea1abf455cb940ba7406cbc2e3bae5d), [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3), [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3), [`087e009`](https://github.com/stella/folio/commit/087e009673cceee4a6e1166b99d208707e93e3e4), [`cd3e64e`](https://github.com/stella/folio/commit/cd3e64e180cd7625099524ac367edc3596bf7fbc), [`087e009`](https://github.com/stella/folio/commit/087e009673cceee4a6e1166b99d208707e93e3e4), [`a63712c`](https://github.com/stella/folio/commit/a63712cc9467edb4b3f3ed5102db7b6477fa3337), [`97f8333`](https://github.com/stella/folio/commit/97f8333d2fa8ce87c3c83efb95ecd79a643898b5), [`2ba665b`](https://github.com/stella/folio/commit/2ba665b899c0d239717b23cc6557a704ead14c5f), [`087e009`](https://github.com/stella/folio/commit/087e009673cceee4a6e1166b99d208707e93e3e4), [`1006c70`](https://github.com/stella/folio/commit/1006c70516aa1c067d4e3e1ccef9207394af98c9)]:
+  - @stll/folio-core@0.61.0
+  - @stll/utf8-boundaries@0.1.0
+
 ## 0.28.0
 
 ### Minor Changes

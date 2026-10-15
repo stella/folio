@@ -1,5 +1,23 @@
 # @stll/docx-core
 
+## 0.38.0
+
+### Minor Changes
+
+- [#1683](https://github.com/stella/folio/pull/1683) [`ab765b7`](https://github.com/stella/folio/commit/ab765b79049f388c63b02ff630521b140b01d91b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve aligned comment coverage, retained point comments, and inherited table-cell formatting across editing and revision resolution.
+
+  Expose in-memory document resolution snapshots and keep section content aligned with the edited body.
+
+  Keep comment relationships aligned with modeled comment threads.
+
+### Patch Changes
+
+- [#1705](https://github.com/stella/folio/pull/1705) [`7fbd519`](https://github.com/stella/folio/commit/7fbd519345dd2e3ca3c09eeb0c116e059064aecb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Saving could corrupt astral characters such as emoji at 16 KiB boundaries inside document XML parts. Upgrade to keep them intact.
+
+- [#1696](https://github.com/stella/folio/pull/1696) [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose the published ESM module targets to synchronous module loaders.
+- Updated dependencies [[`7fbd519`](https://github.com/stella/folio/commit/7fbd519345dd2e3ca3c09eeb0c116e059064aecb)]:
+  - @stll/utf8-boundaries@0.1.0
+
 ## 0.37.0
 
 ### Minor Changes

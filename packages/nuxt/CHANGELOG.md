@@ -1,5 +1,18 @@
 # @stll/folio-nuxt
 
+## 0.4.1
+
+### Patch Changes
+
+- [#1705](https://github.com/stella/folio/pull/1705) [`7fbd519`](https://github.com/stella/folio/commit/7fbd519345dd2e3ca3c09eeb0c116e059064aecb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Saving could corrupt astral characters such as emoji at 16 KiB boundaries inside document XML parts. Upgrade to keep them intact.
+
+- [#1696](https://github.com/stella/folio/pull/1696) [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Declare dependencies required by the published declarations and runtime dependency peers.
+
+- [#1696](https://github.com/stella/folio/pull/1696) [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Declare the required host peers of runtime workspace dependencies.
+- Updated dependencies [[`7fbd519`](https://github.com/stella/folio/commit/7fbd519345dd2e3ca3c09eeb0c116e059064aecb), [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3), [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3), [`82ea0f0`](https://github.com/stella/folio/commit/82ea0f074f59d5e735d02d207462e18dac97fba3), [`087e009`](https://github.com/stella/folio/commit/087e009673cceee4a6e1166b99d208707e93e3e4)]:
+  - @stll/utf8-boundaries@0.1.0
+  - @stll/folio-vue@0.25.0
+
 ## 0.4.0
 
 ### Minor Changes
