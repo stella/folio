@@ -32,12 +32,6 @@ const REFUSAL_ROWS = {
 const COMMAND_REFUSAL_CONTRACTS = {
   [CANONICAL_GAP.commands]: {
     operations: [
-      "command:insertFootnote",
-      "command:insertEndnote",
-      "command:deleteNoteRef",
-      "command:insertSectionBreak(nextPage)",
-      "command:insertSectionBreak(continuous)",
-      "command:removeSectionBreak",
       "command:insertTable",
       "command:addRowAbove",
       "command:addRowBelow",

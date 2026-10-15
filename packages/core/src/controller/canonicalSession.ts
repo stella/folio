@@ -25,6 +25,7 @@ import {
   normalizeForOps,
   OP_STORIES,
   packageParagraphIds,
+  paragraphIdsIn,
   validateOpsDocument,
   createEditorIntentIdAllocator,
   findStoryBody,
@@ -838,6 +839,17 @@ class CanonicalSession {
     return Result.ok(this.nextBlockId.toString(16).padStart(8, "0").toUpperCase());
   }
 
+  /** Paragraph identities for one prepared batch; none matches a live or retired identity. */
+  freshBlockIds(count: number): Result<string[], CanonicalSessionError> {
+    const ids: string[] = [];
+    for (let candidate = this.nextBlockId; ids.length < count; candidate += 1) {
+      if (candidate > 0x7fffffff) return refuse("The paragraph identity space is exhausted.");
+      const id = candidate.toString(16).padStart(8, "0").toUpperCase();
+      if (!this.allocatedBlockIds.has(id)) ids.push(id);
+    }
+    return Result.ok(ids);
+  }
+
   private intentMode(document: Document, intent: EditorIntent): EditorIntentMode {
     if (this.mode.type === "editing" && !this.intentNeedsIdentityIds(document, intent))
       return { type: "editing", reservedBlockIds: this.allocatedBlockIds };
@@ -1644,6 +1656,10 @@ class CanonicalSession {
         for (const op of ops) {
           if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK)
             this.allocatedBlockIds.add(op.newBlockId.toUpperCase());
+          if (op.type === DOCUMENT_OP_TYPES.ADD_NOTE) {
+            for (const blockId of paragraphIdsIn(op.note.content))
+              this.allocatedBlockIds.add(blockId.toUpperCase());
+          }
         }
         this.advanceBlockId();
         this.rememberSources(applied.value.document);
