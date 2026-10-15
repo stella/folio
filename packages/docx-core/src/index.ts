@@ -20,6 +20,28 @@ export type {
   TextContent,
 } from "./model/document";
 export { DOCX_CONFORMANCE_CLASSES } from "./model/document";
+export {
+  assignTableIdentities,
+  buildIdentitySidecar,
+  IDENTITY_SIDECAR_VERSION,
+  IDENTITY_VALIDATION_REASONS,
+  IdentityValidationError,
+  NUMERIC_ID_LEASE_SIZE,
+  PARA_ID_LEASE_SIZE,
+  parseIdentitySidecar,
+  restoreIdentitySidecar,
+  stringifyIdentitySidecar,
+  validateDocumentIdLease,
+  validateLeasedStructuralId,
+} from "./model/identity";
+export type {
+  DocumentIdentitySidecar,
+  DocumentIdLease,
+  IdentityValidationReason,
+  NumericIdLease,
+  StructuralIdLease,
+  TableIdentitySidecarEntry,
+} from "./model/identity";
 
 export {
   compileLegalSourceToDocument,

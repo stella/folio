@@ -1298,6 +1298,8 @@ export type TextBox = {
  */
 export type TableCell = {
   type: "tableCell";
+  /** Folio identity. This value is model-only and is never written to OOXML. */
+  cellId?: string;
   /** Authored cell identifier (`w:tc/@w:id`). */
   id?: string;
   /** Cell formatting */
@@ -1355,6 +1357,8 @@ export type TableContentCarrier =
  */
 export type TableRow = {
   type: "tableRow";
+  /** Folio identity. This value is model-only and is never written to OOXML. */
+  rowId?: string;
   /** Row formatting */
   formatting?: TableRowFormatting;
   /**
@@ -1440,6 +1444,8 @@ export type TableRow = {
  */
 export type Table = {
   type: "table";
+  /** Folio identity. This value is model-only and is never written to OOXML. */
+  tableId?: string;
   /** Table formatting */
   formatting?: TableFormatting;
   /** Table-level tracked property changes (w:tblPrChange) */
