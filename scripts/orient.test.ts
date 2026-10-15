@@ -16,6 +16,60 @@ const trackedFiles = (): readonly string[] => {
 };
 
 describe("repository orientation", () => {
+  test("scans literal dependencies across import forms and source extensions", () => {
+    const repoRoot = mkdtempSync(path.join(tmpdir(), "folio-orient-imports-"));
+    const dependencies = [
+      "static.ts",
+      "side-effect.ts",
+      "type-only.ts",
+      "re-export.ts",
+      "export-all.ts",
+      "dynamic.ts",
+      "required.ts",
+      "import-equals.ts",
+      "import-type.ts",
+    ];
+    const source = `
+      import { value } from "./static";
+      import "./side-effect";
+      import type { Type } from "./type-only";
+      export { value } from "./re-export";
+      export * from "./export-all";
+      const load = () => import("./dynamic");
+      const required = require("./required");
+      import legacy = require("./import-equals");
+      type Imported = import("./import-type").Type;
+      import { duplicate } from "./static";
+      import { external } from "external-package";
+      import "./untracked";
+      import(variable);
+      require(variable);
+      require("./" + variable);
+      object.require("./ignored");
+      // import "./ignored";
+      const text = 'require("./ignored")';
+    `;
+    try {
+      for (const file of [...dependencies, "ignored.ts"]) {
+        writeFileSync(path.join(repoRoot, file), "export {};\n");
+      }
+      for (const extension of ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"]) {
+        const importer = `fixture.${extension}`;
+        writeFileSync(path.join(repoRoot, importer), source);
+        const graph = buildImportGraph(repoRoot, [importer, ...dependencies, "ignored.ts"]);
+        expect(graph.imports.get(importer)).toEqual(
+          [...dependencies].toSorted((a, b) => a.localeCompare(b)),
+        );
+        for (const dependency of dependencies) {
+          expect(graph.importedBy.get(dependency)).toEqual([importer]);
+        }
+        expect(graph.importedBy.has("ignored.ts")).toBe(false);
+      }
+    } finally {
+      rmSync(repoRoot, { recursive: true });
+    }
+  });
+
   test("classifies each fidelity pipeline seam before generic test files", () => {
     expect(classifySeam("packages/core/src/docx/parser.ts")).toBe("parser-serializer");
     expect(classifySeam("packages/core/src/layout-bridge/convert/toFlowBlocks.ts")).toBe(
