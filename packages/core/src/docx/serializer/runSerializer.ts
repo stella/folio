@@ -1,3 +1,7 @@
+import {
+  serializeEmptyRunProperties,
+  serializePreviousRunProperties,
+} from "../runPropertyPresence";
 /**
  * Run Serializer - Serialize runs to OOXML XML
  *
@@ -116,7 +120,7 @@ function serializeRunPropertyChange(change: RunPropertyChange): string {
   // is its author, date and id, and a change that set every property the run
   // now has had nothing of its own before.
   const previousRPrXml = serializeTextFormatting(change.previousFormatting) || "<w:rPr/>";
-  return `<w:rPrChange ${serializeTrackedChangeAttributes(change.info)}${serializeBoundaryJoins(change.boundaryJoins)}>${previousRPrXml}</w:rPrChange>`;
+  return `<w:rPrChange ${serializeTrackedChangeAttributes(change.info)}${serializeBoundaryJoins(change.boundaryJoins)}${serializePreviousRunProperties(change.previousFormatting)}>${previousRPrXml}</w:rPrChange>`;
 }
 
 function serializeRunProperties(
@@ -1016,7 +1020,10 @@ export function serializeRun(run: Run): string {
 
   // The run models no attribute of its own, so every one it writes comes from
   // the remainder the parser kept.
-  const attrs = serializePreservedAttributes([], run.preservedAttributes);
+  const attrs = serializePreservedAttributes(
+    serializeEmptyRunProperties(run),
+    run.preservedAttributes,
+  );
   return `<w:r${attrs.length > 0 ? ` ${attrs.join(" ")}` : ""}>${parts.join("")}</w:r>`;
 }
 

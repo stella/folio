@@ -37,6 +37,7 @@ import {
   isStyleSourcedParagraphNumbering,
   modelParagraphFormattingEmission,
 } from "../../internal/paragraphFormattingSerialization";
+import { buildSections } from "../../docx/documentParser";
 import { getDocumentSourceStyles } from "../../docx/headerFooterVerbatim";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
@@ -931,7 +932,7 @@ export function fromProseDoc(
     documentBody.finalSectionProperties = baseDocument.package.document.finalSectionProperties;
   }
   if (baseDocument?.package.document.sections) {
-    documentBody.sections = baseDocument.package.document.sections;
+    documentBody.sections = buildSections(blocks, documentBody.finalSectionProperties);
   }
   if (baseDocument?.package.document.comments) {
     documentBody.comments = baseDocument.package.document.comments;
@@ -3056,7 +3057,19 @@ function extractParagraphContent(
     if (currentHyperlink) {
       flushCurrentInline();
     }
-    const marksKey = getMarksKey(node.marks);
+    const marksKey = getMarksKey(
+      node.marks.filter((mark) => {
+        if (mark.type.name !== RUN_IDENTITY_MARK_NAME) return true;
+        const { emptyFormatting, preservedAttributes, preserved } =
+          expectRunIdentityMarkAttrs(mark);
+        // Empty-property presence belongs to the modeled formatting, not a run boundary.
+        return (
+          emptyFormatting !== true ||
+          (preservedAttributes?.length ?? 0) > 0 ||
+          (preserved?.children?.length ?? 0) > 0
+        );
+      }),
+    );
     const ownerId = runIdentityId(node);
     const currentOwnerId = currentRun ? sourceRunOwners.get(currentRun) : undefined;
     const currentRunIsPlainText = currentRun?.content.every(
@@ -3069,8 +3082,8 @@ function extractParagraphContent(
       runsShareProperties(currentRun, run);
     const joinsOrdinaryText =
       coalescePlainText &&
-      ownerId === undefined &&
-      currentOwnerId === undefined &&
+      currentRun !== null &&
+      runsShareProperties(currentRun, run) &&
       currentRunIsPlainText === true &&
       currentMarksKey === marksKey;
 
@@ -5838,7 +5851,7 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
       }
     }
 
-    return result;
+    return Object.keys(result).length > 0 ? result : undefined;
   }
 
   // Fallback: reconstruct formatting from individual attrs

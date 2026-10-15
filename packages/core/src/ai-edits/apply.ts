@@ -72,6 +72,7 @@ import {
 import { resolveNewListOperations } from "./newListNumbering";
 import {
   readAuthoredRunFormatting,
+  readAuthoredRunPropertySnapshot,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
@@ -112,12 +113,15 @@ import {
   annotatedReplacement,
   commentsAcrossBlockBoundary,
   commentsForTrackedInsertion,
+  commentPoint,
   hasReplacedAnnotations,
   inheritedReplacementMarks,
   NON_INCLUSIVE_MARK_DISPOSITION,
   placeTrackedInsertion,
   surveyReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
+import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
+import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnchorExtension";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import {
   deleteTextBoxesAnchoredAt,
@@ -1661,7 +1665,7 @@ const applyTrackedInlineFormattingToRanges = ({
     formattingMarks: readonly Mark[];
     representation: SelectedRunFormattingCarrierRepresentation;
     includedProperties: string[];
-    previousFormatting: TextFormatting;
+    previousFormatting: TextFormatting | undefined;
   }[] = [];
   let hasPendingRunPropertyChange = false;
   const representations = ranges.flatMap(({ from, to }) =>
@@ -1674,13 +1678,13 @@ const applyTrackedInlineFormattingToRanges = ({
       pos: representation.from,
       ...(styleResolver !== undefined ? { styleResolver } : {}),
     });
-    const previousFormatting = readAuthoredRunFormatting({
+    const previousFormatting = readAuthoredRunPropertySnapshot({
       context: styleContext,
       marks: node.marks,
       ...(styleResolver !== undefined ? { styleResolver } : {}),
     });
     const includedProperties = formattingChangesForAuthoredFormatting(
-      previousFormatting,
+      previousFormatting ?? {},
       formatting,
     );
     if (includedProperties.length === 0) {
@@ -1695,7 +1699,7 @@ const applyTrackedInlineFormattingToRanges = ({
       continue;
     }
     const nextAuthoredFormatting = patchAuthoredRunFormatting({
-      authoredFormatting: previousFormatting,
+      authoredFormatting: previousFormatting ?? {},
       formatting,
       includedProperties,
     });
@@ -1737,7 +1741,7 @@ const applyTrackedInlineFormattingToRanges = ({
     const change: RunPropertyChange = {
       type: "runPropertyChange",
       info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
-      ...(Object.keys(segment.previousFormatting).length > 0
+      ...(segment.previousFormatting !== undefined
         ? { previousFormatting: segment.previousFormatting }
         : {}),
     };
@@ -3147,10 +3151,10 @@ const withRetiredFinalParagraphs = ({
 /**
  * Move an ADDED paragraph break off every paragraph its container ends with.
  *
- * A container's final mark carries no revision in either direction: nothing
- * follows it, so "join this paragraph with the one after it" and its mirror
- * both state an edit that cannot be carried out, and a reader is left with a
- * revision neither accepting nor rejecting everything can clear.
+ * Prefer a preceding carrier so rejection can join the inserted content back
+ * over its added boundary. When no carrier is free, the insertion keeps its
+ * own mark: the resolver can remove that whole paragraph when its text is
+ * rejected, while a markless empty paragraph would have no insertion owner.
  *
  * Appending at a container's end therefore rotates exactly as removing from it
  * does. The first inserted break moves onto the paragraph the run was appended
@@ -3283,9 +3287,9 @@ const withRotatedAddedFinalBreaks = ({
     const resolved = next.doc.resolve(finalPosition);
     const carrier = finalBreakCarrierBefore(resolved, final.type.name, batchRevisionIds);
     if (!carrier) {
-      // Nothing to hand the break to. Writing it would be worse than losing
-      // it: the redline would carry a revision no reader can resolve.
-      next = next.setNodeAttribute(finalPosition, "pPrMark", null);
+      // A deleted boundary or an existing table can block rotation. Keep the
+      // insertion's own mark: rejecting it removes the emptied final paragraph,
+      // while clearing it here would erase the fact that the paragraph was new.
       continue;
     }
 
@@ -3303,8 +3307,7 @@ const withRotatedAddedFinalBreaks = ({
       }
     }
     if (path.at(-1)?.position !== carrier.position) {
-      next = next.setNodeAttribute(finalPosition, "pPrMark", null);
-      continue;
+      panic("A final-mark rotation lost its carrier", { finalPosition, carrier: carrier.position });
     }
     if (
       path.slice(0, -1).some(({ node }) => {
@@ -4384,6 +4387,24 @@ const applyFolioAIEditOperationsInternal = ({
       ? { revisionId: operationRevisionSeed, author, date, ...trackedRevisionExtras }
       : null;
 
+    const commentSource = tr.doc;
+    const commentStepsBefore = tr.steps.length;
+    const commentReplacement = replacementText(item.operation);
+    const commentPlan =
+      mode === "direct" &&
+      commentReplacement !== null &&
+      surveyReplacedAnnotations(commentSource, item.from, item.to).carried.some(
+        (mark) => mark.type.name === "comment",
+      )
+        ? planDocumentReplacement({
+            doc: commentSource,
+            item,
+            replacement: stripInlineEmphasisMarkers(commentReplacement),
+            noteReferences,
+            planChanges: (before, after) => changesFromSegments(diffText(before, after)),
+            keepFieldsOf: planTextChanges,
+          })
+        : null;
     switch (item.operation.type) {
       case "replaceInBlock":
       case "replaceRange": {
@@ -5868,6 +5889,17 @@ const applyFolioAIEditOperationsInternal = ({
         break;
     }
 
+    if (commentPlan !== null) {
+      tr = applyAlignedReplacementComments({
+        tr,
+        source: commentSource,
+        item,
+        plan: commentPlan,
+        stepsBefore: commentStepsBefore,
+        noteReferences,
+      });
+    }
+
     // commentOnBlock is intentionally a doc-mutation-free op
     // (adds a mark; that DOES count as a step) but covers the
     // edge case where the comment mark is missing. Treat any op
@@ -6791,6 +6823,82 @@ const directReplacementMarks = ({
   return allocated;
 };
 
+const replacementText = (operation: FolioAIEditOperation): string | null => {
+  switch (operation.type) {
+    case "replaceBlock":
+      return operation.text;
+    case "replaceInBlock":
+    case "replaceRange":
+      return operation.replace;
+    default:
+      return null;
+  }
+};
+
+type AlignedReplacementCommentsOptions = {
+  tr: Transaction;
+  source: PMNode;
+  item: ResolvedOperation;
+  plan: DocumentReplacementPlan;
+  stepsBefore: number;
+  noteReferences: NoteReferenceLabels;
+};
+
+/** Both modes project comment coverage through the same text alignment. */
+const applyAlignedReplacementComments = ({
+  tr,
+  source,
+  item,
+  plan,
+  stepsBefore,
+  noteReferences,
+}: AlignedReplacementCommentsOptions): Transaction => {
+  const comments = surveyReplacedAnnotations(source, item.from, item.to).carried.filter(
+    (mark) => mark.type.name === "comment",
+  );
+  if (comments.length === 0) return tr;
+  const marks = directReplacementMarks({ doc: source, plan, replacementBackground: "keep" });
+  const blockFrom = tr.mapping.slice(stepsBefore).map(item.blockFrom, -1);
+  const block = tr.doc.nodeAt(blockFrom);
+  if (!block) panic("Replacement lost its paragraph");
+  const clean = buildCleanBlockText(block, blockFrom, { fieldResults: "text", noteReferences });
+  for (const [index, expected] of marks.entries()) {
+    const from = clean.offsets[plan.spanStart + index];
+    if (from === undefined) panic("Replacement lost an aligned character");
+    const node = tr.doc.nodeAt(from);
+    if (!node?.isText || noteReferenceOf(node) !== null) continue;
+    for (const comment of comments) {
+      if (comment.isInSet(expected)) tr.addMark(from, from + 1, comment);
+      else tr.removeMark(from, from + 1, comment);
+    }
+  }
+  const visible = new Set<number>();
+  const points = new Set<number>();
+  tr.doc.descendants((node) => {
+    if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+      const attrs = readRangeAnchorAttrs(node);
+      if (attrs.ok && attrs.value.start.type === "commentRangeStart")
+        points.add(attrs.value.start.id);
+    }
+    if (
+      !node.isInline ||
+      isZeroWidthAnchor(node) ||
+      node.marks.some((mark) => mark.type.name === "deletion")
+    )
+      return;
+    for (const mark of node.marks)
+      if (mark.type.name === "comment") visible.add(mark.attrs["commentId"]);
+  });
+  const at = clean.offsets[plan.spanStart];
+  if (at === undefined) panic("Replacement lost its start gap");
+  for (const comment of comments) {
+    const id = comment.attrs["commentId"];
+    if (visible.has(id) || points.has(id)) continue;
+    tr.insert(at, commentPoint(tr.doc.type.schema, id));
+  }
+  return tr;
+};
+
 type MinimalDirectReplacementResult = {
   transaction: Transaction;
   /** See {@link replacementUnifiesFormatting}. */
@@ -6993,10 +7101,21 @@ const applyMinimalTrackedReplacement = ({
     noteReferences,
     planChanges: planTextChanges,
   });
+  const annotationMarks = directReplacementMarks({
+    doc: tr.doc,
+    plan,
+    replacementBackground: "keep",
+  });
   const allocatedMarks =
     directPlan === null
       ? null
-      : directReplacementMarks({ doc: tr.doc, plan: directPlan, replacementBackground });
+      : directReplacementMarks({ doc: tr.doc, plan: directPlan, replacementBackground }).map(
+          (marks, index) =>
+            addCarriedMarks(
+              marks.filter((mark) => mark.type.name !== "comment"),
+              (annotationMarks[index] ?? []).filter((mark) => mark.type.name === "comment"),
+            ),
+        );
   const unifiesFormatting =
     directPlan === null ? false : replacementUnifiesFormatting(tr.doc, directPlan);
 

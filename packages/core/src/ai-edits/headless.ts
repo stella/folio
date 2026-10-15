@@ -1,3 +1,7 @@
+import { reconcileDocumentPartRelationships } from "@stll/docx-core/ops";
+import { normalizeListModelRendering } from "../docx/listModelNormalization";
+import { commentTextParagraph } from "../docx/commentTextParagraph";
+import { buildSections } from "../docx/documentParser";
 import { noteStoryInventory } from "./note-story-inventory";
 import { getHeaderFooterText, getEndnoteText, getFootnoteText } from "../docx/storyPlainText";
 import JSZip from "jszip";
@@ -219,13 +223,7 @@ const createReviewerComment = ({
   id,
   author,
   date: date ?? new Date().toISOString(),
-  content: [
-    {
-      type: "paragraph",
-      formatting: {},
-      content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
-    },
-  ],
+  content: [commentTextParagraph(text)],
 });
 
 type FolioDocumentOperationUndoEntry = {
@@ -2786,6 +2784,19 @@ export class FolioDocxReviewer {
     };
   }
 
+  /** Resolve ordinary revisions on a detached in-memory document. */
+  toResolvedDocument(decision: "accept" | "reject"): Document {
+    const copy = new FolioDocxReviewer({
+      baseDocument: this.toDocument(),
+      originalBuffer: this.originalBuffer,
+      state: this.state,
+      author: this.author,
+    });
+    if (decision === "accept") copy.acceptAll();
+    else copy.rejectAll();
+    return copy.toDocument();
+  }
+
   /** The current document model with edits merged back in. */
   toDocument(): Document {
     const document = this.documentFromStateSnapshot(this.captureReviewerState());
@@ -2835,6 +2846,11 @@ export class FolioDocxReviewer {
     });
     if (snapshot.finalSectionPropertiesOverride !== undefined) {
       document.package.document.finalSectionProperties = snapshot.finalSectionPropertiesOverride;
+      if (document.package.document.sections !== undefined)
+        document.package.document.sections = buildSections(
+          document.package.document.content,
+          snapshot.finalSectionPropertiesOverride,
+        );
     }
     if (snapshot.importedStyles !== undefined) document.package.styles = snapshot.importedStyles;
     if (snapshot.importedMedia.size > 0)
@@ -2891,7 +2907,7 @@ export class FolioDocxReviewer {
         snapshot.resolvedOverrides,
       );
     }
-    return document;
+    return normalizeListModelRendering(reconcileDocumentPartRelationships(document)).document;
   }
 
   private captureSaveSnapshot(): FolioSaveSnapshot {

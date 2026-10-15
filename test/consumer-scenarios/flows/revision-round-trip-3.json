@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1026398514,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 898516120,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "31617F9A",
+          "quote": "and",
+          "comment": {
+            "text": "Period payment clause goods schedule goods schedule."
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 4241941761,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "accept all",
+      "seed": 323045347
+    },
+    {
+      "action": "story batch",
+      "seed": 1522775490,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "3CEFFC83",
+          "offset": 8
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 67280559,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "revision round-trip regression",
+  "title": "Revision coverage and both resolution outcomes survive save"
+}

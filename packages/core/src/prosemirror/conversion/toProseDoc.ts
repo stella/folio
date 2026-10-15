@@ -161,7 +161,7 @@ import { planEmptyRanges } from "../emptyRangeAnchor";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
 import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
-import { continueRunIdentitiesAcrossRevisions } from "../runIdentityAcrossRevisions";
+import { continueSourceCarrierIdentitiesAcrossRevisions } from "../runIdentityAcrossRevisions";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { withEnclosingRevision } from "../contentControlRevisions";
 import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
@@ -269,14 +269,10 @@ const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): M
   const payload = {
     preservedAttributes: run.preservedAttributes,
     preserved: run.formatting?.preserved,
-    // A `w:rPr` holding only a `w:rPrChange` is not an empty one: the change
-    // writes it, and rejecting the change fills it.
+    // The parser distinguishes authored empty properties from a revision-only
+    // carrier; pending review does not erase the authored current presence.
     emptyFormatting:
-      run.formatting !== undefined &&
-      Object.keys(run.formatting).length === 0 &&
-      (run.propertyChanges?.length ?? 0) === 0
-        ? true
-        : undefined,
+      run.formatting !== undefined && Object.keys(run.formatting).length === 0 ? true : undefined,
   };
   if (!runHasPageBreakContent(run) && !runHasMixedContent(run) && !hasRunIdentityPayload(payload)) {
     return null;
@@ -1171,7 +1167,7 @@ function convertParagraph(
 
   return createProseParagraphWithPropertySource(schema.nodes["paragraph"], paragraph, {
     attrs,
-    content: continueRunIdentitiesAcrossRevisions(inlineNodes),
+    content: continueSourceCarrierIdentitiesAcrossRevisions(inlineNodes),
   });
 }
 
@@ -2434,9 +2430,9 @@ function convertTableCell({
     attrs.margins = effectiveFormatting.margins;
     attrs._resolvedMargins = effectiveFormatting.margins;
   }
-  if (formatting) {
-    attrs._originalFormatting = formatting;
-  }
+  // An absent cell property set is still an authored baseline. Resolved
+  // table borders and margins must remain inherited on conversion back.
+  attrs._originalFormatting = formatting ?? {};
   // Carry `w:tcPrChange` opaquely through PM for round-trip + accept/reject.
   if (cell.propertyChanges && cell.propertyChanges.length > 0) {
     attrs.tcPrChange = [...cell.propertyChanges];

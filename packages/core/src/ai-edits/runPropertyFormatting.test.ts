@@ -17,6 +17,7 @@ import type {
 import { createEmptyDocument } from "../utils/createDocument";
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { FolioDocxReviewer } from "./headless";
+import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIBlockPreviewRun, FolioAIInlineFormatting } from "./types";
@@ -1303,3 +1304,66 @@ describe("tracked run formatting", () => {
     });
   });
 });
+
+// Earlier formatting fixtures did not pair property-set presence with partial replacements.
+test.each([undefined, {}, { italic: true }] satisfies (TextFormatting | undefined)[])(
+  "formatting snapshots preserve property-set presence through resolution: %j",
+  async (formatting) => {
+    for (const patch of [
+      { bold: true },
+      ...(formatting?.italic === true ? [{ italic: null }] : []),
+    ]) {
+      for (const replace of [false, true]) {
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await createFormattingBaseline({ formatting }),
+        );
+        const block = reviewer.snapshot().blocks.at(0);
+        if (!block) throw new Error("Expected formatting block");
+        const range = createFolioAITextRangeHandle({
+          blockId: block.id,
+          text: block.text,
+          startOffset: 0,
+          endOffset: 10,
+        });
+        if (!range) throw new Error("Expected formatting range");
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: 1,
+            mode: "tracked-changes",
+            operations: [
+              { id: "format", type: "formatRange", range, formatting: patch },
+              ...(replace
+                ? [{ id: "replace", type: "replaceRange" as const, range, replace: "updated" }]
+                : []),
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        expect(result.skipped).toEqual([]);
+        expect(result.applied).toHaveLength(replace ? 2 : 1);
+        for (const phase of ["pending", ...(replace ? ["restored-deletion"] : [])]) {
+          if (phase === "restored-deletion") {
+            const deletion = reviewer.getChanges().find(({ type }) => type === "deletion");
+            if (!deletion) throw new Error("Expected replacement deletion");
+            expect(reviewer.rejectChange(deletion.id)).toBe(true);
+          }
+          const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+          for (const decision of ["accept", "reject"] as const) {
+            const live = reviewer.toResolvedDocument(decision);
+            const saved = reopened.toResolvedDocument(decision);
+            expect(canonicalReviewModel(saved.package.document.content)).toEqual(
+              canonicalReviewModel(live.package.document.content),
+            );
+            if (decision === "reject") {
+              const paragraph = saved.package.document.content.at(0);
+              if (paragraph?.type !== "paragraph") throw new Error("Expected resolved paragraph");
+              for (const run of paragraph.content) {
+                if (run.type === "run") expect(run.formatting).toEqual(formatting);
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+);
