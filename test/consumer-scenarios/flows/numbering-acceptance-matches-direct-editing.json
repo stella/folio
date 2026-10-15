@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "direct",
+  "seed": 1576447518,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2016459597,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 681270760,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Delivery period schedule warranty schedule buyer invoice.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ]
+    }
+  ]
+}

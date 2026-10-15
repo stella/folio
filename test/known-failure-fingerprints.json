@@ -281,57 +281,6 @@
       "firstSeen": "2026-10-02"
     },
     {
-      "fingerprint": "5a288c5f8a185f53",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1385,
-        "primary": "9021a874e5271575",
-        "title": "consumer flow emoji / suggested: tracked acceptance differs from direct editing",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "emoji",
-          "mode": "suggested",
-          "seed": 1785652356,
-          "steps": [
-            {
-              "action": "story batch",
-              "seed": 3361453381,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "5E88C024"
-                }
-              ]
-            },
-            {
-              "action": "story batch",
-              "seed": 578345913,
-              "operations": [
-                {
-                  "type": "insertAfterBlock",
-                  "blockId": "31617F9A",
-                  "text": "Warranty delivery written term agreement clause delivery.",
-                  "styleId": "Heading2"
-                }
-              ]
-            }
-          ],
-          "weights": {
-            "version": 1,
-            "cells": {},
-            "operations": []
-          },
-          "origin": "shrunk from collisions flow seed 1785652356"
-        },
-        "type": "consumer",
-        "reportSeed": 1785652356,
-        "reportSeeds": [1785652356]
-      }
-    },
-    {
       "fingerprint": "9021a874e5271575",
       "issueOrPr": "#1350",
       "firstSeen": "2026-10-02"
@@ -548,54 +497,6 @@
       "fingerprint": "2d59bafcfc00e802",
       "issueOrPr": "#1350",
       "firstSeen": "2026-10-02"
-    },
-    {
-      "fingerprint": "c87caa8b7fc119c6",
-      "issueOrPr": "#1350",
-      "firstSeen": "2026-10-02",
-      "acceptance": {
-        "issue": 1412,
-        "primary": "1ec16d059dca732d",
-        "title": "consumer flow unusedNumbering / direct: tracked acceptance differs from direct editing",
-        "flow": {
-          "version": 1,
-          "kind": "collisions",
-          "generation": "targeted",
-          "fixture": "unusedNumbering",
-          "mode": "direct",
-          "seed": 1576447518,
-          "steps": [
-            {
-              "action": "core batch",
-              "seed": 2016459597,
-              "operations": [
-                {
-                  "type": "deleteBlock",
-                  "blockId": "483CD5EB"
-                }
-              ]
-            },
-            {
-              "action": "story batch",
-              "seed": 681270760,
-              "operations": [
-                {
-                  "type": "insertAfterBlock",
-                  "blockId": "5E88C024",
-                  "text": "Delivery period schedule warranty schedule buyer invoice.",
-                  "numbering": {
-                    "kind": "newList",
-                    "format": "numbered"
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        "type": "consumer",
-        "reportSeed": 1576447518,
-        "reportSeeds": [1576447518]
-      }
     },
     {
       "fingerprint": "1ec16d059dca732d",
