@@ -258,9 +258,13 @@ describe("manifest-derived packed dependency scope", () => {
       ).toBe(true);
     for (const file of [
       "modules/private/src/entry.ts",
+      "modules/private/vite.config.ts",
       "modules/new/README.md",
+      "modules/public/docs/guide.md",
+      "modules/public/src/entry.test.ts",
+      "modules/public/src/__tests__/entry.ts",
+      "modules/public/test/preload.ts",
       "docs/guide.md",
-      "modules/public/src-other/file.ts",
     ])
       expect(
         packagedConsumerRequiredForPaths({
@@ -274,6 +278,30 @@ describe("manifest-derived packed dependency scope", () => {
         publishedPackagePaths: published,
       }),
     ).toThrow();
+  });
+
+  test("package-local build inputs select the smoke", () => {
+    const repoRoot = fixture({
+      workspaces: ["modules/*"],
+      manifests: { "modules/public": { name: "public" } },
+    });
+    const published = publishedPackagePaths(repoRoot);
+    for (const file of [
+      "modules/public/vite.config.ts",
+      "modules/public/tsdown.config.ts",
+      "modules/public/rollup.config.mjs",
+      "modules/public/tsconfig.json",
+      "modules/public/tsconfig.build.json",
+      "modules/public/scripts/build-css.ts",
+      "modules/public/types/ambient.d.ts",
+      "modules/public/typecheck/surface.typecheck.ts",
+    ])
+      expect(
+        packagedConsumerRequiredForPaths({
+          changedPaths: [file],
+          publishedPackagePaths: published,
+        }),
+      ).toBe(true);
   });
 });
 

@@ -116,6 +116,9 @@ export const apiRequiredForPaths = ({
   });
 };
 
+const PACKED_NON_INPUT =
+  /(?:^|\/)(?:__tests__|__snapshots__|test|tests)\/|\.(?:test|spec|test-d)\.[^/]+$|\.md$/u;
+
 /** Packed dependency checks share the manifest discovery and PR diff with API planning. */
 export const packagedConsumerRequiredForPaths = ({
   changedPaths,
@@ -127,7 +130,13 @@ export const packagedConsumerRequiredForPaths = ({
     if (file === "bun.lock" || file === "bunfig.toml" || file === "package.json") return true;
     // Membership changes, deletions and a private package becoming public all need a proof.
     if (file.endsWith("/package.json")) return true;
-    return packages.some((directory) => file.startsWith(`${directory}/src/`));
+    // Build configs, tsconfigs, build scripts and ambient types shape the emitted
+    // runtime and declarations, so every published package file counts except docs and tests.
+    return packages.some(
+      (directory) =>
+        file.startsWith(`${directory}/`) &&
+        !PACKED_NON_INPUT.test(file.slice(directory.length + 1)),
+    );
   });
 };
 
