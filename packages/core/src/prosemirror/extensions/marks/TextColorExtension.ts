@@ -58,7 +58,10 @@ export const TextColorExtension = createMarkExtension({
               canonicalRunFormatting(state, { color: null }),
             );
           }
-          return setMark(textColorType, attrs as Record<string, unknown>);
+          return withCanonicalCommand(
+            setMark(textColorType, attrs as Record<string, unknown>),
+            (state) => canonicalRunFormatting(state, { color: attrs }),
+          );
         },
         clearTextColor: () =>
           withCanonicalCommand(clearRunColor(), (state) =>

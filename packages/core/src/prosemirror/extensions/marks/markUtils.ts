@@ -342,7 +342,11 @@ function createMarkWithMergedAttrs(
 }
 
 type CanonicalSetMarkFormattingOptions = { state: EditorState; type: MarkType; attrs: MarkAttrs };
-const canonicalSetMarkFormatting = ({ state, type, attrs }: CanonicalSetMarkFormattingOptions) => {
+export const canonicalSetMarkFormatting = ({
+  state,
+  type,
+  attrs,
+}: CanonicalSetMarkFormattingOptions) => {
   const markType = documentMarkType(state, type);
   const { empty } = state.selection;
   const { from, to } = canonicalSelectionRange(state);
@@ -542,16 +546,41 @@ const withRunFormattingOverride =
 
 /** `toggleMark` for the document's own counterpart of `type`. */
 export const toggleDocumentMark = (type: MarkType): Command => {
-  const command: Command = (state, dispatch, view) =>
-    toggleMark(documentMarkType(state, type))(state, dispatch, view);
+  const command: Command = (state, dispatch, view) => {
+    const markType = documentMarkType(state, type);
+    const nextCommand = isDocumentMarkActiveAcrossSelection(state, markType)
+      ? removeMark(markType)
+      : setMark(markType, {});
+    return nextCommand(state, dispatch, view);
+  };
   if (!RUN_FORMATTING_MARK_NAMES.has(type.name)) return command;
   return withCanonicalCommand(command, (state) => {
     const markType = documentMarkType(state, type);
     const formatting = marksToTextFormatting([markType.create()]);
-    if (!isMarkActive(state, markType)) return canonicalRunFormatting(state, formatting);
+    if (!isDocumentMarkActiveAcrossSelection(state, markType))
+      return canonicalRunFormatting(state, formatting);
     const keys = markType.name === "strike" ? ["strike", "doubleStrike"] : Object.keys(formatting);
     return canonicalRunFormatting(state, Object.fromEntries(keys.map((key) => [key, null])));
   });
+};
+
+export const isDocumentMarkActiveAcrossSelection = (
+  state: EditorState,
+  type: MarkType,
+): boolean => {
+  const markType = documentMarkType(state, type);
+  const { from, to, empty, $from } = state.selection;
+  if (empty) return markType.isInSet(state.storedMarks ?? $from.marks()) !== undefined;
+
+  let selectedText = false;
+  let allSelectedTextHasMark = true;
+  state.doc.nodesBetween(from, to, (node) => {
+    if (!node.isText || node.marks.some((mark) => mark.type.name === "footnoteRef")) return true;
+    selectedText = true;
+    if (!markType.isInSet(node.marks)) allSelectedTextHasMark = false;
+    return allSelectedTextHasMark;
+  });
+  return selectedText && allSelectedTextHasMark;
 };
 
 /** UI toggle whose direct-formatting contract explicitly targets both script families. */

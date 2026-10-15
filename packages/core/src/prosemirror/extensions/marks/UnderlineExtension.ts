@@ -4,6 +4,8 @@
 
 import { panic } from "better-result";
 
+import { withCanonicalCommand } from "../../canonicalCommands";
+import type { UnderlineStyle } from "../../../types/document";
 import {
   PLAIN_UNDERLINE,
   underlineDecorationCss,
@@ -13,7 +15,7 @@ import { expectUnderlineMarkAttrs } from "../../attrs";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { setMark, toggleUnderlineMark } from "./markUtils";
+import { canonicalSetMarkFormatting, setMark, toggleUnderlineMark } from "./markUtils";
 
 /** `w:u w:val="none"`: the token that cancels an inherited underline. */
 const NO_UNDERLINE = "none";
@@ -70,8 +72,14 @@ export const UnderlineExtension = createMarkExtension({
     return {
       commands: {
         toggleUnderline: () => toggleUnderlineMark(underlineType),
-        setUnderlineStyle: (style: string, color?: TextColorAttrs) =>
-          setMark(underlineType, { style, color }),
+        setUnderlineStyle: (style: UnderlineStyle, color?: TextColorAttrs) =>
+          withCanonicalCommand(setMark(underlineType, { style, color }), (state) =>
+            canonicalSetMarkFormatting({
+              state,
+              type: underlineType,
+              attrs: { style, color },
+            }),
+          ),
       },
       keyboardShortcuts: {
         "Mod-u": toggleUnderlineMark(underlineType),
