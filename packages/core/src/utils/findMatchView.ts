@@ -402,8 +402,14 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
     observer.observe(options.commentRoot, { childList: true, subtree: true, attributes: true });
   const resize = new ResizeObserver(schedule);
   resize.observe(container);
-  container.addEventListener("scroll", schedule, true);
-  options.commentRoot?.addEventListener("scroll", schedule, true);
+  // Clip paths follow each source's editor scroll root, which may enclose a
+  // surface; a capture listener on the surface alone misses that root's scroll.
+  const scrollTargets = new Set<HTMLElement>(
+    [container, options.commentRoot].flatMap((surface) =>
+      surface ? [surface, getEditorScrollRoot(surface) ?? surface] : [],
+    ),
+  );
+  for (const target of scrollTargets) target.addEventListener("scroll", schedule, true);
   repaint();
   const paint = (index: number) => {
     currentIndex = index;
@@ -468,8 +474,7 @@ export const createFindMatchView = (options: FindMatchViewOptions) => {
     destroy: () => {
       observer.disconnect();
       resize.disconnect();
-      container.removeEventListener("scroll", schedule, true);
-      options.commentRoot?.removeEventListener("scroll", schedule, true);
+      for (const target of scrollTargets) target.removeEventListener("scroll", schedule, true);
       if (frame !== null) window?.cancelAnimationFrame(frame);
       overlay.remove();
       commentOverlay?.remove();

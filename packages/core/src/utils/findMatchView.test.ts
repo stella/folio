@@ -692,6 +692,39 @@ describe("view-only search geometry", () => {
     scroll.mockRestore();
   });
 
+  test("scrolling an editor scroll root that encloses the surface repaints its clipping", async () => {
+    const doc: Document = { package: { document: { content: [paragraph("hit")] } } };
+    const matches = findInDocument(doc, "hit", createDefaultFindOptions());
+    const range = resolveDocumentFindRanges({ document: doc, matches }).at(0);
+    if (!range) throw new Error("expected a body range");
+    const root = viewport();
+    const container = document.createElement("div");
+    container.getBoundingClientRect = () => new DOMRect(0, 0, 500, 100);
+    root.append(container);
+    const span = appendPaintedSpan({ container, ...range, top: 200 });
+    const addListener = spyOn(root, "addEventListener");
+    const removeListener = spyOn(root, "removeEventListener");
+    const view = createFindMatchView({ container, document: doc, matches });
+    const clip = () =>
+      container.querySelector<HTMLElement>("[data-find-match-index]")?.style.clipPath;
+    expect(clip()).toBe("inset(0px 0px 118px 0px)");
+
+    span.getBoundingClientRect = () => new DOMRect(30, 20, 24, 18);
+    root.dispatchEvent(new Event("scroll"));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(clip()).toBe("inset(0px 0px 0px 0px)");
+
+    view.destroy();
+    expect(addListener).toHaveBeenCalledWith("scroll", expect.any(Function), true);
+    expect(removeListener).toHaveBeenCalledWith(
+      "scroll",
+      addListener.mock.calls.find(([type]) => type === "scroll")?.[1],
+      true,
+    );
+    addListener.mockRestore();
+    removeListener.mockRestore();
+  });
+
   test("destroy disconnects both observers", () => {
     const mutationDisconnect = spyOn(MutationObserver.prototype, "disconnect");
     const resizeDisconnect = spyOn(ResizeObserver.prototype, "disconnect");
