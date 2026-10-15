@@ -107,6 +107,9 @@
     </div>
 
     <DocxEditorDialogs
+      :markup-view="displayMode"
+      :read-only="readOnly"
+      :on-readonly-edit-attempt="reportReadonlyEditAttempt"
       v-model:show-find-replace="showFindReplace"
       v-model:show-hyperlink="showHyperlink"
       v-model:show-insert-symbol="showInsertSymbol"
@@ -556,8 +559,10 @@ import DocxEditorOverlays from "./DocxEditor/DocxEditorOverlays.vue";
 import type { DocxEditorProps, EditorMode } from "./DocxEditor/types";
 import {
   isTrackChangesMode,
+  getEditorReadOnlyReason,
   toggledTrackChangesMode,
 } from "@stll/folio-core/managers/EditorModeManager";
+import { reviewDisplayModeToDisplayMode } from "@stll/folio-core/managers/reviewDisplayMode";
 import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import ImageSelectionOverlay from "./ImageSelectionOverlay.vue";
 import HeaderFooterSelectionOverlay from "./HeaderFooterSelectionOverlay.vue";
@@ -605,6 +610,7 @@ const props = withDefaults(defineProps<DocxEditorProps>(), {
   showZoomControl: true,
   showReviewControls: true,
   readOnly: false,
+  showCommentHighlights: true,
   author: "User",
   mode: "editing",
   initialZoom: 1,
@@ -676,7 +682,6 @@ function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
 }
 
 const editorMode = ref<EditorMode>(props.mode);
-const readOnly = computed(() => props.readOnly || editorMode.value === "viewing");
 
 // Review controls (mirrors React's `useEditorMode` display state + toggle):
 //  - `showReviewControls` gates the toolbar's track-changes toggle + markup
@@ -689,14 +694,32 @@ const readOnly = computed(() => props.readOnly || editorMode.value === "viewing"
 // rather than a `?? true` fallback (which the cast would pre-empt).
 const showReviewControls = computed(() => props.showReviewControls);
 const trackChangesOn = computed(() => isTrackChangesMode(editorMode.value));
-const displayMode = ref<DisplayMode>("all-markup");
+const internalDisplayMode = ref<DisplayMode>("all-markup");
+const displayMode = computed(() =>
+  props.reviewDisplayMode === undefined
+    ? internalDisplayMode.value
+    : reviewDisplayModeToDisplayMode(props.reviewDisplayMode),
+);
+const readOnlyReason = computed(() =>
+  getEditorReadOnlyReason({
+    editingMode: editorMode.value,
+    readOnlyProp: props.readOnly,
+    displayMode: displayMode.value,
+  }),
+);
+const readOnly = computed(() => readOnlyReason.value !== null);
+
+function reportReadonlyEditAttempt(): void {
+  const reason = readOnlyReason.value;
+  if (reason !== null) props.onReadonlyEditAttempt?.(reason);
+}
 
 function toggleTrackChanges(): void {
   setEditorMode(toggledTrackChangesMode(editorMode.value));
 }
 
 function setDisplayMode(mode: DisplayMode): void {
-  displayMode.value = mode;
+  internalDisplayMode.value = mode;
 }
 
 // Root modifier class driving the tracked-change display CSS (mirrors React's
@@ -868,6 +891,7 @@ const {
   password: () => props.password,
   pageRenderer: () => props.pageRenderer,
   markupView: displayMode,
+  showCommentHighlights: () => props.showCommentHighlights,
   showMarginGuides: () => props.showMarginGuides,
   marginGuideColor: () => props.marginGuideColor,
   externalPlugins,
@@ -896,7 +920,7 @@ const {
   onCopy: () => props.onCopy?.(),
   onCut: () => props.onCut?.(),
   onPaste: () => props.onPaste?.(),
-  onReadOnlyEditAttempt: () => props.onReadonlyEditAttempt?.(),
+  onReadOnlyEditAttempt: reportReadonlyEditAttempt,
   // Selective-save feature flags + tripwire observability, mirroring React's
   // DocxEditor save path. Read fresh on each save() so prop updates are honored.
   featureFlags: () => props.featureFlags,
@@ -1768,6 +1792,8 @@ onMounted(() => {
 
 // ---- Imperative ref surface ---------------------------------------------
 const { exposed } = useDocxEditorRefApi({
+  getReadOnlyReason: () => readOnlyReason.value,
+  markupView: displayMode,
   editor,
   editorView,
   // Doc-dirty flag (any doc-changing transaction; cleared on save + load) and

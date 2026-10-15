@@ -1,5 +1,16 @@
 # @stll/folio-vue
 
+## 0.24.0
+
+### Minor Changes
+
+- [#1700](https://github.com/stella/folio/pull/1700) [`9fa8044`](https://github.com/stella/folio/commit/9fa80447218a28f0822a7dd43b9ed703630835be) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Require host-managed ProseMirror and Yjs peers; isolate editor keys, shortcuts, styles, and fonts while preserving plugin state access across module evaluations.
+
+### Patch Changes
+
+- Updated dependencies [[`19a80db`](https://github.com/stella/folio/commit/19a80db2fd8b3bc2e32f04586c12c63a36521d59), [`9fa8044`](https://github.com/stella/folio/commit/9fa80447218a28f0822a7dd43b9ed703630835be), [`9fa8044`](https://github.com/stella/folio/commit/9fa80447218a28f0822a7dd43b9ed703630835be), [`73ec846`](https://github.com/stella/folio/commit/73ec846b9193c5d522b1d263f8813ed36fd099fa)]:
+  - @stll/folio-core@0.60.0
+
 ## 0.23.0
 
 ### Minor Changes

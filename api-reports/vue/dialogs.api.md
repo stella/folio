@@ -7,6 +7,8 @@
 import { ComponentOptionsMixin } from 'vue';
 import { ComponentProvideOptions } from 'vue';
 import { DefineComponent } from 'vue';
+import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorView } from 'prosemirror-view';
 import { EndnoteProperties } from '@stll/folio-core/types/content';
 import { FootnoteProperties } from '@stll/folio-core/types/content';

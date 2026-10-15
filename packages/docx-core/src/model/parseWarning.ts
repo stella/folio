@@ -30,6 +30,8 @@ export const PARSE_WARNING_CODES = {
   documentModelIssue: "document-model-issue",
   /** A later `w:comment` repeating a `w:id` an earlier one defines. */
   duplicateCommentId: "duplicate-comment-id",
+  /** A source definition repeats an identity in its part or package scope. */
+  duplicateImportedId: "duplicate-imported-id",
   /** A `w:comment` with no readable `w:id`; it can anchor nothing. */
   missingCommentId: "missing-comment-id",
   /** A later `w:footnote`/`w:endnote` repeating an id an earlier one defines. */
@@ -76,6 +78,23 @@ export const PARSE_WARNING_CODES = {
   nestedRowOpaque: "nested-row-opaque",
 } as const;
 
+export const IMPORTED_ID_COLLISION_KINDS = {
+  bookmark: "bookmark",
+  comment: "comment",
+  footnote: "footnote",
+  endnote: "endnote",
+  revision: "revision",
+  paraId: "paraId",
+  textId: "textId",
+  numId: "numId",
+  abstractNumId: "abstractNumId",
+  drawing: "drawing",
+  relationship: "relationship",
+} as const;
+
+export type ImportedIdCollisionKind =
+  (typeof IMPORTED_ID_COLLISION_KINDS)[keyof typeof IMPORTED_ID_COLLISION_KINDS];
+
 export type ParseWarningCode = (typeof PARSE_WARNING_CODES)[keyof typeof PARSE_WARNING_CODES];
 
 /** Where a warning happened, as precisely as the part can say. */
@@ -94,6 +113,8 @@ export type ParseWarningLocation = {
 
 export type ParseWarning = {
   code: ParseWarningCode;
+  /** The identity domain, for imported collision diagnostics. */
+  identityKind?: ImportedIdCollisionKind;
   location: ParseWarningLocation;
   /** The value folio declined to read, exactly as the source wrote it. */
   value?: string;

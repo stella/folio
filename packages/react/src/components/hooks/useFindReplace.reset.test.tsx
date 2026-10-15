@@ -6,6 +6,17 @@ import { afterAll, expect, test } from "bun:test";
 import { panic } from "better-result";
 import { act, createRef, useImperativeHandle, useRef } from "react";
 import { createRoot } from "react-dom/client";
+import { EditorState } from "prosemirror-state";
+import { DISPLAY_MODES } from "@stll/folio-core/managers/EditorModeManager";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
+import { schema } from "@stll/folio-core/prosemirror/schema";
+import { parseDocx } from "@stll/folio-core/docx/parser";
+import { repackDocx } from "@stll/folio-core/docx/rezip";
+import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
+import { buildRawPackage, SECTION, WORD_STYLES } from "@stll/folio-core/__tests__/documentShapes";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import type { Document } from "@stll/folio-core/types/document";
 import type { FindMatch } from "../dialogs/findReplaceUtils";
@@ -24,6 +35,69 @@ type FindHarnessRef = {
   operations: ReturnType<typeof useFindReplace>;
   matches: FindMatch[];
 };
+
+test.each(DISPLAY_MODES.filter((mode) => mode !== "all-markup"))(
+  "initial %s searches defer until the lazy body editor has a state",
+  async (markupView) => {
+    const revisionAttrs = { revisionId: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
+    const insertion = (schema.marks["insertion"] ?? panic("Missing insertion mark")).create(
+      revisionAttrs,
+    );
+    const deletion = (schema.marks["deletion"] ?? panic("Missing deletion mark")).create(
+      revisionAttrs,
+    );
+    const state = EditorState.create({
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("inserted", [insertion]),
+          schema.text(" deleted", [deletion]),
+          schema.text(" kept"),
+        ]),
+      ]),
+    });
+    const fixture = createEmptyDocument({ initialText: "inserted deleted kept" });
+    const hiddenQueries = {
+      "all-markup": null,
+      "simple-markup": "deleted",
+      "no-markup": "deleted",
+      original: "inserted",
+    } as const satisfies Record<DisplayMode, string | null>;
+    const hiddenQuery = hiddenQueries[markupView];
+    let editorState: EditorState | null = null;
+    const ref = createRef<FindHarnessRef>();
+    const Harness = () => {
+      const findReplace = useFindDialogState();
+      const containerRef = useRef<HTMLDivElement>(null);
+      const operations = useFindReplace({
+        documentState: fixture,
+        getEditorState: () => editorState,
+        markupView,
+        containerRef,
+        handleDocumentChange: noop,
+        findReplace,
+      });
+      useImperativeHandle(ref, () => ({ operations, matches: findReplace.state.matches }));
+      return null;
+    };
+    const root = createRoot(document.createElement("div"));
+    const getOperations = () => ref.current?.operations ?? panic("Find hook handle missing");
+    try {
+      await act(async () => root.render(<Harness />));
+      await act(async () => {
+        expect(getOperations().handleFind(hiddenQuery, options)).toBeNull();
+      });
+      expect(ref.current?.matches).toEqual([]);
+      expect(getOperations().handleFindNext()).toBeNull();
+      editorState = state;
+      await act(async () => {
+        expect(getOperations().handleFind(hiddenQuery, options)?.totalCount).toBe(0);
+        expect(getOperations().handleFind("kept", options)?.totalCount).toBe(1);
+      });
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);
 
 test("query and document resets clear manager navigation, reactive result, and dialog matches together", async () => {
   const ref = createRef<FindHarnessRef>();
@@ -78,6 +152,124 @@ test("query and document resets clear manager navigation, reactive result, and d
       getOperations().handleFind("needle", options);
     });
     assertCleared();
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
+test("switching markup views refreshes active results and preserves authored selection ranges", async () => {
+  const ref = createRef<FindHarnessRef>();
+  const deletion = (schema.marks["deletion"] ?? panic("Missing deletion mark")).create({
+    revisionId: 1,
+    author: "Reviewer",
+    date: "2026-01-01T00:00:00Z",
+  });
+  const state = EditorState.create({
+    doc: schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("needle", [deletion]), schema.text(" kept")]),
+    ]),
+  });
+  const fixture = createEmptyDocument({ initialText: "needle kept" });
+  const selected: FindMatch[] = [];
+  const Harness = ({ markupView }: { markupView: DisplayMode }) => {
+    const findReplace = useFindDialogState();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const operations = useFindReplace({
+      documentState: fixture,
+      getEditorState: () => state,
+      markupView,
+      containerRef,
+      handleDocumentChange: noop,
+      findReplace,
+      selectMatch: (match) => {
+        selected.push(match);
+        return true;
+      },
+    });
+    useImperativeHandle(ref, () => ({ operations, matches: findReplace.state.matches }));
+    return null;
+  };
+  const root = createRoot(document.createElement("div"));
+  const getOperations = () => ref.current?.operations ?? panic("Find hook handle missing");
+  try {
+    await act(async () => root.render(<Harness markupView="all-markup" />));
+    await act(async () => {
+      getOperations().handleFind("needle", options);
+    });
+    expect(getOperations().currentResult?.totalCount).toBe(1);
+    await act(async () => root.render(<Harness markupView="no-markup" />));
+    expect(getOperations().currentResult?.totalCount).toBe(0);
+    expect(getOperations().handleFindNext()).toBeNull();
+    await act(async () => root.render(<Harness markupView="original" />));
+    expect(getOperations().currentResult?.totalCount).toBe(1);
+    expect(selected.at(-1)?.authoredRange).toEqual({ from: 1, to: 7 });
+    expect(getOperations().handleReplace("replacement")).toBe(false);
+    expect(getOperations().handleReplaceAll("needle", "replacement", options)).toBe(0);
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
+test("replacement spanning a hidden revision is refused without changing saved bytes", async () => {
+  const input = await buildRawPackage({
+    styles: WORD_STYLES,
+    body:
+      '<w:p><w:r><w:t>left</w:t></w:r><w:del w:id="1" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"><w:r><w:delText xml:space="preserve"> hidden </w:delText></w:r></w:del><w:r><w:t>right</w:t></w:r></w:p>' +
+      SECTION(),
+  });
+  let currentDocument = await parseDocx(input, { preloadFonts: false, detectVariables: false });
+  let state = EditorState.create({ doc: toProseDoc(currentDocument) });
+  const authored = state.doc;
+  const savedBefore = new Uint8Array(
+    await repackDocx(currentDocument, { updateModifiedDate: false }),
+  );
+  const refusals: EditorReadOnlyReason[] = [];
+  const ref = createRef<FindHarnessRef>();
+  const Harness = ({ markupView }: { markupView: DisplayMode }) => {
+    const findReplace = useFindDialogState();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const operations = useFindReplace({
+      getDocumentState: () => currentDocument,
+      getEditorState: () => state,
+      markupView,
+      onReadonlyEditAttempt: (reason) => refusals.push(reason),
+      containerRef,
+      handleDocumentChange: (document) => {
+        currentDocument = document;
+        state = EditorState.create({ doc: toProseDoc(document) });
+      },
+      findReplace,
+    });
+    useImperativeHandle(ref, () => ({ operations, matches: findReplace.state.matches }));
+    return null;
+  };
+  const root = createRoot(document.createElement("div"));
+  const getOperations = () => ref.current?.operations ?? panic("Find hook handle missing");
+  try {
+    await act(async () => root.render(<Harness markupView="no-markup" />));
+    await act(async () => {
+      expect(getOperations().handleFind("leftright", options)?.totalCount).toBe(1);
+    });
+    expect(ref.current?.matches.at(0)?.authoredRange).toEqual({ from: 1, to: 18 });
+    await act(async () => {
+      expect(getOperations().handleReplace("replacement")).toBe(false);
+      expect(getOperations().handleReplaceAll("leftright", "replacement", options)).toBe(0);
+    });
+    expect(state.doc).toBe(authored);
+    expect(
+      new Uint8Array(await repackDocx(currentDocument, { updateModifiedDate: false })),
+    ).toEqual(savedBefore);
+    expect(refusals).toEqual(["review-display-mode", "review-display-mode"]);
+    await act(async () => root.render(<Harness markupView="all-markup" />));
+    await act(async () => {
+      getOperations().handleFind("left", options);
+      expect(getOperations().handleReplace("replacement")).toBe(true);
+    });
+    expect(state.doc.textContent).toBe("replacement hidden right");
+    await act(async () => {
+      expect(getOperations().handleReplaceAll("right", "end", options)).toBe(1);
+    });
+    expect(state.doc.textContent).toBe("replacement hidden end");
   } finally {
     await act(async () => root.unmount());
   }

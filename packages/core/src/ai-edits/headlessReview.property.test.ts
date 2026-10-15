@@ -18,8 +18,8 @@
  *     many fixture × block × replacement combinations:
  *       - Accept ≡ direct: a tracked-changes edit then `acceptAll()` yields the
  *         same visible text as the same edit applied in `direct` mode.
- *       - Reject restores: a tracked-changes edit then `rejectAll()` restores the
- *         original visible text.
+ *       - Reject restores: a tracked-changes edit then `rejectAll()` yields the
+ *         source text with all inherited revisions rejected too.
  *   - Selective ≡ full repack calls `attemptSelectiveSave` directly and asserts a
  *     non-null return (null = it bailed to a full repack) before comparing it
  *     against a forced full repack, so the equivalence can never be vacuously
@@ -36,7 +36,11 @@ import { EditorState } from "prosemirror-state";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
@@ -181,7 +185,7 @@ describe("headless reviewer invariants (full corpus)", () => {
   test(
     "tracked-changes edit then rejectAll restores the original visible text",
     async () => {
-      await fc.assert(
+      await assertProperty(
         fc.asyncProperty(
           fc.constantFrom(...FIXTURE_FILES),
           fc.nat(),
@@ -193,8 +197,12 @@ describe("headless reviewer invariants (full corpus)", () => {
             if (targets.length === 0) {
               return;
             }
-            const original = blockTexts(probe);
             const op = replaceOp(targets[selector % targets.length]!, replace);
+            // Capture edit anchors before rejecting: inherited insertions can
+            // disappear. rejectAll resolves source revisions as well as our edit,
+            // so the oracle must reject the untouched source independently.
+            probe.rejectAll();
+            const original = blockTexts(probe);
 
             const tracked = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
             const applied = tracked.applyOperations([op], { undefinedReferences: "refuse" });
@@ -206,7 +214,10 @@ describe("headless reviewer invariants (full corpus)", () => {
             expect(blockTexts(tracked)).toEqual(original);
           },
         ),
-        propertyConfig({ numRuns: 40 }),
+        {
+          id: "tracked-changes edit then rejectAll restores the original visible text",
+          numRuns: 40,
+        },
       );
     },
     propertyTestTimeout(20_000),

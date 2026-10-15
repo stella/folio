@@ -1,0 +1,9 @@
+{
+  "deleting an imported $kind paragraph before $following": [
+    {
+      "seed": 10357178,
+      "note": "Deleting a pending relocation destination retracts its added paragraph break.",
+      "date": "2026-10-14"
+    }
+  ]
+}

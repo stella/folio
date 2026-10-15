@@ -6,8 +6,8 @@ import {
   failureMarker,
   failureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
-import type { Context } from "./fuzz-failure-issues";
-import type { Issue, IssueStore } from "./fuzz-issue-classes";
+import type { Context, FingerprintIssueStore } from "./fuzz-failure-issues";
+import type { Issue } from "./fuzz-issue-classes";
 
 import { hash32 } from "../test/commit-seed";
 import {
@@ -116,7 +116,7 @@ const finding = (fixture: string) => {
 const withStore = async (
   body: (fixture: {
     root: string;
-    store: IssueStore;
+    store: FingerprintIssueStore;
     writes: Issue[];
     reads: () => number;
   }) => Promise<void>,
@@ -145,13 +145,13 @@ const withStore = async (
       writes.push(issue);
       return issue;
     },
-    edit: async () => {
+    comment: async () => {
       throw new Error("Unexpected issue edit");
     },
     reopen: async () => {
       throw new Error("Unexpected issue reopen");
     },
-  } satisfies IssueStore;
+  } satisfies FingerprintIssueStore;
   try {
     await body({ root, store, writes, reads: () => reads });
   } finally {
@@ -160,7 +160,7 @@ const withStore = async (
 };
 
 test("group-only failures file nothing through the issue store", async () => {
-  await withStore(async ({ root, store, writes, reads }) => {
+  await withStore(async ({ store, writes, reads }) => {
     const group = finding("stories");
     const judged = await fileMainFindings({
       findings: [group],
@@ -171,7 +171,6 @@ test("group-only failures file nothing through the issue store", async () => {
         },
       ],
       context,
-      root,
       store,
     });
     expect(judged.verdict).toBe("introduced");
@@ -181,8 +180,8 @@ test("group-only failures file nothing through the issue store", async () => {
   });
 });
 
-test("matching main failures file exactly one class issue with only reproduced rows", async () => {
-  await withStore(async ({ root, store, writes }) => {
+test("matching main failures file one issue per reproduced fingerprint", async () => {
+  await withStore(async ({ store, writes }) => {
     const findings = [finding("stories"), finding("comments"), finding("lists")];
     const confirmed = findings.slice(0, 2).map(({ record }) => record.marker.fingerprint);
     const judged = await fileMainFindings({
@@ -194,21 +193,20 @@ test("matching main failures file exactly one class issue with only reproduced r
         },
       ],
       context,
-      root,
       store,
     });
     expect(judged.verdict).toBe("mixed");
-    expect(writes).toHaveLength(1);
-    const body = writes.at(0)?.body;
-    for (const fingerprint of confirmed) expect(body).toContain(fingerprint);
-    expect(body).not.toContain(findings.at(2)?.record.marker.fingerprint);
-    expect(body).toContain(context.runUrl);
-    expect(judged.fingerprints.map(({ issue }) => issue)).toEqual(["#1", "#1", null]);
+    expect(writes).toHaveLength(2);
+    for (const [index, fingerprint] of confirmed.entries())
+      expect(writes.at(index)?.body).toContain(fingerprint);
+    for (const issue of writes)
+      expect(issue.body).not.toContain(findings.at(2)?.record.marker.fingerprint);
+    expect(judged.fingerprints.map(({ issue }) => issue)).toEqual(["#1", "#2", null]);
   });
 });
 
 test("unavailable or incomplete main replay prevents every store access", async () => {
-  await withStore(async ({ root, store, writes, reads }) => {
+  await withStore(async ({ store, writes, reads }) => {
     const findings = [finding("stories"), finding("comments")];
     const fingerprint = findings.at(0)?.record.marker.fingerprint;
     if (fingerprint === undefined) throw new Error("Missing fixture fingerprint");
@@ -231,9 +229,7 @@ test("unavailable or incomplete main replay prevents every store access", async 
       ],
     ];
     for (const attempts of cases) {
-      await expect(
-        fileMainFindings({ findings, attempts, context, root, store }),
-      ).rejects.toThrow();
+      await expect(fileMainFindings({ findings, attempts, context, store })).rejects.toThrow();
       expect(writes).toHaveLength(0);
       expect(reads()).toBe(0);
     }

@@ -17,6 +17,7 @@
 import {
   MAX_RETAINED_PARSE_WARNINGS_PER_CODE,
   type ParseWarning,
+  type ImportedIdCollisionKind,
   type ParseWarningCode,
   type ParseWarningLocation,
 } from "@stll/docx-core/model";
@@ -24,6 +25,7 @@ import {
 /** What a call site states; the collector supplies the rest. */
 export type ParseWarningReport = {
   code: ParseWarningCode;
+  identityKind?: ImportedIdCollisionKind;
   /** The element as written, prefix included. */
   element?: string;
   /** The best position this part can name, e.g. `style "Heading1"`. */
@@ -70,6 +72,7 @@ export const createParseWarningCollector = (part = PACKAGE_PART): ParseWarningCo
     retainedByCode.set(report.code, kept + 1);
     retained.push({
       code: report.code,
+      ...(report.identityKind === undefined ? {} : { identityKind: report.identityKind }),
       location: {
         ...location,
         ...(report.element === undefined ? {} : { element: report.element }),

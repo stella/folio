@@ -91,16 +91,10 @@ test("cross-host random lane uses a bounded scheduled workflow with issue filing
   if (!upload) throw new Error("Repro artifact upload unavailable");
   expect(requireRecord(upload["with"])["path"]).toBe("fuzz-artifacts/\nfuzz-playwright/\n");
   const reporter = requireRecord(requireRecord(workflow["jobs"])["cross-host-report"]);
-  expect(reporter["timeout-minutes"]).toBeLessThanOrEqual(5);
   expect(reporter["if"]).toContain("github.ref == 'refs/heads/main'");
-  const reportSteps = reporter["steps"];
-  if (!Array.isArray(reportSteps)) throw new Error("Report steps unavailable");
-  const report = reportSteps
-    .map(requireRecord)
-    .find(
-      (step) =>
-        typeof step["run"] === "string" && step["run"].includes("scripts/fuzz-failure-issues.ts"),
-    );
-  expect(report?.["run"]).toContain("--log fuzz-results/fuzz-artifacts/cross-host/cross-host.log");
-  expect(report?.["run"]).toContain(`--records fuzz-results/${recordsPath}`);
+  expect(reporter["uses"]).toBe("./.github/workflows/fuzz-failure-report.yml");
+  expect(reporter["with"]).toEqual({
+    "artifact-pattern": "cross-host-differential-repro",
+    "log-pattern": "**/fuzz-artifacts/cross-host/*.log",
+  });
 });

@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 1775378440,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 0,
+            "endOffset": 13,
+            "selectedTextHash": "he7lpvz"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "core batch",
+      "seed": 2,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 9,
+            "endOffset": 13,
+            "selectedTextHash": "h62xin"
+          },
+          "replace": "(ok)"
+        }
+      ],
+      "atomic": true
+    }
+  ],
+  "title": "formatting split by tracked replacement"
+}

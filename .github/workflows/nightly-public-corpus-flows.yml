@@ -73,31 +73,9 @@ jobs:
     name: File public corpus findings
     needs: corpus-flows
     if: failure() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    concurrency:
-      group: fuzz-failure-issues
-      cancel-in-progress: false
     permissions:
       contents: read
       issues: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@167fb396c6c0f4e07296ad2cd72e6ef15367c776
-        with:
-          bun-version-file: "package.json"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: public-corpus-full-flows
-          path: fuzz-results
-      - name: Open or update findings by fingerprint
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: >-
-          bun scripts/fuzz-failure-issues.ts --log fuzz-results/run.log
-          --records fuzz-results --run-url "$RUN_URL" --sha "$GITHUB_SHA"
-          --source public-corpus-flows
+    uses: ./.github/workflows/fuzz-failure-report.yml
+    with:
+      artifact-pattern: public-corpus-full-flows

@@ -637,12 +637,12 @@ export function createNumberingMap(definitions: NumberingDefinitions): Numbering
   // Build lookup maps for efficient access
   const abstractMap = new Map<number, AbstractNumbering>();
   for (const abs of definitions.abstractNums) {
-    abstractMap.set(abs.abstractNumId, abs);
+    if (!abstractMap.has(abs.abstractNumId)) abstractMap.set(abs.abstractNumId, abs);
   }
 
   const numMap = new Map<number, NumberingInstance>();
   for (const num of definitions.nums) {
-    numMap.set(num.numId, num);
+    if (!numMap.has(num.numId)) numMap.set(num.numId, num);
   }
 
   return {

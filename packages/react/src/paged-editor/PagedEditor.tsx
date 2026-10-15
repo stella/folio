@@ -326,6 +326,7 @@ export type PagedEditorProps = {
    * text, the other views the text they show (see `projectMarkupView`).
    */
   markupView: DisplayMode;
+  showCommentHighlights?: boolean;
   showMarginGuides?: boolean;
   /** CSS color used for margin guides. */
   marginGuideColor?: string;
@@ -927,6 +928,7 @@ function renderHeaderFooterContentByRId(
 type LayoutInputSignatureOptions = {
   columns: ColumnLayout | undefined;
   markupView: DisplayMode;
+  showCommentHighlights?: boolean;
   contentWidth: number;
   defaultTabStop: number | undefined;
   mirrorMargins: boolean;
@@ -1384,6 +1386,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       zoom = 1,
       pageRenderer,
       markupView,
+      showCommentHighlights = true,
       showMarginGuides = false,
       marginGuideColor,
       onDocumentChange,
@@ -1901,6 +1904,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         buildLayoutInputSignature({
           columns,
           markupView,
+          showCommentHighlights,
           contentWidth,
           defaultTabStop,
           mirrorMargins,
@@ -1923,6 +1927,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       [
         columns,
         markupView,
+        showCommentHighlights,
         contentWidth,
         defaultTabStop,
         mirrorMargins,
@@ -2022,6 +2027,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
             hyphenationReadiness,
             markupView,
+            showCommentHighlights,
           },
           state,
           options,
@@ -2078,6 +2084,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         mirrorMargins,
         styles,
         markupView,
+        showCommentHighlights,
         layoutInputSignature,
         hyphenationReadiness,
       ],
@@ -5409,7 +5416,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         if (
           layoutSessionRef.current.lastPmDoc?.eq(view.state.doc) &&
-          layoutSessionRef.current.lastMeasureInputs?.markupView === markupView
+          layoutSessionRef.current.lastMeasureInputs?.markupView === markupView &&
+          layoutSessionRef.current.lastMeasureInputs?.showCommentHighlights ===
+            (showCommentHighlights && markupView !== "no-markup" && markupView !== "original")
         ) {
           // The doc is already laid out, but the painted pages may carry a
           // fill preview the fresh view's plugin no longer holds (or vice
@@ -5471,6 +5480,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         readOnly,
         refreshBodyImeCaretAnchor,
         markupView,
+        showCommentHighlights,
       ],
     );
 
@@ -6116,6 +6126,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         <HiddenHeaderFooterPMs
           ref={hfPMsRef}
           document={document}
+          readOnly={readOnly}
           onTransaction={handleHfPmTransaction}
           getCanonicalApi={getCanonicalApi}
           onSessionRefusal={handleSessionRefusal}

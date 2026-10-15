@@ -14,6 +14,7 @@ import {
   resolveParagraphMarkOwnFormatting,
 } from "./paragraphMarkFormatting";
 import { expectParagraphAttrs } from "../../prosemirror/attrs";
+import { expectBookmarkBoundaryAttrs } from "../../prosemirror/bookmarkBoundaryAttrs";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
 import type { TextFormatting } from "../../types/document";
@@ -174,7 +175,13 @@ export function convertParagraph(
     attrs.suppressEmptyParagraphHeight = true;
   }
 
-  const bookmarkNames = pmAttrs.bookmarks?.map((b) => b.name);
+  const bookmarkNames = pmAttrs.bookmarks?.map((b) => b.name) ?? [];
+  node.descendants((child) => {
+    if (child.type.name !== "bookmarkBoundary") return true;
+    const marker = expectBookmarkBoundaryAttrs(child);
+    if (marker.type === "start") bookmarkNames.push(marker.name);
+    return false;
+  });
 
   const block: ParagraphBlock = {
     kind: "paragraph",

@@ -146,7 +146,8 @@ const sameMeasureInputs = (left: LayoutMeasureInputs, right: LayoutMeasureInputs
   [...left.fontAlternates].every(
     ([name, alternate]) => right.fontAlternates.get(name) === alternate,
   ) &&
-  left.markupView === right.markupView;
+  left.markupView === right.markupView &&
+  left.showCommentHighlights === right.showCommentHighlights;
 
 type IncrementalDirtyRangeOptions = {
   session: LayoutSession;
@@ -290,6 +291,8 @@ export type LayoutPipelineDeps<THfPMs> = {
    * authored text with runs hidden afterwards.
    */
   markupView: DisplayMode;
+  /** Independent highlight visibility in All Markup; resolved views always hide comments. */
+  showCommentHighlights?: boolean;
 };
 
 type BodyMarginClearanceOptions = {
@@ -462,6 +465,7 @@ function runLayoutPipelineMeasured<THfPMs>(
     emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
     emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
     markupView,
+    showCommentHighlights = true,
   } = deps;
   // Reassigned to {} in the catch so a failed run returns no outcome (the
   // adapter then keeps the previously painted layout instead of advancing React
@@ -497,6 +501,8 @@ function runLayoutPipelineMeasured<THfPMs>(
     let phaseStartedAt = performance.now();
     const pageContentHeight = pageSize.h - margins.top - margins.bottom;
     const fontAlternates = buildFontAlternates(document?.package.fontTable);
+    const displayCommentHighlights =
+      showCommentHighlights && markupView !== "no-markup" && markupView !== "original";
     const embeddedFontFamilies = session.embeddedFontFamilyMap
       ? { embeddedFontFamilyMap: session.embeddedFontFamilyMap }
       : {};
@@ -509,8 +515,10 @@ function runLayoutPipelineMeasured<THfPMs>(
       fontSet,
       fontAlternates,
       markupView,
+      showCommentHighlights: displayCommentHighlights,
     };
     const flowOpts: ToFlowBlocksOptions = {
+      showCommentHighlights: displayCommentHighlights,
       ...embeddedFontFamilies,
       pageContentHeight,
       fontAlternates,
@@ -707,6 +715,8 @@ function runLayoutPipelineMeasured<THfPMs>(
           { allowEndTabOverflow: true },
         );
       return {
+        markupView,
+        showCommentHighlights: displayCommentHighlights,
         ...(flowOpts.styles ? { styles: flowOpts.styles } : {}),
         ...(document?.package.numbering === undefined
           ? {}
@@ -937,7 +947,7 @@ function runLayoutPipelineMeasured<THfPMs>(
     } => {
       const noteOptions: Parameters<typeof buildFootnoteContentMap>[3] & {
         measureBlocks: MeasureBlocksFn;
-      } = { measureBlocks };
+      } = { measureBlocks, showCommentHighlights: displayCommentHighlights, markupView };
       if (flowOpts.styles) {
         noteOptions.styles = flowOpts.styles;
       }

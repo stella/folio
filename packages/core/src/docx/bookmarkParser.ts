@@ -68,9 +68,9 @@ export function createBookmarkMap(): BookmarkMap {
  * @param bookmark - The bookmark start to add
  */
 export function addBookmark(map: BookmarkMap, bookmark: BookmarkStart): void {
-  map.byId.set(bookmark.id, bookmark);
+  if (!map.byId.has(bookmark.id)) map.byId.set(bookmark.id, bookmark);
   if (bookmark.name) {
-    map.byName.set(bookmark.name, bookmark);
+    if (!map.byName.has(bookmark.name)) map.byName.set(bookmark.name, bookmark);
   }
   map.bookmarks.push(bookmark);
 }

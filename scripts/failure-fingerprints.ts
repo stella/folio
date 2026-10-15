@@ -1,3 +1,4 @@
+import { Result, TaggedError } from "better-result";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -39,41 +40,44 @@ export const parseKnownFailures = (value: unknown): KnownFailure[] => {
   });
 };
 
+class MalformedFailureMarkerError extends TaggedError("MalformedFailureMarkerError")<{
+  message: string;
+}> {}
+
 export const extractFailureMarkers = (log: string): FailureMarker[] =>
-  log.split("\n").flatMap((line) => {
-    const start = line.indexOf(MARKER);
+  log.split("\n").flatMap((line, index) => {
+    const start = line.indexOf("FOLIO_FAILURE");
     if (start === -1) return [];
-    const value: unknown = JSON.parse(line.slice(start + MARKER.length).trim());
+    const malformed = () =>
+      new MalformedFailureMarkerError({ message: `Malformed FOLIO_FAILURE line ${index + 1}` });
+    if (!line.slice(start).startsWith(MARKER)) throw malformed();
+    const parsed = Result.try((): unknown => JSON.parse(line.slice(start + MARKER.length).trim()));
+    if (parsed.isErr()) throw malformed();
+    const value = parsed.value;
     if (
-      typeof value !== "object" ||
-      value === null ||
-      !("fingerprint" in value) ||
-      !("test" in value) ||
-      !("seed" in value) ||
-      !("repro" in value) ||
-      !("path" in value) ||
-      !("assertion" in value) ||
-      typeof value.fingerprint !== "string" ||
-      typeof value.test !== "string" ||
-      typeof value.seed !== "number" ||
-      typeof value.repro !== "string" ||
-      (value.path !== null && typeof value.path !== "string") ||
-      typeof value.assertion !== "string"
-    ) {
-      throw new Error("Malformed FOLIO_FAILURE line");
-    }
-    const optional = value as { diff?: unknown; flow?: unknown; primary?: unknown };
+      !isRecord(value) ||
+      typeof value["fingerprint"] !== "string" ||
+      !/^[0-9a-f]{16}$/u.test(value["fingerprint"]) ||
+      typeof value["test"] !== "string" ||
+      typeof value["seed"] !== "number" ||
+      !Number.isSafeInteger(value["seed"]) ||
+      typeof value["repro"] !== "string" ||
+      value["repro"].includes("\n") ||
+      (value["path"] !== null && typeof value["path"] !== "string") ||
+      typeof value["assertion"] !== "string"
+    )
+      throw malformed();
     return [
       {
-        fingerprint: value.fingerprint,
-        test: value.test,
-        seed: value.seed,
-        repro: value.repro,
-        path: value.path,
-        assertion: value.assertion,
-        ...(typeof optional.diff === "string" ? { diff: optional.diff } : {}),
-        ...(typeof optional.flow === "string" && typeof optional.primary === "string"
-          ? { flow: optional.flow, primary: optional.primary }
+        fingerprint: value["fingerprint"],
+        test: value["test"],
+        seed: value["seed"],
+        repro: value["repro"],
+        path: value["path"],
+        assertion: value["assertion"],
+        ...(typeof value["diff"] === "string" ? { diff: value["diff"] } : {}),
+        ...(typeof value["flow"] === "string" && typeof value["primary"] === "string"
+          ? { flow: value["flow"], primary: value["primary"] }
           : {}),
       },
     ];

@@ -84,6 +84,7 @@
           {{ t("findReplace.wholeWords") }}
         </label>
         <FolioButton
+          v-if="!replacementReadOnly"
           class="find-replace-dialog__toggle"
           data-testid="find-replace-toggle"
           variant="ghost"
@@ -97,7 +98,7 @@
       </div>
 
       <!-- Replace row -->
-      <div v-if="replaceMode" class="find-replace-dialog__row">
+      <div v-if="replaceMode && !replacementReadOnly" class="find-replace-dialog__row">
         <FolioInput
           v-model="replaceText"
           class="find-replace-dialog__input"
@@ -132,6 +133,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
 import type { EditorView } from "prosemirror-view";
+import type {
+  DisplayMode,
+  EditorReadOnlyReason,
+} from "@stll/folio-core/managers/EditorModeManager";
+import { getReviewViewReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
 import { useFindReplace } from "../../composables/useFindReplace";
@@ -143,11 +149,17 @@ const { t } = useTranslation();
 // floating panel, not a modal, so it does not use the Dialog primitive).
 const { Button: FolioButton, Input: FolioInput, Checkbox: FolioCheckbox } = useFolioUI();
 
-const props = defineProps<{
-  isOpen: boolean;
-  view: EditorView | null;
-  scrollVisiblePositionIntoView?: (pmPos: number) => void;
-}>();
+const props = withDefaults(
+  defineProps<{
+    isOpen: boolean;
+    view: EditorView | null;
+    markupView?: DisplayMode;
+    readOnly?: boolean;
+    onReadonlyEditAttempt?: (reason: EditorReadOnlyReason) => void;
+    scrollVisiblePositionIntoView?: (pmPos: number) => void;
+  }>(),
+  { markupView: "all-markup", readOnly: false },
+);
 
 const emit = defineEmits<{
   (e: "close"): void;
@@ -155,6 +167,12 @@ const emit = defineEmits<{
 
 const searchInputRef = ref<HTMLInputElement | null>(null);
 const replaceMode = ref(false);
+const replacementReadOnly = computed(
+  () =>
+    props.readOnly ||
+    getReviewViewReadOnlyReason(props.markupView) !== null ||
+    props.view?.editable === false,
+);
 const {
   searchText,
   replaceText,
@@ -169,6 +187,9 @@ const {
   clear: clearHighlights,
 } = useFindReplace({
   editorView: toRef(props, "view"),
+  markupView: toRef(props, "markupView"),
+  readOnly: toRef(props, "readOnly"),
+  onReadonlyEditAttempt: (reason) => props.onReadonlyEditAttempt?.(reason),
   scrollVisiblePositionIntoView: (pmPos) => props.scrollVisiblePositionIntoView?.(pmPos),
 });
 const matchCase = toRef(options, "matchCase");

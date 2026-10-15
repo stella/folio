@@ -39,6 +39,8 @@ const PARSE_WARNING_MESSAGES = {
     warning.detail ?? "The document model reported an issue.",
   [PARSE_WARNING_CODES.duplicateCommentId]: (warning) =>
     `Dropped ${plural(warning.count, "comment")} repeating a w:id another comment already defines.`,
+  [PARSE_WARNING_CODES.duplicateImportedId]: (warning) =>
+    `Repeated imported identity${quoted(warning.value)}${where(warning)}: ${warning.detail ?? "multiple definitions share an identity."}`,
   [PARSE_WARNING_CODES.missingCommentId]: (warning) =>
     `Dropped ${plural(warning.count, "comment")} with no readable w:id.`,
   [PARSE_WARNING_CODES.duplicateNoteId]: (warning) =>

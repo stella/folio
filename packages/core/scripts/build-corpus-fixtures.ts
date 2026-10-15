@@ -20,6 +20,7 @@
  */
 
 import JSZip from "jszip";
+import { importedIdCollisionFixtures } from "./imported-id-collision-fixtures";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
@@ -131,6 +132,14 @@ const RELATIONSHIP_DOC_OPEN = `<w:document xmlns:w="http://schemas.openxmlformat
 const DATAHASH_DOC_OPEN = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:w16sdtdh="http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash">`;
 
 const FIXTURES: Fixture[] = [
+  ...importedIdCollisionFixtures,
+  {
+    filename: "duplicate-bookmark-ids.docx",
+    body: `
+    <w:p><w:bookmarkStart w:id="7" w:name="target"/><w:r><w:t>First target</w:t></w:r><w:bookmarkEnd w:id="7"/></w:p>
+    <w:p><w:bookmarkStart w:id="7" w:name="target"/><w:r><w:t>Later target</w:t></w:r><w:bookmarkEnd w:id="7"/></w:p>
+    <w:p><w:fldSimple w:instr=" REF target "><w:r><w:t>Stale reference</w:t></w:r></w:fldSimple></w:p>`,
+  },
   // 1. Block-level richText SDT wrapping a paragraph.
   {
     filename: "block-sdt-richtext.docx",
