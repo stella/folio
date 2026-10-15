@@ -250,11 +250,37 @@ export const findInDisplayedDocument = ({
       };
     },
   );
+  // Body shape text follows its anchor paragraph, as in the package search.
+  const anchorEnds: number[] = [];
+  forEachSearchParagraph(state.doc, (paragraph, paragraphPos, paragraphIndex) => {
+    anchorEnds[paragraphIndex] = paragraphPos + paragraph.nodeSize;
+    return true;
+  });
+  const bodyShapeMatches = packageMatches.filter(
+    (match) => match.story === "main" && match.textBoxIndex !== undefined,
+  );
+  const orderedBody: FindMatch[] = [];
+  let shapeIndex = 0;
+  const shapeAnchorEnd = (match: FindMatch): number =>
+    (match.anchorParagraphIndex !== undefined && anchorEnds[match.anchorParagraphIndex]) ||
+    Number.POSITIVE_INFINITY;
+  for (const bodyMatch of bodyMatches) {
+    const from = bodyMatch.authoredRange?.from ?? 0;
+    while (shapeIndex < bodyShapeMatches.length) {
+      const shapeMatch = bodyShapeMatches[shapeIndex];
+      if (!shapeMatch || shapeAnchorEnd(shapeMatch) > from) break;
+      orderedBody.push(shapeMatch);
+      shapeIndex++;
+    }
+    orderedBody.push(bodyMatch);
+  }
+  orderedBody.push(...bodyShapeMatches.slice(shapeIndex));
   return [
-    ...bodyMatches,
+    ...orderedBody,
     ...packageMatches.filter(
       (match) =>
-        match.story !== "main" || match.textBoxIndex !== undefined || match.commentId !== undefined,
+        match.story !== "main" ||
+        (match.textBoxIndex === undefined && match.commentId !== undefined),
     ),
   ];
 };
