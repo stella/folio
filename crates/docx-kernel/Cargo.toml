@@ -29,7 +29,7 @@ wasm-bindgen = { version = "0.2.126", optional = true }
 
 [dev-dependencies]
 proptest = "1"
-zip = { version = "8.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9.0.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [lints]
 workspace = true
