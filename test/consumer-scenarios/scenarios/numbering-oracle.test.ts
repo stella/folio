@@ -186,6 +186,125 @@ test("style inheritance folds independent numbering slots and cancellation", asy
   assert.deepEqual(facts.styles.get("CancelledList"), { kind: "none" });
 });
 
+test("markerless numbering regression seed 1339716102", async () => {
+  await runFlow(1339716102, 20, "collisions", { generation: "targeted", swarm: "enabled" });
+});
+
+test("numbering kind follows marker visibility, independently of the retained reference", async () => {
+  for (const marker of [
+    "visible",
+    "missing",
+    "hidden",
+    "visibleOverride",
+    "hiddenOverride",
+    "none",
+    "emptyDecimal",
+  ] as const) {
+    const level = marker === "missing" ? 8 : 0;
+    const visible =
+      marker === "visible" || marker === "visibleOverride" || marker === "emptyDecimal";
+    const document = fromMarkdown("# Heading\n\nBody");
+    document.package.numbering = {
+      abstractNums: [
+        {
+          abstractNumId: 5,
+          levels: [
+            {
+              ...decimalLevel(0, marker === "none" || marker === "emptyDecimal" ? "" : "%1."),
+              ...(marker === "none" ? { numFmt: "none" } : {}),
+              ...(marker === "hidden" || marker === "visibleOverride"
+                ? { rPr: { hidden: true } }
+                : {}),
+            },
+          ],
+        },
+      ],
+      nums: [
+        {
+          numId: 5,
+          abstractNumId: 5,
+          ...(marker === "visibleOverride" || marker === "hiddenOverride"
+            ? {
+                levelOverrides: [
+                  {
+                    ilvl: 0,
+                    lvl: {
+                      ...decimalLevel(0, "%1."),
+                      rPr: { hidden: marker === "hiddenOverride" },
+                    },
+                  },
+                ],
+              }
+            : {}),
+        },
+      ],
+    };
+    assert.ok(document.package.styles);
+    document.package.styles.styles.push({
+      styleId: "MarkerList",
+      type: "paragraph",
+      pPr: { numPr: paragraphNumberingFromSlots({ numId: 5, ilvl: level }) },
+    });
+    for (const block of document.package.document.content) {
+      if (block.type !== "paragraph") continue;
+      block.formatting = { ...block.formatting, styleId: "MarkerList" };
+    }
+    const bytes = await packDocument(document);
+    for (const anchorText of ["Heading", "Body"]) {
+      for (const numbering of [
+        paragraphNumberingReference({ numId: 5, ilvl: level }),
+        { kind: "inherit" },
+        { kind: "levelOnly", ilvl: level },
+      ] as const) {
+        for (const type of ["insertAfterBlock", "setBlockParagraphProperties"] as const) {
+          for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+            const reviewer = await openReviewer(bytes);
+            const preRows = rowsOf(reviewer);
+            const anchor = preRows.find(({ text }) => text === anchorText);
+            assert.ok(anchor);
+            const operation =
+              type === "insertAfterBlock"
+                ? { type, blockId: anchor.id, text: "Inserted", numbering }
+                : { type, blockId: anchor.id, properties: { numbering } };
+            const context = `${marker} ${anchorText} ${numbering.kind} ${type} ${mode}`;
+            const model = modelOf(preRows);
+            model.mode = mode;
+            model.numberingFacts = await numberingFactsOf(bytes);
+            expectOperation(model, operation);
+            const result = await applyChecked(reviewer, [operation], mode, context);
+            assert.equal(result.applied.length, 1, context);
+            assert.deepEqual(result.issues, [], context);
+            const rows = rowsOf(reviewer);
+            const targetText = type === "insertAfterBlock" ? "Inserted" : anchorText;
+            const target = rows.find(({ text }) => text === targetText);
+            assert.ok(target, context);
+            const bodyKind = visible ? "listItem" : "paragraph";
+            const expectedKind = anchorText === "Heading" ? "heading" : bodyKind;
+            assert.equal(target.kind, expectedKind, context);
+            assert.deepEqual(target.listReference, { numId: 5, level }, context);
+            assert.equal(target.listLevel, level, context);
+            assert.deepEqual(compareWithModel(model, rows), [], context);
+            assert.match(
+              compareWithModel(
+                model,
+                rows.map((row) =>
+                  row === target
+                    ? Object.assign({}, row, {
+                        kind: expectedKind === "paragraph" ? "listItem" : "paragraph",
+                      })
+                    : row,
+                ),
+              ).join("\n"),
+              /kind/u,
+              context,
+            );
+          }
+        }
+      }
+    }
+  }
+});
+
 test(
   "pending numbering provenance survives insertion and restyling across every editable story",
   { timeout: 60_000 },
