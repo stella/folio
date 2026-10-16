@@ -65,6 +65,7 @@ type Numbering =
 type NumberingFacts = {
   styles: Map<string, Numbering>;
   direct: Map<string, Numbering>;
+  definitions: ParsedDocument["package"]["numbering"];
 };
 
 /** Fold stated slots independently of the engine's numbering resolver. */
@@ -198,7 +199,7 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
   for (const parts of [document.package.footnotes, document.package.endnotes]) {
     for (const part of parts ?? []) visit(part.content);
   }
-  return { styles, direct };
+  return { styles, direct, definitions: document.package.numbering };
 };
 
 export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFacts> => {
@@ -678,6 +679,30 @@ const requestedStyleNumbering = (
   return numberingOver(style, direct);
 };
 
+/** Classify marker visibility from input definitions, independently of reader labels. */
+const numberedKind = (model: Model, numbering: RequestedNumbering): Fields["kind"] => {
+  if (numbering === UNKNOWN_NUMBERING) return ANY;
+  if (numbering?.kind !== "reference") return "paragraph";
+  if (!model.numberingFacts) return ANY;
+  const definitions = model.numberingFacts.definitions;
+  const instance = definitions?.nums.find(({ numId }) => numId === numbering.numId);
+  const level = numbering.ilvl ?? 0;
+  const override = instance?.levelOverrides?.find(({ ilvl }) => ilvl === level)?.lvl;
+  let abstract = definitions?.abstractNums.find(
+    ({ abstractNumId }) => abstractNumId === instance?.abstractNumId,
+  );
+  if (abstract?.numStyleLink && abstract.levels.length === 0) {
+    const link = abstract.numStyleLink;
+    abstract = definitions?.abstractNums.find(
+      ({ styleLink, levels }) => styleLink === link && levels.length > 0,
+    );
+  }
+  const definition = override ?? abstract?.levels.find(({ ilvl }) => ilvl === level);
+  return definition === undefined || definition.rPr?.hidden || definition.lvlText.trim() === ""
+    ? "paragraph"
+    : "listItem";
+};
+
 const numberingFields = (model: Model, styleId: string | null, row?: Row): Fields => {
   const numbering = requestedStyleNumbering(model, styleId, row);
   if (numbering === UNKNOWN_NUMBERING) return { listLevel: ANY };
@@ -713,8 +738,9 @@ const styleFields = (
   const numberedFields = numberingFields(model, styleId, pre ?? inherited);
   // A sample's list classification may come from its own direct numbering.
   let exampleKind = styleExample?.kind;
-  if (exampleKind === "listItem" && numberedFields.listLevel === undefined) {
-    exampleKind = "paragraph";
+  if (exampleKind === "listItem" || exampleKind === "paragraph") {
+    const kind = numberedKind(model, requestedStyleNumbering(model, styleId, pre ?? inherited));
+    exampleKind = kind === ANY ? undefined : kind;
   }
   // Whether the block is a list item then depends on numbering that is not known.
   const undecided = exampleKind === "listItem" && numberedFields.listLevel === ANY;
@@ -827,8 +853,7 @@ const paragraphRequest = (
     } else if (numbering["kind"] === "inherit") {
       const effective = styleNumbering;
       fields.listLevel = effective?.kind === "reference" ? (effective.ilvl ?? 0) : undefined;
-      if ((pre ?? inherited) && preKind !== "heading")
-        fields.kind = effective?.kind === "reference" ? "listItem" : "paragraph";
+      if ((pre ?? inherited) && preKind !== "heading") fields.kind = numberedKind(model, effective);
       checks.push((row) => {
         if (effective?.kind === "reference") {
           return row.listReference?.numId === effective.numId
@@ -877,7 +902,7 @@ const paragraphRequest = (
           ? { numId: effective.numId, level: effective.ilvl ?? 0 }
           : undefined;
       fields.listLevel = reference?.level;
-      if ((pre ?? inherited) && preKind !== "heading") fields.kind = "listItem";
+      if ((pre ?? inherited) && preKind !== "heading") fields.kind = numberedKind(model, effective);
       if (reference)
         checks.push((row) =>
           row.listReference?.numId === reference.numId &&
@@ -895,7 +920,7 @@ const paragraphRequest = (
           ? { numId: effective.numId, level: effective.ilvl ?? 0 }
           : undefined;
       fields.listLevel = reference?.level;
-      if (reference && (pre ?? inherited) && preKind !== "heading") fields.kind = "listItem";
+      if ((pre ?? inherited) && preKind !== "heading") fields.kind = numberedKind(model, effective);
       checks.push((row) => {
         if (reference) {
           return row.listReference?.numId === reference.numId &&

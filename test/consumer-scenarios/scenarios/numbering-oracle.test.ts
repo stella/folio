@@ -716,3 +716,139 @@ test("package numbering provenance covers allocated paragraph identities in ever
     assert.equal(new Set(repeated.map(({ id }) => id)).size, 2);
   }
 });
+
+test("undefined and hidden numbering levels keep provenance without becoming list items", async () => {
+  for (const definitionSource of ["abstract", "override", "styleLink"] as const) {
+    const document = fromMarkdown(
+      Array.from({ length: 9 }, (_, level) => `Anchor level ${level}.`).join("\n\n"),
+    );
+    // Exercise every legal level with visible, hidden and absent definitions.
+    const levels = Array.from({ length: 9 }, (_, level) => level)
+      .filter((level) => level % 3 !== 2)
+      .map((level) =>
+        Object.assign(decimalLevel(level, `%${level + 1}.`), {
+          rPr: { hidden: level % 3 === 1 },
+        }),
+      );
+    let baseLevels = levels;
+    if (definitionSource === "override") {
+      baseLevels = levels.map((level) =>
+        Object.assign({}, level, { rPr: { hidden: !level.rPr.hidden } }),
+      );
+    }
+    if (definitionSource === "styleLink") baseLevels = [];
+    document.package.numbering = {
+      abstractNums: [
+        {
+          abstractNumId: 7,
+          levels: baseLevels,
+          ...(definitionSource === "styleLink" ? { numStyleLink: "LinkedNumbering" } : {}),
+        },
+        ...(definitionSource === "styleLink"
+          ? [{ abstractNumId: 8, styleLink: "LinkedNumbering", levels }]
+          : []),
+      ],
+      nums: [
+        {
+          numId: 7,
+          abstractNumId: 7,
+          ...(definitionSource === "override"
+            ? { levelOverrides: levels.map((lvl) => ({ ilvl: lvl.ilvl, lvl })) }
+            : {}),
+        },
+      ],
+    };
+    for (let level = 0; level < 9; level++) {
+      document.package.styles?.styles.push({
+        styleId: `Level${level}`,
+        type: "paragraph",
+        pPr: { numPr: paragraphNumberingFromSlots({ numId: 7, ilvl: level }) },
+      });
+    }
+    const bytes = await packDocument(document);
+    const facts = await numberingFactsOf(bytes);
+    for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+      for (const request of ["reference", "levelOnly", "inherit", "insert"] as const) {
+        const reviewer = await openReviewer(bytes);
+        const anchors = rowsOf(reviewer);
+        const operations = anchors.map((anchor, level) => {
+          const reference = { kind: "reference", numId: 7, ilvl: level } as const;
+          switch (request) {
+            case "insert":
+              return {
+                type: "insertAfterBlock",
+                blockId: anchor.id,
+                text: `Inserted level ${level}.`,
+                numbering: reference,
+              };
+            case "reference":
+              return {
+                type: "setBlockParagraphProperties",
+                blockId: anchor.id,
+                properties: { numbering: reference },
+              };
+            case "levelOnly":
+              return {
+                type: "setBlockParagraphProperties",
+                blockId: anchor.id,
+                properties: {
+                  styleId: `Level${level}`,
+                  numbering: { kind: "levelOnly", ilvl: level },
+                },
+              };
+            case "inherit":
+              return {
+                type: "setBlockParagraphProperties",
+                blockId: anchor.id,
+                properties: { styleId: `Level${level}`, numbering: { kind: "inherit" } },
+              };
+          }
+        });
+        const receipt = await applyChecked(
+          reviewer,
+          operations,
+          mode,
+          `${definitionSource}/${request}`,
+        );
+        assert.equal(receipt.applied.length, 9);
+        if (mode !== "suggested") reviewer.acceptAll();
+        const rows = rowsOf(reviewer);
+        for (let level = 0; level < 9; level++) {
+          const text = `${request === "insert" ? "Inserted" : "Anchor"} level ${level}.`;
+          const row = rows.find((candidate) => candidate.text === text);
+          assert.ok(row);
+          assert.equal(row.kind, level % 3 === 0 ? "listItem" : "paragraph");
+          assert.deepEqual(row.listReference, { numId: 7, level });
+          const model = modelOf(anchors);
+          model.numberingFacts = facts;
+          // Sensitivity: the oracle must reject both a spurious list and lost list classification.
+          const operation = operations.at(level);
+          assert.ok(operation);
+          expectOperation(model, operation);
+          const expectedRows = anchors.map((anchor) => (anchor.id === row.id ? row : anchor));
+          if (request === "insert") expectedRows.splice(level + 1, 0, row);
+          assert.deepEqual(compareWithModel(model, expectedRows), []);
+          assert.match(
+            compareWithModel(
+              model,
+              expectedRows.map((candidate) =>
+                candidate === row
+                  ? Object.assign({}, candidate, {
+                      kind: row.kind === "listItem" ? "paragraph" : "listItem",
+                    })
+                  : candidate,
+              ),
+            ).join("\n"),
+            /kind/u,
+          );
+        }
+      }
+    }
+  }
+});
+
+for (const seed of [1339716047, 1339716277]) {
+  test(`missing numbering level regression seed ${seed} (#1819)`, async () => {
+    await runFlow(seed, 20, "random", { generation: "targeted", swarm: "enabled" });
+  });
+}
