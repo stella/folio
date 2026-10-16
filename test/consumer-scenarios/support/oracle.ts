@@ -1462,7 +1462,7 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
   return problems;
 };
 
-type AnchorDisposition = "kept" | "removed" | "ambiguous";
+type AnchorDisposition = "kept" | "point" | "removed" | "ambiguous";
 
 /** Decide whether the model removed the anchor, accounting for repeated text. */
 const anchorDisposition = (model: Model, entry: Comment): AnchorDisposition => {
@@ -1494,12 +1494,15 @@ const anchorDisposition = (model: Model, entry: Comment): AnchorDisposition => {
       removed.some((cut) => cut.start <= offset && offset < cut.end),
     ),
   );
-  if (removedPlacements.every(Boolean)) return "removed";
+  // Text deletion preserves a point in a surviving block. Only removal of
+  // the owning structure above retires the thread (replacedAnnotations.ts).
+  if (removedPlacements.every(Boolean)) return "point";
   return removedPlacements.some(Boolean) ? "ambiguous" : "kept";
 };
 
-/** A full-block anchor has an exact replacement when one edit rewrites the block. */
+/** Deleted coverage becomes a point; a whole-block rewrite has an exact new anchor. */
 const expectedKeptAnchor = (model: Model, entry: Comment): string | undefined => {
+  if (anchorDisposition(model, entry) === "point") return "";
   const row = model.rows.find((candidate) => candidate.pre?.id === entry.blockId);
   if (!row?.pre || row.removed || row.pendingJoin || row.splits.length > 0) return undefined;
   if (entry.anchor === "" || entry.anchor !== row.pre.text || row.edits.length !== 1) {
@@ -1551,7 +1554,7 @@ export const compareComments = (
     const located = live && live.blockId !== entry.blockId ? live : entry;
     const disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
     if (disposition === "removed") gone.push(entry);
-    else if (disposition === "kept") kept.push(entry);
+    else if (disposition === "kept" || disposition === "point") kept.push(entry);
   }
   for (const comment of kept) {
     const anchor = expectedKeptAnchor(model, comment);

@@ -124,7 +124,7 @@ describe("the requested-outcome oracle", () => {
     assert.match(compareTableGeometry(model.tables, cells).join("\n"), /geometry/u);
   });
 
-  test("requires comments while any anchored character survives a text edit", () => {
+  test("requires point comments when text edits remove every anchored character", () => {
     const text = "abcdef";
     for (let anchorStart = 0; anchorStart < text.length; anchorStart += 1) {
       for (let anchorEnd = anchorStart + 1; anchorEnd <= text.length; anchorEnd += 1) {
@@ -146,9 +146,16 @@ describe("the requested-outcome oracle", () => {
             const problems = compareComments(model, [comment], []);
             assert.equal(
               problems.length === 0,
-              removed,
+              false,
               JSON.stringify({ anchorStart, anchorEnd, editStart, editEnd }),
             );
+            const surviving = {
+              ...comment,
+              anchor:
+                text.slice(anchorStart, Math.min(anchorEnd, editStart)) +
+                text.slice(Math.max(anchorStart, editEnd), anchorEnd),
+            };
+            assert.deepEqual(compareComments(model, [comment], [surviving]), []);
             assert.equal(
               compareComments(model, [comment], [comment]).length === 0,
               !removed,
@@ -186,7 +193,7 @@ describe("the requested-outcome oracle", () => {
     assert.deepEqual(compareComments(model, [comment], [comment]), []);
   });
 
-  test("a nonempty replacement carries a comment, while an empty one removes it", () => {
+  test("replacements carry comment text or retain a point when emptied", () => {
     const comment = { id: 1, text: "review", anchor: "Signed", blockId: "b" };
     const replaced = modelOf([row("b", "Signed")]);
     expectOperation(replaced, { type: "replaceBlock", blockId: "b", text: "Written" });
@@ -199,7 +206,8 @@ describe("the requested-outcome oracle", () => {
 
     const emptied = modelOf([row("b", "Signed")]);
     expectOperation(emptied, { type: "replaceBlock", blockId: "b", text: "" });
-    assert.deepEqual(compareComments(emptied, [comment], []), []);
+    assert.deepEqual(compareComments(emptied, [comment], [{ ...comment, anchor: "" }]), []);
+    assert.equal(compareComments(emptied, [comment], []).length, 1);
     assert.equal(compareComments(emptied, [comment], [comment]).length, 1);
   });
 
