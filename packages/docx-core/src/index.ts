@@ -26,6 +26,7 @@ export {
   IDENTITY_SIDECAR_VERSION,
   IDENTITY_VALIDATION_REASONS,
   IdentityValidationError,
+  issueDocumentIdLease,
   NUMERIC_ID_LEASE_SIZE,
   PARA_ID_LEASE_SIZE,
   parseIdentitySidecar,

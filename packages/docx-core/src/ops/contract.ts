@@ -28,7 +28,13 @@ import { Result, TaggedError } from "better-result";
 
 import type { BlockContent, Document, TableCell, TableRow } from "../model/document";
 import { sectionsInStep, storyParagraphs, withBodyContent } from "./blocks";
-import { countIds, countKeys, packageIdentityKeys, packageParagraphIds } from "./ids";
+import {
+  countIds,
+  countKeys,
+  packageIdentityKeys,
+  packageParagraphIds,
+  packageStructuralIds,
+} from "./ids";
 import {
   leafSpans,
   asParagraphContent,
@@ -142,6 +148,15 @@ const violation = (document: Document): DocumentOpsContractError | undefined => 
     return new DocumentOpsContractError({
       reason: DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID,
       message: `${repeatedRecord[1]} records in the package carry ${repeatedRecord[0]}.`,
+    });
+  }
+  const repeatedStructuralId = [...countKeys(packageStructuralIds(document.package))].find(
+    ([, count]) => count > 1,
+  );
+  if (repeatedStructuralId !== undefined) {
+    return new DocumentOpsContractError({
+      reason: DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID,
+      message: `${repeatedStructuralId[1]} table structures carry ${repeatedStructuralId[0]}.`,
     });
   }
   if (!sectionsInStep(body)) {

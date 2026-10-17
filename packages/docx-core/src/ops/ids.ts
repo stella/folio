@@ -25,7 +25,7 @@ type VisitContext = { heldBy: string | undefined; ownerType: string | undefined 
 type Visit = (entries: readonly [string, unknown][], context: VisitContext) => void;
 type WalkOptions = { value: unknown; visit: Visit; context?: VisitContext };
 
-const walk = ({
+export const walk = ({
   value,
   visit,
   context = { heldBy: undefined, ownerType: undefined },
@@ -49,7 +49,7 @@ const walk = ({
 };
 
 /** The package's stories, each once: the body without its derived section view. */
-const storiesOf = (pkg: DocxPackage): unknown => ({
+export const storiesOf = (pkg: DocxPackage): unknown => ({
   ...pkg,
   document: { ...pkg.document, sections: undefined },
 });
@@ -273,3 +273,27 @@ export const reservedIdentityKeysIn = (value: unknown): string[] => {
 
 /** Every revision and content-control id of a package, each story walked once. */
 export const packageIdentityKeys = (pkg: DocxPackage): string[] => identityKeysIn(storiesOf(pkg));
+
+/** The model-only id field each table structure node carries. */
+const STRUCTURAL_ID_FIELDS: Readonly<Record<string, string>> = {
+  table: "tableId",
+  tableRow: "rowId",
+  tableCell: "cellId",
+};
+
+/** Model-only table, row and cell ids from every package story. */
+export const packageStructuralIds = (pkg: DocxPackage): string[] => {
+  const out: string[] = [];
+  walk({
+    value: storiesOf(pkg),
+    visit: (entries) => {
+      const type = fieldOf(entries, "type");
+      if (typeof type !== "string" || !Object.hasOwn(STRUCTURAL_ID_FIELDS, type)) return;
+      const field = STRUCTURAL_ID_FIELDS[type];
+      if (field === undefined) return;
+      const id = fieldOf(entries, field);
+      if (typeof id === "string") out.push(id);
+    },
+  });
+  return out;
+};
