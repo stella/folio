@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 
 import {
   buildForbiddenRules,
@@ -374,5 +375,278 @@ describe("terminology: key triggers and forbiddenOnKey", () => {
         "consent.scopeOnboarding",
       ),
     ).toEqual([]);
+  });
+});
+
+describe("terminology search semantics", () => {
+  type MakeRulesOptions = {
+    keyTriggers?: string[];
+    sourceExempt?: string[];
+  };
+  const makeRules = (
+    needle: string,
+    { keyTriggers = [], sourceExempt = [] }: MakeRulesOptions = {},
+  ) =>
+    buildForbiddenRules(
+      parseGlossary(
+        JSON.stringify({
+          nouns: [
+            {
+              id: "concept",
+              en: "Matter",
+              keyTriggers,
+              sourceExempt,
+              forbidden: { cs: [needle], ar: [needle], en: [needle] },
+              forbiddenOnKey: { cs: ["restricted"] },
+            },
+          ],
+        }),
+      ),
+    );
+
+  test("retains letter-only boundaries, accents, exact Czech inflections and literal punctuation", () => {
+    const rules = makeRules("Žaneta");
+    for (const target of ["ŽANETA", "(Žaneta)", "1Žaneta_", "😀Žaneta", "Žaneta\u0301"]) {
+      expect(findForbiddenTerms("Matters", target, "cs", rules)).toEqual(["Žaneta"]);
+    }
+    for (const target of ["Zaneta", "Žanety", "aŽaneta", "Žanetaa"]) {
+      expect(findForbiddenTerms("Matters", target, "cs", rules)).toEqual([]);
+    }
+    expect(findForbiddenTerms("Matter", "a+b", "cs", makeRules("a+b"))).toEqual(["a+b"]);
+    expect(findForbiddenTerms("Matter", "aaab", "cs", makeRules("a+b"))).toEqual([]);
+  });
+
+  test("keeps listed hit order and duplicates across overlapping terms", () => {
+    const rules = buildForbiddenRules(
+      parseGlossary(
+        JSON.stringify({
+          nouns: [
+            {
+              id: "concept",
+              en: "Matter",
+              forbidden: { cs: ["a-b", "b", "a-b"] },
+            },
+          ],
+        }),
+      ),
+    );
+    expect(findForbiddenTerms("Matter", "a-b a-b", "cs", rules)).toEqual(["a-b", "b", "a-b"]);
+    expect(findForbiddenTerms("Matter", "anything", "cs", [])).toEqual([]);
+  });
+
+  test("preserves empty literal triggers, key case and source lowercase exemptions", () => {
+    expect(
+      findForbiddenTerms("Other", "banned", "cs", makeRules("banned", { keyTriggers: [""] }), ""),
+    ).toEqual(["banned"]);
+    expect(
+      findForbiddenTerms(
+        "Other",
+        "banned",
+        "cs",
+        makeRules("banned", { keyTriggers: ["Scope"] }),
+        "scope",
+      ),
+    ).toEqual([]);
+    expect(
+      findForbiddenTerms(
+        "MATTERS ORGANIZE",
+        "restricted",
+        "cs",
+        makeRules("banned", { sourceExempt: ["ORGAN"] }),
+      ),
+    ).toEqual([]);
+    expect(
+      findForbiddenTerms("Matter", "restricted", "cs", makeRules("banned", { sourceExempt: [""] })),
+    ).toEqual([]);
+    expect(findForbiddenTerms("Matter", "restricted", "cs", makeRules("banned"))).toEqual([
+      "restricted",
+    ]);
+  });
+
+  test("matches malformed patterns and text as normalized scalars while returning original terms", () => {
+    for (const malformed of ["\ud800", "\udc00", "a\ud800-b", "a\udc00-b"]) {
+      const normalized = malformed.toWellFormed();
+      expect(findForbiddenTerms("Matter", normalized, "cs", makeRules(malformed))).toEqual([
+        malformed,
+      ]);
+      expect(findForbiddenTerms("Matter", malformed, "cs", makeRules(normalized))).toEqual([
+        normalized,
+      ]);
+      expect(
+        findForbiddenTerms(
+          "Other",
+          "banned",
+          "cs",
+          makeRules("banned", { keyTriggers: [malformed] }),
+          normalized,
+        ),
+      ).toEqual(["banned"]);
+      expect(
+        findForbiddenTerms(
+          `Matter ${malformed}`,
+          "restricted",
+          "cs",
+          makeRules("banned", { sourceExempt: [normalized] }),
+        ),
+      ).toEqual([]);
+    }
+    expect(
+      findForbiddenTerms(
+        "Other",
+        "banned",
+        "cs",
+        makeRules("banned", { keyTriggers: ["\ud83d"] }),
+        "😀",
+      ),
+    ).toEqual([]);
+    expect(
+      findForbiddenTerms("Other", "banned", "cs", makeRules("banned", { keyTriggers: [""] }), "😀"),
+    ).toEqual(["banned"]);
+    expect(
+      findForbiddenTerms(
+        "Matter 😀",
+        "restricted",
+        "cs",
+        makeRules("banned", { sourceExempt: [""] }),
+      ),
+    ).toEqual([]);
+  });
+
+  test("matches substring-list oracles for configured key and source searches", () => {
+    const fragment = fc.constantFrom(
+      "",
+      "a",
+      "a+b",
+      "Žaneta",
+      "žaneta",
+      "😀",
+      ".scope",
+      "_",
+      "K",
+      "\ud800",
+      "\udc00",
+      "a\ud800-b",
+      "�",
+    );
+    fc.assert(
+      fc.property(
+        fc.array(fragment, { maxLength: 5 }),
+        fc.array(fragment, { maxLength: 5 }),
+        fragment,
+        fragment,
+        (keyTriggers, sourceExempt, key, sourceFragment) => {
+          const source = `Matter ${sourceFragment}`;
+          const keyFires = keyTriggers.some((trigger) =>
+            key.toWellFormed().includes(trigger.toWellFormed()),
+          );
+          const isExempt = sourceExempt.some((exempt) =>
+            source.toLowerCase().toWellFormed().includes(exempt.toLowerCase().toWellFormed()),
+          );
+          const expected = keyFires || !isExempt ? ["restricted"] : [];
+          expect(
+            findForbiddenTerms(
+              source,
+              "restricted",
+              "cs",
+              makeRules("banned", { keyTriggers, sourceExempt }),
+              key,
+            ),
+          ).toEqual(expected);
+        },
+      ),
+      { seed: 27018, numRuns: 300 },
+    );
+  });
+
+  test("observes mutations to configured literal lists", () => {
+    const keyTriggers = ["first"];
+    const sourceExempt = ["organ"];
+    const rules = makeRules("banned", { keyTriggers, sourceExempt });
+    const rule = rules.at(0);
+    expect(rule).toBeDefined();
+    if (!rule) {
+      return;
+    }
+    expect(findForbiddenTerms("Other", "banned", "cs", rules, "first")).toEqual(["banned"]);
+    rule.keyTriggers.splice(0, 1, "second");
+    expect(findForbiddenTerms("Other", "banned", "cs", rules, "first")).toEqual([]);
+    expect(findForbiddenTerms("Other", "banned", "cs", rules, "second")).toEqual(["banned"]);
+    expect(findForbiddenTerms("Matter organ", "restricted", "cs", rules)).toEqual([]);
+    rule.sourceExempt.splice(0, 1, "else");
+    expect(findForbiddenTerms("Matter organ", "restricted", "cs", rules)).toEqual(["restricted"]);
+  });
+
+  test("preserves Unicode case folding for long s and Kelvin sign", () => {
+    expect(findForbiddenTerms("Matter", "ſ", "cs", makeRules("s"))).toEqual(["s"]);
+    expect(findForbiddenTerms("Matter", "K", "cs", makeRules("k"))).toEqual(["k"]);
+    expect(findForbiddenTerms("Matter", "S", "cs", makeRules("ſ"))).toEqual(["ſ"]);
+    expect(findForbiddenTerms("Matter", "K", "cs", makeRules("K"))).toEqual(["K"]);
+  });
+
+  test("matches the normalized Unicode regex oracle over generated boundaries and locales", () => {
+    const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    fc.assert(
+      fc.property(
+        fc.constantFrom("cs", "ar", "en"),
+        fc.constantFrom(
+          "Žaneta",
+          "قضية",
+          "a+b",
+          "Sache",
+          "",
+          "😀",
+          "s",
+          "k",
+          "ſ",
+          "K",
+          "\ud800",
+          "\udc00",
+          "a\ud800-b",
+          "�",
+        ),
+        fc.constantFrom(
+          "",
+          "a",
+          "č",
+          "1",
+          "_",
+          "😀",
+          "\u0301",
+          "(",
+          "وال",
+          "\ud800",
+          "\udc00",
+          "�",
+        ),
+        fc.constantFrom(
+          "",
+          "a",
+          "č",
+          "1",
+          "_",
+          "😀",
+          "\u0301",
+          ")",
+          "s",
+          "es",
+          "\ud800",
+          "\udc00",
+          "�",
+        ),
+        (locale, needle, before, after) => {
+          const target = `${before}${needle}${after}`;
+          const prefix = locale === "ar" ? "[وفبكلس]*(?:ال)?" : "";
+          const suffix = locale === "en" ? "(?:e?s)?" : "";
+          const expected = new RegExp(
+            `(?<!\\p{L})${prefix}${escape(needle.toWellFormed())}${suffix}(?!\\p{L})`,
+            "iu",
+          ).test(target.toWellFormed())
+            ? [needle]
+            : [];
+          expect(findForbiddenTerms("Matter", target, locale, makeRules(needle))).toEqual(expected);
+        },
+      ),
+      { seed: 27017, numRuns: 300 },
+    );
   });
 });
