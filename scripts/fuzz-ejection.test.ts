@@ -6,7 +6,12 @@ import {
   failureMarker,
   failureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
-import type { Context, FingerprintIssueStore } from "./fuzz-failure-issues";
+import {
+  type Context,
+  RUN_TRIGGER,
+  type SignatureIssueStore,
+  signatureOf,
+} from "./fuzz-failure-issues";
 import type { Issue } from "./fuzz-issue-classes";
 
 import { hash32 } from "../test/commit-seed";
@@ -109,6 +114,8 @@ const context = {
   sha: mainSha,
   source: "merge group reproduced on main",
   date: "2026-10-02",
+  lane: "merge-queue-replay",
+  trigger: RUN_TRIGGER.mergeGroup,
 } satisfies Context;
 const finding = (fixture: string) => {
   const error = new Error("step 3: no comment");
@@ -122,10 +129,11 @@ const finding = (fixture: string) => {
   const record = failureRecord(marker, error);
   return { record, seeds: [marker.seed], records: [record] };
 };
+const signatureIdOf = (fixture: string): string => signatureOf(finding(fixture).record.marker).id;
 const withStore = async (
   body: (fixture: {
     root: string;
-    store: FingerprintIssueStore;
+    store: SignatureIssueStore;
     writes: Issue[];
     reads: () => number;
   }) => Promise<void>,
@@ -154,13 +162,16 @@ const withStore = async (
       writes.push(issue);
       return issue;
     },
-    comment: async () => {
+    edit: async () => {
       throw new Error("Unexpected issue edit");
     },
     reopen: async () => {
       throw new Error("Unexpected issue reopen");
     },
-  } satisfies FingerprintIssueStore;
+    close: async () => {
+      throw new Error("Unexpected issue close");
+    },
+  } satisfies SignatureIssueStore;
   try {
     await body({ root, store, writes, reads: () => reads });
   } finally {
@@ -206,10 +217,9 @@ test("matching main failures file one issue per reproduced fingerprint", async (
     });
     expect(judged.verdict).toBe("mixed");
     expect(writes).toHaveLength(2);
-    for (const [index, fingerprint] of confirmed.entries())
-      expect(writes.at(index)?.body).toContain(fingerprint);
-    for (const issue of writes)
-      expect(issue.body).not.toContain(findings.at(2)?.record.marker.fingerprint);
+    for (const [index, fixture] of ["stories", "comments"].entries())
+      expect(writes.at(index)?.body).toContain(signatureIdOf(fixture));
+    for (const issue of writes) expect(issue.body).not.toContain(signatureIdOf("lists"));
     expect(judged.fingerprints.map(({ issue }) => issue)).toEqual(["#1", "#2", null]);
   });
 });
@@ -245,9 +255,9 @@ test("a failing base replay reproduces only requested fingerprints present in it
       false,
     ]);
     expect(writes).toHaveLength(1);
-    expect(writes[0]?.body).toContain(fingerprints[0]);
-    expect(writes[0]?.body).not.toContain(fingerprints[1]);
-    expect(writes[0]?.body).not.toContain(unrelatedMarker.fingerprint);
+    expect(writes[0]?.body).toContain(signatureIdOf("stories"));
+    expect(writes[0]?.body).not.toContain(signatureIdOf("comments"));
+    expect(writes[0]?.body).not.toContain(signatureIdOf("lists"));
   });
 });
 
@@ -273,8 +283,8 @@ test("a fingerprint counts only in the replay that requested it", async () => {
       false,
     ]);
     expect(writes).toHaveLength(1);
-    expect(writes[0]?.body).toContain(stories);
-    expect(writes[0]?.body).not.toContain(comments);
+    expect(writes[0]?.body).toContain(signatureIdOf("stories"));
+    expect(writes[0]?.body).not.toContain(signatureIdOf("comments"));
   });
 });
 

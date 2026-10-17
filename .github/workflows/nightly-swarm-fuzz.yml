@@ -51,12 +51,14 @@ jobs:
   # Separate so the fuzz jobs never hold a write token. Main only: a dispatch
   # on a branch reports in its run, not in the issue tracker.
   report:
-    name: File failures by fingerprint
+    name: File failures by signature
     needs: [swarm]
-    if: failure() && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (failure() || github.event_name == 'schedule') }}
     permissions:
       contents: read
       issues: write
     uses: ./.github/workflows/fuzz-failure-report.yml
     with:
       artifact-pattern: swarm-fuzz
+      lane: nightly-swarm-fuzz
+      result: ${{ needs.swarm.result }}
