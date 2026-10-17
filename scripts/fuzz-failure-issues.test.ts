@@ -497,7 +497,12 @@ const signatureState = fc
       selector: ({ lane: name }) => name,
       maxLength: 4,
     }),
-    assertion: fc.string({ maxLength: 120 }),
+    assertion: fc.oneof(
+      fc.string({ maxLength: 120 }),
+      fc
+        .tuple(lane, run, fc.nat({ max: 99 }), fc.string({ maxLength: 40 }))
+        .map(([name, at, count, tail]) => `| ${name} | ${at} | ${count} |\n${tail}`),
+    ),
     seed: fc.integer({ min: -(2 ** 31), max: 2 ** 31 }),
     command: fc.string({ minLength: 1, maxLength: 120 }),
   })

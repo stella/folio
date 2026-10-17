@@ -441,16 +441,14 @@ export const parseSignatureState = ({ number, body }: Pick<Issue, "number" | "bo
   }
   const tableStart = body.indexOf(LANE_TABLE_HEADER.join("\n"));
   if (tableStart < 0) throw malformed("lane table");
-  const lanes = body
-    .slice(tableStart)
-    .split("\n")
-    .slice(LANE_TABLE_HEADER.length)
-    .map((row) => /^\| (\S+) \| (\S+) \| (\d+) \|$/u.exec(row))
-    .filter((row) => row !== null)
-    .map(([, lane = "", lastRun = "", cleanRuns = ""]) => {
-      if (!LANE.test(lane)) throw malformed("lane table");
-      return { lane, lastRun, cleanRuns: Number(cleanRuns) };
-    });
+  const rows = body.slice(tableStart).split("\n").slice(LANE_TABLE_HEADER.length);
+  const end = rows.findIndex((row) => !row.startsWith("|"));
+  const lanes = rows.slice(0, end < 0 ? rows.length : end).map((row) => {
+    const [, lane = "", lastRun = "", cleanRuns = ""] =
+      /^\| (\S+) \| (\S+) \| (\d+) \|$/u.exec(row) ?? [];
+    if (!LANE.test(lane) || lastRun === "") throw malformed("lane table");
+    return { lane, lastRun, cleanRuns: Number(cleanRuns) };
+  });
   return {
     signature: { id, test, failure },
     occurrences,
