@@ -1,23 +1,27 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { distance as editDistance } from "@stll/fuzzy-search";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { closestNames } from "./envelope";
 
-const oldEditDistance = (a: string, b: string): number => {
-  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-  for (let i = 1; i <= a.length; i += 1) {
+setDefaultTimeout(propertyTestTimeout(5_000));
+
+const scalarEditDistance = (a: string, b: string): number => {
+  const left = Array.from(a.toWellFormed());
+  const right = Array.from(b.toWellFormed());
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
     const current = [i];
-    for (let j = 1; j <= b.length; j += 1) {
+    for (let j = 1; j <= right.length; j += 1) {
       current[j] = Math.min(
         (previous[j] ?? 0) + 1,
         (current[j - 1] ?? 0) + 1,
-        (previous[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1),
+        (previous[j - 1] ?? 0) + (left[i - 1] === right[j - 1] ? 0 : 1),
       );
     }
     previous = current;
   }
-  return previous[b.length] ?? 0;
+  return previous[right.length] ?? 0;
 };
 
 const oldClosestNames = (name: string, known: readonly string[]): string[] => {
@@ -26,7 +30,7 @@ const oldClosestNames = (name: string, known: readonly string[]): string[] => {
     .map((candidate) => {
       const lower = candidate.toLowerCase();
       const contains = lower.includes(lowered) || lowered.includes(lower);
-      return { candidate, distance: contains ? 0 : oldEditDistance(lowered, lower) };
+      return { candidate, distance: contains ? 0 : scalarEditDistance(lowered, lower) };
     })
     .filter(({ distance }) => distance <= Math.max(2, Math.floor(name.length / 3)))
     .toSorted((a, b) => a.distance - b.distance || a.candidate.localeCompare(b.candidate))
@@ -40,7 +44,7 @@ const normalizedClosestNames = (name: string, known: readonly string[]): string[
     .map((candidate) => {
       const lower = candidate.toWellFormed().toLowerCase();
       const contains = lower.includes(lowered) || lowered.includes(lower);
-      return { candidate, distance: contains ? 0 : editDistance(lowered, lower, "levenshtein") };
+      return { candidate, distance: contains ? 0 : scalarEditDistance(lowered, lower) };
     })
     .filter(({ distance }) => distance <= Math.max(2, Math.floor(name.length / 3)))
     .toSorted((a, b) => a.distance - b.distance || a.candidate.localeCompare(b.candidate))
@@ -110,7 +114,7 @@ describe("closestNames", () => {
       fc.property(text, fc.array(text, { maxLength: 12 }), (name, known) => {
         expect(closestNames(name, known)).toEqual(oldClosestNames(name, known));
       }),
-      { seed: 1_725_983, numRuns: 500 },
+      propertyConfig({ seed: 1_725_983, numRuns: 500 }),
     );
   });
 
@@ -143,7 +147,7 @@ describe("closestNames", () => {
       fc.property(text, fc.array(text, { maxLength: 10 }), (name, known) => {
         expect(closestNames(name, known)).toEqual(normalizedClosestNames(name, known));
       }),
-      { seed: 1_725_984, numRuns: 500 },
+      propertyConfig({ seed: 1_725_984, numRuns: 500 }),
     );
   });
 });
