@@ -1,4 +1,6 @@
 /** One editor intent, compiled to direct or tracked document operations. */
+import { issueDocumentIdLease } from "../model/identity";
+import { leaseForParagraphIds } from "./idLease";
 import { compileHyperlinkIntent, type HyperlinkEditorIntent } from "./hyperlinkIntent";
 import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import { cloneModel } from "./modelClone";
@@ -1108,6 +1110,7 @@ export const compileEditorIntent = (
               ),
             },
             newBlockId: paraId ?? "",
+            idLease: leaseForParagraphIds([paraId ?? ""]),
             newHalf: SPLIT_HALVES.FIRST,
             newParagraph,
             ...allocationFields,
@@ -1507,9 +1510,35 @@ export const compileEditorIntent = (
       switch (operation.type) {
         case DOCUMENT_OP_TYPES.INSERT_COLUMN:
         case DOCUMENT_OP_TYPES.MERGE_CELLS:
-        case DOCUMENT_OP_TYPES.SPLIT_CELL:
-          op = { ...operation, newBlockIds, ...tracked };
+        case DOCUMENT_OP_TYPES.SPLIT_CELL: {
+          const issued = issueDocumentIdLease(document, "compiler");
+          if (issued.isErr())
+            return Result.err(
+              new DocumentOpRefusal({
+                opType: operation.type,
+                reason: issued.error.reason,
+                message: issued.error.message,
+              }),
+            );
+          const newCellIds = newBlockIds.map((blockId) => {
+            const digits: string[] = [];
+            const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
+            let remaining = Number.parseInt(blockId, 16);
+            do {
+              digits.push(alphabet.charAt(remaining % 32));
+              remaining = Math.floor(remaining / 32);
+            } while (remaining > 0);
+            return `c_${issued.value.cell.prefix}_${digits.reverse().join("")}`;
+          });
+          op = {
+            ...operation,
+            idLease: { ...issued.value, paragraph: leaseForParagraphIds(newBlockIds).paragraph },
+            newBlockIds,
+            newCellIds,
+            ...tracked,
+          };
           break;
+        }
         default:
           op = { ...operation, ...tracked };
       }
@@ -1894,6 +1923,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at: intent.at,
           newBlockId: intent.newBlockId,
+          idLease: leaseForParagraphIds([intent.newBlockId]),
           newHalf: SPLIT_HALVES.FIRST,
           newParagraph: splitParagraphFields(document, intent.at),
           ...tracked,
@@ -1929,6 +1959,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at,
           newBlockId: intent.newBlockId,
+          idLease: leaseForParagraphIds([intent.newBlockId]),
           newHalf: SPLIT_HALVES.FIRST,
           newParagraph: splitParagraphFields(plan.document(), at),
           newIds: mode.newIds,
@@ -1952,6 +1983,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at: deletion.value.selection,
           newBlockId: intent.newBlockId,
+          idLease: leaseForParagraphIds([intent.newBlockId]),
           newHalf: SPLIT_HALVES.FIRST,
           newParagraph: splitParagraphFields(deleted.value.document, deletion.value.selection),
           ...allocationFields,

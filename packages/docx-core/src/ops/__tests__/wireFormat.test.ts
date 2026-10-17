@@ -8,7 +8,7 @@
  * needs a new schema version and a migration, not an updated released fixture.
  * The fixture for an unreleased schema records that cutover's final contract;
  * schema 9 adds clipboard package resources over schema 8's semantic table edits,
- * and schema 10 adds comment operations.
+ * schema 10 adds comment operations, and schema 11 adds leased operation identities.
  *
  * `bun packages/docx-core/src/ops/__tests__/wireFixtures.ts` generates the current fixture.
  */
@@ -86,6 +86,8 @@ test("semantic table wire fixtures exercise geometry, ids, patches and tracked p
       blockId: true,
       column: true,
       width: true,
+      idLease: true,
+      newCellIds: true,
       newBlockIds: true,
       revision: true,
       newIds: true,
@@ -106,6 +108,8 @@ test("semantic table wire fixtures exercise geometry, ids, patches and tracked p
       bottom: true,
       left: true,
       right: true,
+      idLease: true,
+      newCellIds: true,
       newBlockIds: true,
       revision: true,
       newIds: true,
@@ -114,6 +118,8 @@ test("semantic table wire fixtures exercise geometry, ids, patches and tracked p
       type: true,
       story: true,
       blockId: true,
+      idLease: true,
+      newCellIds: true,
       newBlockIds: true,
       revision: true,
       newIds: true,
@@ -185,7 +191,7 @@ test("older envelopes are refused structurally and current envelopes apply", asy
     new URL("./__fixtures__/ops-v4.json", import.meta.url),
   ).json();
   expect(Array.isArray(older)).toBe(true);
-  for (const schema of [1, 2, 3, 4, 5, 6, 7, 8, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
     const refused = applyDocumentOpEnvelope(document, { schema, op });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
@@ -219,7 +225,7 @@ test("lifecycle wire fixtures exercise each declared own-undefined target", () =
   expect([...exercised].toSorted()).toEqual(Object.keys(targets).toSorted());
 });
 
-test("clipboard package resources remain pinned in the schema-10 wire contract", () => {
+test("clipboard package resources remain pinned in the schema-11 wire contract", () => {
   const resources = envelopes().filter(
     ({ op }) => op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
   );

@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE, identifyTestRow } from "./leasedIds";
 import { describe, expect, test } from "bun:test";
 
 import type { Document, Paragraph, Table, TableCell, TableRow } from "../../model/document";
@@ -106,11 +107,12 @@ describe("table row review", () => {
     for (const at of [0, 1]) {
       const inserted = makeRow(at === 0 ? "00000011" : "00000012");
       const result = applied(document, {
+        idLease: TEST_ID_LEASE,
         type: DOCUMENT_OP_TYPES.INSERT_ROW,
         story: OP_STORIES.MAIN,
         blockId: "00000010",
         at,
-        row: inserted,
+        row: identifyTestRow(inserted),
       });
       const rows = result.document.package.document.content.find((block) => block.type === "table");
       if (rows?.type !== "table") throw new Error("Fixture table remains present.");
@@ -128,11 +130,12 @@ describe("table row review", () => {
     };
     const document = documentOf(tableOf(makeRow("00000010")));
     const result = applied(document, {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.INSERT_ROW,
       story: OP_STORIES.MAIN,
       blockId: "00000010",
       at: 1,
-      row: empty,
+      row: identifyTestRow(empty),
       revision,
       newIds: { revision: [101] },
     });
@@ -245,11 +248,12 @@ describe("table row review", () => {
       }),
     );
     const op = {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.INSERT_ROW,
       story: OP_STORIES.MAIN,
       blockId: "00000010",
       at: 1,
-      row: makeRow("00000020"),
+      row: identifyTestRow(makeRow("00000020")),
       revision,
       newIds: { revision: [100, 50, 101, 101, 102] },
     } as const satisfies DocumentOp;
@@ -301,11 +305,12 @@ describe("table row review", () => {
     };
     const document = documentOf(tableOf(makeRow("00000010")));
     const op = {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.INSERT_ROW,
       story: OP_STORIES.MAIN,
       blockId: "00000010",
       at: 1,
-      row: empty,
+      row: identifyTestRow(empty),
     } as const satisfies DocumentOp;
     const result = applied(document, op);
     expect(result.revisions).toEqual([]);
@@ -383,11 +388,12 @@ describe("table row review", () => {
   test("an inverse is stale when another row changes", () => {
     const document = documentOf(tableOf(makeRow("00000010"), makeRow("00000020")));
     const inserted = applied(document, {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.INSERT_ROW,
       story: OP_STORIES.MAIN,
       blockId: "00000010",
       at: 1,
-      row: makeRow("00000030"),
+      row: identifyTestRow(makeRow("00000030")),
     });
     const table = inserted.document.package.document.content.find(
       (block) => block.type === "table",
@@ -422,11 +428,12 @@ describe("table row review", () => {
     };
     const document = documentOf(tableOf(makeRow("00000010")));
     const op: DocumentOp = {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.INSERT_ROW,
       story: OP_STORIES.MAIN,
       blockId: "00000010",
       at: 1,
-      row: twoParagraphRow,
+      row: identifyTestRow(twoParagraphRow),
       revision,
     };
     const demand = revisionIdDemand(document, op);
@@ -493,11 +500,12 @@ describe("table row review", () => {
       package: { document: { content: [before, outer, sibling, after] } },
     };
     const result = applied(document, {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.INSERT_ROW,
       story: OP_STORIES.MAIN,
       blockId: "00000031",
       at: 1,
-      row: makeRow("00000032"),
+      row: identifyTestRow(makeRow("00000032")),
     });
     const [nextBefore, nextOuter, nextSibling, nextAfter] =
       result.document.package.document.content;

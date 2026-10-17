@@ -1,3 +1,5 @@
+import { leaseForParagraphIds } from "../idLease";
+import { TEST_ID_LEASE } from "./leasedIds";
 import { describe, expect, test } from "bun:test";
 
 import type { Document, Paragraph, Run } from "../../model/document";
@@ -230,8 +232,9 @@ describe("splitBlock and joinBlocks", () => {
     content: [run("abcd")],
   };
 
-  test("a split inside a paragraph moves the text before it to a new paragraph", () => {
+  test("a split inside a paragraph preserves the identity on the first half", () => {
     const { document: next, inverse } = applied(documentOf(original), {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: at("00000001", 1),
       newBlockId: "0000ABCD",
@@ -239,22 +242,31 @@ describe("splitBlock and joinBlocks", () => {
     expect(paragraphs(next)).toEqual([
       {
         type: "paragraph",
-        paraId: "0000ABCD",
+        paraId: "00000001",
+        textId: "77777777",
         formatting: { alignment: "center" },
+        preservedAttributes: RSID,
         content: [run("a")],
       },
-      { ...original, content: [run("bcd")] },
+      {
+        type: "paragraph",
+        paraId: "0000ABCD",
+        formatting: { alignment: "center" },
+        sectionProperties,
+        pPrMark,
+        content: [run("bcd")],
+      },
     ]);
     expect(inverse).toEqual([
       {
         type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
         story: OP_STORIES.MAIN,
-        blockId: "0000ABCD",
-        nextBlockId: "00000001",
+        blockId: "00000001",
+        nextBlockId: "0000ABCD",
         depth: 2,
-        survivor: SPLIT_HALVES.SECOND,
+        survivor: SPLIT_HALVES.FIRST,
         expectedRetired: { formatting: { alignment: "center" } },
-        expectedSurvivor: { formatting: { alignment: "center" }, pPrMark },
+        expectedSurvivor: { formatting: { alignment: "center" } },
       },
     ]);
     expect(undone(next, inverse)).toEqual(documentOf(original));
@@ -268,6 +280,7 @@ describe("splitBlock and joinBlocks", () => {
     };
     const source: Paragraph = { ...original, propertyChanges: [pending] };
     const { document: next, inverse } = applied(documentOf(source), {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: at("00000001", 4),
       newBlockId: "0000ABCD",
@@ -327,6 +340,7 @@ describe("splitBlock and joinBlocks", () => {
     ]);
     expect(inverse).toEqual([
       {
+        idLease: leaseForParagraphIds(["00000001"]),
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
         at: at("00000002", 2, 0),
         newBlockId: "00000001",
@@ -389,6 +403,7 @@ describe("refusals", () => {
     [
       "a new id that differs from a used one only in case",
       {
+        idLease: TEST_ID_LEASE,
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
         at: at("0000ABCD", 1),
         newBlockId: "0000abcd",
@@ -397,7 +412,12 @@ describe("refusals", () => {
     ],
     [
       "the reserved zero id",
-      { type: DOCUMENT_OP_TYPES.SPLIT_BLOCK, at: at("0000ABCD", 1), newBlockId: "00000000" },
+      {
+        idLease: TEST_ID_LEASE,
+        type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        at: at("0000ABCD", 1),
+        newBlockId: "00000000",
+      },
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
     ],
     [
@@ -445,6 +465,7 @@ describe("refusals", () => {
   ])("refuses a new paragraph id %s", (_name, newBlockId) => {
     expect(
       refusalOf(document, {
+        idLease: TEST_ID_LEASE,
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
         at: at("0000ABCD", 1),
         newBlockId,
@@ -519,6 +540,7 @@ describe("refusals", () => {
     for (const id of ["0C0C0C0C", "0E0E0E0E", "0F0F0F0F"]) {
       expect(
         refusalOf(withStories, {
+          idLease: TEST_ID_LEASE,
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at: at("00000001", 1),
           newBlockId: id,

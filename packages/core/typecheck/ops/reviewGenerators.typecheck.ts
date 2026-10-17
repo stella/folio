@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE, identifyTestRow, testCellIds } from "../../../../test/documentIdLease";
 /** Tracked-family generators compiled by the package's typecheck contract. */
 import type { BlockContent, Document, Paragraph, TableRow } from "@stll/docx-core/model";
 import {
@@ -244,6 +245,7 @@ export const operations = {
   }),
   [DOCUMENT_OP_TYPES.SPLIT_BLOCK]: ({ document, seed }: OperationOptions) => ({
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    idLease: TEST_ID_LEASE,
     at: at(targetOffset({ document, seed })),
     newBlockId: NEW_ID,
     revision: stamp,
@@ -289,10 +291,11 @@ export const operations = {
   }),
   [DOCUMENT_OP_TYPES.INSERT_ROW]: ({ seed }: OperationOptions) => ({
     type: DOCUMENT_OP_TYPES.INSERT_ROW,
+    idLease: TEST_ID_LEASE,
     story: OP_STORIES.MAIN,
     blockId: ROW_ID,
     at: seed.offset % 4,
-    row: insertedRow(seed),
+    row: identifyTestRow(insertedRow(seed)),
     revision: stamp,
     newIds,
   }),
@@ -305,9 +308,11 @@ export const operations = {
   }),
   [DOCUMENT_OP_TYPES.INSERT_COLUMN]: () => ({
     type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+    idLease: TEST_ID_LEASE,
     ...tableAt(),
     column: 2,
     width: 100,
+    newCellIds: testCellIds(["00000040", "00000041", "00000042"]),
     newBlockIds: [0x40, 0x41, 0x42].map((value) =>
       value.toString(16).toUpperCase().padStart(8, "0"),
     ),
@@ -323,18 +328,22 @@ export const operations = {
   }),
   [DOCUMENT_OP_TYPES.MERGE_CELLS]: () => ({
     type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+    idLease: TEST_ID_LEASE,
     ...tableAt(),
     top: 0,
     bottom: 3,
     left: 0,
     right: 2,
+    newCellIds: [],
     newBlockIds: [],
     revision: stamp,
     newIds,
   }),
   [DOCUMENT_OP_TYPES.SPLIT_CELL]: () => ({
     type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+    idLease: TEST_ID_LEASE,
     ...tableAt(),
+    newCellIds: testCellIds(["00000050"]),
     newBlockIds: ["00000050"],
     revision: stamp,
     newIds,

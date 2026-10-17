@@ -1,4 +1,5 @@
 /** Cross-paragraph plans preserve review, inverse and survivor laws at partial endpoints. */
+import { TEST_ID_LEASE } from "./leasedIds";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
@@ -255,6 +256,7 @@ const directReplacement = (identified: IdentifiedCase) => {
       }).document;
     }
     current = apply(current, {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: { ...at, offset: at.offset + width },
       newBlockId: paragraph.paraId,

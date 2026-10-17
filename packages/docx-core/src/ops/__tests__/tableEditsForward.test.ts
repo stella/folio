@@ -1,4 +1,5 @@
 /** Forward effects are checked against logical slots and content, independently of inverse snapshots. */
+import { TEST_ID_LEASE, testCellIds } from "./leasedIds";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
@@ -212,6 +213,8 @@ describe("independent table forward oracles", () => {
           );
           const insertion = insertionOracle(table, column, 0x3000);
           const inserted = applied(document, {
+            idLease: TEST_ID_LEASE,
+            newCellIds: testCellIds(insertion.newBlockIds),
             ...address(targetOf(table)),
             type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
             column,
@@ -260,6 +263,8 @@ describe("independent table forward oracles", () => {
                   const insertion = insertionOracle(table, column, 0x4000 + step * 16);
                   expected = insertion.expected;
                   op = {
+                    idLease: TEST_ID_LEASE,
+                    newCellIds: testCellIds(insertion.newBlockIds),
                     ...target,
                     type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
                     column,
@@ -360,6 +365,10 @@ describe("independent table forward oracles", () => {
           const left = Number(shape.before);
           const content = table.rows.flatMap((row) => row.cells.flatMap((value) => value.content));
           const merged = applied(document, {
+            idLease: TEST_ID_LEASE,
+            newCellIds: testCellIds(
+              Array.from({ length: shape.rows - 1 }, (_, index) => id(0x5000 + index)),
+            ),
             ...address(targetOf(table)),
             type: DOCUMENT_OP_TYPES.MERGE_CELLS,
             top: 0,
@@ -396,13 +405,21 @@ describe("independent table forward oracles", () => {
               throw new Error("Merged owner paragraph missing.");
             refused(
               merged.document,
-              { ...address(first.paraId), type: DOCUMENT_OP_TYPES.SPLIT_CELL, newBlockIds: [] },
+              {
+                idLease: TEST_ID_LEASE,
+                newCellIds: testCellIds([]),
+                ...address(first.paraId),
+                type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+                newBlockIds: [],
+              },
               DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
             );
           }
           const horizontalDocument = fixture({ ...shape, vertical: false });
           const horizontalTable = tableOf(horizontalDocument);
           const horizontalMerge = applied(horizontalDocument, {
+            idLease: TEST_ID_LEASE,
+            newCellIds: testCellIds([]),
             ...address(targetOf(horizontalTable)),
             type: DOCUMENT_OP_TYPES.MERGE_CELLS,
             top: 0,
@@ -413,6 +430,8 @@ describe("independent table forward oracles", () => {
           });
           const horizontalMerged = tableOf(horizontalMerge.document);
           const split = applied(horizontalMerge.document, {
+            idLease: TEST_ID_LEASE,
+            newCellIds: testCellIds([id(0x6000), id(0x6001)]),
             ...address(targetOf(horizontalMerged)),
             type: DOCUMENT_OP_TYPES.SPLIT_CELL,
             newBlockIds: [id(0x6000), id(0x6001)],
@@ -464,6 +483,8 @@ describe("independent table forward oracles", () => {
           const table = tableOf(document);
           const ops = [
             {
+              idLease: TEST_ID_LEASE,
+              newCellIds: testCellIds([]),
               ...address(targetOf(table)),
               type: DOCUMENT_OP_TYPES.MERGE_CELLS,
               top: 0,
@@ -473,6 +494,8 @@ describe("independent table forward oracles", () => {
               newBlockIds: [],
             },
             {
+              idLease: TEST_ID_LEASE,
+              newCellIds: testCellIds([]),
               ...address(targetOf(table)),
               type: DOCUMENT_OP_TYPES.MERGE_CELLS,
               top: 0,
@@ -482,6 +505,8 @@ describe("independent table forward oracles", () => {
               newBlockIds: [],
             },
             {
+              idLease: TEST_ID_LEASE,
+              newCellIds: testCellIds([]),
               ...address(targetOf(table)),
               type: DOCUMENT_OP_TYPES.MERGE_CELLS,
               top: 0,
@@ -552,6 +577,8 @@ describe("independent table forward oracles", () => {
         ];
       const operations = [
         {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds([id(0xa000), id(0xa001)]),
           ...target,
           type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
           column: 0,
@@ -560,6 +587,8 @@ describe("independent table forward oracles", () => {
         },
         { ...target, type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 2 },
         {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds([]),
           ...target,
           type: DOCUMENT_OP_TYPES.MERGE_CELLS,
           top: 0,
@@ -568,7 +597,13 @@ describe("independent table forward oracles", () => {
           right: 3,
           newBlockIds: [],
         },
-        { ...target, type: DOCUMENT_OP_TYPES.SPLIT_CELL, newBlockIds: [id(0xa000)] },
+        {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds([id(0xa000)]),
+          ...target,
+          type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+          newBlockIds: [id(0xa000)],
+        },
       ] as const satisfies readonly DocumentOp[];
       for (const op of operations) {
         refused(document, op, reason);
@@ -599,6 +634,8 @@ describe("independent table forward oracles", () => {
     Reflect.deleteProperty(sparseRevisions, "0");
     const operations = [
       {
+        idLease: TEST_ID_LEASE,
+        newCellIds: testCellIds(sparseIds),
         ...target,
         type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
         column: 0,
@@ -632,17 +669,21 @@ describe("independent table forward oracles", () => {
     const cases = [
       {
         op: {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds([id(0x7000), id(0x7001)]),
           ...target,
           type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
           column: 0,
           width: 900,
           newBlockIds: [id(0x7000), id(0x7001)],
         },
-        fields: ["newBlockIds", "column", "width"],
+        fields: ["idLease", "newCellIds", "newBlockIds", "column", "width"],
       },
       { op: { ...target, type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 0 }, fields: ["column"] },
       {
         op: {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds([id(0x7000)]),
           ...target,
           type: DOCUMENT_OP_TYPES.MERGE_CELLS,
           top: 0,
@@ -651,15 +692,17 @@ describe("independent table forward oracles", () => {
           right: 3,
           newBlockIds: [id(0x7000)],
         },
-        fields: ["top", "bottom", "left", "right", "newBlockIds"],
+        fields: ["idLease", "newCellIds", "top", "bottom", "left", "right", "newBlockIds"],
       },
       {
         op: {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds([id(0x7000), id(0x7001)]),
           ...target,
           type: DOCUMENT_OP_TYPES.SPLIT_CELL,
           newBlockIds: [id(0x7000), id(0x7001)],
         },
-        fields: ["newBlockIds"],
+        fields: ["idLease", "newCellIds", "newBlockIds"],
       },
       {
         op: { ...target, type: DOCUMENT_OP_TYPES.SET_TABLE_GRID, columnWidths: [900, 900, 900] },
@@ -689,7 +732,9 @@ describe("independent table forward oracles", () => {
         refused(document, nullField, DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION);
         refusals += 2;
       }
-    expect(refusals).toBe(cases.reduce((count, entry) => count + 2 * (entry.fields.length + 2), 0));
+    let expectedRefusals = 0;
+    for (const entry of cases) expectedRefusals += 2 * (entry.fields.length + 2);
+    expect(refusals).toBe(expectedRefusals);
   });
 
   test("revision id collisions refuse locally and identical tracked patches create no records", () => {
@@ -711,6 +756,8 @@ describe("independent table forward oracles", () => {
       refused(
         document,
         {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds([id(0x9000), id(0x9001)]),
           ...target,
           type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
           column: 0,
@@ -759,7 +806,13 @@ describe("independent table forward oracles", () => {
     first.formatting = { sourceXml: '<w:tcPr><w:tcW w:w="900" w:type="dxa"/></w:tcPr>' };
     refused(
       document,
-      { ...address(targetOf(table)), type: DOCUMENT_OP_TYPES.SPLIT_CELL, newBlockIds: [] },
+      {
+        idLease: TEST_ID_LEASE,
+        newCellIds: testCellIds([]),
+        ...address(targetOf(table)),
+        type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+        newBlockIds: [],
+      },
       DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
     );
   });

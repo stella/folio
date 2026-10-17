@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "./leasedIds";
 import {
   generatedCaseFor,
   GENERATED_PACKAGE_STORIES,
@@ -23,6 +24,7 @@ import { storyParagraphs } from "../blocks";
 import { isCommentAnchor, leafSpans } from "../leaves";
 import {
   DOCUMENT_OP_TYPES,
+  DOCUMENT_OP_SCHEMA_VERSION,
   OP_STORIES,
   toOpEnvelope,
   type CommentOp,
@@ -286,7 +288,7 @@ test("comment inverses refuse changed owned text and preserve unrelated package 
     text: "x",
   }).unwrap();
   expect(applyDocumentOps(changed.document, applied.inverse).isErr()).toBe(true);
-  expect(toOpEnvelope(op).schema).toBe(10);
+  expect(toOpEnvelope(op).schema).toBe(DOCUMENT_OP_SCHEMA_VERSION);
 });
 
 test("every comment package-operation generator exercises its exact inverse in every story", () => {
@@ -390,6 +392,7 @@ test("generated text and revision histories retain live comment ownership and ex
               break;
             case "split":
               op = {
+                idLease: TEST_ID_LEASE,
                 type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
                 at: { ...start, offset: 1 },
                 newBlockId: (paragraphId++).toString(16).padStart(8, "0"),

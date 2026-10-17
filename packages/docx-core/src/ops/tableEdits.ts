@@ -1,5 +1,5 @@
 /** Semantic grid/cell/property edits; one exact, stale-checked table inverse. */
-import { Result } from "better-result";
+import { Result, panic } from "better-result";
 import {
   MAX_REVISION_ID,
   type Document,
@@ -56,7 +56,12 @@ const authored = <T extends { sourceXml?: string }>(formatting: T): T => {
   return next;
 };
 
-type FreshCellsOptions = { document: Document; op: Op; ids: readonly string[]; count: number };
+type FreshCellsOptions = {
+  document: Document;
+  op: Extract<TableEditOp, { type: "insertColumn" | "mergeCells" | "splitCell" }>;
+  ids: readonly string[];
+  count: number;
+};
 const freshCells = ({
   document,
   op,
@@ -86,8 +91,10 @@ const freshCells = ({
     occupied.add(idKey(id));
   }
   return Result.ok(
-    ids.map((paraId) => ({
+    ids.map((paraId, index) => ({
       type: "tableCell",
+      cellId:
+        op.newCellIds.at(index) ?? panic("A validated cell allocation has one id per paragraph."),
       content: [{ type: "paragraph", paraId, content: [] }],
     })),
   );

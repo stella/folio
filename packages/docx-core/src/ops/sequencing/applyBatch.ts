@@ -33,11 +33,7 @@ export const applyBatch = (
       if (paragraph !== undefined) {
         effect = {
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
-          newHalf:
-            op.newHalf ??
-            (op.at.offset === paragraphLength(paragraph)
-              ? SPLIT_HALVES.SECOND
-              : SPLIT_HALVES.FIRST),
+          newHalf: op.newHalf ?? SPLIT_HALVES.SECOND,
         };
       }
     }

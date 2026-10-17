@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE, testCellIds } from "./leasedIds";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 
 import fc from "fast-check";
@@ -242,6 +243,8 @@ describe("tracked table edits", () => {
   test("tracked insertion resolves cells before the grid snapshot", () => {
     const baseline = documentOf(tableOf());
     const direct = applied(baseline, {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds(["00000301", "00000302"]),
       ...tableTarget,
       type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
       column: 1,
@@ -251,6 +254,8 @@ describe("tracked table edits", () => {
     expect(tableIn(direct.document).columnWidths).toEqual([500, 550, 600, 700]);
     expect(tableIn(direct.document).rows.at(0)?.cells).toHaveLength(4);
     const tracked = applied(baseline, {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds(["00000301", "00000302"]),
       ...tableTarget,
       type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
       column: 1,
@@ -277,6 +282,8 @@ describe("tracked table edits", () => {
       if (formattingKind === "empty") table.formatting = {};
       const baseline = documentOf(table);
       const op = {
+        idLease: TEST_ID_LEASE,
+        newCellIds: testCellIds(["00000311", "00000312"]),
         ...tableTarget,
         type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
         column: 1,
@@ -339,6 +346,8 @@ describe("tracked table edits", () => {
     };
     const baseline = documentOf(baseTable);
     const direct = applied(baseline, {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds(["00000303"]),
       ...tableTarget,
       type: DOCUMENT_OP_TYPES.SPLIT_CELL,
       newBlockIds: ["00000303"],
@@ -346,6 +355,8 @@ describe("tracked table edits", () => {
     expect(tableIn(direct.document).rows.at(0)?.cells).toHaveLength(3);
     expect(tableIn(direct.document).rows.at(0)?.cells.at(0)?.formatting?.gridSpan).toBeUndefined();
     const tracked = applied(baseline, {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds(["00000303"]),
       ...tableTarget,
       type: DOCUMENT_OP_TYPES.SPLIT_CELL,
       newBlockIds: ["00000303"],
@@ -374,6 +385,8 @@ describe("tracked table edits", () => {
       second.content = [paragraph("00000020", "")];
       const baseline = documentOf(table);
       const direct = applied(baseline, {
+        idLease: TEST_ID_LEASE,
+        newCellIds: testCellIds([]),
         ...tableTarget,
         type: DOCUMENT_OP_TYPES.MERGE_CELLS,
         top: 0,
@@ -383,6 +396,8 @@ describe("tracked table edits", () => {
         newBlockIds: [],
       });
       const tracked = applied(baseline, {
+        idLease: TEST_ID_LEASE,
+        newCellIds: testCellIds([]),
         ...tableTarget,
         type: DOCUMENT_OP_TYPES.MERGE_CELLS,
         top: 0,

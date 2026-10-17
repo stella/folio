@@ -1,4 +1,5 @@
 /** Tracked replacement fragments share deletion's validation and physical-id pool. */
+import { leaseForParagraphIds } from "./idLease";
 import { Result, panic } from "better-result";
 
 import type { Document, Paragraph } from "../model/document";
@@ -206,6 +207,7 @@ export const planTrackedReplace = (
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: { ...at, ...end },
       newBlockId: paraId ?? "",
+      idLease: leaseForParagraphIds([paraId ?? ""]),
       newHalf: SPLIT_HALVES.FIRST,
       newParagraph,
       revision,

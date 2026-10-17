@@ -2,4 +2,4 @@
 "@stll/docx-core": minor
 ---
 
-Add model-only table, row and cell identities with lease validation and a JSON sidecar.
+Add stable table, row and cell ids, a versioned identity sidecar, and leased ids for table and block operations.

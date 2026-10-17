@@ -400,7 +400,7 @@ const keptEarlierChange = (
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
       // A new second half takes the pending change, and with it the formatting it started from.
       const paragraph = paragraphById(document, op.at.blockId);
-      if (paragraph === undefined || !newSecondHalf(paragraph, op)) return false;
+      if (paragraph === undefined || !newSecondHalf(op)) return false;
       const fields = op.newParagraph ?? { formatting: paragraph.formatting };
       return (
         !sameParagraphProperties(fields.formatting, paragraph.formatting) &&
@@ -413,11 +413,9 @@ const keptEarlierChange = (
 };
 
 /** Whether a split's new paragraph is its second half: then rejecting it leaves the new id. */
-const newSecondHalf = (paragraph: Paragraph, op: DocumentOp): boolean =>
+const newSecondHalf = (op: DocumentOp): boolean =>
   op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK &&
-  (op.newHalf ??
-    (op.at.offset === paragraphLength(paragraph) ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST)) ===
-    SPLIT_HALVES.SECOND;
+  (op.newHalf ?? SPLIT_HALVES.SECOND) === SPLIT_HALVES.SECOND;
 
 /**
  * The projection L2 compares a rejected tracked operation under: π′ for a
@@ -427,7 +425,7 @@ const newSecondHalf = (paragraph: Paragraph, op: DocumentOp): boolean =>
 const rejectProjection = (document: Document, op: DocumentOp): Projection => {
   if (op.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK) return "π";
   const paragraph = paragraphById(document, op.at.blockId);
-  return paragraph !== undefined && newSecondHalf(paragraph, op) ? "π′" : "π";
+  return paragraph !== undefined && newSecondHalf(op) ? "π′" : "π";
 };
 
 // ---------------------------------------------------------------------------

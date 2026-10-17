@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "../__tests__/leasedIds";
 import path from "node:path";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
@@ -136,6 +137,7 @@ test("surplus identity pools retain their JSON and apply like consumed-only pool
         },
       ] as const satisfies readonly Document[];
       const compact = {
+        idLease: TEST_ID_LEASE,
         type: "splitBlock",
         at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 },
         newBlockId: "00000002",
@@ -347,12 +349,14 @@ test("sequencing refuses unsupported property-review and section-boundary payloa
       propertyReview: "append",
     },
     {
+      idLease: TEST_ID_LEASE,
       type: "splitBlock",
       at: { story: "main", blockId: "00000001", offset: 1 },
       newBlockId: "00000002",
       firstSectionProperties: {},
     },
     {
+      idLease: TEST_ID_LEASE,
       type: "splitBlock",
       at: { story: "main", blockId: "00000001", offset: 1 },
       newBlockId: "00000002",

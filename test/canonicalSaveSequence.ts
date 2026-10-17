@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "./documentIdLease";
 import JSZip from "jszip";
 import { panic } from "better-result";
 import { extractParagraphXml } from "../packages/core/src/docx/selectiveXmlPatch";
@@ -73,6 +74,7 @@ export const canonicalSaveSequence = (seed: number): DocumentOp[][] => {
     [
       {
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        idLease: TEST_ID_LEASE,
         at: position(2, 3),
         newBlockId: blockId(10),
         newHalf: "second",

@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "../__tests__/leasedIds";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
@@ -186,6 +187,7 @@ describe("position transforms", () => {
             converge(
               documentOf(),
               batch({
+                idLease: TEST_ID_LEASE,
                 type: "splitBlock",
                 at: at(split),
                 newBlockId: "00000002",
@@ -208,7 +210,13 @@ describe("position transforms", () => {
         fc.property(fc.integer({ min: 1, max: 5 }), (split) => {
           converge(
             documentOf(),
-            batch({ type: "splitBlock", at: at(split), newBlockId: "00000002", newHalf: "first" }),
+            batch({
+              idLease: TEST_ID_LEASE,
+              type: "splitBlock",
+              at: at(split),
+              newBlockId: "00000002",
+              newHalf: "first",
+            }),
             batch(deletion(0, 6)),
           );
         }),
@@ -235,6 +243,7 @@ describe("position transforms", () => {
               { type: "setRunProps", from, to, patch: { bold: true } },
             ] as const satisfies readonly DocumentOp[];
             const split = {
+              idLease: TEST_ID_LEASE,
               type: "splitBlock",
               at: at(splitOffset),
               newBlockId: "00000003",
@@ -292,8 +301,20 @@ describe("position transforms", () => {
         fc.property(fc.integer({ min: 0, max: 6 }), fc.integer({ min: 0, max: 6 }), (a, b) => {
           converge(
             documentOf(),
-            batch({ type: "splitBlock", at: at(a), newBlockId: "00000002", newHalf: "first" }),
-            batch({ type: "splitBlock", at: at(b), newBlockId: "00000003", newHalf: "first" }),
+            batch({
+              idLease: TEST_ID_LEASE,
+              type: "splitBlock",
+              at: at(a),
+              newBlockId: "00000002",
+              newHalf: "first",
+            }),
+            batch({
+              idLease: TEST_ID_LEASE,
+              type: "splitBlock",
+              at: at(b),
+              newBlockId: "00000003",
+              newHalf: "first",
+            }),
           );
         }),
         propertyConfig({ numRuns: 100 }),
@@ -326,6 +347,7 @@ describe("position transforms", () => {
 
   test("split halves and join survivors follow the real operation contract", () => {
     const split = {
+      idLease: TEST_ID_LEASE,
       type: "splitBlock",
       at: at(3),
       newBlockId: "00000002",
@@ -443,7 +465,15 @@ describe("property and structural policies", () => {
     expect(
       transformBatch(
         batch({ type: "joinBlocks", story: "main", blockId: "00000001", nextBlockId: "00000002" }),
-        [sequenced({ type: "splitBlock", at: at(2), newBlockId: "00000003", newHalf: "second" })],
+        [
+          sequenced({
+            idLease: TEST_ID_LEASE,
+            type: "splitBlock",
+            at: at(2),
+            newBlockId: "00000003",
+            newHalf: "second",
+          }),
+        ],
       ).isErr(),
     ).toBe(true);
   });

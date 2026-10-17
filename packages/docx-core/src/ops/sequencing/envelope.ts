@@ -1,3 +1,4 @@
+import type { DocumentIdLease } from "../../model/identity";
 import { encodeUtf8 } from "@stll/utf8-boundaries";
 import { cloneModel } from "../modelClone";
 import { Result, TaggedError } from "better-result";
@@ -203,6 +204,16 @@ const paragraphPropertyFields = {
   contextualSpacing: boolean,
   styleId: string,
 } satisfies Partial<Record<keyof ParagraphFormatting, Validator>>;
+const numericLease = object({ start: natural, end: natural });
+const structuralLease = object({ prefix: nonemptyString, start: natural, end: natural });
+const idLease = object({
+  paragraph: numericLease,
+  revision: numericLease,
+  comment: numericLease,
+  table: structuralLease,
+  row: structuralLease,
+  cell: structuralLease,
+} satisfies Record<keyof DocumentIdLease, Validator>);
 const positionFields = {
   story: isOpStory,
   blockId,
@@ -307,6 +318,7 @@ const operationFields = {
   } satisfies OperationFields<"setParagraphProps">,
   splitBlock: {
     type: literal("splitBlock"),
+    idLease,
     at: position,
     newBlockId: blockId,
     newHalf: half,

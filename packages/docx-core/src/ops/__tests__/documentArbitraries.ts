@@ -7,6 +7,7 @@
  * markers, fields, content controls, tables, section breaks and the parser's
  * per-section view. Every paragraph has a unique `paraId`.
  */
+import { TEST_ID_LEASE } from "./leasedIds";
 
 import fc from "fast-check";
 
@@ -798,11 +799,12 @@ const rawOpForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp => {
           ? { newHalf: seed.first % 2 === 0 ? SPLIT_HALVES.FIRST : SPLIT_HALVES.SECOND }
           : {};
       return seed.newParagraph === undefined
-        ? { type: kind, at, newBlockId: toHexId(fresh), ...newHalf, ...ids }
+        ? { type: kind, idLease: TEST_ID_LEASE, at, newBlockId: toHexId(fresh), ...newHalf, ...ids }
         : {
             type: kind,
             at,
             newBlockId: toHexId(fresh),
+            idLease: TEST_ID_LEASE,
             newParagraph: seed.newParagraph,
             ...newHalf,
             ...ids,

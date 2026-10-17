@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "./leasedIds";
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
@@ -68,7 +69,9 @@ test(
             }
             const nextId = (index + 2).toString(16).padStart(8, "0");
             const split = applyDocumentOp(current, {
+              idLease: TEST_ID_LEASE,
               type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+              newHalf: "first",
               at: { story: OP_STORIES.MAIN, blockId, offset: prefixLength },
               newBlockId: nextId,
               revision: stamp(),

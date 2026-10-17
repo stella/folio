@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "../../../../test/documentIdLease";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic, Result } from "better-result";
@@ -163,6 +164,7 @@ test("generated canonical histories save the model and preserve every block outs
           .prepareOperations(state, [
             {
               type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+              idLease: TEST_ID_LEASE,
               at: { story: OP_STORIES.MAIN, blockId: IDS[2], offset: 2 },
               newBlockId: transientId,
               newHalf: "second",

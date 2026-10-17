@@ -38,7 +38,7 @@ export const tableEditBoundaryRefusal = (op: DocumentOp): DocumentOpRefusal | un
     case DOCUMENT_OP_TYPES.INSERT_COLUMN:
     case DOCUMENT_OP_TYPES.MERGE_CELLS:
     case DOCUMENT_OP_TYPES.SPLIT_CELL:
-      valid = strings(op.newBlockIds);
+      valid = strings(op.newBlockIds) && strings(op.newCellIds) && isRecord(op.idLease);
       if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN)
         valid &&= typeof op.column === "number" && typeof op.width === "number";
       if (op.type === DOCUMENT_OP_TYPES.MERGE_CELLS)

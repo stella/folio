@@ -1,6 +1,7 @@
 import { TaggedError } from "better-result";
 
 import type { DocumentOpType } from "./types";
+import type { IdentityValidationReason } from "../model/identity";
 
 /**
  * Why an operation was not applied. A refused operation changes nothing: the
@@ -103,7 +104,8 @@ export const DOCUMENT_OP_REFUSAL_REASONS = Object.freeze({
 
 /** One of {@link DOCUMENT_OP_REFUSAL_REASONS}. */
 export type DocumentOpRefusalReason =
-  (typeof DOCUMENT_OP_REFUSAL_REASONS)[keyof typeof DOCUMENT_OP_REFUSAL_REASONS];
+  | (typeof DOCUMENT_OP_REFUSAL_REASONS)[keyof typeof DOCUMENT_OP_REFUSAL_REASONS]
+  | IdentityValidationReason;
 
 /** An operation the document cannot take as stated. */
 export class DocumentOpRefusal extends TaggedError("DocumentOpRefusal")<{

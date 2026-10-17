@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "./leasedIds";
 import { describe, expect, test } from "bun:test";
 
 import type { Document, Insertion, Paragraph, Run } from "../../model/document";
@@ -78,6 +79,7 @@ describe("an undo that no longer applies", () => {
   test("undoing a split after the new paragraph's properties changed is stale", () => {
     const document = documentOf({ type: "paragraph", paraId: "00000001", content: [run("ab")] });
     const split = applied(document, {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: at("00000001", 1),
       newBlockId: "0000000A",
@@ -94,6 +96,7 @@ describe("an undo that no longer applies", () => {
   test("renumbering or pagination recomputed since does not make an undo stale", () => {
     const document = documentOf({ type: "paragraph", paraId: "00000001", content: [run("ab")] });
     const split = applied(document, {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: at("00000001", 1),
       newBlockId: "0000000A",
@@ -127,6 +130,7 @@ describe("records carrying ids", () => {
 
   test("a split inside a tracked insertion continues it under the new ids it names", () => {
     const op: DocumentOp = {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: at("00000001", 2),
       newBlockId: "0000000A",
@@ -145,7 +149,12 @@ describe("records carrying ids", () => {
   test("a split inside a tracked insertion without new ids is refused", () => {
     expect(
       reasonOf(trackedDocument, [
-        { type: DOCUMENT_OP_TYPES.SPLIT_BLOCK, at: at("00000001", 2), newBlockId: "0000000A" },
+        {
+          idLease: TEST_ID_LEASE,
+          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+          at: at("00000001", 2),
+          newBlockId: "0000000A",
+        },
       ]),
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
   });

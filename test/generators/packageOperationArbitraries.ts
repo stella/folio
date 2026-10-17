@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE, identifyTestRow, testCellIds } from "../documentIdLease";
 import { freshCommentId } from "../../packages/docx-core/src/ops/comments";
 /** Package-shaped cases for the same inverse/locality laws across every operation kind. */
 import { panic } from "better-result";
@@ -474,16 +475,17 @@ export const PACKAGE_OP_CASES = {
     document: args.document,
     op: {
       type: "insertRow",
+      idLease: TEST_ID_LEASE,
       story: args.story,
       blockId: tableFor(args).blockId,
       at: args.seed.first % 3,
-      row: {
+      row: identifyTestRow({
         type: "tableRow",
         cells: [
           { type: "tableCell", content: [freshParagraph(args)] },
           { type: "tableCell", content: [freshParagraph(args, 1)] },
         ],
-      },
+      }),
     },
   }),
   deleteRow: (args: CaseArgs): GeneratedCase => ({
@@ -628,10 +630,15 @@ export const PACKAGE_OP_CASES = {
     document: args.document,
     op: {
       type: "insertColumn",
+      idLease: TEST_ID_LEASE,
       story: "main",
       blockId: tableFor({ ...args, story: "main" }).blockId,
       column: args.seed.first % 3,
       width: 1200,
+      newCellIds: testCellIds([
+        freshParagraph(args).paraId ?? "",
+        freshParagraph(args, 1).paraId ?? "",
+      ]),
       newBlockIds: [freshParagraph(args).paraId ?? "", freshParagraph(args, 1).paraId ?? ""],
     },
   }),
@@ -648,12 +655,14 @@ export const PACKAGE_OP_CASES = {
     document: args.document,
     op: {
       type: "mergeCells",
+      idLease: TEST_ID_LEASE,
       story: "main",
       blockId: tableFor({ ...args, story: "main" }).blockId,
       top: 0,
       bottom: 1,
       left: 0,
       right: 2,
+      newCellIds: [],
       newBlockIds: [],
     },
   }),
@@ -664,8 +673,10 @@ export const PACKAGE_OP_CASES = {
       document: merged,
       op: {
         type: "splitCell",
+        idLease: TEST_ID_LEASE,
         story: "main",
         blockId: tableFor({ ...args, document: merged, story: "main" }).blockId,
+        newCellIds: testCellIds([freshParagraph({ ...args, document: merged }).paraId ?? ""]),
         newBlockIds: [freshParagraph({ ...args, document: merged }).paraId ?? ""],
       },
     };

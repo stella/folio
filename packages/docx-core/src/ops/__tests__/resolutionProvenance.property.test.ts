@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "./leasedIds";
 import {
   assertOutsideRunReviewCoverage,
   resolvePendingRunFormatting,
@@ -1200,6 +1201,7 @@ test("generated provenance-bearing cuts capture exact inverse source state", () 
               } as const satisfies DocumentOp;
             case "blockSplit":
               return {
+                idLease: TEST_ID_LEASE,
                 type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
                 at,
                 newBlockId: "00000003",

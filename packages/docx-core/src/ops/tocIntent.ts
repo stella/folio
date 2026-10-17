@@ -1,3 +1,4 @@
+import { leaseForParagraphIds } from "./idLease";
 import { Result, panic } from "better-result";
 
 import type { Document, Paragraph, ParagraphContent } from "../model/document";
@@ -367,6 +368,7 @@ export const compileGenerateTOCIntent = (
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
     at: { ...insertionAt, ...gap },
     newBlockId,
+    idLease: leaseForParagraphIds([newBlockId]),
     newHalf: SPLIT_HALVES.FIRST,
     newParagraph: target.formatting === undefined ? {} : { formatting: target.formatting },
   } as const;

@@ -20,6 +20,7 @@
  *   property change, unless the previous one holds no content; its mark run
  *   properties stay its own.
  */
+import { TEST_ID_LEASE } from "./leasedIds";
 
 import { describe, expect, test } from "bun:test";
 
@@ -125,7 +126,9 @@ describe("Enter inside a paragraph", () => {
       const alpha = paragraph("2A000002", [text("Alpha text.")], own);
       const content = edited(documentOf(alpha), [
         {
+          idLease: TEST_ID_LEASE,
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+          newHalf: "first",
           at: at("2A000002", 6),
           newBlockId: "5791F953",
           revision: REVIEWER,
@@ -145,6 +148,7 @@ describe("Enter at the end of a paragraph", () => {
   const typeAfter = (newBlockId: string, fields?: Omit<Paragraph, "type" | "paraId" | "content">) =>
     [
       {
+        idLease: TEST_ID_LEASE,
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
         at: at("2A000002", 11),
         newBlockId,
@@ -682,7 +686,9 @@ describe("Tracked Enter and Backspace, then every change resolved", () => {
     const document = documentOf(alphaOf({ alignment: "center" }), bravo);
     const split = tracked(document, [
       {
+        idLease: TEST_ID_LEASE,
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        newHalf: "first",
         at: at("2A000002", 6),
         newBlockId: "5791F953",
         revision: REVIEWER,
@@ -712,6 +718,7 @@ describe("Tracked Enter and Backspace, then every change resolved", () => {
       const alpha = alphaOf(formatting, fields);
       const split = tracked(documentOf(alpha, bravo), [
         {
+          idLease: TEST_ID_LEASE,
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at: at("2A000002", 11),
           newBlockId: "06279B03",

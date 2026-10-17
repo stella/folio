@@ -1,4 +1,5 @@
 /** Pure wire-fixture construction, shared by snapshot tests and generation. */
+import { TEST_ID_LEASE, identifyTestRow, testCellIds } from "./leasedIds";
 import path from "node:path";
 import type { Document, Paragraph, Table, TableRow } from "../../model/document";
 import { captureSectionView, captureSectionViewState } from "../blocks";
@@ -165,7 +166,9 @@ const OPS: readonly DocumentOp[] = [
     patch: { alignment: "end" },
   },
   {
+    idLease: TEST_ID_LEASE,
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    newHalf: "first",
     at: at("00000001", 6),
     newBlockId: "0000000A",
     newIds: { revision: [50] },
@@ -207,7 +210,9 @@ const OPS: readonly DocumentOp[] = [
     revision: stamp(68),
   },
   {
+    idLease: TEST_ID_LEASE,
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    newHalf: "first",
     at: at("0000000A", 2),
     newBlockId: "0000000B",
     newIds: { revision: [70, 71] },
@@ -297,11 +302,12 @@ export const envelopes = (): DocumentOpEnvelope[] => {
   };
   const rowOps = [
     {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.INSERT_ROW,
       story: OP_STORIES.MAIN,
       blockId: "00000020",
       at: 1,
-      row: row("00000023"),
+      row: identifyTestRow(row("00000023")),
       revision: stamp(200),
       newIds: { revision: [201, 204] },
     },
@@ -460,7 +466,9 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE,
     },
     {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      newHalf: "first",
       at: at("00000051", 1),
       newBlockId: "00000053",
       firstSectionProperties: { pageWidth: 7_000 },
@@ -545,7 +553,9 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     },
   };
   const presenceOp = {
+    idLease: TEST_ID_LEASE,
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    newHalf: "first",
     at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
     newBlockId: "00000002",
     newParagraph: { formatting: { numPr: undefined } },
@@ -668,6 +678,8 @@ export const envelopes = (): DocumentOpEnvelope[] => {
   };
   const editOps = [
     {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds(["00000200", "00000201"]),
       ...editTarget,
       type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
       column: 1,
@@ -676,6 +688,8 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     },
     { ...editTarget, type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 1 },
     {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds(["00000202"]),
       ...editTarget,
       type: DOCUMENT_OP_TYPES.MERGE_CELLS,
       top: 0,
@@ -711,6 +725,8 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       patch: { justification: "right", layout: "autofit", styleId: null, bidi: true },
     },
     {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds(["00000203", "00000204"]),
       ...editTarget,
       type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
       column: 2,
@@ -752,6 +768,8 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       revision: stamp(550),
     },
     {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds([]),
       ...editTarget,
       type: DOCUMENT_OP_TYPES.MERGE_CELLS,
       top: 0,
@@ -784,6 +802,8 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     ),
   };
   const splitOp = {
+    idLease: TEST_ID_LEASE,
+    newCellIds: testCellIds(["00000302"]),
     story: OP_STORIES.MAIN,
     blockId: "00000300",
     type: DOCUMENT_OP_TYPES.SPLIT_CELL,

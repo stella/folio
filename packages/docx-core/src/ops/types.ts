@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 10: text, formatting and review edits on
+ * Document operations, schema version 11: text, formatting and review edits on
  * independently addressed document stories, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -25,6 +25,7 @@
  * migration of the journaled operations.
  */
 
+import type { DocumentIdLease } from "../model/identity";
 import { INSERTION_SEAM_POLICIES } from "../model/content";
 import { captureDocumentOp } from "./wire";
 
@@ -103,7 +104,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 10;
+export const DOCUMENT_OP_SCHEMA_VERSION = 11;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -228,7 +229,7 @@ export const SECTION_BOUNDARY_POLICIES = Object.freeze({
   REPLACE: "replace",
 } as const);
 
-/** The operation kinds of schema version 10. */
+/** The operation kinds of schema version 11. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
   CREATE_COMMENT: "createComment",
   UPDATE_COMMENT_CONTENT: "updateCommentContent",
@@ -466,9 +467,8 @@ export type SplitHalf = (typeof SPLIT_HALVES)[keyof typeof SPLIT_HALVES];
  * unmodelled attributes, properties); the other is a new paragraph named
  * `newBlockId`, taking the fields in `newParagraph`, or a copy of the
  * paragraph's properties when the operation states none. `newHalf` says which
- * half is new: by default the second when the position ends the paragraph
- * (a paragraph added after it), else the first (the text before the position
- * moves to a paragraph of its own, and the paragraph continues with the rest).
+ * half is new: by default the second, preserving the identity on the half
+ * holding the start of the paragraph.
  * The paragraph mark always ends the second half, so the section break, the
  * mark's tracked change and the pending property changes go with it; when the
  * second half is the new one, `newParagraph` states no property changes.
@@ -489,6 +489,7 @@ export type SplitHalf = (typeof SPLIT_HALVES)[keyof typeof SPLIT_HALVES];
  * with the paragraph's own mark, must state the same ones as the paragraph.
  */
 export type SplitBlockOp = {
+  idLease: DocumentIdLease;
   type: typeof DOCUMENT_OP_TYPES.SPLIT_BLOCK;
   at: TextPosition;
   /** `w14:paraId` of the new paragraph: eight hex digits, unused in the document. */
@@ -696,6 +697,7 @@ export type ResolveRevisionOp = {
  * additional physical revision ids.
  */
 export type InsertRowOp = {
+  idLease: DocumentIdLease;
   type: typeof DOCUMENT_OP_TYPES.INSERT_ROW;
   story: OpStory;
   blockId: string;
@@ -939,6 +941,8 @@ export type InsertColumnOp = TableEditTarget & {
   type: typeof DOCUMENT_OP_TYPES.INSERT_COLUMN;
   column: number;
   width: number;
+  idLease: DocumentIdLease;
+  newCellIds: readonly string[];
   newBlockIds: readonly string[];
 };
 export type DeleteColumnOp = TableEditTarget & {
@@ -952,11 +956,15 @@ export type MergeCellsOp = TableEditTarget & {
   bottom: number;
   left: number;
   right: number;
+  idLease: DocumentIdLease;
+  newCellIds: readonly string[];
   newBlockIds: readonly string[];
 };
 /** Split the addressed span into unit cells; the top-left cell keeps its content and identity. */
 export type SplitCellOp = TableEditTarget & {
   type: typeof DOCUMENT_OP_TYPES.SPLIT_CELL;
+  idLease: DocumentIdLease;
+  newCellIds: readonly string[];
   newBlockIds: readonly string[];
 };
 /** Resize the existing logical grid without changing its topology. */
@@ -998,7 +1006,7 @@ export type TableEditOp =
 export type TableIntentOperation = {
   [Kind in TableEditOp["type"]]: Omit<
     Extract<TableEditOp, { type: Kind }>,
-    "revision" | "newIds" | "newBlockIds"
+    "revision" | "newIds" | "newBlockIds" | "newCellIds" | "idLease"
   >;
 }[TableEditOp["type"]];
 
@@ -1054,7 +1062,7 @@ export type CommentOp =
   | DeleteCommentOp
   | RestoreCommentStateOp;
 
-/** A schema-version-10 document operation. */
+/** A schema-version-11 document operation. */
 export type DocumentOp = (
   | CommentOp
   | CreateHeaderFooterOp

@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "../../../../test/documentIdLease";
 /**
  * Document operations cut and join paragraphs without knowing the fold: a
  * capture is content to them, and goes where content goes. What a save owes
@@ -154,6 +155,7 @@ const opFor = (document: Document, step: Step, serial: number): DocumentOp | und
     case "split":
       return {
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        idLease: TEST_ID_LEASE,
         at,
         newBlockId: (0x10_00 + serial).toString(16).toUpperCase().padStart(8, "0"),
         newHalf: step.half,
@@ -239,6 +241,7 @@ describe("the fold's rule after document operations", () => {
 
     const split = applyDocumentOp(document, {
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      idLease: TEST_ID_LEASE,
       at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 2 },
       newBlockId: "0000ABCD",
     });

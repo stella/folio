@@ -1,3 +1,5 @@
+import { leasedOperationRefusal } from "./leasedOperation";
+import { leaseForParagraphIds } from "./idLease";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
 import { applyCommentOp } from "./comments";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
@@ -1443,9 +1445,7 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
   }
   const { location, gap } = located.value;
   const { paragraph } = location;
-  const newHalf =
-    op.newHalf ??
-    (gap.offset === paragraphLength(paragraph) ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST);
+  const newHalf = op.newHalf ?? SPLIT_HALVES.SECOND;
   if (newHalf === SPLIT_HALVES.SECOND && (op.newParagraph?.propertyChanges?.length ?? 0) > 0) {
     return refuse(
       op,
@@ -1751,6 +1751,7 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
       zeroWidthBefore: zeroWidthLeavesAt(leading.content, length).length,
     },
     newBlockId: retiredId,
+    idLease: leaseForParagraphIds([retiredId]),
     newHalf,
     newParagraph: retiredFields,
   };
@@ -2501,6 +2502,8 @@ export const applyDocumentOp = (
   if (badStamp !== undefined) {
     return Result.err(badStamp);
   }
+  const leased = leasedOperationRefusal(document, op);
+  if (leased !== undefined) return Result.err(leased);
   const applied = dispatch(document, op);
   if (applied.isErr()) {
     return Result.err(applied.error);

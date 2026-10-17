@@ -1,4 +1,5 @@
 /** Table edit laws use an independent slot oracle, never the production grid helper. */
+import { TEST_ID_LEASE, testCellIds } from "./leasedIds";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
@@ -328,6 +329,8 @@ describe("semantic table edit properties", () => {
         const before = tableOf(f.document, f.nested);
         const column = seed % (f.width + 1);
         const inserted = applied(f.document, {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds(idsForInsert(before, column, 0x1000)),
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
           column,
@@ -384,6 +387,10 @@ describe("semantic table edit properties", () => {
         const f = fixture({ ...value, variant: 0 });
         const before = tableOf(f.document, f.nested);
         const merged = applied(f.document, {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds(
+            Array.from({ length: f.height - 1 }, (_, offset) => id(0x2000 + offset)),
+          ),
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.MERGE_CELLS,
           top: 0,
@@ -412,6 +419,8 @@ describe("semantic table edit properties", () => {
           if (mergedParagraph?.type !== "paragraph" || !mergedParagraph.paraId)
             throw new Error("Merged target paragraph missing.");
           const refusal = applyDocumentOp(merged.document, {
+            idLease: TEST_ID_LEASE,
+            newCellIds: testCellIds([]),
             ...target(mergedParagraph.paraId),
             type: DOCUMENT_OP_TYPES.SPLIT_CELL,
             newBlockIds: [],
@@ -423,6 +432,8 @@ describe("semantic table edit properties", () => {
         const horizontal = fixture({ ...value, variant: 0 });
         const horizontalBefore = tableOf(horizontal.document, horizontal.nested);
         const horizontalMerged = applied(horizontal.document, {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds([]),
           ...target(horizontal.target),
           type: DOCUMENT_OP_TYPES.MERGE_CELLS,
           top: 0,
@@ -439,6 +450,8 @@ describe("semantic table edit properties", () => {
         exact(horizontalTable.rows.at(0)?.cells.at(0)?.content, topContent);
         expect(horizontalTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
         const split = applied(horizontalMerged.document, {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds([id(0x3000)]),
           ...target(horizontal.target),
           type: DOCUMENT_OP_TYPES.SPLIT_CELL,
           newBlockIds: [id(0x3000)],
@@ -472,6 +485,10 @@ describe("semantic table edit properties", () => {
         const before = tableOf(f.document, f.nested);
         const splitHeight = vertical ? f.height : 1;
         const op = {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds(
+            Array.from({ length: splitHeight }, (_, offset) => id(0x7000 + offset)),
+          ),
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.SPLIT_CELL,
           newBlockIds: Array.from({ length: splitHeight }, (_, offset) => id(0x7000 + offset)),
@@ -552,6 +569,8 @@ describe("semantic table edit properties", () => {
                 break;
               default:
                 op = {
+                  idLease: TEST_ID_LEASE,
+                  newCellIds: testCellIds(idsForInsert(before, 0, 0x4000 + step * 16)),
                   ...address,
                   type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
                   column: 0,
@@ -900,6 +919,8 @@ describe("semantic table edit properties", () => {
         const f = fixture({ ...value, variant: 0, empty: true, explicitGrid: true });
         const before = tableOf(f.document, f.nested);
         const operation = {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds([]),
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.MERGE_CELLS,
           top: 0,
@@ -958,6 +979,8 @@ describe("semantic table edit properties", () => {
         const cases = [
           {
             op: {
+              idLease: TEST_ID_LEASE,
+              newCellIds: testCellIds([]),
               ...address,
               type: DOCUMENT_OP_TYPES.SPLIT_CELL,
               newBlockIds: [],
@@ -966,6 +989,8 @@ describe("semantic table edit properties", () => {
           },
           {
             op: {
+              idLease: TEST_ID_LEASE,
+              newCellIds: testCellIds([]),
               ...address,
               type: DOCUMENT_OP_TYPES.MERGE_CELLS,
               top: 0,
@@ -978,6 +1003,8 @@ describe("semantic table edit properties", () => {
           },
           {
             op: {
+              idLease: TEST_ID_LEASE,
+              newCellIds: testCellIds([]),
               ...address,
               type: DOCUMENT_OP_TYPES.MERGE_CELLS,
               top: 0,
@@ -1076,6 +1103,10 @@ describe("semantic table edit properties", () => {
         const f = fixture({ ...value, variant: 0 });
         const address = target(f.target);
         const inserted = applied(f.document, {
+          idLease: TEST_ID_LEASE,
+          newCellIds: testCellIds(
+            Array.from({ length: f.height }, (_, offset) => id(0x6000 + offset)),
+          ),
           ...address,
           type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
           column: 0,
@@ -1111,6 +1142,8 @@ describe("semantic table edit properties", () => {
           {
             document: f.document,
             op: {
+              idLease: TEST_ID_LEASE,
+              newCellIds: testCellIds([]),
               ...address,
               type: DOCUMENT_OP_TYPES.MERGE_CELLS,
               top: 1,
@@ -1124,6 +1157,8 @@ describe("semantic table edit properties", () => {
           {
             document: f.document,
             op: {
+              idLease: TEST_ID_LEASE,
+              newCellIds: testCellIds(Array.from({ length: f.height }, () => f.target)),
               ...address,
               type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
               column: 0,
@@ -1135,6 +1170,8 @@ describe("semantic table edit properties", () => {
           {
             document: f.document,
             op: {
+              idLease: TEST_ID_LEASE,
+              newCellIds: testCellIds([]),
               ...address,
               type: DOCUMENT_OP_TYPES.MERGE_CELLS,
               top: 0,

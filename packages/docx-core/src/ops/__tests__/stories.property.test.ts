@@ -1,4 +1,5 @@
 /** Story generators extend the operation oracle beyond the main body. */
+import { TEST_ID_LEASE } from "./leasedIds";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
@@ -92,6 +93,7 @@ describe("all-story operation laws", () => {
               patch: { alignment: "center" },
             },
             {
+              idLease: TEST_ID_LEASE,
               type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
               at,
               newBlockId: "000000A0",

@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE, testCellIds } from "./leasedIds";
 import { describe, expect, test } from "bun:test";
 
 import type {
@@ -107,6 +108,8 @@ describe("table edit review fixes", () => {
       ],
     });
     const after = appliedDocument(baseline, {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds([id(101)]),
       ...tableAddress(id(100)),
       type: DOCUMENT_OP_TYPES.SPLIT_CELL,
       newBlockIds: [id(101)],
@@ -136,6 +139,8 @@ describe("table edit review fixes", () => {
       ],
     };
     const after = appliedDocument(documentOf(table), {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds([]),
       ...tableAddress(id(100)),
       type: DOCUMENT_OP_TYPES.MERGE_CELLS,
       top: 0,
@@ -166,6 +171,8 @@ describe("table edit review fixes", () => {
         ],
       }),
       {
+        idLease: TEST_ID_LEASE,
+        newCellIds: testCellIds([]),
         ...tableAddress(id(100)),
         type: DOCUMENT_OP_TYPES.MERGE_CELLS,
         top: 0,
@@ -198,6 +205,8 @@ describe("table edit review fixes", () => {
       ],
     });
     const result = applyDocumentOp(baseline, {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds([id(101)]),
       ...tableAddress(id(100)),
       type: DOCUMENT_OP_TYPES.SPLIT_CELL,
       newBlockIds: [id(101)],
@@ -231,6 +240,8 @@ describe("table edit review fixes", () => {
       rows: [{ type: "tableRow", cells: [cell(100)] }],
     });
     const operation = {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds([]),
       ...tableAddress(id(100)),
       type: DOCUMENT_OP_TYPES.SPLIT_CELL,
       newBlockIds: [],
@@ -285,11 +296,18 @@ describe("table edit review fixes", () => {
     expect(compiled.isErr() && compiled.error.reason).toBe(
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
     );
-    const direct = applyDocumentOp(document, { ...intent, newBlockIds: [] });
+    const direct = applyDocumentOp(document, {
+      ...intent,
+      idLease: TEST_ID_LEASE,
+      newCellIds: [],
+      newBlockIds: [],
+    });
     expect(direct.isErr() && direct.error.reason).toBe(
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
     );
     const owner = applyDocumentOp(document, {
+      idLease: TEST_ID_LEASE,
+      newCellIds: testCellIds([]),
       ...tableAddress(id(100)),
       type: DOCUMENT_OP_TYPES.SPLIT_CELL,
       newBlockIds: [],

@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "../../__tests__/leasedIds";
 import path from "node:path";
 import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES } from "../../types";
 import { captureDocumentOp } from "../../wire";
@@ -35,6 +36,7 @@ export const envelopeFixtures = [
         patch: { alignment: "center", spaceBefore: null },
       },
       {
+        idLease: TEST_ID_LEASE,
         type: "splitBlock",
         at: at(1),
         newBlockId: "00000002",
@@ -113,7 +115,13 @@ export const sequencedFixture = {
   baseRev: 2,
   revision: 3,
   ops: [
-    { type: "splitBlock", at: at(3), newBlockId: "00000004" },
+    {
+      idLease: TEST_ID_LEASE,
+      type: "splitBlock",
+      at: at(3),
+      newBlockId: "00000004",
+      newHalf: "first",
+    },
     { type: "joinBlocks", story: OP_STORIES.MAIN, blockId: "00000004", nextBlockId: "00000001" },
     { type: "deleteBlocks", story: OP_STORIES.MAIN, blockIds: ["00000003"] },
     { type: "resolveRevision", story: OP_STORIES.MAIN, revisionIds: [42], decision: "accept" },

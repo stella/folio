@@ -5,6 +5,7 @@
  * marks not recorded, a split paragraph given resolved attributes, an undo
  * that silently dropped a mark).
  */
+import { TEST_ID_LEASE } from "./leasedIds";
 
 import { describe, expect, test } from "bun:test";
 
@@ -520,10 +521,12 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     textId: "77777777",
   });
 
-  test("a tracked split inside a paragraph gives the new id to the first half", () => {
+  test("an explicit first-half tracked split gives the new id to the first half", () => {
     const document = documentOf(source, paragraph("00000009", [run("next")]));
     const split: DocumentOp = {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      newHalf: SPLIT_HALVES.FIRST,
       at: at("00000001", 5),
       newBlockId: "00000002",
       revision: stamp(1),
@@ -559,6 +562,7 @@ describe("C9: Enter and Delete record paragraph marks", () => {
       paragraph("00000009", [run("next")]),
     );
     const split: DocumentOp = {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: at("00000001", 10),
       newBlockId: "00000002",
@@ -711,7 +715,9 @@ describe("C6: a tracked split's new paragraph has exactly the direct split's fie
   test("nothing resolved is added; a property change records the source's own formatting", () => {
     const document = documentOf(source6(), paragraph("00000009", [run("next")]));
     const split: DocumentOp = {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      newHalf: SPLIT_HALVES.FIRST,
       at: at("00000001", 3),
       newBlockId: "00000002",
       newParagraph: { formatting: { styleId: "BodyText" } },
@@ -754,6 +760,7 @@ describe("a tracked split's new second half keeps the paragraph mark's run prope
       ...fields,
     });
   const splitAtEnd = (formatting: Paragraph["formatting"]): DocumentOp => ({
+    idLease: TEST_ID_LEASE,
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
     at: at("00000001", 3),
     newBlockId: "00000002",
@@ -806,7 +813,9 @@ describe("C5: undoing a tracked split after a later edit never drops a mark sile
   });
   const document = documentOf(original, paragraph("00000009", [run("next")]));
   const split: DocumentOp = {
+    idLease: TEST_ID_LEASE,
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    newHalf: SPLIT_HALVES.FIRST,
     at: at("00000001", 5),
     newBlockId: "00000002",
     revision: stamp(1),
@@ -897,7 +906,9 @@ describe("an empty content control is content: resolution never merges it away",
       paragraph("00000009", [run("next")]),
     );
     const tracked = applied(document, {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      newHalf: SPLIT_HALVES.FIRST,
       at: { ...at("00000001", 0), zeroWidthBefore: 1 },
       newBlockId: "00000002",
       revision: stamp(1),
@@ -955,14 +966,18 @@ describe("an empty content control is content: resolution never merges it away",
     // control's piece holds only it, inside a piece of the outer control, so
     // rejecting empties the inner piece, not the paragraph's first record.
     const first = applied(typed.document, {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      newHalf: SPLIT_HALVES.FIRST,
       at: at("00000001", 1),
       newBlockId: "00000002",
       revision: stamp(2),
       newIds: { control: [7, 17] },
     });
     const second = applied(first.document, {
+      idLease: TEST_ID_LEASE,
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      newHalf: SPLIT_HALVES.FIRST,
       at: at("00000001", 1),
       newBlockId: "00000003",
       revision: stamp(3),
@@ -1263,7 +1278,9 @@ test("a new first split half records its own review without moving the surviving
     }),
   );
   const split = applied(original, {
+    idLease: TEST_ID_LEASE,
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    newHalf: SPLIT_HALVES.FIRST,
     at: at("00000001", 2),
     newBlockId: "00000002",
     newParagraph: { formatting: { alignment: "end" } },

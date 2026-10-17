@@ -2936,9 +2936,8 @@ describe("document operations", () => {
           case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
             const { blockId, offset } = op.at;
             const old = textOf(before, blockId);
-            // By default the new paragraph follows at the end, and takes the text before otherwise.
-            const newHalf =
-              op.newHalf ?? (offset === old.length ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST);
+            // The default preserves the original identity on the first half.
+            const newHalf = op.newHalf ?? SPLIT_HALVES.SECOND;
             const [firstId, secondId] =
               newHalf === SPLIT_HALVES.FIRST ? [op.newBlockId, blockId] : [blockId, op.newBlockId];
             expect(textOf(after, firstId)).toBe(old.slice(0, offset));

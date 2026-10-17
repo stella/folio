@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "../../../../test/documentIdLease";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
@@ -304,6 +305,7 @@ test("splitting authored alike runs restores their segmentation and identities e
           const split = apply(document, [
             {
               type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+              idLease: TEST_ID_LEASE,
               at: { story: OP_STORIES.MAIN, blockId: "00000001", offset },
               newBlockId: "00000002",
               newHalf,

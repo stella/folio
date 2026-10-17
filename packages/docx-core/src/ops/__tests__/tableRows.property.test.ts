@@ -1,4 +1,5 @@
 /** Property laws for the row-level document operations. */
+import { TEST_ID_LEASE, identifyTestRow } from "./leasedIds";
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
@@ -193,11 +194,12 @@ const operationFor = (
     return {
       ...fixture,
       op: {
+        idLease: TEST_ID_LEASE,
         type: DOCUMENT_OP_TYPES.INSERT_ROW,
         story: OP_STORIES.MAIN,
         blockId: operationTarget(anchor),
         at,
-        row,
+        row: identifyTestRow(row),
         revision,
         newIds: ids,
       } satisfies DocumentOp,
@@ -447,11 +449,12 @@ describe("table row operation properties", () => {
           if (originalRow === undefined) throw new Error("Generated table has an original row.");
           const shiftedIndex = originalIndex >= insertionIndex ? originalIndex + 1 : originalIndex;
           const insert: DocumentOp = {
+            idLease: TEST_ID_LEASE,
             type: DOCUMENT_OP_TYPES.INSERT_ROW,
             story: OP_STORIES.MAIN,
             blockId: operationTarget(originalRow),
             at: insertionIndex,
-            row: insertedRow,
+            row: identifyTestRow(insertedRow),
             revision: stamp(100_000),
             newIds: newIds(100_001),
           };

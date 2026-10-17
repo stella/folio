@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE } from "../../__tests__/leasedIds";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
@@ -190,6 +191,7 @@ const operation = ({
     case "textSplit":
       return role % 2 === 0
         ? {
+            idLease: TEST_ID_LEASE,
             type: "splitBlock",
             at,
             newBlockId: (0x71000000 + id).toString(16).toUpperCase(),
@@ -208,6 +210,7 @@ const operation = ({
         : insert;
     case "splitSplit":
       return {
+        idLease: TEST_ID_LEASE,
         type: "splitBlock",
         at,
         newBlockId: (0x71000000 + id).toString(16).toUpperCase(),

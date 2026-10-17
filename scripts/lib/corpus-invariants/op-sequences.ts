@@ -1,3 +1,4 @@
+import { TEST_ID_LEASE, identifyTestRow, testCellIds } from "../../../test/documentIdLease";
 /** Reproducible, bounded operation sequences over seeded corpus models. */
 import { isDeepStrictEqual } from "node:util";
 import { panic } from "better-result";
@@ -497,7 +498,14 @@ const candidate = ({
         ...review,
       };
     case "splitBlock":
-      return { type: DOCUMENT_OP_TYPES.SPLIT_BLOCK, at, newBlockId, newIds, ...review };
+      return {
+        type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        idLease: TEST_ID_LEASE,
+        at,
+        newBlockId,
+        newIds,
+        ...review,
+      };
     case "joinBlocks": {
       const next = blockListAt(document.package.document.content, location.list).at(
         location.index + 1,
@@ -577,10 +585,11 @@ const candidate = ({
       const width = inferredGridWidth(target.table);
       return {
         type: DOCUMENT_OP_TYPES.INSERT_ROW,
+        idLease: TEST_ID_LEASE,
         story: OP_STORIES.MAIN,
         blockId,
         at: 0,
-        row: {
+        row: identifyTestRow({
           type: "tableRow",
           cells: [
             {
@@ -589,7 +598,7 @@ const candidate = ({
               content: [freshParagraph],
             },
           ],
-        },
+        }),
         newIds,
         ...review,
       };
@@ -621,10 +630,12 @@ const candidate = ({
         : 0;
       return {
         type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+        idLease: TEST_ID_LEASE,
         story: OP_STORIES.MAIN,
         blockId,
         column,
         width: 900 + choose(600),
+        newCellIds: testCellIds(freshBlockIds(count)),
         newBlockIds: freshBlockIds(count),
         newIds,
         ...review,
@@ -648,12 +659,14 @@ const candidate = ({
       const cells = grid?.isOk() ? grid.value.rows.at(rowIndex) : undefined;
       return {
         type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        idLease: TEST_ID_LEASE,
         story: OP_STORIES.MAIN,
         blockId,
         top: rowIndex,
         bottom: rowIndex + 1,
         left: cells?.at(0)?.start ?? 0,
         right: cells?.at(-1)?.end ?? 1,
+        newCellIds: [],
         newBlockIds: [],
         newIds,
         ...review,
@@ -664,8 +677,10 @@ const candidate = ({
       const count = (target?.cell.formatting?.gridSpan ?? 1) - 1;
       return {
         type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+        idLease: TEST_ID_LEASE,
         story: OP_STORIES.MAIN,
         blockId,
+        newCellIds: testCellIds(freshBlockIds(count)),
         newBlockIds: freshBlockIds(count),
         newIds,
         ...review,
