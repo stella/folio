@@ -12,12 +12,20 @@ on:
         default: "**/*.log"
         required: false
         type: string
+      lane:
+        description: The reporting lane whose clean scheduled runs count toward closing its signatures
+        required: true
+        type: string
+      result:
+        description: The fuzz job's result, success or failure
+        required: true
+        type: string
 
 permissions: {}
 
 jobs:
   report:
-    name: File fuzz failures by fingerprint
+    name: File fuzz failures by signature
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -47,10 +55,13 @@ jobs:
       - name: Open or update findings
         run: >-
           bun scripts/fuzz-failure-issues.ts
-          --artifact-root fuzz-results --require-failures
-          --log-pattern "$LOG_PATTERN" --run-url "$RUN_URL"
+          --artifact-root fuzz-results --log-pattern "$LOG_PATTERN"
+          --lane "$LANE" --result "$RESULT" --trigger "$TRIGGER" --run-url "$RUN_URL"
         env:
           LOG_PATTERN: ${{ inputs.log-pattern }}
+          LANE: ${{ inputs.lane }}
+          RESULT: ${{ inputs.result }}
+          TRIGGER: ${{ github.event_name == 'schedule' && 'scheduled' || 'manual' }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: >-

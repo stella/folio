@@ -6,7 +6,7 @@ import {
   failureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { failureClass, normalizeFailureMessage } from "./fuzz-failure-class";
-import type { Context, Finding } from "./fuzz-failure-issues";
+import { type Context, type Finding, RUN_TRIGGER } from "./fuzz-failure-issues";
 import {
   type ClosedIssue,
   type ClosedIssueDisposition,
@@ -24,6 +24,8 @@ const context = {
   sha: "abc123",
   source: "continuous fuzz",
   date: "2026-10-02T12:00:00Z",
+  lane: "continuous-fuzz",
+  trigger: RUN_TRIGGER.scheduled,
 } satisfies Context;
 
 const finding = (seed: number, message = "listLevel is 3, expected 2"): Finding => {
