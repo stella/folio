@@ -64,7 +64,7 @@ import {
   footnoteToProseDoc,
   collectPairedBookmarkIds,
 } from "../prosemirror/conversion/toProseDoc";
-import type { Document, Paragraph, StyleDefinitions } from "../types/document";
+import type { BlockContent, Document, Paragraph, StyleDefinitions } from "../types/document";
 
 export class CanonicalSessionError extends TaggedError("CanonicalSessionError")<{
   message: string;
@@ -213,6 +213,7 @@ export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
 
 type ParagraphAddress = {
   blockId: string;
+  container: readonly BlockContent[];
   start: number;
   text: string;
   boundaries: readonly (readonly CanonicalInlineGap[])[];
@@ -342,6 +343,14 @@ class CanonicalProjection {
   paragraph(blockId: string): ParagraphAddress | undefined {
     return this.paragraphsById.get(blockId);
   }
+
+  nextParagraphInContainer(blockId: string): ParagraphAddress | undefined {
+    const index = this.paragraphs.findIndex((paragraph) => paragraph.blockId === blockId);
+    if (index < 0) return undefined;
+    const paragraph = this.paragraphs.at(index);
+    const next = this.paragraphs.at(index + 1);
+    return paragraph?.container === next?.container ? next : undefined;
+  }
 }
 
 type ChangedStoriesOptions = { document: Document; previous: Document };
@@ -425,8 +434,28 @@ const unsupportedSeedReason = (
     const content = body?.content;
     if (!content || content.length === 0)
       return "Canonical sessions require a nonempty paragraph story.";
-    for (const paragraph of content) {
-      if (paragraph.type !== "paragraph" || paragraph.reviewCarrier !== undefined)
+    const paragraphs: Paragraph[] = [];
+    const collect = (blocks: readonly BlockContent[]): string | null => {
+      for (const block of blocks) {
+        if (block.type === "paragraph") {
+          paragraphs.push(block);
+          continue;
+        }
+        if (block.type !== "table")
+          return "Canonical sessions currently require paragraphs, tables and supported inline atoms.";
+        for (const row of block.rows) {
+          for (const cell of row.cells) {
+            const issue = collect(cell.content);
+            if (issue !== null) return issue;
+          }
+        }
+      }
+      return null;
+    };
+    const blockIssue = collect(content);
+    if (blockIssue !== null) return blockIssue;
+    for (const paragraph of paragraphs) {
+      if (paragraph.reviewCarrier !== undefined)
         return "Canonical sessions currently require plain paragraphs and supported inline atoms.";
       const issue = canonicalInlineSourceIssue(paragraph.content);
       if (issue !== null) return issue;
@@ -480,20 +509,29 @@ const project = ({
     if (item.type === "commentReference" && !commentContext.rangedIds.has(item.id))
       commentContext.pointIds.add(item.id);
   });
+  const sources = new Map<string, { source: Paragraph; container: readonly BlockContent[] }>();
+  const collectSources = (blocks: readonly BlockContent[]): void => {
+    for (const block of blocks) {
+      if (block.type === "paragraph") {
+        if (block.paraId !== undefined)
+          sources.set(block.paraId, { source: block, container: blocks });
+        continue;
+      }
+      if (block.type !== "table") continue;
+      for (const row of block.rows) {
+        for (const cell of row.cells) collectSources(cell.content);
+      }
+    }
+  };
+  collectSources(body.content);
   const paragraphs: ParagraphAddress[] = [];
   let failure: CanonicalSessionError | undefined;
-  converted.value.forEach((node, offset, index) => {
+  converted.value.descendants((node, offset) => {
     if (failure !== undefined) return;
-    const source = body.content.at(index);
-    if (source?.type !== "paragraph" || source.paraId === undefined) {
-      failure = new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
-        reason: "refused",
-        message: "The projection changed paragraph structure.",
-      });
-      return;
-    }
-    if (node.type.name !== "paragraph" || node.attrs["paraId"] !== source.paraId) {
+    if (node.type.name !== "paragraph") return;
+    const paraId = node.attrs["paraId"];
+    const located = typeof paraId === "string" ? sources.get(paraId) : undefined;
+    if (typeof paraId !== "string" || located === undefined) {
       failure = new CanonicalSessionError({
         gap: CANONICAL_GAP.storyContentProjection,
         reason: "refused",
@@ -501,6 +539,7 @@ const project = ({
       });
       return;
     }
+    const { source, container } = located;
     const inline = projectCanonicalInline({
       source,
       paragraph: node,
@@ -515,14 +554,21 @@ const project = ({
       });
       return;
     }
-    paragraphs.push({ blockId: source.paraId, start: offset + 1, ...inline.value, node, source });
+    paragraphs.push({
+      blockId: paraId,
+      container,
+      start: offset + 1,
+      ...inline.value,
+      node,
+      source,
+    });
     visitCommentMarkers([source], ({ item }) => {
       if (item.type === "commentRangeStart") commentContext.openIds.add(item.id);
       if (item.type === "commentRangeEnd") commentContext.openIds.delete(item.id);
     });
   });
   if (failure !== undefined) return Result.err(failure);
-  if (paragraphs.length !== body.content.length) {
+  if (paragraphs.length !== sources.size) {
     return refuse("The projection changed paragraph structure.");
   }
   return Result.ok(new CanonicalProjection({ doc: converted.value, paragraphs, story }));
@@ -1333,6 +1379,11 @@ class CanonicalSession {
     const second = secondGroup?.paragraphs.at(0);
     if (!first?.paraId || !second?.paraId)
       return noChange("There is no adjacent paragraph to join.");
+    if (
+      this.projection.paragraph(first.paraId)?.container !==
+      this.projection.paragraph(second.paraId)?.container
+    )
+      return noChange("There is no adjacent paragraph to join.");
     if (!isCanonicalJoinBoundary(state, direction))
       return refuse("Join requires a caret at a paragraph boundary.");
     return this.prepareIntent(state, {
@@ -1693,18 +1744,6 @@ export const createCanonicalSession = (
   document: Document,
   styles?: StyleDefinitions | null,
 ): Result<CanonicalSession, CanonicalSessionError> => {
-  if (
-    documentStories(document).some((story) =>
-      findStoryBody(document, story)?.content.some((block) => block.type === "table"),
-    )
-  )
-    return Result.err(
-      new CanonicalSessionError({
-        gap: CANONICAL_GAP.tableActivation,
-        reason: "refused",
-        message: "Canonical sessions cannot activate documents containing tables.",
-      }),
-    );
   const unsupported = unsupportedSeedReason(document);
   if (unsupported !== null) return refuse(unsupported);
   const owned = cloneDocumentWithParagraphPropertySources(document);

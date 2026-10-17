@@ -5,11 +5,6 @@ import type { HarnessRefusalRow } from "./canonical-refusal-rows";
 
 // These are fixture contracts, independent of the command planner's verdict.
 const REFUSAL_ROWS = {
-  tableActivation: {
-    id: "table-session-activation",
-    gap: CANONICAL_GAP.tableActivation,
-    message: "Canonical sessions cannot activate documents containing tables.",
-  },
   hyperlinkSuggestion: {
     id: CANONICAL_GAP.trackedHyperlinkResolution,
     gap: CANONICAL_GAP.trackedHyperlinkResolution,
@@ -147,7 +142,6 @@ export const TOC_HEADING_SHAPES = ["style-numbered-headings", "outline-level-num
 
 /** Every declared case has an explicit expectation, including supported cases with no rows. */
 export const canonicalConformanceRefusalRows = (key: RefusalCase): readonly HarnessRefusalRow[] => {
-  if (key.shape === "tables") return [REFUSAL_ROWS.tableActivation];
   const commandContract = Object.values(COMMAND_REFUSAL_CONTRACTS).find(({ operations }) =>
     operations.some((operation) => operation === key.operation),
   );

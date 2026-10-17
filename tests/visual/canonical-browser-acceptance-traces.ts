@@ -83,7 +83,10 @@ export const canonicalBrowserAcceptances = [
   },
 ] satisfies readonly { seed: number; trace: BrowserInputTrace }[];
 
-type AcceptanceSourceShape = (typeof canonicalBrowserAcceptances)[number]["trace"]["shape"];
+type AcceptanceSourceShape = Exclude<
+  (typeof canonicalBrowserAcceptances)[number]["trace"]["shape"],
+  "tables"
+>;
 type SourceRefusal = Pick<CanonicalSessionError, "name" | "gap" | "reason" | "message">;
 
 const unsupportedInlineSource = {
@@ -95,12 +98,6 @@ const unsupportedInlineSource = {
 
 /** Expected source limits apply only on refusal; newly supported sources run their traces. */
 export const canonicalBrowserSourceRefusals = {
-  tables: {
-    name: "CanonicalSessionError",
-    gap: CANONICAL_GAP.tableActivation,
-    reason: "refused",
-    message: "Canonical sessions cannot activate documents containing tables.",
-  },
   "single-bullet-list": unsupportedInlineSource,
   "header-footer": unsupportedInlineSource,
   "mixed-lists": unsupportedInlineSource,

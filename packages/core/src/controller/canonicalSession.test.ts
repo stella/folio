@@ -40,7 +40,7 @@ import {
   getParagraphPropertySourceToken,
   paragraphPropertySourceBelongsToDocument,
 } from "../docx/paragraphPropertySource";
-import type { Document, Paragraph, Run, StyleDefinitions } from "../types/document";
+import type { BlockContent, Document, Paragraph, Run, StyleDefinitions } from "../types/document";
 import {
   CANONICAL_PROJECTION_META,
   CanonicalSessionError,
@@ -76,6 +76,73 @@ const seed = (text = "ab😀cd"): Document => ({
   },
 });
 
+const tableSeed = (): Document => ({
+  package: {
+    document: {
+      content: [
+        { type: "paragraph", paraId: "10000000", content: [] },
+        {
+          type: "table",
+          rows: [
+            {
+              type: "tableRow",
+              cells: [
+                {
+                  type: "tableCell",
+                  content: [
+                    {
+                      type: "paragraph",
+                      paraId: "20000000",
+                      content: [{ type: "run", content: [{ type: "text", text: "A" }] }],
+                    },
+                  ],
+                },
+                {
+                  type: "tableCell",
+                  content: [
+                    {
+                      type: "paragraph",
+                      paraId: "30000000",
+                      content: [{ type: "run", content: [{ type: "text", text: "B" }] }],
+                    },
+                    {
+                      type: "table",
+                      rows: [
+                        {
+                          type: "tableRow",
+                          cells: [
+                            {
+                              type: "tableCell",
+                              content: [
+                                {
+                                  type: "paragraph",
+                                  paraId: "35000000",
+                                  content: [
+                                    { type: "run", content: [{ type: "text", text: "nested" }] },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "paragraph",
+          paraId: "40000000",
+          content: [{ type: "run", content: [{ type: "text", text: "after" }] }],
+        },
+      ],
+    },
+  },
+});
+
 const stateFor = (session: CanonicalSession) =>
   EditorState.create({ schema, doc: session.projection.doc });
 
@@ -87,6 +154,116 @@ const accept = (state: EditorState, commit: CanonicalCommit) => {
 };
 
 describe("canonical session", () => {
+  test("cell-edge joins never cross table containers", () => {
+    const session = createCanonicalSession(tableSeed()).unwrap();
+    const initial = session.document;
+    for (const [blockId, direction, edge] of [
+      ["20000000", "backward", 0],
+      ["20000000", "forward", 1],
+      ["30000000", "backward", 0],
+      ["30000000", "forward", 1],
+    ] as const) {
+      const position = session.projection
+        .positionAt({ story: OP_STORIES.MAIN, blockId, offset: edge })
+        .unwrap();
+      const base = stateFor(session);
+      const state = base.apply(
+        base.tr.setSelection(TextSelection.create(session.projection.doc, position)),
+      );
+      const result = session.prepareJoin(state, direction);
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) expect(result.error.reason).toBe("noChange");
+      expect(session.document).toBe(initial);
+    }
+  });
+
+  test("cell typing, deletion, split and join stay aligned through save", async () => {
+    const session = createCanonicalSession(tableSeed()).unwrap();
+    let state = stateFor(session);
+    const position = session.projection
+      .positionAt({ story: OP_STORIES.MAIN, blockId: "20000000", offset: 1 })
+      .unwrap();
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position)));
+    state = accept(
+      state,
+      session.prepareReplace(state, { from: position, to: position, text: "X" }).unwrap(),
+    );
+    state = accept(
+      state,
+      session
+        .prepareReplace(state, {
+          from: state.selection.head - 1,
+          to: state.selection.head,
+          text: "",
+          semantic: "deleteBackward",
+        })
+        .unwrap(),
+    );
+    state = accept(state, session.prepareSplit(state).unwrap());
+    state = accept(
+      state,
+      session
+        .prepareReplace(state, {
+          from: state.selection.head,
+          to: state.selection.head,
+          text: "Y",
+        })
+        .unwrap(),
+    );
+    const second = session.projection.addressAt(state.selection.head).unwrap();
+    const secondStart = session.projection.positionAt({ ...second, offset: 0 }).unwrap();
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, secondStart)));
+    state = accept(state, session.prepareJoin(state, "backward").unwrap());
+    expect(state.doc.textContent).toBe(session.projection.doc.textContent);
+
+    const saved = await serializeCanonicalSave({
+      snapshot: session.captureSaveSnapshot(),
+      options: { mode: "full" },
+    });
+    const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+    expect(toProseDoc(reopened).textContent).toBe(state.doc.textContent);
+  });
+
+  test("every table paragraph address round-trips through its projected position", () => {
+    assertProperty(
+      fc.property(
+        fc.array(fc.stringMatching(/^[a-z]{0,12}$/u), { minLength: 1, maxLength: 6 }),
+        (texts) => {
+          const document = tableSeed();
+          const table = document.package.document.content.at(1);
+          if (table?.type !== "table") return panic("Table fixture lost its table.");
+          const cell = table.rows.at(0)?.cells.at(0);
+          if (!cell) return panic("Table fixture lost its cell.");
+          cell.content = texts.map((text, index) => ({
+            type: "paragraph",
+            paraId: `${index + 5}`.padStart(8, "0"),
+            content: [{ type: "run", content: [{ type: "text", text }] }],
+          }));
+          const session = createCanonicalSession(document).unwrap();
+          const paragraphs: Paragraph[] = [];
+          const collect = (blocks: readonly BlockContent[]) => {
+            for (const block of blocks) {
+              if (block.type === "paragraph") paragraphs.push(block);
+              if (block.type === "table")
+                for (const row of block.rows)
+                  for (const nestedCell of row.cells) collect(nestedCell.content);
+            }
+          };
+          collect(document.package.document.content);
+          for (const paragraph of paragraphs) {
+            if (paragraph.paraId === undefined) continue;
+            for (let offset = 0; offset <= paragraphVisibleText(paragraph).length; offset++) {
+              const address = { story: OP_STORIES.MAIN, blockId: paragraph.paraId, offset };
+              const position = session.projection.positionAt(address).unwrap();
+              expect(session.projection.addressAt(position).unwrap()).toEqual(address);
+            }
+          }
+        },
+      ),
+      { numRuns: 30, seed: 20261015, id: "table paragraph addresses round-trip" },
+    );
+  });
+
   test("keeps typing groups separate from structural edits and suggesting mode", () => {
     const session = createCanonicalSession(seed("AB")).unwrap();
     let state = stateFor(session);
@@ -1066,38 +1243,30 @@ describe("canonical session", () => {
     for (const document of unsupported) expect(createCanonicalSession(document).isErr()).toBe(true);
   });
 
-  test.each(["table", "blockSdt"] as const)(
-    "activation refuses list paragraphs inside %s before normalization",
-    (container) => {
-      const paragraph: Paragraph = {
-        type: "paragraph",
-        paraId: "34567890",
-        formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
-        content: [{ type: "run", content: [{ type: "text", text: "Nested list" }] }],
-      };
-      const document = seed("Body");
-      document.package.document.content.push(
-        container === "table"
-          ? {
-              type: "table",
-              rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [paragraph] }] }],
-            }
-          : { type: "blockSdt", properties: { sdtType: "richText" }, content: [paragraph] },
+  test("activation refuses list paragraphs inside a block SDT before normalization", () => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      paraId: "34567890",
+      formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+      content: [{ type: "run", content: [{ type: "text", text: "Nested list" }] }],
+    };
+    const document = seed("Body");
+    document.package.document.content.push({
+      type: "blockSdt",
+      properties: { sdtType: "richText" },
+      content: [paragraph],
+    });
+    const original = structuredClone(document);
+    const result = createCanonicalSession(document);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error).toBeInstanceOf(CanonicalSessionError);
+      expect(result.error.message).toBe(
+        "Canonical sessions currently require paragraphs, tables and supported inline atoms.",
       );
-      const original = structuredClone(document);
-      const result = createCanonicalSession(document);
-      expect(result.isErr()).toBe(true);
-      if (result.isErr()) {
-        expect(result.error).toBeInstanceOf(CanonicalSessionError);
-        expect(result.error.message).toBe(
-          container === "table"
-            ? "Canonical sessions cannot activate documents containing tables."
-            : "Canonical sessions currently require plain paragraphs and supported inline atoms.",
-        );
-      }
-      expect(document).toStrictEqual(original);
-    },
-  );
+    }
+    expect(document).toStrictEqual(original);
+  });
 
   test("stored formatting authors the next insertion and undo restores the unformatted model", () => {
     const session = createCanonicalSession(seed("plain")).unwrap();
