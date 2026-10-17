@@ -181,7 +181,13 @@ export const prepareCanonicalCommands = (
     if (noteCommands.length !== commands.length)
       return refuse("Note changes must be prepared on their own.");
     const ops: DocumentOp[] = [];
-    for (const command of noteCommands.toReversed()) {
+    const ordered = noteCommands.toReversed();
+    // One allocation for the whole batch keeps the inserted notes' identities disjoint.
+    const blockIdGroups = session.freshBlockIds(
+      ordered.map((command) => (command.type === "insertNote" ? command.content.length : 0)),
+    );
+    if (blockIdGroups.isErr()) return blockIdGroups;
+    for (const [commandIndex, command] of ordered.entries()) {
       if (command.type === "deleteNote") {
         const at = session.projection.addressAt(command.from);
         if (at.isErr()) return at;
@@ -197,12 +203,12 @@ export const prepareCanonicalCommands = (
       if (at.isErr()) return at;
       if (command.content.some((block) => block.type !== "paragraph"))
         return refuse("Canonical note insertion requires paragraph content.");
-      const blockIds = session.freshBlockIds(command.content.length);
-      if (blockIds.isErr()) return blockIds;
+      const blockIds =
+        blockIdGroups.value[commandIndex] ?? panic("A fresh identity group was reserved per note.");
       // Inserted note content is new text, so every paragraph takes a fresh identity.
       const content = command.content.map((block, index) => ({
         ...block,
-        paraId: blockIds.value[index] ?? panic("A fresh identity was reserved per paragraph."),
+        paraId: blockIds[index] ?? panic("A fresh identity was reserved per paragraph."),
       }));
       ops.push({
         type: DOCUMENT_OP_TYPES.ADD_NOTE,

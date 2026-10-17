@@ -839,15 +839,26 @@ class CanonicalSession {
     return Result.ok(this.nextBlockId.toString(16).padStart(8, "0").toUpperCase());
   }
 
-  /** Paragraph identities for one prepared batch; none matches a live or retired identity. */
-  freshBlockIds(count: number): Result<string[], CanonicalSessionError> {
+  /**
+   * Paragraph identities for one prepared batch, one group per requested count;
+   * none matches a live or retired identity and no two groups overlap. Nothing is
+   * reserved until the batch applies, so a batch asks once for all its groups.
+   */
+  freshBlockIds(counts: readonly number[]): Result<string[][], CanonicalSessionError> {
+    const total = counts.reduce((sum, count) => sum + count, 0);
     const ids: string[] = [];
-    for (let candidate = this.nextBlockId; ids.length < count; candidate += 1) {
+    for (let candidate = this.nextBlockId; ids.length < total; candidate += 1) {
       if (candidate > 0x7fffffff) return refuse("The paragraph identity space is exhausted.");
       const id = candidate.toString(16).padStart(8, "0").toUpperCase();
       if (!this.allocatedBlockIds.has(id)) ids.push(id);
     }
-    return Result.ok(ids);
+    const groups: string[][] = [];
+    let offset = 0;
+    for (const count of counts) {
+      groups.push(ids.slice(offset, offset + count));
+      offset += count;
+    }
+    return Result.ok(groups);
   }
 
   private intentMode(document: Document, intent: EditorIntent): EditorIntentMode {

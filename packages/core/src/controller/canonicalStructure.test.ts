@@ -1215,3 +1215,31 @@ test("inserted note paragraphs take fresh identities that undo never hands out a
   expect(second).toHaveLength(2);
   expect(second.filter((id) => first.includes(id))).toEqual([]);
 });
+
+test("notes inserted in one batch take disjoint fresh identities", () => {
+  const session = createCanonicalSession(seed()).unwrap();
+  let state = select(EditorState.create({ schema, doc: session.projection.doc }), 3);
+  const bodyIds = new Set(paragraphs(session).map(({ paraId }) => paraId));
+  const content = (label: string) =>
+    ["First", "Second"].map((text) => ({
+      type: "paragraph" as const,
+      content: [
+        { type: "run" as const, content: [{ type: "text" as const, text: `${label} ${text}.` }] },
+      ],
+    }));
+  const intents = [
+    singletonManager.requireCommand("insertFootnote")(1, content("Footnote")),
+    singletonManager.requireCommand("insertEndnote")(1, content("Endnote")),
+  ].flatMap(
+    (command) => getCanonicalCommandIntents(command, state) ?? panic("Missing note descriptor."),
+  );
+  state = accept(session, state, prepareCanonicalCommands(session, state, intents).unwrap());
+
+  const inserted = [
+    ...paragraphIdsIn(session.document.package.footnotes ?? []),
+    ...paragraphIdsIn(session.document.package.endnotes ?? []),
+  ];
+  expect(inserted).toHaveLength(4);
+  expect(new Set(inserted).size).toBe(4);
+  expect(inserted.filter((id) => bodyIds.has(id))).toEqual([]);
+});
