@@ -1,12 +1,25 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 import { createFolioReviewerPageSource } from "@stll/folio-core/reviewer-page-source";
 
+import { installFixedWidthProvider } from "../../../../test/fixedWidthMeasureProvider";
+import {
+  getMeasureProvider,
+  setMeasureProvider,
+} from "@stll/folio-core/layout-engine/measure/measureProvider";
+
 import { executeFolioToolCall } from "../execute";
 import { FOLIO_AGENT_TOOL_NAMES } from "../types";
 import { createReviewerBridge } from "./reviewer";
+
+let originalProvider = getMeasureProvider();
+beforeEach(() => {
+  originalProvider = getMeasureProvider();
+  installFixedWidthProvider();
+});
+afterEach(() => setMeasureProvider(originalProvider));
 
 const buildDocx = async (text: string): Promise<ArrayBuffer> => {
   const zip = new JSZip();

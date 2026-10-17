@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
+import { installFixedWidthProvider } from "../../../test/fixedWidthMeasureProvider";
 
 import { FolioDocxReviewer } from "./ai-edits/headless";
 import { createDocx } from "./docx/rezip";
@@ -12,7 +14,11 @@ import { getPageTextFromLayout } from "./paged-layout/pageText";
 import { createFolioReviewerPageSource } from "./reviewer-page-source";
 import { createEmptyDocument } from "./utils/createDocument";
 
-const originalProvider = getMeasureProvider();
+let originalProvider = getMeasureProvider();
+beforeEach(() => {
+  originalProvider = getMeasureProvider();
+  installFixedWidthProvider();
+});
 
 afterEach(() => setMeasureProvider(originalProvider));
 
@@ -28,12 +34,12 @@ describe("createFolioReviewerPageSource", () => {
     const bytes = await createDocx(createEmptyDocument({ initialText: "Alpha beta" }));
     const expected = await layoutDocxHeadless(bytes);
     expect(expected.isOk()).toBe(true);
-    if (expected.isErr()) return;
+    if (expected.isErr()) throw expected.error;
 
     const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
     const source = createFolioReviewerPageSource(reviewer);
     expect(source).not.toBeNull();
-    if (!source) return;
+    if (!source) throw new Error("Test measurement provider was not installed");
     expect(source.pageText(1)).toBe(
       getPageTextFromLayout({
         layout: expected.value.layout,
@@ -44,7 +50,7 @@ describe("createFolioReviewerPageSource", () => {
 
     const block = reviewer.snapshot().blocks.at(0);
     expect(block).toBeDefined();
-    if (!block) return;
+    if (!block) throw new Error("Fixture has no blocks");
     reviewer.applyOperations(
       [{ id: "append", type: "insertAfterBlock", blockId: block.id, text: "Gamma" }],
       { mode: "direct", undefinedReferences: "refuse" },
