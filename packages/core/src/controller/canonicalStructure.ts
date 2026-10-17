@@ -8,14 +8,17 @@ import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { Result, panic } from "better-result";
 import type { EditorState } from "prosemirror-state";
 import {
+  DOCUMENT_OP_TYPES,
   OP_STORIES,
   editorParagraphGroups,
   editorPositionAtPhysicalPosition,
   physicalPositionAtEditorOffset,
+  type DocumentOp,
   type EditorIntent,
 } from "@stll/docx-core/ops";
 import { headingOutlineLevel, paragraphNumberingReference } from "@stll/docx-core/model";
 import type { Paragraph, ListLevel } from "../types/document";
+import { createNote } from "../docx/noteReferenceMark";
 import { getCachedNumberingMap, numberingLevelUsesBulletMarker } from "../docx/numberingParser";
 import { listRequestsForMarker } from "../prosemirror/listAutoformatMarkers";
 import type { ListRequest } from "../prosemirror/listNumbering";
@@ -28,6 +31,14 @@ import {
 
 const DEFAULT_TOC_PAGE_WIDTH_TWIPS = 12240;
 const DEFAULT_TOC_MARGIN_TWIPS = 1440;
+
+/** The section endpoint a paragraph holds now, distinguishing an explicit `undefined` from an absent key. */
+const currentSectionEndpoint = (paragraph: Paragraph) => {
+  const current = paragraph.sectionProperties;
+  if (current !== undefined) return { type: "present", value: current } as const;
+  if (Object.hasOwn(paragraph, "sectionProperties")) return { type: "undefined" } as const;
+  return { type: "omitted" } as const;
+};
 
 const refuse = (message: string) =>
   Result.err(
@@ -131,6 +142,85 @@ export const prepareCanonicalCommands = (
 ): Result<CanonicalCommit, CanonicalSessionError> => {
   const intents: EditorIntent[] = [];
   const paragraphs = selectedParagraphs(session, state);
+  const sectionCommands = commands.filter(
+    (command) => command.type === "setSectionBreak" || command.type === "removeSectionBreak",
+  );
+  if (sectionCommands.length > 0) {
+    if (sectionCommands.length !== commands.length || sectionCommands.length !== 1)
+      return refuse("A section change must be prepared on its own.");
+    if (paragraphs.length === 0)
+      return refuse("Section breaks require a top-level document paragraph.");
+    const command = sectionCommands.at(0) ?? panic("A section command was counted.");
+    return session.prepareOperations(
+      state,
+      paragraphs.map((paragraph) => {
+        const current = paragraph.sectionProperties;
+        const expected = currentSectionEndpoint(paragraph);
+        return {
+          type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+          endpoint: {
+            type: "paragraph" as const,
+            blockId: paragraph.paraId ?? panic("A projected paragraph needs an identity."),
+          },
+          expected,
+          properties:
+            command.type === "removeSectionBreak"
+              ? ({ type: "omitted" } as const)
+              : ({
+                  type: "present",
+                  value: { ...current, sectionStart: command.breakType },
+                } as const),
+        };
+      }),
+    );
+  }
+  const noteCommands = commands.filter(
+    (command) => command.type === "insertNote" || command.type === "deleteNote",
+  );
+  if (noteCommands.length > 0) {
+    if (noteCommands.length !== commands.length)
+      return refuse("Note changes must be prepared on their own.");
+    const ops: DocumentOp[] = [];
+    const ordered = noteCommands.toReversed();
+    // One allocation for the whole batch keeps the inserted notes' identities disjoint.
+    const blockIdGroups = session.freshBlockIds(
+      ordered.map((command) => (command.type === "insertNote" ? command.content.length : 0)),
+    );
+    if (blockIdGroups.isErr()) return blockIdGroups;
+    for (const [commandIndex, command] of ordered.entries()) {
+      if (command.type === "deleteNote") {
+        const at = session.projection.addressAt(command.from);
+        if (at.isErr()) return at;
+        ops.push({
+          type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+          at: at.value,
+          story: { kind: command.kind, id: command.id },
+        } as const);
+        continue;
+      }
+      if (!state.selection.empty) return refuse("Note insertion requires a caret.");
+      const at = session.projection.addressAt(state.selection.from);
+      if (at.isErr()) return at;
+      if (command.content.some((block) => block.type !== "paragraph"))
+        return refuse("Canonical note insertion requires paragraph content.");
+      const blockIds =
+        blockIdGroups.value[commandIndex] ?? panic("A fresh identity group was reserved per note.");
+      // Inserted note content is new text, so every paragraph takes a fresh identity.
+      const content = command.content.map((block, index) => ({
+        ...block,
+        paraId: blockIds[index] ?? panic("A fresh identity was reserved per paragraph."),
+      }));
+      ops.push({
+        type: DOCUMENT_OP_TYPES.ADD_NOTE,
+        at: at.value,
+        note:
+          command.kind === "footnote"
+            ? createNote("footnote", command.id, content)
+            : createNote("endnote", command.id, content),
+      });
+    }
+    return session.prepareOperations(state, ops);
+  }
   for (const command of commands) {
     switch (command.type) {
       case "generateTOC": {
@@ -195,6 +285,12 @@ export const prepareCanonicalCommands = (
         });
         break;
       }
+      case "setSectionBreak":
+      case "removeSectionBreak":
+        return panic("Section commands are prepared before editor intents.");
+      case "insertNote":
+      case "deleteNote":
+        return panic("Note commands are prepared before editor intents.");
       case "formatRun": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;

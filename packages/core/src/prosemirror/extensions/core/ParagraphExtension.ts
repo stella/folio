@@ -1196,8 +1196,14 @@ export const ParagraphExtension = createNodeExtension({
             },
             { styleId: null },
           ),
-        insertSectionBreak: (breakType: SectionBreakType) => setSectionBreakType(breakType),
-        removeSectionBreak: () => removeSectionBreakAtSelection,
+        insertSectionBreak: (breakType: SectionBreakType) =>
+          withCanonicalCommand(setSectionBreakType(breakType), () => [
+            { type: "setSectionBreak", breakType },
+          ]),
+        removeSectionBreak: () =>
+          withCanonicalCommand(removeSectionBreakAtSelection, () => [
+            { type: "removeSectionBreak" },
+          ]),
         generateTOC: ({ title }: GenerateTableOfContentsOptions) =>
           withCanonicalCommand(
             (state: EditorState, dispatch?: (tr: Transaction) => void) => {

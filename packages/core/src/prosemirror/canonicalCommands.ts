@@ -1,4 +1,5 @@
 import type { ParagraphPropsPatch, RunPropsPatch } from "@stll/docx-core/ops";
+import type { BlockContent } from "../types/document";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 import { canonicalSelectionRange } from "./canonicalSelectionRange";
@@ -23,6 +24,13 @@ export type CanonicalCommandIntent =
   | { type: "removeList" }
   | { type: "restartNumbering"; start?: number }
   | { type: "continueNumbering" }
+  | {
+      type: "setSectionBreak";
+      breakType: "nextPage" | "nextColumn" | "continuous" | "evenPage" | "oddPage";
+    }
+  | { type: "removeSectionBreak" }
+  | { type: "insertNote"; kind: "footnote" | "endnote"; id: number; content: BlockContent[] }
+  | { type: "deleteNote"; from: number; kind: "footnote" | "endnote"; id: number }
   | { type: "insertBreak"; from: number; to: number; breakType: "page" | "textWrapping" };
 
 type CanonicalCommandDescriptor = (state: EditorState) => readonly CanonicalCommandIntent[];

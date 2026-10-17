@@ -11,8 +11,10 @@ import {
 
 import { panic } from "better-result";
 import type { Command } from "prosemirror-state";
+import type { BlockContent } from "../../../types/document";
 
 import { expectFootnoteRefMarkAttrs } from "../../attrs";
+import { withCanonicalCommand } from "../../canonicalCommands";
 import { suggestRangeDeletion, suggestionModeKey } from "../../plugins/suggestionMode";
 import { createMarkExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
@@ -104,29 +106,37 @@ export const FootnoteRefExtension = createMarkExtension({
         return true;
       };
 
-    function makeInsertNote(noteType: "footnote" | "endnote"): (id: number) => Command {
-      return (id: number): Command =>
-        (state, dispatch) => {
-          if (!dispatch) {
-            return true;
-          }
+    function makeInsertNote(
+      noteType: "footnote" | "endnote",
+    ): (id: number, content?: BlockContent[]) => Command {
+      return (
+        id: number,
+        content: BlockContent[] = [{ type: "paragraph", content: [] }],
+      ): Command =>
+        withCanonicalCommand(
+          (state, dispatch) => {
+            if (!dispatch) {
+              return true;
+            }
 
-          const { schema } = state;
-          const footnoteRefType = schema.marks["footnoteRef"];
-          if (!footnoteRefType) {
-            panic("Missing mark type: footnoteRef");
-          }
-          const mark = footnoteRefType.create({
-            id: String(id),
-            occurrenceId: mintNoteReferenceOccurrenceId(),
-            noteType,
-            vertAlign: "superscript",
-          });
-          const text = schema.text(String(id), [mark]);
-          const tr = state.tr.replaceSelectionWith(text, false);
-          dispatch(tr.scrollIntoView());
-          return true;
-        };
+            const { schema } = state;
+            const footnoteRefType = schema.marks["footnoteRef"];
+            if (!footnoteRefType) {
+              panic("Missing mark type: footnoteRef");
+            }
+            const mark = footnoteRefType.create({
+              id: String(id),
+              occurrenceId: mintNoteReferenceOccurrenceId(),
+              noteType,
+              vertAlign: "superscript",
+            });
+            const text = schema.text(String(id), [mark]);
+            const tr = state.tr.replaceSelectionWith(text, false);
+            dispatch(tr.scrollIntoView());
+            return true;
+          },
+          () => [{ type: "insertNote", kind: noteType, id, content }],
+        );
     }
 
     /**
@@ -166,7 +176,30 @@ export const FootnoteRefExtension = createMarkExtension({
       commands: {
         insertFootnote: makeInsertNote("footnote"),
         insertEndnote: makeInsertNote("endnote"),
-        deleteNoteRef: () => deleteNoteRef,
+        deleteNoteRef: () =>
+          withCanonicalCommand(deleteNoteRef, (state) => {
+            const { from, to, empty } = state.selection;
+            return noteReferenceRanges(
+              state.doc,
+              empty ? Math.max(0, from - 1) : from,
+              empty ? Math.min(state.doc.content.size, to + 1) : to,
+            ).flatMap((range) => {
+              const node = state.doc.nodeAt(range.from);
+              const mark = node?.marks.find((candidate) => candidate.type.name === "footnoteRef");
+              if (!mark) return [];
+              const attrs = expectFootnoteRefMarkAttrs(mark);
+              const id = Number(attrs.id);
+              if (!Number.isSafeInteger(id) || id <= 0) return [];
+              return [
+                {
+                  type: "deleteNote" as const,
+                  from: range.from,
+                  kind: attrs.noteType ?? "footnote",
+                  id,
+                },
+              ];
+            });
+          }),
       },
     };
   },
