@@ -23,7 +23,8 @@
  *   at a time, with pre-batch anchors mapped through earlier operations, in
  *   the order the batch contract gives (packages/core/src/ai-edits/
  *   batchOverlap.test.ts): annotations first, then insertions and other
- *   non-column operations, then table-column edits in source-grid order
+ *   non-column operations together from right to left, then table-column
+ *   edits in source-grid order
  *   (table and column descending, insertions before deletions at ties).
  * - `readerStability`: after every save, the live reviewer and the reopened
  *   one give the same `getContent()`, bridge snapshot, `toMarkdown`,
@@ -593,10 +594,7 @@ export const sequentialGroups = ({
   const rest = indexed
     .filter(
       ({ operation }) =>
-        !INSERTIONS.has(operation.type) &&
-        !ANNOTATIONS.has(operation.type) &&
-        !earlyIds.has(operation.id) &&
-        !isColumnEdit(operation),
+        !ANNOTATIONS.has(operation.type) && !earlyIds.has(operation.id) && !isColumnEdit(operation),
     )
     .toSorted((left, right) => {
       const a = placement(left.operation, preRows);
@@ -627,16 +625,43 @@ export const sequentialGroups = ({
       if (leftIsInsertion !== rightIsInsertion) return leftIsInsertion ? -1 : 1;
       return right.index - left.index;
     });
-  const insertions = applied.filter((operation) => INSERTIONS.has(operation.type));
+  const groups: AnyOperation[][] = [];
+  const inputOrder = new Map(applied.map(({ id }, index) => [id, index]));
+  for (const { operation } of rest) {
+    if (!INSERTIONS.has(operation.type)) {
+      groups.push([operation]);
+      continue;
+    }
+    const at = placement(operation, preRows);
+    const existing = groups.find((group) => {
+      const first = group.at(0);
+      return (
+        first !== undefined &&
+        group.every((candidate) => INSERTIONS.has(candidate.type)) &&
+        placement(first, preRows).every((part, index) => part === at[index])
+      );
+    });
+    if (existing) {
+      existing.push(operation);
+      existing.sort(
+        (left, right) =>
+          (inputOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+          (inputOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+      );
+    } else {
+      groups.push([operation]);
+    }
+  }
   return [
     ...applied.filter((operation) => ANNOTATIONS.has(operation.type)).map((one) => [one]),
-    // Insertions sharing a gap keep their input order, which is the batch's
-    // own contract, so they are stated together the same way.
-    ...(insertions.length > 0 ? [insertions] : []),
     // A tracked batch retires final breaks only after admissible property edits.
     // Separate deletions retire them immediately, so replay those edits first.
     ...earlyProperties.map((one) => [one]),
-    ...rest.map(({ operation }) => [operation]),
+    // Insertions participate in the same right-to-left sweep as the other
+    // operations. Only insertions at one gap stay together: applying every
+    // insertion first can change which pending paragraph mark a later
+    // merge or replacement owns. Within a gap the batch preserves input order.
+    ...groups,
     ...columns.map(({ operation }) => [operation]),
   ];
 };
